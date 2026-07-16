@@ -1,10 +1,10 @@
 {
   "degraded": false,
   "errors": [],
-  "local_crawl_jobs": [],
-  "local_embed_jobs": [],
-  "local_extract_jobs": [],
-  "local_ingest_jobs": [],
+  "source_jobs": [],
+  "extract_jobs": [],
+  "watch_jobs": [],
+  "prune_jobs": [],
   "sqlite": {
     "active_lock_exists": true,
     "active_lock_file_exists": true,
@@ -23,9 +23,9 @@
     "runtime_last_error_at_ms": null
   },
   "totals": {
-    "crawl": 0,
-    "embed": 0,
     "extract": 0,
-    "ingest": 0
+    "source": 0,
+    "watch": 0,
+    "prune": 0
   }
 }

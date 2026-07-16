@@ -25,14 +25,15 @@ private const val FAB_STATUS_MAX_ATTEMPTS = 6
 private const val MOBILE_SESSION_SAVE_DEBOUNCE_MS = 350L
 private val FAB_TERMINAL_STATUSES = setOf("completed", "complete", "failed", "error", "cancelled", "canceled")
 
-private fun JobFamily.toFabOp(): com.axon.app.ui.fab.FabOp = when (this) {
-    JobFamily.Crawl -> com.axon.app.ui.fab.FabOp.Crawl
-    JobFamily.Embed -> com.axon.app.ui.fab.FabOp.Embed
-    JobFamily.Extract -> com.axon.app.ui.fab.FabOp.Extract
-    JobFamily.Ingest -> com.axon.app.ui.fab.FabOp.Ingest
-}
+private fun JobFamily.toFabOp(): com.axon.app.ui.fab.FabOp =
+    when (this) {
+        JobFamily.Source -> com.axon.app.ui.fab.FabOp.SourceSite
+        JobFamily.Extract -> com.axon.app.ui.fab.FabOp.Extract
+    }
 
-class AskViewModel(app: Application) : AndroidViewModel(app) {
+class AskViewModel(
+    app: Application,
+) : AndroidViewModel(app) {
     internal val container = (app as AxonApp).container
 
     internal val _uiState = MutableStateFlow<AskUiState>(AskUiState.Idle)
@@ -44,9 +45,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     private val _historyReady = MutableStateFlow(false)
     val historyReady: StateFlow<Boolean> = _historyReady.asStateFlow()
 
-    val history = container.axonRepository.recentHistory()
-        .onEach { _historyReady.value = true }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val history =
+        container.axonRepository
+            .recentHistory()
+            .onEach { _historyReady.value = true }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     internal val _turns = MutableStateFlow<List<AskTurn>>(emptyList())
     val turns: StateFlow<List<AskTurn>> = _turns.asStateFlow()
@@ -113,13 +116,15 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         viewModelScope.launch {
-            val session = container.axonRepository.getMobileSession(sessionId).getOrElse { cause ->
-                Log.w(TAG, "Failed to load mobile session $sessionId", cause)
-                _uiState.value = AskUiState.Error(
-                    cause.message ?: "Could not load this chat session. Check your connection and sign in again.",
-                )
-                return@launch
-            }
+            val session =
+                container.axonRepository.getMobileSession(sessionId).getOrElse { cause ->
+                    Log.w(TAG, "Failed to load mobile session $sessionId", cause)
+                    _uiState.value =
+                        AskUiState.Error(
+                            cause.message ?: "Could not load this chat session. Check your connection and sign in again.",
+                        )
+                    return@launch
+                }
             cancelActiveSessionJobs()
             restoringSession = true
             currentSessionId = session.id
@@ -165,7 +170,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         emittedOperationContexts.clear()
     }
 
-    internal fun appendTurn(q: String, a: String) {
+    internal fun appendTurn(
+        q: String,
+        a: String,
+    ) {
         _turns.value = (_turns.value + AskTurn(q, a.take(500))).takeLast(MAX_FOLLOW_UP_TURNS)
     }
 
@@ -178,20 +186,22 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         summary: String? = null,
         detail: String? = null,
     ) {
-        val key = listOf(op.name, target, status, endpoint, jobId.orEmpty(), summary.orEmpty())
-            .joinToString("|")
+        val key =
+            listOf(op.name, target, status, endpoint, jobId.orEmpty(), summary.orEmpty())
+                .joinToString("|")
         if (!emittedOperationContexts.add(key)) return
         appendTurn(
             q = operationContextQuestion(op.label),
-            a = operationContextAnswer(
-                opLabel = op.label,
-                target = target,
-                status = status,
-                endpoint = endpoint,
-                jobId = jobId,
-                summary = summary,
-                detail = detail,
-            ),
+            a =
+                operationContextAnswer(
+                    opLabel = op.label,
+                    target = target,
+                    status = status,
+                    endpoint = endpoint,
+                    jobId = jobId,
+                    summary = summary,
+                    detail = detail,
+                ),
         )
     }
 
@@ -200,11 +210,17 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         if (item !is ChatItem.AxonMsg || !item.isStreaming) persistCurrentSession()
     }
 
-    internal fun appendOperationRequest(op: com.axon.app.ui.fab.FabOp, input: String) {
+    internal fun appendOperationRequest(
+        op: com.axon.app.ui.fab.FabOp,
+        input: String,
+    ) {
         appendItem(ChatItem.UserMsg("${op.label} · $input"))
     }
 
-    internal fun replaceLastAxonMsg(text: String, isStreaming: Boolean = false) {
+    internal fun replaceLastAxonMsg(
+        text: String,
+        isStreaming: Boolean = false,
+    ) {
         val items = _chatItems.value.toMutableList()
         val lastIdx = items.indexOfLast { it is ChatItem.AxonMsg }
         if (lastIdx >= 0) {
@@ -246,7 +262,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         ask(query, attachment = lastAttachment)
     }
 
-    internal fun appendOrUpdateActivity(phase: String, query: String) {
+    internal fun appendOrUpdateActivity(
+        phase: String,
+        query: String,
+    ) {
         val activity = activityForPhase(phase, query) ?: return
         val items = _chatItems.value.toMutableList()
         val idx = items.indexOfLast { it is ChatItem.Activity && it.name == activity.name && !it.done }
@@ -265,13 +284,14 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     internal fun completeActivities(persist: Boolean = true) {
-        val items = _chatItems.value.map { item ->
-            if (item is ChatItem.Activity && !item.done) {
-                item.copy(result = "done", done = true)
-            } else {
-                item
+        val items =
+            _chatItems.value.map { item ->
+                if (item is ChatItem.Activity && !item.done) {
+                    item.copy(result = "done", done = true)
+                } else {
+                    item
+                }
             }
-        }
         _chatItems.value = items
         if (persist) persistCurrentSession()
     }
@@ -288,7 +308,10 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         persistCurrentSession()
     }
 
-    internal fun updateInjection(jobId: String, transform: (ChatItem.Injection) -> ChatItem.Injection) {
+    internal fun updateInjection(
+        jobId: String,
+        transform: (ChatItem.Injection) -> ChatItem.Injection,
+    ) {
         val items = _chatItems.value.toMutableList()
         val idx = items.indexOfLast { it is ChatItem.Injection && it.jobId == jobId }
         if (idx >= 0) {
@@ -303,42 +326,42 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
             ?.target
             ?: jobId
 
-    internal fun pollCrawlOnce(jobId: String) {
+    internal fun pollSourceJobOnce(jobId: String) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
             var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
-                val terminal = container.axonRepository.crawlStatus(jobId).fold(
-                    onSuccess = { status ->
-                        everSucceeded = true
-                        val readableStatus = status.status.replaceFirstChar { it.titlecase() }
-                        val pages = status.pagesCrawled
-                        updateInjection(jobId) { item ->
-                            item.copy(
-                                status = readableStatus,
-                                pageCount = pages,
-                                detail = when {
-                                    status.serverError != null -> "Crawl reported an error: ${status.serverError}"
-                                    pages != null -> "Crawl has indexed $pages ${if (pages == 1) "page" else "pages"} from this target."
-                                    else -> "Crawl is ${status.status.lowercase()}. Jobs will continue updating as workers process the target."
-                                },
-                            )
-                        }
-                        if (status.status.lowercase() in FAB_TERMINAL_STATUSES || pages != null) {
-                            appendOperationContext(
-                                op = com.axon.app.ui.fab.FabOp.Crawl,
-                                target = injectionTarget(jobId),
-                                status = readableStatus,
-                                endpoint = "GET /v1/crawl/$jobId",
-                                jobId = jobId,
-                                summary = pages?.let { "%,d pages crawled".format(it) },
-                                detail = status.serverError ?: "Crawl status is ${status.status.lowercase()}. Use Axon query/retrieve/ask over the indexed target for follow-up.",
-                            )
-                        }
-                        status.status.lowercase() in FAB_TERMINAL_STATUSES
-                    },
-                    onFailure = { false },
-                )
+                val terminal =
+                    container.axonRepository.sourceJobStatus(jobId).fold(
+                        onSuccess = { status ->
+                            everSucceeded = true
+                            val readableStatus = status.status.replaceFirstChar { it.titlecase() }
+                            updateInjection(jobId) { item ->
+                                item.copy(
+                                    status = readableStatus,
+                                    detail =
+                                        when {
+                                            status.serverError != null -> "Site source reported an error: ${status.serverError}"
+                                            else -> "Site source is ${status.status.lowercase()}. Jobs will continue updating as workers process the target."
+                                        },
+                                )
+                            }
+                            if (status.status.lowercase() in FAB_TERMINAL_STATUSES) {
+                                appendOperationContext(
+                                    op = com.axon.app.ui.fab.FabOp.SourceSite,
+                                    target = injectionTarget(jobId),
+                                    status = readableStatus,
+                                    endpoint = "GET /v1/jobs/$jobId",
+                                    jobId = jobId,
+                                    detail =
+                                        status.serverError
+                                            ?: "Site source status is ${status.status.lowercase()}. Use Axon query/retrieve/ask over the indexed target for follow-up.",
+                                )
+                            }
+                            status.status.lowercase() in FAB_TERMINAL_STATUSES
+                        },
+                        onFailure = { false },
+                    )
                 if (terminal) return@launch
                 if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
                     finishStalePoll(jobId, everSucceeded)
@@ -354,46 +377,56 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
      * succeeded, the chip would otherwise stay frozen on its initial status with
      * no explanation — surface that the poller couldn't reach the status.
      */
-    private fun finishStalePoll(jobId: String, everSucceeded: Boolean) {
+    private fun finishStalePoll(
+        jobId: String,
+        everSucceeded: Boolean,
+    ) {
         if (everSucceeded) return
         updateInjection(jobId) { item ->
             item.copy(detail = "Couldn't reach job status — track it from Jobs.")
         }
     }
 
-    internal fun pollJobOnce(kind: JobFamily, jobId: String) {
+    internal fun pollJobOnce(
+        kind: JobFamily,
+        jobId: String,
+    ) {
         viewModelScope.launch {
             delay(FAB_STATUS_INITIAL_DELAY_MS)
             var everSucceeded = false
             repeat(FAB_STATUS_MAX_ATTEMPTS) { attempt ->
-                val terminal = container.axonRepository.getJob(kind, jobId).fold(
-                    onSuccess = { job ->
-                        everSucceeded = true
-                        val readableStatus = job.status.replaceFirstChar { it.titlecase() }
-                        updateInjection(jobId) { item ->
-                            item.copy(
-                                status = readableStatus,
-                                detail = when {
-                                    job.errorText != null -> "${kind.label()} reported an error: ${job.errorText}"
-                                    else -> "${kind.label()} is ${job.status.lowercase()}. Jobs will show completion, errors, and indexed output as workers process the target."
-                                },
-                            )
-                        }
-                        if (job.status.lowercase() in FAB_TERMINAL_STATUSES) {
-                            appendOperationContext(
-                                op = kind.toFabOp(),
-                                target = job.target ?: job.url ?: job.id,
-                                status = readableStatus,
-                                endpoint = "GET /v1/${kind.name.lowercase()}/$jobId",
-                                jobId = jobId,
-                                summary = resultMetricSummary(job.resultJson),
-                                detail = job.errorText ?: "${kind.label()} status is ${job.status.lowercase()}. Use Axon query/retrieve/ask over indexed output for follow-up.",
-                            )
-                        }
-                        job.status.lowercase() in FAB_TERMINAL_STATUSES
-                    },
-                    onFailure = { false },
-                )
+                val terminal =
+                    container.axonRepository.getJob(kind, jobId).fold(
+                        onSuccess = { job ->
+                            everSucceeded = true
+                            val readableStatus = job.status.replaceFirstChar { it.titlecase() }
+                            updateInjection(jobId) { item ->
+                                item.copy(
+                                    status = readableStatus,
+                                    detail =
+                                        when {
+                                            job.errorText != null -> "${kind.label()} reported an error: ${job.errorText}"
+                                            else -> "${kind.label()} is ${job.status.lowercase()}. Jobs will show completion, errors, and indexed output as workers process the target."
+                                        },
+                                )
+                            }
+                            if (job.status.lowercase() in FAB_TERMINAL_STATUSES) {
+                                appendOperationContext(
+                                    op = kind.toFabOp(),
+                                    target = job.target ?: job.url ?: job.id,
+                                    status = readableStatus,
+                                    endpoint = "GET /v1/${kind.name.lowercase()}/$jobId",
+                                    jobId = jobId,
+                                    summary = resultMetricSummary(job.resultJson),
+                                    detail =
+                                        job.errorText
+                                            ?: "${kind.label()} status is ${job.status.lowercase()}. Use Axon query/retrieve/ask over indexed output for follow-up.",
+                                )
+                            }
+                            job.status.lowercase() in FAB_TERMINAL_STATUSES
+                        },
+                        onFailure = { false },
+                    )
                 if (terminal) return@launch
                 if (attempt == FAB_STATUS_MAX_ATTEMPTS - 1) {
                     finishStalePoll(jobId, everSucceeded)
@@ -404,7 +437,11 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    internal suspend fun recordRecentJob(jobId: String, kind: String, target: String) {
+    internal suspend fun recordRecentJob(
+        jobId: String,
+        kind: String,
+        target: String,
+    ) {
         runCatching {
             container.recentJobs.add(
                 RecentJob(
@@ -417,33 +454,42 @@ class AskViewModel(app: Application) : AndroidViewModel(app) {
         }.onFailure { Log.w(TAG, "Failed to record recent $kind job $jobId", it) }
     }
 
-    fun ask(query: String, attachment: String? = null) = askFromQuery(query, attachment)
+    fun ask(
+        query: String,
+        attachment: String? = null,
+    ) = askFromQuery(query, attachment)
 
-    fun submitFabOp(op: com.axon.app.ui.fab.FabOp, input: String) = submitFabOperation(op, input)
+    fun submitFabOp(
+        op: com.axon.app.ui.fab.FabOp,
+        input: String,
+    ) = submitFabOperation(op, input)
 
     private fun persistCurrentSession() {
         if (restoringSession) return
         persistSessionJob?.cancel()
-        persistSessionJob = viewModelScope.launch {
-            delay(MOBILE_SESSION_SAVE_DEBOUNCE_MS)
-            val items = _chatItems.value
-            if (items.isEmpty()) return@launch
-            val now = System.currentTimeMillis()
-            val session = buildMobileSessionDto(
-                sessionId = currentSessionId,
-                createdAt = createdAtMs,
-                updatedAt = now,
-                items = items,
-            )
-            container.axonRepository.upsertMobileSession(session).onFailure { cause ->
-                Log.w(TAG, "Failed to save mobile session ${session.id}", cause)
-                if (_uiState.value is AskUiState.Idle) {
-                    _uiState.value = AskUiState.Error(
-                        cause.message ?: "Could not save this chat session. Check your connection and sign in again.",
+        persistSessionJob =
+            viewModelScope.launch {
+                delay(MOBILE_SESSION_SAVE_DEBOUNCE_MS)
+                val items = _chatItems.value
+                if (items.isEmpty()) return@launch
+                val now = System.currentTimeMillis()
+                val session =
+                    buildMobileSessionDto(
+                        sessionId = currentSessionId,
+                        createdAt = createdAtMs,
+                        updatedAt = now,
+                        items = items,
                     )
+                container.axonRepository.upsertMobileSession(session).onFailure { cause ->
+                    Log.w(TAG, "Failed to save mobile session ${session.id}", cause)
+                    if (_uiState.value is AskUiState.Idle) {
+                        _uiState.value =
+                            AskUiState.Error(
+                                cause.message ?: "Could not save this chat session. Check your connection and sign in again.",
+                            )
+                    }
                 }
             }
-        }
     }
 
     private fun cancelActiveSessionJobs() {

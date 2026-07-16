@@ -202,32 +202,38 @@ pub(super) fn positional_from_job(job: JobSubcommand) -> Vec<String> {
 pub(super) fn positional_from_watch_subcommand(action: WatchSubcommand) -> Vec<String> {
     match action {
         WatchSubcommand::Create {
-            name,
-            task_type,
+            source,
             every_seconds,
-            task_payload,
+            collection,
         } => {
             let mut positional = vec![
                 "create".to_string(),
-                name,
-                "--task-type".to_string(),
-                task_type,
+                source,
                 "--every-seconds".to_string(),
                 every_seconds.to_string(),
             ];
-            if let Some(payload) = task_payload {
-                positional.push("--task-payload".to_string());
-                positional.push(payload);
+            if let Some(collection) = collection {
+                positional.push("--collection".to_string());
+                positional.push(collection);
             }
             positional
         }
         WatchSubcommand::List => vec!["list".to_string()],
         WatchSubcommand::Get { id } => vec!["get".to_string(), id],
-        WatchSubcommand::Update { id, every_seconds } => {
+        WatchSubcommand::Status { id } => vec!["status".to_string(), id],
+        WatchSubcommand::Update {
+            id,
+            every_seconds,
+            collection,
+        } => {
             let mut positional = vec!["update".to_string(), id];
             if let Some(v) = every_seconds {
                 positional.push("--every-seconds".to_string());
                 positional.push(v.to_string());
+            }
+            if let Some(collection) = collection {
+                positional.push("--collection".to_string());
+                positional.push(collection);
             }
             positional
         }
@@ -238,12 +244,6 @@ pub(super) fn positional_from_watch_subcommand(action: WatchSubcommand) -> Vec<S
         WatchSubcommand::History { id, limit } => vec![
             "history".to_string(),
             id,
-            "--limit".to_string(),
-            limit.to_string(),
-        ],
-        WatchSubcommand::Artifacts { run_id, limit } => vec![
-            "artifacts".to_string(),
-            run_id,
             "--limit".to_string(),
             limit.to_string(),
         ],

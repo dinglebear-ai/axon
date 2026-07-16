@@ -1,34 +1,30 @@
-//! `system` service module — collection facets, diagnostics, status, dedupe.
+//! `system` service module — collection facets, diagnostics, and status.
 //!
 //! This module is the public entry point for the `axon` sources / domains /
-//! stats / doctor / status / dedupe commands. Concrete implementations live in
+//! stats / doctor / status commands. Concrete implementations live in
 //! the submodules below; everything that used to be exported from `system.rs`
 //! before the split is re-exported here so external callers keep working
 //! without any `use` changes.
 
 mod collections;
-mod dedupe;
 mod doctor;
 mod domains;
 mod job_tracking;
-mod purge;
 mod sources;
 mod stats;
 mod status;
 mod watchdog;
 
 pub use self::collections::{CollectionsError, collections, map_collections_payload};
-pub use self::dedupe::dedupe;
 pub(crate) use self::doctor::doctor_inner;
 pub use self::doctor::{doctor, map_doctor_payload};
 pub use self::domains::{
     detailed_domains, domain_indexed, domains, map_domains_payload, summarize_detailed_domains,
     summarize_detailed_domains_limited,
 };
-pub use self::purge::purge;
 pub use self::sources::{
     domain_sources_from_urls, map_sources_payload, normalize_domain_query, sources,
-    sources_for_domain, sources_schema_version_breakdown, sources_with_breakdown,
+    sources_for_domain,
 };
 pub use self::stats::{map_stats_payload, print_stats_human, stats};
 pub use self::status::{

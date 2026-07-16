@@ -72,7 +72,6 @@ name = "axon"
 
 [dependencies]
 axon-core = { path = "crates/axon-core" }
-axon-jobs = { path = "crates/axon-jobs" }
 axon-services = { path = "crates/axon-services" }
 axon-mcp = { path = "crates/axon-mcp" }
 axon-web = { path = "crates/axon-web" }

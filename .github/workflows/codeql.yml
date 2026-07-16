@@ -105,9 +105,6 @@ jobs:
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable CodeQL PR analysis while the large
-    # pipeline-unification refactor lands. Re-enable for stabilization/release.
-    if: ${{ vars.AXON_ENABLE_HEAVY_CI == 'true' }}
     permissions:
       security-events: write
 
@@ -192,16 +189,16 @@ jobs:
       - changes
       - analyze
     steps:
-      - name: verify CodeQL jobs passed or were intentionally skipped
+      - name: verify CodeQL jobs passed
         run: |
           set -euo pipefail
-          require_success_or_skipped() {
+          require_success() {
             local name="$1"
             local result="$2"
             case "$result" in
-              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              success) printf '%s=%s\n' "$name" "$result" ;;
               *) echo "::error::$name concluded $result" >&2; exit 1 ;;
             esac
           }
-          require_success_or_skipped changes "${{ needs.changes.result }}"
-          require_success_or_skipped analyze "${{ needs.analyze.result }}"
+          require_success changes "${{ needs.changes.result }}"
+          require_success analyze "${{ needs.analyze.result }}"

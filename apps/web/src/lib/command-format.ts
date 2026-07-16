@@ -230,7 +230,7 @@ export function commandResultRows(action: string, result: Record<string, unknown
 
   if (action === 'status') {
     const totals = asRecord(result.totals);
-    return ['crawl', 'extract', 'embed', 'ingest']
+    return ['source', 'extract', 'watch', 'prune']
       .map((key) => ({ label: titleLabel(key), value: stringifyScalar(totals?.[key]) }))
       .filter((row) => row.value);
   }

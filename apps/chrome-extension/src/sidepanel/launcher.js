@@ -144,9 +144,8 @@
       case "brand": return requestAxon("POST", "/v1/brand", { url: arg });
       case "endpoints": return requestAxon("POST", "/v1/endpoints", { url: arg });
       case "diff": { const u = splitUrls(arg); if (u.length < 2) { const e = new Error("Diff needs two URLs — “URL A  URL B”."); e.status = 400; throw e; } return requestAxon("POST", "/v1/diff", { url_a: u[0], url_b: u[1] }); }
-      case "crawl": return requestAxon("POST", "/v1/sources", { source: arg, scope: "site" });
-      case "embed": return requestAxon("POST", "/v1/sources", { source: arg });
-      case "ingest": return requestAxon("POST", "/v1/sources", { source: arg });
+      case "site": return requestAxon("POST", "/v1/sources", { source: arg, scope: "site" });
+      case "source": return requestAxon("POST", "/v1/sources", { source: arg });
       case "search": return requestAxon("POST", "/v1/search", { query: arg, limit: 10 });
       case "research": return requestAxon("POST", "/v1/research", { query: arg, limit: 10 });
       case "query": return requestAxon("POST", "/v1/query", { query: arg, limit: 10 });
@@ -201,7 +200,7 @@
     ]);
   }
   function footer() {
-    return el("div", { class: "ext-foot" }, [Icon("command", 12), el("span", null, "Right-click: Scrape+copy / Crawl / Ask")]);
+    return el("div", { class: "ext-foot" }, [Icon("command", 12), el("span", null, "Right-click: Scrape+copy / Index site / Ask")]);
   }
 
   /* ── browse view ── */
@@ -217,7 +216,7 @@
       el("div", { class: "ext-taburl", title: url }, url ? [dom, el("span", { class: "dim" }, rest)] : [el("span", { class: "dim" }, "Open an http:// or https:// tab")]),
       el("div", { class: "ext-quick" }, [
         quickBtn("scrape", "Scrape", "scrape"),
-        quickBtn("crawl", "Crawl", "crawl"),
+        quickBtn("site", "Index site", "site"),
       ]),
     ]);
     scroll.appendChild(tabCard);
@@ -407,7 +406,7 @@
   }
 
   /* ── context-menu intents ── */
-  const INTENT_OPS = new Set(["scrape", "crawl", "ask"]); // ops the context menu may trigger
+  const INTENT_OPS = new Set(["scrape", "site", "ask"]); // ops the context menu may trigger
   function applyIntent(intent) {
     if (!intent || !INTENT_OPS.has(intent.op)) return;
     state.copyAfterRun = intent.op === "scrape" && intent.copy === true;

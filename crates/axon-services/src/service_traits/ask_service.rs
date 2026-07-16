@@ -158,6 +158,7 @@ impl AskService for FakeAskService {
         Ok(AskResult {
             query,
             answer,
+            citations: Vec::new(),
             citation_validation: None,
             session: None,
             warnings: Vec::new(),
@@ -198,6 +199,7 @@ impl AskService for FakeAskService {
             rag_answer: "fake rag answer".to_string(),
             baseline_answer: "fake baseline answer".to_string(),
             analysis_answer: "fake analysis".to_string(),
+            citations: Vec::new(),
             source_urls: Vec::new(),
             crawl_suggestions: Vec::new(),
             crawl_enqueue_outcomes: Vec::new(),

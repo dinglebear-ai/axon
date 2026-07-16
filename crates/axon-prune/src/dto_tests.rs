@@ -1,8 +1,9 @@
 //! Round-trip + shape tests for the shared prune DTOs (owned in
 //! `axon-api::source::prune`, produced/consumed here).
 
-use axon_api::source::ids::{SourceGenerationId, SourceId};
-use axon_api::source::prune::{PruneRequest, PruneSelector};
+use axon_api::source::ids::{JobId, SourceGenerationId, SourceId};
+use axon_api::source::prune::{PruneExecuteRequest, PruneRequest, PruneSelector};
+use uuid::Uuid;
 
 #[test]
 fn prune_request_defaults_to_dry_run_when_deserialized() {
@@ -69,4 +70,17 @@ fn request_helpers_set_expected_flags() {
     let exec = PruneRequest::execute(sel, "operator requested");
     assert!(!exec.dry_run);
     assert!(exec.require_confirmation);
+}
+
+#[test]
+fn execute_request_references_reviewed_plan_id_instead_of_inline_plan() {
+    let plan_id = JobId::new(Uuid::new_v4());
+    let request = PruneExecuteRequest {
+        plan_id,
+        confirm: true,
+        reason: "reviewed".to_string(),
+    };
+    let json = serde_json::to_value(request).expect("serialize execute request");
+    assert_eq!(json["plan_id"], serde_json::json!(plan_id.0));
+    assert!(json.get("plan").is_none());
 }

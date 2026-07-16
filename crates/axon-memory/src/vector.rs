@@ -9,6 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axon_api::source::*;
 use axon_embedding::provider::EmbeddingProvider;
+use axon_graph::store::GraphStore;
 use axon_vectors::store::VectorStore;
 use serde_json::json;
 use uuid::Uuid;
@@ -16,8 +17,11 @@ use uuid::Uuid;
 use crate::store::{MemoryStore, Result};
 
 mod batch;
+mod document;
 mod payload;
-use payload::{memory_collection_spec, memory_payload, memory_payload_indexes};
+mod search;
+use document::{build_memory_vector_batch, embedding_inputs, prepare_memory_document};
+use payload::memory_collection_spec;
 
 pub const MEMORY_VECTOR_NAMESPACE: &str = "memory";
 pub const MEMORY_COLLECTION_ALIAS: &str = "memory";
@@ -41,9 +45,11 @@ pub struct MemoryBatchLimits {
     /// Max points upserted in one `VectorPointBatch` call. Kept equal to
     /// `embed_batch_size` today (one embed call feeds one upsert call).
     pub upsert_batch_size: usize,
-    /// Reserved for a future Qdrant scroll-based bulk export path.
+    /// Reserved for a future vector-maintenance scroll. Public memory export
+    /// pages authoritative SQLite records and must not reconstruct records
+    /// from derived Qdrant points.
     pub qdrant_page_size: usize,
-    /// Reserved for a future batched graph-mirror transaction path.
+    /// Max memory nodes in one graph mirror transaction.
     pub graph_tx_batch_size: usize,
 }
 
@@ -62,6 +68,7 @@ pub struct VectorBackedMemoryStore {
     inner: Arc<dyn MemoryStore>,
     embeddings: Arc<dyn EmbeddingProvider>,
     vectors: Arc<dyn VectorStore>,
+    graph: Option<Arc<dyn GraphStore>>,
     config: MemoryVectorConfig,
 }
 
@@ -76,8 +83,14 @@ impl VectorBackedMemoryStore {
             inner,
             embeddings,
             vectors,
+            graph: None,
             config,
         }
+    }
+
+    pub fn with_graph_store(mut self, graph: Arc<dyn GraphStore>) -> Self {
+        self.graph = Some(graph);
+        self
     }
 
     async fn ensure_collection(&self) -> Result<()> {
@@ -88,7 +101,7 @@ impl VectorBackedMemoryStore {
 
     async fn upsert_record(&self, record: &MemoryRecord) -> Result<Vec<VectorPointId>> {
         self.ensure_collection().await?;
-        let chunk_id = ChunkId::new(format!("memory:{}", record.memory_id.0));
+        let document = prepare_memory_document(record)?;
         let batch_id = BatchId::new(Uuid::new_v4());
         let job_id = JobId::new(Uuid::new_v4());
         let embedding = self
@@ -98,149 +111,20 @@ impl VectorBackedMemoryStore {
                 job_id,
                 provider_id: self.config.embedding_provider_id.clone(),
                 model: self.config.embedding_model.clone(),
-                items: vec![EmbeddingInput {
-                    chunk_id: chunk_id.clone(),
-                    text: record.body.clone(),
-                    content_kind: ContentKind::PlainText,
-                    metadata: MetadataMap::new(),
-                }],
+                items: embedding_inputs(&document),
                 instruction: None,
                 priority: JobPriority::Normal,
-                metadata: MetadataMap::new(),
+                metadata: document.metadata.clone(),
             })
             .await?;
-        let vector = embedding
-            .vectors
+        let batch = build_memory_vector_batch(&self.config, document, embedding)?;
+        let point_ids = batch
+            .points
             .iter()
-            .find(|vector| vector.chunk_id == chunk_id)
-            .cloned()
-            .ok_or_else(|| {
-                ApiError::new(
-                    "memory.embedding_missing",
-                    axon_error::ErrorStage::Embedding,
-                    format!(
-                        "embedding provider did not return memory {}",
-                        record.memory_id.0
-                    ),
-                )
-            })?;
-        let point_id = VectorPointId::new(format!("memory:{}", record.memory_id.0));
-        let payload = memory_payload(record, &point_id, &embedding, &self.config.collection);
-        self.vectors
-            .upsert(VectorPointBatch {
-                batch_id: embedding.batch_id,
-                collection: self.config.collection.clone(),
-                points: vec![VectorPoint {
-                    point_id: point_id.clone(),
-                    chunk_id,
-                    vector: vector.values,
-                    sparse_vector: None,
-                    payload,
-                }],
-                model: embedding.model,
-                dimensions: embedding.dimensions,
-                sparse_vectors: None,
-                payload_indexes: memory_payload_indexes(),
-            })
-            .await?;
-        Ok(vec![point_id])
-    }
-
-    async fn search_vectors(&self, request: &MemorySearchRequest) -> Result<MemorySearchResult> {
-        self.ensure_collection().await?;
-        let query_chunk = ChunkId::new("memory-query");
-        let embedding = self
-            .embeddings
-            .embed(EmbeddingBatch {
-                batch_id: BatchId::new(Uuid::new_v4()),
-                job_id: JobId::new(Uuid::new_v4()),
-                provider_id: self.config.embedding_provider_id.clone(),
-                model: self.config.embedding_model.clone(),
-                items: vec![EmbeddingInput {
-                    chunk_id: query_chunk.clone(),
-                    text: request.query.clone(),
-                    content_kind: ContentKind::PlainText,
-                    metadata: MetadataMap::new(),
-                }],
-                instruction: None,
-                priority: JobPriority::Interactive,
-                metadata: MetadataMap::new(),
-            })
-            .await?;
-        let dense_vector = embedding
-            .vectors
-            .into_iter()
-            .find(|vector| vector.chunk_id == query_chunk)
-            .map(|vector| vector.values)
-            .ok_or_else(|| {
-                ApiError::new(
-                    "memory.query_embedding_missing",
-                    axon_error::ErrorStage::Retrieving,
-                    "embedding provider did not return a memory query vector",
-                )
-            })?;
-        let mut filters = request.filters.clone();
-        filters.insert(
-            "vector_namespace".to_string(),
-            json!(MEMORY_VECTOR_NAMESPACE),
-        );
-        filters.insert("memory_status".to_string(), json!("active"));
-        if !request.include_archived {
-            filters.insert("memory_recallable".to_string(), json!(true));
-        }
-        let search = self
-            .vectors
-            .search(VectorSearchRequest {
-                collection: self.config.collection.clone(),
-                query: request.query.clone(),
-                limit: request.limit,
-                dense_vector: Some(dense_vector),
-                sparse_vector: None,
-                filters,
-                hybrid: Some(false),
-                generation: None,
-                graph_refs: Vec::new(),
-                metadata: MetadataMap::new(),
-            })
-            .await?;
-        let memory_ids = search
-            .results
-            .iter()
-            .filter_map(|hit| {
-                hit.payload
-                    .get("memory_id")
-                    .and_then(serde_json::Value::as_str)
-                    .map(MemoryId::new)
-            })
+            .map(|point| point.point_id.clone())
             .collect::<Vec<_>>();
-        let records = self.inner.load_many(memory_ids).await?;
-        let mut warnings = search.warnings;
-        let mut results = Vec::new();
-        for (hit, record) in search.results.into_iter().zip(records) {
-            let Some(record) = record else {
-                warnings.push(SourceWarning {
-                    code: "memory.metadata_missing".to_string(),
-                    severity: Severity::Warning,
-                    message: "memory vector hit had no SQLite metadata row".to_string(),
-                    source_item_key: None,
-                    retryable: true,
-                });
-                continue;
-            };
-            if !request.include_archived && record.status != MemoryStatus::Active {
-                continue;
-            }
-            results.push(MemorySearchMatch {
-                record,
-                score: hit.score as f32,
-            });
-        }
-        Ok(MemorySearchResult {
-            results,
-            query_embedding_model: Some(self.config.embedding_model.clone()),
-            graph: None,
-            warnings,
-        })
+        self.vectors.upsert(batch).await?;
+        Ok(point_ids)
     }
 
     async fn hide_vectors(&self, memory_id: &MemoryId) -> Result<()> {

@@ -5,6 +5,7 @@ use axon_api::source::*;
 use serde_json::json;
 
 use super::{MEMORY_VECTOR_NAMESPACE, VectorBackedMemoryStore};
+use crate::graph_refs::graph_refs_for_memory_results;
 use crate::record::age_days;
 use crate::store::Result;
 
@@ -117,7 +118,10 @@ impl VectorBackedMemoryStore {
         // `crate::decay::score_record` + scope-match input the keyword recall
         // path (`sqlite::recall::search`) uses, so both recall paths rank
         // identically for the same record.
-        let now_secs = self.clock.now_epoch_secs();
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0);
         let scope_filter = request
             .filters
             .get("scope")
@@ -150,10 +154,15 @@ impl VectorBackedMemoryStore {
             );
             results.push(MemorySearchMatch { record, score });
         }
+        let graph = if request.include_graph {
+            graph_refs_for_memory_results(self.graph.as_deref(), &results, &mut warnings).await?
+        } else {
+            None
+        };
         Ok(MemorySearchResult {
             results,
             query_embedding_model: Some(self.config.embedding_model.clone()),
-            graph: None,
+            graph,
             warnings,
         })
     }

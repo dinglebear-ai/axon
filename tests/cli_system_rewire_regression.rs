@@ -147,20 +147,21 @@ fn doctor_result_not_ok_when_service_down() {
 #[test]
 fn status_result_payload_and_text_are_both_present() {
     let payload = serde_json::json!({
-        "local_crawl_jobs": [],
-        "local_extract_jobs": [],
-        "local_embed_jobs": [],
-        "local_ingest_jobs": []
+        "jobs": [],
+        "watches": [],
+        "cleanup": { "jobs": [] },
+        "warnings": []
     });
-    let text = "Axon Status\ncrawl jobs:   0\nextract jobs: 0".to_string();
+    let text = "Axon Status\nsource jobs:  0\nextract jobs: 0".to_string();
     let result = StatusResult {
         payload: payload.clone(),
         text: text.clone(),
         totals: StatusTotals::default(),
         degraded: false,
-        errors: Vec::new(),
+        warnings: Vec::new(),
     };
-    assert!(result.payload.get("local_crawl_jobs").is_some());
+    assert!(result.payload.get("jobs").is_some());
+    assert!(result.payload.get("source_jobs").is_none());
     assert!(result.text.contains("Axon Status"));
 }
 

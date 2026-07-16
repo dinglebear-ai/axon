@@ -5,18 +5,11 @@ use crate::facts::{inline_text, source_fact_ranged, span_range};
 use crate::graph_candidate::graph_candidate;
 use crate::parser::ParseInput;
 
-pub const MODULE_NAME: &str = "code";
+mod ast;
 
-/// `axon-parse` has no tree-sitter/AST grammar wired in yet (tracked as
-/// deferred — see the crate CLAUDE.md and parsing-contract.md "AST and
-/// Structural Parsing"; tree-sitter is only a direct dependency of
-/// `axon-vector` today, not a shared workspace dependency `axon-parse` can
-/// pull in without adding a new heavy dependency edge). Every code symbol
-/// fact below is produced by a line/indentation heuristic, not a grammar, so
-/// every fact is stamped `parser_method = "regex_fallback"`,
-/// `confidence < 0.75`, and `symbol_extraction_status = "heuristic_fallback"`
-/// per the contract's fallback requirements.
-pub const PARSER_METHOD: &str = "regex_fallback";
+pub const MODULE_NAME: &str = "code";
+pub const AST_PARSER_METHOD: &str = "tree_sitter";
+pub const FALLBACK_PARSER_METHOD: &str = "regex_fallback";
 const MAX_SYMBOL_SCAN_LINES: usize = 4_000;
 
 pub fn symbol_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
@@ -24,9 +17,19 @@ pub fn symbol_facts(input: &ParseInput) -> Vec<SourceParseFacts> {
 }
 
 pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
+    if let Ok(symbols) = ast::parse_symbols(input) {
+        return ast::facts_with_graph(input, symbols);
+    }
+    fallback_symbol_facts_with_graph(input)
+}
+
+fn fallback_symbol_facts_with_graph(
+    input: &ParseInput,
+) -> (Vec<SourceParseFacts>, Vec<GraphCandidate>) {
     let mut facts = Vec::new();
     let mut candidates = Vec::new();
     let lines: Vec<&str> = inline_text(input).lines().collect();
+    let js_ts_language = js_ts_language(input);
 
     // Indentation-based parent tracking: a symbol nested under a
     // shallower-indented symbol (e.g. a Python method under its class) is
@@ -40,7 +43,7 @@ pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Ve
             continue;
         }
         let Some((language, symbol_kind, name, visibility)) =
-            rust_symbol(trimmed).or_else(|| python_symbol(trimmed))
+            symbol_for_line(trimmed, js_ts_language)
         else {
             continue;
         };
@@ -55,14 +58,14 @@ pub fn symbol_facts_with_graph(input: &ParseInput) -> (Vec<SourceParseFacts>, Ve
 
         let line_start = idx as u32 + 1;
         let (line_end, truncated) = match language {
-            "rust" => rust_symbol_end(&lines, idx),
-            _ => python_symbol_end(&lines, idx, indent),
+            "rust" | "javascript" | "typescript" => brace_symbol_end(&lines, idx),
+            _ => indentation_symbol_end(&lines, idx, indent),
         };
 
         facts.push(source_fact_ranged(
             input,
             "code_symbols",
-            PARSER_METHOD,
+            FALLBACK_PARSER_METHOD,
             "code_symbol",
             name.clone(),
             json!({
@@ -96,13 +99,13 @@ fn indent_of(line: &str) -> usize {
         .count()
 }
 
-/// Best-effort brace-depth scan for a Rust symbol's closing line. Comments
+/// Best-effort brace-depth scan for a Rust/JS/TS symbol's closing line. Comments
 /// and string literals containing braces are not excluded (a true fallback
 /// limitation — the reason this is `regex_fallback`, not an AST parser), and
 /// the scan is capped at `MAX_SYMBOL_SCAN_LINES` to bound cost on huge files;
 /// `truncated` reports when the cap was hit so callers/downstream chunkers
 /// know the range may not cover the whole symbol.
-fn rust_symbol_end(lines: &[&str], start_idx: usize) -> (u32, bool) {
+fn brace_symbol_end(lines: &[&str], start_idx: usize) -> (u32, bool) {
     let start_line = lines[start_idx];
     if !start_line.contains('{') && start_line.trim_end().ends_with(';') {
         return (start_idx as u32 + 1, false);
@@ -131,8 +134,8 @@ fn rust_symbol_end(lines: &[&str], start_idx: usize) -> (u32, bool) {
 
 /// Best-effort indentation scan for a Python symbol's body extent: the body
 /// continues while subsequent non-blank lines are indented deeper than the
-/// declaration. Capped the same way as `rust_symbol_end`.
-fn python_symbol_end(lines: &[&str], start_idx: usize, declared_indent: usize) -> (u32, bool) {
+/// declaration. Capped the same way as `brace_symbol_end`.
+fn indentation_symbol_end(lines: &[&str], start_idx: usize, declared_indent: usize) -> (u32, bool) {
     let limit = lines.len().min(start_idx + MAX_SYMBOL_SCAN_LINES);
     let mut end_idx = start_idx;
     for (idx, line) in lines.iter().enumerate().take(limit).skip(start_idx + 1) {
@@ -186,9 +189,122 @@ fn python_symbol(line: &str) -> Option<(&'static str, &'static str, String, &'st
     None
 }
 
+fn symbol_for_line(
+    line: &str,
+    js_ts_language: Option<&'static str>,
+) -> Option<(&'static str, &'static str, String, &'static str)> {
+    if let Some(language) = js_ts_language {
+        rust_symbol(line)
+            .or_else(|| js_ts_symbol(line, language))
+            .or_else(|| python_symbol(line))
+    } else {
+        rust_symbol(line).or_else(|| python_symbol(line))
+    }
+}
+
+fn js_ts_symbol(
+    line: &str,
+    language: &'static str,
+) -> Option<(&'static str, &'static str, String, &'static str)> {
+    let (line, visibility) = strip_js_ts_modifiers(line);
+    for (prefix, kind) in [
+        ("async function ", "function"),
+        ("function ", "function"),
+        ("class ", "class"),
+        ("interface ", "interface"),
+        ("type ", "type"),
+        ("enum ", "enum"),
+    ] {
+        if let Some(rest) = line.strip_prefix(prefix) {
+            return Some((language, kind, take_identifier(rest), visibility));
+        }
+    }
+    js_ts_assignment_symbol(line).map(|(kind, name)| (language, kind, name, visibility))
+}
+
+fn strip_js_ts_modifiers(line: &str) -> (&str, &'static str) {
+    let mut rest = line;
+    let mut visibility = "private";
+    loop {
+        if let Some(stripped) = rest.strip_prefix("export default ") {
+            rest = stripped;
+            visibility = "public";
+        } else if let Some(stripped) = rest.strip_prefix("export ") {
+            rest = stripped;
+            visibility = "public";
+        } else if let Some(stripped) = rest.strip_prefix("declare ") {
+            rest = stripped;
+        } else if let Some(stripped) = rest.strip_prefix("abstract ") {
+            rest = stripped;
+        } else {
+            break;
+        }
+    }
+    (rest, visibility)
+}
+
+fn js_ts_assignment_symbol(line: &str) -> Option<(&'static str, String)> {
+    let rest = line
+        .strip_prefix("const ")
+        .or_else(|| line.strip_prefix("let "))
+        .or_else(|| line.strip_prefix("var "))?;
+    let name = take_identifier(rest);
+    if name.is_empty() {
+        return None;
+    }
+    let rhs = rest.get(name.len()..)?.trim_start();
+    let kind = if rhs.contains("=>") || rhs.contains("function") || rhs.contains("React.FC") {
+        "function"
+    } else {
+        "constant"
+    };
+    Some((kind, name))
+}
+
+fn js_ts_language(input: &ParseInput) -> Option<&'static str> {
+    let language = input
+        .document
+        .language
+        .as_deref()
+        .map(str::to_ascii_lowercase);
+    if language
+        .as_deref()
+        .is_some_and(|value| value.contains("typescript") || value == "ts" || value == "tsx")
+    {
+        return Some("typescript");
+    }
+    if language.as_deref().is_some_and(|value| {
+        value.contains("javascript") || value == "js" || value == "jsx" || value == "mjs"
+    }) {
+        return Some("javascript");
+    }
+    let path = input
+        .document
+        .path
+        .as_deref()
+        .or_else(|| Some(input.document.canonical_uri.as_str()))
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if path.ends_with(".ts")
+        || path.ends_with(".tsx")
+        || path.ends_with(".mts")
+        || path.ends_with(".cts")
+    {
+        Some("typescript")
+    } else if path.ends_with(".js")
+        || path.ends_with(".jsx")
+        || path.ends_with(".mjs")
+        || path.ends_with(".cjs")
+    {
+        Some("javascript")
+    } else {
+        None
+    }
+}
+
 fn take_identifier(rest: &str) -> String {
     rest.chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
         .collect()
 }
 

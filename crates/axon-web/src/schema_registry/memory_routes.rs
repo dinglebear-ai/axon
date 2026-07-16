@@ -1,4 +1,4 @@
-//! REST route registry entries for the `/v1/memory` and `/v1/memories/*` surface.
+//! REST route registry entries for the canonical `/v1/memories/*` surface.
 //!
 //! Split out of the parent `schema_registry` module to keep it under the
 //! repo's monolith line cap. Spliced back into `rest_route_registry()`'s
@@ -7,13 +7,6 @@
 use super::{RestRouteSpec, read, read_query_surface, write};
 
 pub(super) static MEMORY_ROUTES: &[RestRouteSpec] = &[
-    write(
-        "POST",
-        "/v1/memory",
-        "memory",
-        Some("MemoryRequest"),
-        "MemoryResponse",
-    ),
     write(
         "POST",
         "/v1/memories",

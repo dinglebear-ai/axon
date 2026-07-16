@@ -11,20 +11,13 @@
 //! `docs/pipeline-unification/runtime/security-contract.md`.
 //!
 //! [`CliToolSourceAdapter`] wires the above contract into the real
-//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. It always
-//! resolves through [`ToolExecutionMode::MetadataOnly`] today: real
-//! (`Execute`-mode) command invocation additionally needs the caller's
-//! granted scopes and a configured command allowlist, and neither is
-//! threaded through `SourcePlan`/`RoutePlan` yet — `axon-services`'s
-//! authorization boundary (`CallerContext.scopes`) stops before the adapter
-//! layer, and `RoutePlan` has no execute-allowlist field. Wiring real
-//! execution is a follow-up once that scope/allowlist threading is designed;
-//! until then, resolving metadata-only unconditionally is the fail-closed,
-//! never-fabricate-output choice consistent with this module's security
-//! contract.
+//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. `discover`
+//! stays metadata-only; `acquire` selects [`ToolExecutionMode::Execute`] only
+//! when the service layer stamps an execution-auth marker and supplies the
+//! allowlist/env/timeout/output-cap policy in validated route options.
 
 mod adapter;
-mod exec;
+pub(crate) mod exec;
 mod metadata;
 mod redact;
 
@@ -50,6 +43,14 @@ pub struct CliToolSource {
     pub timeout_ms: u64,
     pub output_cap_bytes: usize,
     pub audit_metadata: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CliToolExecutionConfig {
+    pub env_allowlist: Vec<String>,
+    pub side_effect_class: Option<String>,
+    pub timeout_ms: Option<u64>,
+    pub output_cap_bytes: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,7 +148,25 @@ pub fn resolve_and_acquire(
     has_execute_scope: bool,
     allowlist: &[&str],
 ) -> Result<CliToolAcquireResult, CliToolError> {
-    let source = parse_cli_tool_source(input)?;
+    let allowlist: Vec<String> = allowlist.iter().map(|value| value.to_string()).collect();
+    resolve_and_acquire_configured(
+        input,
+        mode,
+        has_execute_scope,
+        &allowlist,
+        &CliToolExecutionConfig::default(),
+    )
+}
+
+pub fn resolve_and_acquire_configured(
+    input: &str,
+    mode: ToolExecutionMode,
+    has_execute_scope: bool,
+    allowlist: &[String],
+    config: &CliToolExecutionConfig,
+) -> Result<CliToolAcquireResult, CliToolError> {
+    let mut source = parse_cli_tool_source(input)?;
+    apply_execution_config(&mut source, config);
 
     if mode == ToolExecutionMode::MetadataOnly {
         let tool_facts = tool_facts_for(&source, 0);
@@ -213,7 +232,7 @@ fn execution_result(source: CliToolSource, outcome: ExecutionOutcome) -> CliTool
 fn validate_execute_allowed(
     source: &CliToolSource,
     has_execute_scope: bool,
-    allowlist: &[&str],
+    allowlist: &[String],
 ) -> Result<(), CliToolError> {
     if !has_execute_scope {
         return Err(CliToolError {
@@ -227,17 +246,33 @@ fn validate_execute_allowed(
             message: "no commands are allowlisted for execution".to_string(),
         });
     }
-    if !allowlist.iter().any(|allowed| *allowed == source.command) {
+    if !allowlist.iter().any(|allowed| allowed == &source.command) {
         return Err(CliToolError {
             code: "tool.command_denied",
             message: format!("command `{}` is not allowlisted", source.command),
         });
     }
+    if tool_token_is_secret_like_path(&source.command)
+        || source
+            .argv
+            .iter()
+            .any(|arg| tool_token_is_secret_like_path(arg))
+    {
+        return Err(CliToolError {
+            code: "security.local_secret_denied",
+            message: "secret-like local path denied before tool execution".to_string(),
+        });
+    }
     Ok(())
 }
 
-fn parse_cli_tool_source(input: &str) -> Result<CliToolSource, CliToolError> {
-    let raw = input.strip_prefix("tool:").unwrap_or(input).trim();
+pub fn parse_cli_tool_source(input: &str) -> Result<CliToolSource, CliToolError> {
+    let raw = input
+        .strip_prefix("tool:")
+        .or_else(|| input.strip_prefix("cli://"))
+        .or_else(|| input.strip_prefix("cli:"))
+        .unwrap_or(input)
+        .trim();
     let mut parts = raw.split_whitespace();
     let Some(command) = parts.next() else {
         return Err(CliToolError {
@@ -265,4 +300,37 @@ fn parse_cli_tool_source(input: &str) -> Result<CliToolSource, CliToolError> {
             ("shell_expansion".to_string(), "disabled".to_string()),
         ],
     })
+}
+
+fn apply_execution_config(source: &mut CliToolSource, config: &CliToolExecutionConfig) {
+    source.env_allowlist = config.env_allowlist.clone();
+    if let Some(side_effect_class) = config.side_effect_class.as_ref() {
+        source.side_effect_class = side_effect_class.clone();
+    }
+    if let Some(timeout_ms) = config.timeout_ms {
+        source.timeout_ms = timeout_ms;
+    }
+    if let Some(output_cap_bytes) = config.output_cap_bytes {
+        source.output_cap_bytes = output_cap_bytes;
+    }
+}
+
+fn tool_token_is_secret_like_path(token: &str) -> bool {
+    let trimmed = token.trim();
+    if !(trimmed.starts_with('/')
+        || trimmed.starts_with("~/")
+        || trimmed.starts_with('.')
+        || trimmed.contains('/'))
+    {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    lower == ".env"
+        || lower.ends_with("/.env")
+        || lower.contains("/.ssh/")
+        || lower.contains("/.codex/")
+        || lower.contains("/.gemini/")
+        || lower.contains("browser-profile")
+        || lower.contains("cloud")
+        || axon_core::redact::is_secret_like(&lower)
 }

@@ -35,7 +35,7 @@ Agents must not learn a new CLI surface while MCP still advertises old actions.
 - Keep source acquisition under `action=source`.
 - Keep structured LLM extraction under `action=extract`.
 - Keep durable memory under `action=memory`.
-- Keep operational surfaces grouped: `jobs`, `watches`, `artifacts`, `uploads`,
+- Keep operational surfaces grouped: `jobs`, `watch`, `artifacts`, `uploads`,
   `prune`, `collections`, `graph`, `providers`.
 - Keep destructive clean-slate reset under `action=reset` with admin scope and
   explicit confirmation.
@@ -100,7 +100,7 @@ Minimum tool input schema:
     },
     "subaction": {
       "type": "string",
-      "description": "Grouped operation under memory/jobs/watches/artifacts/uploads/prune/collections/graph/providers."
+      "description": "Grouped operation under memory/jobs/watch/artifacts/uploads/prune/collections/graph/providers."
     },
     "source": {
       "type": "string",
@@ -207,7 +207,7 @@ screenshot
 extract
 memory
 jobs
-watches
+watch
 artifacts
 uploads
 prune
@@ -266,7 +266,7 @@ compatibility aliases.
 | `extract` | none | `ExtractRequest` | `ExtractResult` | artifact/graph optional | yes | Structured LLM extraction. |
 | `memory` | required | `Memory*Request` | `Memory*Result` | yes | maybe | Durable memory lifecycle. |
 | `jobs` | required | `Job*Request` | `Job*Result` | yes | no | Job status/control. |
-| `watches` | required | `Watch*Request` | `Watch*Result` | yes | no | Watch lifecycle. |
+| `watch` | required | `Watch*Request` | `Watch*Result` | yes | no | Watch lifecycle. |
 | `artifacts` | required | `Artifact*Request` | `Artifact*Result` | no | no | Artifact listing/detail/content. |
 | `uploads` | required | `Upload*Request` | `Upload*Result` | yes | no | Staged uploads. |
 | `prune` | required | `Prune*Request` | `Prune*Result` | yes | yes | Cleanup, purge, dedupe. |
@@ -1065,7 +1065,7 @@ aliases, hidden action variants, or tool examples that an agent could call.
 | `action=extract` | `axon extract <source>` | `POST /v1/extract` | `ExtractRequest` |
 | `action=memory` | `axon memory <sub>` | `/v1/memories/*` | `Memory*` |
 | `action=jobs` | `axon jobs <sub>` | `/v1/jobs/*` | `Job*` |
-| `action=watches` | `axon watch <sub>` | `/v1/watches/*` | `Watch*` |
+| `action=watch` | `axon watch <sub>` | `/v1/watches/*` | `Watch*` |
 | `action=artifacts` | `axon artifacts <sub>` | `/v1/artifacts/*` | `Artifact*` |
 | `action=uploads` | `axon uploads <sub>` | `/v1/uploads/*` | `Upload*` |
 | `action=prune` | `axon prune <sub>` | `/v1/prune/*` | `Prune*` |

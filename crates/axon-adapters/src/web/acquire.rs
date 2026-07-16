@@ -231,6 +231,15 @@ async fn acquire_item(
     item: &ManifestItem,
     opts: &AcquireOptions,
 ) -> Result<AcquiredItem> {
+    axon_core::http::validate_url(&item.canonical_uri).map_err(|err| {
+        ApiError::new(
+            "web.acquire.invalid_uri",
+            axon_error::ErrorStage::Resolving,
+            format!("web target rejected by SSRF policy: {err}"),
+        )
+        .with_source_id(item.source_id.0.clone())
+        .with_context("uri", item.canonical_uri.clone())
+    })?;
     let mut warnings = Vec::new();
     match super::vertical::try_acquire(item, &opts.vertical, opts.job_id).await {
         VerticalAcquire::Handled(item) => {

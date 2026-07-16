@@ -4,6 +4,7 @@ use axon_api::source::{
     ChunkId, ChunkLocator, CleanupKey, ContentRef, MetadataMap, PreparedChunk, PreparedDocument,
     SourceDocument, SourceItemKey, SourceWarning,
 };
+use axon_parse::vertical::take_metadata_artifacts;
 
 use crate::chunk::DocumentChunk;
 use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, source_scope};
@@ -37,16 +38,21 @@ impl DocumentPreparer {
         // silently dropped for markdown-routed web documents. See the
         // function doc comment for the full rationale.
         project_structured_payload_metadata(&mut request.document);
+        let metadata_parse = take_metadata_artifacts(&mut request.document.metadata);
         // Activate axon-parse on the acquisition path: when the caller did not
         // pre-supply parse facts, parse the document here so parser-driven chunk
         // routing and graph candidates actually flow. Callers that already carry
         // facts (or explicitly forced a profile) keep their supplied artifacts.
-        let parse = if request.parse_facts.is_empty() {
+        let parse = if request.parse_facts.is_empty() && metadata_parse.facts.is_empty() {
             parse_document(&request.document)
         } else {
             DocumentParse::default()
         };
         merge_parse_artifacts(&mut request, &parse);
+        request.parse_facts.extend(metadata_parse.facts);
+        request
+            .graph_candidates
+            .extend(metadata_parse.graph_candidates);
 
         let profile = match request.profile {
             Some(profile) => profile,
@@ -91,9 +97,22 @@ impl DocumentPreparer {
             request.document.path.as_deref(),
             request.document.language.as_deref(),
             request.document.content_kind,
+            &request.parse_facts,
             use_size_or_adapter_fallback,
         );
         let chunks = build.chunks;
+        let parsed_code_method = (effective_profile == ChunkingProfile::CodeSymbol
+            && !use_size_or_adapter_fallback)
+            .then(|| {
+                chunks.first().and_then(|chunk| {
+                    chunk
+                        .metadata
+                        .get("actual_chunking_method")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_string)
+                })
+            })
+            .flatten();
         let parser_stamp = (!parse.parser_id.is_empty() && parse.parser_id != "none")
             .then_some((parse.parser_id.as_str(), parse.parser_version.as_str()));
         let chunking_method = if content.force_profile.is_some() {
@@ -101,6 +120,8 @@ impl DocumentPreparer {
         } else if !build.warnings.is_empty() {
             // `structured_or_fallback` degraded to atomic text.
             "atomic_fallback"
+        } else if let Some(method) = parsed_code_method.as_deref() {
+            method
         } else {
             decision.method
         };
@@ -375,10 +396,9 @@ fn build_prepared_chunk(
         && let Some(symbol) = &symbol
     {
         metadata.insert("code_symbol_name".to_string(), symbol.clone().into());
-        metadata.insert(
-            "code_symbol_kind".to_string(),
-            code_symbol_kind(&chunk.content).into(),
-        );
+        metadata
+            .entry("code_symbol_kind".to_string())
+            .or_insert_with(|| crate::code::code_symbol_kind_for_content(&chunk.content).into());
     }
     PreparedChunk {
         chunk_id,
@@ -411,21 +431,6 @@ fn merge_metadata(doc: &MetadataMap, mut chunk: MetadataMap) -> MetadataMap {
         chunk.entry(key.clone()).or_insert_with(|| value.clone());
     }
     chunk
-}
-
-fn code_symbol_kind(content: &str) -> &'static str {
-    let first = content.lines().next().unwrap_or_default().trim_start();
-    if first.starts_with("pub fn ") || first.starts_with("fn ") || first.starts_with("def ") {
-        "function"
-    } else if first.starts_with("class ") || first.starts_with("struct ") {
-        "type"
-    } else if first.starts_with("enum ") {
-        "enum"
-    } else if first.starts_with("impl ") {
-        "impl"
-    } else {
-        "symbol"
-    }
 }
 
 fn simple_hash(text: &str) -> String {

@@ -1,0 +1,28 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "parse_facts": [
+    {
+      "confidence": 1.0,
+      "fact_kind": "document",
+      "name": "upload-fact"
+    }
+  ],
+  "parser_family": "upload",
+  "redaction_status": "clean",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

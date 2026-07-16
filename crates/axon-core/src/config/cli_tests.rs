@@ -58,6 +58,19 @@ fn retained_scrape_parses_scrape_specific_flags() {
     );
 }
 
+#[test]
+fn map_rejects_removed_crawl_fallback_flag() {
+    let err = Cli::try_parse_from([
+        "axon",
+        "map",
+        "https://example.com",
+        "--map-fallback",
+        "crawl",
+    ])
+    .expect_err("map must not expose a crawl fallback");
+    assert_eq!(err.kind(), ErrorKind::UnknownArgument);
+}
+
 /// Removed command tokens remain absent after the pipeline-unification clean
 /// break (issue #298 P10). `scrape` is retained and must continue to parse.
 #[test]

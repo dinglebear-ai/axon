@@ -2,8 +2,9 @@ use axon_api::source::MetadataMap;
 use serde_json::Value;
 
 use crate::payload::{
-    VECTOR_REDACTION_STATUS_VALUES, VECTOR_REQUIRED_FIELDS, VECTOR_VISIBILITY_VALUES,
-    VectorPayload, VectorPayloadValidationError, source_family_allows_field,
+    VECTOR_REDACTION_STATUS_VALUES, VECTOR_REQUIRED_FIELDS, VECTOR_SHARED_FIELDS,
+    VECTOR_VISIBILITY_VALUES, VectorPayload, VectorPayloadValidationError,
+    source_family_allows_field,
 };
 
 fn fixture(name: &str) -> MetadataMap {
@@ -24,6 +25,17 @@ fn fixture(name: &str) -> MetadataMap {
     metadata
 }
 
+fn valid_fixture_names() -> Vec<String> {
+    let mut names = std::fs::read_dir("tests/fixtures/payload")
+        .expect("read payload fixture dir")
+        .map(|entry| entry.expect("payload fixture entry").file_name())
+        .filter_map(|name| name.into_string().ok())
+        .filter(|name| name.ends_with(".valid.json"))
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
 fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
     // Fields added after these fixtures were authored (S2-18/S2-27):
     // distinct chunking profile/method + chunk_index. Backfilled here so
@@ -37,6 +49,26 @@ fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
     metadata
         .entry("chunking_method".to_string())
         .or_insert_with(|| serde_json::json!("paragraph_windows"));
+    if let Some(content_kind) = metadata.get("content_kind").cloned() {
+        metadata
+            .entry("chunk_content_kind".to_string())
+            .or_insert(content_kind);
+    }
+    metadata
+        .entry("redaction_version".to_string())
+        .or_insert_with(|| serde_json::json!("2026-07-16"));
+    metadata
+        .entry("redacted_field_count".to_string())
+        .or_insert_with(|| serde_json::json!(0));
+    metadata
+        .entry("dropped_field_count".to_string())
+        .or_insert_with(|| serde_json::json!(0));
+    metadata
+        .entry("detector_count".to_string())
+        .or_insert_with(|| serde_json::json!(0));
+    metadata
+        .entry("detector_names".to_string())
+        .or_insert_with(|| serde_json::json!([]));
 
     let Some(source_family) = metadata
         .get("source_family")
@@ -74,14 +106,8 @@ fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
 
 #[test]
 fn valid_payload_fixtures_pass_required_field_and_registry_validation() {
-    for name in [
-        "code.valid.json",
-        "web.valid.json",
-        "session.valid.json",
-        "memory.valid.json",
-        "package.valid.json",
-    ] {
-        let payload = VectorPayload::try_from_metadata(fixture(name))
+    for name in valid_fixture_names() {
+        let payload = VectorPayload::try_from_metadata(fixture(&name))
             .unwrap_or_else(|err| panic!("{name} should validate: {err:?}"));
         for field in VECTOR_REQUIRED_FIELDS {
             assert!(
@@ -98,6 +124,75 @@ fn valid_payload_fixtures_pass_required_field_and_registry_validation() {
 }
 
 #[test]
+fn payload_target_required_fields() {
+    let payload = VectorPayload::try_from_metadata(fixture("web.valid.json"))
+        .expect("web fixture should satisfy the target payload contract");
+
+    for field in VECTOR_REQUIRED_FIELDS {
+        assert!(
+            payload.metadata().contains_key(*field),
+            "target payload is missing required field {field}"
+        );
+    }
+}
+
+#[test]
+fn payload_generation_fields_are_integer_or_null() {
+    let mut metadata = fixture("web.valid.json");
+    metadata.insert("source_generation".to_string(), serde_json::json!(7));
+    metadata.insert("committed_generation".to_string(), serde_json::Value::Null);
+    VectorPayload::try_from_metadata(metadata.clone())
+        .expect("null committed_generation is valid before publish");
+
+    metadata.insert("committed_generation".to_string(), serde_json::json!(7));
+    VectorPayload::try_from_metadata(metadata.clone())
+        .expect("integer committed_generation is valid after publish");
+
+    metadata.insert("source_generation".to_string(), serde_json::json!("7"));
+    let err = VectorPayload::try_from_metadata(metadata).unwrap_err();
+    assert_eq!(
+        err,
+        VectorPayloadValidationError::InvalidGeneration {
+            field: "source_generation".to_string()
+        }
+    );
+}
+
+#[test]
+fn payload_rejects_retired_shared_fields() {
+    for field in [
+        "url",
+        "seed_url",
+        "domain",
+        "source_type",
+        "payload_schema_version",
+    ] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert(field.to_string(), serde_json::json!("legacy"));
+        let err = VectorPayload::try_from_metadata(metadata).unwrap_err();
+        assert_eq!(
+            err,
+            VectorPayloadValidationError::UnknownSourceSpecificField {
+                field: field.to_string()
+            },
+            "{field} should not be accepted as shared or web metadata"
+        );
+    }
+}
+
+#[test]
+fn web_payload_accepts_normalized_metadata() {
+    let mut metadata = fixture("web.valid.json");
+    metadata.insert("web_status".to_string(), serde_json::json!("ok"));
+    metadata.insert("web_render_mode".to_string(), serde_json::json!("chrome"));
+    metadata.insert("web_etag".to_string(), serde_json::json!("etag-new"));
+    metadata.insert("web_prior_etag".to_string(), serde_json::json!("etag-old"));
+    metadata.insert("web_reuse_required".to_string(), serde_json::json!(true));
+
+    VectorPayload::try_from_metadata(metadata).expect("normalized web metadata should validate");
+}
+
+#[test]
 fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("code", "code_language"));
     assert!(source_family_allows_field("code", "code_symbol_name"));
@@ -106,6 +201,7 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("web", "web_title"));
     assert!(source_family_allows_field("web", "web_domain"));
     assert!(source_family_allows_field("web", "web_status_code"));
+    assert!(source_family_allows_field("web", "web_status"));
     assert!(source_family_allows_field("web", "web_depth"));
     assert!(source_family_allows_field("web", "normalization_version"));
     assert!(source_family_allows_field("web", "web_url"));
@@ -114,6 +210,10 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("web", "web_path"));
     assert!(source_family_allows_field("web", "web_normalized_url"));
     assert!(source_family_allows_field("web", "web_fetch_method"));
+    assert!(source_family_allows_field("web", "web_render_mode"));
+    assert!(source_family_allows_field("web", "web_etag"));
+    assert!(source_family_allows_field("web", "web_prior_etag"));
+    assert!(source_family_allows_field("web", "web_reuse_required"));
     assert!(source_family_allows_field(
         "web",
         "structured_payload_omitted"
@@ -168,6 +268,16 @@ fn source_family_registry_covers_phase_7_emitted_fields() {
             "missing metadata registry for {family}.{field}"
         );
     }
+}
+
+#[test]
+fn shared_segment_kind_validates_for_tool_output_chunks() {
+    assert!(VECTOR_SHARED_FIELDS.contains(&"segment_kind"));
+
+    let mut metadata = fixture("web.valid.json");
+    metadata.insert("segment_kind".to_string(), serde_json::json!("tool_output"));
+
+    VectorPayload::try_from_metadata(metadata).expect("segment_kind is source-family shared");
 }
 
 #[test]

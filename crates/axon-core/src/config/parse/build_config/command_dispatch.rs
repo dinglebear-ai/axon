@@ -6,15 +6,14 @@
 
 use super::super::super::cli::{
     CliCommand, ComposeArgs, ComposeSubcommand, ConfigArgs, ConfigSubcommand, DoctorSubcommand,
-    FreshSubcommand, JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs,
-    PruneCliSubcommand, PruneTargetArgs, ResetArgs, ScrapeSourceArgs, ServeArgs, ServeSubcommand,
-    SessionsArgs, SessionsSubcommand, SetupArgs, SetupAuthMode, SetupConfigSubcommand,
-    SetupInitArgs, SetupSubcommand, SourceArgs, SyncSubcommand, UpdateArgs,
+    JobsSubcommand, MemoryCliSubcommand, MonitorSubcommand, PaletteArgs, PruneCliSubcommand,
+    PruneTargetArgs, ResetArgs, ScrapeSourceArgs, ServeArgs, ServeSubcommand, SessionsArgs,
+    SetupArgs, SetupAuthMode, SetupConfigSubcommand, SetupInitArgs, SetupSubcommand, SourceArgs,
+    SyncSubcommand, UpdateArgs,
 };
 use super::super::super::types::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, RedditSort, RedditTime,
+    CommandKind, EvaluateResponsesMode, McpTransport, RedditSort, RedditTime,
 };
-use super::super::super::types::{FreshAction, FreshnessRequest};
 use super::super::helpers::{positional_from_job, positional_from_watch_subcommand};
 use clap::ValueEnum;
 use std::env;
@@ -39,8 +38,6 @@ pub(super) struct DispatchOutput {
     pub ask_reset_session: bool,
     pub ask_new_session: bool,
     pub ask_list_sessions: bool,
-    pub freshness: Option<FreshnessRequest>,
-    pub fresh_action: Option<FreshAction>,
     pub evaluate_responses_mode: EvaluateResponsesMode,
     pub evaluate_retrieval_ab: bool,
     pub github_include_source: bool,
@@ -58,7 +55,6 @@ pub(super) struct DispatchOutput {
     pub sessions_project: Option<String>,
     pub mcp_transport: Option<McpTransport>,
     pub mcp_transport_default: McpTransport,
-    pub map_fallback: MapFallback,
     pub endpoints_include_bundles: bool,
     pub endpoints_first_party_only: bool,
     pub endpoints_unique_only: bool,
@@ -110,8 +106,6 @@ impl DispatchOutput {
             ask_reset_session: false,
             ask_new_session: false,
             ask_list_sessions: false,
-            freshness: None,
-            fresh_action: None,
             evaluate_responses_mode: EvaluateResponsesMode::Inline,
             evaluate_retrieval_ab: false,
             github_include_source: true,
@@ -129,7 +123,6 @@ impl DispatchOutput {
             sessions_project: None,
             mcp_transport: None,
             mcp_transport_default: McpTransport::Http,
-            map_fallback: MapFallback::Structure,
             endpoints_include_bundles: true,
             endpoints_first_party_only: false,
             endpoints_unique_only: true,
@@ -170,15 +163,24 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
             out.command = CommandKind::Watch;
             out.positional = if let Some(action) = args.action {
                 positional_from_watch_subcommand(action)
+            } else if let Some(source) = args.source {
+                let mut positional = vec![
+                    "create".to_string(),
+                    source,
+                    "--every-seconds".to_string(),
+                    args.every_seconds.unwrap_or(3600).to_string(),
+                ];
+                if let Some(collection) = args.collection {
+                    positional.push("--collection".to_string());
+                    positional.push(collection);
+                }
+                positional
             } else {
                 vec!["list".to_string()]
             };
         }
         CliCommand::Monitor(args) => apply_monitor(&mut out, args.action),
         CliCommand::Map(args) => {
-            if let Some(fb) = args.map_fallback {
-                out.map_fallback = fb;
-            }
             out.command = CommandKind::Map;
             out.positional = args.value.into_iter().collect();
         }
@@ -280,14 +282,6 @@ pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
         CliCommand::Stats => out.command = CommandKind::Stats,
         CliCommand::Status => out.command = CommandKind::Status,
         CliCommand::Jobs(args) => apply_jobs(&mut out, args.action),
-        CliCommand::Refresh(args) => {
-            out.command = CommandKind::Refresh;
-            out.positional = args.filter.into_iter().collect();
-        }
-        CliCommand::Fresh(args) => {
-            out.command = CommandKind::Fresh;
-            out.fresh_action = Some(fresh_action_from_subcommand(args.action));
-        }
         CliCommand::Memory(args) => apply_memory(&mut out, args.action),
         CliCommand::Sessions(args) => apply_sessions(&mut out, args),
         CliCommand::Source(args) => apply_source(&mut out, args),
@@ -589,27 +583,6 @@ fn apply_sessions(out: &mut DispatchOutput, args: SessionsArgs) {
     out.sessions_codex = args.codex;
     out.sessions_gemini = args.gemini;
     out.sessions_project = args.project;
-    match args.action {
-        Some(job) => {
-            if let Some(positional) = sessions_job_positionals(job) {
-                out.positional = positional;
-            }
-        }
-        None => {}
-    }
-}
-
-fn sessions_job_positionals(job: SessionsSubcommand) -> Option<Vec<String>> {
-    match job {
-        SessionsSubcommand::Status { job_id } => Some(vec!["status".to_string(), job_id]),
-        SessionsSubcommand::Cancel { job_id } => Some(vec!["cancel".to_string(), job_id]),
-        SessionsSubcommand::Errors { job_id } => Some(vec!["errors".to_string(), job_id]),
-        SessionsSubcommand::List => Some(vec!["list".to_string()]),
-        SessionsSubcommand::Cleanup => Some(vec!["cleanup".to_string()]),
-        SessionsSubcommand::Clear => Some(vec!["clear".to_string()]),
-        SessionsSubcommand::Worker => Some(vec!["worker".to_string()]),
-        SessionsSubcommand::Recover => Some(vec!["recover".to_string()]),
-    }
 }
 
 fn apply_serve(out: &mut DispatchOutput, args: ServeArgs) {
@@ -768,14 +741,6 @@ fn apply_compose(out: &mut DispatchOutput, args: ComposeArgs) {
         }
         .to_string(),
     ];
-}
-
-fn fresh_action_from_subcommand(action: FreshSubcommand) -> FreshAction {
-    match action {
-        FreshSubcommand::List { json } => FreshAction::List { json },
-        FreshSubcommand::RunNow { id, json } => FreshAction::RunNow { id, json },
-        FreshSubcommand::History { id, limit, json } => FreshAction::History { id, limit, json },
-    }
 }
 
 fn setup_init_positionals(init: SetupInitArgs) -> Vec<String> {

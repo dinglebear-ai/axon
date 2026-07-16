@@ -67,7 +67,6 @@ impl ConfigSnapshot {
             drop_thin_markdown,
             discover_sitemaps,
             sitemap_since_days,
-            map_fallback,
             max_sitemaps,
             discover_llms_txt,
             max_llms_txt_urls,

@@ -23,7 +23,7 @@ event.
 | artifact deletes | `axon-prune` + `ArtifactStore` |
 | graph orphan cleanup | `axon-prune` + `GraphStore` |
 | memory forgetting cleanup | `axon-prune` + `MemoryStore` + `VectorStore` |
-| dedupe | target: `axon-prune` + `VectorStore`. **Current (R6-01, confirmed 2026-07-09):** a separate, un-migrated `axon_services::system::dedupe` path with zero references to `axon-prune`. Folding it into `axon-prune` is unmigrated Workstream A/C follow-up work, not yet a doc-only fix. |
+| dedupe | `axon-prune` + `VectorStore`; transports call `axon_services::prune::dedupe` with caller-derived prune authz. |
 | reset | `ResetService`, not ordinary prune |
 
 ## Public Types

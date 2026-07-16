@@ -2,7 +2,8 @@
 //! the per-crate implementation contracts in
 //! `docs/pipeline-unification/crates/<name>/README.md`.
 //!
-//! Two assertions, both derived straight from the README text (see
+//! Three assertions, derived from the README text and the completed vertical
+//! ownership cutover (see
 //! `crate_contracts_spec.rs` for how each crate's data was extracted):
 //!
 //! 1. Every documented "Public Modules" file exists under `src/` and is
@@ -14,6 +15,10 @@
 //!    fixtures legitimately cross boundaries production code must not)
 //!    declares a dependency its README's "Dependencies Forbidden" section
 //!    rules out.
+//! 3. Adapter-owned vertical routing keeps its intentional one-way production
+//!    edges: `axon-adapters` depends on both `axon-extract` implementations and
+//!    `axon-parse` artifacts, while neither lower crate may depend back on
+//!    `axon-adapters`.
 //!
 //! This is a standalone check, not part of the `cargo xtask check` aggregate:
 //! unlike the other aggregate checks, it is expected to currently fail when a
@@ -28,6 +33,8 @@ use anyhow::{Result, bail};
 
 pub use super::crate_contracts_spec::{CrateContract, all_crate_contracts};
 
+const ADAPTER_VERTICAL_DEPS: &[&str] = &["axon-extract", "axon-parse"];
+
 pub fn check(root: &Path) -> Result<()> {
     let mut violations = Vec::new();
     let mut checked = 0usize;
@@ -36,6 +43,7 @@ pub fn check(root: &Path) -> Result<()> {
         check_modules(root, contract, &mut violations);
         check_forbidden_deps(root, contract, &mut violations);
     }
+    check_adapter_vertical_boundary(root, &mut violations);
 
     if violations.is_empty() {
         println!(
@@ -49,6 +57,56 @@ pub fn check(root: &Path) -> Result<()> {
         violations.len(),
         violations.join("\n")
     );
+}
+
+fn check_adapter_vertical_boundary(root: &Path, violations: &mut Vec<String>) {
+    let Some(adapter_deps) = normal_dependencies(root, "axon-adapters", violations) else {
+        return;
+    };
+    for dependency in ADAPTER_VERTICAL_DEPS {
+        if !adapter_deps.contains_key(*dependency) {
+            violations.push(format!(
+                "axon-adapters: missing required one-way vertical dependency `{dependency}`"
+            ));
+        }
+        let Some(reverse_deps) = normal_dependencies(root, dependency, violations) else {
+            continue;
+        };
+        if reverse_deps.contains_key("axon-adapters") {
+            violations.push(format!(
+                "{dependency}: must not depend on `axon-adapters`; vertical ownership flows axon-adapters -> {dependency}"
+            ));
+        }
+    }
+}
+
+fn normal_dependencies(
+    root: &Path,
+    crate_name: &str,
+    violations: &mut Vec<String>,
+) -> Option<toml::Table> {
+    let manifest_path = root.join("crates").join(crate_name).join("Cargo.toml");
+    let manifest_text = match std::fs::read_to_string(&manifest_path) {
+        Ok(content) => content,
+        Err(err) => {
+            violations.push(format!("{crate_name}: failed to read Cargo.toml: {err}"));
+            return None;
+        }
+    };
+    let parsed = match toml::from_str::<toml::Table>(&manifest_text) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            violations.push(format!("{crate_name}: failed to parse Cargo.toml: {err}"));
+            return None;
+        }
+    };
+    Some(
+        parsed
+            .get("dependencies")
+            .and_then(toml::Value::as_table)
+            .cloned()
+            .unwrap_or_default(),
+    )
 }
 
 fn check_modules(root: &Path, contract: &CrateContract, violations: &mut Vec<String>) {

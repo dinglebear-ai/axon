@@ -111,7 +111,6 @@ function formatGenericResult(title, result) {
   if (normalized.includes("research")) return formatResearchResult(result);
   if (normalized.includes("search")) return formatSearchResult(result, "Search");
   if (normalized.includes("watch")) return formatWatchResult(result);
-  if (normalized.includes("dedupe")) return formatDedupeResult(result);
   if (normalized.includes("migrate")) return formatMigrateResult(result);
   return [`# ${capitalize(title)}`, "", readableValue(result)].join("\n");
 }
@@ -238,8 +237,8 @@ function formatStatusResult(result) {
 function formatSearchResult(result, title) {
   const payload = payloadOf(result) || {};
   const results = payload.results || result.results || [];
-  const jobs = payload.crawl_jobs || result.crawl_jobs || [];
-  const lines = [`# ${title}`, "", `${badge(results.length ? "success" : "warn", `${results.length.toLocaleString()} results`)}${jobs.length ? ` ${badge("info", `${jobs.length} crawls queued`)}` : ""}`];
+  const jobs = payload.source_jobs || result.source_jobs || [];
+  const lines = [`# ${title}`, "", `${badge(results.length ? "success" : "warn", `${results.length.toLocaleString()} results`)}${jobs.length ? ` ${badge("info", `${jobs.length} source jobs queued`)}` : ""}`];
   results.slice(0, 10).forEach((item, index) => {
     lines.push("", `${index + 1}. ${item.title || item.url || item.href || "Result"}`);
     if (item.url || item.href) lines.push(`   ${item.url || item.href}`);
@@ -263,17 +262,6 @@ function formatWatchResult(result) {
     lines.push(`- ${badge(watch.enabled === false ? "warn" : "success", watch.enabled === false ? "paused" : "enabled")} ${watch.name || watch.id} every ${watch.every_seconds || "?"}s`);
   });
   return lines.join("\n");
-}
-
-function formatDedupeResult(result) {
-  const payload = payloadOf(result) || {};
-  return [
-    "# Dedupe",
-    "",
-    statLine("Deleted", payload.deleted ?? payload.points_deleted, "warn"),
-    statLine("Scanned", payload.scanned ?? payload.points_scanned, "info"),
-    statLine("Groups", payload.groups ?? payload.duplicate_groups, "neutral")
-  ].filter(Boolean).join("\n") || ["# Dedupe", "", readableValue(payload)].join("\n");
 }
 
 function formatMigrateResult(result) {
@@ -321,7 +309,7 @@ function formatSingleJobStatus(result, jobId) {
   return [
     "# Job status",
     "",
-    `${badge(toneForStatus(status), status)} ${job.kind || "crawl"} \`${job.id || jobId}\``,
+    `${badge(toneForStatus(status), status)} ${job.kind || "source"} \`${job.id || jobId}\``,
     job.url ? `URL: ${job.url}` : "",
     job.created_at ? `Created: ${formatTime(job.created_at)}` : "",
     job.started_at ? `Started: ${formatTime(job.started_at)}` : "",

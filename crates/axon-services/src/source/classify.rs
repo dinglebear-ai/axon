@@ -14,8 +14,9 @@
 //!    video id also satisfies reddit's bare-subreddit rule, so the more specific
 //!    youtube check must run first).
 //! 6. A reddit target (`r/<name>` subreddit or reddit.com thread URL).
-//! 7. A plain http/https web URL (catch-all).
-//! 8. Unsupported.
+//! 7. Explicit CLI/MCP tool selectors (`cli:` / `mcp:`).
+//! 8. A plain http/https web URL (catch-all).
+//! 9. Unsupported.
 //!
 //! Feed, youtube, AND reddit classification MUST precede the web branch: feed
 //! URLs, youtube.com/youtu.be URLs, and reddit.com thread URLs are all
@@ -44,6 +45,14 @@ pub enum SourceInputKind {
     Session,
     /// A `pkg:<registry>/<package>` target (registry ∈ {npm,pypi,crates}).
     Registry,
+    /// A `cli:<command>` tool metadata/execution selector.
+    CliTool,
+    /// An `mcp:<server>/<tool>` tool metadata/execution selector.
+    McpTool,
+    /// A canonical durable-memory identity (`memory://mem_<id>`).
+    Memory,
+    /// A staged upload/artifact identity (`upload:<id>`/`artifact://<id>`).
+    Upload,
     /// None of the above — unsupported.
     Unsupported,
 }
@@ -61,8 +70,20 @@ pub async fn classify_source_input(input: &str) -> SourceInputKind {
     if crate::is_session_selector(input) {
         return SourceInputKind::Session;
     }
-    if crate::is_registry_target(input) {
+    if input_is_memory(input) {
+        return SourceInputKind::Memory;
+    }
+    if input_is_upload(input) {
+        return SourceInputKind::Upload;
+    }
+    if axon_adapters::registry_sources::is_registry_target(input) {
         return SourceInputKind::Registry;
+    }
+    if input_is_cli_tool(input) {
+        return SourceInputKind::CliTool;
+    }
+    if input_is_mcp_tool(input) {
+        return SourceInputKind::McpTool;
     }
     if input_is_git_target(input) {
         return SourceInputKind::Git;
@@ -95,13 +116,16 @@ pub async fn classify_source_input(input: &str) -> SourceInputKind {
 /// broad `axon:write` scope index an arbitrary local path.
 ///
 /// `Local` and `Session` map to `SafetyClass::LocalFilesystem` because both
-/// read server-local paths. Most other classified kinds acquire over the network
-/// and fall back to `PublicNetwork`. CLI/MCP tool-execution sources are not
-/// produced by [`classify_source_input`] today; when they are, they should map
-/// to `SafetyClass::ToolExecution`.
+/// read server-local paths. CLI/MCP tool sources map to
+/// `SafetyClass::ToolExecution` even when the first implemented service mode is
+/// metadata-only; callers must opt into the stronger trust boundary before a
+/// tool selector reaches acquisition. Most other classified kinds acquire over
+/// the network and fall back to `PublicNetwork`.
 pub fn safety_class_for(kind: SourceInputKind) -> SafetyClass {
     match kind {
         SourceInputKind::Local | SourceInputKind::Session => SafetyClass::LocalFilesystem,
+        SourceInputKind::CliTool | SourceInputKind::McpTool => SafetyClass::ToolExecution,
+        SourceInputKind::Memory | SourceInputKind::Upload => SafetyClass::AuthenticatedNetwork,
         _ => SafetyClass::PublicNetwork,
     }
 }
@@ -114,6 +138,40 @@ fn input_is_web_url(input: &str) -> bool {
     }
 }
 
+fn input_is_cli_tool(input: &str) -> bool {
+    let trimmed = input.trim();
+    trimmed
+        .strip_prefix("cli:")
+        .or_else(|| trimmed.strip_prefix("cli://"))
+        .is_some_and(|rest| !rest.trim().is_empty())
+}
+
+fn input_is_mcp_tool(input: &str) -> bool {
+    let trimmed = input.trim();
+    let rest = trimmed
+        .strip_prefix("mcp:")
+        .or_else(|| trimmed.strip_prefix("mcp://"));
+    rest.is_some_and(|rest| {
+        let rest = rest.trim();
+        rest.split_once('/')
+            .is_some_and(|(server, tool)| !server.trim().is_empty() && !tool.trim().is_empty())
+    })
+}
+
+fn input_is_memory(input: &str) -> bool {
+    axon_adapters::memory::memory_id_from_uri(input.trim()).is_ok()
+}
+
+fn input_is_upload(input: &str) -> bool {
+    let trimmed = input.trim();
+    let canonical = if let Some(id) = trimmed.strip_prefix("upload:") {
+        format!("upload://{}", id.trim_start_matches('/'))
+    } else {
+        trimmed.to_string()
+    };
+    axon_adapters::upload::upload_id_from_uri(&canonical).is_ok()
+}
+
 /// True when `input` resolves to an existing path on disk or uses the same
 /// lexical local-path prefixes the source router uses for local identity.
 async fn input_is_local_path(input: &str) -> bool {
@@ -123,7 +181,7 @@ async fn input_is_local_path(input: &str) -> bool {
 
 /// True when `input` should route to the git clone path.
 ///
-/// [`crate::is_git_target`] alone is too permissive for routing: it accepts
+/// [`axon_adapters::git::is_git_target`] alone is too permissive for routing: it accepts
 /// *any* `https://host/path` as a cloneable repo (unknown hosts get the generic
 /// `git` provider), which would swallow ordinary web URLs like
 /// `https://docs.example.com/guide`. For routing we require a genuine git signal
@@ -131,7 +189,7 @@ async fn input_is_local_path(input: &str) -> bool {
 /// `git+`/`git:` prefix) — so plain web URLs fall through to the web branch. The
 /// git clone path itself still uses the permissive parser.
 fn input_is_git_target(input: &str) -> bool {
-    crate::is_git_target(input) && has_git_signal(input)
+    axon_adapters::git::is_git_target(input) && has_git_signal(input)
 }
 
 /// Whether `input` carries an explicit git signal (known host or git marker).

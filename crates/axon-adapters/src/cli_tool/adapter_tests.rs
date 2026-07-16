@@ -97,6 +97,94 @@ async fn cli_tool_adapter_api_scope_still_resolves_metadata_only() {
 }
 
 #[tokio::test]
+async fn cli_tool_adapter_execute_scope_runs_once_and_redacts_output() {
+    let adapter = CliToolSourceAdapter::new();
+    let mut plan = cli_tool_plan("tool:/bin/echo sk-super-secret", SourceScope::Api);
+    plan.request
+        .options
+        .values
+        .insert("execution_mode".to_string(), serde_json::json!("execute"));
+    plan.request.options.values.insert(
+        "command_allowlist".to_string(),
+        serde_json::json!(["/bin/echo"]),
+    );
+    plan.request.metadata.insert(
+        "tool_execute_authorized".to_string(),
+        serde_json::json!(true),
+    );
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    assert_eq!(
+        acquisition.fetched_items[0].metadata["tool_action"],
+        "execute"
+    );
+    assert_eq!(
+        acquisition.fetched_items[0].metadata["redaction_status"],
+        "redacted"
+    );
+    match &acquisition.fetched_items[0].content_ref {
+        ContentRef::InlineText { text } => {
+            assert!(text.contains("[REDACTED]") || text.contains("[redacted-secret]"));
+            assert!(!text.contains("sk-super-secret"));
+        }
+        other => panic!("expected inline text content, got {other:?}"),
+    }
+
+    let staged = adapter.normalize(&plan, acquisition).await.unwrap();
+    assert_eq!(
+        staged.data[0].metadata.0.get("tool_action"),
+        Some(&serde_json::json!("execute"))
+    );
+    assert_eq!(
+        staged.data[0].metadata.0.get("redaction_status"),
+        Some(&serde_json::json!("redacted"))
+    );
+}
+
+#[tokio::test]
+async fn cli_tool_adapter_execute_requires_internal_auth_marker() {
+    let adapter = CliToolSourceAdapter::new();
+    let mut plan = cli_tool_plan("tool:/bin/echo hello", SourceScope::Api);
+    plan.request
+        .options
+        .values
+        .insert("execution_mode".to_string(), serde_json::json!("execute"));
+    plan.request.options.values.insert(
+        "command_allowlist".to_string(),
+        serde_json::json!(["/bin/echo"]),
+    );
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let err = adapter.acquire(&plan, &diff).await.unwrap_err();
+    assert_eq!(err.code.0, "auth.scope_required");
+}
+
+#[tokio::test]
+async fn cli_tool_adapter_accepts_router_cli_shorthand() {
+    let adapter = CliToolSourceAdapter::new();
+    let plan = cli_tool_plan("cli:rg --help", SourceScope::Tool);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+
+    assert_eq!(manifest.items[0].source_item_key, SourceItemKey::from("rg"));
+    assert_eq!(manifest.items[0].metadata["tool_command"], "rg");
+}
+
+#[tokio::test]
+async fn cli_tool_adapter_accepts_router_canonical_uri() {
+    let adapter = CliToolSourceAdapter::new();
+    let plan = cli_tool_plan("cli://rg", SourceScope::Tool);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+
+    assert_eq!(manifest.items[0].source_item_key, SourceItemKey::from("rg"));
+    assert_eq!(manifest.items[0].metadata["tool_command"], "rg");
+}
+
+#[tokio::test]
 async fn cli_tool_adapter_rejects_mismatched_route_adapter() {
     let adapter = CliToolSourceAdapter::new();
     let mut plan = cli_tool_plan("tool:rg --help", SourceScope::Tool);

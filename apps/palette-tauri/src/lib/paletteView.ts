@@ -1,16 +1,11 @@
-import {
-  ACTIONS,
-  type PaletteAction,
-  acceptsDirectUrl,
-  actionInvokedBy,
-} from "@/lib/actions";
 import { helpAction, isHelpRequest } from "@/lib/actionHelp";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { ACTIONS, acceptsDirectUrl, actionInvokedBy, type PaletteAction } from "@/lib/actions";
 
+export type { RunState } from "@/lib/runState";
 // Canonical homes for these helpers/types live elsewhere; re-exported here so
 // existing importers of `@/lib/paletteView` keep working.
 export { firstUrl, hostLabel } from "@/lib/url";
-export type { RunState } from "@/lib/runState";
 
 export type ParsedCommand = { invoked?: PaletteAction; search: string; arg: string };
 
@@ -85,16 +80,25 @@ export function actionArgumentLabel(action: PaletteAction): string {
   }
 }
 
-const CATEGORY_ORDER = ["Fetch & read", "Crawl & ingest", "Search & discover", "Reason", "Inspect", "Watch", "Jobs", "System", "Actions"];
+const CATEGORY_ORDER = [
+  "Fetch & read",
+  "Sources",
+  "Search & discover",
+  "Reason",
+  "Inspect",
+  "Watch",
+  "Jobs",
+  "System",
+  "Actions",
+];
 const ACTION_ORDER = [
   "scrape",
   "map",
   "retrieve",
   "screenshot",
   "diff",
-  "crawl",
-  "ingest",
-  "embed",
+  "source-site",
+  "source",
   "extract",
   "search",
   "research",
@@ -110,14 +114,14 @@ const ACTION_ORDER = [
   "doctor",
   "brand",
   "endpoints",
-  "dedupe",
 ];
 
 export function sortActionsForDisplay(actions: PaletteAction[]): PaletteAction[] {
   return [...actions].sort((a, b) => {
     const metaA = actionDisplayMeta(a);
     const metaB = actionDisplayMeta(b);
-    const categoryDelta = rank(CATEGORY_ORDER, metaA.category) - rank(CATEGORY_ORDER, metaB.category);
+    const categoryDelta =
+      rank(CATEGORY_ORDER, metaA.category) - rank(CATEGORY_ORDER, metaB.category);
     if (categoryDelta) return categoryDelta;
     return rank(ACTION_ORDER, a.subcommand) - rank(ACTION_ORDER, b.subcommand);
   });
@@ -126,7 +130,7 @@ export function sortActionsForDisplay(actions: PaletteAction[]): PaletteAction[]
 /**
  * Lower is a better match. Prefers an exact/prefix hit on the subcommand (what the
  * user is most likely typing) over an alias prefix, then a label prefix/word-start,
- * then a substring anywhere — so typing "cr" surfaces `crawl`, not `scrape`.
+ * then a substring anywhere — so typing "so" surfaces `source`, not `sources`.
  */
 function relevanceScore(action: PaletteAction, query: string): number {
   const sub = action.subcommand.toLowerCase();
@@ -154,7 +158,8 @@ export function sortActionsByRelevance(actions: PaletteAction[], query: string):
     const scoreDelta = relevanceScore(a, q) - relevanceScore(b, q);
     if (scoreDelta) return scoreDelta;
     const categoryDelta =
-      rank(CATEGORY_ORDER, actionDisplayMeta(a).category) - rank(CATEGORY_ORDER, actionDisplayMeta(b).category);
+      rank(CATEGORY_ORDER, actionDisplayMeta(a).category) -
+      rank(CATEGORY_ORDER, actionDisplayMeta(b).category);
     if (categoryDelta) return categoryDelta;
     return rank(ACTION_ORDER, a.subcommand) - rank(ACTION_ORDER, b.subcommand);
   });

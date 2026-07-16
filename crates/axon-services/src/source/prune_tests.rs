@@ -243,7 +243,7 @@ impl VectorStore for RecordingVectorStore {
 }
 
 #[tokio::test]
-async fn drains_superseded_generation_debt_with_generation_fenced_delete() {
+async fn source_prune_cleanup_debt_uses_configured_collection() {
     let ledger = FakeLedgerStore::new();
     let (previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore::default();
@@ -317,7 +317,7 @@ async fn drains_superseded_generation_debt_with_generation_fenced_delete() {
 }
 
 #[tokio::test]
-async fn drain_leaves_debt_pending_when_vector_delete_fails() {
+async fn source_prune_ledger_error_fails_closed() {
     let ledger = FakeLedgerStore::new();
     let (_previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore {

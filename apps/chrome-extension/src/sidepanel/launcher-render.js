@@ -117,11 +117,11 @@
         el("p", { style: { margin: 0, fontFamily: "var(--font-sans)", fontSize: 14, lineHeight: 1.6, color: "var(--aurora-text-primary)" } }, data.summary),
       ], { background: tint(tones.base, 8, "var(--axon-control)"), border: `1px solid ${tint(tones.base, 26)}` }));
     }
-    if (kind === "search" && data.auto_crawl_status) {
+    if ((kind === "search" || kind === "research") && data.source_index_status) {
       items.push(el("div", { style: { display: "flex", alignItems: "center", gap: 8, fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--aurora-text-muted)" } }, [
-        Icon("crawl", 13, "var(--axon-orange-strong)"), "auto-crawl: ",
-        el("span", { style: { color: "var(--aurora-success)" } }, `${data.auto_crawl_status.enqueued} enqueued`),
-        ` · ${data.auto_crawl_status.skipped} skipped`,
+        Icon("site", 13, "var(--axon-orange-strong)"), "auto-index: ",
+        el("span", { style: { color: "var(--aurora-success)" } }, `${data.source_index_status.enqueued} enqueued`),
+        ` · ${data.source_index_status.rejected} rejected`,
       ]));
     }
     (data.results || []).forEach((r) => {
@@ -250,7 +250,7 @@
     ], 10);
   }
 
-  /* ── ingest / embed / extract / crawl → accepted async job ── */
+  /* ── source / site / extract → accepted async job ── */
   function JobAccepted(data, op, tones) {
     const rows = [];
     if (data.source_type) rows.push(["source", data.source_type]);
@@ -366,7 +366,7 @@
       if (id === "domains") { const d = PREP.domains(raw); return d ? DomainsList(d, tones) : GenericResult(op, raw); }
       if (id === "doctor") { const d = PREP.doctor(raw); return d ? DoctorReport(d, tones) : GenericResult(op, raw); }
       if (id === "status") { const d = PREP.status(raw); return d ? StatusReport(d, tones) : GenericResult(op, raw); }
-      if (id === "ingest" || id === "embed" || id === "crawl") { return JobAccepted(PREP.job(raw), op, tones); }
+      if (id === "source" || id === "site") { return JobAccepted(PREP.job(raw), op, tones); }
       if (id === "diff") { const d = PREP.diff(raw); return d ? DiffView(d, tones) : GenericResult(op, raw); }
       if (id === "brand") { const d = PREP.brand(raw); return d ? BrandPalette(d, tones) : GenericResult(op, raw); }
       if (id === "endpoints") { const d = PREP.endpoints(raw); return d ? EndpointsList(d, tones) : GenericResult(op, raw); }

@@ -33,7 +33,11 @@ afterEach(() => vi.restoreAllMocks());
 
 function setup(
   query: string,
-  overrides: { client?: Client | null; config?: PaletteConfig | null; modeAction?: PaletteAction | null } = {},
+  overrides: {
+    client?: Client | null;
+    config?: PaletteConfig | null;
+    modeAction?: PaletteAction | null;
+  } = {},
 ) {
   const parsed = parseCommand(query);
   return renderHook(() => {
@@ -42,7 +46,9 @@ function setup(
     // A-M2 — the runner now drives the active mode + query through intent
     // callbacks rather than raw setters. Mirror App's wiring: set the active
     // mode and seed the query, just as the reducer-backed App does.
-    const [modeAction, setModeAction] = useState<PaletteAction | null>(overrides.modeAction ?? null);
+    const [modeAction, setModeAction] = useState<PaletteAction | null>(
+      overrides.modeAction ?? null,
+    );
     const [input, setQuery] = useState(query);
     const enterModeForRun = (action: PaletteAction, argument: string) => {
       setModeAction(action);
@@ -74,7 +80,7 @@ describe("useActionRunner local help", () => {
     ["help scrape", "help", "scrape"],
     ["scrape help", "help", "scrape"],
     ["fetch help", "help", "scrape"],
-    ["crawl --help", "help", "crawl"],
+    ["site --help", "help", "source-site"],
     ["?", "help", undefined],
   ])("handles %s without requiring a backend client", async (query, subcommand, target) => {
     const rendered = setup(query, { client: null, config: null });
@@ -82,8 +88,11 @@ describe("useActionRunner local help", () => {
       await rendered.result.current.submit(action(subcommand));
     });
     expect(rendered.result.current.run.kind).toBe("success");
-    expect("result" in rendered.result.current.run ? rendered.result.current.run.result.path : "").toBe("palette://help");
-    const payload = "result" in rendered.result.current.run ? rendered.result.current.run.result.payload : null;
+    expect(
+      "result" in rendered.result.current.run ? rendered.result.current.run.result.path : "",
+    ).toBe("palette://help");
+    const payload =
+      "result" in rendered.result.current.run ? rendered.result.current.run.result.payload : null;
     if (target) expect(payload).toMatchObject({ target: { subcommand: target } });
     else expect(payload).toMatchObject({ catalog: expect.any(Array) });
   });
@@ -92,9 +101,11 @@ describe("useActionRunner local help", () => {
     ["help", "help"],
     ["help scrape", "help"],
     ["scrape help", "help"],
-    ["crawl --help", "help"],
+    ["site --help", "help"],
   ])("does not call REST for %s when a backend client exists", async (query, subcommand) => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("REST should not be called"));
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new Error("REST should not be called"));
     const rendered = setup(query);
     await act(async () => {
       await rendered.result.current.submit(action(subcommand));
@@ -120,14 +131,23 @@ describe("useActionRunner local help", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       "/v1/ask",
       expect.objectContaining({
-        body: JSON.stringify({ query: "help", explain: false, diagnostics: false, collection: "axon" }),
+        body: JSON.stringify({
+          query: "help",
+          explain: false,
+          diagnostics: false,
+          collection: "axon",
+        }),
       }),
     );
     expect(rendered.result.current.history[0]?.action.subcommand).toBe("ask");
     expect(rendered.result.current.history[0]?.target).toBe("help");
     expect(rendered.result.current.run.kind).toBe("success");
-    expect("result" in rendered.result.current.run ? rendered.result.current.run.result.path : "").toBe("/v1/ask");
-    expect("result" in rendered.result.current.run ? rendered.result.current.run.result.payload : null).toMatchObject({
+    expect(
+      "result" in rendered.result.current.run ? rendered.result.current.run.result.path : "",
+    ).toBe("/v1/ask");
+    expect(
+      "result" in rendered.result.current.run ? rendered.result.current.run.result.payload : null,
+    ).toMatchObject({
       query: "help",
     });
   });
@@ -220,7 +240,8 @@ describe("useActionRunner one-shot useActionState path", () => {
   });
 
   it("appends ask follow-ups to the existing transcript", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ answer: "First answer." }), {
           status: 200,
@@ -248,7 +269,9 @@ describe("useActionRunner one-shot useActionState path", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     const run = rendered.result.current.run;
     expect(run.kind).toBe("success");
-    expect("transcript" in run ? run.transcript?.map((turn) => [turn.role, turn.content]) : []).toEqual([
+    expect(
+      "transcript" in run ? run.transcript?.map((turn) => [turn.role, turn.content]) : [],
+    ).toEqual([
       ["user", "first question"],
       ["assistant", "First answer."],
       ["user", "second question"],
@@ -284,25 +307,22 @@ describe("useActionRunner A-M5 transient errors", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("falls back from empty job status to the matching job list", async () => {
+  it("falls back from empty job status to the unified job list", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ jobs: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     );
-    const rendered = setup("crawl-status");
+    const rendered = setup("jobs-status");
 
     await act(async () => {
-      await rendered.result.current.submit(action("crawl-status"), "");
+      await rendered.result.current.submit(action("jobs-status"), "");
     });
     await act(async () => {});
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/v1/crawl",
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(rendered.result.current.history[0]?.action.subcommand).toBe("crawl-list");
+    expect(fetchSpy).toHaveBeenCalledWith("/v1/jobs", expect.objectContaining({ method: "GET" }));
+    expect(rendered.result.current.history[0]?.action.subcommand).toBe("jobs-list");
     expect(rendered.result.current.run.kind).toBe("success");
   });
 });
@@ -329,7 +349,11 @@ describe("reduceStreamEvent", () => {
   });
 
   it("produces a success terminal state with status 0 (not a fabricated 200)", () => {
-    const next = reduceStreamEvent(streaming, { type: "done", requestId: "req-1", answer: "final answer" });
+    const next = reduceStreamEvent(streaming, {
+      type: "done",
+      requestId: "req-1",
+      answer: "final answer",
+    });
     expect(next.kind).toBe("success");
     expect("result" in next ? next.result.status : -1).toBe(0);
     expect("result" in next ? next.result.payload : null).toMatchObject({ answer: "final answer" });
@@ -337,7 +361,11 @@ describe("reduceStreamEvent", () => {
   });
 
   it("produces an honest error terminal state on a stream error event", () => {
-    const next = reduceStreamEvent(streaming, { type: "error", requestId: "req-1", message: "stream broke" });
+    const next = reduceStreamEvent(streaming, {
+      type: "error",
+      requestId: "req-1",
+      message: "stream broke",
+    });
     expect(next.kind).toBe("error");
     expect("result" in next ? next.result.status : -1).toBe(0);
     expect("text" in next ? next.text : "").toBe("stream broke");

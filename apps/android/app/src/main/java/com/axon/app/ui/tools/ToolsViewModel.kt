@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.axon.app.AxonApp
 import com.axon.app.core.api.ResearchHit
-import com.axon.app.data.repository.CrawlStatusUi
 import com.axon.app.data.repository.MapResultUi
 import com.axon.app.data.repository.ResearchResultUi
 import com.axon.app.data.repository.ScrapeResultUi
@@ -18,51 +17,55 @@ import kotlinx.coroutines.launch
 
 sealed interface ScrapeUiState {
     object Idle : ScrapeUiState
+
     object Loading : ScrapeUiState
-    data class Success(val result: ScrapeResultUi) : ScrapeUiState
-    data class Error(val message: String) : ScrapeUiState
+
+    data class Success(
+        val result: ScrapeResultUi,
+    ) : ScrapeUiState
+
+    data class Error(
+        val message: String,
+    ) : ScrapeUiState
 }
 
 // ── Map ───────────────────────────────────────────────────────────────────────
 
 sealed interface MapUiState {
     object Idle : MapUiState
+
     object Loading : MapUiState
-    data class Success(val result: MapResultUi) : MapUiState
-    data class Error(val message: String) : MapUiState
+
+    data class Success(
+        val result: MapResultUi,
+    ) : MapUiState
+
+    data class Error(
+        val message: String,
+    ) : MapUiState
 }
 
 // ── Research ──────────────────────────────────────────────────────────────────
 
 sealed interface ResearchUiState {
     object Idle : ResearchUiState
+
     object Loading : ResearchUiState
-    data class Success(val result: ResearchResultUi) : ResearchUiState
-    data class Error(val message: String) : ResearchUiState
-}
 
-// ── Crawl ─────────────────────────────────────────────────────────────────────
+    data class Success(
+        val result: ResearchResultUi,
+    ) : ResearchUiState
 
-sealed interface CrawlUiState {
-    object Idle : CrawlUiState
-    object Loading : CrawlUiState
-    data class Submitted(val jobId: String) : CrawlUiState
-    /**
-     * [serverError] is non-null when the Axon server reported a failure reason for the crawl job.
-     * Surfacing it lets users understand why a crawl failed rather than just seeing "failed".
-     */
-    data class StatusPolled(
-        val jobId: String,
-        val status: String,
-        val pagesCrawled: Int?,
-        val serverError: String?,
-    ) : CrawlUiState
-    data class Error(val message: String) : CrawlUiState
+    data class Error(
+        val message: String,
+    ) : ResearchUiState
 }
 
 // ── ViewModel ─────────────────────────────────────────────────────────────────
 
-class ToolsViewModel(app: Application) : AndroidViewModel(app) {
+class ToolsViewModel(
+    app: Application,
+) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private val repo = container.axonRepository
 
@@ -77,10 +80,6 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
     // Research state
     private val _researchState = MutableStateFlow<ResearchUiState>(ResearchUiState.Idle)
     val researchState: StateFlow<ResearchUiState> = _researchState.asStateFlow()
-
-    // Crawl state
-    private val _crawlState = MutableStateFlow<CrawlUiState>(CrawlUiState.Idle)
-    val crawlState: StateFlow<CrawlUiState> = _crawlState.asStateFlow()
 
     fun scrape(url: String) {
         if (url.isBlank()) return
@@ -113,40 +112,5 @@ class ToolsViewModel(app: Application) : AndroidViewModel(app) {
                 onFailure = { _researchState.value = ResearchUiState.Error(it.message ?: "Research failed") },
             )
         }
-    }
-
-    fun crawl(url: String, maxPages: Int? = null) {
-        if (url.isBlank()) return
-        viewModelScope.launch {
-            _crawlState.value = CrawlUiState.Loading
-            repo.crawlSubmit(url, maxPages).fold(
-                onSuccess = { jobId -> _crawlState.value = CrawlUiState.Submitted(jobId) },
-                onFailure = { _crawlState.value = CrawlUiState.Error(it.message ?: "Crawl submit failed") },
-            )
-        }
-    }
-
-    fun pollCrawlStatus(jobId: String) {
-        viewModelScope.launch {
-            repo.crawlStatus(jobId).fold(
-                onSuccess = { s ->
-                    _crawlState.value = CrawlUiState.StatusPolled(
-                        jobId = s.jobId,
-                        status = s.status,
-                        pagesCrawled = s.pagesCrawled,
-                        serverError = s.serverError,
-                    )
-                },
-                onFailure = { _crawlState.value = CrawlUiState.Error(it.message ?: "Status check failed") },
-            )
-        }
-    }
-
-    /**
-     * Resets the crawl state back to [CrawlUiState.Idle], allowing the user to start a new crawl
-     * after viewing a [CrawlUiState.StatusPolled] or [CrawlUiState.Error] result.
-     */
-    fun resetCrawl() {
-        _crawlState.value = CrawlUiState.Idle
     }
 }

@@ -40,11 +40,6 @@ fn migrated_cli_commands_do_not_import_raw_business_logic_layers_v2() {
             &["jobs::extract::{"][..],
         ),
         (
-            "ingest_common.rs",
-            include_str!("ingest_common.rs"),
-            &["jobs::ingest::{"][..],
-        ),
-        (
             "watch.rs",
             include_str!("watch.rs"),
             &["jobs::watch::{"][..],

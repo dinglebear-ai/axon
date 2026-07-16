@@ -9,24 +9,23 @@ requests into domain boundary calls. Full contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/foundation/types/service-contract.md](../../../docs/pipeline-unification/foundation/types/service-contract.md).
 
-## Status — live crate, cutover at Phase 10
-This is the composition layer / re-export facade over the current domain crates,
-and works today. At the **Phase 10 surface cutover** the service registry
-converges on the end-state action set (source/map/extract/ask/query/retrieve/
-search/memory/graph/jobs/providers/config/status/prune) so every CLI, MCP, and
-REST action maps to exactly one service entrypoint. It is a **facade, not a
-mandatory reimplementation hop** — single-domain logic stays in its domain crate;
-only cross-domain or job-runtime orchestration lives *in* this crate.
+## Status — unified composition layer
+The service registry exposes the canonical action set (source/map/extract/ask/
+query/retrieve/search/memory/graph/jobs/providers/config/status/prune), so each
+CLI, MCP, and REST action maps to one typed service entrypoint. It is a **facade,
+not a mandatory reimplementation hop**: single-domain logic stays in its domain
+crate; only cross-domain or job-runtime orchestration lives here.
 
 ## Module map
-Current groups from `crates/axon-services/src/` (target consolidations noted):
+Current groups from `crates/axon-services/src/`:
 | Area | Owns |
 |---|---|
-| `lib.rs` · `context.rs` · `runtime/` | crate root + `ServiceContext` / dependency container + job runtime wiring |
-| `scrape.rs` · `crawl.rs` · `crawl_sync/` · `ingest/` · `map.rs` | source acquisition paths → converge under `source.rs`/`map.rs` |
-| `ask.rs`* · `query.rs` · `search/` · `summarize.rs` · `document.rs` | retrieval/RAG + query/search entrypoints (`ask.rs`/`query.rs`/`retrieve.rs`) |
+| `lib.rs` · `context.rs` · `runtime.rs` | crate root + `ServiceContext` / dependency container + job runtime wiring |
+| `source.rs` · `source/` · `source_jobs.rs` · `web_source.rs` · `map.rs` · `scrape.rs` | unified SourceRequest orchestration, source jobs, web acquisition composition, map, and one-page scrape projection |
+| `search.rs` · `search/` · `search_crawl.rs` · `search_source_index.rs` | search/research plus bounded Source-job indexing for result URLs |
+| `query.rs` · `summarize.rs` · `document.rs` · `service_traits.rs` · `service_traits/` | retrieval/RAG, synthesis, and typed service boundaries |
 | `extract.rs` · `brand.rs` · `endpoints/` · `diff.rs` · `screenshot.rs` | structured extraction + derived-content actions |
-| `memory/` · `embed.rs` · `refresh.rs` · `freshness/` · `watch.rs` | memory, embedding, freshness/watch use-cases |
+| `memory.rs` · `memory/` · `watch.rs` | memory and source-watch use-cases |
 | `jobs.rs` · `migrate.rs` · `system/` · `config.rs` · `action_api/` · `client_contract/` · `transport.rs` · `types/` | job/system/config services + shared action/result assembly |
 
 ## Boundary — keep OUT of this crate

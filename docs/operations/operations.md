@@ -566,7 +566,7 @@ Add to crontab: `*/5 * * * * /home/user/.axon/scripts/check-qdrant.sh`
 
 | Action | Effect |
 |--------|--------|
-| `axon dedupe` off-peak | Dedup scroll loads large point slices — run outside business hours |
+| `axon prune dedupe` off-peak | Dedup scroll loads large point slices — run outside business hours |
 | Reduce `mem_limit` in `docker-compose.prod.yaml` increments of 512m | Forces earlier OOM before host pressure |
 | `axon sources --limit 1000` instead of full facet | Lower memory than `axon sources` with no limit |
 | Prune stale collections | `curl -X DELETE ${QDRANT_URL}/collections/<name>` frees allocated segments |

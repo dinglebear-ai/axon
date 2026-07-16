@@ -10,7 +10,14 @@ const LIST_LIMIT = 18;
 
 type Tone = "info" | "success" | "warn" | "error" | "neutral" | "rose" | "violet";
 type EmptyKind =
-  | "generic" | "results" | "urls" | "sources" | "jobs" | "watches" | "scrape" | "retrieve";
+  | "generic"
+  | "results"
+  | "urls"
+  | "sources"
+  | "jobs"
+  | "watches"
+  | "scrape"
+  | "retrieve";
 
 export function UrlListView({
   title,
@@ -257,7 +264,7 @@ function emptyCopy(kind: EmptyKind): { title: string; body: string } {
     case "sources":
       return {
         title: "No indexed sources",
-        body: "This collection does not have source URLs yet. Scrape, crawl, or ingest something first.",
+        body: "This collection does not have source URLs yet. Scrape or index a source first.",
       };
     case "jobs":
       return {
@@ -267,7 +274,7 @@ function emptyCopy(kind: EmptyKind): { title: string; body: string } {
     case "watches":
       return {
         title: "No watches configured",
-        body: "Create a watch from a URL to schedule recurring crawls or diffs.",
+        body: "Create a watch from a URL to schedule recurring source jobs or diffs.",
       };
     case "scrape":
       return {

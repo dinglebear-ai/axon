@@ -18,7 +18,7 @@ mod observe;
 #[path = "unified/ops.rs"]
 mod ops;
 #[path = "unified/pagination.rs"]
-mod pagination;
+pub(crate) mod pagination;
 #[path = "unified/request_read.rs"]
 mod request_read;
 #[path = "unified/retention.rs"]

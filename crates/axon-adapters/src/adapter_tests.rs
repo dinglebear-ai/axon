@@ -4,9 +4,11 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use crate::boundary::FakeAdapterProviders;
+use crate::cli_tool::CliToolSourceAdapter;
 use crate::feed::FeedSourceAdapter;
 use crate::git::GitSourceAdapter;
 use crate::local::LocalSourceAdapter;
+use crate::mcp_tool::McpToolSourceAdapter;
 use crate::reddit::RedditSourceAdapter;
 use crate::registry_sources::RegistrySourceAdapter;
 use crate::sessions::SessionSourceAdapter;
@@ -214,6 +216,8 @@ fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
         Arc::new(RedditSourceAdapter::new()),
         Arc::new(LocalSourceAdapter::new()),
         Arc::new(RegistrySourceAdapter::new()),
+        Arc::new(CliToolSourceAdapter::new()),
+        Arc::new(McpToolSourceAdapter::new()),
         Arc::new(FakeSourceAdapter::new(AdapterRef {
             name: "fake".to_string(),
             version: "test".to_string(),
@@ -224,7 +228,8 @@ fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
     assert_eq!(
         names,
         vec![
-            "web", "git", "feed", "session", "youtube", "reddit", "local", "registry", "fake",
+            "web", "git", "feed", "session", "youtube", "reddit", "local", "registry", "cli_tool",
+            "mcp_tool", "fake",
         ]
     );
     for adapter in &adapters {
@@ -243,6 +248,8 @@ async fn every_production_adapter_reports_capabilities_via_source_adapter_capabi
         Arc::new(RedditSourceAdapter::new()),
         Arc::new(LocalSourceAdapter::new()),
         Arc::new(RegistrySourceAdapter::new()),
+        Arc::new(CliToolSourceAdapter::new()),
+        Arc::new(McpToolSourceAdapter::new()),
     ];
 
     for adapter in &adapters {

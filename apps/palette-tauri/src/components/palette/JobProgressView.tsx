@@ -1,9 +1,9 @@
-import { memo } from "react";
 import { AlertTriangle, Minus, Workflow, X } from "lucide-react";
+import { memo } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
-import { jobFamilyVerb, type JobSnapshot } from "@/lib/jobProgress";
+import { type JobSnapshot, jobFamilyVerb } from "@/lib/jobProgress";
 
 interface JobProgressViewProps {
   snapshot: JobSnapshot;
@@ -14,9 +14,7 @@ interface JobProgressViewProps {
   onClose: () => void;
 }
 
-// Live status card for the generic async-job families (source/extract).
-// Visual sibling of `CrawlJobView` — same Aurora output-job-panel chrome — but
-// driven by the simpler `JobSnapshot` model (no page frontier / depth / log).
+// Live status card for the canonical async-job families (source/extract).
 export const JobProgressView = memo(function JobProgressView({
   snapshot,
   nowMs,

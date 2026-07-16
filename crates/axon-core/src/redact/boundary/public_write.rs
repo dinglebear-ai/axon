@@ -4,8 +4,8 @@ use axon_api::source::{ApiError, ErrorStage, MetadataMap, RedactedPublicWrite};
 use serde_json::Value;
 
 use super::{
-    DefaultRedactor, MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION, RedactionContext,
-    RedactionReport, Redactor, forbidden_field_name, value_contains_secret,
+    DefaultRedactor, MAX_REDACTABLE_TEXT_BYTES, MAX_REDACTION_REPORT_ENTRIES, REDACTION_VERSION,
+    RedactionContext, RedactionReport, Redactor, forbidden_field_name, value_contains_secret,
 };
 
 const MAX_REDACTION_DEPTH: usize = 64;
@@ -93,33 +93,84 @@ pub fn stamp_redaction_metadata(
     mut metadata: MetadataMap,
     report: &RedactionReport,
 ) -> MetadataMap {
-    metadata.insert(
-        "redaction_status".to_string(),
-        serde_json::json!(report.status()),
+    let prior_status = metadata
+        .get("redaction_status")
+        .and_then(Value::as_str)
+        .unwrap_or("clean");
+    let status = merge_redaction_status(prior_status, report.status().as_str());
+    let version = if prior_status == "clean" {
+        REDACTION_VERSION.to_string()
+    } else {
+        metadata
+            .get("redaction_version")
+            .and_then(Value::as_str)
+            .unwrap_or(REDACTION_VERSION)
+            .to_string()
+    };
+    let redacted_field_count = merge_bounded_count(
+        metadata.get("redacted_field_count"),
+        report.redacted_field_count(),
     );
-    metadata.insert(
-        "redaction_version".to_string(),
-        serde_json::json!(REDACTION_VERSION),
+    let dropped_field_count = merge_bounded_count(
+        metadata.get("dropped_field_count"),
+        report.dropped_field_count(),
     );
+    let detector_names = merge_detector_names(metadata.get("detector_names"), report);
+
+    metadata.insert("redaction_status".to_string(), serde_json::json!(status));
+    metadata.insert("redaction_version".to_string(), serde_json::json!(version));
     metadata.insert(
         "redacted_field_count".to_string(),
-        serde_json::json!(report.redacted_field_count()),
+        serde_json::json!(redacted_field_count),
     );
     metadata.insert(
         "dropped_field_count".to_string(),
-        serde_json::json!(report.dropped_field_count()),
+        serde_json::json!(dropped_field_count),
     );
     metadata.insert(
         "detector_count".to_string(),
-        serde_json::json!(report.detector_count()),
+        serde_json::json!(detector_names.len()),
     );
     metadata.insert(
         "detector_names".to_string(),
-        serde_json::json!(report.detectors_triggered),
+        serde_json::json!(detector_names),
     );
     metadata.insert(
         "visibility".to_string(),
         serde_json::json!(report.visibility_ceiling),
     );
     metadata
+}
+
+fn merge_redaction_status(prior: &str, current: &str) -> &'static str {
+    match (prior, current) {
+        ("failed", _) | (_, "failed") => "failed",
+        ("redacted", _) | (_, "redacted") => "redacted",
+        _ => "clean",
+    }
+}
+
+fn merge_bounded_count(prior: Option<&Value>, current: u32) -> u32 {
+    let prior = prior.and_then(Value::as_u64).unwrap_or_default();
+    let total = prior.saturating_add(u64::from(current));
+    total.min(MAX_REDACTION_REPORT_ENTRIES as u64) as u32
+}
+
+fn merge_detector_names(prior: Option<&Value>, report: &RedactionReport) -> Vec<String> {
+    let mut names = Vec::new();
+    let candidates = prior
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .chain(report.detectors_triggered.iter().map(String::as_str));
+    for detector in candidates {
+        if names.len() == MAX_REDACTION_REPORT_ENTRIES {
+            break;
+        }
+        if !names.iter().any(|existing| existing == detector) {
+            names.push(detector.to_string());
+        }
+    }
+    names
 }

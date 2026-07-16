@@ -9,18 +9,21 @@ import com.axon.app.data.repository.JobFamily
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.RecentJob
 import com.axon.app.data.repository.WatchUi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 private const val OVERVIEW_TAG = "JobsOverviewVM"
 private const val OVERVIEW_POLL_MS = 30_000L
+
 /** Lightweight job-overview ViewModel for the drawer. Polling is active only while visible. */
-class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
+class JobsOverviewViewModel(
+    app: Application,
+) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
     private val repo = container.axonRepository
 
@@ -30,8 +33,9 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     private val _jobsByKind = MutableStateFlow<Map<JobFamily, List<JobUi>>>(emptyMap())
     val jobsByKind: StateFlow<Map<JobFamily, List<JobUi>>> = _jobsByKind.asStateFlow()
 
-    val recentJobs: StateFlow<List<RecentJob>> = container.recentJobs.recent
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val recentJobs: StateFlow<List<RecentJob>> =
+        container.recentJobs.recent
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _watches = MutableStateFlow<List<WatchUi>>(emptyList())
     val watches: StateFlow<List<WatchUi>> = _watches.asStateFlow()
@@ -40,11 +44,12 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     private val refreshCoordinator = JobsOverviewRefreshCoordinator(viewModelScope)
-    private val poller = JobsOverviewPoller(
-        scope = viewModelScope,
-        pollIntervalMs = OVERVIEW_POLL_MS,
-        refresh = { refreshNow() },
-    )
+    private val poller =
+        JobsOverviewPoller(
+            scope = viewModelScope,
+            pollIntervalMs = OVERVIEW_POLL_MS,
+            refresh = { refreshNow() },
+        )
 
     fun setVisible(visible: Boolean) {
         poller.setVisible(visible)
@@ -55,11 +60,12 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun crawledPagesFor(job: JobUi): Result<List<String>> {
-        if (job.kind != JobFamily.Crawl) return Result.success(emptyList())
+        if (job.kind != JobFamily.Source) return Result.success(emptyList())
         val inline = crawledPageUrlsFromResult(job.resultJson)
         if (inline.isNotEmpty()) return Result.success(inline)
-        val manifestPath = crawlManifestArtifactPath(job.resultJson)
-            ?: return Result.success(emptyList())
+        val manifestPath =
+            crawlManifestArtifactPath(job.resultJson)
+                ?: return Result.success(emptyList())
         return repo.artifactText(manifestPath).map { manifest ->
             parseCrawlManifestUrls(manifest)
         }
@@ -88,9 +94,10 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
                     failures++
                     if (firstError == null) firstError = e.message
                     Log.w(OVERVIEW_TAG, "listJobs($kind) failed", e)
-                    val fallback = recent
-                        .filter { it.kind.equals(kind.name, ignoreCase = true) }
-                        .map { it.toFallbackJob(kind) }
+                    val fallback =
+                        recent
+                            .filter { it.kind.equals(kind.name, ignoreCase = true) }
+                            .map { it.toFallbackJob(kind) }
                     if (fallback.isNotEmpty()) {
                         byKind[kind] = fallback
                         all += fallback.filter { isActiveJobStatus(it.status) }
@@ -106,11 +113,12 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
         )
         _jobsByKind.value = byKind
         _activeJobs.value = all
-        _errorMessage.value = when {
-            failures == 0 -> null
-            failures == kinds.size && byKind.isEmpty() -> firstError
-            else -> "Some job types could not refresh; showing available and recent data."
-        }
+        _errorMessage.value =
+            when {
+                failures == 0 -> null
+                failures == kinds.size && byKind.isEmpty() -> firstError
+                else -> "Some job types could not refresh; showing available and recent data."
+            }
     }
 
     private fun RecentJob.toFallbackJob(kind: JobFamily): JobUi =
@@ -119,7 +127,7 @@ class JobsOverviewViewModel(app: Application) : AndroidViewModel(app) {
             id = jobId,
             status = "pending",
             url = target,
-            sourceType = null,
+            sourceKind = null,
             target = target,
             errorText = null,
             resultJson = null,

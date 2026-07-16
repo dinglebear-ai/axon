@@ -120,6 +120,10 @@ fn builders_attach_retry_cooling_and_item_projection() {
     assert_eq!(item.error_stage, ErrorStage::Embedding);
     assert!(item.retryable);
     assert_eq!(item.attempt, 2);
+    assert_eq!(item.message, "cooling");
+    assert_eq!(item.provider_id.as_deref(), Some("tei"));
+    assert_eq!(item.retry_after_ms, Some(30_000));
+    assert_eq!(item.cooldown_until, Some(until));
     assert_eq!(
         item.details.get("safe_detail").map(String::as_str),
         Some("redacted")

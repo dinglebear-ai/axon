@@ -75,6 +75,13 @@ pub enum ProviderReservationOutcome {
     Cooling,
 }
 
+/// A provider failure after reservation state and retry metadata are applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedProviderFailure {
+    pub error: ApiError,
+    pub outcome: ProviderReservationOutcome,
+}
+
 impl ProviderReservationManager {
     pub fn new(config: ProviderReservationConfig) -> Self {
         Self {
@@ -222,30 +229,26 @@ impl ProviderReservationManager {
         retryable: bool,
     ) -> ProviderReservationOutcome {
         let mut state = self.state.lock().expect("reservation state mutex poisoned");
-        state.last_error_code = Some(code.into());
-        if !retryable {
-            state.health = HealthStatus::Unavailable;
-            state.cooldown_started_at = None;
-            state.cooldown_until = None;
-            state.cooldown_deadline = None;
-            return ProviderReservationOutcome::Recorded;
+        state.record_failure(code.into(), retryable)
+    }
+
+    /// Record a typed provider failure and return the same error enriched with
+    /// the provider id and any newly-active cooling window.
+    pub async fn record_api_failure(&self, mut error: ApiError) -> RecordedProviderFailure {
+        let mut state = self.state.lock().expect("reservation state mutex poisoned");
+        if error.provider_id.is_none() {
+            error.provider_id = Some(state.config.provider_id.0.clone());
+        }
+        let outcome = state.record_failure(error.code.to_string(), error.retryable);
+        if outcome == ProviderReservationOutcome::Cooling {
+            error.cooldown_until = state.cooldown_deadline;
+            error.retry_after_ms = Some(state.config.cooldown_secs.saturating_mul(1_000));
+            error
+                .details
+                .insert("cooling_reason".to_string(), error.code.to_string());
         }
 
-        state.consecutive_failures += 1;
-        if state.consecutive_failures >= state.config.cooldown_after_failures {
-            state.health = HealthStatus::Cooling;
-            let now = Utc::now();
-            if state.cooldown_started_at.is_none() {
-                state.cooldown_started_at = Some(Timestamp::from(now));
-            }
-            let deadline = now + Duration::seconds(state.config.cooldown_secs as i64);
-            state.cooldown_until = Some(Timestamp::from(deadline));
-            state.cooldown_deadline = Some(deadline);
-            ProviderReservationOutcome::Cooling
-        } else {
-            state.health = HealthStatus::Degraded;
-            ProviderReservationOutcome::Recorded
-        }
+        RecordedProviderFailure { error, outcome }
     }
 
     pub async fn record_success(&self) {
@@ -352,6 +355,33 @@ impl Drop for ProviderReservation {
 }
 
 impl ReservationStateInner {
+    fn record_failure(&mut self, code: String, retryable: bool) -> ProviderReservationOutcome {
+        self.last_error_code = Some(code);
+        if !retryable {
+            self.health = HealthStatus::Unavailable;
+            self.cooldown_started_at = None;
+            self.cooldown_until = None;
+            self.cooldown_deadline = None;
+            return ProviderReservationOutcome::Recorded;
+        }
+
+        self.consecutive_failures += 1;
+        if self.consecutive_failures < self.config.cooldown_after_failures {
+            self.health = HealthStatus::Degraded;
+            return ProviderReservationOutcome::Recorded;
+        }
+
+        self.health = HealthStatus::Cooling;
+        let now = Utc::now();
+        if self.cooldown_started_at.is_none() {
+            self.cooldown_started_at = Some(Timestamp::from(now));
+        }
+        let deadline = now + Duration::seconds(self.config.cooldown_secs as i64);
+        self.cooldown_until = Some(Timestamp::from(deadline));
+        self.cooldown_deadline = Some(deadline);
+        ProviderReservationOutcome::Cooling
+    }
+
     fn refresh_cooldown(&mut self) {
         if self
             .cooldown_deadline

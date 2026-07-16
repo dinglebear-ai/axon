@@ -42,16 +42,16 @@ fn allows_known_palette_routes() {
         "/v1/screenshot"
     );
     assert_eq!(
-        validate_axon_route(&request(HttpMethod::Delete, "/v1/crawl")).unwrap(),
-        "/v1/crawl"
+        validate_axon_route(&request(HttpMethod::Delete, "/v1/jobs")).unwrap(),
+        "/v1/jobs"
     );
     assert_eq!(
         validate_axon_route(&request(
             HttpMethod::Get,
-            "/v1/crawl/00000000-0000-4000-8000-000000000000"
+            "/v1/jobs/00000000-0000-4000-8000-000000000000"
         ))
         .unwrap(),
-        "/v1/crawl/00000000-0000-4000-8000-000000000000"
+        "/v1/jobs/00000000-0000-4000-8000-000000000000"
     );
     assert_eq!(
         validate_axon_route(&request(
@@ -67,32 +67,14 @@ fn allows_known_palette_routes() {
     );
 }
 
-/// scrape/crawl/embed/ingest were removed server-side in favor of the
-/// unified `POST /v1/sources` pipeline (confirmed 404 by
-/// crates/axon-web/src/server/handlers/rest_tests.rs); the bridge allowlist
-/// must not resurrect them.
 #[test]
-fn rejects_removed_legacy_verb_routes() {
-    for path in [
-        "/v1/scrape",
-        "/v1/crawl",
-        "/v1/embed",
-        "/v1/ingest",
-        "/v1/watch",
-    ] {
+fn rejects_routes_outside_the_palette_allowlist() {
+    for path in ["/v1/not-allowed", "/v1/admin", "/v1/jobs/not-a-uuid"] {
         assert!(
             validate_axon_route(&request(HttpMethod::Post, path)).is_err(),
-            "removed route {path} should be rejected"
+            "disallowed route {path} should be rejected"
         );
     }
-    assert!(
-        validate_axon_route(&request(
-            HttpMethod::Post,
-            "/v1/watch/00000000-0000-4000-8000-000000000000/run"
-        ))
-        .is_err(),
-        "removed singular watch exec route should be rejected"
-    );
 }
 
 #[test]
@@ -119,7 +101,20 @@ fn rejects_unknown_method_route_pairs() {
     assert!(validate_axon_route(&request(HttpMethod::Post, "/v1/doctor")).is_err());
     assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/ask")).is_err());
     assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/admin")).is_err());
-    assert!(validate_axon_route(&request(HttpMethod::Get, "/v1/crawl/not-a-uuid")).is_err());
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Get,
+            "/v1/jobs/00000000-0000-4000-8000-000000000000/cancel"
+        ))
+        .is_err()
+    );
+    assert!(
+        validate_axon_route(&request(
+            HttpMethod::Post,
+            "/v1/jobs/00000000-0000-4000-8000-000000000000/events"
+        ))
+        .is_err()
+    );
 }
 
 #[test]
@@ -127,9 +122,9 @@ fn rejects_get_request_bodies() {
     let mut req = request(HttpMethod::Get, "/v1/doctor");
     req.body = Some(serde_json::json!({ "unexpected": true }));
     assert!(validate_axon_route(&req).is_err());
-    let mut req = request(HttpMethod::Delete, "/v1/crawl");
+    let mut req = request(HttpMethod::Delete, "/v1/jobs");
     req.body = Some(serde_json::json!({ "unexpected": true }));
-    assert!(validate_axon_route(&req).is_err());
+    assert!(validate_axon_route(&req).is_ok());
 }
 
 #[test]

@@ -1,8 +1,8 @@
-use crate::artifacts::write_configured_output;
 use crate::types::{ArtifactHandle, ScreenshotResult};
 use axon_adapters::web_engine::screenshot::{
     spider_screenshot_with_options, url_to_screenshot_filename,
 };
+use axon_core::artifacts::write_configured_output;
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url};
 use std::error::Error;

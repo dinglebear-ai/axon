@@ -21,8 +21,6 @@ pub struct ResolveRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilitiesRequest {
-    #[allow(dead_code)] // accepted for API compat but ignored by handlers
-    pub subaction: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

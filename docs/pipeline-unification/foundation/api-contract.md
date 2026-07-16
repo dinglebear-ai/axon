@@ -157,12 +157,14 @@ pub struct PruneExecuteRequest;
 pub struct PruneResult;
 pub struct CleanupDebtRequest;
 pub struct CleanupDebtResult;
+pub struct PruneDedupeRequest;
+pub struct PruneDedupeResult;
+pub struct PrunePurgeRequest;
+pub struct PrunePurgeResult;
 pub struct ResetPlanRequest;
 pub struct ResetPlan;
 pub struct ResetExecRequest;
 pub struct ResetResult;
-pub struct DedupeRequest;
-pub struct DedupeResult;
 pub struct JobListRequest;
 pub struct JobEventListRequest;
 pub struct WatchListRequest;
@@ -250,10 +252,6 @@ pub struct UploadCompleteRequest;
 pub struct UploadCompleteResult;
 pub struct UploadAbortRequest;
 pub struct UploadAbortResult;
-pub struct DedupeRequest;
-pub struct DedupeResult;
-pub struct PurgeRequest;
-pub struct PurgeResult;
 pub struct CollectionSummary;
 pub struct CollectionDetail;
 pub struct CollectionListRequest;
@@ -506,10 +504,10 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `PrunePlan` | `job_id`, `selector`, `destructive`, `requires_admin`, `estimated`, `steps`, `warnings` | none |
 | `PruneExecuteRequest` | `plan`, `confirm`, `reason` | none |
 | `PruneResult` | `job_id`, `status`, `steps`, `deleted_counts`, `cleanup_debt_remaining` | none |
-| `DedupeRequest` | `dry_run` | `collection`, `threshold`, `source_id` |
-| `DedupeResult` | `matched`, `deduped`, `dry_run` | `job`, `warnings` |
-| `PurgeRequest` | `dry_run` | `source_id`, `url`, `prefix`, `filters`, `confirm` |
-| `PurgeResult` | `matched`, `purged`, `dry_run` | `prune_plan`, `job`, `warnings` |
+| `PruneDedupeRequest` | none | `collection`, `threshold`, `source_id` |
+| `PruneDedupeResult` | `completed`, `duplicate_groups`, `deleted` | `warnings` |
+| `PrunePurgeRequest` | `target` | `collection`, `prefix`, `dry_run` |
+| `PrunePurgeResult` | `target`, `prefix`, `dry_run`, `matched_points`, `deleted_points`, `matched_url_count`, `sample_urls` | none |
 | `ResetPlanRequest` | `stores`, `dry_run` | `collection`, `include_artifacts`, `include_config`, `reason` |
 | `ResetPlan` | `reset_plan_id`, `stores`, `counts`, `requires_confirmation`, `expires_at` | `warnings`, `receipt_preview` |
 | `ResetExecRequest` | `reset_plan_id`, `confirm` | `reason` |
@@ -898,8 +896,8 @@ pub async fn complete_upload(ctx: &ServiceContext, upload_id: UploadId, request:
 pub async fn abort_upload(ctx: &ServiceContext, upload_id: UploadId, request: UploadAbortRequest) -> Result<UploadAbortResult>;
 pub async fn plan_prune(ctx: &ServiceContext, request: PruneRequest) -> Result<PrunePlan>;
 pub async fn exec_prune(ctx: &ServiceContext, request: PruneExecuteRequest) -> Result<PruneResult>;
-pub async fn dedupe(ctx: &ServiceContext, request: DedupeRequest) -> Result<DedupeResult>;
-pub async fn purge(ctx: &ServiceContext, request: PurgeRequest) -> Result<PurgeResult>;
+pub async fn prune_dedupe(ctx: &ServiceContext, request: PruneDedupeRequest) -> Result<PruneDedupeResult>;
+pub async fn prune_purge(ctx: &ServiceContext, request: PrunePurgeRequest) -> Result<PrunePurgeResult>;
 pub async fn list_collections(ctx: &ServiceContext, request: CollectionListRequest) -> Result<Page<CollectionSummary>>;
 pub async fn get_collection(ctx: &ServiceContext, collection: CollectionName) -> Result<CollectionDetail>;
 pub async fn list_mobile_sessions(ctx: &ServiceContext, request: MobileSessionListRequest) -> Result<Page<MobileSessionSummary>>;

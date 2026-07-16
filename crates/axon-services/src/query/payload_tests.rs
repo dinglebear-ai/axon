@@ -62,6 +62,7 @@ fn map_ask_payload_typed() {
     let payload = json!({
         "query": "what is axon?",
         "answer": "A crawler.",
+        "citations": [],
         "diagnostics": null,
         "timing_ms": {
             "retrieval": 1,
@@ -84,6 +85,7 @@ fn ask_result_serializes_absent_explain_as_null() {
     let result = AskResult {
         query: "what is axon?".to_string(),
         answer: "A crawler.".to_string(),
+        citations: Vec::new(),
         citation_validation: None,
         session: None,
         warnings: Vec::new(),
@@ -118,6 +120,7 @@ fn map_ask_payload_preserves_explain_contract() {
     let payload = json!({
         "query": "widget marketplace plugins",
         "answer": "",
+        "citations": [],
         "diagnostics": null,
         "explain": {
             "mode": "explain_only",
@@ -160,6 +163,7 @@ fn map_ask_payload_preserves_explain_contract() {
                 }],
                 "snippet": "official marketplace"
             }],
+            "citations": [],
             "context": {
                 "planned_full_doc_urls": [
                     "https://docs.widget.dev/docs/en/discover-plugins"
@@ -350,6 +354,7 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
     let payload = json!({
         "query": "what is axon?",
         "answer": "A crawler.",
+        "citations": [],
         "diagnostics": {
             "candidate_pool": 12,
             "reranked_pool": 8,
@@ -416,6 +421,7 @@ fn map_evaluate_payload_typed() {
         "rag_answer": "RAG",
         "baseline_answer": "Baseline",
         "analysis_answer": "Analysis",
+        "citations": [],
         "source_urls": ["https://example.com/a"],
         "crawl_suggestions": [{ "url": "https://example.com/b", "reason": "gap" }],
         "crawl_enqueue_outcomes": [],

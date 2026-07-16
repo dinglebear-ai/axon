@@ -37,9 +37,7 @@ import com.axon.app.ui.common.DrawerSubItem
 import com.axon.app.ui.theme.AxonTheme
 
 private enum class JobsDrawerLevel(val label: String) {
-    Crawl("Crawls"),
-    Embed("Embeddings"),
-    Ingest("Ingestions"),
+    Source("Sources"),
     Extract("Extractions"),
     Watches("Watches"),
 }
@@ -103,22 +101,10 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 DrawerSubItem(
-                    icon = Icons.Rounded.Work,
-                    label = "Crawls",
-                    detail = "${jobs.count { it.kind == JobFamily.Crawl }} active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Crawl },
-                )
-                DrawerSubItem(
-                    icon = Icons.Rounded.Storage,
-                    label = "Embeddings",
-                    detail = "${jobs.count { it.kind == JobFamily.Embed }} active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Embed },
-                )
-                DrawerSubItem(
                     icon = Icons.Rounded.CloudDownload,
-                    label = "Ingestions",
-                    detail = "${jobs.count { it.kind == JobFamily.Ingest }} active",
-                    onClick = { selectedLevel = JobsDrawerLevel.Ingest },
+                    label = "Sources",
+                    detail = "${jobs.count { it.kind == JobFamily.Source }} active",
+                    onClick = { selectedLevel = JobsDrawerLevel.Source },
                 )
                 DrawerSubItem(
                     icon = Icons.Rounded.DataObject,
@@ -160,9 +146,7 @@ fun JobsDrawerContent(vm: JobsOverviewViewModel = viewModel()) {
             }
             else -> {
                 val kind = when (selectedLevel) {
-                    JobsDrawerLevel.Crawl -> JobFamily.Crawl
-                    JobsDrawerLevel.Embed -> JobFamily.Embed
-                    JobsDrawerLevel.Ingest -> JobFamily.Ingest
+                    JobsDrawerLevel.Source -> JobFamily.Source
                     JobsDrawerLevel.Extract -> JobFamily.Extract
                     else -> null
                 }

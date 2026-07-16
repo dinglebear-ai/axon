@@ -14,11 +14,15 @@ import {
 /** Open the live job card for a job shown in the status queue. */
 export type OpenJobHandler = (family: string, jobId: string, label: string) => void;
 
-const TOTAL_FAMILIES = ["crawl", "extract", "embed", "ingest"] as const;
-const OPENABLE_FAMILIES = new Set<string>(TOTAL_FAMILIES);
+const TOTAL_FAMILIES = ["source", "extract", "watch", "prune"] as const;
+const OPENABLE_FAMILIES = new Set<string>(["source", "extract"]);
 
 function jobUrl(job: Record<string, unknown>): string | undefined {
-  const direct = strField(job, "url") ?? strField(job, "target");
+  const direct =
+    strField(job, "source") ??
+    strField(job, "canonical_uri") ??
+    strField(job, "url") ??
+    strField(job, "target");
   if (direct) return direct;
   const config = isRecord(job.config_json) ? job.config_json : {};
   const urls = arrField(config, "urls");
@@ -89,7 +93,7 @@ export const StatusView = memo(function StatusView({
 
   const families = Object.entries(data)
     .filter(([k, v]) => k.endsWith("_jobs") && Array.isArray(v))
-    .map(([k, v]) => [k.replace(/^local_/, "").replace(/_jobs$/, ""), v as unknown[]] as const)
+    .map(([k, v]) => [k.replace(/_jobs$/, ""), v as unknown[]] as const)
     .filter(([, jobs]) => jobs.length > 0);
 
   const totalJobs = families.reduce((sum, [, jobs]) => sum + jobs.length, 0);

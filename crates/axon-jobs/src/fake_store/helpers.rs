@@ -31,8 +31,16 @@ pub(super) fn append_event_locked(
     state: &mut FakeJobWatchState,
     event: SourceProgressEvent,
 ) -> crate::boundary::Result<()> {
+    event.validate_bounds()?;
     if !state.jobs.contains_key(&event.job_id) {
         return Err(missing_job(event.job_id));
+    }
+    if event
+        .dedupe_key
+        .as_ref()
+        .is_some_and(|key| has_dedupe_key(state, event.job_id, key))
+    {
+        return Ok(());
     }
     let expected_sequence = state
         .events
@@ -55,15 +63,7 @@ pub(super) fn append_event_locked(
             ),
         ));
     }
-    let duplicate_dedupe = event
-        .dedupe_key
-        .as_ref()
-        .is_some_and(|dedupe_key| has_dedupe_key(state, event.job_id, dedupe_key));
-    let mut details = event_details(&event);
-    if duplicate_dedupe {
-        details.remove("dedupe_key");
-        details.insert("dedupe_duplicate".to_string(), serde_json::json!(true));
-    }
+    let details = event_details(&event);
     state
         .events
         .entry(event.job_id)

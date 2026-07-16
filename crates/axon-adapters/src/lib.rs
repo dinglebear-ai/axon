@@ -9,6 +9,7 @@
 #![allow(clippy::large_enum_variant, clippy::result_large_err)]
 
 pub mod acquisition;
+mod acquisition_security;
 pub mod adapter;
 pub mod boundary;
 pub mod capability;
@@ -21,6 +22,7 @@ pub mod local;
 mod local_select;
 pub mod manifest;
 pub mod mcp_tool;
+pub mod memory;
 pub mod onboarding;
 pub mod providers;
 pub mod reddit;
@@ -30,6 +32,7 @@ pub mod sessions;
 pub mod spec;
 pub mod testing;
 pub mod upload;
+pub mod vertical_registry;
 pub mod web;
 pub mod web_engine;
 pub mod youtube;

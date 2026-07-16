@@ -136,7 +136,7 @@ cargo test -p axon-web
 - No CLI rendering (clap types) or MCP server types here.
 - **No legacy/compat route aliases.** Per the Phase 10 surface cutover
   (`crates/axon-web/src/CLAUDE.md`), direct verb/family routes like
-  `/v1/scrape`, `/v1/crawl`, `/v1/embed`, `/v1/ingest` are being removed in
+  `/v1/scrape`, `/v1/crawl`, `/v1/embed`, `/v1/ingest` were removed in
   favor of `/v1/sources` — do not add a new alias route for something
   `/v1/sources` (or another canonical end-state route) already covers.
 - Allowed dependencies: `axon-api`, `axon-error`, `axon-core`, `axon-authz`,

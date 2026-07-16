@@ -69,8 +69,8 @@ masked secret is not written back over the real server value.
 
 ## FAB And Jobs Behavior
 
-FAB ingest source inference uses the same host-aware `IngestSource` validation
-as the dedicated ingest screen. Canonical hosts and real subdomains are accepted;
+FAB source inference uses the same host-aware validation as the dedicated source
+workflow. Canonical hosts and real subdomains are accepted;
 lookalike hosts such as `github.com.attacker.com` are rejected before submission.
 Non-URL shorthand such as `github/owner/repo` and `r/subreddit` remains supported.
 

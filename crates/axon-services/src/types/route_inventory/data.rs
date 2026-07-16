@@ -117,6 +117,18 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/artifacts/{artifact_id}",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/artifacts/{artifact_id}/content",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/endpoints",
         auth: RestRouteAuth::Write,
@@ -209,12 +221,6 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     RestRouteInfo {
         method: "POST",
         path: "/v1/research/stream",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/memory",
         auth: RestRouteAuth::Write,
         openapi: true,
     },
@@ -405,42 +411,6 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
-        method: "GET",
-        path: "/v1/extract",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "GET",
-        path: "/v1/extract/{id}",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/extract/{id}/cancel",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/extract/cleanup",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "DELETE",
-        path: "/v1/extract",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/extract/recover",
-        auth: RestRouteAuth::Write,
-        openapi: true,
-    },
-    RestRouteInfo {
         method: "POST",
         path: "/v1/prune/plan",
         auth: RestRouteAuth::Admin,
@@ -449,21 +419,6 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
     RestRouteInfo {
         method: "POST",
         path: "/v1/prune/exec",
-        auth: RestRouteAuth::Admin,
-        openapi: true,
-    },
-    // `/v1/dedupe` and `/v1/purge` were removed (U2-06/U2-09) and repointed
-    // through the prune surface below — destructive cleanup is now
-    // `axon:admin`-gated, not `axon:write`.
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/prune/dedupe",
-        auth: RestRouteAuth::Admin,
-        openapi: true,
-    },
-    RestRouteInfo {
-        method: "POST",
-        path: "/v1/prune/purge",
         auth: RestRouteAuth::Admin,
         openapi: true,
     },

@@ -15,15 +15,14 @@ data class ExtractRequest(
     val headers: List<String> = emptyList(),
 )
 
-/** POST /v1/embed request body. */
+/** Source embed request submitted through POST /v1/sources. */
 @Serializable
 data class EmbedRequest(
     val input: String,
     val collection: String? = null,
-    @SerialName("source_type") val sourceType: String? = null,
 )
 
-/** ServiceJob — UI-facing common shape for unified and legacy job rows. */
+/** UI-facing projection of a unified job row. */
 @Serializable
 data class ServiceJob(
     val id: String = "",
@@ -33,9 +32,9 @@ data class ServiceJob(
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
     @SerialName("error_text") val errorText: String? = null,
-    val url: String? = null,                                       // crawl
-    @SerialName("source_type") val sourceType: String? = null,      // ingest
-    val target: String? = null,                                     // ingest/embed/extract
+    val url: String? = null,
+    @SerialName("source_kind") val sourceKind: String? = null,
+    val target: String? = null,
     @SerialName("progress_json") val progressJson: JsonElement? = null,
     @SerialName("result_json") val resultJson: JsonElement? = null, // locked: JsonElement, not JsonObject
     @SerialName("config_json") val configJson: JsonElement? = null,
@@ -73,27 +72,13 @@ fun UnifiedJobSummary.toServiceJob(): ServiceJob =
         progressJson = counts,
     )
 
-/** Legacy per-family response shape kept for compatibility with extract bridge endpoints. */
-@Serializable
-data class JobListResponse(
-    val jobs: List<ServiceJob> = emptyList(),
-    val limit: Int = 0,
-    val offset: Int = 0,
-)
-
-/** GET /v1/{crawl,embed,extract,ingest}/{id} response envelope. */
-@Serializable
-data class JobDetailResponse(
-    val job: ServiceJob,
-)
-
 /** GET /v1/status response — aggregated job counts. */
 @Serializable
 data class StatusSummary(
     val payload: JsonElement,
 )
 
-/** POST /v1/{kind}/{id}/cancel response. */
+/** Transport-neutral cancellation result used by the Android UI. */
 @Serializable
 data class CancelResponse(
     val canceled: Boolean = false,

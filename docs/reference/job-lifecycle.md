@@ -31,7 +31,7 @@ are:
 - `provider_probe`
 - `reset`
 
-Web crawl/scrape/map work is represented as `source` with a `SourceRequest`
+Web source/scrape/map work is represented as `source` with a `SourceRequest`
 scope (`page`, `site`, or `docs`). Local embedding and ingest-like source
 families also enter through `source` unless they are a dedicated non-source
 operation such as `extract`.
@@ -108,7 +108,7 @@ rendered through:
 - logs and tracing events
 
 Source jobs keep one job id across acquire, prepare, embed, publish, graph, and
-cleanup. There is no child embedding handoff for web crawl/scrape/map work.
+cleanup. There is no child embedding handoff for web source/scrape/map work.
 
 ## Cancellation And Recovery
 

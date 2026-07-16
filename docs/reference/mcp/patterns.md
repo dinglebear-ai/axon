@@ -13,15 +13,13 @@ match request {
     AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
     AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
     AxonRequest::Prune(req) => self.handle_prune(req).await?,
-    // compatibility-only removed variants return invalid_params if reached
 }
 ```
 
 The live action allowlist is `MCP_ACTION_SPECS` in
-`crates/axon-mcp/src/server/authz.rs`. Compatibility-only `AxonRequest`
-variants for removed actions remain deserializable for shared DTO history, but
-they are not published in the MCP schema and are denied before handler
-dispatch.
+`crates/axon-mcp/src/server/authz.rs`. Removed action variants are absent from
+the request DTO and generated schema; unknown action names fail parsing before
+handler dispatch.
 
 ## Source Indexing
 
@@ -59,16 +57,16 @@ auth, request conversion, response-mode handling, and error mapping.
 ## Jobs Pattern
 
 Durable async work is surfaced through `action=jobs`, not through one action
-per job family. Use `subaction=list|get|events|stream|cancel|retry|recover|
+per source or operation kind. Use `subaction=list|get|events|stream|cancel|retry|recover|
 cleanup|clear`.
 
-Source jobs, extract jobs, watch work, memory jobs, and operational jobs share
-the unified job/event model where possible. Legacy crawl rows are
-migration-only and are rendered/dead-lettered through bridge code, not a live
-MCP crawl action.
+Source, extract, watch-triggered, memory, and operational work share the unified
+job/event model. Source watches enqueue canonical Source jobs and record those
+job IDs in watch-run history.
 
 ## Response Modes
 
-Handlers support `path`, `inline`, `both`, and `auto_inline` where the result
-shape can be artifact-backed. `retrieve` is the document-reading exception and
-defaults to inline-first paged content.
+Handlers support `artifact`, `inline`, `both`, and `auto_inline` where the result
+shape can be artifact-backed. Artifact responses contain opaque `artifact_id`
+references, never server paths. `retrieve` is the document-reading exception
+and defaults to inline-first paged content.

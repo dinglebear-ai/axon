@@ -25,7 +25,7 @@ export interface HelpRunState {
   result: PaletteResult;
 }
 
-const ASYNC_ACTIONS = new Set(["crawl", "embed", "extract", "ingest"]);
+const ASYNC_ACTIONS = new Set(["source-site", "source", "extract"]);
 
 export function isAsyncAction(action: PaletteAction): boolean {
   return ASYNC_ACTIONS.has(action.subcommand);
@@ -33,7 +33,8 @@ export function isAsyncAction(action: PaletteAction): boolean {
 
 const PARAMETER_DETAILS: Record<string, string[]> = {
   scrape: ["url from input", "collection from palette settings when configured"],
-  crawl: ["urls from input", "collection from palette settings when configured"],
+  "source-site": ["url from input", "scope=site", "collection from palette settings when configured"],
+  source: ["source from input", "collection from palette settings when configured"],
   ask: ["query from input", "collection from palette settings when configured", "explain=false", "diagnostics=false"],
   chat: ["message from input"],
   query: ["query from input", "limit from palette settings", "collection from palette settings when configured"],
@@ -41,19 +42,18 @@ const PARAMETER_DETAILS: Record<string, string[]> = {
   search: ["query from input", "limit from palette settings"],
   research: ["query from input", "limit from palette settings"],
   map: ["url from input", "limit=100"],
-  dedupe: ["collection from palette settings when configured"],
   screenshot: ["url from input", "full_page=true", "default backend viewport"],
 };
 
 const OPTION_DETAILS: Record<string, string[]> = {
   scrape: ["--collection is currently driven by palette settings", "--embed, --format, and --header are backend options not editable in the palette yet"],
-  crawl: ["--collection is currently driven by palette settings", "--max-pages, --max-depth, --render-mode, --respect-robots, and --header are backend options not editable in the palette yet"],
+  "source-site": ["--collection is currently driven by palette settings", "site limits are backend options not editable in the palette yet"],
+  source: ["--collection is currently driven by palette settings"],
   ask: ["--collection is currently driven by palette settings", "--explain and --diagnostics are fixed false in the current palette request"],
   query: ["--limit and --collection are currently driven by palette settings"],
   retrieve: ["--token-budget is fixed to 6000 in the current palette request", "--collection is currently driven by palette settings"],
   search: ["--limit is currently driven by palette settings"],
   research: ["--limit is currently driven by palette settings"],
-  dedupe: ["--collection is currently driven by palette settings"],
   screenshot: ["Viewport options are backend-supported but not editable in the palette yet"],
 };
 

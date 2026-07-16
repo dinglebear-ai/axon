@@ -1235,25 +1235,6 @@
       "streaming": false
     },
     {
-      "method": "GET",
-      "mutates": false,
-      "operation_id": "extract_list",
-      "path": "/v1/extract",
-      "request_dto": null,
-      "requires_auth_scope": "read",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobListResponse",
-      "streaming": false
-    },
-    {
       "method": "POST",
       "mutates": true,
       "operation_id": "extract",
@@ -1274,110 +1255,11 @@
       "streaming": false
     },
     {
-      "method": "DELETE",
-      "mutates": true,
-      "operation_id": "extract_clear",
-      "path": "/v1/extract",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCleanupResponse",
-      "streaming": false
-    },
-    {
       "method": "POST",
       "mutates": true,
-      "operation_id": "extract_cleanup",
-      "path": "/v1/extract/cleanup",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCleanupResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "extract_recover",
-      "path": "/v1/extract/recover",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobRecoveryResponse",
-      "streaming": false
-    },
-    {
-      "method": "GET",
-      "mutates": false,
-      "operation_id": "extract_status",
-      "path": "/v1/extract/{id}",
-      "request_dto": null,
-      "requires_auth_scope": "read",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobStatusResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "extract_cancel",
-      "path": "/v1/extract/{id}/cancel",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCancelResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "dedupe",
+      "operation_id": "prune_dedupe",
       "path": "/v1/prune/dedupe",
-      "request_dto": "DedupeRequest",
+      "request_dto": "PruneDedupeRequest",
       "requires_auth_scope": "admin",
       "responses": [
         "200",
@@ -1389,15 +1271,15 @@
         "500",
         "502"
       ],
-      "result_dto": "DedupeResponse",
+      "result_dto": "PruneDedupeResult",
       "streaming": false
     },
     {
       "method": "POST",
       "mutates": true,
-      "operation_id": "purge",
+      "operation_id": "prune_purge",
       "path": "/v1/prune/purge",
-      "request_dto": "PurgeRequest",
+      "request_dto": "PrunePurgeRequest",
       "requires_auth_scope": "admin",
       "responses": [
         "200",
@@ -1409,7 +1291,7 @@
         "500",
         "502"
       ],
-      "result_dto": "PurgeResult",
+      "result_dto": "PrunePurgeResult",
       "streaming": false
     },
     {
@@ -1508,6 +1390,44 @@
         "502"
       ],
       "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_status",
+      "path": "/v1/watches/{watch_id}/status",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchStatusResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_history",
+      "path": "/v1/watches/{watch_id}/history",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchHistoryResult",
       "streaming": false
     },
     {
@@ -1758,7 +1678,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:e0b929b027f8a1311417c3d29400f373e167c4f913b5a1ff13c2f965bd5a9fbc",
+        "checksum": "sha256:ed79632494948dc2c7eea2f3106e28c6829f00a0d3ab535d86ad70e05c87b145",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

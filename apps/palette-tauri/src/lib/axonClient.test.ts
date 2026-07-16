@@ -60,22 +60,22 @@ describe("executeAction", () => {
     });
   });
 
-  it("sends ingest targets raw with no source_type (server auto-detects the provider)", async () => {
+  it("sends source targets raw with no source_type", async () => {
     // The palette must NOT classify client-side — that classifier drifted from the
     // canonical backend `classify_target`. It ships the bare target; the server
     // routes github/gitlab/gitea/git/reddit/youtube/rss from it.
-    await executeTestAction("ingest", "owner/repo");
+    await executeTestAction("source", "owner/repo");
     expect(lastRequestBody()).toEqual({ source: "owner/repo", collection: "docs" });
 
-    await executeTestAction("ingest", "https://www.youtube.com/watch?v=abc123");
+    await executeTestAction("source", "https://www.youtube.com/watch?v=abc123");
     expect(lastRequestBody()).toEqual({ source: "https://www.youtube.com/watch?v=abc123", collection: "docs" });
 
-    await executeTestAction("ingest", "r/rust");
+    await executeTestAction("source", "r/rust");
     expect(lastRequestBody()).toEqual({ source: "r/rust", collection: "docs" });
   });
 
   it("sends GitLab/Gitea targets raw (previously misclassified as github by the client)", async () => {
-    await executeTestAction("ingest", "https://gitlab.com/group/project");
+    await executeTestAction("source", "https://gitlab.com/group/project");
     expect(lastRequestBody()).toEqual({ source: "https://gitlab.com/group/project", collection: "docs" });
   });
 
@@ -107,14 +107,14 @@ describe("executeAction", () => {
   });
 
   it("builds lifecycle routes for async job operations", async () => {
-    await executeTestAction("crawl-status", "00000000-0000-4000-8000-000000000000");
+    await executeTestAction("jobs-status", "00000000-0000-4000-8000-000000000000");
 
     const invokeMock = vi.mocked(invoke);
     const call = invokeMock.mock.calls.at(-1);
     const args = call?.[1] as { request: { method: string; path: string; body: unknown } };
     expect(args.request).toMatchObject({
       method: "GET",
-      path: "/v1/crawl/00000000-0000-4000-8000-000000000000",
+      path: "/v1/jobs/00000000-0000-4000-8000-000000000000",
       body: null,
     });
   });
@@ -166,7 +166,7 @@ describe("executeAction", () => {
       ["stats", "", "GET", "/v1/stats", null],
       ["watch-list", "", "GET", "/v1/watches", null],
       ["scrape", "https://example.com/doc", "POST", "/v1/sources", { source: "https://example.com/doc", scope: "page", collection: "docs" }],
-      ["crawl", "https://example.com/docs", "POST", "/v1/sources", { source: "https://example.com/docs", scope: "site", collection: "docs" }],
+      ["source-site", "https://example.com/docs", "POST", "/v1/sources", { source: "https://example.com/docs", scope: "site", collection: "docs" }],
       ["map", "https://example.com", "POST", "/v1/map", { url: "https://example.com" }],
       ["summarize", "https://example.com/doc", "POST", "/v1/summarize", { urls: ["https://example.com/doc"] }],
       ["ask", "what changed?", "POST", "/v1/ask", { query: "what changed?", explain: false, diagnostics: false, collection: "docs" }],
@@ -177,15 +177,12 @@ describe("executeAction", () => {
       ["evaluate", "is RAG better?", "POST", "/v1/evaluate", { question: "is RAG better?" }],
       ["search", "tauri v2", "POST", "/v1/search", { query: "tauri v2", limit: 7 }],
       ["research", "qdrant hybrid", "POST", "/v1/research", { query: "qdrant hybrid", limit: 7 }],
-      ["embed", "https://example.com/doc", "POST", "/v1/sources", { source: "https://example.com/doc", collection: "docs" }],
+      ["source", "owner/repo", "POST", "/v1/sources", { source: "owner/repo", collection: "docs" }],
       ["extract", "https://example.com/pricing", "POST", "/v1/extract", { urls: ["https://example.com/pricing"], collection: "docs" }],
-      ["ingest", "owner/repo", "POST", "/v1/sources", { source: "owner/repo", collection: "docs" }],
       ["endpoints", "https://example.com", "POST", "/v1/endpoints", { url: "https://example.com" }],
       ["brand", "https://example.com", "POST", "/v1/brand", { url: "https://example.com" }],
       ["diff", "https://example.com/a https://example.com/b", "POST", "/v1/diff", { url_a: "https://example.com/a", url_b: "https://example.com/b" }],
       ["screenshot", "https://example.com", "POST", "/v1/screenshot", { url: "https://example.com", full_page: true }],
-      ["dedupe", "", "POST", "/v1/dedupe", { collection: "docs" }],
-      ["purge", "https://docs.rs/serde", "POST", "/v1/purge", { target: "https://docs.rs/serde" }],
       [
         "watch-create",
         "https://example.com/docs 120",
@@ -203,14 +200,24 @@ describe("executeAction", () => {
 
   it("pins exact route and body contracts for every job lifecycle operation", () => {
     const id = "00000000-0000-4000-8000-000000000000";
-    for (const family of ["crawl", "embed", "extract", "ingest"]) {
-      expect(requestFor(`${family}-list`, ""), `${family}-list`).toMatchObject({ method: "GET", path: `/v1/${family}`, body: null });
-      expect(requestFor(`${family}-status`, id), `${family}-status`).toMatchObject({ method: "GET", path: `/v1/${family}/${id}`, body: null });
-      expect(requestFor(`${family}-cancel`, id), `${family}-cancel`).toMatchObject({ method: "POST", path: `/v1/${family}/${id}/cancel`, body: null });
-      expect(requestFor(`${family}-cleanup`, ""), `${family}-cleanup`).toMatchObject({ method: "POST", path: `/v1/${family}/cleanup`, body: null });
-      expect(requestFor(`${family}-clear`, ""), `${family}-clear`).toMatchObject({ method: "DELETE", path: `/v1/${family}`, body: null });
-      expect(requestFor(`${family}-recover`, ""), `${family}-recover`).toMatchObject({ method: "POST", path: `/v1/${family}/recover`, body: null });
-    }
+    expect(requestFor("jobs-list", "")).toMatchObject({ method: "GET", path: "/v1/jobs", body: null });
+    expect(requestFor("jobs-status", id)).toMatchObject({ method: "GET", path: `/v1/jobs/${id}`, body: null });
+    expect(requestFor("jobs-cancel", id)).toMatchObject({ method: "POST", path: `/v1/jobs/${id}/cancel`, body: {} });
+    expect(requestFor("jobs-cleanup", "")).toMatchObject({
+      method: "POST",
+      path: "/v1/jobs/cleanup",
+      body: { dry_run: false },
+    });
+    expect(requestFor("jobs-clear", "")).toMatchObject({
+      method: "DELETE",
+      path: "/v1/jobs",
+      body: { confirm: true },
+    });
+    expect(requestFor("jobs-recover", "")).toMatchObject({
+      method: "POST",
+      path: "/v1/jobs/recover",
+      body: {},
+    });
   });
 
   it("rejects local actions before request construction", () => {
@@ -263,7 +270,7 @@ describe("executeAction", () => {
       "watch-list",
       // Static POST routes
       "scrape",
-      "crawl",
+      "source-site",
       "map",
       "summarize",
       "ask",
@@ -274,41 +281,20 @@ describe("executeAction", () => {
       "evaluate",
       "search",
       "research",
-      "embed",
+      "source",
       "extract",
-      "ingest",
       "endpoints",
       "brand",
       "diff",
       "screenshot",
-      "dedupe",
-      "purge",
       "watch-create",
-      // Job lifecycle (family-operation pairs)
-      "crawl-list",
-      "crawl-status",
-      "crawl-cancel",
-      "crawl-cleanup",
-      "crawl-clear",
-      "crawl-recover",
-      "embed-list",
-      "embed-status",
-      "embed-cancel",
-      "embed-cleanup",
-      "embed-clear",
-      "embed-recover",
-      "extract-list",
-      "extract-status",
-      "extract-cancel",
-      "extract-cleanup",
-      "extract-clear",
-      "extract-recover",
-      "ingest-list",
-      "ingest-status",
-      "ingest-cancel",
-      "ingest-cleanup",
-      "ingest-clear",
-      "ingest-recover",
+      // Unified job lifecycle
+      "jobs-list",
+      "jobs-status",
+      "jobs-cancel",
+      "jobs-cleanup",
+      "jobs-clear",
+      "jobs-recover",
       // Dynamic watch routes
       "watch-run",
       // NOT an Axon REST route: `github` is special-cased in `executeAction`

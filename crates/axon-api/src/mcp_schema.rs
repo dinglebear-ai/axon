@@ -16,13 +16,9 @@ pub use utility::*;
 pub enum AxonRequest {
     Status(StatusRequest),
     Jobs(JobsRequest),
-    Crawl(CrawlRequest),
     Extract(ExtractRequest),
-    Embed(EmbedRequest),
-    Ingest(IngestRequest),
     Memory(MemoryRequest),
     Query(QueryRequest),
-    CodeSearch(CodeSearchRequest),
     Retrieve(RetrieveRequest),
     Search(SearchRequest),
     Map(MapRequest),
@@ -34,22 +30,18 @@ pub enum AxonRequest {
     Sources(SourcesRequest),
     Stats(StatsRequest),
     Help(HelpRequest),
-    Scrape(ScrapeRequest),
     Research(ResearchRequest),
     Ask(AskRequest),
     Summarize(SummarizeRequest),
     Screenshot(ScreenshotRequest),
     Brand(BrandRequest),
     Debug(DebugRequest),
-    Dedupe(DedupeRequest),
-    Purge(PurgeRequest),
     Prune(PruneMcpRequest),
     Diff(DiffRequest),
     Migrate(MigrateRequest),
     Watch(WatchRequest),
     Setup(SetupRequest),
     ElicitDemo(ElicitDemoRequest),
-    VerticalScrape(VerticalScrapeRequest),
     Source(SourceRequest),
     Resolve(ResolveRequest),
     Capabilities(CapabilitiesRequest),
@@ -153,7 +145,25 @@ impl AxonToolResponse {
 }
 
 pub fn parse_axon_request(raw: Map<String, Value>) -> Result<AxonRequest, String> {
+    if let Some(action) = raw.get("action").and_then(Value::as_str) {
+        if let Some(guidance) = removed_action_guidance(action) {
+            return Err(format!(
+                "action `{action}` was removed from MCP; {guidance}"
+            ));
+        }
+    }
     serde_json::from_value(Value::Object(raw)).map_err(|e| format!("invalid request shape: {e}"))
+}
+
+fn removed_action_guidance(action: &str) -> Option<&'static str> {
+    match action {
+        "crawl" => Some("use action=source with scope=site"),
+        "scrape" => Some("use action=source with scope=page"),
+        "embed" | "ingest" | "vertical_scrape" => Some("use action=source"),
+        "code_search" => Some("use action=query with content_kind=code and source/path filters"),
+        "purge" | "dedupe" => Some("use action=prune"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -123,7 +123,7 @@ Do not build:
 - old Qdrant payload backfill
 - legacy job-row migration
 - legacy code-index table migration
-- legacy watch table migration
+- old watch table migration
 - old memory schema migration
 - old source list import
 - route tombstones for a public deprecation period

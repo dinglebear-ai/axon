@@ -5,12 +5,7 @@
 //! The canonical source-watch pass leases enabled due `axon_source_watches`
 //! rows, turns each row back into a `SourceRequest`, and enqueues a
 //! `JobKind::Source` row for the unified worker. It records history in
-//! `axon_source_watch_runs` and uses live source jobs as an in-flight guard, so
-//! recurring source watches do not depend on legacy `axon_watch_defs` ids.
-//!
-//! The legacy `axon_watch_defs` pass remains for rows that already use the old
-//! task-payload watch model. It still runs each leased definition via
-//! [`run_leased_watch_now_with_pool`].
+//! `axon_source_watch_runs` and uses live source jobs as an in-flight guard.
 //!
 //! Tuning (read once at spawn, mirroring `AXON_JOB_WAIT_TIMEOUT_SECS` in
 //! `backend.rs`):
@@ -21,7 +16,7 @@
 use crate::boundary::{JobStore, WatchStore};
 use crate::store::now_ms;
 use crate::unified::SqliteUnifiedJobStore;
-use crate::watch::{lease_due_watches, parse_watch_lease_secs, run_leased_watch_now_with_pool};
+use crate::watch_schedule::parse_watch_lease_secs;
 use crate::watch_store::{LeasedSourceWatch, SqliteWatchStore};
 use axon_api::source::{
     JobCreateRequest, JobDescriptor, JobIntent, JobKind, MetadataMap, SourceIntent,
@@ -71,26 +66,16 @@ fn lease_ttl_ms() -> i64 {
 /// re-firing a watch whose run is still in flight.
 async fn sweep_due_watches(
     pool: &Arc<SqlitePool>,
-    cfg: &Arc<Config>,
+    _cfg: &Arc<Config>,
     unified_notify: &Arc<Notify>,
     lease_ttl_ms: i64,
 ) -> Result<usize, Box<dyn Error>> {
     let now = now_ms();
-    let legacy_due = lease_due_watches(pool, now, lease_ttl_ms, LEASE_BATCH_LIMIT).await?;
     let source_store = SqliteWatchStore::new((**pool).clone());
     let source_due = source_store
         .lease_due(now, lease_ttl_ms, LEASE_BATCH_LIMIT)
         .await?;
-    let count = legacy_due.len() + source_due.len();
-    for watch in legacy_due {
-        let pool = Arc::clone(pool);
-        let cfg = Arc::clone(cfg);
-        tokio::spawn(async move {
-            if let Err(err) = run_leased_watch_now_with_pool(&cfg, &pool, &watch).await {
-                tracing::warn!(watch_id = %watch.id, name = %watch.name, error = %err, "watch scheduler: run failed");
-            }
-        });
-    }
+    let count = source_due.len();
     if !source_due.is_empty() {
         let job_store = SqliteUnifiedJobStore::new((**pool).clone());
         let mut enqueued = 0usize;
@@ -210,8 +195,8 @@ fn source_watch_job_create_request(
         job_kind: JobKind::Source,
         job_intent: JobIntent::Watch,
         source_id: None,
-        // jobs.watch_id still references legacy axon_watch_defs(id). Source
-        // watches are linked through axon_source_watch_runs plus metadata.
+        // Watch ownership and cross-watch source coalescing are linked through
+        // axon_source_watch_runs plus the canonical watch's source_id.
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,

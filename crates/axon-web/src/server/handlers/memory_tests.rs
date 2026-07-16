@@ -1,4 +1,4 @@
-//! Route-existence + deprecation-signaling tests for the memory REST surface.
+//! Route-existence and clean-break tests for the memory REST surface.
 //!
 //! Uses the real `spawn_full_test_server` HTTP harness (`crate::server::
 //! test_support`) established by the Phase 3A durable-job-cutover work — no
@@ -62,7 +62,7 @@ async fn rest_exposes_per_verb_memory_routes() {
 
 #[tokio::test]
 #[serial]
-async fn old_passthrough_route_still_works_but_logs_deprecation() {
+async fn removed_memory_passthrough_is_not_callable() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
@@ -74,32 +74,16 @@ async fn old_passthrough_route_still_works_but_logs_deprecation() {
         .json(&serde_json::json!({ "subaction": "search" }))
         .send()
         .await
-        .expect("legacy memory request");
+        .expect("removed memory request");
 
-    assert_ne!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(
-        response
-            .headers()
-            .get("deprecation")
-            .and_then(|value| value.to_str().ok()),
-        Some("true"),
-        "POST /v1/memory should carry a Deprecation response header"
-    );
-    assert!(
-        response
-            .headers()
-            .get("link")
-            .and_then(|value| value.to_str().ok())
-            .is_some_and(|value| value.contains("/v1/memories")),
-        "POST /v1/memory should link its successor route"
-    );
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 
     stop(shutdown, handle).await;
 }
 
 #[tokio::test]
 #[serial]
-async fn new_per_verb_routes_do_not_carry_deprecation_header() {
+async fn per_verb_routes_do_not_carry_deprecation_header() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;

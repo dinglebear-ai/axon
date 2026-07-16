@@ -109,7 +109,7 @@ fn collection_selector_produces_vector_step_with_collection_delete_selector() {
 }
 
 #[test]
-fn planner_uses_configured_collection_in_source_vector_selectors() {
+fn prune_uses_non_default_collection() {
     let est = PruneEstimate {
         vector_points: 7,
         ..PruneEstimate::default()

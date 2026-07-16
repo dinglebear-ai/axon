@@ -130,3 +130,28 @@ fn command_records_round_trip_through_json() {
         assert!(record.get("maps_to_dto").is_some());
     }
 }
+
+#[test]
+fn clean_break_reset_and_status_records_are_canonical() {
+    let records = command_registry();
+    let reset_paths = records
+        .iter()
+        .filter(|command| command.path.first() == Some(&"reset"))
+        .map(|command| command.path)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        reset_paths,
+        [&["reset", "plan"][..], &["reset", "exec"][..]]
+    );
+
+    let status = records
+        .iter()
+        .find(|command| command.path == ["status"])
+        .expect("unified status command");
+    assert!(status.summary.contains("unified jobs"));
+    for removed in [
+        "crawl", "embed", "ingest", "dedupe", "purge", "fresh", "refresh",
+    ] {
+        assert!(!records.iter().any(|command| command.path[0] == removed));
+    }
+}

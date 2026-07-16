@@ -199,6 +199,14 @@ fn range_errors(label: &str, range: &SourceRange, errors: &mut Vec<String>) {
     if starts_after(range.time_start_ms, range.time_end_ms) {
         errors.push(format!("{label} time_start_ms > time_end_ms"));
     }
+    if range
+        .turn_start
+        .as_ref()
+        .zip(range.turn_end.as_ref())
+        .is_some_and(|(start, end)| start > end)
+    {
+        errors.push(format!("{label} turn_start > turn_end"));
+    }
 }
 
 fn starts_after<T: Ord>(start: Option<T>, end: Option<T>) -> bool {

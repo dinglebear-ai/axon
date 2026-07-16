@@ -11,21 +11,21 @@ class SettingsFileTextTest {
             # production only
             CUSTOM_SECRET=keep-me
             AXON_COLLECTION=old
-            AXON_OPENAI_MODEL=unchanged
+            CUSTOM_MODEL=unchanged
         """.trimIndent() + "\n"
 
         val patched = patchEnvText(
             raw = raw,
             values = mapOf(
                 "AXON_COLLECTION" to "new collection",
-                "AXON_OPENAI_MODEL" to "should-not-write",
+                "CUSTOM_MODEL" to "should-not-write",
             ),
             dirtyKeys = setOf("AXON_COLLECTION"),
         )
 
         assertTrue(patched.contains("CUSTOM_SECRET=keep-me"))
         assertTrue(patched.contains("AXON_COLLECTION=\"new collection\""))
-        assertTrue(patched.contains("AXON_OPENAI_MODEL=unchanged"))
+        assertTrue(patched.contains("CUSTOM_MODEL=unchanged"))
     }
 
     @Test fun `patchEnvText rejects newline injection`() {
@@ -43,8 +43,8 @@ class SettingsFileTextTest {
 
     @Test fun `patchConfigTomlText preserves unmodeled TOML and patches dirty keys only`() {
         val raw = """
-            [search]
-            collection = "old"
+            [providers.vector]
+            hybrid-enabled = true
             private-key = "keep"
 
             [custom.section]
@@ -54,17 +54,17 @@ class SettingsFileTextTest {
         val patched = patchConfigTomlText(
             raw = raw,
             values = mapOf(
-                "search.collection" to "new",
-                "search.hybrid-enabled" to "false",
+                "providers.vector.hybrid-enabled" to "false",
+                "providers.vector.hnsw-ef" to "64",
             ),
-            dirtyKeys = setOf("search.collection"),
+            dirtyKeys = setOf("providers.vector.hybrid-enabled"),
         )
 
-        assertTrue(patched.contains("collection = \"new\""))
+        assertTrue(patched.contains("hybrid-enabled = false"))
         assertTrue(patched.contains("private-key = \"keep\""))
         assertTrue(patched.contains("[custom.section]"))
         assertTrue(patched.contains("value = \"keep\""))
-        assertTrue(!patched.contains("hybrid-enabled"))
+        assertTrue(!patched.contains("hnsw-ef"))
     }
 
     @Test fun `patchConfigTomlText appends dirty known keys missing from raw file`() {

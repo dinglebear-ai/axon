@@ -9,6 +9,10 @@ use uuid::Uuid;
 use crate::boundary::{JobDeleteResult, JobStore, Result};
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
+use crate::unified::pagination::{
+    EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
+    encode_job_cursor,
+};
 use crate::unified_codec::reject_non_public_visibility;
 
 #[path = "fake_store/helpers.rs"]
@@ -218,13 +222,14 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "fake job store does not implement cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_job_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         let mut items = self
             .state
             .lock()
@@ -245,25 +250,47 @@ impl JobStore for FakeJobWatchStore {
         if let Some(watch_id) = request.watch_id {
             items.retain(|job| job.watch_id.as_ref() == Some(&watch_id));
         }
-        let total = items.len() as u64;
+        items.sort_by(|left, right| {
+            right
+                .updated_at
+                .0
+                .cmp(&left.updated_at.0)
+                .then_with(|| right.job_id.0.cmp(&left.job_id.0))
+        });
+        if let Some(cursor) = cursor.as_ref() {
+            items.retain(|job| {
+                job.updated_at.0 < cursor.updated_at
+                    || (job.updated_at.0 == cursor.updated_at
+                        && job.job_id.0.to_string() < cursor.job_id)
+            });
+        }
+        let total = cursor.is_none().then_some(items.len() as u64);
         let limit = clamp_page_limit(request.limit);
+        let has_more = items.len() > limit as usize;
         items.truncate(limit as usize);
+        let next_cursor = items.last().filter(|_| has_more).map(|job| {
+            encode_job_cursor(&JobCursor {
+                updated_at: job.updated_at.0.clone(),
+                job_id: job.job_id.0.to_string(),
+            })
+        });
         Ok(Page {
-            total: Some(total),
+            total,
             limit,
-            next_cursor: None,
+            next_cursor,
             items,
         })
     }
 
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job_event.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "fake job store does not implement event cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_event_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job_event.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         reject_non_public_visibility(request.visibility)?;
         let mut items = self
             .state
@@ -280,15 +307,25 @@ impl JobStore for FakeJobWatchStore {
             items.retain(|event| event.severity == severity);
         }
         apply_visibility_filter(&mut items, request.visibility);
-        if let Some(since_sequence) = request.since_sequence {
-            items.retain(|event| event.sequence > since_sequence);
+        if let Some(after_sequence) = cursor
+            .map(|cursor| cursor.sequence)
+            .or(request.after_sequence)
+            .or(request.since_sequence)
+        {
+            items.retain(|event| event.sequence > after_sequence);
         }
         let limit = clamp_page_limit(request.limit);
+        let has_more = items.len() > limit as usize;
         items.truncate(limit as usize);
+        let next_cursor = items.last().filter(|_| has_more).map(|event| {
+            encode_event_cursor(&EventCursor {
+                sequence: event.sequence,
+            })
+        });
         Ok(JobEventPage {
             last_sequence: items.last().map(|event| event.sequence).unwrap_or(0),
             limit,
-            next_cursor: None,
+            next_cursor,
             events: items,
         })
     }

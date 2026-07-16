@@ -152,8 +152,8 @@ pub(crate) fn source_scope(doc: &SourceDocument) -> Option<&str> {
 fn profile_defaults(profile: ChunkingProfile) -> (&'static str, Vec<&'static str>, ChunkLimits) {
     match profile {
         ChunkingProfile::CodeSymbol => (
-            "heuristic_symbol",
-            vec!["ast_symbol_heuristic", "code_blocks", "line_window"],
+            "tree_sitter",
+            vec!["tree_sitter", "code_blocks", "line_window"],
             ChunkLimits {
                 max_chunk_tokens: 1400,
                 overlap_tokens: 90,

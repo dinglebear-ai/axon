@@ -1,10 +1,21 @@
 use std::fs;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use axon_api::source::*;
 
 use crate::SourceAdapter;
 use crate::local_test_support::*;
-use crate::upload::UploadSourceAdapter;
+use crate::upload::{UploadSourceAdapter, UploadSourceProvider, upload_id_from_uri};
+
+struct StagedProvider(Option<ArtifactReadResult>);
+
+#[async_trait]
+impl UploadSourceProvider for StagedProvider {
+    async fn get(&self, _upload_id: &str) -> crate::adapter::Result<Option<ArtifactReadResult>> {
+        Ok(self.0.clone())
+    }
+}
 
 fn upload_plan(path: std::path::PathBuf, scope: SourceScope) -> SourcePlan {
     source_plan_for("upload", SourceKind::Upload, "upload", path, scope)
@@ -109,4 +120,53 @@ async fn upload_adapter_rejects_mismatched_route_adapter() {
 
     let err = adapter.discover(&plan).await.unwrap_err();
     assert_eq!(err.code.0, "adapter.upload.mismatch");
+}
+
+#[test]
+fn upload_identity_is_strict_and_canonical() {
+    assert_eq!(upload_id_from_uri("upload://upl_abc").unwrap(), "upl_abc");
+    assert_eq!(upload_id_from_uri("artifact://art_abc").unwrap(), "art_abc");
+    for invalid in ["upload://", "upload://relative", "upload://upl_a/child"] {
+        assert!(upload_id_from_uri(invalid).is_err(), "accepted {invalid}");
+    }
+}
+
+#[tokio::test]
+async fn upload_materialization_resolves_staged_content_without_path_trust() {
+    let adapter = UploadSourceAdapter::new();
+    let mut plan = upload_plan(std::path::PathBuf::from("ignored"), SourceScope::File);
+    plan.request.source = "upload:upl_abc".to_string();
+    plan.route.source.canonical_uri = "upload://upl_abc".to_string();
+    let mut metadata = MetadataMap::new();
+    metadata.insert("filename".to_string(), serde_json::json!("notes.md"));
+    let staged = ArtifactReadResult {
+        handle: ArtifactHandle {
+            artifact_id: ArtifactId::new("upl_abc"),
+            artifact_kind: ArtifactKind::RawContent,
+            uri: None,
+        },
+        content_type: "text/markdown".to_string(),
+        content: Some(ContentRef::InlineText {
+            text: "# staged".to_string(),
+        }),
+        metadata,
+    };
+    let materialized = adapter
+        .materialize(plan, Arc::new(StagedProvider(Some(staged))))
+        .await
+        .unwrap();
+    assert_eq!(materialized.path().file_name().unwrap(), "notes.md");
+    assert_eq!(fs::read_to_string(materialized.path()).unwrap(), "# staged");
+}
+
+#[tokio::test]
+async fn upload_materialization_fails_closed_when_staged_content_is_missing() {
+    let adapter = UploadSourceAdapter::new();
+    let mut plan = upload_plan(std::path::PathBuf::from("ignored"), SourceScope::File);
+    plan.route.source.canonical_uri = "upload://upl_missing".to_string();
+    let error = adapter
+        .materialize(plan, Arc::new(StagedProvider(None)))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.0, "adapter.upload.not_found");
 }

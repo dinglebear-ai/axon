@@ -247,13 +247,9 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
 
 #[tokio::test]
 #[serial]
-async fn v1_artifact_query_requires_bearer_auth_and_serves_png() {
+async fn v1_artifacts_use_opaque_ids_and_reject_path_access() {
     let _env = EnvGuard::set(Some("secret"));
     let temp = tempfile::tempdir().unwrap();
-    let screenshot_dir = temp.path().join("screenshots");
-    std::fs::create_dir_all(&screenshot_dir).unwrap();
-    std::fs::write(screenshot_dir.join("shot.png"), b"png-bytes").unwrap();
-
     let cfg = axon_core::config::Config {
         output_dir: temp.path().to_path_buf(),
         ..Default::default()
@@ -263,45 +259,35 @@ async fn v1_artifact_query_requires_bearer_auth_and_serves_png() {
     let client = reqwest::Client::new();
 
     let unauthorized = client
-        .get(format!("{base}/v1/artifacts?path=screenshots/shot.png"))
+        .get(format!("{base}/v1/artifacts"))
         .send()
         .await
         .expect("unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
-    let missing_path = client
+    let list = client
         .get(format!("{base}/v1/artifacts"))
         .bearer_auth("secret")
         .send()
         .await
-        .expect("missing path request");
-    assert_eq!(missing_path.status(), StatusCode::BAD_REQUEST);
-    let error_body: serde_json::Value = missing_path.json().await.unwrap();
-    assert_eq!(error_body["ok"], false);
-    assert_eq!(
-        error_body["error"]["code"],
-        "route.validation.invalid_field"
-    );
+        .expect("artifact list request");
+    assert_eq!(list.status(), StatusCode::OK);
 
-    let authorized = client
+    let path_query = client
         .get(format!("{base}/v1/artifacts?path=screenshots/shot.png"))
         .bearer_auth("secret")
         .send()
         .await
-        .expect("authorized request");
-    assert_eq!(authorized.status(), StatusCode::OK);
-    assert_eq!(
-        authorized.headers().get(header::CONTENT_TYPE).unwrap(),
-        "image/png"
-    );
-    assert_eq!(
-        authorized
-            .headers()
-            .get(header::X_CONTENT_TYPE_OPTIONS)
-            .unwrap(),
-        "nosniff"
-    );
-    assert_eq!(authorized.bytes().await.unwrap().as_ref(), b"png-bytes");
+        .expect("removed path-query request");
+    assert_eq!(path_query.status(), StatusCode::BAD_REQUEST);
+
+    let wildcard = client
+        .get(format!("{base}/v1/artifacts/screenshots/shot.png"))
+        .bearer_auth("secret")
+        .send()
+        .await
+        .expect("removed wildcard request");
+    assert_eq!(wildcard.status(), StatusCode::NOT_FOUND);
 
     stop(shutdown, handle).await;
 }

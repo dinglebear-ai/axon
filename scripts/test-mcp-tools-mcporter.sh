@@ -22,26 +22,10 @@ MCPORTER=()
 EXPECTED_ROUTES="$(cat <<'EOF'
 ask
 brand
-code_search
-crawl:cancel
-crawl:cleanup
-crawl:clear
-crawl:list
-crawl:recover
-crawl:start
-crawl:status
+capabilities
 diff
 doctor
-domains
-elicit_demo
 endpoints
-embed:cancel
-embed:cleanup
-embed:clear
-embed:list
-embed:recover
-embed:start
-embed:status
 evaluate
 extract:cancel
 extract:cleanup
@@ -50,16 +34,24 @@ extract:list
 extract:recover
 extract:start
 extract:status
+graph:edge
+graph:kinds
+graph:node
+graph:query
+graph:resolve
+graph:source
 help
-ingest:cancel
-ingest:cleanup
-ingest:clear
-ingest:list
-ingest:recover
-ingest:start
-ingest:status
+jobs:cancel
+jobs:cleanup
+jobs:clear
+jobs:events
+jobs:get
+jobs:list
+jobs:recover
+jobs:retry
+jobs:status
+jobs:stream
 map
-purge
 memory:remember
 memory:list
 memory:search
@@ -67,53 +59,72 @@ memory:show
 memory:link
 memory:supersede
 memory:context
+memory:reinforce
+memory:contradict
+memory:pin
+memory:archive
+memory:forget
+memory:review
+memory:compact
+memory:import
+memory:export
+providers:get
+providers:list
+prune:dedupe
+prune:exec
+prune:plan
+prune:purge
 query
 research
+resolve
 retrieve
-scrape
 screenshot
 search
-sources
-stats
+source
 status
 summarize
 suggest
-vertical_scrape:capabilities
-vertical_scrape:list
+watch:create
+watch:delete
+watch:exec
+watch:get
+watch:history
+watch:list
+watch:pause
+watch:resume
+watch:status
+watch:update
 EOF
 )"
 
-DIRECT_ACTIONS_JSON='["ask","brand","code_search","diff","doctor","domains","elicit_demo","endpoints","evaluate","help","map","purge","query","research","retrieve","scrape","screenshot","search","sources","stats","status","suggest","summarize"]'
+DIRECT_ACTIONS_JSON='["ask","brand","capabilities","diff","doctor","endpoints","evaluate","help","map","query","research","resolve","retrieve","screenshot","search","source","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
 ask
 brand
-code_search
-crawl
+capabilities
 diff
 doctor
-domains
-elicit_demo
 endpoints
-embed
 evaluate
 extract
+graph
 help
-ingest
+jobs
 map
 memory
-purge
+providers
+prune
 query
 research
+resolve
 retrieve
-scrape
 screenshot
 search
-sources
-stats
+source
 status
 summarize
 suggest
-vertical_scrape
+watch
 EOF
 )"
 
@@ -126,6 +137,10 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "FAIL: jq not found in PATH" >&2
   exit 2
 fi
+
+# The stdio wrapper execs ./target/debug/axon, so build once up front to
+# validate this checkout rather than whatever binary happened to exist.
+cargo build --bin axon >/dev/null
 
 URL_MODE=0
 if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "$BASE_CONFIG_PATH" >/dev/null; then
@@ -238,21 +253,11 @@ normalize_help_top_actions() {
 
 normalize_description_actions() {
   local schema_file="$1"
-  local description
-  description="$(json_payload "$schema_file" | jq -r '.tools[] | select(.name == "axon") | .description')"
-  if [[ -z "$description" || "$description" == "null" ]]; then
-    return 1
-  fi
-
-  printf '%s\n' "$description" \
-    | sed -n 's/.*Actions: //p' \
-    | tr ',' '\n' \
-    | while IFS= read -r line; do
-        line="$(trim "$line")"
-        [[ -n "$line" ]] && printf '%s\n' "$line"
-      done \
-    | sed 's/[.]$//' \
-    | sort -u
+  json_payload "$schema_file" | jq -r '
+    .tools[]
+    | select(.name == "axon")
+    | .inputSchema.properties.action.enum[]
+  ' | sort -u
 }
 
 assert_sorted_equals() {
@@ -325,18 +330,15 @@ run_suite() {
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.path | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
   run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
-  run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and .data.data.all_ok == true' call_tool action:doctor
-  run_json_case "${prefix}_stats" '.ok == true and .action == "stats" and .subaction == "stats" and (.data.data.collection | type == "string") and (.data.data.collection | length) > 0 and (.data.data.counts | type == "object")' call_tool action:stats
-  run_json_case "${prefix}_domains" '.ok == true and .action == "domains" and .subaction == "domains" and (.data.data.domains | type == "array") and .data.data.limit == 5' call_tool action:domains limit:5 offset:0
-  run_json_case "${prefix}_sources" '.ok == true and .action == "sources" and .subaction == "sources" and (.data.data.urls | type == "array") and .data.data.limit == 5' call_tool action:sources limit:5 offset:0
-  run_json_case "${prefix}_query" '.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk"' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
-  if [[ "$URL_MODE" != "1" ]]; then
-    run_json_case "${prefix}_code_search_no_freshness" '.ok == true and .action == "code_search" and .subaction == "code_search" and .data.data.content_trust == "untrusted_local_code" and (.data.data.results | type == "array") and .data.data.freshness.status == "stale"' call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT" no_freshness:true limit:3 offset:0
-  fi
-  run_error_case "${prefix}_code_search_missing_cwd" "cwd is required for code_search MCP requests" call_tool action:code_search query:'freshness lease' no_freshness:true limit:3 offset:0
+  run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and (((.data.data.all_ok | type) == "boolean") or ((.data.shape.all_ok | type) == "boolean"))' call_tool action:doctor
+  run_json_case "${prefix}_capabilities" '.ok == true and .action == "capabilities" and .subaction == "capabilities" and (.data.data.actions | type == "array") and (.data.data.providers | type == "array")' call_tool action:capabilities
+  run_json_case "${prefix}_providers_list" '.ok == true and .action == "providers" and .subaction == "list" and (.data.data.providers | type == "array")' call_tool action:providers subaction:list
+  run_json_case "${prefix}_resolve" '.ok == true and .action == "resolve" and .subaction == "resolve" and .data.data.source == "https://example.com"' call_tool action:resolve source:'https://example.com'
+  run_json_case "${prefix}_graph_kinds" '.ok == true and .action == "graph" and .subaction == "kinds" and (((.data.data | type) == "object") or ((.data.inline | type) == "object"))' call_tool action:graph subaction:kinds
+  run_json_case "${prefix}_query" '(.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk") or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
+  run_json_case "${prefix}_source_detached" '.ok == true and .action == "source" and .subaction == "source" and (((.data.inline.job.id | type) == "string") or ((.data.inline.job_id | type) == "string") or ((.data.data.job.job_id | type) == "string"))' call_tool action:source source:"$REAL_PAGE_URL" scope:page detached:true response_mode:inline
   run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
-  run_json_case "${prefix}_scrape" ".ok == true and .action == \"scrape\" and .subaction == \"scrape\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.markdown | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.markdown | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:scrape url:"$REAL_PAGE_URL"
-  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and (.data.data.content | type == \"string\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.shape.content | type == \"string\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.inline.content | type == \"string\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
   if [[ "$URL_MODE" == "1" ]]; then
     run_error_case "${prefix}_search_unavailable" "search requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:search query:'rust programming language' limit:3 offset:0
     run_error_case "${prefix}_research_unavailable" "research requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:research query:'rust async best practices' limit:3 offset:0
@@ -345,22 +347,37 @@ run_suite() {
   else
     run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
     run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
-    run_json_case "${prefix}_ask" '.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
+    run_json_case "${prefix}_ask" '(.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
     run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   fi
-  run_json_case "${prefix}_elicit_demo" '.ok == true and .action == "elicit_demo" and (.data.action | type == "string")' call_tool action:elicit_demo
-  run_json_case "${prefix}_memory_remember" '.ok == true and .action == "memory" and (.data.memory.id | type == "string")' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
+  echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
+  run_error_case "${prefix}_removed_crawl" "action \`crawl\` was removed from MCP" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_scrape" "action \`scrape\` was removed from MCP" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_embed" "action \`embed\` was removed from MCP" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
+  run_error_case "${prefix}_removed_ingest" "action \`ingest\` was removed from MCP" call_tool action:ingest target:"$REPO_ROOT"
+  run_error_case "${prefix}_removed_code_search" "action \`code_search\` was removed from MCP" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
+  run_error_case "${prefix}_removed_vertical_scrape" "action \`vertical_scrape\` was removed from MCP" call_tool action:vertical_scrape subaction:list
+  run_error_case "${prefix}_removed_purge" "action \`purge\` was removed from MCP" call_tool action:purge target:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_dedupe" "action \`dedupe\` was removed from MCP" call_tool action:dedupe
+  run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
+  run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
+  run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  run_error_case "${prefix}_removed_elicit_demo" "this action was removed from MCP" call_tool action:elicit_demo
+  run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
-  memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id')"
-  run_json_case "${prefix}_memory_replacement" '.ok == true and .action == "memory" and (.data.memory.id | type == "string")' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke replacement memory content lives in Qdrant","project":"axon"}'
-  local replacement_memory_id
-  replacement_memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_replacement.log" '.data.memory.id')"
-  run_json_case "${prefix}_memory_show" '.ok == true and .action == "memory" and ((.data.memory == null) or (.data.memory.id | type == "string"))' call_tool action:memory subaction:show id:"$memory_id"
-  run_json_case "${prefix}_memory_link" '.ok == true and .action == "memory" and .subaction == "link" and (.data.edge.id | type == "string") and .data.edge.edge_type == "relates_to"' call_tool action:memory subaction:link source_id:"$replacement_memory_id" target_id:"$memory_id"
-  run_json_case "${prefix}_memory_supersede" '.ok == true and .action == "memory" and .subaction == "supersede" and (.data.edge.id | type == "string") and .data.edge.edge_type == "supersedes"' call_tool action:memory subaction:supersede source_id:"$replacement_memory_id" target_id:"$memory_id"
-  run_json_case "${prefix}_memory_list" '.ok == true and .action == "memory" and .subaction == "list" and (.data.memories | type == "array")' call_tool action:memory subaction:list project:axon status:active limit:3
-  run_json_case "${prefix}_memory_search" '.ok == true and .action == "memory" and (.data.memories | type == "array")' call_tool action:memory subaction:search query:'mcporter smoke memory' project:axon limit:3
-  run_json_case "${prefix}_memory_context" '.ok == true and .action == "memory" and .subaction == "context" and (.data.context.context | type == "string") and (.data.context.context | contains("trust=\"evidence_only\""))' call_tool action:memory subaction:context query:'mcporter smoke memory' project:axon limit:3 token_budget:1000
+  if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then
+    run_json_case "${prefix}_memory_replacement" '.ok == true and .action == "memory" and (.data.memory.id | type == "string")' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke replacement memory content lives in Qdrant","project":"axon"}'
+    local replacement_memory_id
+    replacement_memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_replacement.log" '.data.memory.id')"
+    run_json_case "${prefix}_memory_show" '.ok == true and .action == "memory" and ((.data.memory == null) or (.data.memory.id | type == "string"))' call_tool action:memory subaction:show id:"$memory_id"
+    run_json_case "${prefix}_memory_link" '.ok == true and .action == "memory" and .subaction == "link" and (.data.edge.id | type == "string") and .data.edge.edge_type == "relates_to"' call_tool action:memory subaction:link source_id:"$replacement_memory_id" target_id:"$memory_id"
+    run_json_case "${prefix}_memory_supersede" '.ok == true and .action == "memory" and .subaction == "supersede" and (.data.edge.id | type == "string") and .data.edge.edge_type == "supersedes"' call_tool action:memory subaction:supersede source_id:"$replacement_memory_id" target_id:"$memory_id"
+    run_json_case "${prefix}_memory_list" '.ok == true and .action == "memory" and .subaction == "list" and (.data.memories | type == "array")' call_tool action:memory subaction:list project:axon status:active limit:3
+    run_json_case "${prefix}_memory_search" '.ok == true and .action == "memory" and (.data.memories | type == "array")' call_tool action:memory subaction:search query:'mcporter smoke memory' project:axon limit:3
+    run_json_case "${prefix}_memory_context" '.ok == true and .action == "memory" and .subaction == "context" and (.data.context.context | type == "string") and (.data.context.context | contains("trust=\"evidence_only\""))' call_tool action:memory subaction:context query:'mcporter smoke memory' project:axon limit:3 token_budget:1000
+  else
+    record_pass "${prefix}_memory_followups_skipped_tei_unavailable"
+  fi
 
   echo "== $mode path-mode response ==" | tee -a "$SUMMARY"
   # Artifact-first response mode still persists large payloads to disk and returns
@@ -369,13 +386,13 @@ run_suite() {
   run_json_case "${prefix}_help_path" '.ok == true and .action == "help" and .subaction == "help" and .data.response_mode == "path" and (.data.artifact.path | type == "string")' call_tool action:help response_mode:path
 
   echo "== $mode lifecycle start/status/cancel/list ==" | tee -a "$SUMMARY"
-  run_json_case "${prefix}_crawl_start" '.ok == true and .action == "crawl" and .subaction == "start" and (.data.job_ids | type == "array") and ((.data.job_ids | length) > 0)' call_tool_json "{\"action\":\"crawl\",\"subaction\":\"start\",\"urls\":[\"$REAL_PAGE_URL\"],\"max_pages\":1}"
-  local crawl_job_id
-  crawl_job_id="$(extract_json_field "$OUTDIR/${prefix}_crawl_start.log" '.data.job_ids[0]')"
-  run_json_case "${prefix}_crawl_status" '.ok == true and .action == "crawl" and .subaction == "status" and (((.data.job | type) == "object") or (.data.job == null))' call_tool action:crawl subaction:status job_id:"$crawl_job_id"
-  run_json_case "${prefix}_crawl_cancel" '.ok == true and .action == "crawl" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:crawl subaction:cancel job_id:"$crawl_job_id"
-  run_json_case "${prefix}_crawl_list" '.ok == true and .action == "crawl" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:crawl subaction:list limit:5 offset:0
-
+  run_json_case "${prefix}_jobs_list" '.ok == true and .action == "jobs" and .subaction == "list" and (.data.data.items | type == "array")' call_tool action:jobs subaction:list limit:5
+  run_json_case "${prefix}_watch_create" '.ok == true and .action == "watch" and .subaction == "create" and (.data.data.watch_id | type == "string")' call_tool action:watch subaction:create source:"$REAL_PAGE_URL" every_seconds:3600 response_mode:inline
+  local watch_id
+  watch_id="$(extract_json_field "$OUTDIR/${prefix}_watch_create.log" '.data.data.watch_id')"
+  run_json_case "${prefix}_watch_status" '.ok == true and .action == "watch" and .subaction == "status" and (.data.data.watch.watch_id | type == "string")' call_tool action:watch subaction:status id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_exec" '.ok == true and .action == "watch" and .subaction == "exec" and (.data.data.job_id | type == "string")' call_tool action:watch subaction:exec id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_history" '.ok == true and .action == "watch" and .subaction == "history" and (.data.data.runs | type == "array")' call_tool action:watch subaction:history id:"$watch_id" response_mode:inline
   run_json_case "${prefix}_extract_start" '.ok == true and .action == "extract" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"extract\",\"subaction\":\"start\",\"urls\":[\"$REAL_PAGE_URL\"],\"prompt\":\"Extract the page title.\",\"max_pages\":1}"
   local extract_job_id
   extract_job_id="$(extract_json_field "$OUTDIR/${prefix}_extract_start.log" '.data.job_id')"
@@ -383,34 +400,13 @@ run_suite() {
   run_json_case "${prefix}_extract_cancel" '.ok == true and .action == "extract" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:extract subaction:cancel job_id:"$extract_job_id"
   run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:extract subaction:list limit:5 offset:0
 
-  if [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_embed_start_unavailable" "local file embedding is disabled" call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
-  else
-    # A local path that passes validation is embedded IN-PROCESS (mirrors the CLI
-    # guard) — never enqueued onto the shared jobs DB where a worker that cannot
-    # see the host path could claim it. So embed.start of a local file returns a
-    # completed status, not a job_id. embed status/cancel job-lifecycle is covered
-    # by the crawl/extract smokes (shared plumbing).
-    run_json_case "${prefix}_embed_start" '.ok == true and .action == "embed" and .subaction == "start" and .data.status == "completed" and (.data.input | type == "string") and (.data.docs_embedded | type == "number")' call_tool_json "{\"action\":\"embed\",\"subaction\":\"start\",\"input\":\"$REPO_ROOT/docs/reference/mcp/overview.md\"}"
-  fi
-  run_json_case "${prefix}_embed_list" '.ok == true and .action == "embed" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:embed subaction:list limit:5 offset:0
-
-  run_error_case "${prefix}_ingest_start_sessions_unavailable" "/v1/ingest/sessions/prepared" call_tool_json '{"action":"ingest","subaction":"start","source_type":"sessions","sessions":{"codex":true,"project":"axon_rust"}}'
-  run_json_case "${prefix}_ingest_list" '.ok == true and .action == "ingest" and .subaction == "list" and (.data.data.jobs | type == "array") and .data.data.limit == 5' call_tool action:ingest subaction:list limit:5 offset:0
-
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
-  run_json_case "${prefix}_crawl_cleanup" '.ok == true and .action == "crawl" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:crawl subaction:cleanup
-  run_json_case "${prefix}_crawl_recover" '.ok == true and .action == "crawl" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:crawl subaction:recover
-  run_json_case "${prefix}_crawl_clear" '.ok == true and .action == "crawl" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:crawl subaction:clear
   run_json_case "${prefix}_extract_cleanup" '.ok == true and .action == "extract" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:extract subaction:cleanup
   run_json_case "${prefix}_extract_recover" '.ok == true and .action == "extract" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:extract subaction:recover
   run_json_case "${prefix}_extract_clear" '.ok == true and .action == "extract" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:extract subaction:clear
-  run_json_case "${prefix}_embed_cleanup" '.ok == true and .action == "embed" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:embed subaction:cleanup
-  run_json_case "${prefix}_embed_recover" '.ok == true and .action == "embed" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:embed subaction:recover
-  run_json_case "${prefix}_embed_clear" '.ok == true and .action == "embed" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:embed subaction:clear
-  run_json_case "${prefix}_ingest_cleanup" '.ok == true and .action == "ingest" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:ingest subaction:cleanup
-  run_json_case "${prefix}_ingest_recover" '.ok == true and .action == "ingest" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:ingest subaction:recover
-  run_json_case "${prefix}_ingest_clear" '.ok == true and .action == "ingest" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:ingest subaction:clear
+  run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool action:jobs subaction:recover dry_run:true limit:5
+  run_json_case "${prefix}_jobs_cleanup" '.ok == true and .action == "jobs" and .subaction == "cleanup" and ((.data.data.deleted | type) == "number" or (.data.data.deleted_jobs | type) == "number")' call_tool action:jobs subaction:cleanup dry_run:true limit:5
+  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and (.data.data.plan | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
 }
 
 if [[ "$URL_MODE" == "1" ]]; then

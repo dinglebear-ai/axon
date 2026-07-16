@@ -10,6 +10,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Web And Extraction",
         &[
+            "scrape",
             "map",
             "endpoints",
             "search",
@@ -40,7 +41,7 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     (
         "Jobs And Imports",
         &[
-            "status", "jobs", "source", "sessions", "watch", "monitor", "sync", "refresh", "fresh",
+            "status", "jobs", "source", "sessions", "watch", "monitor", "sync",
         ],
     ),
     (
@@ -399,16 +400,15 @@ fn subcommand_description(parent_name: &str, command: &Command) -> String {
     }
 
     match (parent_name, command.get_name()) {
-        ("watch", "create") => "Create a recurring watch definition".to_string(),
-        ("watch", "list") => "List watch definitions".to_string(),
-        ("watch", "get") => "Show a watch definition".to_string(),
-        ("watch", "update") => "Update a watch definition".to_string(),
-        ("watch", "exec") => "Run a watch immediately".to_string(),
-        ("watch", "pause") => "Pause a watch".to_string(),
-        ("watch", "resume") => "Resume a paused watch".to_string(),
-        ("watch", "delete") => "Delete a watch definition".to_string(),
+        ("watch", "create") => "Create a recurring source watch".to_string(),
+        ("watch", "list") => "List source watches".to_string(),
+        ("watch", "get") => "Show a source watch".to_string(),
+        ("watch", "update") => "Update a source watch".to_string(),
+        ("watch", "exec") => "Run a source watch immediately".to_string(),
+        ("watch", "pause") => "Pause a source watch".to_string(),
+        ("watch", "resume") => "Resume a paused source watch".to_string(),
+        ("watch", "delete") => "Delete a source watch".to_string(),
         ("watch", "history") => "Show watch run history".to_string(),
-        ("watch", "artifacts") => "List artifacts for a watch run".to_string(),
         ("monitor", "jobs") => "Emit job lifecycle events".to_string(),
         _ => command_about(command),
     }
@@ -472,10 +472,6 @@ fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, St
             ("--wait <bool>", "Block until async jobs complete"),
             ("--active", "Show only active jobs"),
             ("--recent", "Show active and completed jobs"),
-            ("--json", "Output machine-readable JSON"),
-        ],
-        "refresh" => &[
-            ("--yes", "Skip the confirmation prompt before re-enqueuing"),
             ("--json", "Output machine-readable JSON"),
         ],
         "debug" | "doctor" => SERVICE_OPTIONS,

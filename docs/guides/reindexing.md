@@ -101,9 +101,9 @@ the version stamp.
 ## What Changed in Schema v5
 
 Schema v5 added the indexed top-level `seed_url` field. This is the origin that started
-the chunk's acquisition: the crawl start URL for crawls, the ingest target for ingest jobs,
-or the document URL for direct embed/scrape paths. `axon refresh` facets on this field to
-re-enqueue previously indexed origins.
+the chunk's acquisition: the site/page URL for web sources, the source target for git/feed/
+media/social/session sources, or the document URL for single-page scrapes. Source refresh
+and watch operations use this field to reconnect indexed chunks to their originating source.
 
 Points indexed before v5 do not participate in refresh origin discovery until they are
 re-indexed.
@@ -168,7 +168,7 @@ You specifically benefit from re-indexing if you:
 
 - Query GitHub, GitLab, Gitea, or generic git ingest points and want to filter by
   `git_content_kind`, `git_file_language`, `git_author`, `git_state`, or `git_owner`.
-- Use `axon refresh` and want older sources to be discoverable via `seed_url`.
+- Use source refresh/watch operations and want older sources to be discoverable via `seed_url`.
 - Query GitHub code and want to filter by `symbol_kind` or inspect `symbol_name` /
   `code_chunking_method` in retrieved chunks.
 - Need normalized chunk locators/ranges (`chunk_locator`, `source_range`) or want to filter
@@ -238,10 +238,10 @@ partial run never deletes valid source-code chunks.
 
 ### Crawl and embed points
 
-Re-crawl the original source URL:
+Re-index the original site URL:
 
 ```bash
-axon crawl https://example.com/docs --wait true
+axon https://example.com/docs --scope site --wait true
 ```
 
 Or for single pages:
@@ -250,13 +250,14 @@ Or for single pages:
 axon scrape https://example.com/page
 ```
 
-Crawl re-embeds every page it visits. Points for pages that no longer exist are not
-removed automatically — run `axon dedupe` after if you want to clean those up.
+Site-scoped source indexing embeds every page it visits. Points for pages that no longer
+exist are cleaned up through source/prune cleanup debt; use `axon prune dedupe` only when
+you explicitly want a collection dedupe pass.
 
 ### GitHub repositories
 
 ```bash
-axon ingest https://github.com/org/repo --wait true
+axon https://github.com/org/repo --wait true
 ```
 
 This re-ingests source files, issues, PRs, releases, and wiki pages. Each re-embedded
@@ -268,12 +269,12 @@ cleanup.
 
 `axon migrate` does not backfill v6 symbol metadata because it only transforms existing
 Qdrant points and computes sparse vectors; it does not re-read source code or run the
-chunker. Use `axon ingest https://github.com/org/repo --wait true` for symbol backfill.
+chunker. Use `axon https://github.com/org/repo --wait true` for symbol backfill.
 
 ### GitLab projects
 
 ```bash
-axon ingest https://gitlab.com/group/project --wait true
+axon https://gitlab.com/group/project --wait true
 ```
 
 Same semantics as GitHub. v3 `git_*` fields are written by the GitLab ingest path
@@ -283,17 +284,17 @@ Same semantics as GitHub. v3 `git_*` fields are written by the GitLab ingest pat
 
 ```bash
 # Gitea/Forgejo
-axon ingest https://codeberg.org/owner/repo --wait true
+axon https://codeberg.org/owner/repo --wait true
 
 # Generic HTTPS git (bare clone, source files only)
-axon ingest git:https://git.example.com/owner/repo.git --wait true
+axon git:https://git.example.com/owner/repo.git --wait true
 ```
 
 ### Reddit subreddits and threads
 
 ```bash
-axon ingest r/rust --wait true
-axon ingest https://www.reddit.com/r/rust/comments/abc123/post_title/ --wait true
+axon r/rust --wait true
+axon https://www.reddit.com/r/rust/comments/abc123/post_title/ --wait true
 ```
 
 Reddit ingest writes flat `reddit_*` fields. These fields are unchanged by v8, but
@@ -303,8 +304,8 @@ chunk metadata stamped on those points.
 ### YouTube videos, playlists, and channels
 
 ```bash
-axon ingest https://www.youtube.com/watch?v=VIDEO_ID --wait true
-axon ingest https://www.youtube.com/channel/CHANNEL_ID --wait true
+axon https://www.youtube.com/watch?v=VIDEO_ID --wait true
+axon https://www.youtube.com/channel/CHANNEL_ID --wait true
 ```
 
 YouTube ingest writes flat `yt_*` fields. Same situation as Reddit: source-specific fields
@@ -340,9 +341,9 @@ Run re-indexing with `--wait false` (the default) to enqueue jobs in the backgro
 continue working:
 
 ```bash
-axon ingest https://github.com/org/repo-a
-axon ingest https://github.com/org/repo-b
-axon ingest https://github.com/org/repo-c
+axon https://github.com/org/repo-a
+axon https://github.com/org/repo-b
+axon https://github.com/org/repo-c
 axon status  # monitor job queue
 ```
 
@@ -365,7 +366,7 @@ This means:
   (because content was removed), the 4 orphan chunks (`chunk_index 6–9`) are deleted
   automatically after a successful upsert. This is handled by `qdrant_delete_stale_tail()`
   in the embed pipeline.
-- **`axon dedupe` is optional.** Run it after crawl re-indexing if you suspect
+- **`axon prune dedupe` is optional.** Run it after site re-indexing if you suspect
   near-duplicate chunks from page reorganizations, but it is not required for correctness.
 
 ---
@@ -392,21 +393,21 @@ is no maintenance window or read blackout during re-indexing.
 ## Quick-Start Checklist
 
 ```bash
-# 1. See your current version distribution
-axon sources --by-schema-version
+# 1. See your current indexed sources
+axon sources --json
 
 # 2. Re-index your highest-priority GitHub repos (background jobs)
-axon ingest https://github.com/org/repo-1
-axon ingest https://github.com/org/repo-2
+axon https://github.com/org/repo-1
+axon https://github.com/org/repo-2
 
 # 3. Monitor progress
 axon status
 
-# 4. Verify current-schema points are appearing
-axon sources --by-schema-version   # v8 count should grow
+# 4. Verify refreshed source rows are appearing
+axon sources --json
 
 # 5. Optionally clean up near-duplicates after crawl re-indexing
-axon dedupe
+axon prune dedupe
 ```
 
 ---
@@ -414,6 +415,6 @@ axon dedupe
 ## Reference
 
 - Payload contract: [`docs/reference/qdrant-payload-schema.md`](../reference/qdrant-payload-schema.md)
-- Schema version constant: `src/vector/ops/qdrant/utils.rs` — `PAYLOAD_SCHEMA_VERSION`
-- Git provider field builder: `src/ingest/git_payload.rs`
+- Vector payload schema: `docs/reference/sources/vector-payload.schema.json`
+- Git provider field builders: `crates/axon-adapters/` and `crates/axon-services/src/*_source/`
 - Collection vector mode upgrade (unnamed → named): [`README.md`](../../README.md) — `axon migrate`

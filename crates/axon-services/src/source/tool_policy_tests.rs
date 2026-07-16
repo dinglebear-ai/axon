@@ -43,3 +43,29 @@ fn tool_source_execution_accepts_explicit_no_shell_allowlisted_policy() {
 
     validate_tool_source_execution(&request).expect("trusted policy accepted");
 }
+
+#[test]
+fn tool_source_execution_rejects_absolute_shell_command() {
+    let request = ToolSourceExecutionRequest {
+        source_kind: SourceKind::CliTool,
+        execution_requested: true,
+        command: vec![
+            "/bin/sh".to_string(),
+            "-c".to_string(),
+            "echo hi".to_string(),
+        ],
+        env: BTreeMap::new(),
+        timeout_ms: Some(30_000),
+        output_cap_bytes: Some(64 * 1024),
+        audit_snapshot: Some(ToolExecutionAuditSnapshot {
+            policy_id: "policy_tool_read".to_string(),
+            side_effect_class: "read".to_string(),
+            command_allowlist: vec!["/bin/sh".to_string()],
+            env_allowlist: Vec::new(),
+            shell_expansion_allowed: false,
+        }),
+    };
+
+    let err = validate_tool_source_execution(&request).expect_err("shell expansion must be denied");
+    assert_eq!(err.code.to_string(), "tool.shell_expansion_denied");
+}

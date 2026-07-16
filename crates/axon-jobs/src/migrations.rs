@@ -20,7 +20,8 @@
 //!    (`sources`, `source_generations`, `source_manifests`, `source_items`,
 //!    `document_status`, `cleanup_debt`, `leases`). Runs FIRST so `jobs.source_id`
 //!    can FK to `sources(source_id)` in the same file.
-//! 2. **jobs** — the job runtime tables (`jobs`, `job_events`, watch/freshness).
+//! 2. **jobs** — the job runtime tables (`jobs`, `job_events`, source watches,
+//!    and historical tables that later drop themselves).
 //!    `jobs` FKs `sources`, which ledger created above. (The legacy
 //!    `axon_source_*` tables were retired with the `axon-source-ledger` crate;
 //!    migration 0017 is now an inert comment marker.)
@@ -176,6 +177,21 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0028_drop_session_watch_tables",
         sql: include_str!("migrations/0028_drop_session_watch_tables.sql"),
     },
+    SqlMigration {
+        version: 29,
+        name: "0029_drop_retired_watch_tables",
+        sql: include_str!("migrations/0029_drop_retired_watch_tables.sql"),
+    },
+    SqlMigration {
+        version: 30,
+        name: "0030_drop_freshness_tables",
+        sql: include_str!("migrations/0030_drop_freshness_tables.sql"),
+    },
+    SqlMigration {
+        version: 31,
+        name: "0031_watch_cursor_indexes",
+        sql: include_str!("migrations/0031_watch_cursor_indexes.sql"),
+    },
 ];
 
 /// Migrations that rebuild the `jobs` table itself (DROP + rename) and
@@ -187,7 +203,7 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
 /// child row (job_attempts/job_stages/job_events/job_heartbeats/
 /// provider_reservations/job_artifacts) the moment `DROP TABLE jobs` executes.
 /// See `run_migration`'s special-cased branch below.
-const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21, 24, 26];
+const JOBS_TABLE_REBUILD_VERSIONS: &[i64] = &[21, 24, 26, 29];
 
 /// Namespace under which the composed runner tracks jobs migrations.
 pub const JOBS_NAMESPACE: &str = "jobs";

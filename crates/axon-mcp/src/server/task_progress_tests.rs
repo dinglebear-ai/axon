@@ -1,6 +1,5 @@
 use super::*;
-use axon_api::source::JobKind;
-use axon_jobs::status::JobStatus;
+use axon_api::{job_status::JobStatus, source::JobKind};
 use serde_json::json;
 
 #[test]
@@ -21,6 +20,22 @@ fn maps_source_page_progress_without_leaking_paths() {
 #[test]
 fn maps_source_document_progress_with_real_total() {
     let value = json!({"docs_embedded": 2, "docs_total": 5, "chunks_embedded": 50});
+    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
+    assert_eq!(progress.progress, 2.0);
+    assert_eq!(progress.total, Some(5.0));
+    assert_eq!(progress.message, "embedding");
+}
+
+#[test]
+fn maps_source_unified_stage_counts_with_real_total() {
+    let value = json!({
+        "items_total": 5,
+        "items_done": 3,
+        "documents_total": 5,
+        "documents_done": 2,
+        "chunks_total": 20,
+        "chunks_done": 17
+    });
     let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
     assert_eq!(progress.progress, 2.0);
     assert_eq!(progress.total, Some(5.0));
@@ -97,4 +112,30 @@ fn active_progress_ignores_degraded_progress_json_marker() {
 
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));
+}
+
+#[test]
+fn structured_source_progress_normalizes_flat_counts_and_event_diagnostics() {
+    let stored = json!({
+        "items_total": 6,
+        "items_done": 4,
+        "current": { "adapter": "github" },
+        "warning": {
+            "code": "source.partial",
+            "severity": "warning",
+            "message": "partial result",
+            "retryable": true
+        },
+        "error": {
+            "code": "source.item_failed",
+            "message": "one item failed"
+        }
+    });
+
+    let progress = structured_source_progress(Some(&stored)).expect("structured progress");
+    assert_eq!(progress["counts"]["items_total"], 6);
+    assert_eq!(progress["counts"]["items_done"], 4);
+    assert_eq!(progress["current"]["adapter"], "github");
+    assert_eq!(progress["warnings"][0]["code"], "source.partial");
+    assert_eq!(progress["errors"][0]["code"], "source.item_failed");
 }

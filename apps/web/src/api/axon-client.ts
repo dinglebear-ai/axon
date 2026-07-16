@@ -187,10 +187,6 @@ export class AxonClient {
     return this.post(`/v1/${kind}/recover`);
   }
 
-  dedupe(): Promise<unknown> {
-    return this.post('/v1/dedupe');
-  }
-
   listWatch(params?: Pick<PaginationParams, 'limit'>): Promise<unknown> {
     return this.get('/v1/watches', params);
   }

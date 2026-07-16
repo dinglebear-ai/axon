@@ -3,7 +3,7 @@ use super::common::{invalid_params, logged_internal_error, validate_mcp_urls};
 use super::server_authz;
 use super::task_id::{parse_task_id, task_id_for};
 use super::task_progress;
-use super::task_status::{task_from_job, task_result_payload};
+use super::task_status::{task_from_job, task_meta_from_job, task_result_payload};
 use crate::schema::{AxonRequest, ExtractSubaction, parse_axon_request};
 use axon_api::source::JobKind;
 use axon_core::config::{ConfigOverrides, parse::tuning};
@@ -111,7 +111,7 @@ pub(super) async fn get_task_info(
     let (kind, job_id) = parse_task_id(&request.task_id)?;
     let job = load_job(server, kind, job_id).await?;
     Ok(GetTaskResult {
-        meta: None,
+        meta: task_meta_from_job(kind, &job),
         task: task_from_job(kind, &job),
     })
 }
@@ -161,7 +161,7 @@ pub(super) async fn cancel_task(
     }
     let job = load_job(server, kind, job_id).await?;
     Ok(CancelTaskResult {
-        meta: None,
+        meta: task_meta_from_job(kind, &job),
         task: task_from_job(kind, &job),
     })
 }
@@ -357,16 +357,12 @@ fn parse_cursor_offset(cursor: Option<String>) -> Result<usize, ErrorData> {
 
 fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
     let (action, subaction) = match request {
-        AxonRequest::Crawl(req) => ("crawl", format!("{:?}", req.subaction)),
         AxonRequest::Extract(req) => ("extract", format!("{:?}", req.subaction)),
-        AxonRequest::Embed(req) => ("embed", format!("{:?}", req.subaction)),
-        AxonRequest::Ingest(req) => ("ingest", format!("{:?}", req.subaction)),
         AxonRequest::Memory(req) => ("memory", format!("{:?}", req.subaction)),
         AxonRequest::Status(_) => ("status", "None".to_string()),
         AxonRequest::Jobs(req) => ("jobs", format!("{:?}", req.subaction)),
         AxonRequest::Help(_) => ("help", "None".to_string()),
         AxonRequest::Query(_) => ("query", "None".to_string()),
-        AxonRequest::CodeSearch(_) => ("code_search", "None".to_string()),
         AxonRequest::Retrieve(_) => ("retrieve", "None".to_string()),
         AxonRequest::Search(_) => ("search", "None".to_string()),
         AxonRequest::Map(_) => ("map", "None".to_string()),
@@ -377,8 +373,6 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Domains(_) => ("domains", "None".to_string()),
         AxonRequest::Sources(_) => ("sources", "None".to_string()),
         AxonRequest::Stats(_) => ("stats", "None".to_string()),
-        AxonRequest::Scrape(_) => ("scrape", "None".to_string()),
-        AxonRequest::VerticalScrape(_) => ("vertical_scrape", "None".to_string()),
         AxonRequest::Source(_) => ("source", "None".to_string()),
         AxonRequest::Research(_) => ("research", "None".to_string()),
         AxonRequest::Ask(_) => ("ask", "None".to_string()),
@@ -388,8 +382,6 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Brand(_) => ("brand", "None".to_string()),
         AxonRequest::Diff(_) => ("diff", "None".to_string()),
         AxonRequest::Debug(_) => ("debug", "None".to_string()),
-        AxonRequest::Dedupe(_) => ("dedupe", "None".to_string()),
-        AxonRequest::Purge(_) => ("purge", "None".to_string()),
         AxonRequest::Prune(_) => ("prune", "None".to_string()),
         AxonRequest::Migrate(_) => ("migrate", "None".to_string()),
         AxonRequest::Watch(_) => ("watch", "None".to_string()),

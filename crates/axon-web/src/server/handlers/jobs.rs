@@ -1,4 +1,3 @@
-use axon_api::job_progress::{JobFamily, JobProgress};
 use axon_api::source::{
     JobCancelRequest, JobCleanupRequest, JobClearRequest, JobEventListRequest, JobKind,
     JobListRequest, JobRecoveryRequest, JobRetryRequest, LifecycleStatus, Severity, Visibility,
@@ -11,7 +10,6 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -20,13 +18,6 @@ use super::super::error::HttpError;
 fn json_value<T: Serialize>(value: T) -> Result<serde_json::Value, HttpError> {
     serde_json::to_value(value)
         .map_err(|error| HttpError::from_error(&std::io::Error::other(error.to_string())))
-}
-
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
-#[into_params(parameter_in = Query)]
-pub(crate) struct JobListQuery {
-    limit: Option<i64>,
-    offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -86,134 +77,6 @@ where
         .route("/recover", post(recover_unified_jobs))
         .route("/cleanup", post(cleanup_unified_jobs))
         .layer(Extension(UnifiedJobsState { service_context }))
-}
-
-/// Typed job-status envelope so the `{ job, progress }` wire shape is a
-/// registered OpenAPI schema (and thus reflected into the generated palette/
-/// android clients) instead of an opaque `serde_json::Value`.
-#[derive(Debug, Serialize, utoipa::ToSchema)]
-pub(crate) struct JobStatusResponse {
-    /// Raw job record in the wire-compat shape (`status`, `result_json`,
-    /// timestamps, ...). Still `Value` because the job payloads are
-    /// heterogeneous; `progress` is the typed, cross-family projection of it.
-    pub job: serde_json::Value,
-    /// Server-derived, transport-neutral progress for canonical async jobs.
-    pub progress: Option<JobProgress>,
-}
-
-#[derive(Clone)]
-pub(crate) struct JobLifecycleState {
-    service_context: Arc<ServiceContext>,
-    kind: JobKind,
-}
-
-pub(crate) fn job_lifecycle_router<S>(
-    service_context: Arc<ServiceContext>,
-    kind: JobKind,
-) -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    let state = JobLifecycleState {
-        service_context,
-        kind,
-    };
-    Router::new()
-        .route("/", get(list_jobs).delete(clear_jobs))
-        .route("/{id}", get(job_status))
-        .route("/{id}/cancel", post(cancel_job))
-        .route("/cleanup", post(cleanup_jobs))
-        .route("/recover", post(recover_jobs))
-        .layer(Extension(state))
-}
-
-pub(crate) async fn list_jobs(
-    Extension(state): Extension<JobLifecycleState>,
-    Query(query): Query<JobListQuery>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let (limit, offset) =
-        services::transport::job_list_pagination_signed(query.limit, query.offset);
-    let jobs = services::jobs::list_jobs(&state.service_context, state.kind, limit, offset)
-        .await
-        .map_err(HttpError::from_box)?;
-    let jobs: Vec<_> = jobs.iter().map(|job| job.wire_json_compat()).collect();
-    Ok(Json(json!({
-        "jobs": jobs,
-        "limit": limit,
-        "offset": offset,
-    })))
-}
-
-pub(crate) async fn job_status(
-    Extension(state): Extension<JobLifecycleState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<JobStatusResponse>, HttpError> {
-    let job = services::jobs::job_status(&state.service_context, state.kind, id)
-        .await
-        .map_err(HttpError::from_box)?;
-    let Some(job) = job else {
-        return Err(HttpError::new(
-            axum::http::StatusCode::NOT_FOUND,
-            "not_found",
-            format!("job not found: {id}"),
-        ));
-    };
-    // Canonical, server-derived progress so palette/android/CLI consumers do
-    // not re-derive phase/percent/metrics independently.
-    let progress = job_family(state.kind).map(|family| JobProgress::from_service_job(family, &job));
-    Ok(Json(JobStatusResponse {
-        job: job.wire_json_compat(),
-        progress,
-    }))
-}
-
-/// Map a runtime `JobKind` to the public progress family.
-fn job_family(kind: JobKind) -> Option<JobFamily> {
-    match kind {
-        JobKind::Source => Some(JobFamily::Source),
-        JobKind::Extract => Some(JobFamily::Extract),
-        _ => None,
-    }
-}
-
-pub(crate) async fn cancel_job(
-    Extension(state): Extension<JobLifecycleState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let canceled = services::jobs::cancel_job(&state.service_context, state.kind, id)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(json!({
-        "job_id": id,
-        "canceled": canceled,
-    })))
-}
-
-pub(crate) async fn cleanup_jobs(
-    Extension(state): Extension<JobLifecycleState>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let deleted = services::jobs::cleanup_jobs(&state.service_context, state.kind)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(json!({ "deleted": deleted })))
-}
-
-pub(crate) async fn clear_jobs(
-    Extension(state): Extension<JobLifecycleState>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let deleted = services::jobs::clear_jobs(&state.service_context, state.kind)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(json!({ "deleted": deleted })))
-}
-
-pub(crate) async fn recover_jobs(
-    Extension(state): Extension<JobLifecycleState>,
-) -> Result<Json<serde_json::Value>, HttpError> {
-    let recovered = services::jobs::recover_jobs(&state.service_context, state.kind)
-        .await
-        .map_err(HttpError::from_box)?;
-    Ok(Json(json!({ "recovered": recovered })))
 }
 
 #[utoipa::path(

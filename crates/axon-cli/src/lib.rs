@@ -10,11 +10,11 @@ use axon_core::logging::{init_tracing, log_done, log_info, log_warn};
 use axon_services::context::ServiceContext;
 use commands::{
     run_ask, run_brand, run_completions, run_config, run_debug, run_diff, run_doctor, run_domains,
-    run_endpoints, run_evaluate, run_extract, run_fresh, run_jobs, run_map, run_mcp, run_memory,
-    run_migrate, run_monitor, run_palette, run_prune, run_query, run_refresh, run_research,
-    run_reset, run_retrieve, run_screenshot, run_search, run_serve, run_sessions, run_setup,
-    run_source, run_sources, run_stats, run_status, run_suggest, run_summarize, run_sync,
-    run_train, run_update, run_watch, start_url_from_cfg,
+    run_endpoints, run_evaluate, run_extract, run_jobs, run_map, run_mcp, run_memory, run_migrate,
+    run_monitor, run_palette, run_prune, run_query, run_research, run_reset, run_retrieve,
+    run_screenshot, run_search, run_serve, run_sessions, run_setup, run_source, run_sources,
+    run_stats, run_status, run_suggest, run_summarize, run_sync, run_train, run_update, run_watch,
+    start_url_from_cfg,
 };
 use std::error::Error;
 use std::sync::Arc;
@@ -59,8 +59,6 @@ async fn run_once(
         CommandKind::Stats => run_stats(cfg).await?,
         CommandKind::Status => run_status(cfg, service_context).await?,
         CommandKind::Jobs => run_jobs(cfg, service_context).await?,
-        CommandKind::Refresh => run_refresh(cfg, service_context).await?,
-        CommandKind::Fresh => run_fresh(cfg, service_context).await?,
         CommandKind::Memory => run_memory(cfg, service_context).await?,
         CommandKind::Sessions => run_sessions(cfg, service_context).await?,
         CommandKind::Source => run_source(cfg, service_context).await?,
@@ -110,7 +108,10 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
 
 fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>) -> bool {
     cfg.wait
-        || matches!(cfg.command, CommandKind::Source | CommandKind::Scrape)
+        || matches!(
+            cfg.command,
+            CommandKind::Source | CommandKind::Scrape | CommandKind::Map
+        )
         || matches!(
             command_mode,
             Some(JobCommandMode::Subcommand {
@@ -167,6 +168,21 @@ fn exit_if_reserved_source_command() {
     }
 }
 
+fn exit_if_removed_command() {
+    let Some(command) = std::env::args().nth(1) else {
+        return;
+    };
+    let guidance = match command.as_str() {
+        "refresh" => Some("use `axon <source> --refresh` or source refresh/watch operations"),
+        "fresh" => Some("use `axon watch ...` or source freshness configuration"),
+        _ => None,
+    };
+    if let Some(guidance) = guidance {
+        eprintln!("`axon {command}` has been removed from the public CLI. {guidance}.");
+        std::process::exit(8);
+    }
+}
+
 pub async fn run() -> Result<(), Box<dyn Error>> {
     // CRITICAL ORDERING: the `setup plugin-hook` invocation must apply the
     // Claude Code plugin-option → AXON_* env-var mapping BEFORE parse_args()
@@ -179,6 +195,7 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
         commands::apply_plugin_options();
     }
 
+    exit_if_removed_command();
     exit_if_reserved_source_command();
 
     // Parse CLI args first so the user's --color choice is installed before

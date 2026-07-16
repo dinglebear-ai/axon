@@ -18,9 +18,14 @@ mod http;
 mod read;
 mod search;
 mod store_impl;
+mod upsert;
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use axon_api::source::*;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
+use tokio::sync::RwLock;
 
 // Re-export the request-shape conversion helpers exercised by the crate's
 // contract tests and any transport that needs the typed builders.
@@ -57,6 +62,7 @@ pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
     health: ProviderReservationManager,
+    collection_specs: Arc<RwLock<HashMap<String, CollectionSpec>>>,
 }
 
 impl QdrantVectorStore {
@@ -75,6 +81,7 @@ impl QdrantVectorStore {
             url: url.into(),
             provider_id,
             health,
+            collection_specs: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

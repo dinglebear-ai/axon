@@ -23,6 +23,7 @@ pub mod testing;
 pub mod tool;
 pub mod tool_schema;
 pub mod validate;
+pub mod vertical;
 
 pub const CRATE_NAME: &str = "axon-parse";
 

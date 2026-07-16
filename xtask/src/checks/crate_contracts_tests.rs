@@ -197,3 +197,72 @@ fn every_contract_crate_exists_in_the_real_workspace() {
         );
     }
 }
+
+#[test]
+fn adapter_vertical_dependencies_are_required_and_one_way() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    for (name, dependencies) in [
+        (
+            "axon-adapters",
+            "axon-extract = { path = \"../axon-extract\" }\naxon-parse = { path = \"../axon-parse\" }\n",
+        ),
+        ("axon-extract", ""),
+        ("axon-parse", ""),
+    ] {
+        write_crate(root, name, "", &[], dependencies);
+    }
+
+    let mut violations = Vec::new();
+    check_adapter_vertical_boundary(root, &mut violations);
+    assert!(violations.is_empty(), "{violations:?}");
+}
+
+#[test]
+fn adapter_contract_does_not_reintroduce_stale_vertical_prohibitions() {
+    let adapters = all_crate_contracts()
+        .find(|contract| contract.name == "axon-adapters")
+        .expect("axon-adapters contract");
+    for allowed in ADAPTER_VERTICAL_DEPS {
+        assert!(
+            !adapters.forbidden_axon_deps.contains(allowed),
+            "{allowed} is an intentional adapter dependency"
+        );
+    }
+}
+
+#[test]
+fn adapter_vertical_boundary_rejects_missing_or_reverse_edges() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    write_crate(
+        root,
+        "axon-adapters",
+        "",
+        &[],
+        "axon-extract = { path = \"../axon-extract\" }\n",
+    );
+    write_crate(
+        root,
+        "axon-extract",
+        "",
+        &[],
+        "axon-adapters = { path = \"../axon-adapters\" }\n",
+    );
+    write_crate(root, "axon-parse", "", &[], "");
+
+    let mut violations = Vec::new();
+    check_adapter_vertical_boundary(root, &mut violations);
+    assert!(
+        violations.iter().any(
+            |value| value.contains("missing required one-way vertical dependency `axon-parse`")
+        ),
+        "{violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|value| value.contains("axon-extract: must not depend on `axon-adapters`")),
+        "{violations:?}"
+    );
+}

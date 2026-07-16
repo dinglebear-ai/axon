@@ -54,7 +54,7 @@ export function shortId(value: string): string {
 
 /**
  * Capitalize the first letter of every word, treating whitespace, `/`, and `-`
- * as word boundaries (e.g. `crawl-list` → `Crawl-List`, `a/b` → `A/B`).
+ * as word boundaries (e.g. `jobs-list` → `Jobs-List`, `a/b` → `A/B`).
  */
 export function titleCase(s: string): string {
   return s.replace(/(^|[\s/-])(\w)/g, (_match, sep: string, ch: string) => sep + ch.toUpperCase());

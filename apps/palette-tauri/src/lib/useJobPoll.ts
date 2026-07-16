@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 
 import { invoke } from "@/lib/invoke";
 import { isJobPhaseTerminal, summarizeUnifiedJob } from "@/lib/jobProgress";
@@ -7,7 +7,7 @@ import type { RunState } from "@/lib/runState";
 interface UseJobPollArgs {
   run: RunState;
   setRun: Dispatch<SetStateAction<RunState>>;
-  // Mirror of useCrawlJob's intent callbacks — the view transitions (which
+  // View transitions (which
   // overlays/mode they clear) live in App's reducer, not here.
   onMinimizeJob: () => void;
   onExpandJob: () => void;
@@ -15,16 +15,20 @@ interface UseJobPollArgs {
 }
 
 // Live lifecycle for the generic async-job families (source/extract).
-// Sibling of `useCrawlJob`: a ~1Hz poll of the unified `GET /v1/jobs/{id}`
-// route while the job is non-terminal, plus the tray/cancel controls. Crawl
-// keeps its own, richer hook; this one drives the simpler `JobSnapshot` model.
-export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob }: UseJobPollArgs) {
+// Poll the unified `GET /v1/jobs/{id}` route while a source or extract job is
+// non-terminal, with shared tray and cancellation controls.
+export function useJobPoll({
+  run,
+  setRun,
+  onMinimizeJob,
+  onExpandJob,
+  onCloseJob,
+}: UseJobPollArgs) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [canceling, setCanceling] = useState(false);
 
   const isAsync = run.kind === "asyncJob";
   const jobId = isAsync ? run.jobId : "";
-  const family = isAsync ? run.family : "source";
   const phase = isAsync ? run.snapshot.phase : "done";
   const terminal = isJobPhaseTerminal(phase);
 
@@ -96,7 +100,7 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
       active = false;
       window.clearInterval(id);
     };
-  }, [run.kind, jobId, family, terminal, setRun]);
+  }, [run.kind, jobId, terminal, setRun]);
 
   function minimizeJob() {
     onMinimizeJob();
@@ -121,9 +125,12 @@ export function useJobPoll({ run, setRun, onMinimizeJob, onExpandJob, onCloseJob
       // Unified `POST /v1/jobs/{id}/cancel` takes a `JobCancelRequest` body
       // (all fields optional) — send `{}` rather than `null`, which the JSON
       // extractor would reject as not-an-object.
-      const res = await invoke<{ ok: boolean; status: number; payload: unknown }>("axon_http_request", {
-        request: { method: "POST", path: `/v1/jobs/${id}/cancel`, body: {} },
-      });
+      const res = await invoke<{ ok: boolean; status: number; payload: unknown }>(
+        "axon_http_request",
+        {
+          request: { method: "POST", path: `/v1/jobs/${id}/cancel`, body: {} },
+        },
+      );
       if (!res.ok) {
         setRun((current) =>
           current.kind === "asyncJob" && current.jobId === id

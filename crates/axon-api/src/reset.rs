@@ -12,11 +12,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Legacy target Qdrant payload schema version from the pre-unification vector
-/// payload. Kept for older docs/API references only; the unified pipeline's
-/// live compatibility fence is [`TARGET_PAYLOAD_CONTRACT_VERSION`].
-pub const TARGET_PAYLOAD_SCHEMA_VERSION: u32 = 8;
-
 /// Target vector payload contract version the unified pipeline writes and
 /// expects after the clean-break cutover.
 ///
@@ -175,8 +170,8 @@ pub struct ResetResult {
     pub deleted: ResetDeleted,
     /// What was recreated at fresh schema (all zero/empty when `dry_run`).
     pub created: ResetCreated,
-    /// Filesystem path of the written reset receipt artifact (`None` in
-    /// dry-run — no receipt is written when nothing is destroyed).
+    /// Filesystem path of the durable receipt, or the exact path execution
+    /// will write during a dry-run plan.
     pub receipt_path: Option<String>,
     /// Non-fatal warnings (unreachable service, partial delete, etc.).
     pub warnings: Vec<String>,

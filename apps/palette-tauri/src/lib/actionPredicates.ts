@@ -20,29 +20,27 @@ export function actionInvokedBy(action: PaletteAction, token: string): boolean {
 export function acceptsDirectUrl(action: PaletteAction): boolean {
   return [
     "scrape",
-    "crawl",
+    "source-site",
     "map",
     "summarize",
     "retrieve",
-    "embed",
+    "source",
     "extract",
-    "ingest",
     "endpoints",
     "brand",
     "screenshot",
     "watch-create",
-    "purge",
   ].includes(action.subcommand);
 }
 
 // Actions whose argument may be a NON-URL target, so a scheme-less argument must
 // NOT be coerced into an `https://` URL. They still accept a URL — it's just
 // passed through verbatim and classified server-side:
-//   - `ingest`: `owner/repo`, `r/subreddit`, a YouTube id, … (coercing
-//     `ingest unraid/api` → `https://unraid/api` breaks `parse_github_repo`).
+//   - `source`: `owner/repo`, `r/subreddit`, a YouTube id, … (coercing
+//     `source unraid/api` → `https://unraid/api` breaks source classification).
 //   - `embed`: a file, a directory, or free text (coercing `embed some notes`
 //     → `https://some notes` corrupts the input).
-const BARE_TARGET_SUBCOMMANDS = new Set<PaletteSubcommand>(["ingest", "embed"]);
+const BARE_TARGET_SUBCOMMANDS = new Set<PaletteSubcommand>(["source"]);
 
 /**
  * Return whether a bare scheme-less argument should be coerced to an HTTPS URL.

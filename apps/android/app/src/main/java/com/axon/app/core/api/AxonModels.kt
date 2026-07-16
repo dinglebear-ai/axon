@@ -151,8 +151,8 @@ data class StatsResponse(
 data class ScrapeRequest(
     val url: String,
     val embed: Boolean? = null,
-    @SerialName("render_mode") val renderMode: String? = null,    // "http"|"chrome"|"auto-switch"
-    val format: String? = null,                                    // "markdown"|"html"|"rawHtml"|"json"
+    @SerialName("render_mode") val renderMode: String? = null, // "http"|"chrome"|"auto_switch"
+    val format: String? = null, // "markdown"|"html"|"rawHtml"|"json"
     val collection: String? = null,
 )
 
@@ -228,74 +228,44 @@ data class ResearchHit(
  */
 sealed interface AskStreamEvent {
     /** Phase indicator — emitted before synthesis starts (e.g. "retrieval", "synthesis"). */
-    data class Meta(val phase: String) : AskStreamEvent
+    data class Meta(
+        val phase: String,
+    ) : AskStreamEvent
+
     /** Incremental answer token from the LLM. */
-    data class Delta(val text: String) : AskStreamEvent
+    data class Delta(
+        val text: String,
+    ) : AskStreamEvent
+
     /** Synthesis complete — [answer] is the full assembled answer. */
-    data class Done(val answer: String) : AskStreamEvent
+    data class Done(
+        val answer: String,
+    ) : AskStreamEvent
+
     /** Server-side or network error during streaming. */
-    data class Error(val message: String) : AskStreamEvent
+    data class Error(
+        val message: String,
+    ) : AskStreamEvent
 }
 
-// ── Crawl ─────────────────────────────────────────────────────────────────────
+// ── Site source ───────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/crawl. Mirrors `RestCrawlRequest`. */
+/** Site-scoped source request submitted through POST /v1/sources. */
 @Serializable
-data class CrawlRequest(
+data class SiteSourceRequest(
     val urls: List<String>,
     @SerialName("max_pages") val maxPages: Int? = null,
     @SerialName("max_depth") val maxDepth: Int? = null,
-    @SerialName("render_mode") val renderMode: String? = null,    // "http"|"chrome"|"auto-switch"
+    @SerialName("render_mode") val renderMode: String? = null, // "http"|"chrome"|"auto-switch"
     @SerialName("include_subdomains") val includeSubdomains: Boolean? = null,
+    val embed: Boolean? = null,
     val collection: String? = null,
     val headers: List<String> = emptyList(),
 )
 
-/** Response body from POST /v1/crawl (job submission). */
+/** Response body from POST /v1/sources (source job submission). */
 @Serializable
-data class CrawlJobResponse(
+data class SourceJobResponse(
     @SerialName("job_id") val jobId: String = "",
     val url: String = "",
 )
-
-/**
- * Top-level envelope from GET /v1/crawl/{job_id}.
- *
- * The server wraps the job detail in a `{"job": {...}}` envelope — this class is the
- * deserialisation target. [AxonClient.crawlStatus] extracts [job] and returns
- * [CrawlStatusResponse] directly so callers are not coupled to the envelope shape.
- */
-@Serializable
-data class CrawlStatusWrapper(
-    val job: CrawlStatusResponse,
-)
-
-/** `result_json` sub-object inside [CrawlStatusResponse]. */
-@Serializable
-data class CrawlResultJson(
-    @SerialName("pages_crawled") val pagesCrawled: Int? = null,
-)
-
-/**
- * Inner job detail returned by GET /v1/crawl/{job_id} (inside the [CrawlStatusWrapper] envelope).
- *
- * Key differences from the previously assumed flat shape:
- * - Primary key is `id`, not `job_id` — exposed via [jobId] for backward-compatible access.
- * - Error text is `error_text`, not `error`.
- * - Page count lives inside a nested `result_json` object — exposed via [pagesCrawled].
- */
-@Serializable
-data class CrawlStatusResponse(
-    /** Server-assigned job UUID. Aliased as [jobId] for backward-compatible repository access. */
-    val id: String = "",
-    val status: String = "",
-    val url: String = "",
-    @SerialName("error_text") val error: String? = null,
-    @SerialName("result_json") val resultJson: CrawlResultJson? = null,
-) {
-    /** Convenience alias for [id], matching the original flat-shape field name. */
-    val jobId: String get() = id
-
-    /** Pages crawled, nested inside [resultJson]. Null when the job has not completed. */
-    val pagesCrawled: Int? get() = resultJson?.pagesCrawled
-}

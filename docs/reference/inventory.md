@@ -2,10 +2,10 @@
 
 Complete listing of all Axon components.
 
-> Current runtime inventory. The future source-pipeline surface is tracked in
-> [`../pipeline-unification/`](../pipeline-unification/README.md) and GitHub
-> issue #298. This inventory should not be read as a compatibility promise for
-> removed commands/actions/routes.
+> Current runtime inventory. The canonical source-pipeline contract is recorded
+> in [`../pipeline-unification/`](../pipeline-unification/README.md). Removed
+> commands, actions, and routes are clean-break absence requirements, not
+> compatibility surfaces.
 
 ## MCP tools
 
@@ -24,45 +24,43 @@ The full current action set is defined by `MCP_ACTION_SPECS` in
 | Action | Description |
 |--------|-------------|
 | `ask` | RAG: semantic search + LLM answer synthesis |
-| `map` | Discover all URLs at a domain without scraping |
+| `brand` | Analyze a URL's brand identity |
+| `capabilities` | Machine-readable server capability document |
+| `diff` | Diff two URLs |
+| `doctor` | Diagnose service connectivity |
 | `endpoints` | Discover API endpoints from page HTML and JS bundles |
+| `evaluate` | RAG vs baseline with LLM judge |
+| `help` | Return action reference |
+| `map` | Discover all URLs at a domain without scraping |
 | `query` | Semantic vector search |
 | `research` | Web research via SearXNG/Tavily with LLM synthesis and Source auto-indexing |
+| `resolve` | Resolve source identity and adapter route without acquiring content |
 | `retrieve` | Fetch stored document chunks from Qdrant |
 | `screenshot` | Capture page screenshot via Chrome |
 | `search` | Web search via SearXNG/Tavily, auto-queues Source jobs |
 | `source` | Unified source acquisition/indexing |
+| `status` | Job queue, worker, and service status |
 | `summarize` | Scrape and summarize one or more URLs |
-| `brand` | Analyze a URL's brand identity |
-| `diff` | Diff two URLs |
-| `evaluate` | RAG vs baseline with LLM judge |
-| `suggest` | Suggest new documentation URLs to crawl |
-| `elicit_demo` | MCP elicitation demo action |
+| `suggest` | Suggest new documentation URLs to index |
 
 ### Lifecycle action families (subaction required)
 
 | Action | Subactions | Description |
 |--------|-----------|-------------|
-| `extract` | `start`, `status`, `cancel`, `list`, `cleanup`, `clear`, `recover` | LLM-powered structured extraction |
+| `extract` | `start` | Start LLM-powered structured extraction; use `jobs` for lifecycle |
+| `graph` | `kinds`, `resolve`, `query`, `node`, `edge`, `source` | Read-only SourceGraph queries |
+| `jobs` | `list`, `get`, `status`, `events`, `stream`, `cancel`, `retry`, `recover`, `cleanup`, `clear` | Unified durable job lifecycle |
 | `memory` | `remember`, `search`, `show`, `link`, `supersede`, `context`, ... | Persistent memory lifecycle |
-
-### Info actions
-
-| Action | Description |
-|--------|-------------|
-| `doctor` | Diagnose service connectivity |
-| `domains` | List indexed domains + stats |
-| `help` | Return action reference |
-| `sources` | List all indexed URLs + chunk counts |
-| `stats` | Qdrant collection statistics |
-| `status` | Async job queue status |
+| `providers` | `list`, `get` | Provider capability and health discovery |
+| `prune` | `plan`, `exec` | Cleanup planning/execution behind `axon-prune` |
+| `watch` | `create`, `list`, `get`, `status`, `exec`, `history`, `update`, `pause`, `resume`, `delete` | Source-request-backed watches |
 
 ### REST-only or CLI-only operations
 
 Removed source-family MCP actions (`scrape`, `crawl`, `embed`, `ingest`,
 `code_search`, `vertical_scrape`) are not exposed. Use `action=source`.
 
-`debug`, `migrate`, `setup`, and artifact file serving are
+`debug`, `domains`, `migrate`, `setup`, `sources`, `stats`, and artifact file serving are
 documented in `docs/reference/api-parity.md`. They are not dedicated MCP action
 routes in the generated `docs/reference/mcp/tool-schema.md` contract.
 
@@ -74,13 +72,15 @@ routes in the generated `docs/reference/mcp/tool-schema.md` contract.
 
 ## CLI commands
 
-The full command surface is defined by the `CommandKind` enum in `src/core/config/types/enums.rs`. Many commands are also exposed as MCP actions (see the MCP tables above).
+The full command surface is defined by the `CommandKind` enum in
+`crates/axon-core/src/config/types/enums.rs`. Many commands are also exposed as
+MCP actions (see the MCP tables above).
 
 ### Web and extraction
 
 | Command | Async | Description |
 |---------|-------|-------------|
-| `source <target>` / bare `<target>` | Yes | Acquire, normalize, embed, refresh, and optionally watch any supported source |
+| `source <target>` / bare `<target>` | Yes | Acquire, normalize, embed, and optionally register a watch for any supported source |
 | `scrape <url>...` | Yes | One-page SourceRequest projection with clean content output and embedding by default |
 | `map <url>` | No | URL discovery without scraping |
 | `endpoints <url>...` | No | Discover API endpoints from page HTML and JavaScript bundles |
@@ -101,11 +101,11 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `evaluate <question>` | No | RAG vs baseline with independent LLM judge |
 | `train` | No | Collect human preference votes for retrieved RAG candidates |
 | `summarize <url>...` | No | Scrape one or more URLs and summarize them |
-| `suggest [focus]` | No | Suggest new documentation URLs to crawl |
+| `suggest [focus]` | No | Suggest new documentation URLs to index |
 | `sources` | No | List indexed source URLs with chunk counts |
 | `domains` | No | List indexed domains with stats |
 | `stats` | No | Qdrant collection + SQLite job statistics |
-| `dedupe` | No | Remove duplicate points from the collection |
+| `prune` | No | Plan or execute cleanup over sources, generations, collections, duplicate policies, and targeted removal selectors |
 | `migrate` | No | Collection upgrade (unnamed to named vectors) |
 
 ### Jobs and imports
@@ -116,7 +116,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `sessions [format]` | No | Index AI session exports (Claude/Codex/Gemini) |
 | `watch <sub>` | Depends | Manage recurring watch definitions and runs |
 | `monitor` | No | Monitor job lifecycle events as a line-oriented stream |
-| `sync` | No | Reconcile locally produced legacy prepared artifacts |
+| `sync` | No | Reconcile pending canonical source artifacts and publication state |
 
 ### Runtime and setup
 
@@ -128,7 +128,7 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 | `serve` | No | Start unified HTTP server (`/mcp`, web panel, `/v1/*`) |
 | `setup` | No | Initialize and inspect Axon infrastructure |
 | `preflight` | No | Check host prerequisites and service readiness |
-| `smoke` | No | Run crawl/ask smoke checks against the running stack |
+| `smoke` | No | Run source/ask smoke checks against the running stack |
 | `compose` | No | Manage the local Docker Compose service stack |
 | `completions <shell>` | No | Generate shell completions (bash, zsh, fish) |
 | `config <sub>` | No | Read/write entries in `~/.axon/.env` and `~/.axon/config.toml` |
@@ -160,15 +160,17 @@ The full command surface is defined by the `CommandKind` enum in `src/core/confi
 
 | Module | Path | Purpose |
 |-------|------|---------|
-| `cli` | `src/cli/` | Command handlers for all CLI subcommands |
-| `core` | `src/core/` | Config, HTTP client, content processing |
-| `crawl` | `src/crawl/` | Spider-based crawl engine |
-| `ingest` | `src/ingest/` | GitHub, GitLab, Gitea/Git, Reddit, YouTube, sessions ingest adapters |
+| `cli` | `crates/axon-cli/` | Command handlers for all CLI subcommands |
+| `core` | `crates/axon-core/` | Config, HTTP safety, paths, content helpers, redaction, artifacts |
+| `adapters` | `crates/axon-adapters/` | Source-owned acquisition adapters |
+| `document` | `crates/axon-document/` | Document preparation and chunk build helpers |
+| `parse` | `crates/axon-parse/` | Parser-facing source facts and graph candidates |
+| `prune` | `crates/axon-prune/` | Cleanup planning/execution, dedupe, purge, receipts |
 | `jobs` | `crates/axon-jobs/` | SQLite-backed durable job framework |
-| `mcp` | `src/mcp/` | MCP server schema and handlers |
-| `services` | `src/services/` | Typed service layer (consumed by CLI, MCP, web) |
-| `vector` | `src/vector/` | Qdrant ops, TEI embedding, hybrid search |
-| `web` | `src/web/` | Static setup panel, MCP HTTP, and `/v1/*` REST routes (`/v1/ask`, `/v1/query`, `/v1/scrape`, job lifecycle, etc.) |
+| `mcp` | `crates/axon-mcp/` | MCP server schema and handlers |
+| `services` | `crates/axon-services/` | Typed service layer (consumed by CLI, MCP, web) |
+| `vectors` | `crates/axon-vectors/` | Qdrant ops, payload validation, hybrid search |
+| `web` | `crates/axon-web/` | Static setup panel, MCP HTTP, and `/v1/*` REST routes (`/v1/ask`, `/v1/query`, `/v1/sources`, job lifecycle, etc.) |
 
 ## Database tables
 

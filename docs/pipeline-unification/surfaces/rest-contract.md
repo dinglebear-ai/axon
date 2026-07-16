@@ -56,13 +56,12 @@ Implemented today:
   too (see "Extraction Routes" below) — and REST still exposes it today
   alongside `/v1/search`, `/v1/research`, `/v1/query`, `/v1/retrieve`,
   `/v1/map`, `/v1/ask`, and `/api-docs/openapi.json`.
-- Job REST routes are family-scoped today only for `/v1/extract`
-  (`/v1/extract`, `/v1/extract/{id}`, `/v1/extract/{id}/cancel`,
-  `/v1/extract/cleanup`, `/v1/extract/recover`, via the generic
-  `job_lifecycle_router`). Crawl/embed/ingest job management already goes
-  through the generic `/v1/jobs` collection with a `kind` filter, matching
-  this contract's end state for those three families ahead of `/v1/extract`
-  catching up.
+- `POST /v1/extract` remains the explicit structured-extraction start route,
+  but extract lifecycle/status routes now use the canonical `/v1/jobs`
+  collection. The old family-scoped `/v1/extract/{id}`,
+  `/v1/extract/{id}/cancel`, `/v1/extract/cleanup`, and
+  `/v1/extract/recover` routes are absent from the router and generated route
+  inventory.
 - `GET /v1/sources` is a discovery/listing route (`handlers::discovery::sources`)
   and `POST /v1/sources` is live as the unified source-acquisition/indexing path
   (`handlers::sources::index_source`); it is synchronous today and does not yet

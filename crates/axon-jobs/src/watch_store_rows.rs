@@ -2,7 +2,7 @@ use axon_api::source::*;
 use sqlx::{Row, sqlite::SqliteRow};
 
 use crate::boundary::Result;
-use crate::watch::validate_every_seconds;
+use crate::watch_schedule::validate_every_seconds;
 
 pub(super) fn sqlite_err(err: sqlx::Error) -> ApiError {
     ApiError::new(
@@ -102,6 +102,24 @@ pub(super) fn row_to_result(row: &SqliteRow) -> WatchResult {
         job: None,
         latest_job,
         warnings: Vec::new(),
+    }
+}
+
+pub(super) fn row_to_summary(row: &SqliteRow) -> WatchSummary {
+    let watch = row_to_result(row);
+    let next_run_at_ms: i64 = row.get("next_run_at");
+    let next_run_at = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(next_run_at_ms)
+        .map(Timestamp::from)
+        .unwrap_or_else(|| Timestamp::from(chrono::Utc::now()));
+
+    WatchSummary {
+        watch_id: watch.watch_id,
+        source_id: watch.source_id,
+        enabled: watch.enabled,
+        schedule: watch.schedule,
+        next_run_at,
+        last_job_id: watch.latest_job.as_ref().map(|job| job.job_id),
+        last_status: watch.latest_job.as_ref().map(|job| job.status),
     }
 }
 

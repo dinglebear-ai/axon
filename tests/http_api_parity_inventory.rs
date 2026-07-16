@@ -11,43 +11,11 @@ fn row_for_cli(command: &str) -> Option<&'static str> {
 
 #[test]
 fn parity_doc_covers_every_cli_command_kind() {
-    let commands = [
-        "scrape",
-        "crawl",
-        "watch",
-        "map",
-        "extract",
-        "search",
-        "embed",
-        "debug",
-        "doctor",
-        "query",
-        "retrieve",
-        "ask",
-        "evaluate",
-        "train",
-        "suggest",
-        "sources",
-        "domains",
-        "stats",
-        "status",
-        "dedupe",
-        "ingest",
-        "memory",
-        "sessions",
-        "research",
-        "screenshot",
-        "completions",
-        "mcp",
-        "serve",
-        "setup",
-        "migrate",
-    ];
-
-    for command in commands {
+    for command in axon_cli::schema_registry::command_registry() {
         assert!(
-            row_for_cli(command).is_some(),
-            "docs/reference/api-parity.md is missing CLI command row `{command}`"
+            row_for_cli(command.name).is_some(),
+            "docs/reference/api-parity.md is missing CLI command row `{}`",
+            command.name
         );
     }
 }
@@ -283,7 +251,7 @@ fn openapi_security_schemes_and_operation_security_match_inventory() {
 }
 
 #[test]
-fn openapi_artifact_route_accepts_slash_containing_path_as_query_param() {
+fn openapi_artifact_routes_use_opaque_ids_instead_of_paths() {
     let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
@@ -293,21 +261,25 @@ fn openapi_artifact_route_accepts_slash_containing_path_as_query_param() {
 
     assert!(
         paths.contains_key("/v1/artifacts"),
-        "OpenAPI should advertise the slash-preserving query route"
+        "OpenAPI should advertise artifact listing"
     );
     assert!(
-        !paths.contains_key("/v1/artifacts/{path}"),
-        "OpenAPI must not imply artifact paths are a single segment"
+        paths.contains_key("/v1/artifacts/{artifact_id}"),
+        "OpenAPI should advertise artifact metadata by opaque ID"
+    );
+    assert!(
+        paths.contains_key("/v1/artifacts/{artifact_id}/content"),
+        "OpenAPI should advertise artifact content by opaque ID"
     );
     let parameters = paths["/v1/artifacts"]["get"]["parameters"]
         .as_array()
-        .expect("artifact parameters");
-    let path = parameters
-        .iter()
-        .find(|parameter| parameter["name"] == "path")
-        .expect("path query parameter");
-    assert_eq!(path["in"], "query");
-    assert_eq!(path["required"], true);
+        .expect("artifact list parameters");
+    assert!(
+        parameters
+            .iter()
+            .all(|parameter| parameter["name"] != "path"),
+        "artifact listing must not accept a filesystem path"
+    );
 }
 
 #[test]
@@ -339,7 +311,7 @@ fn openapi_error_body_kind_uses_error_kind_enum_schema() {
 }
 
 #[test]
-fn openapi_job_list_pagination_uses_query_parameters() {
+fn openapi_unified_job_list_pagination_uses_query_parameters() {
     let openapi = axon_web::openapi_document();
     let openapi_json = serde_json::to_value(&openapi).expect("serialize OpenAPI document");
     let paths = openapi_json
@@ -347,14 +319,14 @@ fn openapi_job_list_pagination_uses_query_parameters() {
         .and_then(serde_json::Value::as_object)
         .expect("OpenAPI paths");
 
-    for path in ["/v1/extract"] {
+    for path in ["/v1/jobs"] {
         let parameters = paths
             .get(path)
             .and_then(|path_item| path_item.get("get"))
             .and_then(|operation| operation.get("parameters"))
             .and_then(serde_json::Value::as_array)
             .unwrap_or_else(|| panic!("OpenAPI operation GET {path} has no parameters"));
-        for name in ["limit", "offset"] {
+        for name in ["limit", "cursor"] {
             let parameter = parameters
                 .iter()
                 .find(|parameter| {

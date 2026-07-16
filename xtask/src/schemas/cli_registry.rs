@@ -10,11 +10,9 @@
 //! Coverage rule: every entry here must correspond to a real, live clap
 //! variant. Commands the removed-surface contract forbids from CLI docs
 //! (`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`,
-//! `purge`, `dedupe`, `axon refresh`, `fresh` — see
+//! `purge`, `dedupe`, `refresh`, `fresh` — see
 //! `xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES`) are intentionally
-//! excluded even though some of them (`refresh`, `fresh`) are still
-//! dispatchable today; the contract says they must not appear in generated
-//! docs. Target-only command groups from the Phase #298 clean-break contract
+//! excluded. Target-only command groups from the Phase #298 clean-break contract
 //! that do not exist as real clap commands yet (`graph`, `providers`,
 //! `collections`, `artifacts`, `uploads`, `capabilities`, `chat`) are
 //! likewise NOT fabricated here — see `docs/pipeline-unification/schemas/
@@ -75,8 +73,8 @@ pub(super) fn command_registry() -> Vec<CliRegistryCommand> {
 
 /// Top-level command groups that exist as real, dispatchable `CliCommand`
 /// variants but are excluded from generated CLI docs per
-/// `REMOVED_SURFACE_RULES` (see module docs for why `refresh`/`fresh` are
-/// listed even though they are still live).
+/// `REMOVED_SURFACE_RULES`. Removed variants remain listed here so a stale
+/// checkout cannot silently republish them.
 #[allow(dead_code)]
 pub(super) fn excluded_top_level_groups() -> &'static [&'static str] {
     &[

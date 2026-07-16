@@ -1,7 +1,7 @@
 # axon-prune — Agent Guide
 
 `axon-prune` owns **destructive and semi-destructive cleanup execution**: cleanup
-debt processing, old-generation pruning, orphan cleanup, dedupe, and dry-run
+debt processing, old-generation pruning, orphan cleanup, duplicate policy, and dry-run
 plans. It answers "what would be deleted, is it safe, and what was actually
 removed." It executes against ledger/graph/memory/artifact/vector boundaries via
 trait calls — it never owns those stores. Full contract (owns / API / deps /
@@ -23,7 +23,7 @@ ownership, source acquisition, embedding, or transport rendering here.
 | `debt.rs` | cleanup-debt execution (recorded by `axon-ledger`, run here) |
 | `generation.rs` | old-generation pruning policy |
 | `orphan.rs` | vector/artifact orphan cleanup policy |
-| `dedupe.rs` | `DedupePlan` — near-duplicate dedupe policy |
+| `dedupe.rs` | `DedupePlan` — internal near-duplicate cleanup policy, not a public action |
 | `receipt.rs` | `PruneReceipt` — source ids, generations, counts, skipped reasons |
 | `safety.rs` | safety checks + broad-destructive request gating |
 | `testing.rs` | `FakePruneExecutor` + debt/generation/orphan/dedupe fixtures |

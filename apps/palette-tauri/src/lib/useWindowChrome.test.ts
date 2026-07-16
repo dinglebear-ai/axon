@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { resolvePaletteWindowSize } from "./useWindowChrome";
 
 describe("resolvePaletteWindowSize", () => {
-  it("uses a compact result window for expanded crawl jobs", () => {
+  it("uses a compact result window for expanded source jobs", () => {
     expect(
       resolvePaletteWindowSize(
         {
@@ -44,7 +44,7 @@ describe("resolvePaletteWindowSize", () => {
     ).toEqual({ width: 720, height: 480 });
   });
 
-  it("uses the attached crawl strip height for minimized jobs", () => {
+  it("uses the attached job strip height for minimized jobs", () => {
     expect(
       resolvePaletteWindowSize(
         {
@@ -62,10 +62,9 @@ describe("resolvePaletteWindowSize", () => {
       ),
     ).toEqual({ width: 720, height: 140 });
   });
-
 });
 
-describe("crawl job layout CSS contract", () => {
+describe("source job layout CSS contract", () => {
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
   function rule(selector: string): string {
@@ -73,13 +72,13 @@ describe("crawl job layout CSS contract", () => {
     return new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`).exec(css)?.groups?.body ?? "";
   }
 
-  it("keeps the expanded crawl job shell capped to the compact window height", () => {
+  it("keeps the expanded source job shell capped to the compact window height", () => {
     const body = rule(".palette-shell-job");
     expect(body).toContain("height: min(62vh, 470px)");
     expect(body).toContain("max-height: 470px");
   });
 
-  it("keeps crawl stat chips vertically centered with stable compact sizing", () => {
+  it("keeps job stat chips vertically centered with stable compact sizing", () => {
     const body = rule(".running-stat");
     expect(body).toContain("align-items: center");
     expect(body).toContain("min-height: 25px");
@@ -91,7 +90,9 @@ describe("crawl job layout CSS contract", () => {
   it("keeps the minimized running-operation tray aligned to the compact shell", () => {
     const body = rule(".idle-tray");
     expect(body).toContain("display: grid");
-    expect(body).toContain("grid-template-columns: auto minmax(0, max-content) minmax(160px, 1fr) auto auto auto");
+    expect(body).toContain(
+      "grid-template-columns: auto minmax(0, max-content) minmax(160px, 1fr) auto auto auto",
+    );
     expect(body).toContain("font-family: var(--aurora-font-body)");
     expect(rule(".idle-tray > span:nth-of-type(2)")).toContain("text-overflow: ellipsis");
     expect(rule(".idle-tray-pages")).toContain("font-family: var(--aurora-font-mono)");
@@ -101,10 +102,18 @@ describe("crawl job layout CSS contract", () => {
 
   it("keeps the command palette focus and dropdown geometry visually stable", () => {
     expect(css).toContain(".command-bar {\n  position: relative;");
-    expect(rule(".palette-shell-compact:has(.command-action-menu),\n.palette-shell-compact:has(.command-menu),\n.palette-shell-compact:has(.ask-session-menu)")).toContain("justify-content: flex-start");
-    expect(rule(".palette-shell-compact:has(.command-action-menu) .command-bar")).toContain("border-radius: 14px 14px 0 0");
+    expect(
+      rule(
+        ".palette-shell-compact:has(.command-action-menu),\n.palette-shell-compact:has(.command-menu),\n.palette-shell-compact:has(.ask-session-menu)",
+      ),
+    ).toContain("justify-content: flex-start");
+    expect(rule(".palette-shell-compact:has(.command-action-menu) .command-bar")).toContain(
+      "border-radius: 14px 14px 0 0",
+    );
     expect(rule(".command-input-wrap")).toContain("position: static");
-    expect(rule(".command-input-wrap:has(.command-input:focus-visible)")).toContain("inset 0 0 0 1px");
+    expect(rule(".command-input-wrap:has(.command-input:focus-visible)")).toContain(
+      "inset 0 0 0 1px",
+    );
     expect(rule(".command-action-switcher")).toContain("position: static");
     expect(rule(".command-action-menu")).toContain("left: -1px");
     expect(rule(".command-action-menu")).toContain("width: calc(100% + 2px)");

@@ -278,6 +278,18 @@ fn visibility_value(visibility: &Visibility) -> &'static str {
 
 pub(crate) fn match_from_vector(item: &VectorSearchMatch) -> Result<RetrievalMatch, ApiError> {
     require_clean_redaction_status(item)?;
+    let text = item
+        .text
+        .clone()
+        .or_else(|| payload_string(&item.payload, "chunk_text"))
+        .ok_or_else(|| {
+            ApiError::new(
+                "retrieval.missing_chunk_text",
+                ErrorStage::Retrieving,
+                "vector search match did not include text or chunk_text payload",
+            )
+            .with_context("point_id", item.point_id.0.clone())
+        })?;
     let citation = Citation::from_vector_match(item)?;
     Ok(RetrievalMatch {
         chunk_id: citation.chunk_id.clone(),
@@ -285,18 +297,7 @@ pub(crate) fn match_from_vector(item: &VectorSearchMatch) -> Result<RetrievalMat
         source_id: citation.source_id.clone(),
         score: item.score,
         canonical_uri: citation.canonical_uri.clone(),
-        text: item
-            .text
-            .clone()
-            .or_else(|| payload_string(&item.payload, "chunk_text"))
-            .ok_or_else(|| {
-                ApiError::new(
-                    "retrieval.missing_chunk_text",
-                    ErrorStage::Retrieving,
-                    "vector search match did not include text or chunk_text payload",
-                )
-                .with_context("point_id", item.point_id.0.clone())
-            })?,
+        text,
         citation,
     })
 }

@@ -1,8 +1,9 @@
 use super::task_id::task_id_for;
-use axon_api::source::JobKind;
-use axon_jobs::status::JobStatus;
+use super::task_progress::structured_source_progress;
+use axon_api::{job_status::JobStatus, source::JobKind};
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_services::types::ServiceJob;
-use rmcp::model::{GetTaskPayloadResult, Task, TaskStatus};
+use rmcp::model::{GetTaskPayloadResult, Meta, Task, TaskStatus};
 use serde_json::{Value, json};
 
 const RESULT_JSON_MAX_BYTES: usize = 64 * 1024;
@@ -25,6 +26,7 @@ pub(super) fn task_from_job(kind: JobKind, job: &ServiceJob) -> Task {
 }
 
 pub(super) fn task_result_payload(kind: JobKind, job: &ServiceJob) -> GetTaskPayloadResult {
+    let progress = task_progress_value(kind, job);
     GetTaskPayloadResult::new(json!({
         "task_id": task_id_for(kind, job.id),
         "job_id": job.id,
@@ -36,6 +38,7 @@ pub(super) fn task_result_payload(kind: JobKind, job: &ServiceJob) -> GetTaskPay
             JobStatus::Completed | JobStatus::Failed | JobStatus::Canceled
         ),
         "result_json": sanitized_result_json(job.result_json.as_ref()),
+        "progress": progress,
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "started_at": job.started_at,
@@ -43,19 +46,38 @@ pub(super) fn task_result_payload(kind: JobKind, job: &ServiceJob) -> GetTaskPay
     }))
 }
 
+pub(super) fn task_meta_from_job(kind: JobKind, job: &ServiceJob) -> Option<Meta> {
+    let progress = task_progress_value(kind, job)?;
+    let mut meta = Meta::new();
+    meta.insert("axon".to_string(), json!({ "progress": progress }));
+    Some(meta)
+}
+
+fn task_progress_value(kind: JobKind, job: &ServiceJob) -> Option<Value> {
+    if kind != JobKind::Source {
+        return None;
+    }
+    let progress = structured_source_progress(job.progress_json.as_ref())?;
+    sanitized_bounded_json(&progress, "progress")
+}
+
 fn sanitized_result_json(result_json: Option<&Value>) -> Option<Value> {
-    let value = sanitize_value(result_json?);
+    sanitized_bounded_json(result_json?, "result_json")
+}
+
+fn sanitized_bounded_json(value: &Value, field: &str) -> Option<Value> {
+    let value = sanitize_value(value);
     match serde_json::to_vec(&value) {
         Ok(bytes) if bytes.len() <= RESULT_JSON_MAX_BYTES => Some(value),
         Ok(bytes) => Some(json!({
             "truncated": true,
-            "reason": "result_json exceeded task payload size limit",
+            "reason": format!("{field} exceeded task payload size limit"),
             "bytes": bytes.len(),
             "limit_bytes": RESULT_JSON_MAX_BYTES,
         })),
         Err(_) => Some(json!({
             "truncated": true,
-            "reason": "result_json could not be serialized",
+            "reason": format!("{field} could not be serialized"),
             "limit_bytes": RESULT_JSON_MAX_BYTES,
         })),
     }
@@ -94,6 +116,11 @@ fn is_sensitive_key(key: &str) -> bool {
 fn sanitize_string(value: &str) -> String {
     if value.contains("://") && value.contains('@') {
         return "[redacted-url]".to_string();
+    }
+    let redacted =
+        DefaultRedactor::new().redact_text(value, &RedactionContext::transport_response());
+    if redacted != value {
+        return redacted;
     }
     if value.len() > 4096 {
         let mut truncated = value.chars().take(4096).collect::<String>();

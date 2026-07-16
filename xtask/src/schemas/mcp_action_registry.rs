@@ -15,13 +15,14 @@
 //!    [`known_non_live_action_names`] (must resolve to `__deny__`/removed).
 //!    If a future edit to `MCP_ACTION_SPECS` adds/removes/rescoped an
 //!    action without a matching edit here, that test fails.
-//! 2. Every action's request DTO is resolved from the real,
-//!    schemars-derived `axon_api::mcp_schema` types — never hand-written
-//!    field lists — so request-shape drift is caught at compile time.
+//! 2. Shared action request DTOs are resolved from the real,
+//!    schemars-derived `axon_api::mcp_schema` types. The two system requests
+//!    owned privately by `axon-mcp` (`reset` and `collections`) are mirrored
+//!    explicitly here and covered by focused generator expectations.
 //!
 //! Contract convergence direction: `docs/pipeline-unification/schemas/
 //! mcp-tool-schema.md`'s target `Action` enum has 31 names; the live
-//! dispatcher currently implements the 26 below. Names present only in the
+//! dispatcher currently implements the 28 below. Names present only in the
 //! contract are surfaced via [`deferred_action_names`] / `deferred_actions`
 //! in the generated schema instead of fabricated request schemas.
 
@@ -57,7 +58,7 @@ pub(super) struct ActionSpec {
     pub subaction: SubactionKind,
 }
 
-/// The live 26-action registry, mirroring `MCP_ACTION_SPECS` as read from
+/// The live 28-action registry, mirroring `MCP_ACTION_SPECS` as read from
 /// `crates/axon-mcp/src/server/authz.rs` (read-only reference; do not copy
 /// scope changes here without re-reading that file, and do not edit that
 /// file from this generator).
@@ -73,7 +74,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "status",
-        description: "Show job queue, worker, and service status",
+        description: "Show unified jobs, watches, cleanup, totals, and service status",
         scope: "read",
         mutates: false,
         async_job: false,
@@ -154,7 +155,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "search",
-        description: "Run SearXNG/Tavily web search and optionally queue crawls for results",
+        description: "Run SearXNG/Tavily web search and optionally queue Source jobs for results",
         scope: "read",
         mutates: false,
         async_job: false,
@@ -172,11 +173,29 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "prune",
-        description: "Plan (dry-run) or execute (destructive) a prune of a source, generation, or collection",
+        description: "Plan or execute source, generation, or collection cleanup behind axon-prune",
         scope: "admin",
         mutates: true,
         async_job: false,
         request_dto: "PruneMcpRequest",
+        subaction: SubactionKind::InformalStrings(&["plan", "exec"]),
+    },
+    ActionSpec {
+        name: "collections",
+        description: "List or inspect configured vector collections",
+        scope: "read",
+        mutates: false,
+        async_job: false,
+        request_dto: "CollectionsMcpRequest",
+        subaction: SubactionKind::InformalStrings(&["list", "get"]),
+    },
+    ActionSpec {
+        name: "reset",
+        description: "Plan or execute an explicit clean-slate store reset",
+        scope: "admin",
+        mutates: true,
+        async_job: false,
+        request_dto: "ResetMcpRequest",
         subaction: SubactionKind::InformalStrings(&["plan", "exec"]),
     },
     ActionSpec {
@@ -199,7 +218,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "suggest",
-        description: "Suggest new documentation URLs to crawl",
+        description: "Suggest new documentation URLs to index",
         scope: "read",
         mutates: false,
         async_job: false,
@@ -244,7 +263,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "extract",
-        description: "Run or manage async structured extraction jobs",
+        description: "Start async structured extraction jobs; use action=jobs for lifecycle",
         scope: "write",
         mutates: true,
         async_job: true,
@@ -262,7 +281,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "summarize",
-        description: "Scrape URL context and summarize it with the configured LLM",
+        description: "Fetch URL context and summarize it with the configured LLM",
         scope: "read",
         mutates: false,
         async_job: false,
@@ -280,7 +299,7 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "watch",
-        description: "List, inspect, update, pause, resume, or delete source-request-backed watches",
+        description: "Create, list, inspect, execute, page history, update, pause, resume, or delete source-request-backed watches",
         scope: "write",
         mutates: true,
         async_job: false,
@@ -345,7 +364,7 @@ pub(super) const CONTRACT_ACTIONS: &[&str] = &[
     "extract",
     "memory",
     "jobs",
-    "watches",
+    "watch",
     "artifacts",
     "uploads",
     "prune",
@@ -403,6 +422,33 @@ pub(super) fn request_schema_for(request_dto: &str) -> Value {
         "SearchRequest" => schemars::schema_for!(m::SearchRequest).into(),
         "MapRequest" => schemars::schema_for!(m::MapRequest).into(),
         "PruneMcpRequest" => schemars::schema_for!(m::PruneMcpRequest).into(),
+        "CollectionsMcpRequest" => json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "subaction": { "type": "string", "enum": ["list", "get"], "default": "list" },
+                "collection": { "type": ["string", "null"] },
+                "prefix": { "type": ["string", "null"] },
+                "limit": { "type": ["integer", "null"], "minimum": 0 },
+                "cursor": { "type": ["string", "null"] },
+                "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
+            }
+        }),
+        "ResetMcpRequest" => json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "subaction": { "type": "string", "enum": ["plan", "exec"], "default": "plan" },
+                "stores": { "type": ["array", "null"], "items": { "type": "string" } },
+                "collection": { "type": ["string", "null"] },
+                "include_artifacts": { "type": ["boolean", "null"] },
+                "include_config": { "type": ["boolean", "null"] },
+                "reason": { "type": ["string", "null"] },
+                "plan_id": { "type": ["string", "null"] },
+                "confirm": { "type": ["boolean", "null"] },
+                "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
+            }
+        }),
         "AskRequest" => schemars::schema_for!(m::AskRequest).into(),
         "EvaluateRequest" => schemars::schema_for!(m::EvaluateRequest).into(),
         "SuggestRequest" => schemars::schema_for!(m::SuggestRequest).into(),

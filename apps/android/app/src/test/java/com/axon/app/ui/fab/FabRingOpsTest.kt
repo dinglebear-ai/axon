@@ -16,8 +16,8 @@ class FabRingOpsTest {
                 FabOp.Map,
                 FabOp.Retrieve,
                 FabOp.Summarize,
-                FabOp.Crawl,
-                FabOp.Ingest,
+                FabOp.SourceSite,
+                FabOp.Source,
             ),
             FabRingOps,
         )

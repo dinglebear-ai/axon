@@ -90,10 +90,10 @@ pub fn validate_tool_source_execution(
 }
 
 fn command_requires_shell_expansion(command: &[String]) -> bool {
-    command
-        .first()
-        .is_some_and(|cmd| matches!(cmd.as_str(), "sh" | "bash" | "zsh" | "cmd" | "powershell"))
-        || command.iter().any(|arg| arg == "-c" || arg == "/c")
+    command.first().is_some_and(|cmd| {
+        let name = cmd.rsplit(['/', '\\']).next().unwrap_or(cmd);
+        matches!(name, "sh" | "bash" | "zsh" | "cmd" | "powershell")
+    }) || command.iter().any(|arg| arg == "-c" || arg == "/c")
 }
 
 fn policy_error(code: &'static str, message: &'static str) -> ApiError {

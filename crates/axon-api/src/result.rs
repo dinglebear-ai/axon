@@ -3,7 +3,29 @@
 // ask_explain types live in the sibling `explain` module (crate::explain)
 
 use crate::explain::*;
+use crate::source::{
+    ChunkId, DocumentId, JobId, RedactionMetadata, SourceGenerationId, SourceId, SourceItemKey,
+    SourceRange,
+};
 use std::path::PathBuf;
+
+/// Maximum canonical citation rows emitted in one public result.
+pub const MAX_CANONICAL_CITATIONS: usize = 256;
+
+/// Canonical retrieval lineage for one cited chunk.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CanonicalCitation {
+    pub source_id: SourceId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
+    pub document_id: DocumentId,
+    pub chunk_id: ChunkId,
+    pub job_id: JobId,
+    pub canonical_uri: String,
+    pub source_range: SourceRange,
+    pub redaction: RedactionMetadata,
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct QueryHit {
@@ -13,6 +35,7 @@ pub struct QueryHit {
     pub url: String,
     pub source: String,
     pub snippet: String,
+    pub citation: CanonicalCitation,
     pub chunk_index: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file_path: Option<String>,
@@ -327,6 +350,7 @@ pub struct AskTiming {
 pub struct AskResult {
     pub query: String,
     pub answer: String,
+    pub citations: Vec<CanonicalCitation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub citation_validation: Option<AskCitationValidation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -382,6 +406,7 @@ pub struct EvaluateResult {
     pub rag_answer: String,
     pub baseline_answer: String,
     pub analysis_answer: String,
+    pub citations: Vec<CanonicalCitation>,
     pub source_urls: Vec<String>,
     pub crawl_suggestions: Vec<Suggestion>,
     pub crawl_enqueue_outcomes: Vec<EvaluateCrawlEnqueueOutcome>,
@@ -400,3 +425,7 @@ pub struct Suggestion {
 pub struct SuggestResult {
     pub suggestions: Vec<Suggestion>,
 }
+
+#[cfg(test)]
+#[path = "result_tests.rs"]
+mod tests;

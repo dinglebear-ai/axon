@@ -225,26 +225,6 @@ pub const PHASE_1_DEFERRED_API_DEFS: &[(&str, &str, &str)] = &[
         "phase-7-parser-metadata-graph.md",
         "needs structured output artifact/redaction policy",
     ),
-    (
-        "DedupeRequest",
-        "phase-5b-reset-preflight.md",
-        "needs current destructive-operation contract",
-    ),
-    (
-        "DedupeResult",
-        "phase-5b-reset-preflight.md",
-        "needs current destructive-operation contract",
-    ),
-    (
-        "PurgeRequest",
-        "phase-5b-reset-preflight.md",
-        "needs prune/reset cutover contract without legacy target/prefix",
-    ),
-    (
-        "PurgeResult",
-        "phase-5b-reset-preflight.md",
-        "needs prune/reset cutover contract",
-    ),
 ];
 
 #[cfg_attr(not(test), allow(dead_code))]

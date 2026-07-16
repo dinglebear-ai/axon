@@ -337,6 +337,9 @@ fn container_stable_key(source_id: &SourceId, canonical_uri: &str) -> String {
 
 /// Stable key for a document node — the item's own stable source key.
 fn document_stable_key(item: &ManifestItem) -> String {
+    if item.item_kind == ItemKind::MemoryRecord {
+        return format!("memory:{}", item.source_item_key.0);
+    }
     item.source_item_key.0.clone()
 }
 
@@ -352,6 +355,9 @@ fn container_node_kind(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Youtube => "youtube_channel",
         SourceInputKind::Session => "session",
         SourceInputKind::Registry => "package",
+        SourceInputKind::CliTool | SourceInputKind::McpTool => "artifact",
+        SourceInputKind::Memory => "source",
+        SourceInputKind::Upload => "derived_source",
         SourceInputKind::Unsupported => "source",
     }
 }
@@ -386,6 +392,8 @@ fn containment_edge_kind(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Youtube => "youtube_channel_has_video",
         SourceInputKind::Session => "session_has_turn",
         SourceInputKind::Registry => "package_has_version",
+        SourceInputKind::CliTool | SourceInputKind::McpTool => "source_produced_artifact",
+        SourceInputKind::Memory | SourceInputKind::Upload => "source_indexed_as",
         SourceInputKind::Unsupported => "source_produced_artifact",
     }
 }

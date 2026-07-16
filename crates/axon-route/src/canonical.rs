@@ -22,6 +22,7 @@ pub fn canonicalize(raw: &str, requested_scope: Option<SourceScope>) -> Option<C
         .or_else(|| canonical_mcp(source))
         .or_else(|| canonical_cli(source))
         .or_else(|| canonical_session(source))
+        .or_else(|| canonical_memory(source))
         .or_else(|| canonical_upload(source))
         .or_else(|| canonical_feed(source))
         .or_else(|| canonical_reddit(source))
@@ -108,8 +109,17 @@ fn canonical_session(raw: &str) -> Option<CanonicalSource> {
 }
 
 fn canonical_upload(raw: &str) -> Option<CanonicalSource> {
-    let artifact = raw.strip_prefix("upload:")?.trim();
-    if artifact.is_empty() {
+    let artifact = raw
+        .strip_prefix("upload://")
+        .or_else(|| raw.strip_prefix("upload:"))
+        .or_else(|| raw.strip_prefix("artifact://"))?
+        .trim();
+    if artifact.is_empty()
+        || (!artifact.starts_with("upl_") && !artifact.starts_with("art_"))
+        || artifact
+            .bytes()
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-' | b'.'))
+    {
         return None;
     }
     Some(basic(
@@ -122,11 +132,36 @@ fn canonical_upload(raw: &str) -> Option<CanonicalSource> {
     ))
 }
 
+fn canonical_memory(raw: &str) -> Option<CanonicalSource> {
+    let memory_id = raw.strip_prefix("memory://")?;
+    if memory_id.is_empty()
+        || !memory_id.starts_with("mem_")
+        || memory_id
+            .bytes()
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-' | b'.'))
+    {
+        return None;
+    }
+    Some(basic(
+        format!("memory://{memory_id}"),
+        SourceKind::Memory,
+        SourceScope::Api,
+        "memory",
+        memory_id,
+        "resolved as durable memory source",
+    ))
+}
+
 fn canonical_feed(raw: &str) -> Option<CanonicalSource> {
-    let feed_url = raw
+    let explicit_feed_url = raw
         .strip_prefix("rss:")
         .or_else(|| raw.strip_prefix("feed:"))
-        .or_else(|| raw.strip_prefix("atom:"))?;
+        .or_else(|| raw.strip_prefix("atom:"));
+    let feed_url = match explicit_feed_url {
+        Some(url) => url,
+        None if looks_like_feed_url(raw) => raw,
+        None => return None,
+    };
     let url = normalized_url(feed_url)?;
     if !is_http_url(&url) {
         return None;
@@ -141,6 +176,32 @@ fn canonical_feed(raw: &str) -> Option<CanonicalSource> {
     );
     source.warnings.extend(sensitive_query_warnings(&url));
     Some(source)
+}
+
+fn looks_like_feed_url(raw: &str) -> bool {
+    let Some(url) = normalized_url(raw) else {
+        return false;
+    };
+    if !is_http_url(&url) {
+        return false;
+    }
+    let path = url.path().to_ascii_lowercase();
+    let last_segment = path.rsplit('/').next().unwrap_or("");
+    path.ends_with(".rss")
+        || path.ends_with(".atom")
+        || path.ends_with(".rdf")
+        || matches!(
+            last_segment,
+            "feed.xml" | "rss.xml" | "atom.xml" | "index.xml" | "feed" | "rss" | "atom"
+        )
+        || path
+            .split('/')
+            .any(|segment| matches!(segment, "feed" | "feeds" | "rss" | "atom"))
+        || url.query_pairs().any(|(key, value)| {
+            key == "feed"
+                || (matches!(key.as_ref(), "format" | "output" | "type")
+                    && matches!(value.as_ref(), "rss" | "rss2" | "atom" | "rdf"))
+        })
 }
 
 fn canonical_reddit(raw: &str) -> Option<CanonicalSource> {

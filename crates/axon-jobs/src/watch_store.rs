@@ -1,6 +1,6 @@
 //! SQLite-backed [`crate::boundary::WatchStore`] for source-request-backed
 //! watches (WS-B / issue #298). This uses the canonical `axon_source_watches`
-//! / `axon_source_watch_runs` table pair, not legacy `axon_watch_defs`.
+//! / `axon_source_watch_runs` table pair, not the retired `axon_watch_defs`.
 //! `delete` stays inherent on [`SqliteWatchStore`] because the shared trait
 //! does not include deletion.
 
@@ -11,6 +11,10 @@ use sqlx::{Row, SqlitePool};
 use crate::boundary::{Result, WatchStore};
 use crate::limits::clamp_page_limit;
 use crate::store::now_ms;
+use crate::unified::pagination::{
+    WatchCursor, WatchHistoryCursor, decode_watch_cursor, decode_watch_history_cursor,
+    encode_watch_cursor, encode_watch_history_cursor,
+};
 
 #[path = "watch_store_scheduler.rs"]
 mod scheduler;
@@ -20,7 +24,7 @@ pub(crate) use scheduler::LeasedSourceWatch;
 mod rows;
 use rows::{
     json_err, missing_job, missing_watch, row_to_auth_snapshot, row_to_request, row_to_result,
-    scope_to_str, sqlite_err, synth_descriptor, validate_source_watch_interval,
+    row_to_summary, scope_to_str, sqlite_err, synth_descriptor, validate_source_watch_interval,
 };
 
 /// SQLite-backed [`WatchStore`]. Cheap to clone (wraps a pooled connection
@@ -59,12 +63,44 @@ impl SqliteWatchStore {
             .transpose()
     }
 
+    /// Find the newest canonical watch whose stored source/canonical URI
+    /// matches `source`.
+    pub async fn find_by_source(&self, source: &str) -> Result<Option<WatchResult>> {
+        let source = source.trim();
+        if source.is_empty() {
+            return Ok(None);
+        }
+        let row = sqlx::query(
+            "SELECT * FROM axon_source_watches \
+             WHERE source = ? OR canonical_uri = ? \
+             ORDER BY created_at DESC, watch_id DESC LIMIT 1",
+        )
+        .bind(source)
+        .bind(source)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        Ok(row.as_ref().map(row_to_result))
+    }
+
     pub async fn create_with_auth(
         &self,
         request: WatchRequest,
         auth_snapshot: Option<AuthSnapshot>,
     ) -> Result<WatchResult> {
         self.insert_watch(request, auth_snapshot).await
+    }
+
+    pub async fn create_resolved_with_auth(
+        &self,
+        request: WatchRequest,
+        source_id: SourceId,
+        canonical_uri: String,
+        adapter: AdapterRef,
+        auth_snapshot: Option<AuthSnapshot>,
+    ) -> Result<WatchResult> {
+        self.insert_resolved_watch(request, auth_snapshot, source_id, canonical_uri, adapter)
+            .await
     }
 
     /// Hard-delete a watch and its run history (`ON DELETE CASCADE`).
@@ -86,12 +122,25 @@ impl SqliteWatchStore {
         request: WatchRequest,
         auth_snapshot: Option<AuthSnapshot>,
     ) -> Result<WatchResult> {
-        let watch_id = WatchId::new(format!("watch_{}", uuid::Uuid::new_v4()));
         let source_id = SourceId::new(format!("source_{}", uuid::Uuid::new_v4()));
+        let canonical_uri = request.source.clone();
         let adapter = AdapterRef {
             name: "sqlite-watch-store".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         };
+        self.insert_resolved_watch(request, auth_snapshot, source_id, canonical_uri, adapter)
+            .await
+    }
+
+    async fn insert_resolved_watch(
+        &self,
+        request: WatchRequest,
+        auth_snapshot: Option<AuthSnapshot>,
+        source_id: SourceId,
+        canonical_uri: String,
+        adapter: AdapterRef,
+    ) -> Result<WatchResult> {
+        let watch_id = WatchId::new(format!("watch_{}", uuid::Uuid::new_v4()));
         let scope = request.scope.unwrap_or(SourceScope::Page);
         let enabled = request.enabled.unwrap_or(true);
         let every_seconds = validate_source_watch_interval(request.schedule.every_seconds)?;
@@ -114,7 +163,7 @@ impl SqliteWatchStore {
         .bind(&watch_id.0)
         .bind(&request.source)
         .bind(&source_id.0)
-        .bind(&request.source)
+        .bind(&canonical_uri)
         .bind(&adapter.name)
         .bind(&adapter.version)
         .bind(scope_to_str(scope))
@@ -138,7 +187,7 @@ impl SqliteWatchStore {
         Ok(WatchResult {
             watch_id,
             source_id,
-            canonical_uri: request.source,
+            canonical_uri,
             adapter,
             scope,
             enabled,
@@ -240,13 +289,14 @@ impl WatchStore for SqliteWatchStore {
     }
 
     async fn list(&self, request: WatchListRequest) -> Result<Page<WatchSummary>> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "watch.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "sqlite watch store does not implement cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_watch_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("watch.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
 
         let mut where_sql = String::from(" WHERE 1 = 1");
         if request.enabled.is_some() {
@@ -257,6 +307,9 @@ impl WatchStore for SqliteWatchStore {
         }
         if request.adapter.is_some() {
             where_sql.push_str(" AND adapter_name = ?");
+        }
+        if cursor.is_some() {
+            where_sql.push_str(" AND (created_at < ? OR (created_at = ? AND watch_id < ?))");
         }
         let count_sql = format!("SELECT COUNT(*) FROM axon_source_watches{where_sql}");
         let mut count_query = sqlx::query_scalar::<_, i64>(&count_sql);
@@ -269,14 +322,22 @@ impl WatchStore for SqliteWatchStore {
         if let Some(adapter) = &request.adapter {
             count_query = count_query.bind(adapter);
         }
-        let total = count_query
-            .fetch_one(&self.pool)
-            .await
-            .map_err(sqlite_err)? as u64;
+        let total = if cursor.is_none() {
+            Some(
+                count_query
+                    .fetch_one(&self.pool)
+                    .await
+                    .map_err(sqlite_err)? as u64,
+            )
+        } else {
+            None
+        };
 
         let limit = clamp_page_limit(request.limit);
-        let list_sql =
-            format!("SELECT * FROM axon_source_watches{where_sql} ORDER BY created_at ASC LIMIT ?");
+        let list_sql = format!(
+            "SELECT * FROM axon_source_watches{where_sql} \
+             ORDER BY created_at DESC, watch_id DESC LIMIT ?"
+        );
         let mut query = sqlx::query(&list_sql);
         if let Some(enabled) = request.enabled {
             query = query.bind(if enabled { 1 } else { 0 });
@@ -287,27 +348,35 @@ impl WatchStore for SqliteWatchStore {
         if let Some(adapter) = &request.adapter {
             query = query.bind(adapter);
         }
-        query = query.bind(limit as i64);
+        if let Some(cursor) = cursor.as_ref() {
+            query = query
+                .bind(cursor.created_at)
+                .bind(cursor.created_at)
+                .bind(&cursor.watch_id);
+        }
+        query = query.bind((limit + 1) as i64);
 
         let rows = query.fetch_all(&self.pool).await.map_err(sqlite_err)?;
-        let items = rows
-            .iter()
-            .map(row_to_result)
-            .map(|watch| WatchSummary {
-                watch_id: watch.watch_id,
-                source_id: watch.source_id,
-                enabled: watch.enabled,
-                schedule: watch.schedule,
-                next_run_at: Timestamp::from(chrono::Utc::now()),
-                last_job_id: watch.latest_job.as_ref().map(|job| job.job_id),
-                last_status: watch.latest_job.as_ref().map(|job| job.status),
+        let has_more = rows.len() > limit as usize;
+        let mut items = rows.iter().map(row_to_summary).collect::<Vec<_>>();
+        if has_more {
+            items.truncate(limit as usize);
+        }
+        let next_cursor = if has_more {
+            rows.get(limit as usize - 1).map(|row| {
+                encode_watch_cursor(&WatchCursor {
+                    created_at: row.get("created_at"),
+                    watch_id: row.get("watch_id"),
+                })
             })
-            .collect::<Vec<_>>();
+        } else {
+            None
+        };
 
         Ok(Page {
-            total: Some(total),
+            total,
             limit,
-            next_cursor: None,
+            next_cursor,
             items,
         })
     }
@@ -372,34 +441,74 @@ impl WatchStore for SqliteWatchStore {
         }
 
         let limit = clamp_page_limit(request.limit);
-        let rows = sqlx::query(
-            "SELECT r.job_id AS job_id, j.status AS status \
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_watch_history_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("watch.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
+        let mut sql = String::from(
+            "SELECT r.id AS run_id, r.created_at AS run_created_at, \
+                    r.job_id AS job_id, j.status AS status \
              FROM axon_source_watch_runs r \
              LEFT JOIN jobs j ON j.job_id = r.job_id \
-             WHERE r.watch_id = ? \
-             ORDER BY r.created_at DESC, r.id DESC \
-             LIMIT ?",
-        )
-        .bind(&request.watch_id.0)
-        .bind(limit as i64)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(sqlite_err)?;
+             WHERE r.watch_id = ?",
+        );
+        if request.status.is_some() {
+            sql.push_str(" AND j.status = ?");
+        }
+        if cursor.is_some() {
+            sql.push_str(" AND (r.created_at < ? OR (r.created_at = ? AND r.id < ?))");
+        }
+        sql.push_str(" ORDER BY r.created_at DESC, r.id DESC LIMIT ?");
+        let mut query = sqlx::query(&sql).bind(&request.watch_id.0);
+        if let Some(status) = request.status {
+            let status = serde_json::to_value(status)
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_string))
+                .unwrap_or_default();
+            query = query.bind(status);
+        }
+        if let Some(cursor) = cursor.as_ref() {
+            query = query
+                .bind(cursor.created_at)
+                .bind(cursor.created_at)
+                .bind(cursor.run_id);
+        }
+        let rows = query
+            .bind((limit + 1) as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
 
+        let has_more = rows.len() > limit as usize;
         let jobs = rows
             .iter()
+            .take(limit as usize)
             .map(|row| {
                 let job_id: String = row.get("job_id");
                 let status: Option<String> = row.get("status");
                 synth_descriptor(&job_id, status.as_deref())
             })
-            .filter(|job| request.status.is_none_or(|status| job.status == status))
             .collect();
+        let next_cursor = if has_more {
+            rows.get(limit as usize - 1).map(|row| {
+                encode_watch_history_cursor(&WatchHistoryCursor {
+                    created_at: row.get("run_created_at"),
+                    run_id: row.get("run_id"),
+                    job_id: None,
+                })
+            })
+        } else {
+            None
+        };
 
         Ok(WatchHistoryResult {
             watch_id: request.watch_id,
             jobs,
-            next_cursor: None,
+            next_cursor,
         })
     }
 

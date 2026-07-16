@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-api/src/schema_registry.rs` | `sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be` |
-| `crates/axon-api/src/source.rs` | `sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf` |
+| `crates/axon-api/src/source.rs` | `sha256:672c3884bb3d0635676b0a0593a753398259c10b602f83f5a489eb8278f86632` |
 | `crates/axon-api/src/source/boundary.rs` | `sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e` |
 | `crates/axon-api/src/source/capability.rs` | `sha256:bf54fdf7d1303fad31fc94ba72ef7cad5ba3374f26cadf6e61dd1daa7607ceb3` |
 | `crates/axon-api/src/source/common.rs` | `sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab` |
@@ -24,18 +24,18 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/graph.rs` | `sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511` |
 | `crates/axon-api/src/source/ids.rs` | `sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17` |
 | `crates/axon-api/src/source/job.rs` | `sha256:0266cb19a5aecea9c85aec5723ce33d2f882dc449c543b4fa57e9880a34d8d24` |
-| `crates/axon-api/src/source/job_listing.rs` | `sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271` |
+| `crates/axon-api/src/source/job_listing.rs` | `sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230` |
 | `crates/axon-api/src/source/lifecycle.rs` | `sha256:476e1beaf6df536d05126c2ff3ef5570bdab4408989e299c8c4345031011d87b` |
 | `crates/axon-api/src/source/listing.rs` | `sha256:990ca899c1aa0f9b3adaba1a0185c90da148a72e656670b42e11a5ecbc17f6cb` |
 | `crates/axon-api/src/source/provider_io.rs` | `sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3` |
-| `crates/axon-api/src/source/prune.rs` | `sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7` |
+| `crates/axon-api/src/source/prune.rs` | `sha256:8cfb0b8738a7384cff7c77d9fbc8754fba72d710f479336a79f4c3bc633ac0f0` |
 | `crates/axon-api/src/source/stage.rs` | `sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8` |
 | `crates/axon-api/src/source/state.rs` | `sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb` |
-| `crates/axon-api/src/source/status.rs` | `sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea` |
+| `crates/axon-api/src/source/status.rs` | `sha256:ab0e50262007e87270f9c6efacb0d161e2e9e1de623cacefd81ffec9e0ba7f19` |
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-error/src/api_error.rs` | `sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57` |
-| `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7` |
-| `xtask/src/schemas/api_defs.rs` | `sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a` |
+| `docs/pipeline-unification/schemas/api-dto-schema.md` | `sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc` |
+| `xtask/src/schemas/api_defs.rs` | `sha256:eb1f96a97bb18fe1ead84cec10fcac093e2509ecc3d69e9953d9fcdfc4de4716` |
 | `xtask/src/schemas/registry.rs` | `sha256:5dbf927545ddce3d543efaf93118da81c9c86fd33a3ed9a058cf77c8580c3f47` |
 
 ## Root Shape
@@ -168,3 +168,24 @@ Run `cargo xtask schemas generate --check`.
 | `ApiError` |
 | `SourceError` |
 | `SourceWarning` |
+
+## SourceRequest Fixture Matrix
+
+Definition-specific examples are validated from `crates/axon-api/tests/fixtures/schema`.
+
+| Source kind | Fixture |
+|---|---|
+| `web` | `source_request.web.valid.json` |
+| `local` | `source_request.local.valid.json` |
+| `git` | `source_request.git.valid.json` |
+| `registry` | `source_request.registry.valid.json` |
+| `feed` | `source_request.feed.valid.json` |
+| `reddit` | `source_request.reddit.valid.json` |
+| `youtube` | `source_request.youtube.valid.json` |
+| `session` | `source_request.session.valid.json` |
+| `cli_tool` | `source_request.cli_tool.valid.json` |
+| `mcp_tool` | `source_request.mcp_tool.valid.json` |
+| `memory` | `source_request.memory.valid.json` |
+| `upload` | `source_request.upload.valid.json` |
+
+`memory` is a schema projection for the canonical enum and remains an integration, not a source adapter.

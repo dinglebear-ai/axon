@@ -1,4 +1,4 @@
-use axon_api::source::{AuthSnapshot, LifecycleStatus, SourceRequest};
+use axon_api::source::{AuthScope, AuthSnapshot, LifecycleStatus, SourceRequest};
 use axon_jobs::boundary::FakeJobWatchStore;
 
 use super::*;
@@ -116,6 +116,53 @@ async fn enqueue_source_local_path_denied_without_local_scope() {
             .iter()
             .any(|warning| warning.code == "auth.scope_required"),
         "missing local-scope warning: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
+async fn enqueue_source_tool_denied_without_execute_scope() {
+    let store = FakeJobWatchStore::new();
+    let request = SourceRequest::new("cli:rg --help").without_embedding();
+    let mut auth = AuthSnapshot::default();
+    auth.granted_scopes = vec![AuthScope::Read, AuthScope::Write];
+
+    let result = enqueue_source(request, &store, Some(auth))
+        .await
+        .expect("enqueue should return failed source result");
+
+    assert!(result.job.is_none());
+    assert_eq!(result.status, LifecycleStatus::Failed);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "auth.scope_required"),
+        "missing execute-scope warning: {:?}",
+        result.warnings
+    );
+}
+
+#[tokio::test]
+async fn enqueue_source_tool_with_execute_scope_is_routable() {
+    let store = FakeJobWatchStore::new();
+    let request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let mut auth = AuthSnapshot::default();
+    auth.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Execute];
+
+    let result = enqueue_source(request, &store, Some(auth))
+        .await
+        .expect("enqueue");
+
+    assert_eq!(result.status, LifecycleStatus::Queued);
+    assert_eq!(result.source_kind, axon_api::source::SourceKind::McpTool);
+    assert_eq!(result.scope, axon_api::source::SourceScope::Tool);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "source.route.unsupported_dispatch"),
+        "tool source should route to a live dispatch family: {:?}",
         result.warnings
     );
 }

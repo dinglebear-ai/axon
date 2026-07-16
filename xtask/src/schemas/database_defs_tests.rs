@@ -65,7 +65,8 @@ fn jobs_table_carries_alter_table_add_column_fields_and_foreign_keys() {
         .map(|fk| fk.ref_table.as_str())
         .collect();
     assert!(fk_targets.contains(&"sources"));
-    assert!(fk_targets.contains(&"axon_watch_defs"));
+    assert!(fk_targets.contains(&"axon_source_watches"));
+    assert!(!fk_targets.contains(&"axon_watch_defs"));
 }
 
 #[test]

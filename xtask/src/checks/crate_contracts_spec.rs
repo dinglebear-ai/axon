@@ -58,6 +58,9 @@ pub fn all_crate_contracts() -> impl Iterator<Item = &'static CrateContract> {
 pub const CRATE_CONTRACTS: &[CrateContract] = &[
     CrateContract {
         name: "axon-adapters",
+        // Adapter-owned vertical routing intentionally consumes both the
+        // transitional extractor implementations and parser artifacts. The
+        // reverse edges are rejected by `check_adapter_vertical_boundary`.
         modules: &[
             "adapter",
             "registry",
@@ -98,13 +101,11 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "contract",
             "diff",
             "explain",
-            "ingest",
             "job_dto",
             "job_progress",
             "job_status",
             "mcp_schema",
             "migration",
-            "purge",
             "reset",
             "result",
             "schema_registry",

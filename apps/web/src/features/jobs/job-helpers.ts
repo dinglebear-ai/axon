@@ -27,10 +27,10 @@ export function doctorCheckSummary(services: Array<DoctorService & { name: strin
 export function collectJobs(status: PanelStatusResponse | null): ServiceJob[] {
   if (!status) return [];
   return [
-    ...withJobKind('crawl', status.payload.local_crawl_jobs),
-    ...withJobKind('extract', status.payload.local_extract_jobs),
-    ...withJobKind('embed', status.payload.local_embed_jobs),
-    ...withJobKind('ingest', status.payload.local_ingest_jobs)
+    ...withJobKind('source', status.payload.source_jobs),
+    ...withJobKind('extract', status.payload.extract_jobs),
+    ...withJobKind('watch', status.payload.watch_jobs),
+    ...withJobKind('prune', status.payload.prune_jobs)
   ].sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
 }
 

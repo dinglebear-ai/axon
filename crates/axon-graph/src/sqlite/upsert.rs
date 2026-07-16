@@ -1,7 +1,9 @@
 //! Candidate write path for the SQLite graph store.
 
 use axon_api::source::{GraphCandidate, GraphWriteResult, SourceId};
-use axon_core::redact::{DefaultRedactor, RedactionContext, redact_metadata};
+use axon_core::redact::{
+    DefaultRedactor, RedactionContext, Redactor, redact_metadata_checked, stamp_redaction_metadata,
+};
 use sqlx::SqlitePool;
 
 use super::header::{now_timestamp, stage_header};
@@ -95,11 +97,12 @@ async fn upsert_node(
     // Fail-closed redaction boundary: node properties are adapter-supplied
     // evidence metadata surfaced back through graph queries — scrub before
     // the write, not after.
-    let (redacted_properties, _redaction_report) = redact_metadata(
+    let (redacted_properties, redaction_report) = redact_metadata_checked(
         node.properties.clone(),
         &RedactionContext::graph_evidence(),
         &DefaultRedactor::new(),
-    );
+    )?;
+    let redacted_properties = stamp_redaction_metadata(redacted_properties, &redaction_report);
     // Read the existing node (if any) to merge authority + source ids.
     let existing = sqlx::query(
         "SELECT authority, source_ids_json, confidence FROM graph_nodes WHERE node_id = ?",
@@ -191,11 +194,12 @@ async fn upsert_edge(
     edge: &crate::merge::ResolvedEdge,
 ) -> StoreResult<()> {
     let now = now_timestamp();
-    let (redacted_properties, _redaction_report) = redact_metadata(
+    let (redacted_properties, redaction_report) = redact_metadata_checked(
         edge.properties.clone(),
         &RedactionContext::graph_evidence(),
         &DefaultRedactor::new(),
-    );
+    )?;
+    let redacted_properties = stamp_redaction_metadata(redacted_properties, &redaction_report);
     let existing = sqlx::query("SELECT authority, confidence FROM graph_edges WHERE edge_id = ?")
         .bind(&edge.edge_id.0)
         .fetch_optional(&mut **tx)
@@ -256,6 +260,27 @@ async fn upsert_evidence(
     edge_id: &str,
     ev: &axon_api::source::GraphEvidence,
 ) -> StoreResult<()> {
+    let redactor = DefaultRedactor::new();
+    let context = RedactionContext::graph_evidence();
+    let redacted_quote = ev
+        .quote
+        .as_ref()
+        .map(|quote| redactor.redact_text(quote, &context));
+    let mut evidence_metadata = ev.metadata.clone();
+    evidence_metadata.insert("source_id".to_string(), serde_json::json!(ev.source_id.0));
+    evidence_metadata.insert(
+        "source_item_key".to_string(),
+        serde_json::json!(ev.source_item_key.0),
+    );
+    if let Some(document_id) = &ev.document_id {
+        evidence_metadata.insert("document_id".to_string(), serde_json::json!(document_id.0));
+    }
+    if let Some(chunk_id) = &ev.chunk_id {
+        evidence_metadata.insert("chunk_id".to_string(), serde_json::json!(chunk_id.0));
+    }
+    let (redacted_metadata, redaction_report) =
+        redact_metadata_checked(evidence_metadata, &context, &redactor)?;
+    let redacted_metadata = stamp_redaction_metadata(redacted_metadata, &redaction_report);
     sqlx::query(
         "INSERT INTO graph_evidence (
             evidence_id, edge_id, evidence_kind, source_id, source_item_key,
@@ -274,9 +299,9 @@ async fn upsert_evidence(
     .bind(ev.document_id.as_ref().map(|d| d.0.clone()))
     .bind(ev.chunk_id.as_ref().map(|c| c.0.clone()))
     .bind(range_to_json(&ev.range)?)
-    .bind(&ev.quote)
+    .bind(&redacted_quote)
     .bind(ev.confidence as f64)
-    .bind(metadata_to_json(&ev.metadata)?)
+    .bind(metadata_to_json(&redacted_metadata)?)
     .execute(&mut **tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to upsert evidence: {e}")))?;

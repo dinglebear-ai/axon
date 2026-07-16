@@ -1,6 +1,6 @@
 # Axon HTTP API
 
-Last Modified: 2026-07-15
+Last Modified: 2026-07-16
 
 Axon exposes direct REST routes under `/v1`. Direct REST is the canonical client/server API; the legacy `POST /v1/actions` action-envelope endpoint has been removed (it now returns `404`, as does `POST /v1/migrate`).
 
@@ -47,6 +47,10 @@ Exploration routes:
 - `POST /v1/research` with the same body as search; HTTP requests time out after 35 seconds.
 - `POST /v1/research/stream` streams research synthesis (SSE) and emits a terminal `error` event if the 35-second stream budget is exceeded.
 
+Search and research responses report result indexing through
+`source_index_status`, `source_jobs`, and `source_jobs_rejected`. The returned
+job IDs use the same `/v1/jobs` lifecycle as every other durable operation.
+
 Header forwarding: source-backed web acquisition, `summarize`, and `extract`
 accept `headers` arrays for origin fetches. Treat these as credential
 forwarding: values may include bearer tokens or cookies for the target origin.
@@ -55,26 +59,22 @@ Axon rejects hop-by-hop and internal forwarding headers such as `Connection`,
 
 Domain filters are exact host matches against indexed `payload.domain` values. `example.com` does not include `docs.example.com` unless that exact host is requested.
 
-Artifact download:
+Artifacts:
 
-- `GET /v1/artifacts?path=<relative_path>` serves files under `output_dir` and requires read auth.
-- Clients must pass the `relative_path` from an `ArtifactHandle`; absolute server paths are not accepted.
-- `GET /v1/artifacts/{relative_path}` is kept as a legacy compatibility route; new clients should use the query form so slash-preserving paths are explicit.
+- `GET /v1/artifacts` lists artifact metadata and accepts `kind`, `source_id`, `job_id`, `limit`, and `cursor` filters.
+- `GET /v1/artifacts/{artifact_id}` returns metadata for one opaque artifact ID.
+- `GET /v1/artifacts/{artifact_id}/content` returns bytes; `download=true` forces attachment disposition.
+- Filesystem paths are never accepted or exposed by the public REST API.
 - Browser apps fetch authenticated bytes and render object URLs; image tags must not point directly at authenticated artifact routes.
 - Only raster image artifacts are inline preview content. HTML, SVG, unknown types, JSON, markdown, text, and logs are served as attachments with `nosniff`.
 
 Async job routes:
 
-- `POST /v1/extract`, `GET /v1/extract`, `GET /v1/extract/{id}`
+- `POST /v1/extract`
 - `GET /v1/jobs`, `GET /v1/jobs/{id}`, `GET /v1/jobs/{id}/events`
 
-The extract family also supports:
-
-- `GET /v1/{family}`
-- `POST /v1/{family}/{id}/cancel`
-- `POST /v1/{family}/cleanup`
-- `DELETE /v1/{family}`
-- `POST /v1/{family}/recover`
+Extract job status, cancellation, cleanup, clear, and recovery use canonical
+`/v1/jobs` routes. The legacy `/v1/extract/*` lifecycle routes were removed.
 
 Start responses use `202 Accepted`, a `Location` header, and:
 
@@ -87,8 +87,11 @@ Start responses use `202 Accepted`, a `Location` header, and:
 ```
 
 The removed indexing routes `POST /v1/embed`, `POST /v1/ingest`,
-`POST /v1/scrape`, and `POST /v1/crawl` now return `404`. Use
-`POST /v1/sources` for all source acquisition/indexing.
+`POST /v1/scrape`, `POST /v1/crawl`, the removed admin routes
+`POST /v1/purge`, `POST /v1/dedupe`, and the old `/v1/extract/*` lifecycle
+routes now return `404`. Use `POST /v1/sources` for source
+acquisition/indexing, `/v1/prune/*` for cleanup, and `/v1/jobs` for job
+lifecycle.
 
 Admin routes:
 
@@ -97,6 +100,11 @@ Admin routes:
 - `GET /v1/watches?limit=100`
 - `POST /v1/watches`
 - `POST /v1/watches/{watch_id}/exec`
+
+Cleanup selectors, including duplicate and targeted-removal policies, are
+inputs to prune planning/execution. There are no public `dedupe` or `purge`
+commands, actions, or REST subroutes. Memory uses the explicit `/v1/memories/*`
+resource routes; the deprecated singular `POST /v1/memory` route is absent.
 
 `POST /v1/migrate` is intentionally not exposed. Collection migration is a long-running CLI-only operation until it has a dedicated async job family.
 

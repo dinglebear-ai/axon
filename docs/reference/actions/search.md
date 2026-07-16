@@ -1,5 +1,5 @@
 # axon search
-Last Modified: 2026-03-03
+Last Modified: 2026-07-16
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
@@ -87,14 +87,14 @@ In human mode, `search` prints:
 - A summary of the auto-queued Source jobs (and any rejected URLs)
 
 With `--json`, the payload includes: `query`, `limit`, `offset`,
-`search_time_range`, `results`, `auto_crawl_status`, `crawl_jobs`, and
-`crawl_jobs_rejected`. The historical JSON field names are retained for
-compatibility, but their jobs are Source jobs.
+`search_time_range`, `results`, `source_index_status`, `source_jobs`, and
+`source_jobs_rejected`. Each job is a canonical Source job created from a
+bounded page-scoped `SourceRequest`.
 
 ## Behavior Notes
 
 - `search` runs synchronously (the SearXNG/Tavily search and Source-job enqueue both happen inline).
-- After returning results, `search` enqueues one bounded Source job per result URL (`search_and_crawl` in `axon-services`). The Source jobs themselves run asynchronously via the in-process worker pool.
+- After returning results, `search` enqueues one bounded Source job per result URL (`search_and_index_sources` in `axon-services`). The Source jobs themselves run asynchronously via the in-process worker pool.
 - If results were found but no URLs could be queued for Source indexing, `search` exits with an error reporting the first rejection reason.
 - `--wait` is not honored by `search` itself; inspect enqueued work with `axon jobs list` or `GET /v1/jobs`.
 - With `--json`, output is strict JSON on stdout.

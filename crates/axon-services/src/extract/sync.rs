@@ -6,6 +6,7 @@
 //! never depended on anything but `axon-core`/`axon-api`/`axon-llm`, so it
 //! moves here verbatim rather than needing a new crate of its own.
 
+use axon_adapters::vertical_registry::dispatch_by_url;
 use axon_api::job_dto::ExtractSyncResult;
 use axon_core::artifacts::write_configured_output;
 use axon_core::config::Config;
@@ -16,7 +17,7 @@ use axon_core::content::{
 use axon_core::http::axon_ua;
 use axon_core::logging::log_done;
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
-use axon_extract::{ScrapedDoc, VerticalContext, dispatch_by_url};
+use axon_extract::{ScrapedDoc, VerticalContext};
 use futures_util::StreamExt;
 use futures_util::stream;
 use std::collections::HashMap;

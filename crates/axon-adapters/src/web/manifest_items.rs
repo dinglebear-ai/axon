@@ -18,7 +18,7 @@ use super::url_parts::WebUrlParts;
 /// `Map` scope: the manifest is exactly the caller-supplied `map_urls`
 /// acquisition results — no network access, no content acquired later
 /// (`acquire` short-circuits to zero fetched items for this scope).
-pub(super) fn map_manifest_items(plan: &SourcePlan) -> Result<Vec<ManifestItem>> {
+pub(super) fn map_urls_manifest_items(plan: &SourcePlan) -> Result<Vec<ManifestItem>> {
     let urls = plan
         .route
         .validated_options

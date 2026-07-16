@@ -26,7 +26,6 @@ const DEPRECATED_SECTIONS: &[(&str, &str)] = &[
     ("endpoints", "[pipeline].endpoints"),
     ("mcp", "[server].mcp"),
     ("workers", "[pipeline] / [jobs] / [crawl]"),
-    ("freshness", "[jobs].freshness"),
     ("chrome", "[providers.render]"),
     ("scrape", "[crawl] / [providers.fetch]"),
     ("verticals", "[crawl].verticals"),
@@ -49,6 +48,22 @@ pub(super) fn deprecated_section_error(contents: &str) -> Option<String> {
         .filter(|(name, _)| table.contains_key(*name))
         .map(|(name, new_home)| format!("  [{name}] -> {new_home}"))
         .collect();
+    if table
+        .get("ask")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|ask| ask.contains_key("backend"))
+    {
+        hits.push("  [ask].backend -> AXON_LLM_BACKEND or [providers.llm].backend".to_string());
+    }
+    if table
+        .get("providers")
+        .and_then(toml::Value::as_table)
+        .and_then(|providers| providers.get("vector"))
+        .and_then(toml::Value::as_table)
+        .is_some_and(|vector| vector.contains_key("hnsw-ef-legacy"))
+    {
+        hits.push("  [providers.vector].hnsw-ef-legacy -> [providers.vector].hnsw-ef".to_string());
+    }
     if hits.is_empty() {
         return None;
     }
@@ -129,11 +144,6 @@ fn apply_jobs(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.workers.jobs_retention_artifact_days = j.artifact_retention_days.map(i64::from);
     legacy.workers.jobs_retention_sweep_secs = j.retention_sweep_secs;
     legacy.workers.jobs_interactive_starvation_slo_secs = j.interactive_starvation_slo_secs;
-    legacy.freshness.tick_secs = j.freshness.tick_secs;
-    legacy.freshness.lease_secs = j.freshness.lease_secs;
-    legacy.freshness.max_due_per_tick = j.freshness.max_due_per_tick;
-    legacy.freshness.max_concurrent_runs = j.freshness.max_concurrent_runs;
-    legacy.freshness.run_retention_days = j.freshness.run_retention_days;
 }
 
 fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
@@ -167,7 +177,6 @@ fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     let v = &raw.providers.vector;
     legacy.search.hybrid_enabled = v.hybrid_enabled;
     legacy.search.hnsw_ef = v.hnsw_ef;
-    legacy.search.hnsw_ef_legacy = v.hnsw_ef_legacy;
     legacy.payload.structured_data_max_bytes = v.structured_data_max_bytes;
     legacy.qdrant.upsert_batch_size = v.upsert_batch_points;
     legacy.qdrant.upsert_parallelism = v.write_concurrency;
@@ -182,6 +191,7 @@ fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.qdrant.quantization_always_ram = v.quantization_always_ram;
 
     let l = &raw.providers.llm;
+    legacy.llm.backend = l.backend.clone();
     legacy.llm.completion_concurrency = l.completion_concurrency;
     legacy.llm.completion_timeout_secs = l.completion_timeout_secs;
     legacy.llm.codex_pool_idle_ttl_secs = l.codex_pool_idle_ttl_secs;

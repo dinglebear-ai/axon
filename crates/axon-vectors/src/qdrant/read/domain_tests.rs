@@ -18,7 +18,6 @@ fn domain_chunk0_filter_shape() {
 #[test]
 fn canonical_uri_from_payload_prefers_target_item_uri() {
     let payload = json!({
-        "url": "https://legacy.example/docs",
         "item_canonical_uri": "https://example.com/docs/page",
         "source_canonical_uri": "https://example.com/docs",
         "source_item_key": "page",
@@ -34,7 +33,6 @@ fn canonical_uri_from_payload_prefers_target_item_uri() {
 #[test]
 fn canonical_uri_from_payload_falls_back_to_chunk_locator() {
     let payload = json!({
-        "url": "https://legacy.example/docs",
         "chunk_locator": { "canonical_uri": "https://example.com/docs/page#chunk" }
     });
 

@@ -1,0 +1,38 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "no-cleanup-until-generation-published",
+  "counts": {
+    "chunks": 0,
+    "documents": 0,
+    "items": 1,
+    "vectors": 0
+  },
+  "expected_degraded_code": "provider.required_unavailable",
+  "fixture_kind": "source-job.provider-unavailable",
+  "generation_publish_state": "not_published",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "job_id": "job-upload-degraded",
+  "metadata_family": "upload",
+  "provider_degradation_behavior": "required-provider-fails-before-side-effects",
+  "redaction_status": "clean",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1",
+  "stage_sequence": [
+    "resolving",
+    "routing",
+    "discovering",
+    "fetching"
+  ]
+}

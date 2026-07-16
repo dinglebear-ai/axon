@@ -43,10 +43,10 @@ export type StackResponse = {
 
 export type PanelStatusResponse = {
   payload: {
-    local_crawl_jobs?: ServiceJob[];
-    local_extract_jobs?: ServiceJob[];
-    local_embed_jobs?: ServiceJob[];
-    local_ingest_jobs?: ServiceJob[];
+    source_jobs?: ServiceJob[];
+    extract_jobs?: ServiceJob[];
+    watch_jobs?: ServiceJob[];
+    prune_jobs?: ServiceJob[];
     totals?: Record<string, number>;
   };
   text: string;
@@ -58,9 +58,11 @@ export type ServiceJob = {
   status: string;
   updated_at: string;
   created_at: string;
-  kind?: 'crawl' | 'extract' | 'embed' | 'ingest';
+  kind?: 'source' | 'extract' | 'watch' | 'prune';
   error_text?: string | null;
   url?: string | null;
+  source?: string | null;
+  canonical_uri?: string | null;
   target?: string | null;
   source_type?: string | null;
   urls_json?: unknown;

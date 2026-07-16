@@ -86,7 +86,7 @@ pub struct ServerInfo {
 
 impl ServerInfo {
     pub fn current() -> Self {
-        Self::legacy_action_contract()
+        Self::action_contract()
     }
 
     pub fn rest_capabilities() -> Self {
@@ -100,7 +100,7 @@ impl ServerInfo {
         }
     }
 
-    pub fn legacy_action_contract() -> Self {
+    pub fn action_contract() -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             schema_version: CLIENT_SERVER_SCHEMA_VERSION.to_string(),
@@ -122,37 +122,35 @@ pub fn required_request_fields() -> Vec<String> {
 pub fn supported_actions() -> Vec<String> {
     [
         "status",
-        "scrape",
-        "summarize",
-        "screenshot",
-        "crawl.start",
-        "crawl.status",
-        "crawl.list",
-        "crawl.cancel",
-        "crawl.cleanup",
-        "crawl.clear",
-        "crawl.recover",
+        "source",
+        "jobs.get",
+        "jobs.events",
+        "jobs.cancel",
+        "jobs.retry",
+        "jobs.cleanup",
+        "jobs.recover",
         "extract.start",
-        "extract.status",
-        "extract.list",
-        "extract.cancel",
-        "extract.cleanup",
-        "extract.clear",
-        "extract.recover",
-        "embed.start",
-        "embed.status",
-        "embed.list",
-        "embed.cancel",
-        "embed.cleanup",
-        "embed.clear",
-        "embed.recover",
-        "ingest.start",
-        "ingest.status",
-        "ingest.list",
-        "ingest.cancel",
-        "ingest.cleanup",
-        "ingest.clear",
-        "ingest.recover",
+        "watch",
+        "memory",
+        "prune",
+        "ask",
+        "brand",
+        "diff",
+        "doctor",
+        "endpoints",
+        "evaluate",
+        "help",
+        "map",
+        "query",
+        "research",
+        "retrieve",
+        "screenshot",
+        "search",
+        "sources",
+        "domains",
+        "stats",
+        "suggest",
+        "summarize",
     ]
     .into_iter()
     .map(ToString::to_string)

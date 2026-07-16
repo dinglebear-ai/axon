@@ -27,7 +27,7 @@ axon monitor jobs [OPTIONS]
 
 | Subcommand | Description |
 |------------|-------------|
-| `jobs` | Emit crawl/extract/embed/ingest **start**, **completion**, **failure**, and **cancel** events. |
+| `jobs` | Emit unified source, extract, prune, and retrieval job **start**, **completion**, **failure**, and **cancel** events. |
 
 ## `monitor jobs` flags
 
@@ -53,7 +53,7 @@ axon monitor jobs --watch --interval-secs 2 --state-file /tmp/axon-monitor.json
 
 ## Behavior
 
-- Each event line corresponds to a job-state transition (start, completion, failure, cancel) across the crawl, extract, embed, and ingest families.
+- Each event line corresponds to a job-state transition (start, completion, failure, cancel) across canonical job kinds such as source and extract.
 - Without `--watch`, it emits a single batch of new events since the last run and exits — ideal for cron or one-shot checks.
 - With `--watch`, it polls on `--interval-secs` and streams events until interrupted.
 - The state file records last-seen statuses so repeated runs do not re-emit events that were already reported.

@@ -19,8 +19,6 @@ pub(super) struct TomlConfig {
     #[allow(dead_code)]
     pub build: TomlBuildSection,
     #[serde(default)]
-    pub services: TomlServicesSection,
-    #[serde(default)]
     pub llm: TomlLlmSection,
     #[serde(default)]
     pub search: TomlSearchSection,
@@ -53,8 +51,6 @@ pub(super) struct TomlConfig {
     #[serde(default)]
     pub workers: TomlWorkersSection,
     #[serde(default)]
-    pub freshness: TomlFreshnessSection,
-    #[serde(default)]
     pub chrome: TomlChromeSection,
     #[serde(default)]
     pub scrape: TomlScrapeSection,
@@ -78,6 +74,8 @@ pub(super) struct TomlBuildSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlLlmSection {
+    /// Completion backend. Env `AXON_LLM_BACKEND` wins.
+    pub backend: Option<String>,
     /// Synthesis model for Gemini headless. Env wins.
     pub synthesis_gemini_model: Option<String>,
     /// Direct chat model for Gemini headless. Env wins.
@@ -184,20 +182,6 @@ pub(super) struct TomlPayloadSection {
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(super) struct TomlServicesSection {
-    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
-    /// and warns; move to `QDRANT_URL` in `.env`.
-    pub qdrant_url: Option<String>,
-    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
-    /// and warns; move to `TEI_URL` in `.env`.
-    pub tei_url: Option<String>,
-    /// Deprecated compatibility fallback. Runtime still accepts this temporarily
-    /// and warns; move to `AXON_CHROME_REMOTE_URL` in `.env`.
-    pub chrome_remote_url: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlSearchSection {
     pub hybrid_enabled: Option<bool>,
     /// Candidates per prefetch arm before RRF fusion (clamped 10–500).
@@ -206,8 +190,6 @@ pub(super) struct TomlSearchSection {
     pub ask_hybrid_candidates: Option<usize>,
     /// HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
     pub hnsw_ef: Option<usize>,
-    /// HNSW ef for legacy unnamed-mode collections (clamped 16–256).
-    pub hnsw_ef_legacy: Option<usize>,
     /// Qdrant collection name.
     pub collection: Option<String>,
     /// When true (default), `research` fetches each top source's full page
@@ -219,10 +201,6 @@ pub(super) struct TomlSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlAskSection {
-    /// Deprecated compatibility field. Gemini headless is the only backend now,
-    /// so old `[ask] backend = "headless"` config is accepted and ignored.
-    #[serde(rename = "backend")]
-    pub _backend: Option<serde::de::IgnoredAny>,
     /// Max context characters passed to the LLM (clamped 20_000–1_000_000).
     pub max_context_chars: Option<usize>,
     /// Max chunks returned per ask query (clamped 3–40).
@@ -456,21 +434,6 @@ pub(super) struct TomlWorkersSection {
     /// Maximum reclaim attempts before a stale-running job is dead-lettered
     /// (marked failed) instead of re-queued. 0 disables the cap.
     pub max_job_attempts: Option<i64>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
-pub(super) struct TomlFreshnessSection {
-    /// Seconds between due-schedule sweeps. Default 60.
-    pub tick_secs: Option<u64>,
-    /// Lease TTL for one running freshness dispatch. Default 1800.
-    pub lease_secs: Option<u64>,
-    /// Due schedules claimed per scheduler tick. Default 4.
-    pub max_due_per_tick: Option<i64>,
-    /// Global concurrent freshness dispatches. Default 2.
-    pub max_concurrent_runs: Option<usize>,
-    /// Retention window for run history. Default 90 days.
-    pub run_retention_days: Option<i64>,
 }
 
 #[derive(Deserialize, Default)]

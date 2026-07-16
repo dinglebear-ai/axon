@@ -1,5 +1,5 @@
 # axon research
-Last Modified: 2026-06-13
+Last Modified: 2026-07-16
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
@@ -58,7 +58,7 @@ All global flags apply. Key flags:
 | `--limit <n>` | `10` | Maximum search results processed. |
 | `--search-time-range <range>` | — | Filter search results by time range: `day`, `week`, `month`, `year`. |
 | `--research-depth <n>` | — | Number of sources the LLM synthesizes over. When set, it overrides `--limit`; when unset, falls back to `--limit` (default `10`). |
-| `--skip-embed` | — | Queue research crawls without embedding their output. Embedding is enabled by default. |
+| `--skip-embed` | — | Queue research Source jobs without embedding their output. Embedding is enabled by default. |
 
 The synthesis model is selected through `AXON_LLM_BACKEND` and its backend-specific model variables (see [`docs/guides/configuration.md`](../../guides/configuration.md)). Gemini and Claude Opus model selections preserve full fetched source bodies instead of per-source truncating them.
 
@@ -92,6 +92,6 @@ axon research "Claude Code hooks" --skip-embed
 - Configure either `AXON_SEARXNG_URL` or `TAVILY_API_KEY`.
 - `--search-time-range` is applied to the search step before synthesis.
 - The synthesis prompt asks for plain text, not JSON. The service still accepts legacy `{"summary":"..."}` model responses and unwraps the `summary` field for compatibility.
-- With `--json`, stdout is strict command JSON. The payload includes `auto_crawl_status`, `crawl_jobs`, and `crawl_jobs_rejected` in addition to `summary`, `search_results`, and `extractions`. The historical JSON field names are retained for compatibility; the queued work is Source jobs.
+- With `--json`, stdout is strict command JSON. The payload includes `source_index_status`, `source_jobs`, and `source_jobs_rejected` in addition to `summary`, `search_results`, and `extractions`.
 - Research Source jobs inherit the global embed setting: embedding is on by default and disabled only with `--skip-embed`.
 - Progress logs redact the full user query by default and identify it by length/hash. Set `AXON_LOG_FULL_QUERIES=1` or `AXON_LOG_LEVEL=debug` only when full-query logging is intentional.

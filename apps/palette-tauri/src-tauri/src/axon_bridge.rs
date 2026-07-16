@@ -330,8 +330,11 @@ fn validate_axon_route(request: &AxonHttpRequest) -> Result<&str, String> {
     {
         return Err("request path must be a canonical /v1 route path".to_string());
     }
-    if matches!(request.method, HttpMethod::Get | HttpMethod::Delete) && request.body.is_some() {
-        return Err("GET and DELETE requests cannot include a body".to_string());
+    if request.method == HttpMethod::Get && request.body.is_some() {
+        return Err("GET requests cannot include a body".to_string());
+    }
+    if request.method == HttpMethod::Delete && request.body.is_some() && path != "/v1/jobs" {
+        return Err("DELETE requests cannot include a body except for /v1/jobs".to_string());
     }
     is_allowed_route(request.method, path)
         .then_some(path)
@@ -351,7 +354,7 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/watches"
         ) | (
             HttpMethod::Post,
-            // scrape/crawl/embed/ingest submit through the unified source
+            // page/site/local/repository inputs submit through the unified source
             // pipeline now (see actionRequest.ts) — the legacy verb routes
             // were removed server-side (confirmed 404 by
             // crates/axon-web/src/server/handlers/rest_tests.rs) and are
@@ -372,40 +375,20 @@ fn is_allowed_route(method: HttpMethod, path: &str) -> bool {
                 | "/v1/brand"
                 | "/v1/diff"
                 | "/v1/screenshot"
-                | "/v1/dedupe"
-                | "/v1/purge"
                 | "/v1/watches"
-        ) | (
-            HttpMethod::Post,
-            "/v1/crawl/cleanup"
-                | "/v1/crawl/recover"
-                | "/v1/embed/cleanup"
-                | "/v1/embed/recover"
-                | "/v1/extract/cleanup"
-                | "/v1/extract/recover"
-                | "/v1/ingest/cleanup"
-                | "/v1/ingest/recover"
-        ) | (
-            HttpMethod::Get | HttpMethod::Delete,
-            "/v1/crawl" | "/v1/embed" | "/v1/extract" | "/v1/ingest"
-        )
-    ) || matches_dynamic_job_route(method, path)
+                | "/v1/jobs/cleanup"
+                | "/v1/jobs/recover"
+        ) | (HttpMethod::Get | HttpMethod::Delete, "/v1/jobs")
+    ) || matches_dynamic_unified_job_route(method, path)
         || matches_dynamic_watch_route(method, path)
 }
 
-fn matches_dynamic_job_route(method: HttpMethod, path: &str) -> bool {
+fn matches_dynamic_unified_job_route(method: HttpMethod, path: &str) -> bool {
     let parts: Vec<_> = path.trim_start_matches('/').split('/').collect();
     match parts.as_slice() {
-        ["v1", family, id]
-            if matches!(*family, "crawl" | "embed" | "extract" | "ingest")
-                && method == HttpMethod::Get =>
-        {
-            is_uuid(id)
-        }
-        ["v1", family, id, "cancel"]
-            if matches!(*family, "crawl" | "embed" | "extract" | "ingest")
-                && method == HttpMethod::Post =>
-        {
+        ["v1", "jobs", id] if method == HttpMethod::Get => is_uuid(id),
+        ["v1", "jobs", id, "cancel" | "retry"] if method == HttpMethod::Post => is_uuid(id),
+        ["v1", "jobs", id, "events" | "artifacts" | "stream"] if method == HttpMethod::Get => {
             is_uuid(id)
         }
         _ => false,

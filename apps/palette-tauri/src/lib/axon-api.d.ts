@@ -259,73 +259,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_extract_jobs"];
+        get?: never;
         put?: never;
         post: operations["start_extract"];
-        delete: operations["clear_extract_jobs"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/extract/cleanup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["cleanup_extract_jobs"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/extract/recover": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["recover_extract_jobs"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/extract/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["extract_job_status"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/extract/{id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["cancel_extract_job"];
         delete?: never;
         options?: never;
         head?: never;
@@ -953,7 +889,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["dedupe"];
+        post: operations["prune_dedupe"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1001,7 +937,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["purge"];
+        post: operations["prune_purge"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1280,6 +1216,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/watches/{watch_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["watches_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/watches/{watch_id}/pause": {
         parameters: {
             query?: never;
@@ -1306,6 +1258,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["watches_resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/watches/{watch_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["watches_status"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1464,9 +1432,6 @@ export interface components {
             reason: string;
             required: boolean;
             secret_ref?: null | components["schemas"]["SecretRef"];
-        };
-        DedupeRequest: {
-            collection?: string | null;
         };
         DeleteMobileSessionResponse: {
             ok: boolean;
@@ -1876,20 +1841,6 @@ export interface components {
             original_job_id: components["schemas"]["JobId"];
             retry_job: components["schemas"]["JobDescriptor"];
         };
-        /**
-         * @description Typed job-status envelope so the `{ job, progress }` wire shape is a
-         *     registered OpenAPI schema (and thus reflected into the generated palette/
-         *     android clients) instead of an opaque `serde_json::Value`.
-         */
-        JobStatusResponse: {
-            /**
-             * @description Raw job record in the wire-compat shape (`status`, `result_json`,
-             *     timestamps, ...). Still `Value` because the job payloads are
-             *     heterogeneous; `progress` is the typed, cross-family projection of it.
-             */
-            job: unknown;
-            progress?: null | components["schemas"]["JobProgress"];
-        };
         JobSummary: {
             counts?: null | components["schemas"]["StageCounts"];
             created_at: components["schemas"]["Timestamp"];
@@ -2227,6 +2178,15 @@ export interface components {
             /** Format: int64 */
             vector_points: number;
         };
+        PruneDedupeRequest: {
+            collection?: string | null;
+        };
+        /** @description Result of `prune subaction=dedupe`. */
+        PruneDedupeResult: {
+            completed: boolean;
+            deleted: number;
+            duplicate_groups: number;
+        };
         /** @description Estimated impact counts for a plan (what *would* be deleted). */
         PruneEstimate: {
             /** Format: int64 */
@@ -2280,6 +2240,26 @@ export interface components {
          */
         PrunePlanRequest: {
             generation?: string | null;
+            target: string;
+        };
+        PrunePurgeRequest: {
+            collection?: string | null;
+            /** @description Preview only; defaults to true for destructive safety. */
+            dry_run?: boolean | null;
+            /** @description Match `target` as a prefix over a whole docs subtree / origin. */
+            prefix?: boolean;
+            /** @description URL (or seed-URL/origin when `prefix` is set) to delete from the index. */
+            target?: string | null;
+        };
+        /** @description Result of `prune subaction=purge`. */
+        PrunePurgeResult: {
+            deleted_points: number;
+            /** @description When true, nothing was deleted — counts reflect what *would* be removed. */
+            dry_run: boolean;
+            matched_points: number;
+            matched_url_count: number;
+            prefix: boolean;
+            sample_urls: string[];
             target: string;
         };
         /** @description The outcome of executing a prune plan. */
@@ -2383,39 +2363,6 @@ export interface components {
          * @enum {string}
          */
         PruneTargetKind: "vector" | "artifact" | "graph" | "memory" | "ledger" | "job_retention" | "cache";
-        PurgeRequest: {
-            collection?: string | null;
-            /**
-             * @description Preview only — count matches without deleting. **Defaults to `true`** for
-             *     agent safety: a bare `purge` previews; set `dry_run=false` to delete.
-             */
-            dry_run?: boolean | null;
-            /** @description Match `target` as a prefix over a whole docs subtree / origin. */
-            prefix?: boolean;
-            response_mode?: null | components["schemas"]["ResponseMode"];
-            /**
-             * @description URL (or seed-URL/origin when `prefix` is set) to delete from the index.
-             *     **Handler-required despite the `Option`:** the type is `Option<String>`
-             *     only so a missing field deserializes to a clean "target is required"
-             *     error instead of a serde rejection; `handle_purge` returns an error when
-             *     it is `None`. It is not an optional argument.
-             */
-            target?: string | null;
-        };
-        /**
-         * @description Result of a purge: counts of points/URLs matched (and deleted, unless this
-         *     was a `dry_run` preview).
-         */
-        PurgeResult: {
-            deleted_points: number;
-            /** @description When true, nothing was deleted — counts reflect what *would* be removed. */
-            dry_run: boolean;
-            matched_points: number;
-            matched_url_count: number;
-            prefix: boolean;
-            sample_urls: string[];
-            target: string;
-        };
         QueryHit: {
             /** Format: int64 */
             chunk_index?: number | null;
@@ -2468,7 +2415,7 @@ export interface components {
             warnings: components["schemas"]["SourceWarning"][];
         };
         /** @enum {string} */
-        ResponseMode: "path" | "inline" | "both" | "auto_inline";
+        ResponseMode: "auto" | "summary" | "full" | "inline" | "artifact" | "path" | "job_only";
         RestAskRequest: {
             /** Format: double */
             ask_authoritative_boost?: number | null;
@@ -3002,7 +2949,7 @@ export interface components {
         WatchId: string;
         WatchRequest: {
             collection?: string | null;
-            embed: boolean;
+            embed?: boolean;
             enabled?: boolean | null;
             options: components["schemas"]["AdapterOptions"];
             schedule: components["schemas"]["WatchSchedule"];
@@ -3840,47 +3787,6 @@ export interface operations {
             };
         };
     };
-    list_extract_jobs: {
-        parameters: {
-            query?: {
-                limit?: number;
-                offset?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract jobs */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     start_extract: {
         parameters: {
             query?: never;
@@ -3932,211 +3838,6 @@ export interface operations {
             };
             /** @description Upstream extract service unavailable */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    clear_extract_jobs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract clear result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    cleanup_extract_jobs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract cleanup result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    recover_extract_jobs: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract recovery result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    extract_job_status: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Extract job ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract job status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobStatusResponse"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Job not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    cancel_extract_job: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Extract job ID */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Extract cancellation result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6391,7 +6092,7 @@ export interface operations {
             };
         };
     };
-    dedupe: {
+    prune_dedupe: {
         parameters: {
             query?: never;
             header?: never;
@@ -6400,11 +6101,11 @@ export interface operations {
         };
         requestBody?: {
             content: {
-                "application/json": null | components["schemas"]["DedupeRequest"];
+                "application/json": null | components["schemas"]["PruneDedupeRequest"];
             };
         };
         responses: {
-            /** @description Dedupe result */
+            /** @description Prune dedupe result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6413,7 +6114,7 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Invalid dedupe request */
+            /** @description Invalid prune dedupe request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -6580,7 +6281,7 @@ export interface operations {
             };
         };
     };
-    purge: {
+    prune_purge: {
         parameters: {
             query?: never;
             header?: never;
@@ -6589,20 +6290,20 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PurgeRequest"];
+                "application/json": components["schemas"]["PrunePurgeRequest"];
             };
         };
         responses: {
-            /** @description Purge result (counts of points/URLs matched or deleted) */
+            /** @description Prune purge result (counts of points/URLs matched or deleted) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PurgeResult"];
+                    "application/json": components["schemas"]["PrunePurgeResult"];
                 };
             };
-            /** @description Invalid purge request */
+            /** @description Invalid prune purge request */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -7844,6 +7545,65 @@ export interface operations {
             };
         };
     };
+    watches_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Watch execution history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch history lookup failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     watches_pause: {
         parameters: {
             query?: never;
@@ -7952,6 +7712,65 @@ export interface operations {
                 };
             };
             /** @description Watch storage unavailable */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    watches_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Watch ID */
+                watch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Watch status with latest source job summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Watch status unavailable */
             502: {
                 headers: {
                     [name: string]: unknown;

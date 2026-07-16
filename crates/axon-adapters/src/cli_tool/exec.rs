@@ -14,13 +14,13 @@ use super::CliToolError;
 use crate::cli_tool::CliToolSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ExecutionOutcome {
-    pub(super) stdout: String,
-    pub(super) stderr: String,
-    pub(super) exit_code: Option<i32>,
+pub(crate) struct ExecutionOutcome {
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) exit_code: Option<i32>,
 }
 
-pub(super) fn execute_command(source: &CliToolSource) -> Result<ExecutionOutcome, CliToolError> {
+pub(crate) fn execute_command(source: &CliToolSource) -> Result<ExecutionOutcome, CliToolError> {
     let mut command = Command::new(&source.command);
     command.args(&source.argv);
     command.env_clear();

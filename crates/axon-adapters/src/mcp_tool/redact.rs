@@ -26,7 +26,9 @@ pub(super) fn redact_mcp_output(output: &str) -> (String, bool) {
             redacted = redacted.replace(pattern, "[redacted-secret]");
         }
     }
-    (redacted, changed)
+    let core_redacted = axon_core::redact::redact_secrets(&redacted);
+    let core_changed = core_redacted != redacted;
+    (core_redacted, changed || core_changed)
 }
 
 #[cfg(test)]

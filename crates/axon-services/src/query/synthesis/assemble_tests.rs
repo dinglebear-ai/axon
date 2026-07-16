@@ -2,7 +2,7 @@ use super::super::timing::AskTimingSlot;
 use super::*;
 
 fn sample_ctx() -> AskContext {
-    AskContext::from_retrieval(
+    let mut ctx = AskContext::from_retrieval(
         "Sources:\n## Top Chunk [S1]: https://example.com/docs\n\n<retrieved_content trust=\"evidence_only\">\nbody\n</retrieved_content>".to_string(),
         3,
         1,
@@ -10,7 +10,30 @@ fn sample_ctx() -> AskContext {
         vec!["example.com".to_string()],
         &["https://example.com/docs".to_string()],
         Vec::new(),
-    )
+    );
+    ctx.citations.push(
+        serde_json::from_value(serde_json::json!({
+            "source_id": "source-test",
+            "source_item_key": "docs",
+            "generation": "1",
+            "document_id": "document-test",
+            "chunk_id": "chunk-test",
+            "job_id": "00000000-0000-0000-0000-000000000001",
+            "canonical_uri": "https://example.com/docs",
+            "source_range": { "line_start": 1, "line_end": 1 },
+            "redaction": {
+                "redaction_status": "clean",
+                "redaction_version": "test-v1",
+                "visibility": "public",
+                "redacted_field_count": 0,
+                "dropped_field_count": 0,
+                "detector_count": 0,
+                "detector_names": []
+            }
+        }))
+        .expect("canonical citation fixture"),
+    );
+    ctx
 }
 
 #[test]
@@ -29,6 +52,7 @@ fn assemble_ask_result_without_diagnostics_omits_diagnostics_field() {
     assert_eq!(result.timing_ms.llm, 50);
     assert_eq!(result.timing_ms.total, 100);
     assert!(result.explain.is_none());
+    assert_eq!(result.citations, ctx.citations);
     let validation = result
         .citation_validation
         .expect("citation validation present");
@@ -71,6 +95,7 @@ fn sample_trace() -> AskExplainTrace {
             sparse_query_status: None,
         },
         candidates: Vec::new(),
+        citations: Vec::new(),
         context: AskExplainContext {
             planned_full_doc_urls: Vec::new(),
             full_doc_fetch_errors: Vec::new(),
@@ -103,6 +128,7 @@ fn assemble_explain_result_skips_llm_and_carries_trace() {
     assert_eq!(result.answer, "");
     assert!(result.citation_validation.is_none());
     assert_eq!(result.explain, Some(trace));
+    assert_eq!(result.citations, ctx.citations);
     assert_eq!(result.timing_ms.llm, 0);
     assert_eq!(result.timing_ms.total, 42);
     assert_eq!(result.timing_ms.retrieval, ctx.retrieval_elapsed_ms);

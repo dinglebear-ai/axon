@@ -127,7 +127,7 @@ fn automation_script_ref_wraps_validated_path() {
 #[test]
 fn build_discovery_config_applies_defaults_when_no_options_set() {
     let plan = plan_with_options(MetadataMap::new());
-    let cfg = build_discovery_config(&plan, std::env::temp_dir());
+    let cfg = build_discovery_config(&plan);
 
     assert!(!cfg.embed);
     assert_eq!(cfg.render_mode, axon_core::config::RenderMode::AutoSwitch);
@@ -149,7 +149,7 @@ fn build_discovery_config_honors_crawl_options() {
     values.insert("url_blacklist".to_string(), json!(["/blocked"]));
     let plan = plan_with_options(values);
 
-    let cfg = build_discovery_config(&plan, std::env::temp_dir());
+    let cfg = build_discovery_config(&plan);
 
     assert_eq!(cfg.render_mode, axon_core::config::RenderMode::Chrome);
     assert_eq!(cfg.max_pages, 25);

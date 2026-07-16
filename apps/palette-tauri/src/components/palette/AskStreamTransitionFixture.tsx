@@ -24,8 +24,18 @@ const streamingRun: RunState = {
       content: "A skill is a reusable instruction pack",
       pending: true,
       activities: [
-        { id: "act1", kind: "thinking", label: "Thinking", detail: "Planning retrieval and answer synthesis" },
-        { id: "act2", kind: "tool", label: "Retrieving context", detail: "Querying collection axon" },
+        {
+          id: "act1",
+          kind: "thinking",
+          label: "Thinking",
+          detail: "Planning retrieval and answer synthesis",
+        },
+        {
+          id: "act2",
+          kind: "tool",
+          label: "Retrieving context",
+          detail: "Querying collection axon",
+        },
       ],
     },
   ],
@@ -49,7 +59,10 @@ const completeRun: RunState = {
     status: 0,
     method: "POST",
     path: "/v1/ask/stream",
-    payload: { answer: "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails." },
+    payload: {
+      answer:
+        "A skill is a reusable instruction pack that gives an agent domain-specific workflow, tools, and guardrails.",
+    },
   },
   transcript: [
     { id: "u1", role: "user", content: "what is a skill?" },
@@ -80,14 +93,18 @@ const chatRun: RunState = {
     status: 200,
     method: "POST",
     path: "/v1/chat",
-    payload: { answer: "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata." },
+    payload: {
+      answer:
+        "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata.",
+    },
   },
   transcript: [
     { id: "u1", role: "user", content: "how do I create a Claude Code plugin?" },
     {
       id: "a1",
       role: "assistant",
-      content: "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata.",
+      content:
+        "Claude Code plugins are packaged workflows with a manifest, optional skills, and distribution metadata.",
     },
   ],
 };
@@ -96,17 +113,17 @@ const chatToolRun: RunState = {
   ...chatRun,
   transcript: [
     ...(chatRun.transcript ?? []),
-    { id: "tool-u1", role: "user", content: "/crawl https://developers.openai.com/codex" },
+    { id: "tool-u1", role: "user", content: "/source-site https://developers.openai.com/codex" },
     {
       id: "tool-a1",
       role: "assistant",
       content: [
-        "### Crawl queued",
+        "### Site source queued",
         "",
-        "- Command: `/crawl https://developers.openai.com/codex`",
+        "- Command: `/source-site https://developers.openai.com/codex`",
         "- Request: `POST /v1/sources`",
         "- HTTP: 202",
-        "- Job id: `crawl_01JZ0PALETTE`",
+        "- Job id: `source_01JZ0PALETTE`",
         "- Status: queued",
       ].join("\n"),
     },
@@ -118,7 +135,8 @@ const fixtureSuggestions: ChatSuggestion[] = [
     rank: 1,
     title: "Build plugins",
     url: "https://developers.openai.com/codex/build-plugins",
-    snippet: "Create, test, and distribute plugins for Codex with a plugin manifest and marketplace entry.",
+    snippet:
+      "Create, test, and distribute plugins for Codex with a plugin manifest and marketplace entry.",
     score: 0.918,
   },
   {
@@ -139,7 +157,8 @@ const fixtureSuggestions: ChatSuggestion[] = [
     rank: 4,
     title: "Local plugin workflow",
     url: "https://developers.openai.com/codex/local-plugins",
-    snippet: "Iterate locally with a plugin directory, reload plugins, and validate the package before sharing.",
+    snippet:
+      "Iterate locally with a plugin directory, reload plugins, and validate the package before sharing.",
     score: 0.802,
   },
 ];
@@ -150,7 +169,13 @@ export function AskStreamTransitionFixture() {
   const agentBubbles = params.get("agentBubbles") === "true";
   const chatMode = state === "chat";
   const chatToolMode = state === "chat-tool";
-  const run = chatToolMode ? chatToolRun : chatMode ? chatRun : state === "streaming" ? streamingRun : completeRun;
+  const run = chatToolMode
+    ? chatToolRun
+    : chatMode
+      ? chatRun
+      : state === "streaming"
+        ? streamingRun
+        : completeRun;
   const active = chatMode || chatToolMode ? chatAction : askAction;
   if (!active) return null;
   return (

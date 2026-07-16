@@ -33,11 +33,11 @@ type BrowseHeight = () => number;
 // 680×100 panel (52px command bar + 48px idle tray) + 20px inset all round.
 const COMPACT = { width: 720, height: 92 }; // launcher input only
 const COMPACT_SWITCHER = { width: 720, height: 480 }; // launcher + compact command overlays
-const TRAY = { width: 720, height: 140 }; // minimized crawl-job tray
+const TRAY = { width: 720, height: 140 }; // minimized source-job tray
 const SETTINGS = { width: 800, height: 560 };
 const HISTORY = { width: 760, height: 520 };
 const BROWSE_WIDTH = 760; // action-list browse view
-const JOB_MAX = { width: 1280, height: 470 }; // expanded crawl-job card (screen-relative cap)
+const JOB_MAX = { width: 1280, height: 470 }; // expanded source-job card (screen-relative cap)
 const RESULTS_MAX = { width: 1280, height: 860 }; // operation-result view (screen-relative cap)
 const SCREEN_MARGIN = 120; // gap kept from screen edges for the roomy views
 const BROWSE_SCREEN_MARGIN = 80; // gap kept from screen edges for the browse view

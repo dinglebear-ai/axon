@@ -48,7 +48,7 @@ fn run() {
 fn ignores_non_sensitive_log_calls() {
     let source = r#"
 fn run() {
-    tracing::info!(count = 3, "freshness scheduler reclaimed stale leases");
+    tracing::info!(count = 3, "source-watch scheduler reclaimed stale leases");
 }
 "#;
 

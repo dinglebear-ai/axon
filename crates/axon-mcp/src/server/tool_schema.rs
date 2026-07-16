@@ -1,3 +1,6 @@
+use super::system_requests::{
+    CollectionsSubaction, McpSystemRequest, ResetSubaction, WatchMcpRequest,
+};
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::schema::{AxonRequest, ExtractSubaction, JobsSubaction, MemorySubaction};
 use axon_api::schema_registry::prune_public_job_kind_schemas;
@@ -17,7 +20,7 @@ pub(super) fn mcp_tool_schema_markdown() -> String {
         serde_json::to_string_pretty(&Value::Object(axon_tool_input_schema().as_ref().clone()))
             .unwrap_or_else(|_| "{}".to_string());
     format!(
-        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` selects an operation within subaction families; many families default it when omitted\n- `response_mode` supports `path|inline|both|auto_inline`; most actions default to `path`, while `scrape` and `retrieve` default to inline paged document reads\n\n## JSON Schema\n\n```json\n{}\n```\n",
+        "# Axon MCP Tool Schema\n\nURI: `{}`\n\nSingle tool name: `axon`\n\nRouting contract:\n- `action` is required\n- `subaction` selects an operation within subaction families; many families default it when omitted\n- `response_mode` supports `path|inline|both|auto_inline`; most actions default to `path`, while `retrieve` defaults to inline paged document reads\n\n## JSON Schema\n\n```json\n{}\n```\n",
         MCP_TOOL_SCHEMA_URI, schema_json
     )
 }
@@ -30,6 +33,9 @@ fn build_axon_tool_input_schema() -> rmcp::model::JsonObject {
                 "properties": {},
             })
         });
+    append_system_request_branches(&mut schema);
+    replace_watch_request_schema(&mut schema);
+    sanitize_prune_schema(&mut schema);
 
     let supported_actions = server_authz::mcp_action_names();
     let supported_set: HashSet<&str> = supported_actions.iter().copied().collect();
@@ -93,7 +99,8 @@ fn enrich_tool_input_schema(schema: &mut Value, supported_actions: &[&'static st
             "index_with": ["source"],
             "async_jobs": ["extract"],
             "poll_async_jobs_with": {
-                "subaction": "status",
+                "action": "jobs",
+                "subaction": "get",
                 "required_field": "job_id"
             },
             "artifact_first": {
@@ -210,7 +217,72 @@ fn axon_subaction_metadata() -> Value {
         "extract": enum_values_for::<ExtractSubaction>(),
         "jobs": enum_values_for::<JobsSubaction>(),
         "memory": enum_values_for::<MemorySubaction>(),
+        "prune": ["plan", "exec"],
+        "collections": enum_values_for::<CollectionsSubaction>(),
+        "reset": enum_values_for::<ResetSubaction>(),
     })
+}
+
+fn append_system_request_branches(schema: &mut Value) {
+    let generated =
+        serde_json::to_value(rmcp::schemars::schema_for!(McpSystemRequest)).unwrap_or(Value::Null);
+    let Some(branches) = generated.get("oneOf").and_then(Value::as_array) else {
+        return;
+    };
+    if let Some(target) = schema.get_mut("oneOf").and_then(Value::as_array_mut) {
+        target.extend(branches.iter().cloned());
+    }
+    let Some(definitions) = generated.get("$defs").and_then(Value::as_object) else {
+        return;
+    };
+    if let Some(target) = schema.get_mut("$defs").and_then(Value::as_object_mut) {
+        target.extend(definitions.clone());
+    }
+}
+
+fn replace_watch_request_schema(schema: &mut Value) {
+    let generated =
+        serde_json::to_value(rmcp::schemars::schema_for!(WatchMcpRequest)).unwrap_or(Value::Null);
+    let Some(watch) = generated
+        .get("$defs")
+        .and_then(|defs| defs.get("WatchMcpRequest"))
+    else {
+        return;
+    };
+    if let Some(definitions) = schema.get_mut("$defs").and_then(Value::as_object_mut) {
+        definitions.insert("WatchRequest".to_string(), watch.clone());
+        if let Some(extra) = generated.get("$defs").and_then(Value::as_object) {
+            for (name, value) in extra {
+                if name != "WatchMcpRequest" {
+                    definitions.insert(name.clone(), value.clone());
+                }
+            }
+        }
+    }
+}
+
+fn sanitize_prune_schema(schema: &mut Value) {
+    let Some(prune) = schema.pointer_mut("/$defs/PruneMcpRequest") else {
+        return;
+    };
+    if let Some(object) = prune.as_object_mut() {
+        object.insert(
+            "description".to_string(),
+            json!("Canonical cleanup planning and execution. Only plan and exec are public subactions."),
+        );
+        if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+            properties.remove("collection");
+            if let Some(subaction) = properties
+                .get_mut("subaction")
+                .and_then(Value::as_object_mut)
+            {
+                subaction.insert(
+                    "description".to_string(),
+                    json!("plan or exec; defaults to plan"),
+                );
+            }
+        }
+    }
 }
 
 fn axon_required_field_metadata() -> Value {
