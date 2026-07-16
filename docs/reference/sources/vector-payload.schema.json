@@ -1049,26 +1049,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -1567,26 +1547,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -2055,26 +2015,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -2538,26 +2478,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -2982,26 +2902,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -3524,26 +3424,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -4048,26 +3928,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -4586,26 +4446,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -5631,26 +5471,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "tool_name"
               ]
             },
@@ -6160,26 +5980,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -6697,26 +6497,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -7226,26 +7006,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -7773,26 +7533,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -7908,6 +7648,10 @@
       "minLength": 1,
       "type": "string"
     },
+    "chunk_title": {
+      "minLength": 1,
+      "type": "string"
+    },
     "chunking_fallback": {
       "minLength": 1,
       "type": "string"
@@ -7977,8 +7721,21 @@
       "minLength": 1,
       "type": "string"
     },
-    "detector_names": {
+    "content_title": {
+      "minLength": 1,
       "type": "string"
+    },
+    "detector_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "detector_names": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
     },
     "docker_image": {
       "type": "string"
@@ -8003,7 +7760,8 @@
       "x-qdrant-index": "keyword"
     },
     "dropped_field_count": {
-      "type": "string"
+      "minimum": 0,
+      "type": "integer"
     },
     "embedded_at": {
       "format": "date-time",
@@ -8165,6 +7923,18 @@
     "package_version": {
       "type": "string"
     },
+    "parser_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "parser_method": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "parser_version": {
+      "minLength": 1,
+      "type": "string"
+    },
     "payload_contract_version": {
       "const": "2026-07-01",
       "type": "string",
@@ -8175,7 +7945,8 @@
       "type": "string"
     },
     "redacted_field_count": {
-      "type": "string"
+      "minimum": 0,
+      "type": "integer"
     },
     "redaction_status": {
       "enum": [
@@ -8188,6 +7959,7 @@
       "x-qdrant-index": "keyword"
     },
     "redaction_version": {
+      "minLength": 1,
       "type": "string"
     },
     "reddit_author": {
@@ -8463,6 +8235,7 @@
     "chunk_id",
     "chunk_index",
     "content_kind",
+    "chunk_content_kind",
     "content_hash",
     "chunk_hash",
     "chunk_text",
@@ -8470,6 +8243,11 @@
     "source_range",
     "visibility",
     "redaction_status",
+    "redaction_version",
+    "redacted_field_count",
+    "dropped_field_count",
+    "detector_count",
+    "detector_names",
     "job_id",
     "document_status",
     "embedding_model",
@@ -8504,6 +8282,7 @@
     "contract_version": "2026-07-01",
     "examples": [
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-code-0",
         "chunk_index": 0,
@@ -8547,8 +8326,11 @@
         "committed_generation": null,
         "content_hash": "sha256:codehash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-code",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8563,7 +8345,9 @@
         "job_id": "job-code",
         "manifest": true,
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "code",
@@ -8596,6 +8380,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-feed-0",
         "chunk_index": 0,
@@ -8633,8 +8418,11 @@
         "committed_generation": null,
         "content_hash": "sha256:feedhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-feed",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8649,7 +8437,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-feed",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "feed",
@@ -8682,6 +8472,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-social-0",
         "chunk_index": 0,
@@ -8719,8 +8510,11 @@
         "committed_generation": null,
         "content_hash": "sha256:socialhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-social",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8729,7 +8523,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-social",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "reddit_author": "reddit_author",
         "reddit_created_utc": "reddit_created_utc",
         "reddit_distinguished": "reddit_distinguished",
@@ -8776,6 +8572,7 @@
       {
         "channel": "channel",
         "channel_url": "channel_url",
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-media-0",
         "chunk_index": 0,
@@ -8813,8 +8610,11 @@
         "committed_generation": null,
         "content_hash": "sha256:mediahash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-media",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8824,7 +8624,9 @@
         "job_id": "job-media",
         "media_url": "media_url",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "segment_kind": "segment_kind",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
@@ -8867,6 +8669,7 @@
         "yt_view_count": "yt_view_count"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-web-0",
         "chunk_index": 0,
@@ -8904,8 +8707,11 @@
         "committed_generation": null,
         "content_hash": "sha256:webhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-web",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8917,7 +8723,9 @@
         "job_id": "job-web",
         "normalization_version": "normalization_version",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "web",
@@ -8967,6 +8775,7 @@
         "web_url": "web_url"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-package-0",
         "chunk_index": 0,
@@ -9004,8 +8813,11 @@
         "committed_generation": null,
         "content_hash": "sha256:packagehash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-package",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9017,7 +8829,9 @@
         "package_name": "axon",
         "package_version": "6.2.1",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "package",
@@ -9049,6 +8863,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-session-0",
         "chunk_index": 0,
@@ -9086,8 +8901,11 @@
         "committed_generation": null,
         "content_hash": "sha256:sessionhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-session",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9096,7 +8914,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-session",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "session_id": "session-session",
         "session_provider": "codex",
         "session_skill_name": "test-driven-development",
@@ -9133,6 +8953,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-graph-0",
         "chunk_index": 0,
@@ -9170,8 +8991,11 @@
         "committed_generation": null,
         "content_hash": "sha256:graphhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-graph",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9188,7 +9012,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-graph",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "graph",
@@ -9220,6 +9046,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-memory-0",
         "chunk_index": 0,
@@ -9257,10 +9084,11 @@
         "committed_generation": null,
         "content_hash": "sha256:memoryhash",
         "content_kind": "content_kind",
-        "detector_names": "detector_names",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-memory",
         "document_status": "prepared",
-        "dropped_field_count": "dropped_field_count",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9278,9 +9106,9 @@
         "memory_status": "active",
         "memory_type": "memory_type",
         "payload_contract_version": "2026-07-01",
-        "redacted_field_count": "redacted_field_count",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
-        "redaction_version": "redaction_version",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "memory",
@@ -9312,6 +9140,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-local-0",
         "chunk_index": 0,
@@ -9349,8 +9178,11 @@
         "committed_generation": null,
         "content_hash": "sha256:localhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-local",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9363,7 +9195,9 @@
         "local_git_remote": "local_git_remote",
         "local_path_key": "local_path_key",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "local",
@@ -9395,6 +9229,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-tool-0",
         "chunk_index": 0,
@@ -9432,8 +9267,11 @@
         "committed_generation": null,
         "content_hash": "sha256:toolhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-tool",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9442,7 +9280,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-tool",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "tool",
@@ -9478,6 +9318,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-docker-0",
         "chunk_index": 0,
@@ -9515,12 +9356,15 @@
         "committed_generation": null,
         "content_hash": "sha256:dockerhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "docker_image": "docker_image",
         "docker_port": "docker_port",
         "docker_service": "docker_service",
         "docker_volume": "docker_volume",
         "document_id": "doc-docker",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9529,7 +9373,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-docker",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "docker",
@@ -9561,6 +9407,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-env-0",
         "chunk_index": 0,
@@ -9598,8 +9445,11 @@
         "committed_generation": null,
         "content_hash": "sha256:envhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-env",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9610,7 +9460,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-env",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "env",
@@ -9642,6 +9494,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-upload-0",
         "chunk_index": 0,
@@ -9679,8 +9532,11 @@
         "committed_generation": null,
         "content_hash": "sha256:uploadhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-upload",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9689,7 +9545,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-upload",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "upload",
@@ -9896,12 +9754,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:52de43211f24ba88a608836ca5f0efc6596090d6b1e6fa13f526d6fd6e1fcbb5",
+        "checksum": "sha256:89f15d5b936244379a754c656fe9c0d2863b070870074bd5a84c29c41b6eba66",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:55f8765da736a12ea22220b8e0e85978f503a3ae36968c9482a5461c55a3d82b",
+        "checksum": "sha256:e6313e43941f06b361ec034e7d42868fdfae4609f2bd881e826015a045eeddb5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -9926,7 +9784,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:cab281602cd5247047d7d1db74f6f30262c40be37d2afa2344e8f8c39a1313db",
+        "checksum": "sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -10066,11 +9924,7 @@
           "memory_scope_kind",
           "memory_scope_value",
           "memory_confidence",
-          "memory_salience",
-          "redaction_version",
-          "redacted_field_count",
-          "dropped_field_count",
-          "detector_names"
+          "memory_salience"
         ],
         "source_family": "memory"
       },

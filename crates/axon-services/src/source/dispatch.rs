@@ -142,7 +142,7 @@ pub async fn dispatch_local(
 /// Git-repository source: adapter-owned materialization followed by the shared
 /// non-web document pipeline. The checkout guard stays alive through publish.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_git(
+pub(crate) async fn dispatch_git(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -177,7 +177,7 @@ pub async fn dispatch_git(
 /// Feed source: adapter-owned bounded fetch followed by the shared document
 /// pipeline.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_feed(
+pub(crate) async fn dispatch_feed(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -213,7 +213,7 @@ pub async fn dispatch_feed(
 /// Reddit source: adapter-owned OAuth and bounded acquisition followed by the
 /// shared document pipeline.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_reddit(
+pub(crate) async fn dispatch_reddit(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -249,7 +249,7 @@ pub async fn dispatch_reddit(
 /// YouTube source: adapter-owned yt-dlp acquisition followed by the shared
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_youtube(
+pub(crate) async fn dispatch_youtube(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -285,7 +285,7 @@ pub async fn dispatch_youtube(
 /// Registry source: adapter-owned package acquisition followed by the shared
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_registry(
+pub(crate) async fn dispatch_registry(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -321,7 +321,7 @@ pub async fn dispatch_registry(
 /// Session source: adapter-owned validated selection followed by the shared
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
-pub async fn dispatch_session(
+pub(crate) async fn dispatch_session(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,

@@ -1,5 +1,4 @@
-//! CLI wrapper for `axon prune plan|exec` — the target-state replacement for
-//! the legacy `dedupe`/`purge` commands
+//! CLI wrapper for `axon prune plan|exec`
 //! (`docs/pipeline-unification/surfaces/command-contract.md`).
 //!
 //! Thin shim over `axon_services::prune` — the CLI owns only target parsing,

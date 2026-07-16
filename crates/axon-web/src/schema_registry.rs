@@ -3,8 +3,10 @@
 mod admin_watch_routes;
 mod extract_routes;
 mod graph_routes;
+mod helpers;
 mod memory_routes;
 
+use helpers::*;
 use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -299,6 +301,51 @@ static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
         "artifact_content",
         "ArtifactContentDescriptor",
     ),
+    RestRouteSpec {
+        method: "GET",
+        path: "/v1/uploads",
+        operation_id: "list_uploads",
+        request_dto: Some("UploadListRequest"),
+        result_dto: "Page<UploadStatus>",
+        required_scope: "read",
+        mutates: false,
+        streaming: false,
+        responses: READ_RESPONSES,
+    },
+    write(
+        "POST",
+        "/v1/uploads",
+        "create_upload",
+        Some("UploadCreateRequest"),
+        "UploadCreateResult",
+    ),
+    read(
+        "GET",
+        "/v1/uploads/{upload_id}",
+        "get_upload",
+        "UploadStatus",
+    ),
+    write(
+        "PUT",
+        "/v1/uploads/{upload_id}/content",
+        "put_upload_content",
+        None,
+        "UploadStatus",
+    ),
+    write(
+        "POST",
+        "/v1/uploads/{upload_id}/complete",
+        "complete_upload",
+        Some("UploadCompleteRequest"),
+        "UploadCompleteResult",
+    ),
+    write(
+        "DELETE",
+        "/v1/uploads/{upload_id}",
+        "abort_upload",
+        Some("UploadAbortRequest"),
+        "UploadAbortResult",
+    ),
     job_read("GET", "/v1/jobs", "jobs_list", "JobListPage"),
     job_read("GET", "/v1/jobs/{id}", "jobs_status", "JobSummary"),
     job_read("GET", "/v1/jobs/{id}/events", "jobs_events", "JobEventPage"),
@@ -369,132 +416,4 @@ pub fn removed_routes() -> &'static [&'static str] {
         "/v1/extract/{id}",
         "/v1/extract/{id}/cancel",
     ]
-}
-
-const READ_RESPONSES: &[&str] = &["200", "400", "401", "403", "404", "500", "502"];
-const ASK_RESPONSES: &[&str] = &["200", "400", "401", "403", "413", "502", "504"];
-const SYNC_WRITE_RESPONSES: &[&str] = &["200", "400", "401", "403", "404", "500", "502", "504"];
-const WRITE_RESPONSES: &[&str] = &["200", "400", "401", "403", "404", "422", "500", "502"];
-const STREAM_RESPONSES: &[&str] = &["200", "400", "401", "403", "404", "500", "502"];
-
-const fn read(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    RestRouteSpec {
-        method,
-        path,
-        operation_id,
-        request_dto: None,
-        result_dto,
-        required_scope: "read",
-        mutates: false,
-        streaming: false,
-        responses: READ_RESPONSES,
-    }
-}
-
-const fn write(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    request_dto: Option<&'static str>,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    RestRouteSpec {
-        method,
-        path,
-        operation_id,
-        request_dto,
-        result_dto,
-        required_scope: "write",
-        mutates: true,
-        streaming: false,
-        responses: WRITE_RESPONSES,
-    }
-}
-
-/// Like [`write`], but gated `axon:read` — for query-shaped surfaces
-/// (evaluate/suggest/summarize/memory search/context, U2-20/C6-20) that may
-/// still enqueue a background job as a side effect (`mutates: true`)
-/// without requiring `axon:write` to invoke.
-const fn read_query_surface(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    request_dto: Option<&'static str>,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    RestRouteSpec {
-        method,
-        path,
-        operation_id,
-        request_dto,
-        result_dto,
-        required_scope: "read",
-        mutates: true,
-        streaming: false,
-        responses: WRITE_RESPONSES,
-    }
-}
-
-const fn stream(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    request_dto: Option<&'static str>,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    RestRouteSpec {
-        method,
-        path,
-        operation_id,
-        request_dto,
-        result_dto,
-        required_scope: "write",
-        mutates: true,
-        streaming: true,
-        responses: STREAM_RESPONSES,
-    }
-}
-
-const fn job_read(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    read(method, path, operation_id, result_dto)
-}
-
-const fn job_write(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    request_dto: Option<&'static str>,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    write(method, path, operation_id, request_dto, result_dto)
-}
-
-const fn job_admin(
-    method: &'static str,
-    path: &'static str,
-    operation_id: &'static str,
-    request_dto: Option<&'static str>,
-    result_dto: &'static str,
-) -> RestRouteSpec {
-    RestRouteSpec {
-        method,
-        path,
-        operation_id,
-        request_dto,
-        result_dto,
-        required_scope: "admin",
-        mutates: true,
-        streaming: false,
-        responses: WRITE_RESPONSES,
-    }
 }

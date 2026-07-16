@@ -169,7 +169,7 @@ fn input_is_upload(input: &str) -> bool {
     } else {
         trimmed.to_string()
     };
-    axon_adapters::upload::upload_id_from_uri(&canonical).is_ok()
+    axon_adapters::upload::upload_source_identity_from_uri(&canonical).is_ok()
 }
 
 /// True when `input` resolves to an existing path on disk or uses the same

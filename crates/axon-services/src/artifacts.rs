@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 
 // Reset still owns these internal filesystem operations. Keeping them
 // crate-private avoids recreating the former public wildcard facade.
-pub(crate) use axon_core::artifacts::{artifact_root, count_files, purge_files};
+pub(crate) use crate::reset::artifacts::{artifact_root, count_files, purge_files};
 
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
@@ -176,7 +176,7 @@ async fn read_manifests(root: &Path) -> Result<Vec<StoredArtifactManifest>, ApiE
             && path
                 .file_stem()
                 .and_then(|value| value.to_str())
-                .is_some_and(|value| value.starts_with("artifact_"));
+                .is_some_and(|value| value.starts_with("art_"));
         if !is_manifest {
             continue;
         }
@@ -264,7 +264,7 @@ fn content_bytes(content: Option<ContentRef>) -> Result<Vec<u8>, ApiError> {
 }
 
 fn validate_artifact_id(value: &str) -> Result<(), ApiError> {
-    let valid = value.starts_with("artifact_")
+    let valid = value.starts_with("art_")
         && value.len() <= 160
         && value
             .chars()
@@ -274,7 +274,7 @@ fn validate_artifact_id(value: &str) -> Result<(), ApiError> {
     } else {
         Err(artifact_error(
             "artifact.invalid_id",
-            "artifact_id must be an opaque artifact_ identifier",
+            "artifact_id must be an opaque art_ identifier",
         ))
     }
 }

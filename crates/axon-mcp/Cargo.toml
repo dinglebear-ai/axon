@@ -12,6 +12,7 @@ axon-api = { path = "../axon-api" }
 axon-services = { path = "../axon-services" }
 axon-authz = { path = "../axon-authz" }
 axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 serde = { version = "1", features = ["derive"] }

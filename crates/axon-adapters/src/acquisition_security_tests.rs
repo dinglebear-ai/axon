@@ -11,7 +11,7 @@ async fn allowed_url_passes_and_emits_an_allow_audit_event() {
     let snapshot = sink.snapshot();
     assert_eq!(snapshot.events.len(), 1, "exactly one audit event emitted");
     let event = &snapshot.events[0];
-    assert_eq!(event.message, "ssrf_denied: ssrf policy check passed");
+    assert_eq!(event.message, "ssrf_allowed: ssrf policy check passed");
 }
 
 #[tokio::test]
@@ -112,11 +112,6 @@ async fn emitted_events_are_ssrf_kind_with_expected_policy_decision() {
 
     let snapshot = sink.snapshot();
     assert_eq!(snapshot.events.len(), 2);
-    // Both audit events are always kind `SsrfDenied` — the shared
-    // SsrfAuditDetail::policy_decision field (Allow/Deny) carries the
-    // pass/fail outcome, matching `build_ssrf_audit`'s design in
-    // `axon-core/src/http/ssrf/audit.rs`.
-    for event in &snapshot.events {
-        assert!(event.message.starts_with("ssrf_denied:"));
-    }
+    assert!(snapshot.events[0].message.starts_with("ssrf_allowed:"));
+    assert!(snapshot.events[1].message.starts_with("ssrf_denied:"));
 }

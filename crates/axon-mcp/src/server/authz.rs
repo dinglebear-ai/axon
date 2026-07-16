@@ -232,6 +232,12 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Query the read-only SourceGraph: kinds, resolve, query, node, edge, source subgraph",
         cost: "cheap",
     },
+    McpActionSpec {
+        name: "uploads",
+        scope: ActionScope::Write,
+        description: "Stage, inspect, complete, list, or abort durable uploads",
+        cost: "write",
+    },
 ];
 
 pub(super) fn mcp_action_names() -> Vec<&'static str> {
@@ -306,6 +312,13 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
     if action == "collections" {
         return match subaction {
             "" | "list" | "get" => Some("axon:read"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "uploads" {
+        return match subaction {
+            "" | "list" | "get" => Some("axon:read"),
+            "create" | "put_content" | "complete" | "abort" => Some("axon:write"),
             _ => Some("__deny__"),
         };
     }

@@ -398,7 +398,7 @@ rejects a payload missing any of them.
 | `payload_contract_version` | string | yes | no | Payload contract version (dated string, e.g. `2026-07-01`). |
 | `collection` | string | yes | no | Vector collection name. |
 | `vector_point_id` | string | yes | no | Store-level point id. |
-| `vector_namespace` | string | yes | yes | `documents`, `memory`, `graph`, `artifacts`, etc. |
+| `vector_namespace` | string | yes | yes | Vector slot, currently `dense` for source and memory documents. Memory isolation is carried by `source_kind=memory`. |
 | `source_family` | string | yes | yes | Payload-field-allowlist classification axis (14 values). See "Source Family Classification" above; distinct from `source_kind`. |
 | `source_id` | string | yes | yes | Source filter. |
 | `source_kind` | string | yes | yes | Source kind filter. |
@@ -836,8 +836,9 @@ source.
 
 ### Memory Fields
 
-Memory is not a source adapter, but memory records can use the same embedding,
-graph, status, and payload rules.
+Memory is a canonical source adapter. Its records use `source_kind=memory`, the
+shared document preparation and `dense` vector path, and the same graph,
+status, payload, and publication rules as every other source.
 
 | Field | Type | Required | Description |
 |---|---|---:|---|

@@ -1,7 +1,6 @@
 //! Durable memory store composition.
 
 use super::*;
-use axon_graph::store::GraphStore;
 use axon_memory::sqlite::compact::CompactionSynthesizer;
 
 /// Real [`CompactionSynthesizer`] for the `compact` strategy
@@ -69,10 +68,7 @@ pub(crate) async fn memory_store(ctx: &ServiceContext) -> Result<Arc<dyn MemoryS
     let graph = SqliteGraphStore::connect(&path)
         .await
         .map_err(|e| anyhow::anyhow!("open memory graph mirror at {path}: {}", e.message))?;
-    let graph: Arc<dyn GraphStore> = Arc::new(graph);
-    let mirror = Arc::new(GraphBackedMemoryMirror::new(Arc::clone(&graph)));
-    let sqlite: Arc<dyn MemoryStore> =
-        Arc::new(GraphBackedMemoryStore::new(sqlite, mirror).with_graph_store(Arc::clone(&graph)));
+    let graph: Arc<dyn axon_graph::store::GraphStore> = Arc::new(graph);
     let Some(runtime) = ctx.target_local_source_runtime() else {
         return Ok(sqlite);
     };

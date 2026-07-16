@@ -16,3 +16,14 @@ fn collections_is_read_only_and_rejects_mutation_subactions() {
         Some("__deny__")
     );
 }
+
+#[test]
+fn uploads_split_read_and_write_scopes_and_reject_unknown_subactions() {
+    for subaction in ["list", "get"] {
+        assert_eq!(required_scope_for("uploads", subaction), Some("axon:read"));
+    }
+    for subaction in ["create", "put_content", "complete", "abort"] {
+        assert_eq!(required_scope_for("uploads", subaction), Some("axon:write"));
+    }
+    assert_eq!(required_scope_for("uploads", "delete"), Some("__deny__"));
+}

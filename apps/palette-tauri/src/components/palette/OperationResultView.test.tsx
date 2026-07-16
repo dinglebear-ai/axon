@@ -302,7 +302,7 @@ describe("OperationResultView structured rendering", () => {
       />,
     );
     expect(screen.getByText("Result A")).toBeInTheDocument();
-    expect(screen.getByText("Queued source jobs")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Queued source jobs" })).toBeInTheDocument();
     expect(document.querySelector(".operation-status-dot")).toBeInTheDocument();
     expect(document.querySelector(".operation-dot")).not.toBeInTheDocument();
   });

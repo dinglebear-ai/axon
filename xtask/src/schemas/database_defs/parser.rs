@@ -219,7 +219,7 @@ pub(super) fn parse_create_table(
         .strip_prefix("IF NOT EXISTS ")
         .unwrap_or(after_kw.trim_start());
     let name_end = after_kw.find(['(', ' ']).unwrap_or(after_kw.len());
-    let name = after_kw[..name_end].trim().to_string();
+    let name = clean_column_ref(after_kw[..name_end].trim().to_string());
     let paren_start = after_kw.find('(')?;
     let (body, _) = balanced_parens(after_kw, paren_start)?;
 
@@ -278,7 +278,7 @@ pub(super) fn parse_create_index(stmt: &str) -> Option<IndexDef> {
     let name = after_kw[..on_idx].trim().to_string();
     let after_on = &after_kw[on_idx + " ON ".len()..];
     let paren_start = after_on.find('(')?;
-    let table = after_on[..paren_start].trim().to_string();
+    let table = clean_column_ref(after_on[..paren_start].trim().to_string());
     let (cols_raw, rest_start) = balanced_parens(after_on, paren_start)?;
     let columns = split_top_level(&cols_raw, ',');
     let rest = after_on[rest_start..].trim();

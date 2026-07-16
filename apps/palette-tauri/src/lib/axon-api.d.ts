@@ -43,15 +43,39 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Serve an artifact file from the configured output directory.
-         * @description The `path` query parameter is validated structurally and via canonicalization
-         *     before serving the file. Returns:
-         *     - `400` for structurally unsafe paths (absolute, `..`, etc.)
-         *     - `403` when the resolved path escapes the output root or is a symlink
-         *     - `404` when the file does not exist or is not a regular file
-         */
-        get: operations["serve_artifact_query"];
+        get: operations["list_artifacts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_artifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/artifacts/{artifact_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["artifact_content"];
         put?: never;
         post?: never;
         delete?: never;
@@ -800,22 +824,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/memory": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["memory"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/mobile/sessions": {
         parameters: {
             query?: never;
@@ -880,22 +888,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/prune/dedupe": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["prune_dedupe"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/v1/prune/exec": {
         parameters: {
             query?: never;
@@ -922,22 +914,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["prune_plan"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/prune/purge": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["prune_purge"];
         delete?: never;
         options?: never;
         head?: never;
@@ -986,6 +962,38 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["research_stream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reset/exec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["execute_reset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reset/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["plan_reset"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1168,6 +1176,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_uploads"];
+        put?: never;
+        post: operations["create_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_upload"];
+        put?: never;
+        post?: never;
+        delete: operations["abort_upload"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete_upload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/uploads/{upload_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_upload_content"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/watches": {
         parameters: {
             query?: never;
@@ -1342,6 +1414,18 @@ export interface components {
             /** @description Where this error may be surfaced. */
             visibility: components["schemas"]["ErrorVisibility"];
         };
+        ArtifactContentDescriptor: {
+            artifact_id: components["schemas"]["ArtifactId"];
+            bytes: number[];
+            content_type: string;
+            disposition: string;
+        };
+        ArtifactDetail: components["schemas"]["ArtifactSummary"] & {
+            content_url: string;
+            metadata: components["schemas"]["MetadataMap"];
+            producer_refs: string[];
+            retention: unknown;
+        };
         ArtifactHandle: {
             /** Format: int64 */
             bytes: number;
@@ -1356,6 +1440,14 @@ export interface components {
         ArtifactId: string;
         /** @enum {string} */
         ArtifactKind: "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
+        ArtifactListRequest: {
+            cursor?: string | null;
+            job_id?: null | components["schemas"]["JobId"];
+            kind?: null | components["schemas"]["ArtifactKind"];
+            /** Format: int32 */
+            limit?: number | null;
+            source_id?: null | components["schemas"]["SourceId"];
+        };
         /** @enum {string} */
         ArtifactMode: "none" | "on_large_output" | "always";
         ArtifactRef: {
@@ -1366,6 +1458,17 @@ export interface components {
             /** Format: int64 */
             size_bytes?: number | null;
             uri: string;
+        };
+        ArtifactSummary: {
+            artifact_id: components["schemas"]["ArtifactId"];
+            content_type?: string | null;
+            created_at: components["schemas"]["Timestamp"];
+            job_id?: null | components["schemas"]["JobId"];
+            kind: components["schemas"]["ArtifactKind"];
+            label?: string | null;
+            /** Format: int64 */
+            size_bytes: number;
+            source_id?: null | components["schemas"]["SourceId"];
         };
         AuthorityEvidence: {
             /** Format: float */
@@ -1394,6 +1497,18 @@ export interface components {
             name?: string | null;
             og_image?: string | null;
             url: string;
+        };
+        /** @description Canonical retrieval lineage for one cited chunk. */
+        CanonicalCitation: {
+            canonical_uri: string;
+            chunk_id: components["schemas"]["ChunkId"];
+            document_id: components["schemas"]["DocumentId"];
+            generation: components["schemas"]["SourceGenerationId"];
+            job_id: components["schemas"]["JobId"];
+            redaction: components["schemas"]["RedactionMetadata"];
+            source_id: components["schemas"]["SourceId"];
+            source_item_key: components["schemas"]["SourceItemKey"];
+            source_range: components["schemas"]["SourceRange"];
         };
         ChunkHint: {
             options: components["schemas"]["MetadataMap"];
@@ -2130,6 +2245,48 @@ export interface components {
             /** Format: int64 */
             total?: number | null;
         };
+        Page_ArtifactSummary: {
+            items: {
+                artifact_id: components["schemas"]["ArtifactId"];
+                content_type?: string | null;
+                created_at: components["schemas"]["Timestamp"];
+                job_id?: null | components["schemas"]["JobId"];
+                kind: components["schemas"]["ArtifactKind"];
+                label?: string | null;
+                /** Format: int64 */
+                size_bytes: number;
+                source_id?: null | components["schemas"]["SourceId"];
+            }[];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
+        Page_UploadStatus: {
+            items: {
+                artifact_id?: null | components["schemas"]["ArtifactId"];
+                /** Format: int64 */
+                bytes_received: number;
+                content_type: string;
+                created_at: components["schemas"]["Timestamp"];
+                expires_at: components["schemas"]["Timestamp"];
+                filename: string;
+                purpose: components["schemas"]["UploadPurpose"];
+                retention_until?: null | components["schemas"]["Timestamp"];
+                sha256?: string | null;
+                /** Format: int64 */
+                size_bytes: number;
+                source_ref?: string | null;
+                status: components["schemas"]["UploadStatusKind"];
+                upload_id: components["schemas"]["UploadId"];
+            }[];
+            /** Format: int32 */
+            limit: number;
+            next_cursor?: string | null;
+            /** Format: int64 */
+            total?: number | null;
+        };
         PanelCollectionsResponse: {
             collections: string[];
         };
@@ -2178,15 +2335,6 @@ export interface components {
             /** Format: int64 */
             vector_points: number;
         };
-        PruneDedupeRequest: {
-            collection?: string | null;
-        };
-        /** @description Result of `prune subaction=dedupe`. */
-        PruneDedupeResult: {
-            completed: boolean;
-            deleted: number;
-            duplicate_groups: number;
-        };
         /** @description Estimated impact counts for a plan (what *would* be deleted). */
         PruneEstimate: {
             /** Format: int64 */
@@ -2212,8 +2360,8 @@ export interface components {
          */
         PruneExecRequest: {
             confirm?: boolean;
-            generation?: string | null;
-            target: string;
+            prune_plan_id: string;
+            reason?: string;
         };
         /**
          * @description A resolved, reviewable plan describing exactly what a prune would delete.
@@ -2240,26 +2388,6 @@ export interface components {
          */
         PrunePlanRequest: {
             generation?: string | null;
-            target: string;
-        };
-        PrunePurgeRequest: {
-            collection?: string | null;
-            /** @description Preview only; defaults to true for destructive safety. */
-            dry_run?: boolean | null;
-            /** @description Match `target` as a prefix over a whole docs subtree / origin. */
-            prefix?: boolean;
-            /** @description URL (or seed-URL/origin when `prefix` is set) to delete from the index. */
-            target?: string | null;
-        };
-        /** @description Result of `prune subaction=purge`. */
-        PrunePurgeResult: {
-            deleted_points: number;
-            /** @description When true, nothing was deleted — counts reflect what *would* be removed. */
-            dry_run: boolean;
-            matched_points: number;
-            matched_url_count: number;
-            prefix: boolean;
-            sample_urls: string[];
             target: string;
         };
         /** @description The outcome of executing a prune plan. */
@@ -2367,6 +2495,7 @@ export interface components {
             /** Format: int64 */
             chunk_index?: number | null;
             chunking_method?: string | null;
+            citation: components["schemas"]["CanonicalCitation"];
             content_kind?: string | null;
             /** Format: int32 */
             end_line?: number | null;
@@ -2398,8 +2527,159 @@ export interface components {
             sqlite: string;
             tei: string;
         };
+        /** @description Bounded redaction provenance carried beside a public write. */
+        RedactionMetadata: {
+            /** Format: int32 */
+            detector_count: number;
+            detector_names: string[];
+            /** Format: int32 */
+            dropped_field_count: number;
+            /** Format: int32 */
+            redacted_field_count: number;
+            redaction_status: components["schemas"]["RedactionStatus"];
+            redaction_version: string;
+            visibility: components["schemas"]["Visibility"];
+        };
+        /**
+         * @description Outcome recorded for every public payload write.
+         * @enum {string}
+         */
+        RedactionStatus: "clean" | "redacted" | "failed";
         /** @enum {string} */
         RenderMode: "http" | "chrome" | "auto-switch";
+        ResetChunkReceipt: {
+            checkpoint: string;
+            chunk_id: string;
+            /** Format: int64 */
+            item_count: number;
+            status: string;
+            store: string;
+        };
+        /** @description Counts of what a reset recreated at the current fresh schema. */
+        ResetCreated: {
+            /** @description Qdrant collections created fresh (named dense + bm42 sparse). */
+            qdrant_collections: string[];
+            /**
+             * Format: int64
+             * @description Highest applied SQLite migration version after re-migration (0 when the
+             *     jobs store was not part of this reset).
+             */
+            sqlite_schema_version: number;
+        };
+        /** @description Counts of what a reset deleted (or would delete, when `dry_run`). */
+        ResetDeleted: {
+            /** @description Artifact files removed under the artifact root. */
+            artifact_files: number;
+            /** @description Qdrant collections dropped/recreated (usually just the configured one). */
+            qdrant_collections: string[];
+            /** @description SQLite tables present before reset (all live in the single unified DB). */
+            sqlite_tables: number;
+        };
+        ResetEstimate: {
+            /** Format: int64 */
+            artifact_files: number;
+            /** Format: int64 */
+            qdrant_collections: number;
+            /** Format: int64 */
+            qdrant_points: number;
+            /** Format: int64 */
+            sqlite_rows: number;
+            /** Format: int64 */
+            sqlite_tables: number;
+        };
+        ResetExecRequest: {
+            confirm?: boolean;
+            reason?: string;
+            reset_plan_id: string;
+        };
+        /** @enum {string} */
+        ResetExecutionState: "Planned" | "Executing" | "Completed" | "CompletedDegraded" | "Blocked" | "Failed";
+        ResetPlan: {
+            auth_snapshot_id: string;
+            blockers: string[];
+            config_snapshot_id: string;
+            confirmation_text: string;
+            estimates: components["schemas"]["ResetEstimate"];
+            expires_at_utc: string;
+            inventory_checksum: string;
+            plan_id: string;
+            receipt_path?: string | null;
+            reset_id: string;
+            stores: string[];
+        };
+        ResetPlanRequest: {
+            collection?: string | null;
+            dry_run?: boolean;
+            include_artifacts?: boolean | null;
+            include_config?: boolean;
+            reason?: string;
+            stores?: string[];
+        };
+        /** @description Result of `axon reset`. Mirrors the cutover-contract reset result shape. */
+        ResetResult: {
+            audit_events: string[];
+            auth_snapshot_id: string;
+            blockers: string[];
+            chunks: components["schemas"]["ResetChunkReceipt"][];
+            config_snapshot_id: string;
+            confirmation_text: string;
+            /** @description What was recreated at fresh schema (all zero/empty when `dry_run`). */
+            created: components["schemas"]["ResetCreated"];
+            /** @description What was deleted (all zero/empty when `dry_run`). */
+            deleted: components["schemas"]["ResetDeleted"];
+            /**
+             * @description True when nothing was mutated — counts and plan reflect what *would*
+             *     happen. This is the default.
+             */
+            dry_run: boolean;
+            estimates: components["schemas"]["ResetEstimate"];
+            execution_state: components["schemas"]["ResetExecutionState"];
+            inventory_checksum: string;
+            /** @description Per-store inventory + intended action. */
+            plan: components["schemas"]["ResetStorePlan"][];
+            plan_expires_at_utc: string;
+            /**
+             * @description Stable reusable plan id (`reset_plan_...`) bound to selected stores,
+             *     estimates, auth/config snapshots, inventory checksum, and TTL.
+             */
+            plan_id: string;
+            /**
+             * @description Filesystem path of the durable receipt, or the exact path execution
+             *     will write during a dry-run plan.
+             */
+            receipt_path?: string | null;
+            /** @description Stable id for this reset invocation (`reset_...`). */
+            reset_id: string;
+            reset_plan: components["schemas"]["ResetPlan"];
+            /** @description Stores selected for this reset, in canonical order. */
+            stores: string[];
+            /** @description Non-fatal warnings (unreachable service, partial delete, etc.). */
+            warnings: string[];
+        };
+        /**
+         * @description Per-store inventory row rendered in the dry-run plan and receipt. This is the
+         *     "exact stores, paths, collections, row counts, artifact counts" the cutover
+         *     contract requires the dry-run to print.
+         */
+        ResetStorePlan: {
+            /** @description One-line human-readable note (e.g. "would drop + recreate collection"). */
+            detail: string;
+            /**
+             * Format: int64
+             * @description Rows/points/files this store currently holds (best-effort; `None` when
+             *     the backing service was unreachable during planning).
+             */
+            item_count?: number | null;
+            /**
+             * @description Concrete backing location: a SQLite path, a Qdrant collection, or an
+             *     artifact directory.
+             */
+            location: string;
+            /** @description True when the store currently holds data that a reset would destroy. */
+            non_empty: boolean;
+            /** @description Logical store name (`jobs`/`ledger`/`graph`/`memory`/`vectors`/`artifacts`). */
+            store: string;
+        };
         ResolvedSource: {
             adapter: components["schemas"]["AdapterRef"];
             authority: components["schemas"]["AuthorityLevel"];
@@ -2887,6 +3167,67 @@ export interface components {
             span_id?: string | null;
             trace_id: string;
         };
+        UploadAbortRequest: {
+            reason?: string | null;
+        };
+        UploadAbortResult: {
+            deleted: boolean;
+            upload_id: components["schemas"]["UploadId"];
+        };
+        UploadCompleteRequest: {
+            sha256?: string | null;
+            source_options?: components["schemas"]["MetadataMap"];
+        };
+        UploadCompleteResult: {
+            artifact_id: components["schemas"]["ArtifactId"];
+            source_ref: string;
+            upload_id: components["schemas"]["UploadId"];
+            warnings: components["schemas"]["SourceWarning"][];
+        };
+        UploadCreateRequest: {
+            content_type: string;
+            filename: string;
+            metadata?: components["schemas"]["MetadataMap"];
+            purpose: components["schemas"]["UploadPurpose"];
+            sha256?: string | null;
+            /** Format: int64 */
+            size_bytes: number;
+            source_hint?: string | null;
+            source_id?: null | components["schemas"]["SourceId"];
+        };
+        UploadCreateResult: {
+            expires_at: components["schemas"]["Timestamp"];
+            put_url: string;
+            upload_id: components["schemas"]["UploadId"];
+        };
+        UploadId: string;
+        UploadListRequest: {
+            cursor?: string | null;
+            /** Format: int32 */
+            limit?: number | null;
+            status?: null | components["schemas"]["UploadStatusKind"];
+        };
+        /** @enum {string} */
+        UploadPurpose: "source_artifact" | "import" | "evaluation";
+        UploadStatus: {
+            artifact_id?: null | components["schemas"]["ArtifactId"];
+            /** Format: int64 */
+            bytes_received: number;
+            content_type: string;
+            created_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            filename: string;
+            purpose: components["schemas"]["UploadPurpose"];
+            retention_until?: null | components["schemas"]["Timestamp"];
+            sha256?: string | null;
+            /** Format: int64 */
+            size_bytes: number;
+            source_ref?: string | null;
+            status: components["schemas"]["UploadStatusKind"];
+            upload_id: components["schemas"]["UploadId"];
+        };
+        /** @enum {string} */
+        UploadStatusKind: "pending" | "received" | "completed" | "aborted" | "expired";
         UpsertMobileSessionRequest: {
             session: components["schemas"]["MobileSession"];
         };
@@ -3039,11 +3380,19 @@ export interface operations {
             };
         };
     };
-    serve_artifact_query: {
+    list_artifacts: {
         parameters: {
-            query: {
-                /** @description Slash-preserving relative path within the output directory, e.g. `jobs/abc/output.md` */
-                path: string;
+            query?: {
+                /** @description Filter by source identifier */
+                source_id?: string;
+                /** @description Filter by job identifier */
+                job_id?: string;
+                /** @description Filter by artifact kind */
+                kind?: string;
+                /** @description Page size, capped at 200 */
+                limit?: number;
+                /** @description Opaque artifact keyset cursor */
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -3051,14 +3400,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description File bytes with inferred content-type */
+            /** @description Paged artifact metadata */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Page_ArtifactSummary"];
+                };
             };
-            /** @description Structurally unsafe path */
+            /** @description Invalid artifact filter or cursor */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -3076,7 +3427,99 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
-            /** @description Path escapes the output root */
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_artifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque artifact identifier */
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artifact metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactDetail"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Artifact not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    artifact_content: {
+        parameters: {
+            query?: {
+                /** @description Force download disposition even for browser-safe image content. */
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Opaque artifact identifier */
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Artifact bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -5716,66 +6159,6 @@ export interface operations {
             };
         };
     };
-    memory: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RestMemoryRequest"];
-            };
-        };
-        responses: {
-            /** @description Persistent memory result (deprecated — use /v1/memories) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid memory request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector or embedding service unavailable */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     list_mobile_sessions: {
         parameters: {
             query?: never;
@@ -6092,75 +6475,6 @@ export interface operations {
             };
         };
     };
-    prune_dedupe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": null | components["schemas"]["PruneDedupeRequest"];
-            };
-        };
-        responses: {
-            /** @description Prune dedupe result */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Invalid prune dedupe request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Caller lacks axon:admin */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Unsupported request body content type */
-            415: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector service unavailable */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
     prune_exec: {
         parameters: {
             query?: never;
@@ -6262,66 +6576,6 @@ export interface operations {
                 };
             };
             /** @description Authenticated token lacks Axon access */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Upstream vector service unavailable */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-        };
-    };
-    prune_purge: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PrunePurgeRequest"];
-            };
-        };
-        responses: {
-            /** @description Prune purge result (counts of points/URLs matched or deleted) */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PrunePurgeResult"];
-                };
-            };
-            /** @description Invalid prune purge request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Missing or invalid authentication */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorBody"];
-                };
-            };
-            /** @description Caller lacks axon:admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -6502,6 +6756,117 @@ export interface operations {
                 };
             };
             /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    execute_reset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetExecRequest"];
+            };
+        };
+        responses: {
+            /** @description Reset execution receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetResult"];
+                };
+            };
+            /** @description Missing confirmation or invalid plan */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Caller lacks axon:admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Reviewed reset plan no longer matches inventory or configuration */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plan_reset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Reviewable reset plan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResetPlan"];
+                };
+            };
+            /** @description Invalid reset plan request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Caller lacks axon:admin */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -7197,6 +7562,296 @@ export interface operations {
             };
         };
     };
+    list_uploads: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["UploadStatusKind"];
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_UploadStatus"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadCreateRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadCreateResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadStatus"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    abort_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadAbortRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadAbortResult"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    complete_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadCompleteRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadCompleteResult"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_upload_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": number[];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadStatus"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Missing or invalid authentication */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Authenticated token lacks Axon access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     watches_list: {
         parameters: {
             query?: {
@@ -7547,7 +8202,11 @@ export interface operations {
     };
     watches_history: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number | null;
+                cursor?: string | null;
+                status?: null | components["schemas"]["LifecycleStatus"];
+            };
             header?: never;
             path: {
                 /** @description Watch ID */

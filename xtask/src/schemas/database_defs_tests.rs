@@ -46,15 +46,13 @@ fn parses_real_migrations_and_finds_known_tables() {
 }
 
 #[test]
-fn jobs_table_carries_alter_table_add_column_fields_and_foreign_keys() {
+fn jobs_table_carries_canonical_fields_and_foreign_keys() {
     let schema = parse_all(&workspace_root()).expect("parse real migration directories");
     let jobs = schema.tables.get("jobs").expect("jobs table parsed");
     let column_names: std::collections::BTreeSet<&str> =
         jobs.columns.iter().map(|c| c.name.as_str()).collect();
-    // Present from the base 0018 CREATE TABLE.
     assert!(column_names.contains("job_id"));
     assert!(column_names.contains("kind"));
-    // Added later via ALTER TABLE ... ADD COLUMN (0019 and 0022).
     assert!(column_names.contains("auth_snapshot_json"));
     assert!(column_names.contains("last_event_sequence"));
     assert!(column_names.contains("cooldown_until"));
@@ -103,6 +101,6 @@ fn build_artifact_fields_is_idempotent_and_free_of_legacy_names() {
         );
     }
     assert!(first["tables"].as_array().unwrap().len() > 10);
-    assert!(first["migrations"].as_array().unwrap().len() > 10);
-    assert!(!first["divergences"].as_array().unwrap().is_empty());
+    assert!(first["migrations"].as_array().unwrap().len() >= 4);
+    assert!(first["divergences"].as_array().unwrap().is_empty());
 }

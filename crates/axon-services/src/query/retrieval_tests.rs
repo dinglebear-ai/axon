@@ -108,7 +108,7 @@ async fn query_via_retrieval_maps_engine_hits_from_ctx_runtime() {
         result
             .results
             .iter()
-            .all(|hit| hit.citation.redaction.visibility == Visibility::Public)
+            .all(|hit| hit.citation.redaction.visibility == Visibility::Internal)
     );
     assert!(result.results.iter().any(|hit| hit.source == "example.com"));
     assert!(

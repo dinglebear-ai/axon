@@ -10,7 +10,7 @@ use crate::adapter::Result;
 
 #[async_trait]
 pub trait UploadSourceProvider: Send + Sync {
-    async fn get(&self, upload_id: &str) -> Result<Option<ArtifactReadResult>>;
+    async fn get(&self, source_identity: &str) -> Result<Option<ArtifactReadResult>>;
 }
 
 impl UploadSourceAdapter {
@@ -20,18 +20,18 @@ impl UploadSourceAdapter {
         provider: Arc<dyn UploadSourceProvider>,
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_adapter(&plan)?;
-        let upload_id = upload_id_from_uri(&plan.route.source.canonical_uri)?;
+        let source_identity = upload_source_identity_from_uri(&plan.route.source.canonical_uri)?;
         let staged = provider
-            .get(upload_id)
+            .get(source_identity)
             .await?
-            .ok_or_else(|| missing_upload(upload_id))?;
+            .ok_or_else(|| missing_upload(source_identity))?;
         let content = staged.content.ok_or_else(|| {
             ApiError::new(
                 "adapter.upload.content_missing",
                 axon_error::ErrorStage::Fetching,
                 "staged upload has no readable content",
             )
-            .with_context("upload_id", upload_id.to_string())
+            .with_context("source_identity", source_identity.to_string())
         })?;
         let temporary = tempfile::tempdir().map_err(|error| {
             ApiError::new(
@@ -43,9 +43,9 @@ impl UploadSourceAdapter {
         let path = temporary.path().join(staged_filename(
             &staged.metadata,
             &staged.content_type,
-            upload_id,
+            source_identity,
         ));
-        tokio::fs::write(&path, upload_bytes(content, upload_id)?)
+        tokio::fs::write(&path, upload_bytes(content, source_identity)?)
             .await
             .map_err(|error| {
                 ApiError::new(
@@ -53,7 +53,7 @@ impl UploadSourceAdapter {
                     axon_error::ErrorStage::Fetching,
                     error.to_string(),
                 )
-                .with_context("upload_id", upload_id.to_string())
+                .with_context("source_identity", source_identity.to_string())
             })?;
         plan.request.source = path.to_string_lossy().to_string();
         plan.request.scope = Some(SourceScope::File);
@@ -64,7 +64,7 @@ impl UploadSourceAdapter {
     }
 }
 
-pub fn upload_id_from_uri(uri: &str) -> Result<&str> {
+pub fn upload_source_identity_from_uri(uri: &str) -> Result<&str> {
     let upload_id = uri
         .strip_prefix("upload://")
         .or_else(|| uri.strip_prefix("artifact://"))
@@ -74,14 +74,14 @@ pub fn upload_id_from_uri(uri: &str) -> Result<&str> {
         || (!upload_id.starts_with("upl_") && !upload_id.starts_with("art_"))
         || upload_id
             .bytes()
-            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-' | b'.'))
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-'))
     {
         return Err(invalid_upload_uri(uri));
     }
     Ok(upload_id)
 }
 
-fn upload_bytes(content: ContentRef, upload_id: &str) -> Result<Vec<u8>> {
+fn upload_bytes(content: ContentRef, source_identity: &str) -> Result<Vec<u8>> {
     match content {
         ContentRef::InlineText { text } => Ok(text.into_bytes()),
         ContentRef::InlineBytes { bytes_base64, .. } => base64::engine::general_purpose::STANDARD
@@ -92,14 +92,14 @@ fn upload_bytes(content: ContentRef, upload_id: &str) -> Result<Vec<u8>> {
                     axon_error::ErrorStage::Fetching,
                     error.to_string(),
                 )
-                .with_context("upload_id", upload_id.to_string())
+                .with_context("source_identity", source_identity.to_string())
             }),
         ContentRef::Artifact { .. } | ContentRef::External { .. } => Err(ApiError::new(
             "adapter.upload.content_unresolved",
             axon_error::ErrorStage::Fetching,
             "staged upload content must be resolved before adapter materialization",
         )
-        .with_context("upload_id", upload_id.to_string())),
+        .with_context("source_identity", source_identity.to_string())),
     }
 }
 
@@ -134,11 +134,11 @@ fn invalid_upload_uri(uri: &str) -> ApiError {
     .with_context("canonical_uri", uri.to_string())
 }
 
-fn missing_upload(upload_id: &str) -> ApiError {
+fn missing_upload(source_identity: &str) -> ApiError {
     ApiError::new(
         "adapter.upload.not_found",
         axon_error::ErrorStage::Fetching,
         "staged upload identity does not exist",
     )
-    .with_context("upload_id", upload_id.to_string())
+    .with_context("source_identity", source_identity.to_string())
 }

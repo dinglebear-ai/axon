@@ -11,7 +11,7 @@
 //! `docs/pipeline-unification/delivery/cutover-contract.md` ("Required Reset
 //! Tooling", reset result shape).
 
-mod artifacts;
+pub(crate) mod artifacts;
 mod execution;
 mod plan_store;
 mod planning;

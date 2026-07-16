@@ -18,6 +18,7 @@ fn remember_req(body: &str) -> MemoryRequest {
         file: None,
         status: None,
         confidence: None,
+        salience: None,
         limit: None,
         depth: None,
         token_budget: None,

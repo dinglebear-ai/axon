@@ -1,0 +1,5 @@
+{
+  "source_kind": "memory",
+  "required_fact_kinds": ["memory_document"],
+  "optional_fact_kinds": ["memory_link", "supersedes"]
+}

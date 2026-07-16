@@ -7,7 +7,6 @@ fn client_server_envelope_serializes_nested_axon_request() {
     let request = ClientActionRequest {
         request_id: "req-1".to_string(),
         action: AxonRequest::Status(StatusRequest {
-            subaction: None,
             response_mode: None,
         }),
     };

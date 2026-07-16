@@ -1103,12 +1103,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
+        "checksum": "sha256:ab0e50262007e87270f9c6efacb0d161e2e9e1de623cacefd81ffec9e0ba7f19",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
       {
-        "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57",
+        "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e",
         "kind": "rust_module",
         "path": "crates/axon-error/src/api_error.rs"
       },

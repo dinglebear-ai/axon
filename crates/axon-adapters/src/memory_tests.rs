@@ -42,7 +42,7 @@ async fn materialization_fails_closed_for_missing_and_unauthorized_memory() {
         },
     );
     assert_eq!(
-        missing.materialize(plan.clone()).await.unwrap_err().code,
+        missing.materialize(plan.clone()).await.unwrap_err().code.0,
         "adapter.memory.not_found"
     );
 
@@ -54,7 +54,7 @@ async fn materialization_fails_closed_for_missing_and_unauthorized_memory() {
         },
     );
     assert_eq!(
-        sensitive.materialize(plan).await.unwrap_err().code,
+        sensitive.materialize(plan).await.unwrap_err().code.0,
         "adapter.memory.visibility_denied"
     );
 }

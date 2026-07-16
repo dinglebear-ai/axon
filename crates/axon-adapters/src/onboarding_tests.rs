@@ -43,15 +43,15 @@ fn onboarding_status_has_exact_contract_row_count() {
 }
 
 #[test]
-fn onboarding_keeps_memory_as_integration_not_source_adapter() {
+fn onboarding_treats_memory_as_a_canonical_source_adapter() {
     let memory = source_family_matrix()
         .iter()
-        .find(|spec| spec.family == SourceFamily::MemoryIntegration)
-        .expect("memory integration row");
+        .find(|spec| spec.family == SourceFamily::Memory)
+        .expect("memory source row");
     let status = onboarding_status(memory);
 
-    assert!(!memory.is_source_adapter);
-    assert!(memory.scopes.is_empty());
+    assert!(memory.is_source_adapter);
+    assert!(!memory.scopes.is_empty());
     assert!(status.adapter.complete);
     assert!(status.ledger.complete);
     assert!(status.docs.complete);

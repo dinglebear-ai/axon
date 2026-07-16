@@ -5,9 +5,7 @@
 //! authorization boundary ([`axon_authz::policy::SecurityPolicy::authorize_source`]),
 //! hands the request to [`axon_services::index_source`] (which classifies +
 //! acquires + dispatches to the right family bridge), and returns the resulting
-//! [`axon_api::source::SourceResult`] as JSON. All legacy indexing routes
-//! (`/v1/embed`, `/v1/ingest`, `/v1/scrape`, `/v1/crawl`) fold into this one
-//! route per the surface-removal contract.
+//! [`axon_api::source::SourceResult`] as JSON.
 //!
 //! ## Authorization
 //!

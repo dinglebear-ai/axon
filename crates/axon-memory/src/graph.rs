@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use axon_graph::store::GraphStore;
+use axon_graph::{GraphEdgeKind, store::GraphStore};
 
 use crate::store::{MemoryStore, Result};
 

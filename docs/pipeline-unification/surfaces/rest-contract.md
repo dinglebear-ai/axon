@@ -39,18 +39,10 @@ not exposed.
 
 Implemented today:
 
-- The direct-verb legacy routes this contract removes —
-  `/v1/scrape`, `/v1/crawl`, `/v1/embed`, `/v1/ingest`, `/v1/purge`, and
-  `/v1/dedupe` — are already gone from the router today, not merely planned
-  for removal. `POST /v1/embed`, `/v1/ingest`, `/v1/scrape`, and `/v1/crawl`
-  404 (verified by
-  `legacy_indexing_routes_are_absent_and_sources_present` in
-  `crates/axon-web/src/server/handlers/rest_tests.rs`); `/v1/purge` and
-  `/v1/dedupe` were relocated to the admin-scoped `/v1/prune/purge` and
-  `/v1/prune/dedupe` (U2-06/U2-09). `POST /v1/watch/{id}/run` was likewise
-  removed in favor of `POST /v1/watches/{watch_id}/exec`. The retained CLI
-  `axon scrape <url>` does not imply a retained `/v1/scrape` route; REST uses
-  `/v1/sources` with `scope=page`.
+- REST ingestion uses `POST /v1/sources`. Pruning uses only the reviewed
+  `POST /v1/prune/plan` and confirmed `POST /v1/prune/exec` lifecycle. Watch
+  execution uses `POST /v1/watches/{watch_id}/exec`. The retained CLI
+  `axon scrape <url>` maps to `/v1/sources` with `scope=page`.
   `/v1/extract`, by contrast, is **not** slated for removal — it stays the
   canonical explicit-structured-extraction route in this contract's end-state
   too (see "Extraction Routes" below) — and REST still exposes it today
@@ -238,14 +230,13 @@ authorizes the read.
 | `GET` | `/v1/artifacts/{artifact_id}` | read | Artifact metadata. |
 | `GET` | `/v1/artifacts/{artifact_id}/content` | read | Artifact bytes/content. |
 | `POST` | `/v1/uploads` | write | Create a prepared upload for remote file/session/source ingestion. |
+| `GET` | `/v1/uploads` | read | List staged uploads by opaque cursor and status. |
 | `GET` | `/v1/uploads/{upload_id}` | read | Upload metadata/status. |
 | `PUT` | `/v1/uploads/{upload_id}/content` | write | Upload bytes/content. |
 | `POST` | `/v1/uploads/{upload_id}/complete` | write | Finalize upload and return an artifact/source reference. |
 | `DELETE` | `/v1/uploads/{upload_id}` | write | Abort upload and delete staged bytes. |
 | `POST` | `/v1/prune/plan` | write/admin | Dry-run prune plan. |
 | `POST` | `/v1/prune/exec` | write/admin | Execute prune plan. |
-| `POST` | `/v1/prune/dedupe` | write/admin | Deduplicate near-identical vector chunks. |
-| `POST` | `/v1/prune/purge` | write/admin | Purge indexed content by source/url/filter. |
 | `GET` | `/v1/prune/jobs/{job_id}` | read | Prune job status projection. |
 | `POST` | `/v1/reset/plan` | write/admin | Plan destructive clean-slate reset. |
 | `POST` | `/v1/reset/exec` | write/admin | Execute confirmed clean-slate reset. |
@@ -1200,6 +1191,11 @@ Remote REST must not scan arbitrary server-local paths on behalf of the caller.
 
 `POST /v1/uploads` creates a staged upload.
 
+The returned `upl_*` is a staging identifier, not an artifact identifier.
+Completion verifies declared size, content type, and SHA-256, stores the bytes
+under a new `art_*`, and durably records the mapping. Expired or aborted staging
+bytes are removed; completed artifact retention remains explicit metadata.
+
 Request:
 
 ```json
@@ -1246,7 +1242,7 @@ Completion response:
   "data": {
     "upload_id": "upl_...",
     "artifact_id": "art_...",
-    "source_ref": "upload:upl_..."
+    "source_ref": "upload://upl_..."
   },
   "warnings": [],
   "request_id": "req_...",
@@ -1254,8 +1250,8 @@ Completion response:
 }
 ```
 
-`POST /v1/sources` accepts `source = "upload:<upload_id>"` or an explicit
-`upload_id` option when the adapter supports prepared uploads.
+`POST /v1/sources` accepts `source = "upload://<upload_id>"` or
+`source = "artifact://<artifact_id>"`; both route through the upload adapter.
 
 ## Capabilities
 
@@ -1496,8 +1492,6 @@ access logs/metrics.
 | `DELETE /v1/uploads/{upload_id}` | body `{ "reason"? }` | `{ "upload_id", "deleted": true }` | deletes staged bytes and marks upload aborted |
 | `POST /v1/prune/plan` | body `{ "targets", "include", "mode": "dry_run", "retention"?, "filters"? }` | `PrunePlan` with counts, risk flags, confirmation requirements | writes reusable prune plan artifact/row |
 | `POST /v1/prune/exec` | body `{ "prune_plan_id" }` or inline plan plus `confirm=true` | `JobDescriptor` | creates prune execution job |
-| `POST /v1/prune/dedupe` | body `{ "collection"?, "threshold"?, "source_id"?, "dry_run": bool }` | dedupe summary or `JobDescriptor` | scans VectorStore and deletes/marks duplicates only when not dry-run |
-| `POST /v1/prune/purge` | body `{ "source_id"?, "url"?, "prefix"?, "filters"?, "dry_run": bool, "confirm"?: bool }` | purge summary, prune plan, or `JobDescriptor` | creates prune debt/job and deletes only through prune execution |
 | `GET /v1/prune/jobs/{job_id}` | path `job_id` | prune job status, delete counts, verification state | none |
 | `POST /v1/reset/plan` | body `{ "stores", "dry_run": true, "collection"?, "include_artifacts"?, "include_config"?, "reason"? }` | `ResetPlan` with counts, risk flags, confirmation requirements | computes destructive reset plan only |
 | `POST /v1/reset/exec` | body `{ "reset_plan_id", "confirm": true, "reason"? }` | `JobDescriptor` or `ResetResult` when waited | executes selected destructive reset and writes receipt artifact |
@@ -1605,9 +1599,7 @@ The final HTTP router must not register these routes.
 | `POST /v1/ingest/sessions/prepared` | `POST /v1/uploads` then `POST /v1/sources` with `upload:<upload_id>` |
 | `POST /v1/watch` | `POST /v1/watches` |
 | `POST /v1/watch/{id}/run` | `POST /v1/watches/{watch_id}/exec` |
-| `POST /v1/memory` | `/v1/memories/*` routes by memory operation. **Note (C6-25, 2026-07-09 audit):** listed here as "removed" in the target route mapping, but the deprecated `POST /v1/memory` passthrough is intentionally still live in code pending client migration — see the follow-up plan tracked as P1-04. This is not a contradiction once that context is read; do not remove the passthrough without checking P1-04's status first. |
-| `POST /v1/purge` | `POST /v1/prune/purge` |
-| `POST /v1/dedupe` | `POST /v1/prune/dedupe` |
+| `POST /v1/memory` | `/v1/memories/*` routes by memory operation. |
 | `GET /v1/artifacts?path=...` | `GET /v1/artifacts/{artifact_id}/content` after artifact lookup |
 | `GET /v1/artifacts/{path}` | `GET /v1/artifacts/{artifact_id}/content` after artifact lookup |
 

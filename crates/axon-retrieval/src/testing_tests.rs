@@ -85,7 +85,7 @@ fn sample_result() -> RetrievalResult {
             generation: None,
             allowed_visibility: vec![Visibility::Public],
             namespace_filters: Vec::new(),
-            excluded_namespaces: Vec::new(),
+            excluded_source_kinds: Vec::new(),
             byte_budget: 4096,
             token_budget: 512,
         },
@@ -103,7 +103,7 @@ fn sample_request() -> RetrievalRequest {
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
-        excluded_namespaces: Vec::new(),
+        excluded_source_kinds: Vec::new(),
         byte_budget: 4096,
         token_budget: 512,
     }

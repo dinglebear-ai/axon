@@ -25737,6 +25737,257 @@
       "title": "TraceContext",
       "type": "object"
     },
+    "UploadAbortRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "UploadAbortRequest",
+      "type": "object"
+    },
+    "UploadAbortResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadAbortResult_UploadId"
+        }
+      },
+      "required": [
+        "upload_id",
+        "deleted"
+      ],
+      "title": "UploadAbortResult",
+      "type": "object"
+    },
+    "UploadAbortResult_UploadId": {
+      "type": "string"
+    },
+    "UploadCompleteRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_options": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "title": "UploadCompleteRequest",
+      "type": "object"
+    },
+    "UploadCompleteResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/UploadCompleteResult_ArtifactId"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadCompleteResult_UploadId"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/UploadCompleteResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "upload_id",
+        "artifact_id",
+        "source_ref",
+        "warnings"
+      ],
+      "title": "UploadCompleteResult",
+      "type": "object"
+    },
+    "UploadCompleteResult_ArtifactId": {
+      "type": "string"
+    },
+    "UploadCompleteResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "UploadCompleteResult_SourceItemKey": {
+      "type": "string"
+    },
+    "UploadCompleteResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/UploadCompleteResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadCompleteResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "UploadCompleteResult_UploadId": {
+      "type": "string"
+    },
+    "UploadContentRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadContentRequest_ContentRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "UploadContentRequest",
+      "type": "object"
+    },
+    "UploadContentRequest_ArtifactId": {
+      "type": "string"
+    },
+    "UploadContentRequest_ContentRef": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "inline_text",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bytes_base64": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "inline_bytes",
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bytes_base64",
+            "mime_type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/UploadContentRequest_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "integrity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "uri"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "UploadCreateRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -25802,134 +26053,53 @@
       ],
       "type": "string"
     },
-    "UploadResult": {
+    "UploadCreateResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "artifact": {
-          "$ref": "#/$defs/UploadResult_ArtifactRef"
+        "expires_at": {
+          "type": "string"
         },
-        "status": {
-          "$ref": "#/$defs/UploadResult_LifecycleStatus"
+        "put_url": {
+          "type": "string"
         },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/UploadResult_SourceWarning"
-          },
-          "type": "array"
+        "upload_id": {
+          "$ref": "#/$defs/UploadCreateResult_UploadId"
         }
       },
       "required": [
-        "artifact",
-        "status",
-        "warnings"
+        "upload_id",
+        "put_url",
+        "expires_at"
       ],
-      "title": "UploadResult",
+      "title": "UploadCreateResult",
       "type": "object"
     },
-    "UploadResult_ArtifactId": {
+    "UploadCreateResult_UploadId": {
       "type": "string"
     },
-    "UploadResult_ArtifactKind": {
-      "enum": [
-        "raw_content",
-        "normalized_content",
-        "manifest",
-        "report",
-        "screenshot",
-        "warc",
-        "provider_trace"
-      ],
-      "type": "string"
-    },
-    "UploadResult_ArtifactRef": {
+    "UploadListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "artifact_id": {
-          "$ref": "#/$defs/UploadResult_ArtifactId"
-        },
-        "artifact_kind": {
-          "$ref": "#/$defs/UploadResult_ArtifactKind"
-        },
-        "content_hash": {
+        "cursor": {
           "type": [
             "string",
             "null"
           ]
         },
-        "created_at": {
-          "type": "string"
-        },
-        "size_bytes": {
-          "format": "uint64",
+        "limit": {
+          "format": "uint32",
           "minimum": 0,
           "type": [
             "integer",
             "null"
           ]
         },
-        "uri": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "artifact_id",
-        "artifact_kind",
-        "uri",
-        "created_at"
-      ],
-      "type": "object"
-    },
-    "UploadResult_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "UploadResult_Severity": {
-      "enum": [
-        "debug",
-        "info",
-        "warning",
-        "degraded",
-        "failed",
-        "fatal"
-      ],
-      "type": "string"
-    },
-    "UploadResult_SourceItemKey": {
-      "type": "string"
-    },
-    "UploadResult_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/UploadResult_Severity"
-        },
-        "source_item_key": {
+        "status": {
           "anyOf": [
             {
-              "$ref": "#/$defs/UploadResult_SourceItemKey"
+              "$ref": "#/$defs/UploadListRequest_UploadStatusKind"
             },
             {
               "type": "null"
@@ -25937,13 +26107,120 @@
           ]
         }
       },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
+      "title": "UploadListRequest",
       "type": "object"
+    },
+    "UploadListRequest_UploadStatusKind": {
+      "enum": [
+        "pending",
+        "received",
+        "completed",
+        "aborted",
+        "expired"
+      ],
+      "type": "string"
+    },
+    "UploadStatus": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadStatus_ArtifactId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bytes_received": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_type": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "purpose": {
+          "$ref": "#/$defs/UploadStatus_UploadPurpose"
+        },
+        "retention_until": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/UploadStatus_UploadStatusKind"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadStatus_UploadId"
+        }
+      },
+      "required": [
+        "upload_id",
+        "status",
+        "filename",
+        "content_type",
+        "size_bytes",
+        "bytes_received",
+        "purpose",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "UploadStatus",
+      "type": "object"
+    },
+    "UploadStatus_ArtifactId": {
+      "type": "string"
+    },
+    "UploadStatus_UploadId": {
+      "type": "string"
+    },
+    "UploadStatus_UploadPurpose": {
+      "enum": [
+        "source_artifact",
+        "import",
+        "evaluation"
+      ],
+      "type": "string"
+    },
+    "UploadStatus_UploadStatusKind": {
+      "enum": [
+        "pending",
+        "received",
+        "completed",
+        "aborted",
+        "expired"
+      ],
+      "type": "string"
     },
     "VectorConfig": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -28359,7 +28636,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e",
+        "checksum": "sha256:fcfda23e0f4a826a24b966ee331351cc2979d65bb824331fb4467624b7906bb8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
       },
@@ -28389,7 +28666,7 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17",
+        "checksum": "sha256:f3897a8fd1c41a2af742b8dccfc6889618376629da5bfa92a5389c1b38c064ec",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },
@@ -28444,7 +28721,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57",
+        "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e",
         "kind": "rust_module",
         "path": "crates/axon-error/src/api_error.rs"
       },
@@ -28454,12 +28731,12 @@
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:eb1f96a97bb18fe1ead84cec10fcac093e2509ecc3d69e9953d9fcdfc4de4716",
+        "checksum": "sha256:dc589f2eacd4e9bb59318a1155946651aeaec8607184e74b45295ccd8a6f79f3",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:5dbf927545ddce3d543efaf93118da81c9c86fd33a3ed9a058cf77c8580c3f47",
+        "checksum": "sha256:4cafeb82adf22f4ccdabb5e11cb0d94dae551a13e52e27b4e4871f4acecaa782",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       }

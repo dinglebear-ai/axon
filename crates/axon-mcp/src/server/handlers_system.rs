@@ -19,6 +19,8 @@ const PRUNE_COLLECTION_PREFIX: &str = "collection:";
 
 #[path = "handlers_system/screenshot.rs"]
 mod screenshot;
+#[path = "handlers_system/uploads.rs"]
+mod uploads;
 
 #[cfg(test)]
 #[path = "handlers_system_tests.rs"]
@@ -364,6 +366,7 @@ fn help_payload() -> Value {
             "map": ["map"],
             "prune": ["plan", "exec"],
             "collections": ["list", "get"],
+            "uploads": ["list", "create", "get", "put_content", "complete", "abort"],
             "reset": ["plan", "exec"],
             "doctor": ["doctor"],
             "resolve": ["resolve"],

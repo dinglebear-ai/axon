@@ -5,10 +5,8 @@ use async_trait::async_trait;
 use axon_adapters::memory::{MemorySourceAccess, MemorySourceAdapter, MemorySourceProvider};
 use axon_adapters::upload::{UploadSourceAdapter, UploadSourceProvider};
 use axon_api::source::{
-    ArtifactHandle, ArtifactId, ArtifactKind, ArtifactReadResult, AuthMode, AuthScope,
-    AuthSnapshot, MemoryId, MemoryRecord, Visibility,
+    ArtifactReadResult, AuthMode, AuthScope, AuthSnapshot, MemoryId, MemoryRecord, Visibility,
 };
-use axon_core::boundary::ArtifactStore;
 use axon_core::logging::log_info;
 use axon_memory::store::MemoryStore;
 
@@ -32,25 +30,16 @@ impl MemorySourceProvider for ServiceMemorySourceProvider {
 }
 
 struct ServiceUploadSourceProvider {
-    store: Arc<dyn ArtifactStore>,
+    ctx: ServiceContext,
 }
 
 #[async_trait]
 impl UploadSourceProvider for ServiceUploadSourceProvider {
     async fn get(
         &self,
-        upload_id: &str,
+        source_identity: &str,
     ) -> axon_adapters::adapter::Result<Option<ArtifactReadResult>> {
-        let handle = ArtifactHandle {
-            artifact_id: ArtifactId::new(upload_id),
-            artifact_kind: ArtifactKind::RawContent,
-            uri: None,
-        };
-        match self.store.get(handle).await {
-            Ok(artifact) => Ok(Some(artifact)),
-            Err(error) if error.code.0 == "artifact.not_found" => Ok(None),
-            Err(error) => Err(error),
-        }
+        crate::uploads::resolve_upload_artifact(&self.ctx, source_identity).await
     }
 }
 
@@ -104,6 +93,7 @@ pub(crate) async fn dispatch_memory(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_upload(
+    ctx: &ServiceContext,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -120,9 +110,7 @@ pub(crate) async fn dispatch_upload(
     let acquired = adapter
         .materialize(
             family_source_plan(input, route, embed, Some(1), None),
-            Arc::new(ServiceUploadSourceProvider {
-                store: Arc::clone(&runtime.artifact_store),
-            }),
+            Arc::new(ServiceUploadSourceProvider { ctx: ctx.clone() }),
         )
         .await
         .map_err(|error| anyhow::anyhow!(error.to_string()))

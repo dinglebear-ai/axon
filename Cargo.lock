@@ -391,6 +391,7 @@ name = "axon"
 version = "6.2.2"
 dependencies = [
  "async-trait",
+ "axon-api",
  "axon-cli",
  "axon-core",
  "axon-llm",
@@ -738,6 +739,7 @@ dependencies = [
  "axon-core",
  "axon-services",
  "axum 0.8.9",
+ "base64",
  "chrono",
  "hex",
  "httpmock",

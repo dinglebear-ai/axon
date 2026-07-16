@@ -505,6 +505,25 @@
         "allowed_option_keys": [],
         "chunking_hints": [],
         "credential_requirements": [],
+        "default_scope": "api",
+        "execution_affinity": "worker",
+        "name": "memory",
+        "option_schema_id": "adapter:memory:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "authenticated_network",
+        "source_kind": "memory",
+        "supported_scopes": [
+          "api"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
         "default_scope": "package",
         "execution_affinity": "worker",
         "name": "npm",
@@ -600,7 +619,7 @@
         "parser_hints": [],
         "provider_requirements": [],
         "refresh_supported": true,
-        "safety_class": "public_network",
+        "safety_class": "authenticated_network",
         "source_kind": "upload",
         "supported_scopes": [
           "file"
@@ -1497,8 +1516,7 @@
           "superseded-memory"
         ],
         "family": "memory",
-        "integration": "memory",
-        "is_source_adapter": false,
+        "is_source_adapter": true,
         "may_access_local_paths": false,
         "may_call_render_provider": false,
         "may_execute_tools": false,
@@ -1517,17 +1535,27 @@
           "memory",
           "markdown"
         ],
-        "refresh_supported": false,
+        "refresh_supported": true,
         "required_graph_fact_kinds": [
           "memory_document"
         ],
-        "scopes": [],
-        "shorthand_patterns": [],
+        "scopes": [
+          {
+            "notes": "one durable memory record",
+            "required": true,
+            "scope": "api"
+          }
+        ],
+        "shorthand_patterns": [
+          "memory://mem_<id>"
+        ],
         "source_kinds": [
           "memory"
         ],
-        "supported_schemes": [],
-        "vector_namespace": "memory",
+        "supported_schemes": [
+          "memory"
+        ],
+        "vector_namespace": "dense",
         "version": "1",
         "watch_supported": false
       }
@@ -1549,7 +1577,7 @@
         "path": "crates/axon-adapters/src/onboarding.rs"
       },
       {
-        "checksum": "sha256:5f9e6da4d9d3fb6870c95818425fdfef853edf3f9525b036d50f4fe4a7308e71",
+        "checksum": "sha256:1f6cb8d9e61ef997ca66cbd545db9b5f6a85e0c387f706425442950093269c9a",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/spec.rs"
       },
@@ -1559,7 +1587,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:df0554be7ced16748a751a9dd810e22abdea0f67c295071b9f10f8a5ecf358bc",
+        "checksum": "sha256:fd7fe4fa59bde2a1bbe7818cdc3eb625349dd65c5976067dee00ac09ed1f1be8",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

@@ -98,8 +98,7 @@ projection is explicitly added over the same `SourceRequest` contract.
 | `POST /v1/ingest` | `POST /v1/sources` |
 | `POST /v1/scrape` | `POST /v1/sources` |
 | `POST /v1/crawl` | `POST /v1/sources` |
-| `POST /v1/purge` | `POST /v1/prune/purge` |
-| `POST /v1/dedupe` | `POST /v1/prune/dedupe` |
+| direct destructive deletion | `POST /v1/prune/plan` then `POST /v1/prune/exec` |
 | `POST /v1/watch/{id}/run` | `POST /v1/watches/{watch_id}/exec` |
 
 Removed routes must not appear in OpenAPI.

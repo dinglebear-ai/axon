@@ -3,8 +3,7 @@ Last Modified: 2026-07-14
 
 ## Contract
 
-This is the clean-break job model. The current implementation still has some
-per-family legacy storage, but the web acquisition surface now uses Source jobs.
+This is the clean-break job model. The runtime uses one canonical jobs schema.
 
 Axon has one durable job model. It does not have separate infrastructure models
 for crawl jobs, embed jobs, ingest jobs, extract jobs, watch jobs, prune jobs,
@@ -62,8 +61,6 @@ Planned by this contract:
 - Keep broadening stage-plan, parent/child, provider-reservation, progress
   event, and typed-result coverage on top of the single durable job model.
   The storage-family collapse itself is complete.
-  Legacy crawl rows are migration-only and are dead-lettered as
-  `legacy.crawl.removed` instead of recovered/requeued.
 
 ## Design Rules
 
@@ -117,7 +114,7 @@ the web adapter's `page` scope and `embed=true` by default.
 | Status | Terminal | Meaning |
 |---|---:|---|
 | `queued` | no | Accepted but not eligible to run yet. |
-| `pending` | no | Legacy/import projection accepted but not yet queued. New jobs should prefer `queued`. |
+| `pending` | no | Accepted but not yet queued. New jobs should prefer `queued`. |
 | `running` | no | Attempt is active and heartbeating. |
 | `waiting` | no | Waiting on provider rate limit, retry backoff, or cooldown. |
 | `blocked` | no | Waiting on dependency, capacity, cooldown, or explicit approval. |

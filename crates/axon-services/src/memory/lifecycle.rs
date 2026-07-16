@@ -9,6 +9,7 @@ use super::mapping::{
     MemoryEdgeItem, MemoryItem, item_from_record, node_type_name, parse_memory_type, required_text,
 };
 use super::store::memory_store;
+use super::sync::sync_memory_records;
 use super::{DEFAULT_LIMIT, MAX_LIMIT, store_err};
 use crate::context::ServiceContext;
 use axon_api::mcp_schema::MemoryRequest;
@@ -38,6 +39,13 @@ pub async fn reinforce(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memor
         )
         .await
         .map_err(store_err)?;
+    sync_memory_records(
+        ctx,
+        store.as_ref(),
+        [MemoryId::new(id.clone())],
+        "reinforce",
+    )
+    .await?;
     let record = store
         .get(MemoryId::new(id))
         .await
@@ -61,6 +69,16 @@ pub async fn contradict(ctx: &ServiceContext, req: MemoryRequest) -> Result<Memo
         })
         .await
         .map_err(store_err)?;
+    sync_memory_records(
+        ctx,
+        store.as_ref(),
+        [
+            MemoryId::new(memory_id.clone()),
+            MemoryId::new(conflicting_id.clone()),
+        ],
+        "contradict",
+    )
+    .await?;
     Ok(edge_item(&memory_id, &conflicting_id, "contradicts"))
 }
 
@@ -77,6 +95,7 @@ pub async fn pin(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryItem>
         })
         .await
         .map_err(store_err)?;
+    sync_memory_records(ctx, store.as_ref(), [MemoryId::new(id.clone())], "pin").await?;
     let record = store
         .get(MemoryId::new(id))
         .await
@@ -97,6 +116,7 @@ pub async fn archive(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryI
         })
         .await
         .map_err(store_err)?;
+    sync_memory_records(ctx, store.as_ref(), [MemoryId::new(id.clone())], "archive").await?;
     let record = store
         .get(MemoryId::new(id))
         .await
@@ -117,6 +137,7 @@ pub async fn forget(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryIt
         })
         .await
         .map_err(store_err)?;
+    sync_memory_records(ctx, store.as_ref(), [MemoryId::new(id.clone())], "forget").await?;
     // Forgotten memories return no body content — same visibility rule as
     // the transport layer applies for a `forgotten` status memory anywhere
     // else it's surfaced.
@@ -135,11 +156,21 @@ pub async fn update(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryIt
     let store = memory_store(ctx).await?;
     let id = required_text(req.id.as_deref(), "id")?.to_string();
     ensure_exists(store.as_ref(), &id).await?;
-    let scope = match (req.scope_kind.clone(), req.scope_value.clone()) {
-        (Some(kind), Some(value)) => Some(MemoryScope { kind, value }),
-        (None, None) => None,
-        _ => bail!("scope_kind and scope_value must be supplied together"),
-    };
+    let scope_fields = [
+        ("project", req.project.clone()),
+        ("repo", req.repo.clone()),
+        ("file", req.file.clone()),
+    ];
+    let mut scopes = scope_fields.into_iter().filter_map(|(kind, value)| {
+        value.map(|value| MemoryScope {
+            kind: kind.to_string(),
+            value,
+        })
+    });
+    let scope = scopes.next();
+    if scopes.next().is_some() {
+        bail!("update accepts only one of project, repo, or file");
+    }
     store
         .update(axon_api::source::MemoryUpdateRequest {
             memory_id: MemoryId::new(id.clone()),
@@ -156,6 +187,7 @@ pub async fn update(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryIt
         })
         .await
         .map_err(store_err)?;
+    sync_memory_records(ctx, store.as_ref(), [MemoryId::new(id.clone())], "update").await?;
     let record = store
         .get(MemoryId::new(id))
         .await

@@ -118,7 +118,7 @@ fn canonical_upload(raw: &str) -> Option<CanonicalSource> {
         || (!artifact.starts_with("upl_") && !artifact.starts_with("art_"))
         || artifact
             .bytes()
-            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-' | b'.'))
+            .any(|byte| !byte.is_ascii_alphanumeric() && !matches!(byte, b'_' | b'-'))
     {
         return None;
     }

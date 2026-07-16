@@ -45,9 +45,9 @@ fn adapter_schema_family_emits_source_family_matrix_artifact() {
             .iter()
             .any(|record| record["adapter"] == "mcp_tool" && record["may_execute_tools"] == true)
     );
-    assert!(matrix.iter().any(|record| record["integration"] == "memory"
-        && record["vector_namespace"] == "memory"
-        && record["is_source_adapter"] == false));
+    assert!(matrix.iter().any(|record| record["adapter"] == "memory"
+        && record["vector_namespace"] == "dense"
+        && record["is_source_adapter"] == true));
 }
 
 #[test]
@@ -60,11 +60,7 @@ fn generated_adapter_capability_artifact_contains_tool_and_memory_contracts() {
 
     assert!(matrix.iter().any(|record| record["adapter"] == "cli_tool"));
     assert!(matrix.iter().any(|record| record["adapter"] == "mcp_tool"));
-    assert!(
-        matrix
-            .iter()
-            .any(|record| record["integration"] == "memory")
-    );
+    assert!(matrix.iter().any(|record| record["adapter"] == "memory"));
     assert!(
         matrix
             .iter()

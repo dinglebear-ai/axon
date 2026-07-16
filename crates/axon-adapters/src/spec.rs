@@ -16,7 +16,7 @@ pub enum SourceFamily {
     Registry,
     CliTool,
     McpTool,
-    MemoryIntegration,
+    Memory,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

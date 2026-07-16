@@ -397,11 +397,11 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         optional_graph_fact_kinds: &["tool_call", "external_resource"],
     },
     SourceAdapterSpec {
-        family: SourceFamily::MemoryIntegration,
+        family: SourceFamily::Memory,
         adapter: "memory",
         version: "1",
         source_kinds: &[SourceKind::Memory],
-        vector_namespace: "memory",
+        vector_namespace: "dense",
         supported_schemes: &["memory"],
         shorthand_patterns: &["memory://mem_<id>"],
         default_scope: SourceScope::Api,

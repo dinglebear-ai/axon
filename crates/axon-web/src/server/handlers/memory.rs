@@ -4,8 +4,6 @@ use axon_services::types::ClientActionError;
 use axum::http::StatusCode;
 
 use super::super::error::HttpError;
-use super::super::json::Json;
-
 #[path = "memory_routes.rs"]
 mod routes;
 pub(crate) use routes::*;

@@ -170,6 +170,37 @@ async fn file_artifact_store_ids_are_owner_unique_for_identical_content() {
 }
 
 #[tokio::test]
+async fn file_artifact_store_rejects_tampered_manifest_paths() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let store = FileArtifactStore::new(temp.path());
+    let handle = ArtifactStore::put(
+        &store,
+        ArtifactWriteRequest {
+            kind: ArtifactKind::RawContent,
+            content_type: "text/plain".to_string(),
+            content: ContentRef::InlineText {
+                text: "safe".to_string(),
+            },
+            source_id: None,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let manifest_path = temp.path().join(format!("{}.json", handle.artifact_id.0));
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&tokio::fs::read(&manifest_path).await.unwrap()).unwrap();
+    manifest["content_path"] = serde_json::json!("../outside.txt");
+    tokio::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap())
+        .await
+        .unwrap();
+
+    let error = ArtifactStore::get(&store, handle).await.unwrap_err();
+    assert_eq!(error.code.0, "artifact.read_failed");
+}
+
+#[tokio::test]
 async fn artifact_stores_redact_secret_metadata_before_persisting() {
     async fn assert_redacts(store: &dyn ArtifactStore) {
         let mut metadata = MetadataMap::new();

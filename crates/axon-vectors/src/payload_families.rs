@@ -142,10 +142,6 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "memory_scope_value",
             "memory_confidence",
             "memory_salience",
-            "redaction_version",
-            "redacted_field_count",
-            "dropped_field_count",
-            "detector_names",
         ],
     ),
     (

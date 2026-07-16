@@ -96,17 +96,15 @@ async fn run_query_returns_mapped_hits_via_trait_objects() {
         result
             .hits
             .iter()
-            .all(|hit| hit.citation.redaction.visibility == axon_api::source::Visibility::Public)
+            .all(|hit| hit.citation.redaction.visibility == axon_api::source::Visibility::Internal)
     );
 }
 
-/// Phase-3b Task 11: plain `query` must not surface memory-namespace vectors
+/// Plain `query` must not surface memory-source vectors
 /// without explicit intent, even though memory and regular documents share
-/// one Qdrant collection. `run_query` has no positive `namespace_filters`
-/// (unrestricted search), so it must default-exclude `vector_namespace =
-/// "memory"` — see `excluded_by_namespace` in `engine.rs`.
+/// one Qdrant collection and vector namespace.
 #[tokio::test]
-async fn run_query_excludes_memory_namespace_by_default() {
+async fn run_query_excludes_memory_source_kind_by_default() {
     let concrete_store = Arc::new(FakeVectorStore::new("fake-vectors"));
     concrete_store
         .ensure_collection(test_collection_spec_hybrid(4))
@@ -122,18 +120,24 @@ async fn run_query_excludes_memory_namespace_by_default() {
             payload_indexes: test_collection_spec_hybrid(4).payload_indexes,
             points: vec![
                 point("point-a", "chunk-a", &[1.0, 0.0, 0.0, 0.0], "Alpha body"),
-                test_clean_point(TestPointSpec {
-                    collection: "axon-test",
-                    point_id: "point-mem",
-                    chunk_id: "chunk-mem",
-                    vector: &[1.0, 0.0, 0.0, 0.0],
-                    text: "phase 3b memory: alpha secret plan",
-                    namespace: "memory",
-                    batch_id: BATCH_ID,
-                    model: "fake-embedding",
-                    dimensions: 4,
-                    job_id: JOB_ID,
-                }),
+                {
+                    let mut point = test_clean_point(TestPointSpec {
+                        collection: "axon-test",
+                        point_id: "point-mem",
+                        chunk_id: "chunk-mem",
+                        vector: &[1.0, 0.0, 0.0, 0.0],
+                        text: "phase 3b memory: alpha secret plan",
+                        namespace: "dense",
+                        batch_id: BATCH_ID,
+                        model: "fake-embedding",
+                        dimensions: 4,
+                        job_id: JOB_ID,
+                    });
+                    point
+                        .payload
+                        .insert("source_kind".to_string(), serde_json::json!("memory"));
+                    point
+                },
             ],
         })
         .await
@@ -161,6 +165,6 @@ async fn run_query_excludes_memory_namespace_by_default() {
     assert!(!result.hits.is_empty());
     assert!(
         result.hits.iter().all(|hit| hit.chunk_id != "chunk-mem"),
-        "memory-namespace vector must not appear in plain query results"
+        "memory-source vector must not appear in plain query results"
     );
 }

@@ -144,6 +144,7 @@ codegen-units = 16
 opt-level = 2
 
 [dev-dependencies]
+axon-api = { path = "crates/axon-api" }
 axon-core = { path = "crates/axon-core", features = ["test-util"] }
 axon-llm = { path = "crates/axon-llm" }
 tokio = { version = "1", features = [
