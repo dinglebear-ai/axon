@@ -3,7 +3,7 @@
 //! Unlike git/local, [`index_web_source`](super::index_web_source) takes a
 //! caller-supplied `job_id` and does no job bookkeeping of its own. This thin
 //! wrapper creates a `JobKind::Source` row (mirroring the git bridge's
-//! `index_git_source_with_job`), threads its id into the input, runs the
+//! the non-web source pipeline), threads its id into the input, runs the
 //! indexing pass, and marks the job terminal so `axon status`/progress readers
 //! see web-source indexing exactly like git/local indexing.
 

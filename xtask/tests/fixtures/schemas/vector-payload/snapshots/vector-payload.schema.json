@@ -784,7 +784,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -859,6 +859,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -895,6 +900,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -1277,7 +1302,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -1352,6 +1377,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -1388,6 +1418,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -1740,7 +1790,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -1815,6 +1865,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -1851,6 +1906,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -2273,6 +2348,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -2309,6 +2389,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -2726,7 +2826,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -3174,7 +3274,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -3249,6 +3349,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -3285,6 +3390,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -3687,7 +3812,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -3762,6 +3887,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -3798,6 +3928,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -4190,7 +4340,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -4265,6 +4415,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -4301,6 +4456,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -4703,7 +4878,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -4778,6 +4953,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -4814,6 +4994,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -5166,7 +5366,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -5241,6 +5441,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -5277,6 +5482,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -5674,7 +5899,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -5749,6 +5974,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -5785,6 +6015,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -6182,7 +6432,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -6257,6 +6507,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -6293,6 +6548,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -6690,7 +6965,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -6765,6 +7040,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -6801,6 +7081,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -7208,7 +7508,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -7283,6 +7583,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -7319,6 +7624,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -7798,6 +8123,9 @@
       "minLength": 1,
       "type": "string"
     },
+    "media_url": {
+      "type": "string"
+    },
     "memory_confidence": {
       "type": "string"
     },
@@ -8017,9 +8345,6 @@
       "minLength": 1,
       "type": "string"
     },
-    "url": {
-      "type": "string"
-    },
     "vector_namespace": {
       "minLength": 1,
       "type": "string",
@@ -8050,6 +8375,9 @@
     "web_domain": {
       "type": "string"
     },
+    "web_etag": {
+      "type": "string"
+    },
     "web_fetch_method": {
       "type": "string"
     },
@@ -8062,7 +8390,19 @@
     "web_path": {
       "type": "string"
     },
+    "web_prior_etag": {
+      "type": "string"
+    },
+    "web_render_mode": {
+      "type": "string"
+    },
+    "web_reuse_required": {
+      "type": "string"
+    },
     "web_seed_url": {
+      "type": "string"
+    },
+    "web_status": {
       "type": "string"
     },
     "web_status_code": {
@@ -8482,6 +8822,7 @@
         "embedding_provider": "tei",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-media",
+        "media_url": "media_url",
         "payload_contract_version": "2026-07-01",
         "redaction_status": "clean",
         "segment_kind": "segment_kind",
@@ -8512,7 +8853,6 @@
         },
         "source_scope": "source_scope",
         "title": "title",
-        "url": "url",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "video_id": "video_id",
@@ -8610,11 +8950,16 @@
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
+        "web_etag": "web_etag",
         "web_fetch_method": "web_fetch_method",
         "web_normalized_url": "web_normalized_url",
         "web_origin": "web_origin",
         "web_path": "web_path",
+        "web_prior_etag": "web_prior_etag",
+        "web_render_mode": "web_render_mode",
+        "web_reuse_required": "web_reuse_required",
         "web_seed_url": "web_seed_url",
+        "web_status": "web_status",
         "web_status_code": 200,
         "web_structured_blob": "web_structured_blob",
         "web_structured_kind": "web_structured_kind",
@@ -9551,12 +9896,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:d47866fd9fba39af85e0475cc23f3a7488fd6bb44edd232468c8ff934acde471",
+        "checksum": "sha256:52de43211f24ba88a608836ca5f0efc6596090d6b1e6fa13f526d6fd6e1fcbb5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5",
+        "checksum": "sha256:55f8765da736a12ea22220b8e0e85978f503a3ae36968c9482a5461c55a3d82b",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -9571,7 +9916,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454",
+        "checksum": "sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
@@ -9581,7 +9926,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:5b4c02a619aec03ffc65990b37d64a3b65dc43feb8f5909df8ba2ba52908f0c8",
+        "checksum": "sha256:cab281602cd5247047d7d1db74f6f30262c40be37d2afa2344e8f8c39a1313db",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -9644,7 +9989,7 @@
         "fields": [
           "video_id",
           "title",
-          "url",
+          "media_url",
           "channel",
           "channel_url",
           "yt_uploader_id",
@@ -9664,6 +10009,7 @@
           "web_title",
           "web_domain",
           "web_status_code",
+          "web_status",
           "web_depth",
           "normalization_version",
           "web_url",
@@ -9672,6 +10018,10 @@
           "web_path",
           "web_normalized_url",
           "web_fetch_method",
+          "web_render_mode",
+          "web_etag",
+          "web_prior_etag",
+          "web_reuse_required",
           "extractor_name",
           "extractor_version",
           "structured_payload_omitted",

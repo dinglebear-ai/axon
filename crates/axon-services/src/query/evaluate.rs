@@ -159,6 +159,7 @@ async fn evaluate_from_context(
         rag_answer: normalized_rag_answer,
         baseline_answer,
         analysis_answer,
+        citations: ask_ctx.citations.clone(),
         source_urls,
         crawl_suggestions: crawl_suggestions
             .into_iter()

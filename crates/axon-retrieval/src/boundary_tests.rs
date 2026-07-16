@@ -89,6 +89,11 @@ fn point(point_id: &str, chunk_id: &str, vector: &[f32], text: &str) -> VectorPo
     );
     payload.insert("visibility".to_string(), json!("internal"));
     payload.insert("redaction_status".to_string(), json!("clean"));
+    payload.insert("redaction_version".to_string(), json!("2026-07-16"));
+    payload.insert("redacted_field_count".to_string(), json!(0));
+    payload.insert("dropped_field_count".to_string(), json!(0));
+    payload.insert("detector_count".to_string(), json!(0));
+    payload.insert("detector_names".to_string(), json!([]));
     payload.insert(
         "job_id".to_string(),
         json!("00000000-0000-0000-0000-000000000099"),
@@ -105,6 +110,7 @@ fn point(point_id: &str, chunk_id: &str, vector: &[f32], text: &str) -> VectorPo
     payload.insert("embedded_at".to_string(), json!("2026-07-01T00:00:00Z"));
     payload.insert("vector_namespace".to_string(), json!("docs"));
     payload.insert("content_kind".to_string(), json!("markdown"));
+    payload.insert("chunk_content_kind".to_string(), json!("markdown"));
     payload.insert(
         "content_hash".to_string(),
         json!(format!("sha256:content-{chunk_id}")),

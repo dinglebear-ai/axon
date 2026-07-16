@@ -18,9 +18,9 @@ import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import { Kbd } from "@/components/ui/aurora/kbd";
-import type { PaletteConfig } from "@/lib/axonClient";
-import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import type { PaletteConfig } from "@/lib/axonClient";
 import { argumentPlaceholder, focusInput, sortActionsForDisplay } from "@/lib/paletteView";
 
 interface PaletteCommandBarProps {
@@ -71,7 +71,7 @@ function sentenceCase(value: string): string {
 
 const SWITCHER_GROUPS = [
   "Fetch & read",
-  "Crawl & ingest",
+  "Sources",
   "Search & discover",
   "Reason",
   "System",
@@ -249,7 +249,7 @@ export function PaletteCommandBar({
         }}
       >
         {modeAction && ModeIcon ? (
-              <div className="command-action-switcher" ref={switcherRef}>
+          <div className="command-action-switcher" ref={switcherRef}>
             <Button
               variant="plain"
               size="unstyled"
@@ -343,7 +343,7 @@ export function PaletteCommandBar({
               ? argumentPlaceholder(modeAction)
               : hasQuery
                 ? (active?.example ?? "Search commands")
-                : "Search or run an operation — scrape, crawl, map, ask…"
+                : "Search or run an operation — scrape, index site, map, ask…"
           }
           className="command-input"
           role="combobox"

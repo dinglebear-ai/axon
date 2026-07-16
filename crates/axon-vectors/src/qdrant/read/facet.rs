@@ -1,8 +1,7 @@
-//! Facet aggregation — ports legacy `axon-vector`'s `qdrant_facet` /
-//! `qdrant_facet_filtered` (and, by direct call with `key = "domain"` /
-//! `key = "url"`, its `qdrant_domain_facets` / `qdrant_url_facets` thin
-//! wrappers — those are trivial one-argument compositions of this method, so
-//! no dedicated wrapper is ported).
+//! Facet aggregation over an explicit payload key plus an optional Qdrant
+//! filter. Callers choose current-contract keys such as `web_domain` or
+//! `item_canonical_uri`; this module intentionally does not expose old
+//! URL/domain-specific wrappers.
 
 use crate::qdrant::QdrantVectorStore;
 use crate::store::Result;
@@ -12,8 +11,7 @@ impl QdrantVectorStore {
     /// `key` (optionally scoped by `filter`) with per-value point counts.
     ///
     /// Results are sorted by value ascending; a missing facet value is
-    /// reported as `"unknown"`, and an empty-string value is dropped —
-    /// matching legacy `qdrant_facet`'s `parse_facet_response`.
+    /// reported as `"unknown"`, and an empty-string value is dropped.
     pub async fn facet(
         &self,
         collection: &str,

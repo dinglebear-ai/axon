@@ -432,7 +432,6 @@ HANDLER_REQUIRED_FIELDS: dict[str, set[str]] = {
     "endpoints": {"url"},
     "evaluate": {"query"},
     "map": {"url"},
-    "purge": {"target"},
     "query": {"query"},
     "research": {"query"},
     "retrieve": {"url"},
@@ -449,11 +448,7 @@ SPECIAL_REQUIRED_FIELDS: dict[str, set[str]] = {
     "summarize": {"url", "urls"},
 }
 
-OPTIONAL_FIELD_OVERRIDES: dict[str, set[str]] = {
-    # `prefix` is a non-Option bool in Rust but has `#[serde(default)]`; clients
-    # may omit it and receive the default `false`.
-    "purge": {"prefix"},
-}
+OPTIONAL_FIELD_OVERRIDES: dict[str, set[str]] = {}
 
 
 def _classify_actions(

@@ -336,5 +336,28 @@ pub(crate) const MCP_SCOPES: &[SourceScopeCapability] = &[
     ),
 ];
 
-pub(crate) const MEMORY_SCOPES: &[SourceScopeCapability] = &[];
+pub(crate) const MEMORY_SCOPES: &[SourceScopeCapability] = &[scope_capability(
+    SourceScope::Api,
+    true,
+    "one durable memory record",
+    true,
+    false,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    "memory_record",
+    "memory-shared-pipeline-options/v1",
+    "atomic-metadata/v1",
+    &["memory_document"],
+    &["memory_link", "supersedes", "contradicts"],
+    &[
+        "memory-not-found",
+        "memory-not-authorized",
+        "memory-not-recallable",
+    ],
+)];
 pub(crate) const NO_CREDENTIALS: &[axon_api::source::CredentialRequirement] = &[];

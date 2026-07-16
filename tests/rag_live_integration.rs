@@ -20,10 +20,11 @@
 
 use std::sync::Arc;
 
+use axon_api::source::SourceRequest;
 use axon_core::config::Config;
 use axon_services::context::ServiceContext;
-use axon_services::embed::embed_now;
 use axon_services::query::query;
+use axon_services::source::index_source;
 use axon_services::types::Pagination;
 
 /// Build a live config from env (`QDRANT_URL` / `TEI_URL`) targeting a unique
@@ -71,34 +72,29 @@ async fn embed_then_query_roundtrip_returns_embedded_content() {
     let tmp = std::env::temp_dir().join(format!("{collection}.md"));
     std::fs::write(&tmp, &doc).expect("write temp doc");
 
-    // Embed the doc into the throwaway collection through the ledger-tracked
-    // `local_source` pipeline (ensure_collection runs inside).
-    let embed_result = embed_now(&cfg, tmp.to_str().unwrap()).await;
+    let ctx = ServiceContext::new_with_workers(Arc::new(cfg.clone()))
+        .await
+        .expect("build live service context");
+    let mut request = SourceRequest::local_path(tmp.to_string_lossy(), false);
+    request.collection = Some(collection.clone());
+    let source_result = index_source(request, &ctx).await;
 
     // Always attempt cleanup even if an assertion below fails.
     let outcome = async {
-        let summary = embed_result.expect("live embed must succeed");
-        let docs_embedded = summary
-            .payload
-            .get("docs_embedded")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
+        let summary = source_result.expect("live source indexing must succeed");
+        let docs_embedded = summary.counts.documents_total;
         assert!(
             docs_embedded >= 1,
-            "expected at least one embedded doc, got {:?}",
-            summary.payload
+            "expected at least one prepared document, got {:?}",
+            summary.counts
         );
-        let docs_failed = summary
-            .payload
-            .get("docs_failed")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        assert_eq!(docs_failed, 0, "no docs may fail in the roundtrip");
+        assert!(
+            summary.counts.vector_points_total >= 1,
+            "expected at least one published vector point, got {:?}",
+            summary.counts
+        );
 
         // Query the real retrieval path for the unique marker.
-        let ctx = ServiceContext::new(Arc::new(cfg.clone()))
-            .await
-            .expect("build live service context");
         let res = query(
             &ctx,
             &cfg,

@@ -4,6 +4,7 @@ use crate::contract_write::{
 };
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::ScrapeResult;
+use axon_adapters::vertical_registry::dispatch_by_url;
 use axon_api::result::DocumentBackend;
 use axon_api::source::{
     ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint, PreparedDocument,
@@ -11,7 +12,7 @@ use axon_api::source::{
 };
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
-use axon_extract::{VerticalContext, dispatch_by_url};
+use axon_extract::VerticalContext;
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::fmt;

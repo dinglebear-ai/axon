@@ -78,9 +78,19 @@ pub struct SourceItemError {
     pub generation: String,
     pub status: String,
     pub error_code: ErrorCode,
+    /// Redacted human-readable failure message.
+    pub message: String,
     pub error_stage: ErrorStage,
     pub retryable: bool,
+    pub severity: ErrorSeverity,
+    pub visibility: ErrorVisibility,
     pub attempt: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_after_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cooldown_until: Option<DateTime<Utc>>,
     pub details: BTreeMap<String, String>,
 }
 
@@ -121,6 +131,12 @@ impl ApiError {
     /// Set the source id.
     pub fn with_source_id(mut self, source_id: impl Into<String>) -> Self {
         self.source_id = Some(source_id.into());
+        self
+    }
+
+    /// Set the source item key.
+    pub fn with_source_item_key(mut self, source_item_key: impl Into<String>) -> Self {
+        self.source_item_key = Some(source_item_key.into());
         self
     }
 
@@ -220,9 +236,15 @@ impl ApiError {
             generation: generation.into(),
             status: status.into(),
             error_code: self.code.clone(),
+            message: self.message.clone(),
             error_stage: self.stage,
             retryable: self.retryable,
+            severity: self.severity,
+            visibility: self.visibility,
             attempt,
+            provider_id: self.provider_id.clone(),
+            retry_after_ms: self.retry_after_ms,
+            cooldown_until: self.cooldown_until,
             details: self.details.clone(),
         }
     }

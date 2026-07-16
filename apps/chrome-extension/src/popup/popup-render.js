@@ -174,8 +174,8 @@ function attachResultActions(message, result) {
       commandInput.focus();
       updateCommandHint();
     }));
-    actions.append(resultActionButton("Crawl", () => {
-      commandInput.value = `crawl ${sourceUrl}`;
+    actions.append(resultActionButton("Index site", () => {
+      commandInput.value = `site ${sourceUrl}`;
       commandInput.focus();
       updateCommandHint();
     }));

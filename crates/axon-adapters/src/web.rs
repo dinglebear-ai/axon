@@ -1,15 +1,15 @@
 //! Web page/site/docs source adapter.
 //!
 //! Real acquisition (#298 Wave 1b): `discover` enumerates URLs itself (a
-//! trivial single item for `Page`, the caller-supplied `map_urls` for `Map`,
-//! or an adapter-owned ephemeral crawl via the in-crate `web_engine`'s engine
-//! for `Site`/`Docs`) and `acquire` fetches/renders each changed item through the
-//! injected [`FetchProvider`]/[`RenderProvider`] boundary — no
+//! trivial single item for `Page`, caller-supplied or adapter-discovered URLs
+//! for `Map`, or adapter-discovered URL candidates for `Site`/`Docs`) and
+//! `acquire` fetches/renders each
+//! changed item through the injected [`FetchProvider`]/[`RenderProvider`]
+//! boundary — no
 //! `manifest.jsonl`/`markdown_root` disk handoff from `axon-services` remains
 //! on this path.
 
 mod acquire;
-mod chrome_fallback;
 mod manifest_items;
 mod metadata;
 mod options;
@@ -28,7 +28,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::boundary::{FetchProvider, RenderProvider};
 use crate::capability::AdapterCapability;
 
-use self::manifest_items::{map_manifest_items, page_manifest_item};
+use self::manifest_items::{map_urls_manifest_items, page_manifest_item};
 use self::metadata::{manifest_metadata, web_source_document};
 
 pub use self::warc::{WarcArchive, build_archive as build_warc_archive};
@@ -66,11 +66,26 @@ impl SourceAdapter for WebSourceAdapter {
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
         web_capability(self.version()).validate_scope(plan.route.scope)?;
         validate_adapter(plan)?;
-        let items = match plan.route.scope {
-            SourceScope::Map => map_manifest_items(plan)?,
-            SourceScope::Page => vec![page_manifest_item(plan, self.fetch.as_ref()).await?],
-            _ => site_discovery::crawl_manifest_items(plan).await?,
+        let (items, discovery_metadata) = match plan.route.scope {
+            SourceScope::Map => {
+                if plan.route.validated_options.values.contains_key("map_urls") {
+                    (map_urls_manifest_items(plan)?, MetadataMap::new())
+                } else {
+                    let discovery = site_discovery::manifest_items(plan, false).await?;
+                    (discovery.items, discovery.metadata)
+                }
+            }
+            SourceScope::Page => (
+                vec![page_manifest_item(plan, self.fetch.as_ref()).await?],
+                MetadataMap::new(),
+            ),
+            _ => {
+                let discovery = site_discovery::manifest_items(plan, true).await?;
+                (discovery.items, discovery.metadata)
+            }
         };
+        let mut metadata = manifest_metadata(plan);
+        metadata.0.extend(discovery_metadata.0);
         Ok(SourceManifest {
             source_id: plan.route.source.source_id.clone(),
             generation: SourceGenerationId::from("gen_web_discovery"),
@@ -78,7 +93,7 @@ impl SourceAdapter for WebSourceAdapter {
             scope: plan.route.scope,
             items,
             created_at: timestamp(),
-            metadata: manifest_metadata(plan),
+            metadata,
         })
     }
 

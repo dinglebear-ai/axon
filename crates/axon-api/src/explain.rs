@@ -257,6 +257,7 @@ pub struct AskExplainTrace {
     pub mode: AskExplainMode,
     pub retrieval: AskExplainRetrieval,
     pub candidates: Vec<AskExplainCandidate>,
+    pub citations: Vec<crate::result::CanonicalCitation>,
     pub context: AskExplainContext,
     pub candidate_trace_limit: usize,
     pub candidate_trace_truncated: bool,

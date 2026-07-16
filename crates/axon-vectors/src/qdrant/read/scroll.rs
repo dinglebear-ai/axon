@@ -1,12 +1,9 @@
-//! `/points/scroll` pagination primitives — ports legacy `axon-vector`'s
-//! `qdrant_scroll_pages_selective` / `qdrant_scroll_pages_while` (the shared
-//! `scroll_pages_raw` loop both were built on).
+//! `/points/scroll` pagination primitives for current-contract payload reads.
 //!
 //! Three primitives, from lowest- to highest-level:
 //! - [`QdrantVectorStore::scroll_page`] — exactly one page.
 //! - [`QdrantVectorStore::scroll_pages`] — visits every page via an
-//!   early-stoppable callback without buffering the whole result set (the
-//!   low-memory shape legacy's aggregation-only callers relied on).
+//!   early-stoppable callback without buffering the whole result set.
 //! - [`QdrantVectorStore::scroll_all`] — a `Vec`-collecting convenience over
 //!   `scroll_pages`, bounded by an optional `max_points` cap.
 
@@ -14,9 +11,8 @@ use crate::qdrant::QdrantVectorStore;
 use crate::store::Result;
 
 /// One point returned from a raw payload-projected scroll. Kept as raw JSON
-/// rather than a strongly-typed struct: these primitives read whatever
-/// payload shape is actually stored (legacy crawl/scrape/ingest fields), not
-/// a fixed schema.
+/// rather than a strongly-typed struct: these primitives read the caller's
+/// requested payload projection, not a fixed schema.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct QdrantScrolledPoint {
     pub id: serde_json::Value,
@@ -34,10 +30,10 @@ pub struct ScrollPage {
 impl QdrantVectorStore {
     /// One page of `/points/scroll`.
     ///
-    /// `with_payload` is passed through verbatim to Qdrant — `json!(true)`
+    /// `with_payload` is passed through verbatim to Qdrant: `json!(true)`
     /// for the full payload, `json!(false)` for none, or
-    /// `json!({"include": ["url", "chunk_index"]})` to project specific
-    /// fields (avoids transferring multi-KB `chunk_text` when only metadata
+    /// `json!({"include": ["item_canonical_uri", "chunk_index"]})` to project
+    /// specific fields (avoids transferring multi-KB `chunk_text` when only metadata
     /// is needed). `offset` is `None` for the first page and otherwise the
     /// previous page's `next_offset`, round-tripped verbatim.
     pub async fn scroll_page(

@@ -57,7 +57,6 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
   const stats = unwrapPayload(payload);
   const counts = isRecord(stats.counts) ? stats.counts : {};
   const freshness = isRecord(stats.freshness) ? stats.freshness : {};
-  const longest = isRecord(stats.longest_crawl) ? stats.longest_crawl : {};
 
   // Since-opened delta: capture the first indexed-vector count seen by this
   // mounted view, so live refreshes show how much landed while you watched.
@@ -79,30 +78,38 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
       <section className="stats-section">
         <h3 className="stats-heading">Collection · {strField(stats, "collection") ?? "axon"}</h3>
         <div className="metric-grid">
-          <Metric label="Indexed vectors" value={fmtInt(indexed)} accent delta={delta > 0 ? fmtDelta(delta) : undefined} />
-          <Metric label="Docs embedded" value={fmtInt(numField(stats, "docs_embedded_estimate"))} accent />
+          <Metric
+            label="Indexed vectors"
+            value={fmtInt(indexed)}
+            accent
+            delta={delta > 0 ? fmtDelta(delta) : undefined}
+          />
+          <Metric
+            label="Docs embedded"
+            value={fmtInt(numField(stats, "docs_embedded_estimate"))}
+            accent
+          />
           <Metric label="Avg chunks/doc" value={fmtNum(numField(stats, "avg_chunks_per_doc"))} />
-          <Metric label="Crawls total" value={fmtInt(numField(counts, "crawls"))} />
         </div>
       </section>
 
       <section className="stats-section">
         <h3 className="stats-heading">Freshness</h3>
         <div className="metric-grid">
-          <Metric label="Crawls 24h" value={fmtInt(numField(freshness, "crawls_last_24h"))} />
-          <Metric label="Crawls 7d" value={fmtInt(numField(freshness, "crawls_last_7d"))} />
-          <Metric label="Last indexed" value={fmtAgo(numField(freshness, "last_indexed_secs_ago"))} />
-          <Metric label="Pages/sec" value={fmtNum(numField(stats, "avg_pages_crawled_per_second"))} />
+          <Metric
+            label="Last indexed"
+            value={fmtAgo(numField(freshness, "last_indexed_secs_ago"))}
+          />
         </div>
       </section>
 
       <section className="stats-section">
         <h3 className="stats-heading">Timing</h3>
         <div className="metric-grid">
-          <Metric label="Avg crawl" value={fmtSecs(numField(stats, "avg_crawl_duration_seconds"))} />
-          <Metric label="Avg embed" value={fmtSecs(numField(stats, "avg_embedding_duration_seconds"))} />
-          <Metric label="Avg overall" value={fmtSecs(numField(stats, "avg_overall_crawl_duration_seconds"))} />
-          <Metric label="Longest crawl" value={fmtSecs(numField(longest, "seconds"))} />
+          <Metric
+            label="Avg embed"
+            value={fmtSecs(numField(stats, "avg_embedding_duration_seconds"))}
+          />
         </div>
       </section>
 
@@ -122,11 +129,16 @@ export const StatsView = memo(function StatsView({ payload }: { payload: unknown
           <h3 className="stats-heading">7-day growth</h3>
           <div className="stats-spark">
             <Sparkline
-              values={arrField(stats, "growth_7d").map((n) => (typeof n === "number" ? n : Number(n) || 0))}
+              values={arrField(stats, "growth_7d").map((n) =>
+                typeof n === "number" ? n : Number(n) || 0,
+              )}
               ariaLabel="Indexed-document growth over the last 7 days"
             />
             <span className="stats-spark-caption">
-              {arrField(stats, "growth_7d").reduce<number>((sum, n) => sum + (typeof n === "number" ? n : Number(n) || 0), 0).toLocaleString()} docs / 7d
+              {arrField(stats, "growth_7d")
+                .reduce<number>((sum, n) => sum + (typeof n === "number" ? n : Number(n) || 0), 0)
+                .toLocaleString()}{" "}
+              docs / 7d
             </span>
           </div>
         </section>

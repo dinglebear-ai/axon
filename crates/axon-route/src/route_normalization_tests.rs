@@ -33,6 +33,51 @@ fn resolver_preserves_non_default_ports_in_canonical_sources() {
 }
 
 #[test]
+fn resolver_auto_detects_feed_shaped_urls() {
+    let feed = resolver()
+        .resolve(&SourceRequest::new("https://example.com/feed.xml"))
+        .expect("feed-shaped URL resolves");
+
+    assert_eq!(feed.source_kind, SourceKind::Feed);
+    assert_eq!(feed.default_scope, SourceScope::Feed);
+    assert_eq!(feed.adapter.name, "feed");
+    assert_eq!(feed.canonical_uri, "feed://example.com/feed.xml");
+}
+
+#[test]
+fn resolver_routes_memory_and_upload_identities() {
+    let memory = resolver()
+        .resolve(&SourceRequest::new("memory://mem_abc"))
+        .expect("memory resolves");
+    assert_eq!(memory.source_kind, SourceKind::Memory);
+    assert_eq!(memory.default_scope, SourceScope::Api);
+    assert_eq!(memory.adapter.name, "memory");
+
+    let upload = resolver()
+        .resolve(&SourceRequest::new("upload:upl_abc"))
+        .expect("upload resolves");
+    assert_eq!(upload.source_kind, SourceKind::Upload);
+    assert_eq!(upload.canonical_uri, "upload://upl_abc");
+    assert_eq!(upload.adapter.name, "upload");
+}
+
+#[test]
+fn resolver_rejects_noncanonical_memory_and_upload_identities() {
+    for source in [
+        "memory://",
+        "memory://abc",
+        "memory://mem_a/child",
+        "upload:relative-path",
+        "upload://upl_a/child",
+    ] {
+        assert!(
+            resolver().resolve(&SourceRequest::new(source)).is_err(),
+            "accepted {source}"
+        );
+    }
+}
+
+#[test]
 fn resolver_preserves_explicit_http_scheme() {
     let resolver = resolver();
     let web = resolver

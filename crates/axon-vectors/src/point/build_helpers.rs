@@ -8,7 +8,9 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::redactor::{DefaultRedactor, RedactionContext, RedactionReport, redact_metadata};
+use crate::redactor::{
+    DefaultRedactor, REDACTION_VERSION, RedactionContext, RedactionReport, redact_metadata,
+};
 
 /// Insert `value` for `field` only when the field is absent or blank.
 pub(super) fn insert_default_string(metadata: &mut MetadataMap, field: &str, value: &str) {
@@ -103,13 +105,28 @@ pub(super) fn apply_redaction(metadata: MetadataMap, chunk: &PreparedChunk) -> M
         "redaction_status".to_string(),
         json!(report.status().as_str()),
     );
+    metadata.insert("redaction_version".to_string(), json!(REDACTION_VERSION));
+    metadata.insert(
+        "redacted_field_count".to_string(),
+        json!(report.redacted_field_count()),
+    );
+    metadata.insert(
+        "dropped_field_count".to_string(),
+        json!(report.dropped_field_count()),
+    );
+    metadata.insert("detector_count".to_string(), json!(report.detector_count()));
+    metadata.insert(
+        "detector_names".to_string(),
+        json!(&report.detectors_triggered),
+    );
     log_redaction(chunk, &report);
     metadata
 }
 
 fn log_redaction(chunk: &PreparedChunk, report: &RedactionReport) {
     if report.status_redacted {
-        tracing::debug!(
+        tracing::warn!(
+            event = "security_audit.redaction_decision",
             chunk_id = %chunk.chunk_id.0,
             redacted_fields = report.redacted_fields.len(),
             dropped_fields = report.dropped_fields.len(),

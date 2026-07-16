@@ -1,12 +1,14 @@
 # Pruning
 Last Modified: 2026-07-15
 
-Pruning handles scoped cleanup, purge, dedupe, and cleanup-debt execution.
+Pruning handles scoped cleanup, duplicate detection/removal policy, targeted
+removal, and cleanup-debt execution.
 
 ## Policy
 
 Top-level `purge` and `dedupe` commands are removed. Cleanup behavior belongs
-under prune plans and prune execution.
+under prune plans and prune execution; those names are not public prune
+subactions.
 
 ## Safety
 

@@ -15,8 +15,6 @@ mod handlers;
 mod json;
 #[path = "server/openapi.rs"]
 mod openapi;
-#[path = "server/openapi_jobs.rs"]
-mod openapi_jobs;
 #[path = "server/routing.rs"]
 mod routing;
 #[path = "server/state.rs"]
@@ -45,10 +43,6 @@ pub fn router(
 #[cfg(test)]
 #[path = "server_test_support_tests.rs"]
 mod test_support;
-
-#[cfg(test)]
-#[path = "server_dedupe_tests.rs"]
-mod dedupe_tests;
 
 #[cfg(test)]
 #[path = "server_tests.rs"]

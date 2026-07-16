@@ -28,7 +28,20 @@ fn source_running_progress(job: &ServiceJob, metrics: Option<&Value>) -> Option<
     if has_any(metrics, &["pages_crawled", "md_created", "error_pages"]) {
         return page_source_running_progress(job, metrics);
     }
-    if has_any(metrics, &["docs_embedded", "docs_completed", "docs_total"]) {
+    if has_any(
+        metrics,
+        &[
+            "docs_embedded",
+            "docs_completed",
+            "docs_total",
+            "documents_done",
+            "documents_total",
+            "items_done",
+            "items_total",
+            "chunks_done",
+            "chunks_total",
+        ],
+    ) {
         return document_source_progress(job.status.as_str(), Some(metrics));
     }
     provider_source_progress(job.status.as_str(), Some(metrics), true)
@@ -39,7 +52,20 @@ fn source_completed_progress(metrics: Option<&Value>) -> Option<String> {
     if has_any(metrics, &["md_created", "elapsed_ms", "pages_crawled"]) {
         return page_source_completed_progress(metrics);
     }
-    if has_any(metrics, &["docs_embedded", "docs_completed", "docs_total"]) {
+    if has_any(
+        metrics,
+        &[
+            "docs_embedded",
+            "docs_completed",
+            "docs_total",
+            "documents_done",
+            "documents_total",
+            "items_done",
+            "items_total",
+            "chunks_done",
+            "chunks_total",
+        ],
+    ) {
         return document_source_progress("completed", Some(metrics));
     }
     provider_source_progress("completed", Some(metrics), true)
@@ -57,17 +83,19 @@ fn document_source_progress(status: &str, metrics: Option<&Value>) -> Option<Str
             None
         };
     };
-    let docs = metrics
-        .get("docs_embedded")
-        .or_else(|| metrics.get("docs_completed"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let chunks = metrics
-        .get("chunks_embedded")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let docs_total = metrics.get("docs_total").and_then(|v| v.as_u64());
+    let docs = first_u64(
+        metrics,
+        &["docs_embedded", "docs_completed", "documents_done"],
+    )
+    .unwrap_or(0);
+    let chunks = first_u64(metrics, &["chunks_embedded", "chunks_done"]).unwrap_or(0);
+    let docs_total = first_u64(metrics, &["docs_total", "documents_total"]);
+    let items = first_u64(metrics, &["items_done"]).unwrap_or(0);
+    let items_total = first_u64(metrics, &["items_total"]);
     if docs == 0 && chunks == 0 {
+        if let Some(total) = items_total.filter(|t| *t > 0) {
+            return Some(format!("{items}/{total} items · preparing"));
+        }
         if status != "running" {
             return None;
         }
@@ -93,6 +121,11 @@ fn document_source_progress(status: &str, metrics: Option<&Value>) -> Option<Str
     } else {
         Some(format!("{chunks} chunks"))
     }
+}
+
+fn first_u64(metrics: &Value, keys: &[&str]) -> Option<u64> {
+    keys.iter()
+        .find_map(|key| metrics.get(*key).and_then(|value| value.as_u64()))
 }
 
 pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
@@ -123,10 +156,6 @@ pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
         };
     }
     Some(format!("{items} items"))
-}
-
-pub(crate) fn ingest_progress(result_json: &Option<Value>) -> Option<String> {
-    provider_source_progress("running", result_json.as_ref(), false)
 }
 
 fn page_source_running_progress(job: &ServiceJob, metrics: &Value) -> Option<String> {
@@ -256,3 +285,7 @@ fn reclaimed_suffix(job: &ServiceJob) -> String {
         _ => String::new(),
     }
 }
+
+#[cfg(test)]
+#[path = "job_progress_tests.rs"]
+mod tests;

@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
-
-import { ACTIONS, actionMatches } from "./actions";
 import { actionDisplayMeta, actionKindLabel, actionKindTone } from "./actionMeta";
+import { ACTIONS, actionMatches } from "./actions";
 import {
-  sortActionsByRelevance,
-  sortActionsForDisplay,
   actionHint,
   argumentFor,
   firstUrl,
   hostLabel,
   parseCommand,
+  sortActionsByRelevance,
+  sortActionsForDisplay,
   validationMessage,
 } from "./paletteView";
 
@@ -44,22 +43,50 @@ describe("palette view parsing helpers", () => {
   });
 
   it("parses bare help as the local help action", () => {
-    expect(parseCommand("help")).toMatchObject({ invoked: action("help"), search: "help", arg: "" });
+    expect(parseCommand("help")).toMatchObject({
+      invoked: action("help"),
+      search: "help",
+      arg: "",
+    });
   });
 
   it("parses help followed by an action target", () => {
-    expect(parseCommand("help scrape")).toMatchObject({ invoked: action("help"), search: "help", arg: "scrape" });
+    expect(parseCommand("help scrape")).toMatchObject({
+      invoked: action("help"),
+      search: "help",
+      arg: "scrape",
+    });
   });
 
   it("parses action help without invoking the backend action", () => {
-    expect(parseCommand("scrape help")).toMatchObject({ invoked: action("help"), search: "scrape", arg: "scrape" });
-    expect(parseCommand("fetch help")).toMatchObject({ invoked: action("help"), search: "fetch", arg: "scrape" });
-    expect(parseCommand("crawl --help")).toMatchObject({ invoked: action("help"), search: "crawl", arg: "crawl" });
-    expect(parseCommand("query -h")).toMatchObject({ invoked: action("help"), search: "query", arg: "query" });
+    expect(parseCommand("scrape help")).toMatchObject({
+      invoked: action("help"),
+      search: "scrape",
+      arg: "scrape",
+    });
+    expect(parseCommand("fetch help")).toMatchObject({
+      invoked: action("help"),
+      search: "fetch",
+      arg: "scrape",
+    });
+    expect(parseCommand("site --help")).toMatchObject({
+      invoked: action("help"),
+      search: "site",
+      arg: "source-site",
+    });
+    expect(parseCommand("query -h")).toMatchObject({
+      invoked: action("help"),
+      search: "query",
+      arg: "query",
+    });
   });
 
   it("leaves non-command help text searchable", () => {
-    expect(parseCommand("help me debug this")).toMatchObject({ invoked: action("help"), search: "help", arg: "me debug this" });
+    expect(parseCommand("help me debug this")).toMatchObject({
+      invoked: action("help"),
+      search: "help",
+      arg: "me debug this",
+    });
   });
 
   it("uses direct URLs as action arguments for URL-aware actions", () => {
@@ -127,7 +154,7 @@ describe("palette view parsing helpers", () => {
   it("sorts browse actions by mock category order", () => {
     const sorted = sortActionsForDisplay([
       action("scrape"),
-      action("crawl"),
+      action("source-site"),
       action("map"),
       action("summarize"),
       action("retrieve"),
@@ -139,10 +166,9 @@ describe("palette view parsing helpers", () => {
   });
 
   it("ranks subcommand prefix matches above substring matches when filtering", () => {
-    const ranked = rankedSubcommands("cr");
-    // "crawl" starts with the query; "scrape" only contains it — crawl must win.
-    expect(ranked[0]).toBe("crawl");
-    expect(ranked.indexOf("crawl")).toBeLessThan(ranked.indexOf("scrape"));
+    const ranked = rankedSubcommands("source");
+    expect(ranked[0]).toBe("source");
+    expect(ranked.indexOf("source")).toBeLessThan(ranked.indexOf("source-site"));
   });
 
   it("surfaces the prefix-matching subcommand first ('doc' -> doctor)", () => {
@@ -151,7 +177,9 @@ describe("palette view parsing helpers", () => {
 
   it("falls back to the browse order for an empty query", () => {
     expect(rankedSubcommands("").slice(0, 3)).toEqual(
-      sortActionsForDisplay(ACTIONS).map((item) => item.subcommand).slice(0, 3),
+      sortActionsForDisplay(ACTIONS)
+        .map((item) => item.subcommand)
+        .slice(0, 3),
     );
   });
 

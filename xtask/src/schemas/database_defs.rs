@@ -170,18 +170,11 @@ fn apply_alter_table(schema: &mut DatabaseSchema, stmt: &str) -> Option<String> 
 /// "fixing" by renaming a live table (a separate contract decision, out of
 /// scope for this generator).
 fn divergences() -> Vec<Value> {
-    vec![
-        json!({
-            "kind": "duplicate_domain_naming",
-            "tables": ["axon_memory_nodes", "axon_memory_edges", "memory_records", "memory_links", "memory_reinforcement", "memory_reviews"],
-            "note": "Two independent 'memory' schemas coexist: the earlier agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision."
-        }),
-        json!({
-            "kind": "watch_naming_overlap",
-            "tables": ["axon_watch_defs", "axon_watch_runs", "axon_source_watches", "axon_source_watch_runs"],
-            "note": "axon_watch_defs/axon_watch_runs (migration 0002) back the task_type/task_payload watch scheduler; axon_source_watches/axon_source_watch_runs (migration 0023) back the newer SourceRequest-shaped WatchStore used by `watch get|update|pause|resume|delete`. Both are live; not merged here."
-        }),
-    ]
+    vec![json!({
+        "kind": "duplicate_domain_naming",
+        "tables": ["axon_memory_nodes", "axon_memory_edges", "memory_records", "memory_links", "memory_reinforcement", "memory_reviews"],
+        "note": "Two independent 'memory' schemas coexist: the earlier agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision."
+    })]
 }
 
 fn build_tables_field(schema: &DatabaseSchema) -> Vec<Value> {

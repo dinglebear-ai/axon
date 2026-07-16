@@ -70,3 +70,16 @@ async fn cli_tool_exec_redacts_secret_shaped_output() {
     assert_eq!(result.documents[0].redaction_status, "redacted");
     assert!(!result.documents[0].content.contains("sk-shhh"));
 }
+
+#[tokio::test]
+async fn cli_tool_exec_denies_secret_like_local_paths() {
+    let err = resolve_and_acquire(
+        "tool:/bin/echo /home/user/.ssh/id_rsa",
+        ToolExecutionMode::Execute,
+        true,
+        &["/bin/echo"],
+    )
+    .unwrap_err();
+
+    assert_eq!(err.code, "security.local_secret_denied");
+}

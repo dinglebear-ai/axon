@@ -393,7 +393,6 @@ dependencies = [
  "async-trait",
  "axon-cli",
  "axon-core",
- "axon-jobs",
  "axon-llm",
  "axon-mcp",
  "axon-services",
@@ -418,12 +417,14 @@ dependencies = [
 name = "axon-adapters"
 version = "6.2.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "axon-api",
  "axon-core",
  "axon-error",
  "axon-extract",
  "axon-observe",
+ "axon-parse",
  "base64",
  "chrono",
  "feed-rs",
@@ -491,7 +492,6 @@ dependencies = [
  "axon-api",
  "axon-core",
  "axon-jobs",
- "axon-llm",
  "axon-mcp",
  "axon-services",
  "axon-web",
@@ -736,7 +736,6 @@ dependencies = [
  "axon-api",
  "axon-authz",
  "axon-core",
- "axon-jobs",
  "axon-services",
  "axum 0.8.9",
  "chrono",
@@ -746,6 +745,7 @@ dependencies = [
  "proptest",
  "reqwest 0.13.4",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "serial_test",
@@ -766,6 +766,7 @@ dependencies = [
  "axon-adapters",
  "axon-api",
  "axon-core",
+ "axon-document",
  "axon-embedding",
  "axon-error",
  "axon-graph",
@@ -810,6 +811,12 @@ dependencies = [
  "chrono",
  "serde_json",
  "serde_yaml",
+ "tree-sitter",
+ "tree-sitter-javascript",
+ "tree-sitter-python",
+ "tree-sitter-rust",
+ "tree-sitter-typescript",
+ "url",
  "uuid",
 ]
 
@@ -946,7 +953,6 @@ dependencies = [
  "axon-core",
  "axon-error",
  "axon-jobs",
- "axon-ledger",
  "axon-llm",
  "axon-services",
  "axum 0.8.9",
@@ -6325,6 +6331,7 @@ version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
+ "indexmap 2.14.0",
  "itoa",
  "memchr",
  "serde",
@@ -7252,6 +7259,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2231b7c3057d5e4ad0156fb3dc807d900806020c5ffa3ee6ff2c8c76fb8520"
+
+[[package]]
 name = "string-interner"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7989,6 +8002,66 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "tree-sitter"
+version = "0.25.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78f873475d258561b06f1c595d93308a7ed124d9977cb26b148c2084a4a3cc87"
+dependencies = [
+ "cc",
+ "regex",
+ "regex-syntax",
+ "serde_json",
+ "streaming-iterator",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-javascript"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68204f2abc0627a90bdf06e605f5c470aa26fdcb2081ea553a04bdad756693f5"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-language"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
+
+[[package]]
+name = "tree-sitter-python"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bf85fd39652e740bf60f46f4cda9492c3a9ad75880575bf14960f775cb74a1c"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-rust"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439e577dbe07423ec2582ac62c7531120dbfccfa6e5f92406f93dd271a120e45"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]

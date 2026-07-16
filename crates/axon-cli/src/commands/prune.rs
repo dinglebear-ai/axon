@@ -20,7 +20,7 @@ use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{accent, muted, primary, symbol_for_status};
 use axon_services::context::ServiceContext;
-use axon_services::prune::{PruneAuthz, prune};
+use axon_services::prune::{PruneAuthz, prune, prune_execute_saved};
 use std::error::Error;
 
 const COLLECTION_PREFIX: &str = "collection:";
@@ -32,14 +32,39 @@ pub async fn run_prune(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
         .map(String::as_str)
         .ok_or("prune requires a subcommand: plan|exec")?;
 
+    if subaction == "exec" {
+        if !cfg.prune_confirm {
+            return Err("prune exec requires --confirm to run destructively".into());
+        }
+        let plan_id = cfg
+            .prune_target
+            .as_deref()
+            .ok_or("prune exec requires the plan id returned by `prune plan`")?;
+        let (plan, result, receipt) =
+            prune_execute_saved(ctx, plan_id, true, &PruneAuthz::admin()).await?;
+        if cfg.json_output {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "ok": true,
+                    "subaction": "exec",
+                    "plan": plan,
+                    "result": result,
+                    "receipt_path": receipt,
+                }))?
+            );
+        } else {
+            report_result(&result);
+            println!("{}", muted(&format!("receipt: {receipt}")));
+        }
+        return Ok(());
+    }
+
     let selector = build_selector(cfg)?;
     let request = match subaction {
         "plan" => PruneRequest::dry_run(selector, "axon prune plan"),
         "exec" => {
-            if !cfg.prune_confirm {
-                return Err("prune exec requires --confirm to run destructively".into());
-            }
-            PruneRequest::execute(selector, "axon prune exec")
+            unreachable!("exec handled above")
         }
         other => {
             return Err(format!("unknown prune subcommand '{other}' (expected plan|exec)").into());
@@ -76,12 +101,11 @@ pub async fn run_prune(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
                 accent("▸")
             );
             println!("{}", muted(&format!("selector: {:?}", plan.selector)));
+            println!("{}", muted(&format!("plan_id: {}", plan.job_id.0)));
             if plan.steps.is_empty() {
                 println!(
                     "{}",
-                    muted(
-                        "no steps estimated — live impact counts are not yet wired for this selector; run `prune exec --confirm` to attempt the delete anyway"
-                    )
+                    muted("no deletions are estimated for this reviewed plan")
                 );
             }
             for step in &plan.steps {
@@ -95,7 +119,10 @@ pub async fn run_prune(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
             }
             println!(
                 "{}",
-                muted("run `axon prune exec --confirm` to execute this plan.")
+                muted(&format!(
+                    "run `axon prune exec {} --confirm` to execute this plan.",
+                    plan.job_id.0
+                ))
             );
         }
         Some(result) => report_result(&result),

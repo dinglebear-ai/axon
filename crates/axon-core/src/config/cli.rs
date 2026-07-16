@@ -2,7 +2,7 @@ mod config_args;
 mod global_args;
 mod setup_args;
 
-use super::types::{EvaluateResponsesMode, MapFallback, McpTransport};
+use super::types::{EvaluateResponsesMode, McpTransport};
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
@@ -73,10 +73,6 @@ pub(super) enum CliCommand {
     Status,
     /// Manage unified durable jobs
     Jobs(JobsArgs),
-    /// Re-crawl / re-ingest previously indexed origins (full docs refresh)
-    Refresh(RefreshArgs),
-    /// Manage embedding freshness schedules
-    Fresh(FreshArgs),
     /// Persistent agent memory: remember, list, search, show, link, supersede, or context memories
     Memory(MemoryArgs),
     /// Index AI session exports (Claude, Codex, Gemini) into Qdrant
@@ -258,8 +254,7 @@ pub(super) struct ResetArgs {
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) dry_run: bool,
 
-    /// Execute a previously reviewed reset plan id. When omitted with --yes,
-    /// Axon creates an invocation-local plan and binds execution to that plan.
+    /// Execute a previously reviewed reset plan id. Required with --yes.
     #[arg(long = "plan-id")]
     pub(super) plan_id: Option<String>,
 }
@@ -280,8 +275,7 @@ pub(super) enum PruneCliSubcommand {
 
 #[derive(Debug, Args)]
 pub(super) struct PruneTargetArgs {
-    /// Prune target: a source id (or `collection:<name>` to target a whole
-    /// Qdrant collection instead of one source)
+    /// Plan target for `plan`; reviewed plan id for `exec`.
     pub(super) target: String,
 
     /// Scope the prune to one generation of `target` instead of the whole source
@@ -370,45 +364,6 @@ pub(super) struct ScrapeSourceArgs {
     /// Return the cleaned page body inline when it fits the output policy.
     #[arg(long = "inline", action = ArgAction::SetTrue)]
     pub(super) inline: bool,
-}
-
-#[derive(Debug, Args)]
-pub(super) struct RefreshArgs {
-    /// Optional filter: a source_type (crawl/embed/scrape/github/gitlab/gitea/
-    /// git/reddit/youtube) or a domain/substring matched against indexed origins.
-    /// Omit to refresh every indexed origin.
-    #[arg(value_name = "FILTER")]
-    pub(super) filter: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(super) struct FreshArgs {
-    #[command(subcommand)]
-    pub(super) action: FreshSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum FreshSubcommand {
-    /// List freshness schedules
-    List {
-        #[arg(long)]
-        json: bool,
-    },
-    /// Run one freshness schedule immediately
-    #[command(name = "run-now")]
-    RunNow {
-        id: uuid::Uuid,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show freshness run history
-    History {
-        id: uuid::Uuid,
-        #[arg(long, default_value_t = 50)]
-        limit: usize,
-        #[arg(long)]
-        json: bool,
-    },
 }
 
 #[derive(Debug, Args)]
@@ -508,6 +463,15 @@ pub(super) struct DiffArgs {
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
 pub(super) struct WatchArgs {
+    /// Source URI/path to watch. Equivalent to `watch create <SOURCE>`.
+    #[arg(value_name = "SOURCE")]
+    pub(super) source: Option<String>,
+    /// Watch interval in seconds for source watch creation.
+    #[arg(long = "every-seconds")]
+    pub(super) every_seconds: Option<i64>,
+    /// Target collection for source watch runs.
+    #[arg(long = "collection")]
+    pub(super) collection: Option<String>,
     #[command(subcommand)]
     pub(super) action: Option<WatchSubcommand>,
 }
@@ -515,22 +479,25 @@ pub(super) struct WatchArgs {
 #[derive(Debug, Subcommand)]
 pub(super) enum WatchSubcommand {
     Create {
-        name: String,
-        #[arg(long = "task-type")]
-        task_type: String,
-        #[arg(long = "every-seconds")]
+        source: String,
+        #[arg(long = "every-seconds", default_value_t = 3600)]
         every_seconds: i64,
-        #[arg(long = "task-payload")]
-        task_payload: Option<String>,
+        #[arg(long = "collection")]
+        collection: Option<String>,
     },
     List,
     Get {
+        id: String,
+    },
+    Status {
         id: String,
     },
     Update {
         id: String,
         #[arg(long = "every-seconds")]
         every_seconds: Option<i64>,
+        #[arg(long = "collection")]
+        collection: Option<String>,
     },
     #[command(name = "exec")]
     Exec {
@@ -547,11 +514,6 @@ pub(super) enum WatchSubcommand {
     },
     History {
         id: String,
-        #[arg(long, default_value_t = 50)]
-        limit: usize,
-    },
-    Artifacts {
-        run_id: String,
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
@@ -607,11 +569,6 @@ pub(super) struct RetrieveArgs {
 pub(super) struct MapArgs {
     #[arg(value_name = "URL")]
     pub(super) value: Option<String>,
-    /// Fallback strategy when no sitemap documents are found.
-    /// `structure`: fetch root page and extract anchor hrefs (default, fast).
-    /// `crawl`: run a full Spider.rs crawl (slow, legacy — explicit opt-in).
-    #[arg(long, value_enum)]
-    pub(super) map_fallback: Option<MapFallback>,
 }
 
 #[derive(Debug, Args)]
@@ -746,10 +703,7 @@ pub(super) struct ExtractArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
 pub(super) struct SessionsArgs {
-    #[command(subcommand)]
-    pub(super) action: Option<SessionsSubcommand>,
     /// Only scan Claude session exports.
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) claude: bool,
@@ -762,18 +716,6 @@ pub(super) struct SessionsArgs {
     /// Filter session projects by substring.
     #[arg(long, value_name = "NAME")]
     pub(super) project: Option<String>,
-}
-
-#[derive(Debug, Subcommand)]
-pub(super) enum SessionsSubcommand {
-    Status { job_id: String },
-    Cancel { job_id: String },
-    Errors { job_id: String },
-    List,
-    Cleanup,
-    Clear,
-    Worker,
-    Recover,
 }
 
 #[derive(Debug, Subcommand)]

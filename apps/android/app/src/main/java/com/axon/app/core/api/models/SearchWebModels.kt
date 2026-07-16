@@ -2,7 +2,6 @@ package com.axon.app.core.api.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
 /** POST /v1/search request — Tavily web search; mirrors `RestSearchRequest`. */
 @Serializable
@@ -22,21 +21,22 @@ data class SearchWebHit(
 )
 
 @Serializable
-data class CrawlJobRef(
+data class SourceJobRef(
     @SerialName("job_id") val jobId: String,
     val url: String,
 )
 
 @Serializable
-data class AutoCrawlStatus(
-    val enqueued: Int = 0,
-    val skipped: Int = 0,
+data class SourceJobRejection(
+    val url: String? = null,
+    val reason: String = "",
 )
 
 @Serializable
 data class SearchWebResponse(
     val query: String = "",
     val results: List<SearchWebHit> = emptyList(),
-    @SerialName("auto_crawl_status") val autoCrawlStatus: JsonElement? = null,
-    @SerialName("crawl_jobs") val crawlJobs: List<CrawlJobRef> = emptyList(),
+    @SerialName("source_index_status") val sourceIndexStatus: String = "not_queued",
+    @SerialName("source_jobs") val sourceJobs: List<SourceJobRef> = emptyList(),
+    @SerialName("source_jobs_rejected") val sourceJobsRejected: List<SourceJobRejection> = emptyList(),
 )

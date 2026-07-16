@@ -172,7 +172,7 @@ validation unless the target DTO explicitly exposes `options`, `metadata`, or
         "extract",
         "memory",
         "jobs",
-        "watches",
+        "watch",
         "artifacts",
         "uploads",
         "prune",
@@ -200,7 +200,7 @@ Grouped actions use action-specific subactions:
 |---|---|
 | `memory` | `remember`, `search`, `context`, `show`, `link`, `supersede`, `reinforce`, `contradict`, `pin`, `archive`, `forget`, `review`, `compact` |
 | `jobs` | `get`, `list`, `events`, `cancel`, `retry`, `recover`, `cleanup`, `clear` |
-| `watches` | `create`, `list`, `get`, `status`, `exec`, `pause`, `resume`, `delete`, `history` |
+| `watch` | `create`, `list`, `get`, `status`, `exec`, `pause`, `resume`, `delete`, `history` |
 | `artifacts` | `list`, `get`, `content` |
 | `uploads` | `create`, `get`, `put_content`, `complete`, `abort` |
 | `prune` | `plan`, `exec`, `dedupe`, `purge` |

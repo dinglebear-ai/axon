@@ -2,7 +2,7 @@
 //! size/adapter-fallback paths. Split out of `preparer.rs` to keep that file
 //! under the repo's 500-line monolith cap.
 
-use axon_api::source::{Severity, SourceItemKey, SourceWarning};
+use axon_api::source::{Severity, SourceItemKey, SourceParseFacts, SourceWarning};
 
 use crate::chunk::DocumentChunk;
 use crate::profile::ChunkingProfile;
@@ -31,11 +31,14 @@ pub(super) fn build_chunks(
     path: Option<&str>,
     language_hint: Option<&str>,
     content_kind: axon_api::source::ContentKind,
+    parse_facts: &[SourceParseFacts],
     use_fallback: bool,
 ) -> ChunkBuild {
     let chunks = match profile {
         ChunkingProfile::CodeSymbol if use_fallback => size_fallback_chunks(text, "code_blocks"),
-        ChunkingProfile::CodeSymbol => code::code_symbols(text, path, language_hint),
+        ChunkingProfile::CodeSymbol => {
+            code::code_symbols_with_facts(text, path, language_hint, parse_facts)
+        }
         ChunkingProfile::CodeManifest => code::code_manifest(text, path),
         ChunkingProfile::MarkdownSections if use_fallback => {
             size_fallback_chunks(text, "plain_text_windows")
@@ -63,7 +66,7 @@ pub(super) fn build_chunks(
                 source_item_key,
             );
         }
-        ChunkingProfile::ToolOutput => transcript::split_on_nonempty_lines(text, "tool_output"),
+        ChunkingProfile::ToolOutput => transcript::tool_output_records(text),
         ChunkingProfile::SessionTurns => session::session_turns(text),
         ChunkingProfile::AtomicMetadata => metadata::atomic_metadata(text),
     };

@@ -16,7 +16,8 @@ show, link, supersede, reinforce, decay, review, update, pin, archive, forget,
 compact, import, export), `VectorBackedMemoryStore` (Qdrant indexing via
 `MemoryVectorConfig`/`MemoryBatchLimits`, batched embedding with partial-failure
 recovery), and `GraphBackedMemoryStore` (mirrors lifecycle transitions into
-`axon-graph` via `GraphBackedMemoryMirror`) all compose in `axon-services::memory::
+`axon-graph` via bounded, atomic `GraphBackedMemoryMirror` batches with
+retryable review markers on partial failure) all compose in `axon-services::memory::
 memory_store()` as `Vector(Graph(Sqlite))`. `context.rs`, `link.rs`, `recall.rs`,
 and `review.rs` remain marker files — their real logic already lives inside
 `store.rs`/`sqlite.rs`/`sqlite/*.rs` rather than as separate modules; do not
@@ -52,6 +53,9 @@ duplicate it there. Memory is still **not** a generic source adapter and does
 - Recall can **combine lexical, vector, and graph filters**.
 - Memory context output is **bounded and source-cited**.
 - Memory lifecycle is **observable and linked into SourceGraph**.
+- Public memory export reads authoritative SQLite metadata records. Qdrant
+  points are derived recall indexes, so `qdrant_page_size` remains reserved
+  for vector maintenance rather than defining export correctness.
 
 ## DTO ownership
 Wire DTOs (`MemoryRecord`, `MemoryLink`, `MemoryDecayPolicy`,

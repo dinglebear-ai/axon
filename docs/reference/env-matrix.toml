@@ -239,66 +239,6 @@ compatibility = "advanced"
 reason = "SQLite queue path override."
 
 [[env]]
-key = "AXON_FRESHNESS_TICK_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "env-template", "docs", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = "freshness.tick-secs"
-compatibility = "warn-env-override"
-reason = "Freshness scheduler sweep interval. Durable tuning belongs in [freshness]."
-
-[[env]]
-key = "AXON_FRESHNESS_LEASE_SECS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = "freshness.lease-secs"
-compatibility = "warn-env-override"
-reason = "Freshness lease TTL. Durable tuning belongs in [freshness]."
-
-[[env]]
-key = "AXON_FRESHNESS_MAX_DUE_PER_TICK"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "env-template", "docs", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = "freshness.max-due-per-tick"
-compatibility = "warn-env-override"
-reason = "Freshness due-batch cap. Durable tuning belongs in [freshness]."
-
-[[env]]
-key = "AXON_FRESHNESS_MAX_CONCURRENT_RUNS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "env-template", "docs", "scripts"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = "freshness.max-concurrent-runs"
-compatibility = "warn-env-override"
-reason = "Freshness executor concurrency cap. Durable tuning belongs in [freshness]."
-
-[[env]]
-key = "AXON_FRESHNESS_RUN_RETENTION_DAYS"
-classification = "move-toml"
-runtime_placement = "not-runtime"
-surfaces = ["src", "env-template", "docs"]
-secret = false
-url_or_path = false
-container_allowed = true
-toml_destination = "freshness.run-retention-days"
-compatibility = "warn-env-override"
-reason = "Freshness run-history retention. Durable tuning belongs in [freshness]."
-
-[[env]]
 key = "AXON_CODE_SEARCH_ALLOWED_ROOTS"
 classification = "keep-env"
 runtime_placement = "both"
@@ -2204,7 +2144,7 @@ url_or_path = false
 container_allowed = true
 toml_destination = ""
 compatibility = "canonical"
-reason = "Non-secret tuning knob; caps the seed_url facet breadth scanned by `axon refresh`. Kept in env until a typed config.toml field is wired."
+reason = "Non-secret tuning knob; caps the seed_url facet breadth scanned by source refresh. Kept in env until a typed config.toml field is wired."
 
 [[env]]
 key = "AXON_SOURCES_DOMAIN_LIMIT"

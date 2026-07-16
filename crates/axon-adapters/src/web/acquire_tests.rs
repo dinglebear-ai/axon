@@ -168,6 +168,29 @@ async fn http_mode_propagates_fetch_errors() {
     assert!(!err.code.to_string().is_empty());
 }
 
+#[tokio::test]
+async fn all_web_modes_reject_blocked_targets_before_provider_dispatch() {
+    for mode in [RenderMode::Http, RenderMode::Chrome, RenderMode::AutoSwitch] {
+        for uri in [
+            "http://127.0.0.1/admin",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://192.168.1.2/private",
+            "http://[fe80::1]/private",
+            "file:///etc/passwd",
+        ] {
+            let providers = FakeAdapterProviders::new();
+            let err = acquire_item(&providers, &providers, &item(uri), &opts(mode, 200))
+                .await
+                .expect_err("blocked target must fail before provider dispatch");
+            assert_eq!(err.code.to_string(), "web.acquire.invalid_uri");
+            assert!(
+                providers.calls().await.is_empty(),
+                "{mode:?} dispatched a provider for blocked target {uri}"
+            );
+        }
+    }
+}
+
 // ── Regression 1: automation_script threading ───────────────────────────────
 
 fn automation_ref(uri: &str) -> ArtifactRef {

@@ -1,13 +1,12 @@
 //! MCP `source` action handler — the unified indexing entrypoint.
 //!
-//! `source` replaces the removed `embed` / `ingest` / `scrape` / `crawl` /
-//! `code_search` / `vertical_scrape` MCP actions. It maps the MCP-facing
-//! [`crate::schema::SourceRequest`] onto [`axon_api::source::SourceRequest`] and
-//! calls [`axon_services::index_source`], which classifies the input (local
-//! path, git URL, feed URL, youtube/reddit target, web URL, session selector,
-//! or registry target), acquires it, embeds it, and publishes it through the
-//! unified pipeline. The transport-neutral [`axon_api::source::SourceResult`] is
-//! returned verbatim as the MCP result payload.
+//! It maps the MCP-facing [`crate::schema::SourceRequest`] onto
+//! [`axon_api::source::SourceRequest`] and calls
+//! [`axon_services::index_source`], which classifies the input (local path,
+//! git URL, feed URL, youtube/reddit target, web URL, session selector, or
+//! registry target), acquires it, embeds it, and publishes it through the
+//! unified pipeline. The transport-neutral [`axon_api::source::SourceResult`]
+//! is returned verbatim as the MCP result payload.
 //!
 //! ## Authorization
 //!

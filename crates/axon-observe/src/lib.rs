@@ -9,6 +9,7 @@ pub mod metric;
 pub mod migration;
 pub mod phase;
 pub mod progress;
+pub mod provider_failure;
 pub mod redaction;
 pub mod reservation;
 pub mod schema_registry;
@@ -36,6 +37,10 @@ mod event_tests;
 #[cfg(test)]
 #[path = "heartbeat_tests.rs"]
 mod heartbeat_tests;
+
+#[cfg(test)]
+#[path = "provider_failure_tests.rs"]
+mod provider_failure_tests;
 
 #[cfg(test)]
 #[path = "security_audit_tests.rs"]

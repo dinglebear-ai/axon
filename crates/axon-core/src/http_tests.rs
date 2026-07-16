@@ -368,6 +368,28 @@ fn resolved_hostname_ips_reject_ipv6_unique_local_addresses() {
     );
 }
 
+#[test]
+fn repeated_resolution_fails_closed_when_public_name_rebinds_private() {
+    let host = "rebind.example";
+    assert!(validate_resolved_ips(host, [IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34))]).is_ok());
+    assert!(
+        validate_resolved_ips(host, [IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]).is_err(),
+        "a later resolution must not inherit an earlier allow decision"
+    );
+}
+
+#[test]
+fn mixed_public_and_private_resolution_fails_closed() {
+    let result = validate_resolved_ips(
+        "mixed.example",
+        [
+            IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)),
+            IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)),
+        ],
+    );
+    assert!(result.is_err(), "any blocked answer must deny the target");
+}
+
 /// Verifies that public IPs pass and private IPs fail parse-time validation.
 #[test]
 fn validate_url_accepts_public_ip_rejects_private() {

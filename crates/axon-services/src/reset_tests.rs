@@ -38,7 +38,18 @@ fn resolve_stores_dedups_and_canonicalizes_order() {
     // Passed out of order + duplicated — must come back canonical + unique.
     let cfg = cfg_with(vec!["vectors", "jobs", "jobs"], false, false);
     let stores = resolve_stores(&cfg).expect("resolve");
-    assert_eq!(stores, vec!["jobs".to_string(), "vectors".to_string()]);
+    assert_eq!(
+        stores,
+        vec![
+            "jobs".to_string(),
+            "ledger".to_string(),
+            "code_index".to_string(),
+            "watch".to_string(),
+            "graph".to_string(),
+            "memory".to_string(),
+            "vectors".to_string(),
+        ]
+    );
 }
 
 #[test]
@@ -94,8 +105,8 @@ async fn dry_run_reset_mutates_nothing_and_reports_plan() {
     // DB was never created by a read-only inventory.
     assert!(!db_path.exists(), "dry-run must not create the DB");
     assert!(result.deleted.sqlite_tables == 0);
-    assert_eq!(result.stores, vec!["jobs".to_string()]);
-    assert_eq!(result.plan.len(), 1);
+    assert_eq!(result.stores.len(), SQLITE_STORES.len());
+    assert_eq!(result.plan.len(), SQLITE_STORES.len());
     assert_eq!(result.plan[0].store, "jobs");
 }
 
@@ -154,10 +165,14 @@ async fn reset_writes_no_unified_job_row_for_itself() {
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join("jobs.db");
 
-    let mut cfg = cfg_with(vec!["jobs"], false, true);
+    let mut cfg = cfg_with(vec!["jobs"], false, false);
     cfg.sqlite_path = db_path.clone();
-
-    let result = reset(&cfg).await.expect("real reset");
+    let plan = reset(&cfg).await.expect("reset plan");
+    cfg.yes = true;
+    cfg.reset_plan_id = Some(plan.plan_id);
+    let result = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect("real reset");
     assert!(!result.dry_run);
 
     let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
@@ -173,6 +188,49 @@ async fn reset_writes_no_unified_job_row_for_itself() {
         count.0, 0,
         "reset must not create a unified job row for its own execution"
     );
+}
+
+#[tokio::test]
+async fn destructive_reset_requires_reviewed_plan_admin_and_confirmation() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = cfg_with(vec!["jobs"], false, true);
+    cfg.sqlite_path = dir.path().join("jobs.db");
+
+    let missing = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect_err("plan id is required");
+    assert!(missing.to_string().contains("reset.plan_required"));
+
+    cfg.yes = false;
+    let plan = reset(&cfg).await.expect("plan");
+    cfg.yes = true;
+    cfg.reset_plan_id = Some(plan.plan_id.clone());
+    let denied = reset_with_authz(&cfg, &ResetAuthz::anonymous())
+        .await
+        .expect_err("admin is required");
+    assert!(denied.to_string().contains("reset.admin_required"));
+
+    let result = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect("reviewed plan executes");
+    assert_eq!(result.plan_id, plan.plan_id);
+    assert!(
+        result
+            .audit_events
+            .iter()
+            .any(|event| event == "reset.confirm")
+    );
+    assert!(
+        result
+            .chunks
+            .iter()
+            .all(|chunk| chunk.status == "completed")
+    );
+    let repeated = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect("completed plan id is reusable and idempotent");
+    assert_eq!(repeated.deleted, result.deleted);
+    assert_eq!(repeated.receipt_path, result.receipt_path);
 }
 
 #[tokio::test]

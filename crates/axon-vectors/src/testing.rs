@@ -119,6 +119,11 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     );
     payload.insert("visibility".to_string(), json!("internal"));
     payload.insert("redaction_status".to_string(), json!("clean"));
+    payload.insert("redaction_version".to_string(), json!("2026-07-16"));
+    payload.insert("redacted_field_count".to_string(), json!(0));
+    payload.insert("dropped_field_count".to_string(), json!(0));
+    payload.insert("detector_count".to_string(), json!(0));
+    payload.insert("detector_names".to_string(), json!([]));
     payload.insert("job_id".to_string(), json!(spec.job_id));
     // "published" — this helper is documented for "upsert + retrieval
     // tests", and the standard retrieval access filter requires
@@ -132,6 +137,7 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     payload.insert("embedded_at".to_string(), json!("2026-07-01T00:00:00Z"));
     payload.insert("vector_namespace".to_string(), json!(spec.namespace));
     payload.insert("content_kind".to_string(), json!("markdown"));
+    payload.insert("chunk_content_kind".to_string(), json!("markdown"));
     payload.insert(
         "content_hash".to_string(),
         json!(format!("sha256:content-{}", spec.chunk_id)),

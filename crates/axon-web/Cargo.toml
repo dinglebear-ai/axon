@@ -12,7 +12,6 @@ axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-llm = { path = "../axon-llm" }
 axon-error = { path = "../axon-error" }
-axon-ledger = { path = "../axon-ledger" }
 axon-jobs = { path = "../axon-jobs" }
 axon-services = { path = "../axon-services" }
 axon-authz = { path = "../axon-authz" }

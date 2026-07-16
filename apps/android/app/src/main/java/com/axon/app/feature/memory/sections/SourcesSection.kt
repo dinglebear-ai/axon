@@ -17,14 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.axon.app.data.repository.SourceEntryUi
+import com.axon.app.feature.memory.KnowledgeSourceRow
+import com.axon.app.feature.memory.KnowledgeViewModel
 import com.axon.app.ui.common.EmptyContent
 import com.axon.app.ui.common.ErrorContent
 import com.axon.app.ui.common.LoadingContent
 import com.axon.app.ui.common.Resource
 import com.axon.app.ui.common.rememberRevealState
 import com.axon.app.ui.common.revealOnce
-import com.axon.app.feature.memory.KnowledgeSourceRow
-import com.axon.app.feature.memory.KnowledgeViewModel
 import com.axon.app.ui.theme.AxonTheme
 import java.net.URI
 
@@ -38,17 +38,23 @@ fun SourcesSection(
     LaunchedEffect(Unit) { vm.loadSources() }
 
     when (val s = state) {
-        Resource.Idle, Resource.Loading -> LoadingContent(
-            label = "Loading sources…",
-            modifier = Modifier.fillMaxWidth(),
-        )
-        is Resource.Error -> ErrorContent(message = s.message, onRetry = { vm.loadSources(force = true) })
+        Resource.Idle, Resource.Loading -> {
+            LoadingContent(
+                label = "Loading sources…",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        is Resource.Error -> {
+            ErrorContent(message = s.message, onRetry = { vm.loadSources(force = true) })
+        }
+
         is Resource.Ready -> {
             val entries = s.value
             if (entries.isEmpty()) {
                 EmptyContent(
                     title = "No sources indexed",
-                    description = "Use Ask, Search, or Ingest to populate the knowledge base.",
+                    description = "Use Ask, Search, or Source to populate the knowledge base.",
                     icon = Icons.Outlined.Storage,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -56,7 +62,9 @@ fun SourcesSection(
                 val reveal = rememberRevealState()
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 6.dp, bottom = 16.dp),
+                    contentPadding =
+                        androidx.compose.foundation.layout
+                            .PaddingValues(top = 6.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     item {
@@ -66,21 +74,23 @@ fun SourcesSection(
                             fontSize = 12.sp,
                             lineHeight = 15.sp,
                             fontFamily = AxonTheme.fonts.body,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp, vertical = 3.dp),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp, vertical = 3.dp),
                         )
                     }
                     itemsIndexed(entries, key = { _, it -> it.url }) { index, entry ->
                         KnowledgeSourceRow(
                             title = sourceTitle(entry.url),
                             domain = sourceDomain(entry.url),
-                            source = "crawl",
+                            source = "source",
                             chunks = entry.chunks,
                             onClick = { onOpenDocument(entry.url) },
-                            modifier = Modifier
-                                .animateItem()
-                                .revealOnce(reveal, entry.url, index),
+                            modifier =
+                                Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, entry.url, index),
                         )
                     }
                 }

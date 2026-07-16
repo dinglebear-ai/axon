@@ -12,6 +12,7 @@ fn local_rust_document_uses_code_symbol_chunks_with_code_metadata() {
     ));
 
     assert_eq!(prepared.chunking_profile, "code_symbol");
+    assert_eq!(prepared.chunking_method, "tree_sitter");
     assert_eq!(prepared.chunks.len(), 2);
     assert_eq!(
         prepared.chunks[0].chunk_locator.symbol.as_deref(),
@@ -20,9 +21,53 @@ fn local_rust_document_uses_code_symbol_chunks_with_code_metadata() {
     assert_eq!(prepared.chunks[0].metadata["code_symbol_name"], "answer");
     assert_eq!(prepared.chunks[0].metadata["code_symbol_kind"], "function");
     assert_eq!(prepared.chunks[0].metadata["code_language"], "rust");
+    assert_eq!(prepared.chunks[0].metadata["parser_method"], "tree_sitter");
+    assert_eq!(
+        prepared.chunks[0].metadata["actual_chunking_method"],
+        "tree_sitter"
+    );
+    assert_eq!(prepared.chunks[0].source_range.byte_start, Some(0));
+    assert_eq!(prepared.chunks[0].source_range.byte_end, Some(33));
+    assert!(
+        prepared
+            .parse_facts
+            .iter()
+            .all(|fact| fact.parser_method == "tree_sitter")
+    );
     assert_eq!(
         prepared.chunks[0].chunk_locator.path.as_deref(),
         Some("src/lib.rs")
+    );
+}
+
+#[test]
+fn local_typescript_document_uses_js_ts_symbol_kinds() {
+    let prepared = prepare(local_doc(
+        "src/component.tsx",
+        ContentKind::Code,
+        "export function createWidget() {}\n\
+export interface Props { name: string }\n\
+export const useWidget = (name: string) => ({ name });\n",
+    ));
+
+    let kinds: Vec<_> = prepared
+        .chunks
+        .iter()
+        .map(|chunk| chunk.metadata["code_symbol_kind"].as_str().unwrap())
+        .collect();
+    let names: Vec<_> = prepared
+        .chunks
+        .iter()
+        .map(|chunk| chunk.metadata["code_symbol_name"].as_str().unwrap())
+        .collect();
+
+    assert_eq!(names, vec!["createWidget", "Props", "useWidget"]);
+    assert_eq!(kinds, vec!["function", "interface", "function"]);
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.metadata["code_language"] == "typescript")
     );
 }
 

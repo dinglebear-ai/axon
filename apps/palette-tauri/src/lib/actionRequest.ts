@@ -75,8 +75,8 @@ export const noBody: BodyBuilder = () => null;
 
 // ---- Per-action body builders -------------------------------------------
 
-// scrape/crawl route through the unified `POST /v1/sources` pipeline (the
-// verb-specific `/v1/scrape` and `/v1/crawl` routes were removed — see
+// Page and site requests route through the unified `POST /v1/sources` pipeline (the
+// removed verb routes are documented in
 // docs/pipeline-unification/surfaces/rest-contract.md and the CLI shim at
 // crates/axon-cli/src/commands/source.rs, which this mirrors). `scope` hints
 // single-page vs. full-site acquisition; the server still auto-classifies
@@ -87,7 +87,7 @@ export const scrapeBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
   scope: "page",
   ...ctx.collectionBody,
 });
-export const crawlBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+export const sourceSiteBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
   source: first(ctx.words, "url"),
   scope: "site",
   ...ctx.collectionBody,
@@ -107,33 +107,22 @@ export const suggestBody: BodyBuilder<Req["RestSuggestRequest"]> = (ctx) => (ctx
 export const evaluateBody: BodyBuilder<Req["RestEvaluateRequest"]> = (ctx) => ({ question: first(ctx.words, "question") });
 export const searchBody: BodyBuilder<Req["RestSearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
 export const researchBody: BodyBuilder<Req["RestResearchRequest"]> = (ctx) => ({ query: first(ctx.words, "query"), limit: ctx.limit });
-// embed/ingest also route through `POST /v1/sources` (see the scrape/crawl
-// comment above). Neither sets `scope` — the server auto-detects local path
+// General sources also route through `POST /v1/sources` (see the page/site
+// comment above). The request does not set `scope`; the server auto-detects local path
 // vs. URL vs. git/reddit/youtube/feed target via the canonical shared
 // classifier (`classify_target`), the single source of truth across
 // CLI/MCP/REST/palette. Do NOT reintroduce a client-side classifier here: it
 // drifts from the backend (the old one only knew github/reddit/youtube and
 // rejected gitlab/gitea/git/rss targets).
-export const embedBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
+export const sourceBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
   source: first(ctx.words, "input"),
   ...ctx.collectionBody,
 });
 export const extractBody: BodyBuilder<Req["RestExtractRequest"]> = (ctx) => ({ urls: required(ctx.words, "urls"), ...ctx.collectionBody });
-export const ingestBody: BodyBuilder<Req["SourceRequest"]> = (ctx) => ({
-  source: first(ctx.words, "target"),
-  ...ctx.collectionBody,
-});
 export const endpointsBody: BodyBuilder<Req["EndpointsRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
 export const brandBody: BodyBuilder<Req["RestBrandRequest"]> = (ctx) => ({ url: first(ctx.words, "url") });
 export const diffBody: BodyBuilder<Req["RestDiffRequest"]> = (ctx) => diffRequestBody(ctx.words);
 export const screenshotBody: BodyBuilder<Req["RestScreenshotRequest"]> = (ctx) => ({ url: first(ctx.words, "url"), full_page: true });
-export const dedupeBody: BodyBuilder<Req["DedupeRequest"]> = (ctx) => ctx.collectionBody;
-// Purge deletes by default (matches the CLI); the palette gates it behind a
-// confirmation guard. `prefix`/`dry_run` default false server-side.
-export const purgeBody: BodyBuilder<Req["PurgeRequest"]> = (ctx) => ({
-  target: first(ctx.words, "target"),
-  ...ctx.collectionBody,
-});
 export const watchCreateBody: BodyBuilder<Req["WatchRequest"]> = (ctx) => watchCreateRequestBody(ctx.words);
 // `github` takes a bare owner[/repo[/path...]] target (NOT a URL — see
 // `BARE_TARGET_SUBCOMMANDS`-style handling in actions.ts, though github is

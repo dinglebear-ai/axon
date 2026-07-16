@@ -60,6 +60,7 @@ fn prepared_document_and_embeddings_build_validated_points() {
     assert_eq!(batch.points[0].payload["chunk_key"], "chunk-web-1");
     assert_eq!(batch.points[0].payload["content_hash"], "hash-0");
     assert_eq!(batch.points[0].payload["content_kind"], "markdown");
+    assert_eq!(batch.points[0].payload["chunk_content_kind"], "markdown");
     assert_eq!(batch.points[0].payload["vector_namespace"], "dense");
     assert_eq!(batch.points[0].payload["chunk_text"], "chunk-web-1 content");
     assert!(batch.points[0].payload["source_range"].is_object());
@@ -67,20 +68,24 @@ fn prepared_document_and_embeddings_build_validated_points() {
 }
 
 #[test]
-fn absolute_local_chunk_locator_paths_skip_the_chunk() {
+fn absolute_local_chunk_locator_paths_are_redacted_before_write() {
     let mut document = test_prepared_document();
     document.chunks[0].chunk_locator.path = Some("/home/jmagar/workspace/private.rs".to_string());
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    // A `ForbiddenValue` (absolute local path in the locator) is a per-chunk
-    // concern: the secret-bearing chunk is skipped (not indexed), and the rest
-    // of the document still builds. The whole source must not fail.
+    // Locator metadata crosses the checked redaction boundary before payload
+    // validation. The point remains usable, but the private path never lands.
     let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
         .unwrap();
 
-    assert_eq!(batch.points.len(), 1);
-    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
+    assert_eq!(batch.points.len(), 2);
+    let payload = &batch.points[0].payload;
+    assert_ne!(
+        payload["chunk_locator"]["path"],
+        "/home/jmagar/workspace/private.rs"
+    );
+    assert_eq!(payload["redaction_status"], "redacted");
 }
 
 #[test]
@@ -101,6 +106,12 @@ fn preparer_internal_chunk_metadata_is_not_copied_into_vector_payload() {
     document.chunks[0]
         .metadata
         .insert("preparer_version".to_string(), json!("2026-07-01"));
+    document.chunks[0]
+        .metadata
+        .insert("parser_id".to_string(), json!("tree_sitter"));
+    document.chunks[0]
+        .metadata
+        .insert("parser_version".to_string(), json!("0.25"));
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
     let expected_profile = document.chunking_profile.clone();
     let expected_method = document.chunking_method.clone();
@@ -122,6 +133,8 @@ fn preparer_internal_chunk_metadata_is_not_copied_into_vector_payload() {
         json!("stray-per-chunk-value")
     );
     assert!(!batch.points[0].payload.contains_key("preparer_version"));
+    assert_eq!(batch.points[0].payload["parser_id"], "tree_sitter");
+    assert_eq!(batch.points[0].payload["parser_version"], "0.25");
 }
 
 #[test]
@@ -456,6 +469,37 @@ fn secret_metadata_value_is_redacted_and_status_reflects_it() {
     assert_eq!(batch.points[0].payload["redaction_status"], "redacted");
     // The other chunk carried no secret and stays clean.
     assert_eq!(batch.points[1].payload["redaction_status"], "clean");
+}
+
+#[test]
+fn payload_redaction_stamps_proof_fields() {
+    let mut document = test_prepared_document();
+    document.chunks[0].metadata.insert(
+        "web_title".to_string(),
+        json!("authorization: bearer abcdef0123456789abcdef0123"),
+    );
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let batch = builder(test_collection_spec(3), document, embeddings)
+        .build()
+        .unwrap();
+    let payload = &batch.points[0].payload;
+
+    assert_eq!(payload["redaction_status"], "redacted");
+    assert!(payload["redaction_version"].as_str().is_some());
+    assert!(payload["redacted_field_count"].as_u64().unwrap_or(0) >= 1);
+    assert_eq!(payload["dropped_field_count"].as_u64(), Some(0));
+    assert_eq!(
+        payload["detector_count"].as_u64(),
+        payload["detector_names"]
+            .as_array()
+            .map(|names| names.len() as u64)
+    );
+    assert!(
+        payload["detector_names"]
+            .as_array()
+            .is_some_and(|names| !names.is_empty())
+    );
 }
 
 #[test]

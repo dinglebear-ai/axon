@@ -51,7 +51,7 @@ class JobsViewModel(
 ) : AndroidViewModel(app) {
     private val container = (app as AxonApp).container
 
-    private val _selectedTab = MutableStateFlow(JobFamily.Crawl)
+    private val _selectedTab = MutableStateFlow(JobFamily.Source)
 
     /** Visible-tab job list (R10). Uses capped exponential backoff on network failures. */
     val visibleJobs: StateFlow<Resource<List<JobUi>>> = _selectedTab

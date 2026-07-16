@@ -8,11 +8,10 @@
 //! caller-specified local path, per the "Prepared Uploads" table in
 //! `docs/pipeline-unification/sources/adapter-scopes.md`.
 //!
-//! Follow-up (transport workstream, not this crate): the staged-upload
-//! *store* — accepting bytes over HTTP/MCP, virus/size checking them, and
-//! writing them to a scratch root — does not exist yet. This adapter assumes
-//! `plan.request.source` already points at a materialized staging root
-//! written by that (future) store; it never accepts raw bytes itself.
+//! The transport-facing upload store is injected through [`UploadSourceProvider`].
+//! Materialization copies the authorized staged artifact into an adapter-owned
+//! temporary directory; discovery never interprets an upload id as a
+//! caller-controlled filesystem path.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,6 +33,9 @@ use crate::manifest::item_identity;
 pub const MODULE_NAME: &str = "upload";
 
 const ADAPTER_NAME: &str = "upload";
+
+mod materialize;
+pub use materialize::{UploadSourceProvider, upload_id_from_uri};
 
 #[derive(Debug, Clone, Default)]
 pub struct UploadSourceAdapter;

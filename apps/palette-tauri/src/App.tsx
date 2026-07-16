@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { actionOptionId } from "@/components/palette/ActionList";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { PaletteShell } from "@/components/palette/PaletteShell";
-import { ACTIONS, type PaletteAction, type RemotePaletteAction, actionMatches } from "@/lib/actions";
 import {
   actionConfirmationArmed,
   actionConfirmationMessage,
@@ -12,12 +11,22 @@ import {
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
+import {
+  ACTIONS,
+  actionMatches,
+  type PaletteAction,
+  type RemotePaletteAction,
+} from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient, executeAction } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
-import { loadPaletteHistory, normalizeChatSuggestions, persistPaletteHistory } from "@/lib/paletteHistoryStorage";
+import {
+  loadPaletteHistory,
+  normalizeChatSuggestions,
+  persistPaletteHistory,
+} from "@/lib/paletteHistoryStorage";
 import {
   argumentFor,
   focusInput,
@@ -37,22 +46,21 @@ import {
   modeOf,
   viewReducer,
 } from "@/lib/paletteViewState";
-import type { ChatSuggestion, RunState } from "@/lib/runState";
 import { strField, unwrapPayload } from "@/lib/payload";
-import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
+import type { ChatSuggestion, RunState } from "@/lib/runState";
+import { hostLabel } from "@/lib/url";
 import { capHistory, useActionRunner } from "@/lib/useActionRunner";
+import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
 import { useChatToolRunner } from "@/lib/useChatToolRunner";
-import { useCrawlJob } from "@/lib/useCrawlJob";
+import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
 import { useJobPoll } from "@/lib/useJobPoll";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
-import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
+import { useOpenJob } from "@/lib/useOpenJob";
 import { usePaletteConfig } from "@/lib/usePaletteConfig";
 import { usePaletteLifecycle } from "@/lib/usePaletteLifecycle";
 import { usePalettePins } from "@/lib/usePalettePins";
-import { useOpenJob } from "@/lib/useOpenJob";
 import { useSourcesNavigation } from "@/lib/useSourcesNavigation";
 import { useWindowChrome } from "@/lib/useWindowChrome";
-import { hostLabel } from "@/lib/url";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 
@@ -160,8 +168,8 @@ export default function App() {
       ? actionConfirmationMessage(active, Boolean(confirmationArmed))
       : "";
   const canRunLocalAction = active?.kind === "local";
-  const jobMinimized = (run.kind === "job" || run.kind === "asyncJob") && run.minimized;
-  const jobExpanded = (run.kind === "job" || run.kind === "asyncJob") && !run.minimized;
+  const jobMinimized = run.kind === "asyncJob" && run.minimized;
+  const jobExpanded = run.kind === "asyncJob" && !run.minimized;
   const showOutput = run.kind !== "idle" && !jobMinimized;
   const enteringArgument =
     Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen && !browserOpen;
@@ -269,15 +277,6 @@ export default function App() {
     dispatchView({ type: "closeJob" });
     setQuery("");
   }, []);
-
-  const { nowMs, canceling, cancelJob, viewPartialJob, minimizeJob, expandJob, closeJob } =
-    useCrawlJob({
-      run,
-      setRun,
-      onMinimizeJob,
-      onExpandJob,
-      onCloseJob,
-    });
 
   const {
     nowMs: jobNowMs,
@@ -510,7 +509,88 @@ export default function App() {
   }, []);
   return (
     <PaletteShell
-      {...{ active, activeDescendantId, browserFocusRef, browserInitialTarget: browserInitialTargetValue, browserOpen, cancelAsyncJob, cancelJob, canceling, client, commandRunning, compact, config, configError, copied, dispatchView, draftConfig, endpointLabel, endpointTone, enterActionMode, expandAsyncJob, expandJob, filtered, guardMessage, hasQuery, hideCommandBar, history, historyFocusRef, historyOpen, askSessions, askSessionsOpen, jobCanceling, jobExpanded, jobMinimized, jobNowMs, listboxOpen, liveRefresh, modeAction, nowMs, onCloseBrowser, onCollapse, onCopy, onDrillDomain, onFollowUp, onHistory, onInputKeyDown, onOpenJob, onReset, onResumeAskSession, onRetry, onSubmitAction, onSuggestMessage, onToggleMaximize, onTogglePin, onToggleSettings, outputFocusRef, outputKind, parsed, query, requestSubmit, run, selected, setDraftConfig, setHistory, setQuery, setRun, setSelected, settingsFocusRef, settingsOpen, shortcutOptions, showActionPanel, showBackButton, showContent, showResultsLayout, sourcesGrouped, sourcesSort, submitDisabled, switchActionMode, validation, viewPartialJob, showHelpFor, minimizeJob, closeJob, minimizeAsyncJob, closeAsyncJob, setSourcesFilter, setSourcesSort, setSourcesGrouped }}
+      {...{
+        active,
+        activeDescendantId,
+        browserFocusRef,
+        browserInitialTarget: browserInitialTargetValue,
+        browserOpen,
+        cancelAsyncJob,
+        client,
+        commandRunning,
+        compact,
+        config,
+        configError,
+        copied,
+        dispatchView,
+        draftConfig,
+        endpointLabel,
+        endpointTone,
+        enterActionMode,
+        expandAsyncJob,
+        filtered,
+        guardMessage,
+        hasQuery,
+        hideCommandBar,
+        history,
+        historyFocusRef,
+        historyOpen,
+        askSessions,
+        askSessionsOpen,
+        jobCanceling,
+        jobExpanded,
+        jobMinimized,
+        jobNowMs,
+        listboxOpen,
+        liveRefresh,
+        modeAction,
+        onCloseBrowser,
+        onCollapse,
+        onCopy,
+        onDrillDomain,
+        onFollowUp,
+        onHistory,
+        onInputKeyDown,
+        onOpenJob,
+        onReset,
+        onResumeAskSession,
+        onRetry,
+        onSubmitAction,
+        onSuggestMessage,
+        onToggleMaximize,
+        onTogglePin,
+        onToggleSettings,
+        outputFocusRef,
+        outputKind,
+        parsed,
+        query,
+        requestSubmit,
+        run,
+        selected,
+        setDraftConfig,
+        setHistory,
+        setQuery,
+        setRun,
+        setSelected,
+        settingsFocusRef,
+        settingsOpen,
+        shortcutOptions,
+        showActionPanel,
+        showBackButton,
+        showContent,
+        showResultsLayout,
+        sourcesGrouped,
+        sourcesSort,
+        submitDisabled,
+        switchActionMode,
+        validation,
+        showHelpFor,
+        minimizeAsyncJob,
+        closeAsyncJob,
+        setSourcesFilter,
+        setSourcesSort,
+        setSourcesGrouped,
+      }}
       onBack={goBackToBrowse}
       onAskSessionsOpenChange={setAskSessionsOpen}
       onRunAction={onConversationRunAction}

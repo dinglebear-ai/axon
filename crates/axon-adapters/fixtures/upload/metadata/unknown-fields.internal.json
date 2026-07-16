@@ -1,0 +1,24 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.unknown-fields",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "internal_metadata": {
+    "unknown_private_field": "kept-internal"
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "redaction_status": "clean",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

@@ -3,6 +3,31 @@ use chrono::Utc;
 use super::*;
 
 #[test]
+fn progress_event_bounds_reject_large_messages_and_dedupe_keys() {
+    let mut event = SourceProgressEvent::minimal(
+        JobId::new(uuid::Uuid::nil()),
+        1,
+        PipelinePhase::Fetching,
+        LifecycleStatus::Running,
+        Severity::Info,
+        "ok",
+    );
+    assert!(event.validate_bounds().is_ok());
+
+    event.message = "x".repeat(MAX_PROGRESS_MESSAGE_BYTES + 1);
+    assert_eq!(
+        event.validate_bounds().unwrap_err().code.to_string(),
+        "job_event.too_large"
+    );
+    event.message = "ok".to_string();
+    event.dedupe_key = Some("x".repeat(MAX_PROGRESS_DEDUPE_KEY_BYTES + 1));
+    assert_eq!(
+        event.validate_bounds().unwrap_err().code.to_string(),
+        "job_event.too_large"
+    );
+}
+
+#[test]
 fn status_envelope_and_progress_event_round_trip() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let counts = StageCounts {

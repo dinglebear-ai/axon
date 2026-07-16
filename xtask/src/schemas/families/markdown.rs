@@ -89,6 +89,24 @@ pub(super) fn api_markdown(inputs: &[SourceInput]) -> String {
     for dto in api_defs::api_dto_names() {
         out.push_str(&format!("| `{dto}` |\n"));
     }
+    out.push_str("\n## SourceRequest Fixture Matrix\n\n");
+    out.push_str(
+        "Definition-specific examples are validated from `crates/axon-api/tests/fixtures/schema`.\n\n",
+    );
+    out.push_str("| Source kind | Fixture |\n|---|---|\n");
+    if let Some((_, source_kinds)) = CANONICAL_ENUMS
+        .iter()
+        .find(|(name, _)| *name == "SourceKind")
+    {
+        for source_kind in *source_kinds {
+            out.push_str(&format!(
+                "| `{source_kind}` | `source_request.{source_kind}.valid.json` |\n"
+            ));
+        }
+    }
+    out.push_str(
+        "\n`memory` is a schema projection for the canonical enum and remains an integration, not a source adapter.\n",
+    );
     out
 }
 

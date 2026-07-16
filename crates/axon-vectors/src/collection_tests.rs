@@ -7,7 +7,7 @@ use crate::collection::{
 };
 
 #[test]
-fn required_retrieval_payload_indexes_include_generation_safe_filters() {
+fn required_retrieval_payload_indexes_match_target_profile() {
     let indexes = required_retrieval_payload_indexes();
     let required = [
         "source_id",
@@ -49,6 +49,11 @@ fn required_retrieval_payload_indexes_include_generation_safe_filters() {
             "{field_name} must be marked required for filters"
         );
     }
+}
+
+#[test]
+fn target_index_profile_excludes_legacy_fields() {
+    let indexes = required_retrieval_payload_indexes();
     for legacy_field in [
         "url",
         "seed_url",

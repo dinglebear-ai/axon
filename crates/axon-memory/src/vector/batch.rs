@@ -5,7 +5,9 @@ use axon_api::source::*;
 use uuid::Uuid;
 
 use super::VectorBackedMemoryStore;
-use super::payload::{memory_payload, memory_payload_indexes};
+use super::document::{
+    build_memory_vector_batch, embedding_for_document, embedding_inputs, prepare_memory_document,
+};
 use crate::store::Result;
 
 impl VectorBackedMemoryStore {
@@ -22,12 +24,20 @@ impl VectorBackedMemoryStore {
         let mut outcomes = Vec::with_capacity(records.len());
 
         for chunk in records.chunks(batch_size) {
+            let mut prepared = Vec::with_capacity(chunk.len());
+            for record in chunk {
+                match prepare_memory_document(record) {
+                    Ok(document) => prepared.push((record.memory_id.clone(), document)),
+                    Err(error) => {
+                        outcomes.push((record.memory_id.clone(), Err(error)));
+                    }
+                }
+            }
+            if prepared.is_empty() {
+                continue;
+            }
             let batch_id = BatchId::new(Uuid::new_v4());
             let job_id = JobId::new(Uuid::new_v4());
-            let chunk_ids: Vec<ChunkId> = chunk
-                .iter()
-                .map(|record| ChunkId::new(format!("memory:{}", record.memory_id.0)))
-                .collect();
             let embedding = self
                 .embeddings
                 .embed(EmbeddingBatch {
@@ -35,15 +45,9 @@ impl VectorBackedMemoryStore {
                     job_id,
                     provider_id: self.config.embedding_provider_id.clone(),
                     model: self.config.embedding_model.clone(),
-                    items: chunk
+                    items: prepared
                         .iter()
-                        .zip(&chunk_ids)
-                        .map(|(record, chunk_id)| EmbeddingInput {
-                            chunk_id: chunk_id.clone(),
-                            text: record.body.clone(),
-                            content_kind: ContentKind::PlainText,
-                            metadata: MetadataMap::new(),
-                        })
+                        .flat_map(|(_, document)| embedding_inputs(document))
                         .collect(),
                     instruction: None,
                     priority: JobPriority::Normal,
@@ -55,45 +59,30 @@ impl VectorBackedMemoryStore {
                 Ok(embedding) => embedding,
                 Err(error) => {
                     // The whole chunk failed together (e.g. provider outage) —
-                    // every record in it goes to review, not just one.
-                    for record in chunk {
-                        outcomes.push((record.memory_id.clone(), Err(error.clone())));
+                    // every prepared record in it goes to review, not just one.
+                    for (memory_id, _) in &prepared {
+                        outcomes.push((memory_id.clone(), Err(error.clone())));
                     }
                     continue;
                 }
             };
 
-            let mut points = Vec::with_capacity(chunk.len());
-            for (record, chunk_id) in chunk.iter().zip(&chunk_ids) {
-                let Some(vector) = embedding
-                    .vectors
-                    .iter()
-                    .find(|vector| vector.chunk_id == *chunk_id)
-                    .cloned()
-                else {
-                    outcomes.push((
-                        record.memory_id.clone(),
-                        Err(ApiError::new(
-                            "memory.embedding_missing",
-                            axon_error::ErrorStage::Embedding,
-                            format!(
-                                "embedding provider did not return memory {}",
-                                record.memory_id.0
-                            ),
-                        )),
-                    ));
-                    continue;
-                };
-                let point_id = VectorPointId::new(format!("memory:{}", record.memory_id.0));
-                let payload =
-                    memory_payload(record, &point_id, &embedding, &self.config.collection);
-                points.push((
-                    record.memory_id.clone(),
-                    point_id,
-                    chunk_id.clone(),
-                    vector.values,
-                    payload,
-                ));
+            let mut built = Vec::with_capacity(prepared.len());
+            let mut points = Vec::new();
+            for (memory_id, document) in prepared {
+                let doc_embedding = embedding_for_document(&embedding, &document);
+                match build_memory_vector_batch(&self.config, document, doc_embedding) {
+                    Ok(batch) => {
+                        let point_ids = batch
+                            .points
+                            .iter()
+                            .map(|point| point.point_id.clone())
+                            .collect::<Vec<_>>();
+                        points.extend(batch.points);
+                        built.push((memory_id, point_ids));
+                    }
+                    Err(error) => outcomes.push((memory_id, Err(error))),
+                }
             }
             if points.is_empty() {
                 continue;
@@ -104,31 +93,22 @@ impl VectorBackedMemoryStore {
                 .upsert(VectorPointBatch {
                     batch_id: embedding.batch_id,
                     collection: self.config.collection.clone(),
-                    points: points
-                        .iter()
-                        .map(|(_, point_id, chunk_id, vector, payload)| VectorPoint {
-                            point_id: point_id.clone(),
-                            chunk_id: chunk_id.clone(),
-                            vector: vector.clone(),
-                            sparse_vector: None,
-                            payload: payload.clone(),
-                        })
-                        .collect(),
+                    points,
                     model: embedding.model,
                     dimensions: embedding.dimensions,
                     sparse_vectors: None,
-                    payload_indexes: memory_payload_indexes(),
+                    payload_indexes: super::payload::memory_payload_indexes(),
                 })
                 .await;
 
             match upsert_result {
                 Ok(_) => {
-                    for (memory_id, point_id, ..) in points {
-                        outcomes.push((memory_id, Ok(vec![point_id])));
+                    for (memory_id, point_ids) in built {
+                        outcomes.push((memory_id, Ok(point_ids)));
                     }
                 }
                 Err(error) => {
-                    for (memory_id, ..) in points {
+                    for (memory_id, _) in built {
                         outcomes.push((memory_id, Err(error.clone())));
                     }
                 }

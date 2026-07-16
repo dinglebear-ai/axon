@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use axon_api::result::CanonicalCitation;
 use axon_api::source::ProviderId;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_error::ApiError;
@@ -49,6 +50,8 @@ pub struct QueryServiceHit {
     pub score: f64,
     /// Chunk text.
     pub text: String,
+    /// Validated source and redaction lineage for this chunk.
+    pub citation: CanonicalCitation,
 }
 
 /// Result of [`run_query`].
@@ -112,11 +115,25 @@ pub async fn run_query(
     let hits = result
         .matches
         .into_iter()
-        .map(|item| QueryServiceHit {
-            canonical_uri: item.canonical_uri,
-            chunk_id: item.chunk_id.0,
-            score: item.score,
-            text: item.text,
+        .map(|item| {
+            let citation = item.citation;
+            QueryServiceHit {
+                canonical_uri: item.canonical_uri,
+                chunk_id: item.chunk_id.0,
+                score: item.score,
+                text: item.text,
+                citation: CanonicalCitation {
+                    source_id: citation.source_id,
+                    source_item_key: citation.source_item_key,
+                    generation: citation.generation,
+                    document_id: citation.document_id,
+                    chunk_id: citation.chunk_id,
+                    job_id: citation.job_id,
+                    canonical_uri: citation.canonical_uri,
+                    source_range: citation.range,
+                    redaction: citation.redaction,
+                },
+            }
         })
         .collect();
 

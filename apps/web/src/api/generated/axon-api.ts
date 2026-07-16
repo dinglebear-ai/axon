@@ -111,9 +111,6 @@ export type components = {
             "required": boolean;
             "secret_ref"?: null | components['schemas']['SecretRef'];
         };
-        "DedupeRequest": {
-            "collection"?: string | null;
-        };
         "DeleteMobileSessionResponse": {
             "ok": boolean;
         };
@@ -431,10 +428,6 @@ export type components = {
             "original_job_id": components['schemas']['JobId'];
             "retry_job": components['schemas']['JobDescriptor'];
         };
-        "JobStatusResponse": {
-            "job": unknown;
-            "progress"?: null | components['schemas']['JobProgress'];
-        };
         "JobSummary": {
             "counts"?: null | components['schemas']['StageCounts'];
             "created_at": components['schemas']['Timestamp'];
@@ -637,6 +630,14 @@ export type components = {
             "memory_records": number;
             "vector_points": number;
         };
+        "PruneDedupeRequest": {
+            "collection"?: string | null;
+        };
+        "PruneDedupeResult": {
+            "completed": boolean;
+            "deleted": number;
+            "duplicate_groups": number;
+        };
         "PruneEstimate": {
             "artifacts": number;
             "cache_entries": number;
@@ -663,6 +664,21 @@ export type components = {
         };
         "PrunePlanRequest": {
             "generation"?: string | null;
+            "target": string;
+        };
+        "PrunePurgeRequest": {
+            "collection"?: string | null;
+            "dry_run"?: boolean | null;
+            "prefix"?: boolean;
+            "target"?: string | null;
+        };
+        "PrunePurgeResult": {
+            "deleted_points": number;
+            "dry_run": boolean;
+            "matched_points": number;
+            "matched_url_count": number;
+            "prefix": boolean;
+            "sample_urls": string[];
             "target": string;
         };
         "PruneResult": {
@@ -722,22 +738,6 @@ export type components = {
             "target": components['schemas']['PruneTargetKind'];
         };
         "PruneTargetKind": "vector" | "artifact" | "graph" | "memory" | "ledger" | "job_retention" | "cache";
-        "PurgeRequest": {
-            "collection"?: string | null;
-            "dry_run"?: boolean | null;
-            "prefix"?: boolean;
-            "response_mode"?: null | components['schemas']['ResponseMode'];
-            "target"?: string | null;
-        };
-        "PurgeResult": {
-            "deleted_points": number;
-            "dry_run": boolean;
-            "matched_points": number;
-            "matched_url_count": number;
-            "prefix": boolean;
-            "sample_urls": string[];
-            "target": string;
-        };
         "QueryHit": {
             "chunk_index"?: number | null;
             "chunking_method"?: string | null;
@@ -781,7 +781,7 @@ export type components = {
             "source_kind": components['schemas']['SourceKind'];
             "warnings": components['schemas']['SourceWarning'][];
         };
-        "ResponseMode": "path" | "inline" | "both" | "auto_inline";
+        "ResponseMode": "auto" | "summary" | "full" | "inline" | "artifact" | "path" | "job_only";
         "RestAskRequest": {
             "ask_authoritative_boost"?: number | null;
             "ask_authoritative_domains"?: string[] | null;
@@ -1217,7 +1217,7 @@ export type components = {
         "WatchId": string;
         "WatchRequest": {
             "collection"?: string | null;
-            "embed": boolean;
+            "embed"?: boolean;
             "enabled"?: boolean | null;
             "options": components['schemas']['AdapterOptions'];
             "schedule": components['schemas']['WatchSchedule'];
@@ -1267,11 +1267,7 @@ export type paths = {
     "/v1/domains": { get: operations["domains"] };
     "/v1/endpoints": { post: operations["endpoints"] };
     "/v1/evaluate": { post: operations["evaluate"] };
-    "/v1/extract": { get: operations["list_extract_jobs"]; post: operations["start_extract"]; delete: operations["clear_extract_jobs"] };
-    "/v1/extract/cleanup": { post: operations["cleanup_extract_jobs"] };
-    "/v1/extract/recover": { post: operations["recover_extract_jobs"] };
-    "/v1/extract/{id}": { get: operations["extract_job_status"] };
-    "/v1/extract/{id}/cancel": { post: operations["cancel_extract_job"] };
+    "/v1/extract": { post: operations["start_extract"] };
     "/v1/graph/edges/{edge_id}": { get: operations["get_edge"] };
     "/v1/graph/kinds": { get: operations["kinds"] };
     "/v1/graph/nodes/{node_id}": { get: operations["get_node"] };
@@ -1309,10 +1305,10 @@ export type paths = {
     "/v1/mobile/sessions/{id}": { get: operations["get_mobile_session"]; put: operations["upsert_mobile_session"]; delete: operations["delete_mobile_session"] };
     "/v1/providers": { get: operations["list_providers"] };
     "/v1/providers/{provider}": { get: operations["get_provider"] };
-    "/v1/prune/dedupe": { post: operations["dedupe"] };
+    "/v1/prune/dedupe": { post: operations["prune_dedupe"] };
     "/v1/prune/exec": { post: operations["prune_exec"] };
     "/v1/prune/plan": { post: operations["prune_plan"] };
-    "/v1/prune/purge": { post: operations["purge"] };
+    "/v1/prune/purge": { post: operations["prune_purge"] };
     "/v1/query": { post: operations["query"] };
     "/v1/research": { post: operations["research"] };
     "/v1/research/stream": { post: operations["research_stream"] };
@@ -1330,8 +1326,10 @@ export type paths = {
     "/v1/watches": { get: operations["watches_list"]; post: operations["watches_create"] };
     "/v1/watches/{watch_id}": { get: operations["watches_get"]; patch: operations["watches_update"]; delete: operations["watches_delete"] };
     "/v1/watches/{watch_id}/exec": { post: operations["watches_exec"] };
+    "/v1/watches/{watch_id}/history": { get: operations["watches_history"] };
     "/v1/watches/{watch_id}/pause": { post: operations["watches_pause"] };
     "/v1/watches/{watch_id}/resume": { post: operations["watches_resume"] };
+    "/v1/watches/{watch_id}/status": { get: operations["watches_status"] };
 };
 
 export type operations = {
@@ -1350,13 +1348,7 @@ export type operations = {
     "domains": { method: "get"; path: "/v1/domains"; operationId: "domains"; parameters: { query: { "limit"?: number | null; "offset"?: number | null; "domain"?: string | null; "cursor"?: string | null }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "endpoints": { method: "post"; path: "/v1/endpoints"; operationId: "endpoints"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['EndpointsRequest']; responses: { "200": components['schemas']['EndpointReport']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "evaluate": { method: "post"; path: "/v1/evaluate"; operationId: "evaluate"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestEvaluateRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "list_extract_jobs": { method: "get"; path: "/v1/extract"; operationId: "list_extract_jobs"; parameters: { query: { "limit"?: number; "offset"?: number }; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "start_extract": { method: "post"; path: "/v1/extract"; operationId: "start_extract"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestExtractRequest']; responses: { "202": components['schemas']['AcceptedJob']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "clear_extract_jobs": { method: "delete"; path: "/v1/extract"; operationId: "clear_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cleanup_extract_jobs": { method: "post"; path: "/v1/extract/cleanup"; operationId: "cleanup_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "recover_extract_jobs": { method: "post"; path: "/v1/extract/recover"; operationId: "recover_extract_jobs"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "extract_job_status": { method: "get"; path: "/v1/extract/{id}"; operationId: "extract_job_status"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['JobStatusResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "cancel_extract_job": { method: "post"; path: "/v1/extract/{id}/cancel"; operationId: "cancel_extract_job"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_edge": { method: "get"; path: "/v1/graph/edges/{edge_id}"; operationId: "get_edge"; parameters: { query: Record<string, never>; path: { "edge_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "kinds": { method: "get"; path: "/v1/graph/kinds"; operationId: "kinds"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['GraphKindDocument']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_node": { method: "get"; path: "/v1/graph/nodes/{node_id}"; operationId: "get_node"; parameters: { query: { "include_edges"?: boolean }; path: { "node_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -1398,10 +1390,10 @@ export type operations = {
     "delete_mobile_session": { method: "delete"; path: "/v1/mobile/sessions/{id}"; operationId: "delete_mobile_session"; parameters: { query: Record<string, never>; path: { "id": string } }; requestBody: never; responses: { "200": components['schemas']['DeleteMobileSessionResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "500": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "list_providers": { method: "get"; path: "/v1/providers"; operationId: "list_providers"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: never; responses: { "200": components['schemas']['ProviderListResponse']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "get_provider": { method: "get"; path: "/v1/providers/{provider}"; operationId: "get_provider"; parameters: { query: Record<string, never>; path: { "provider": string } }; requestBody: never; responses: { "200": components['schemas']['ProviderSummary']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "dedupe": { method: "post"; path: "/v1/prune/dedupe"; operationId: "dedupe"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: null | components['schemas']['DedupeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "415": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "prune_dedupe": { method: "post"; path: "/v1/prune/dedupe"; operationId: "prune_dedupe"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: null | components['schemas']['PruneDedupeRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "415": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "prune_exec": { method: "post"; path: "/v1/prune/exec"; operationId: "prune_exec"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PruneExecRequest']; responses: { "200": components['schemas']['PruneResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "prune_plan": { method: "post"; path: "/v1/prune/plan"; operationId: "prune_plan"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PrunePlanRequest']; responses: { "200": components['schemas']['PrunePlan']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
-    "purge": { method: "post"; path: "/v1/prune/purge"; operationId: "purge"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PurgeRequest']; responses: { "200": components['schemas']['PurgeResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "prune_purge": { method: "post"; path: "/v1/prune/purge"; operationId: "prune_purge"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['PrunePurgeRequest']; responses: { "200": components['schemas']['PrunePurgeResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "query": { method: "post"; path: "/v1/query"; operationId: "query"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestQueryRequest']; responses: { "200": components['schemas']['SuccessEnvelope_QueryResult']; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research": { method: "post"; path: "/v1/research"; operationId: "research"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": unknown; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "504": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "research_stream": { method: "post"; path: "/v1/research/stream"; operationId: "research_stream"; parameters: { query: Record<string, never>; path: Record<string, never> }; requestBody: components['schemas']['RestResearchRequest']; responses: { "200": string; "400": components['schemas']['ErrorBody']; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
@@ -1423,6 +1415,8 @@ export type operations = {
     "watches_update": { method: "patch"; path: "/v1/watches/{watch_id}"; operationId: "watches_update"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: components['schemas']['WatchUpdateRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_delete": { method: "delete"; path: "/v1/watches/{watch_id}"; operationId: "watches_delete"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_exec": { method: "post"; path: "/v1/watches/{watch_id}/exec"; operationId: "watches_exec"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: components['schemas']['WatchExecRequest']; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "watches_history": { method: "get"; path: "/v1/watches/{watch_id}/history"; operationId: "watches_history"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_pause": { method: "post"; path: "/v1/watches/{watch_id}/pause"; operationId: "watches_pause"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
     "watches_resume": { method: "post"; path: "/v1/watches/{watch_id}/resume"; operationId: "watches_resume"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
+    "watches_status": { method: "get"; path: "/v1/watches/{watch_id}/status"; operationId: "watches_status"; parameters: { query: Record<string, never>; path: { "watch_id": string } }; requestBody: never; responses: { "200": unknown; "401": components['schemas']['ErrorBody']; "403": components['schemas']['ErrorBody']; "404": components['schemas']['ErrorBody']; "502": components['schemas']['ErrorBody'] }; security: "bearerAuth" | "oauth2" };
 };

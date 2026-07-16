@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use axon_api::source::*;
+use axon_core::redact::REDACTION_VERSION;
 use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_graph::{FakeGraphStore, GraphStore};
 use axon_vectors::store::FakeVectorStore;
 
 use crate::record::SystemClock;
@@ -44,6 +46,34 @@ fn service(vector_store: Arc<FakeVectorStore>) -> VectorBackedMemoryStore {
             batch_limits: MemoryBatchLimits::default(),
         },
     )
+}
+
+fn memory_graph_candidate(memory_id: &MemoryId) -> GraphCandidate {
+    GraphCandidate {
+        candidate_id: format!("memory-upsert:{}", memory_id.0),
+        job_id: JobId::new(uuid::Uuid::from_u128(1)),
+        source_id: SourceId::new("axon-memory"),
+        source_item_key: SourceItemKey::new(memory_id.0.clone()),
+        item_canonical_uri: format!("memory://{}", memory_id.0),
+        document_id: Some(DocumentId::new(memory_id.0.clone())),
+        kind: "memory_document".to_string(),
+        merge_key: None,
+        producer: GraphCandidateProducer {
+            adapter: "axon-memory".to_string(),
+            parser: None,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        },
+        nodes: vec![GraphNodeCandidate {
+            node_kind: "memory".to_string(),
+            stable_key: format!("memory:{}", memory_id.0),
+            label: memory_id.0.clone(),
+            properties: MetadataMap::new(),
+        }],
+        edges: Vec::new(),
+        evidence: Vec::new(),
+        confidence: 1.0,
+        metadata: MetadataMap::new(),
+    }
 }
 
 /// Fail-closed redaction guard (phase-3b Task 11): the shared redaction
@@ -104,6 +134,64 @@ async fn remember_writes_memory_vector_payload() {
     );
     assert_eq!(payload["memory_status"].as_str(), Some("active"));
     assert_eq!(payload["redaction_status"].as_str(), Some("clean"));
+    assert_eq!(
+        payload["redaction_version"].as_str(),
+        Some(REDACTION_VERSION)
+    );
+    assert_eq!(payload["redacted_field_count"].as_u64(), Some(0));
+    assert_eq!(payload["dropped_field_count"].as_u64(), Some(0));
+    assert_eq!(payload["detector_names"].as_array().unwrap().len(), 0);
+    assert_eq!(payload["source_kind"].as_str(), Some("memory"));
+    assert_eq!(payload["source_adapter"].as_str(), Some("axon-memory"));
+    assert_eq!(
+        payload["chunking_profile"].as_str(),
+        Some("atomic_metadata")
+    );
+    assert_eq!(payload["chunking_method"].as_str(), Some("atomic_metadata"));
+    assert_eq!(payload["content_kind"].as_str(), Some("plain_text"));
+    assert_eq!(
+        payload["source_canonical_uri"].as_str().unwrap(),
+        format!("memory://{}", result.memory_id.0)
+    );
+}
+
+#[tokio::test]
+async fn vector_search_includes_graph_refs_when_mirror_exists() {
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let graph = Arc::new(FakeGraphStore::new());
+    let graph_store: Arc<dyn GraphStore> = graph.clone();
+    let service = service(Arc::clone(&vectors)).with_graph_store(graph_store);
+    let result = service
+        .remember(request("graph backed qdrant memory"))
+        .await
+        .unwrap();
+    graph
+        .upsert_candidates(vec![memory_graph_candidate(&result.memory_id)])
+        .await
+        .unwrap();
+
+    let hits = service
+        .search(MemorySearchRequest {
+            include_statuses: Vec::new(),
+            query: "qdrant memory".to_string(),
+            limit: 10,
+            filters: Default::default(),
+            include_graph: true,
+            include_archived: false,
+            reinforce: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(hits.results.len(), 1);
+    let graph = hits.graph.expect("graph refs");
+    assert_eq!(graph.nodes.len(), 1);
+    assert_eq!(graph.nodes[0].kind, "memory");
+    assert_eq!(
+        graph.nodes[0].node_id.0,
+        format!("memory:{}", result.memory_id.0)
+    );
+    assert!(graph.warnings.is_empty());
 }
 
 #[tokio::test]

@@ -1,8 +1,6 @@
 //! `SourceAdapter` wiring for `tool:<command>` sources: discover/acquire/
 //! normalize built on top of the metadata-only-by-default
-//! `resolve_and_acquire` contract in the parent `cli_tool` module. See that
-//! module's doc comment for why real (`Execute`-mode) command invocation is
-//! not wired here yet.
+//! `resolve_and_acquire` contract in the parent `cli_tool` module.
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -15,13 +13,14 @@ use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
 use super::metadata::cli_tool_source_document;
-use super::{CliToolAcquireResult, ToolExecutionMode, resolve_and_acquire};
+use super::{
+    CliToolAcquireResult, CliToolDocument, CliToolExecutionConfig, ToolExecutionMode,
+    resolve_and_acquire_configured,
+};
 
 const ADAPTER_NAME: &str = "cli_tool";
 
-/// Real `SourceAdapter` wiring for `tool:<command>` sources. See the parent
-/// module's doc comment for why this always resolves in
-/// [`ToolExecutionMode::MetadataOnly`] today.
+/// Real `SourceAdapter` wiring for `tool:<command>` sources.
 #[derive(Debug, Clone, Default)]
 pub struct CliToolSourceAdapter;
 
@@ -79,16 +78,43 @@ fn cli_tool_capability(version: &str) -> AdapterCapability {
     .with_scope(SourceScope::Api)
 }
 
-/// Resolves `plan.request.source` in metadata-only mode. See the parent
-/// module's doc comment for why `Execute` mode is never selected here today.
 fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
-    resolve_and_acquire(
+    resolve_and_acquire_configured(
         &plan.request.source,
         ToolExecutionMode::MetadataOnly,
         false,
         &[],
+        &CliToolExecutionConfig::default(),
     )
     .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
+}
+
+fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
+    let mode = execution_mode(plan);
+    let has_execute_scope = plan
+        .request
+        .metadata
+        .0
+        .get("tool_execute_authorized")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let allowlist = string_list_option(plan, "command_allowlist")
+        .or_else(|| string_list_option(plan, "tool_allowlist"))
+        .unwrap_or_default();
+    let config = CliToolExecutionConfig {
+        env_allowlist: string_list_option(plan, "env_allowlist").unwrap_or_default(),
+        side_effect_class: string_option(plan, "side_effect_class"),
+        timeout_ms: u64_option(plan, "timeout_ms"),
+        output_cap_bytes: u64_option(plan, "output_cap_bytes").map(|value| value as usize),
+    };
+    resolve_and_acquire_configured(
+        &plan.request.source,
+        mode,
+        has_execute_scope,
+        &allowlist,
+        &config,
+    )
+    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
 }
 
 fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
@@ -142,12 +168,18 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let resolved = resolve_metadata(plan)?;
+    let resolved = resolve_for_acquire(plan)?;
     let content = resolved
         .documents
         .first()
         .map(|doc| doc.content.clone())
         .unwrap_or_default();
+    let document = resolved.documents.first();
+    let tool_action = if resolved.execution_count > 0 {
+        "execute"
+    } else {
+        "metadata"
+    };
 
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     for item in &manifest_items {
@@ -162,7 +194,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
                 headers: Vec::new(),
             },
             fetched_at: timestamp(),
-            metadata: MetadataMap::new(),
+            metadata: item_metadata(document, tool_action),
         });
     }
 
@@ -199,15 +231,17 @@ fn normalize_sync(
 ) -> AdapterResult<StageExecutionResult<Vec<SourceDocument>>> {
     validate_adapter(plan)?;
     let resolved = resolve_metadata(plan)?;
-    let tool_action = if resolved.execution_count > 0 {
-        "execute"
-    } else {
-        "metadata"
-    };
     let documents = acquisition
         .fetched_items
         .iter()
         .map(|item| {
+            let tool_action = item
+                .metadata
+                .0
+                .get("tool_action")
+                .and_then(serde_json::Value::as_str)
+                .filter(|action| *action == "execute")
+                .unwrap_or("metadata");
             cli_tool_source_document(plan, &acquisition, item, &resolved.source, tool_action)
         })
         .collect::<Vec<_>>();
@@ -220,6 +254,78 @@ fn normalize_sync(
         ),
         data: documents,
     })
+}
+
+fn item_metadata(document: Option<&CliToolDocument>, tool_action: &'static str) -> MetadataMap {
+    let mut metadata = MetadataMap::new();
+    metadata.insert("tool_action".to_string(), json!(tool_action));
+    if let Some(document) = document {
+        metadata.insert(
+            "redaction_status".to_string(),
+            json!(document.redaction_status),
+        );
+        if let Some(exit_code) = document.exit_code {
+            metadata.insert("tool_exit_code".to_string(), json!(exit_code));
+        }
+    }
+    metadata
+}
+
+fn execution_mode(plan: &SourcePlan) -> ToolExecutionMode {
+    let requested = option_string_any(plan, &["execution_mode", "tool_action"])
+        .is_some_and(|mode| matches!(mode.as_str(), "execute" | "exec" | "run" | "invoke"))
+        || bool_option(plan, "execute").unwrap_or(false);
+    if requested {
+        ToolExecutionMode::Execute
+    } else {
+        ToolExecutionMode::MetadataOnly
+    }
+}
+
+fn option_string_any(plan: &SourcePlan, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| string_option(plan, key))
+}
+
+fn string_option(plan: &SourcePlan, key: &str) -> Option<String> {
+    plan.request
+        .options
+        .values
+        .0
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn string_list_option(plan: &SourcePlan, key: &str) -> Option<Vec<String>> {
+    let value = plan.request.options.values.0.get(key)?;
+    if let Some(values) = value.as_array() {
+        return Some(
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_string)
+                .collect(),
+        );
+    }
+    value.as_str().map(|single| vec![single.to_string()])
+}
+
+fn u64_option(plan: &SourcePlan, key: &str) -> Option<u64> {
+    plan.request
+        .options
+        .values
+        .0
+        .get(key)
+        .and_then(serde_json::Value::as_u64)
+}
+
+fn bool_option(plan: &SourcePlan, key: &str) -> Option<bool> {
+    plan.request
+        .options
+        .values
+        .0
+        .get(key)
+        .and_then(serde_json::Value::as_bool)
 }
 
 fn validate_adapter(plan: &SourcePlan) -> AdapterResult<()> {

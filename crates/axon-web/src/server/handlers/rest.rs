@@ -8,8 +8,6 @@
 #![allow(dead_code, unused_imports)]
 //! `crate::actions`); these routes are the path forward.
 
-#[path = "rest/admin.rs"]
-pub(crate) mod admin;
 #[path = "rest/async_jobs.rs"]
 pub(crate) mod async_jobs;
 #[path = "rest/auth.rs"]
@@ -33,7 +31,7 @@ use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axum::{
     Router, middleware,
-    routing::{MethodRouter, delete, get, post},
+    routing::{MethodRouter, get, post},
 };
 use std::sync::Arc;
 use tokio::sync::OnceCell;
@@ -80,56 +78,20 @@ fn family_2_sync_post(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> 
         )
 }
 
-/// Cancel is POST .../cancel rather than DELETE /{id} so the GET (read) and
-/// cancel (write) routes can carry distinct scope guards — axum 0.8
-/// `MethodRouter` layers apply across all methods on a single path.
 fn family_3_async_jobs(read: ScopeGuard, write: ScopeGuard) -> Router<RestState> {
-    Router::new()
-        .route(
-            "/v1/extract",
-            guarded(post(async_jobs::v1_extract_submit), write)
-                .merge(guarded(get(async_jobs::v1_extract_list), read))
-                .merge(guarded(delete(async_jobs::v1_extract_clear), write)),
-        )
-        .route(
-            "/v1/extract/cleanup",
-            guarded(post(async_jobs::v1_extract_cleanup), write),
-        )
-        .route(
-            "/v1/extract/recover",
-            guarded(post(async_jobs::v1_extract_recover), write),
-        )
-        .route(
-            "/v1/extract/{id}",
-            guarded(get(async_jobs::v1_extract_status), read),
-        )
-        .route(
-            "/v1/extract/{id}/cancel",
-            guarded(post(async_jobs::v1_extract_cancel), write),
-        )
+    let _ = read;
+    Router::new().route(
+        "/v1/extract",
+        guarded(post(async_jobs::v1_extract_submit), write),
+    )
 }
 
 #[cfg(test)]
 pub(crate) fn documented_rest_paths_for_tests() -> Vec<String> {
-    [
-        "GET /v1/extract",
-        "POST /v1/extract",
-        "POST /v1/extract/cleanup",
-        "DELETE /v1/extract",
-        "POST /v1/extract/recover",
-    ]
-    .into_iter()
-    .map(ToString::to_string)
-    .collect()
-}
-
-/// Dedupe carries `admin_write` (unconditional auth even in LoopbackDev).
-/// Migrate remains CLI-only until it has a dedicated async job family.
-fn family_4_admin(_read: ScopeGuard, _write: ScopeGuard) -> Router<RestState> {
-    Router::new().route(
-        "/v1/prune/dedupe",
-        guarded(post(admin::v1_dedupe), ScopeGuard::admin_write()),
-    )
+    ["POST /v1/extract"]
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 // ── Public router ────────────────────────────────────────────────────────
@@ -149,7 +111,6 @@ pub(crate) fn router(
         .merge(family_1_read_only(read))
         .merge(family_2_sync_post(read, write))
         .merge(family_3_async_jobs(read, write))
-        .merge(family_4_admin(read, write))
         .with_state(state);
 
     if let Some(layer) = build_auth_layer(

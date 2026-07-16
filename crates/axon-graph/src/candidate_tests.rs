@@ -63,6 +63,19 @@ fn valid_candidate_passes() {
 }
 
 #[test]
+fn evidence_lineage_must_match_candidate() {
+    let mut candidate = base_candidate();
+    candidate.evidence[0].source_id = SourceId::new("src-other");
+    let error = validate_candidate(&candidate).expect_err("mismatched source_id rejected");
+    assert!(error.message.contains("source_id does not match"));
+
+    let mut candidate = base_candidate();
+    candidate.evidence[0].source_item_key = SourceItemKey::new("other-item");
+    let error = validate_candidate(&candidate).expect_err("mismatched item key rejected");
+    assert!(error.message.contains("source_item_key does not match"));
+}
+
+#[test]
 fn unknown_node_kind_is_rejected() {
     let mut c = base_candidate();
     c.nodes[0].node_kind = "repository".to_string();
@@ -142,6 +155,87 @@ fn edges_without_evidence_are_rejected() {
     c.evidence.clear();
     let err = validate_candidate(&c).unwrap_err();
     assert!(err.message.contains("no evidence"), "{}", err.message);
+}
+
+#[test]
+fn empty_merge_key_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some(" ".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("empty merge_key"), "{}", err.message);
+}
+
+#[test]
+fn unnamespaced_merge_key_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some("repo-package".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("namespace prefix"), "{}", err.message);
+}
+
+#[test]
+fn merge_key_with_control_character_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some("repo\npackage:tokio".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("control"), "{}", err.message);
+}
+
+#[test]
+fn merge_key_with_empty_namespace_or_value_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some(":tokio".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(
+        err.message.contains("non-empty namespace"),
+        "{}",
+        err.message
+    );
+
+    let mut c = base_candidate();
+    c.merge_key = Some("package:".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(
+        err.message.contains("non-empty namespace"),
+        "{}",
+        err.message
+    );
+}
+
+#[test]
+fn merge_key_with_unstable_run_scoped_namespace_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some("candidate:cand-1".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("unstable"), "{}", err.message);
+
+    let mut c = base_candidate();
+    c.merge_key = Some("job:tokio".to_string());
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("unstable"), "{}", err.message);
+}
+
+#[test]
+fn merge_key_containing_job_id_is_rejected() {
+    let mut c = base_candidate();
+    c.merge_key = Some(format!("repo_package:{}", c.job_id.0));
+
+    let err = validate_candidate(&c).unwrap_err();
+
+    assert!(err.message.contains("job_id"), "{}", err.message);
+}
+
+#[test]
+fn out_of_range_confidence_is_rejected() {
+    let mut c = base_candidate();
+    c.confidence = 1.2;
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("confidence"), "{}", err.message);
+
+    let mut c = base_candidate();
+    c.evidence[0].confidence = -0.1;
+    let err = validate_candidate(&c).unwrap_err();
+    assert!(err.message.contains("confidence"), "{}", err.message);
 }
 
 #[test]

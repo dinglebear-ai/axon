@@ -10,7 +10,7 @@ Axon uses two user-editable files under `~/.axon/`:
 ## Precedence (highest to lowest)
 
 1. CLI flags for command inputs (`--collection`, `--wait`, etc.)
-2. Environment variables for secrets, URLs, auth/runtime, bootstrap, and temporary compatibility shims
+2. Environment variables for secrets, URLs, auth/runtime, and bootstrap
 3. `~/.axon/config.toml` for non-secret tuning
 4. Built-in defaults
 
@@ -18,6 +18,20 @@ Service endpoint URLs are intentionally not accepted from `config.toml`.
 Use `QDRANT_URL`, `TEI_URL`, and `AXON_CHROME_REMOTE_URL` from the env layer.
 `QDRANT_URL` and `TEI_URL` also have temporary CLI overrides for one-off
 diagnostics.
+
+The clean break does not read deprecated aliases. Update live environment files
+before restarting Axon:
+
+| Remove | Canonical setting |
+|---|---|
+| `AXON_OPENAI_MODEL` | `AXON_SYNTHESIS_OPENAI_MODEL` |
+| `AXON_MCP_EMBED_ALLOWED_ROOTS` | `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` |
+| `AXON_HNSW_EF_SEARCH_LEGACY` | Remove; use `AXON_HNSW_EF_SEARCH` or `[providers.vector].hnsw-ef` |
+| `[services].qdrant-url`, `.tei-url`, `.chrome-remote-url` | `QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL` in `.env` |
+| `[ask].backend` | `[providers.llm].backend` or `AXON_LLM_BACKEND` |
+
+`axon setup config rewrite --dry-run` previews environment cleanup. Removed
+keys fail with this migration guidance instead of being silently accepted.
 
 ## Canonical `~/.axon/` layout
 
@@ -110,9 +124,9 @@ for each key still overrides the TOML value at the precedence chain above.
 | Section | Keys | Env override |
 |---------|------|---------------|
 | `[build]` | `allow-fallback-web-assets` | `AXON_ALLOW_FALLBACK_WEB_ASSETS` |
-| `[search]` | `hybrid-enabled`, `hybrid-candidates`, `ask-hybrid-candidates`, `hnsw-ef`, `hnsw-ef-legacy`, `collection` | `AXON_HYBRID_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_HNSW_EF_SEARCH`, `AXON_HNSW_EF_SEARCH_LEGACY`, `AXON_COLLECTION` |
+| `[providers.vector]` / `[retrieval]` / `[server]` | `hybrid-enabled`, `hnsw-ef`, `hybrid-candidates`, `ask-hybrid-candidates`, `default-collection` | `AXON_HYBRID_SEARCH`, `AXON_HNSW_EF_SEARCH`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`, `AXON_COLLECTION` |
 | `[ask]` | `max-context-chars`, `chunk-limit`, `candidate-limit`, `full-docs`, `backfill-chunks`, `doc-fetch-concurrency`, `doc-chunk-limit`, `min-relevance-score`, `authoritative-domains`, `authoritative-boost`, `min-citations-nontrivial` | `AXON_ASK_MAX_CONTEXT_CHARS`, `AXON_ASK_CHUNK_LIMIT`, `AXON_ASK_CANDIDATE_LIMIT`, `AXON_ASK_FULL_DOCS`, `AXON_ASK_BACKFILL_CHUNKS`, `AXON_ASK_DOC_FETCH_CONCURRENCY`, `AXON_ASK_DOC_CHUNK_LIMIT`, `AXON_ASK_MIN_RELEVANCE_SCORE`, `AXON_ASK_AUTHORITATIVE_DOMAINS`, `AXON_ASK_AUTHORITATIVE_BOOST`, `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` |
-| `[llm]` | `synthesis-openai-model`, `chat-openai-model`, `synthesis-gemini-model`, `chat-gemini-model`, `synthesis-high-context` | `AXON_SYNTHESIS_OPENAI_MODEL` / `AXON_OPENAI_MODEL`, `AXON_CHAT_OPENAI_MODEL`, `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL`, `AXON_CHAT_HEADLESS_GEMINI_MODEL`, `AXON_SYNTHESIS_HIGH_CONTEXT` |
+| `[providers.llm]` | `backend`, `synthesis-openai-model`, `chat-openai-model`, `synthesis-gemini-model`, `chat-gemini-model`, `high-context` | `AXON_LLM_BACKEND`, `AXON_SYNTHESIS_OPENAI_MODEL`, `AXON_CHAT_OPENAI_MODEL`, `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL`, `AXON_CHAT_HEADLESS_GEMINI_MODEL`, `AXON_SYNTHESIS_HIGH_CONTEXT` |
 | `[tei]` | `max-retries`, `request-timeout-ms`, `max-client-batch-size` | `TEI_MAX_RETRIES`, `TEI_REQUEST_TIMEOUT_MS`, `TEI_MAX_CLIENT_BATCH_SIZE` |
 | `[embed]` | `tei-max-concurrent`, `tei-max-in-flight-inputs`, `pool-max-inputs`, `prep-concurrency`, `max-chunks-per-doc`, `max-source-chunks-per-doc`, `dedupe-exact-chunks`, `openai-model`, `openai-max-client-batch-size`, `openai-max-concurrent`, `openai-max-in-flight-inputs`, `openai-pool-max-inputs` | `AXON_TEI_MAX_CONCURRENT`, `AXON_TEI_MAX_IN_FLIGHT_INPUTS`, `AXON_EMBED_POOL_MAX_INPUTS`, `AXON_EMBED_PREP_CONCURRENCY`, `AXON_EMBED_MAX_CHUNKS_PER_DOC`, `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`, `AXON_EMBED_DEDUPE_EXACT_CHUNKS`, `AXON_OPENAI_EMBEDDING_MODEL`, `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`, `AXON_OPENAI_EMBED_MAX_CONCURRENT`, `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`, `AXON_OPENAI_EMBED_POOL_MAX_INPUTS` |
 | `[chunking]` | `markdown-max-chars`, `markdown-min-chars`, `overlap-chars` | `AXON_MARKDOWN_CHUNK_MAX_CHARS`, `AXON_MARKDOWN_CHUNK_MIN_CHARS`, `AXON_CHUNK_OVERLAP_CHARS` |
@@ -122,7 +136,6 @@ for each key still overrides the TOML value at the precedence chain above.
 | `[endpoints]` | `bundle-concurrency`, `chrome-concurrency`, `verify-concurrency`, `probe-concurrency` | `AXON_ENDPOINT_*_CONCURRENCY` |
 | `[mcp]`, `[mcp.embed]` | `task-result-wait-timeout-secs`, local embed file guards | `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS`, `AXON_MCP_EMBED_MAX_LOCAL_*` |
 | `[workers]` | `ingest-lanes`, `embed-lanes`, `embed-doc-timeout-secs`, `queue-summary-secs`, `qdrant-point-buffer`, `max-pending-crawl-jobs`, `max-pending-embed-jobs`, `max-pending-extract-jobs`, `max-pending-ingest-jobs`, `concurrency-limit`, `crawl-concurrency-limit`, `backfill-concurrency-limit`, `watchdog-stale-timeout-secs`, `watchdog-confirm-secs`, `watchdog-sweep-secs` | `AXON_INGEST_LANES`, `AXON_EMBED_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`, `AXON_QUEUE_SUMMARY_SECS`, `AXON_QDRANT_POINT_BUFFER`, `AXON_MAX_PENDING_CRAWL_JOBS`, `AXON_MAX_PENDING_EMBED_JOBS`, `AXON_MAX_PENDING_EXTRACT_JOBS`, `AXON_MAX_PENDING_INGEST_JOBS`, `AXON_JOB_STALE_TIMEOUT_SECS`, `AXON_JOB_STALE_CONFIRM_SECS`, `AXON_WATCHDOG_SWEEP_SECS` |
-| `[freshness]` | `tick-secs`, `lease-secs`, `max-due-per-tick`, `max-concurrent-runs`, `run-retention-days` | `AXON_FRESHNESS_TICK_SECS`, `AXON_FRESHNESS_LEASE_SECS`, `AXON_FRESHNESS_MAX_DUE_PER_TICK`, `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`, `AXON_FRESHNESS_RUN_RETENTION_DAYS` |
 | `[workers.adaptive-concurrency]` | `enabled`, `min`, `max` | TOML-only in this release |
 | `[chrome]` | `user-agent`, `bypass-csp`, `accept-invalid-certs`, `network-idle-timeout-secs`, `bootstrap-timeout-ms`, `bootstrap-retries`, `remote-local-policy` | `AXON_CHROME_USER_AGENT` for `user-agent`; watchdog-free TOML for the rest |
 | `[scrape]` | `respect-robots`, `min-markdown-chars`, `drop-thin-markdown`, `discover-sitemaps`, `sitemap-since-days`, `max-sitemaps`, `discover-llms-txt`, `max-llms-txt-urls`, `delay-ms`, `request-timeout-ms`, `batch-timeout-secs`, `fetch-retries`, `retry-backoff-ms`, `auto-switch-thin-ratio`, `auto-switch-min-pages`, `url-whitelist`, `max-page-bytes`, `redirect-policy-strict`, ladder tuning | `AXON_SCRAPE_BATCH_TIMEOUT_SECS` plus ladder env vars |
@@ -175,44 +188,12 @@ Spawning workers in a fire-and-forget CLI process orphans claimed jobs at proces
 
 `--wait false` is intentionally fire-and-forget for crawl/embed/ingest submits: the command enqueues the job, prints the job ID, and exits without draining the table. `--wait true` starts in-process workers where the service path needs queued workers, then waits only for the job IDs submitted by the current command and any explicit dependent job IDs.
 
-### Freshness scheduler
-
-Freshness schedules are created by the CLI only:
-
-```bash
-axon scrape https://modelcontextprotocol.io/specification --fresh 1d
-axon crawl https://modelcontextprotocol.io/docs/getting-started/intro --fresh 1d
-axon ingest unraid/api --fresh 7d
-axon fresh list --json
-axon fresh run-now <id> --json
-axon fresh history <id> --json
-```
-
-`--fresh` accepts whole-day durations from `1d` through `366d` on `scrape`,
-`crawl`, `embed`, and `ingest`. Management surfaces for REST, MCP, web, and the
-palette are not part of v1.
-
-The scheduler runs only in long-lived `ServiceContext::new_with_workers()`
-processes (`axon serve` and `axon mcp`). It stores versioned, secret-free replay
-snapshots in SQLite, revalidates them before dispatch, and routes scheduled
-`crawl`, `embed`, and `ingest` runs through the normal service/job queues.
-Scheduled `scrape` runs inline inside the bounded freshness executor because it
-does not have a dedicated job family in v1.
-
-| TOML key | Env override | Default | Description |
-|----------|--------------|---------|-------------|
-| `freshness.tick-secs` | `AXON_FRESHNESS_TICK_SECS` | `60` | Scheduler sweep interval in seconds |
-| `freshness.lease-secs` | `AXON_FRESHNESS_LEASE_SECS` | `1800` | Lease TTL for claimed schedules; heartbeats extend active runs |
-| `freshness.max-due-per-tick` | `AXON_FRESHNESS_MAX_DUE_PER_TICK` | `4` | Max schedules leased per sweep |
-| `freshness.max-concurrent-runs` | `AXON_FRESHNESS_MAX_CONCURRENT_RUNS` | `2` | Process-wide concurrent freshness dispatches |
-| `freshness.run-retention-days` | `AXON_FRESHNESS_RUN_RETENTION_DAYS` | `90` | Freshness run history retention window |
-
 ### Local code search
 
-`axon code-search` and MCP `action=code_search` use the local code index stored
-in the shared SQLite database plus Qdrant vectors with `source_type = "local_code"`.
-MCP callers must pass a `cwd` that resolves under `AXON_CODE_SEARCH_ALLOWED_ROOTS`.
-The CLI may search the current Git checkout directly.
+Code search now routes through the unified query/source surface. Use
+`axon query <text> --content-kind code` with source/path filters for committed
+code search. Local code index data is stored in the shared SQLite database plus
+Qdrant vectors with source metadata for the indexed checkout.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -280,7 +261,7 @@ TEI container runtime and Compose interpolation values stay in `~/.axon/.env`:
 |----------|---------|-------------|
 | `AXON_LLM_BACKEND` | `gemini-headless` | Completion backend. Supported: `gemini-headless`, `openai-compat`, `codex-app-server`. |
 | `AXON_OPENAI_BASE_URL` | -- | OpenAI-compatible API root, for example `http://127.0.0.1:8080/v1`. Do not include `/chat/completions`; Axon appends it. |
-| `llm.synthesis-openai-model` / `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when `AXON_LLM_BACKEND=openai-compat`. Legacy env alias: `AXON_OPENAI_MODEL`. |
+| `providers.llm.synthesis-openai-model` / `AXON_SYNTHESIS_OPENAI_MODEL` | -- | Synthesis model for the OpenAI-compatible endpoint (ask/evaluate/suggest/extract/research). Required when the backend is `openai-compat`. |
 | `llm.chat-openai-model` / `AXON_CHAT_OPENAI_MODEL` | -- | Direct-chat model override. Empty = use the synthesis model. |
 | `AXON_OPENAI_API_KEY` | -- | Optional bearer token for OpenAI-compatible endpoints. Leave unset for local llama.cpp servers that do not require auth. |
 | `llm.synthesis-gemini-model` / `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | -- | Gemini synthesis model override (ask/evaluate/suggest/extract/research). Legacy env alias: `AXON_HEADLESS_GEMINI_MODEL`. |
@@ -395,7 +376,6 @@ Hybrid search tuning lives under `[search]` in `~/.axon/config.toml`.
 | `search.hybrid-candidates` | `AXON_HYBRID_CANDIDATES` | `100` | Candidates per prefetch arm (10-500) |
 | `search.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | `150` | Ask pipeline hybrid window |
 | `search.hnsw-ef` | `AXON_HNSW_EF_SEARCH` | `128` | HNSW ef for named-mode search (32-512) |
-| `search.hnsw-ef-legacy` | `AXON_HNSW_EF_SEARCH_LEGACY` | `64` | HNSW ef for legacy unnamed-mode |
 
 ### Ask / RAG tuning
 
@@ -479,14 +459,14 @@ password under `~/.axon/panel-password`. MCP and protected `/v1` routes use
 | `AXON_MCP_ARTIFACT_DIR` | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts |
 | `AXON_INLINE_BYTES_THRESHOLD` | `8192` | Payload size below which auto-inline triggers (0 = disable) |
 | `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` | `300` | Max seconds an MCP `tasks/result` request waits for a task to reach a terminal state |
-| `AXON_MCP_EMBED_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) |
+| `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` | -- | Comma-separated local filesystem roots allowed for source requests from server transports (unset = local source submission disabled) |
 | `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | `10485760` | Max bytes per local file embedding request via MCP |
 | `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | `16` | Max directory traversal depth for local directory embedding requests |
 | `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | `10000` | Max filesystem entries visited for local directory embedding requests |
 
 The MCP and REST embed routes use the same server-side validator. URL and raw
 text inputs are accepted, but host-local file and directory inputs must resolve
-under `AXON_MCP_EMBED_ALLOWED_ROOTS` and satisfy the byte/depth/entry limits.
+under `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` and satisfy the byte/depth/entry limits.
 Missing path-like inputs such as `/data/missing.md` or `./missing.md` are
 rejected instead of being silently treated as raw text.
 

@@ -325,36 +325,6 @@
     "requiresAuth": true
   },
   {
-    "method": "GET",
-    "path": "/v1/extract",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/extract/{id}",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/{id}/cancel",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/cleanup",
-    "requiresAuth": true
-  },
-  {
-    "method": "DELETE",
-    "path": "/v1/extract",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/recover",
-    "requiresAuth": true
-  },
-  {
     "method": "POST",
     "path": "/v1/prune/plan",
     "requiresAuth": true
@@ -387,6 +357,16 @@
   {
     "method": "GET",
     "path": "/v1/watches/{watch_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches/{watch_id}/status",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches/{watch_id}/history",
     "requiresAuth": true
   },
   {

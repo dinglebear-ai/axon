@@ -13,9 +13,8 @@ use axon_services::query::{
     map_suggest_payload,
 };
 use axon_services::types::{
-    AskResult, EvaluateResult, IngestResult, MapResult, Pagination, QueryResult, ResearchResult,
-    RetrieveOptions, RetrieveResult, ScrapeResult, ScreenshotResult, SearchOptions, SearchResult,
-    SuggestResult,
+    AskResult, EvaluateResult, MapResult, Pagination, QueryResult, ResearchResult, RetrieveOptions,
+    RetrieveResult, ScrapeResult, ScreenshotResult, SearchOptions, SearchResult, SuggestResult,
 };
 
 #[test]
@@ -172,9 +171,9 @@ fn smoke_map_research_payload_wraps_value() {
         offset: 0,
         search_results: vec![],
         extractions: vec![],
-        auto_crawl_status: "not_queued".to_string(),
-        crawl_jobs: vec![],
-        crawl_jobs_rejected: vec![],
+        source_index_status: "not_queued".to_string(),
+        source_jobs: vec![],
+        source_jobs_rejected: vec![],
         summary: Some("Rust uses async/await".to_string()),
         summary_source: SummarySource::Llm,
         usage: ResearchUsage::default(),
@@ -183,55 +182,6 @@ fn smoke_map_research_payload_wraps_value() {
     let result: ResearchResult = map_research_payload(payload.clone());
     assert_eq!(result.payload.query, "rust async patterns");
     assert_eq!(result.payload, payload);
-}
-
-// ── services::crawl ───────────────────────────────────────────────────────────
-
-use axon_services::crawl::{map_crawl_job_result, map_crawl_start_result};
-use axon_services::types::CrawlStartResult;
-
-#[test]
-fn smoke_map_crawl_start_result_wraps_job_ids() {
-    use std::path::Path;
-    let jobs = vec![
-        ("https://example.com".to_string(), "uuid-1".to_string()),
-        ("https://other.com".to_string(), "uuid-2".to_string()),
-    ];
-    let result: CrawlStartResult = map_crawl_start_result(Path::new("/tmp/output"), &jobs);
-    assert_eq!(result.job_ids.len(), 2);
-    assert_eq!(result.job_ids[0], "uuid-1");
-}
-
-#[test]
-fn smoke_map_crawl_start_result_empty() {
-    use std::path::Path;
-    let result: CrawlStartResult = map_crawl_start_result(Path::new("/tmp/output"), &[]);
-    assert!(result.job_ids.is_empty());
-}
-
-#[test]
-fn smoke_map_crawl_job_result_wraps_payload() {
-    let payload = serde_json::json!({"id": "uuid-1", "status": "completed"});
-    let result = map_crawl_job_result(payload.clone());
-    assert_eq!(result.payload["status"], "completed");
-}
-
-// ── services::embed ───────────────────────────────────────────────────────────
-
-use axon_services::embed::{map_embed_job_result, map_embed_start_result};
-use axon_services::types::EmbedStartResult;
-
-#[test]
-fn smoke_map_embed_start_result_wraps_job_id() {
-    let result: EmbedStartResult = map_embed_start_result("embed-uuid-1".to_string());
-    assert_eq!(result.job_id, "embed-uuid-1");
-}
-
-#[test]
-fn smoke_map_embed_job_result_wraps_payload() {
-    let payload = serde_json::json!({"id": "embed-uuid-1", "status": "pending"});
-    let result = map_embed_job_result(payload);
-    assert_eq!(result.payload["status"], "pending");
 }
 
 // ── services::extract ─────────────────────────────────────────────────────────
@@ -250,56 +200,6 @@ fn smoke_map_extract_job_result_wraps_payload() {
     let payload = serde_json::json!({"id": "extract-uuid-1", "status": "running"});
     let result = map_extract_job_result(payload);
     assert_eq!(result.payload["status"], "running");
-}
-
-// ── services::ingest ──────────────────────────────────────────────────────────
-
-use axon_services::ingest::map_ingest_result;
-
-#[test]
-fn smoke_map_ingest_result_wraps_github_payload() {
-    let payload = serde_json::json!({
-        "source": "github",
-        "repo": "rust-lang/rust",
-        "chunks": 1024
-    });
-    let result: IngestResult = map_ingest_result(payload.clone());
-    assert_eq!(result.payload["source"], "github");
-    assert_eq!(result.payload["chunks"], 1024);
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_reddit_payload() {
-    let payload = serde_json::json!({
-        "source": "reddit",
-        "target": "rust",
-        "chunks": 42
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "reddit");
-    assert_eq!(result.payload["target"], "rust");
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_youtube_payload() {
-    let payload = serde_json::json!({
-        "source": "youtube",
-        "url": "https://youtube.com/watch?v=test",
-        "chunks": 8
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "youtube");
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_sessions_payload() {
-    let payload = serde_json::json!({
-        "source": "sessions",
-        "chunks": 100
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "sessions");
-    assert_eq!(result.payload["chunks"], 100);
 }
 
 // ── services::screenshot ──────────────────────────────────────────────────────

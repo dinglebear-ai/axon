@@ -1,5 +1,7 @@
 use super::server::{AppState, HttpError, authorized};
-use axon_core::config::{Config, ConfigOverrides, RenderMode};
+use axon_api::source::{SourceLimits, SourceRequest, SourceScope};
+use axon_core::config::Config;
+use axon_services::service_traits::{SourceService, SourceServiceImpl};
 use axum::{
     Json,
     extract::State,
@@ -33,36 +35,44 @@ pub(super) async fn first_run_crawl(
         Ok(url) => url,
         Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
     };
-    let cfg = cfg.apply_overrides(&ConfigOverrides {
+    let mut request = SourceRequest::new(url);
+    request.scope = Some(SourceScope::Site);
+    request.collection = Some(cfg.collection.clone());
+    request.limits = SourceLimits {
         max_pages: Some(10),
         max_depth: Some(1),
-        include_subdomains: Some(false),
-        respect_robots: Some(false),
-        discover_sitemaps: Some(false),
-        discover_llms_txt: Some(false),
-        render_mode: Some(RenderMode::AutoSwitch),
-        ..ConfigOverrides::default()
-    });
-    // First-run bootstrap panel: no per-caller auth identity is threaded
-    // through this loopback-dev flow.
-    match axon_services::crawl::crawl_start_with_context(
-        &cfg,
-        &[url.to_string()],
-        &state.service_context,
-        None,
-        None,
-    )
-    .await
-    {
-        Ok(outcome) => Json(serde_json::json!({
-            "job_ids": outcome.result.job_ids,
-            "output_dir": outcome.result.output_dir,
-            "predicted_paths": outcome.result.predicted_paths,
-            "predicted_artifact_handles": outcome.result.predicted_artifact_handles,
-            "jobs": outcome.result.jobs,
+        ..SourceLimits::default()
+    };
+    request
+        .options
+        .values
+        .insert("include_subdomains".to_string(), serde_json::json!(false));
+    request
+        .options
+        .values
+        .insert("discover_sitemaps".to_string(), serde_json::json!(false));
+    request
+        .options
+        .values
+        .insert("max_sitemaps".to_string(), serde_json::json!(0));
+    request
+        .options
+        .values
+        .insert("render_mode".to_string(), serde_json::json!("auto_switch"));
+
+    let source_service = SourceServiceImpl::new(Arc::clone(&state.service_context));
+    match source_service.submit(request).await {
+        Ok(result) => Json(serde_json::json!({
+            "job_ids": [result.job_id.clone()],
+            "source": result,
         }))
         .into_response(),
-        Err(err) => HttpError::from_box(err).into_response(),
+        Err(err) => HttpError::new(
+            StatusCode::BAD_GATEWAY,
+            "source_unavailable",
+            err.to_string(),
+        )
+        .into_response(),
     }
 }
 

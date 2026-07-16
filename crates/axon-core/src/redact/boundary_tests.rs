@@ -295,6 +295,47 @@ fn stamp_redaction_metadata_records_status_version_and_counts() {
 }
 
 #[test]
+fn repeated_stamp_preserves_prior_redaction_and_provenance() {
+    let mut map = MetadataMap::default();
+    map.insert(
+        "note".to_string(),
+        json!("authorization: bearer abcdef0123456789abcdef"),
+    );
+    let (map, first_report) = redact_metadata(map, &ctx(), &DefaultRedactor::new());
+    let first = stamp_redaction_metadata(map, &first_report);
+
+    let (already_sanitized, second_report) =
+        redact_metadata(first, &ctx(), &DefaultRedactor::new());
+    assert_eq!(second_report.status(), RedactionStatus::Clean);
+    let second = stamp_redaction_metadata(already_sanitized, &second_report);
+
+    assert_eq!(second["redaction_status"], json!("redacted"));
+    assert_eq!(second["redaction_version"], json!(REDACTION_VERSION));
+    assert_eq!(second["redacted_field_count"], json!(1));
+    assert_eq!(second["dropped_field_count"], json!(0));
+    assert_eq!(second["detector_count"], json!(1));
+    assert_eq!(second["detector_names"], json!(["secret_value"]));
+}
+
+#[test]
+fn cumulative_stamp_counts_and_detector_provenance_remain_bounded() {
+    let report = RedactionReport {
+        status_redacted: true,
+        visibility_ceiling: Visibility::Internal,
+        redacted_fields: (0..256).map(|index| format!("field_{index}")).collect(),
+        dropped_fields: (0..256).map(|index| format!("drop_{index}")).collect(),
+        detectors_triggered: (0..256).map(|index| format!("detector_{index}")).collect(),
+    };
+    let first = stamp_redaction_metadata(MetadataMap::default(), &report);
+    let second = stamp_redaction_metadata(first, &report);
+
+    assert_eq!(second["redacted_field_count"], json!(256));
+    assert_eq!(second["dropped_field_count"], json!(256));
+    assert_eq!(second["detector_count"], json!(256));
+    assert_eq!(second["detector_names"].as_array().map(Vec::len), Some(256));
+}
+
+#[test]
 fn public_write_rejects_forbidden_fields_before_returning_payload() {
     let error = redact_public_write(
         json!({"authorization": "Bearer definitely-secret"}),

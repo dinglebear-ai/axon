@@ -31,7 +31,7 @@ pub(super) fn redact_text(text: &str) -> (String, bool) {
         return (String::new(), false);
     }
     let mut any_redacted = false;
-    let out = text
+    let line_redacted = text
         .lines()
         .map(|line| {
             if line_looks_sensitive(line) {
@@ -43,7 +43,9 @@ pub(super) fn redact_text(text: &str) -> (String, bool) {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    (out, any_redacted)
+    let out = axon_core::redact::redact_secrets(&line_redacted);
+    let core_redacted = out != line_redacted;
+    (out, any_redacted || core_redacted)
 }
 
 fn line_looks_sensitive(line: &str) -> bool {

@@ -54,6 +54,16 @@ async fn mcp_tool_call_requires_execute_scope_and_allowlist() {
     )
     .unwrap_err();
     assert_eq!(err.code, "mcp.tool_denied");
+
+    let err = resolve_and_acquire(
+        "mcp://server/tool",
+        McpExecutionMode::Execute,
+        true,
+        &[("server", "tool")],
+        None,
+    )
+    .unwrap_err();
+    assert_eq!(err.code, "mcp.caller_missing");
 }
 
 #[tokio::test]

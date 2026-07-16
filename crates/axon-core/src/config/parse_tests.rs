@@ -6,7 +6,7 @@ use std::env;
 
 #[allow(unsafe_code)]
 #[test]
-fn parse_watch_create_with_every_and_type() {
+fn parse_watch_create_with_source_and_interval() {
     let _guard = env_guard();
 
     let cli = super::Cli::parse_from([
@@ -17,9 +17,7 @@ fn parse_watch_create_with_every_and_type() {
         "http://127.0.0.1:53333",
         "watch",
         "create",
-        "docs-watch",
-        "--task-type",
-        "watch",
+        "https://example.com/docs",
         "--every-seconds",
         "300",
     ]);
@@ -29,11 +27,44 @@ fn parse_watch_create_with_every_and_type() {
         cfg.positional,
         vec![
             "create".to_string(),
-            "docs-watch".to_string(),
-            "--task-type".to_string(),
-            "watch".to_string(),
+            "https://example.com/docs".to_string(),
             "--every-seconds".to_string(),
             "300".to_string(),
+            "--collection".to_string(),
+            "axon".to_string(),
+        ]
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_watch_source_shorthand_creates_source_watch() {
+    let _guard = env_guard();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "watch",
+        "https://example.com/docs",
+        "--every-seconds",
+        "120",
+        "--collection",
+        "docs",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("watch source shorthand should parse");
+    assert!(matches!(cfg.command, CommandKind::Watch));
+    assert_eq!(
+        cfg.positional,
+        vec![
+            "create".to_string(),
+            "https://example.com/docs".to_string(),
+            "--every-seconds".to_string(),
+            "120".to_string(),
+            "--collection".to_string(),
+            "docs".to_string(),
         ]
     );
 }
@@ -249,6 +280,29 @@ fn parse_watch_exec() {
             "exec".to_string(),
             "11111111-1111-4111-8111-111111111111".to_string(),
         ]
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn parse_watch_status() {
+    let _guard = env_guard();
+
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "watch",
+        "status",
+        "https://example.com/docs",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("watch status should parse");
+    assert!(matches!(cfg.command, CommandKind::Watch));
+    assert_eq!(
+        cfg.positional,
+        vec!["status".to_string(), "https://example.com/docs".to_string(),]
     );
 }
 
@@ -1012,7 +1066,14 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
         vec!["config", "rewrite", "--dry-run"]
     );
 
-    let reset_plan = super::Cli::parse_from(["axon", "reset", "--plan-id", "reset_plan_1"]);
+    let reset_plan = super::Cli::parse_from([
+        "axon",
+        "reset",
+        "--stores",
+        "jobs",
+        "--plan-id",
+        "reset_plan_1",
+    ]);
     let reset_plan_cfg =
         super::build_config::into_config(reset_plan).expect("reset plan id should parse");
     assert!(matches!(reset_plan_cfg.command, CommandKind::Reset));

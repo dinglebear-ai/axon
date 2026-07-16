@@ -17,6 +17,25 @@ pub fn graph_candidate(
     line: Option<u32>,
     quote: Option<String>,
 ) -> GraphCandidate {
+    graph_candidate_ranged(
+        input,
+        parser_id,
+        kind,
+        name,
+        line.map(|line| crate::facts::line_range(line)),
+        quote,
+    )
+}
+
+pub fn graph_candidate_ranged(
+    input: &ParseInput,
+    parser_id: &str,
+    kind: &str,
+    name: &str,
+    range: Option<SourceRange>,
+    quote: Option<String>,
+) -> GraphCandidate {
+    let line = range.as_ref().and_then(|range| range.line_start);
     let source_scope = format!(
         "source_id={}|item={}|uri={}",
         input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
@@ -75,24 +94,7 @@ pub fn graph_candidate(
             source_item_key: input.document.source_item_key.clone(),
             document_id: Some(input.document.document_id.clone()),
             chunk_id: None,
-            range: line.map(|line| SourceRange {
-                line_start: Some(line),
-                line_end: Some(line),
-                byte_start: None,
-                byte_end: None,
-                char_start: None,
-                char_end: None,
-                time_start_ms: None,
-                time_end_ms: None,
-                dom_selector: None,
-                json_pointer: None,
-                yaml_path: None,
-                xml_xpath: None,
-                csv_row: None,
-                session_turn_id: None,
-                turn_start: None,
-                turn_end: None,
-            }),
+            range,
             quote,
             confidence: 0.9,
             metadata: evidence_metadata,

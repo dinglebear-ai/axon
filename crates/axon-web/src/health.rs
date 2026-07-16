@@ -45,7 +45,7 @@ pub(super) async fn readyz(
     } else {
         probe_http_endpoint(&format!("{}/health", cfg.tei_url.trim_end_matches('/'))).await
     };
-    let sqlite = axon_jobs::store::sqlite_readiness(&cfg.sqlite_path);
+    let sqlite = axon_core::sqlite::readiness(&cfg.sqlite_path);
     let sqlite_ready = sqlite
         .get("ok")
         .and_then(serde_json::Value::as_bool)

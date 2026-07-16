@@ -6,9 +6,9 @@ GitLab ingest indexes project metadata, repository files, issues, merge requests
 ## Targets
 
 ```bash
-axon ingest https://gitlab.com/gitlab-org/gitlab-runner --wait true
-axon ingest https://gitlab.com/group/subgroup/project --wait true
-axon ingest gitlab:gitlab.example.com/group/project --wait true
+axon https://gitlab.com/gitlab-org/gitlab-runner --wait true
+axon https://gitlab.com/group/subgroup/project --wait true
+axon gitlab:gitlab.example.com/group/project --wait true
 ```
 
 Bare `owner/repo` remains GitHub shorthand. Use a full GitLab URL or the `gitlab:` prefix for GitLab targets, especially for self-hosted instances.
@@ -30,8 +30,8 @@ Bare `owner/repo` remains GitHub shorthand. Use a full GitLab URL or the `gitlab
 ## Limits
 
 ```bash
-axon ingest https://gitlab.com/group/project --max-issues 25 --max-prs 25
-axon ingest https://gitlab.com/group/project --no-source
+axon https://gitlab.com/group/project --max-issues 25 --max-prs 25
+axon https://gitlab.com/group/project --no-source
 ```
 
 The existing ingest flags are shared with GitHub: `--max-issues`, `--max-prs`, `--no-source`, and `--include-source`.

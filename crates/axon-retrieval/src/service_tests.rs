@@ -86,6 +86,18 @@ async fn run_query_returns_mapped_hits_via_trait_objects() {
     assert!(uris.contains(&"https://example.com/chunk-a"));
     assert!(result.hits.iter().all(|hit| !hit.text.is_empty()));
     assert!(result.hits.iter().all(|hit| !hit.chunk_id.is_empty()));
+    assert!(
+        result
+            .hits
+            .iter()
+            .all(|hit| hit.citation.chunk_id.0 == hit.chunk_id)
+    );
+    assert!(
+        result
+            .hits
+            .iter()
+            .all(|hit| hit.citation.redaction.visibility == axon_api::source::Visibility::Public)
+    );
 }
 
 /// Phase-3b Task 11: plain `query` must not surface memory-namespace vectors

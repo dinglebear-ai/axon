@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
 @Serializable
 data class RecentJob(
     val jobId: String,
-    val kind: String,    // "crawl" | "embed" | "extract" | "ingest"
+    val kind: String,    // "source" | "extract"
     val target: String,
     val submittedAt: Long,
 )

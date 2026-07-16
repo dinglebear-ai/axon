@@ -16,7 +16,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         // watch
         c(
             &["watch", "create"],
-            "Create a recurring watch definition",
+            "Create a recurring source watch",
             None,
             true,
             false,
@@ -24,7 +24,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "list"],
-            "List watch definitions",
+            "List source watches",
             None,
             false,
             false,
@@ -32,7 +32,15 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "get"],
-            "Show one watch definition",
+            "Show one source watch",
+            None,
+            false,
+            false,
+            "read",
+        ),
+        c(
+            &["watch", "status"],
+            "Show source watch status",
             None,
             false,
             false,
@@ -40,7 +48,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "update"],
-            "Update a watch definition's schedule",
+            "Update a source watch",
             None,
             true,
             false,
@@ -48,7 +56,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "exec"],
-            "Run a watch definition immediately",
+            "Run a source watch immediately",
             None,
             true,
             true,
@@ -56,7 +64,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "pause"],
-            "Pause a watch definition",
+            "Pause a source watch",
             None,
             true,
             false,
@@ -64,7 +72,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "resume"],
-            "Resume a paused watch definition",
+            "Resume a paused source watch",
             None,
             true,
             false,
@@ -72,7 +80,7 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["watch", "delete"],
-            "Delete a watch definition",
+            "Delete a source watch",
             None,
             true,
             false,
@@ -86,18 +94,10 @@ fn commands_watch_monitor() -> Vec<CliRegistryCommand> {
             false,
             "read",
         ),
-        c(
-            &["watch", "artifacts"],
-            "Show artifacts produced by a watch run",
-            None,
-            false,
-            false,
-            "read",
-        ),
         // monitor
         c(
             &["monitor", "jobs"],
-            "Stream crawl/extract/embed/ingest lifecycle events",
+            "Stream source and extract lifecycle events",
             None,
             false,
             false,
@@ -220,7 +220,7 @@ fn commands_search_brand_debug_doctor() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["scrape"],
-            "Fetch, normalize, and embed exactly one web page through SourceRequest",
+            "Fetch, normalize, and index exactly one web page through SourceRequest",
             Some("SourceRequest"),
             true,
             false,
@@ -323,7 +323,7 @@ fn commands_query_ask_train() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["suggest"],
-            "Suggest new documentation URLs to crawl",
+            "Suggest new documentation URLs to index",
             Some("SuggestRequest"),
             false,
             false,

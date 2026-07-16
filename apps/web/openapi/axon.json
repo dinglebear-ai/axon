@@ -1142,77 +1142,6 @@
       }
     },
     "/v1/extract": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "list_extract_jobs",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract jobs",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
       "post": {
         "tags": [
           "jobs"
@@ -1271,305 +1200,6 @@
           },
           "502": {
             "description": "Upstream extract service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "clear_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract clear result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/cleanup": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cleanup_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract cleanup result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/recover": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "recover_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract recovery result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/{id}": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "extract_job_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Extract job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Job not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/{id}/cancel": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cancel_extract_job",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Extract job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract cancellation result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
             "content": {
               "application/json": {
                 "schema": {
@@ -4987,7 +4617,7 @@
         "tags": [
           "admin"
         ],
-        "operationId": "dedupe",
+        "operationId": "prune_dedupe",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4997,7 +4627,7 @@
                     "type": "null"
                   },
                   {
-                    "$ref": "#/components/schemas/DedupeRequest"
+                    "$ref": "#/components/schemas/PruneDedupeRequest"
                   }
                 ]
               }
@@ -5006,7 +4636,7 @@
         },
         "responses": {
           "200": {
-            "description": "Dedupe result",
+            "description": "Prune dedupe result",
             "content": {
               "application/json": {
                 "schema": {}
@@ -5014,7 +4644,7 @@
             }
           },
           "400": {
-            "description": "Invalid dedupe request",
+            "description": "Invalid prune dedupe request",
             "content": {
               "application/json": {
                 "schema": {
@@ -5241,12 +4871,12 @@
         "tags": [
           "admin"
         ],
-        "operationId": "purge",
+        "operationId": "prune_purge",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PurgeRequest"
+                "$ref": "#/components/schemas/PrunePurgeRequest"
               }
             }
           },
@@ -5254,17 +4884,17 @@
         },
         "responses": {
           "200": {
-            "description": "Purge result (counts of points/URLs matched or deleted)",
+            "description": "Prune purge result (counts of points/URLs matched or deleted)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PurgeResult"
+                  "$ref": "#/components/schemas/PrunePurgeResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid purge request",
+            "description": "Invalid prune purge request",
             "content": {
               "application/json": {
                 "schema": {
@@ -7099,6 +6729,90 @@
         ]
       }
     },
+    "/v1/watches/{watch_id}/history": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "watches_history",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watch execution history",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch history lookup failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/watches/{watch_id}/pause": {
       "post": {
         "tags": [
@@ -7241,6 +6955,90 @@
           },
           "502": {
             "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}/status": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "watches_status",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watch status with latest source job summary",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch status unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -7842,18 +7640,6 @@
               {
                 "$ref": "#/components/schemas/SecretRef"
               }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "DedupeRequest": {
-        "type": "object",
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
             ]
           }
         },
@@ -9659,29 +9445,6 @@
         },
         "additionalProperties": false
       },
-      "JobStatusResponse": {
-        "type": "object",
-        "description": "Typed job-status envelope so the `{ job, progress }` wire shape is a\nregistered OpenAPI schema (and thus reflected into the generated palette/\nandroid clients) instead of an opaque `serde_json::Value`.",
-        "required": [
-          "job"
-        ],
-        "properties": {
-          "job": {
-            "description": "Raw job record in the wire-compat shape (`status`, `result_json`,\ntimestamps, ...). Still `Value` because the job payloads are\nheterogeneous; `progress` is the typed, cross-family projection of it."
-          },
-          "progress": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JobProgress",
-                "description": "Server-derived, transport-neutral progress for canonical async jobs."
-              }
-            ]
-          }
-        }
-      },
       "JobSummary": {
         "type": "object",
         "required": [
@@ -10788,6 +10551,41 @@
         },
         "additionalProperties": false
       },
+      "PruneDedupeRequest": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PruneDedupeResult": {
+        "type": "object",
+        "description": "Result of `prune subaction=dedupe`.",
+        "required": [
+          "completed",
+          "duplicate_groups",
+          "deleted"
+        ],
+        "properties": {
+          "completed": {
+            "type": "boolean"
+          },
+          "deleted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duplicate_groups": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "PruneEstimate": {
         "type": "object",
         "description": "Estimated impact counts for a plan (what *would* be deleted).",
@@ -10922,6 +10720,80 @@
               "string",
               "null"
             ]
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PrunePurgeRequest": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Preview only; defaults to true for destructive safety."
+          },
+          "prefix": {
+            "type": "boolean",
+            "description": "Match `target` as a prefix over a whole docs subtree / origin."
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PrunePurgeResult": {
+        "type": "object",
+        "description": "Result of `prune subaction=purge`.",
+        "required": [
+          "target",
+          "prefix",
+          "dry_run",
+          "matched_points",
+          "deleted_points",
+          "matched_url_count",
+          "sample_urls"
+        ],
+        "properties": {
+          "deleted_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "When true, nothing was deleted — counts reflect what *would* be removed."
+          },
+          "matched_points": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matched_url_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "prefix": {
+            "type": "boolean"
+          },
+          "sample_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "target": {
             "type": "string"
@@ -11314,89 +11186,6 @@
           "cache"
         ]
       },
-      "PurgeRequest": {
-        "type": "object",
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "dry_run": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Preview only — count matches without deleting. **Defaults to `true`** for\nagent safety: a bare `purge` previews; set `dry_run=false` to delete."
-          },
-          "prefix": {
-            "type": "boolean",
-            "description": "Match `target` as a prefix over a whole docs subtree / origin."
-          },
-          "response_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ResponseMode"
-              }
-            ]
-          },
-          "target": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index.\n**Handler-required despite the `Option`:** the type is `Option<String>`\nonly so a missing field deserializes to a clean \"target is required\"\nerror instead of a serde rejection; `handle_purge` returns an error when\nit is `None`. It is not an optional argument."
-          }
-        },
-        "additionalProperties": false
-      },
-      "PurgeResult": {
-        "type": "object",
-        "description": "Result of a purge: counts of points/URLs matched (and deleted, unless this\nwas a `dry_run` preview).",
-        "required": [
-          "target",
-          "prefix",
-          "dry_run",
-          "matched_points",
-          "deleted_points",
-          "matched_url_count",
-          "sample_urls"
-        ],
-        "properties": {
-          "deleted_points": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "dry_run": {
-            "type": "boolean",
-            "description": "When true, nothing was deleted — counts reflect what *would* be removed."
-          },
-          "matched_points": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "matched_url_count": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "prefix": {
-            "type": "boolean"
-          },
-          "sample_urls": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "target": {
-            "type": "string"
-          }
-        }
-      },
       "QueryHit": {
         "type": "object",
         "required": [
@@ -11618,10 +11407,13 @@
       "ResponseMode": {
         "type": "string",
         "enum": [
-          "path",
+          "auto",
+          "summary",
+          "full",
           "inline",
-          "both",
-          "auto_inline"
+          "artifact",
+          "path",
+          "job_only"
         ]
       },
       "RestAskRequest": {
@@ -14127,7 +13919,6 @@
         "required": [
           "source",
           "schedule",
-          "embed",
           "options"
         ],
         "properties": {

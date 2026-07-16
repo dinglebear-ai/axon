@@ -5,9 +5,7 @@
 ///   1. Option mapper round-trips produce correct service types.
 ///   2. Service result structs expose fields consumed by MCP handlers.
 ///   3. Serialization examples keep envelope field names explicit.
-use axon_mcp::schema::{
-    AxonRequest, AxonToolResponse, IngestSubaction, SearchTimeRange, parse_axon_request,
-};
+use axon_mcp::schema::{AxonRequest, AxonToolResponse, SearchTimeRange, parse_axon_request};
 use axon_mcp::server::common::{
     to_map_options, to_pagination, to_retrieve_options, to_search_options, to_service_time_range,
 };
@@ -19,6 +17,29 @@ use axon_services::types::{
     ServiceTimeRange, SourcesResult, StatsResult, SuggestResult,
 };
 use serde_json::json;
+
+fn citation(uri: &str) -> axon_api::CanonicalCitation {
+    serde_json::from_value(json!({
+        "source_id": "source-test",
+        "source_item_key": uri,
+        "generation": "1",
+        "document_id": "document-test",
+        "chunk_id": "chunk-test",
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "canonical_uri": uri,
+        "source_range": { "line_start": 1, "line_end": 1 },
+        "redaction": {
+            "redaction_status": "clean",
+            "redaction_version": "test-v1",
+            "visibility": "public",
+            "redacted_field_count": 0,
+            "dropped_field_count": 0,
+            "detector_count": 0,
+            "detector_names": []
+        }
+    }))
+    .expect("canonical citation fixture")
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Option mapper round-trips (verifies common.rs helpers)
@@ -198,7 +219,6 @@ fn sources_result_has_expected_fields() {
         limit: 10,
         offset: 0,
         urls: vec![("https://example.com".to_string(), 3)],
-        schema_version_breakdown: None,
     };
     assert_eq!(r.count, 5);
     assert_eq!(r.limit, 10);
@@ -248,6 +268,7 @@ fn query_result_has_results_vec() {
         url: "https://a.com".to_string(),
         source: "docs".to_string(),
         snippet: "snippet".to_string(),
+        citation: citation("https://a.com"),
         chunk_index: None,
         file_path: None,
         symbol: None,
@@ -298,6 +319,7 @@ fn ask_result_exposes_typed_answer() {
     let r = AskResult {
         query: "question".to_string(),
         answer: "42".to_string(),
+        citations: Vec::new(),
         citation_validation: None,
         session: None,
         warnings: Vec::new(),
@@ -397,17 +419,21 @@ fn retrieve_options_equality() {
 // Group 4: MCP serialization examples and validation contracts
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Comment #18 — mcp_embed_start_returns_job_id_payload_shape
+/// Comment #18 — mcp_source_start_returns_job_id_payload_shape
 ///
 /// This is a serialization example for the `AxonToolResponse` envelope shape
-/// used by embed.start handlers; it does not exercise the handler path.
+/// used by source handlers; it does not exercise the handler path.
 #[test]
-fn mcp_embed_start_returns_job_id_payload_shape() {
-    let resp = AxonToolResponse::ok("embed", "start", serde_json::json!({ "job_id": "abc-123" }));
+fn mcp_source_start_returns_job_id_payload_shape() {
+    let resp = AxonToolResponse::ok(
+        "source",
+        "start",
+        serde_json::json!({ "job_id": "abc-123" }),
+    );
     let serialized = serde_json::to_value(&resp).expect("AxonToolResponse must serialize");
     assert_eq!(
-        serialized["action"], "embed",
-        "envelope action must be 'embed'"
+        serialized["action"], "source",
+        "envelope action must be 'source'"
     );
     assert_eq!(
         serialized["subaction"], "start",
@@ -415,50 +441,27 @@ fn mcp_embed_start_returns_job_id_payload_shape() {
     );
     assert!(
         serialized["data"].get("job_id").is_some(),
-        "embed.start data must contain job_id; got: {serialized}"
+        "source.start data must contain job_id; got: {serialized}"
     );
 }
 
-/// Comment #17 — mcp_ingest_start_requires_source_type
+/// Comment #17 — mcp_ingest_start_is_removed
 ///
-/// IngestRequest.source_type is Option — omitting it passes schema-level parse
-/// but triggers INVALID_PARAMS inside handle_ingest_start → parse_ingest_source.
-/// Verify the schema parses correctly and the parsed struct has no source_type.
+/// The legacy ingest action was removed from MCP; callers use action=source.
 #[test]
-fn mcp_ingest_start_requires_source_type() {
-    // Schema parse must succeed (source_type is Option in IngestRequest).
+fn mcp_ingest_start_is_removed() {
     let raw = serde_json::json!({
         "action": "ingest",
         "subaction": "start"
-        // source_type intentionally omitted
     });
     let parsed = parse_axon_request(raw.as_object().unwrap().clone());
     assert!(
-        parsed.is_ok(),
-        "ingest/start without source_type must parse at schema level; \
-         handler validation fires at dispatch time"
+        parsed.is_err(),
+        "ingest/start must fail at the MCP parse boundary"
     );
-    // Verify the deserialized struct lacks source_type, which means
-    // parse_ingest_source will call invalid_params("source_type is required for ingest.start").
-    if let Ok(AxonRequest::Ingest(req)) = parsed {
-        assert!(
-            req.source_type.is_none(),
-            "source_type must be None when omitted from request"
-        );
-        assert!(
-            matches!(req.subaction, Some(IngestSubaction::Start)),
-            "subaction must be Start"
-        );
-    } else {
-        panic!("expected AxonRequest::Ingest");
-    }
-    // Confirm that this validation error should be represented as INVALID_PARAMS.
-    let err = rmcp::ErrorData::invalid_params("source_type is required for ingest.start", None);
-    assert_eq!(
-        err.code,
-        rmcp::model::ErrorCode::INVALID_PARAMS,
-        "missing source_type must produce INVALID_PARAMS"
-    );
+    let err = parsed.unwrap_err();
+    assert!(err.contains("action `ingest` was removed from MCP"));
+    assert!(err.contains("action=source"));
 }
 
 /// Comment #16 — mcp_screenshot_payload_contains_path_size_and_viewport

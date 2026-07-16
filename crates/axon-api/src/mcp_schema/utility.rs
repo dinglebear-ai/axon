@@ -5,20 +5,18 @@ use crate::source::SourceScope;
 
 /// Request parameters for the unified `source` action.
 ///
-/// `source` is the single indexing entrypoint that replaces the removed
-/// `embed` / `ingest` / `scrape` / `crawl` / `code_search` / `vertical_scrape`
-/// MCP actions. The handler maps this onto [`crate::source::SourceRequest`] and
-/// calls `axon_services::index_source`, which classifies the input (local path,
-/// git URL, feed URL, youtube/reddit target, web URL, session selector, or
-/// registry target), acquires it, and indexes it through the unified pipeline.
+/// `source` is the single indexing entrypoint. The handler maps this onto
+/// [`crate::source::SourceRequest`] and calls `axon_services::index_source`,
+/// which classifies the input (local path, git URL, feed URL, youtube/reddit
+/// target, web URL, session selector, or registry target), acquires it, and
+/// indexes it through the unified pipeline.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceRequest {
     /// Source input string: a local path, git repository URL, feed URL,
     /// youtube target, reddit target, web URL, session selector
     /// (`session:<claude|codex|gemini>:<path>`), or registry target
-    /// (`pkg:<npm|pypi|crates>/<package>`). Accepts the `input` alias.
-    #[serde(alias = "input")]
+    /// (`pkg:<npm|pypi|crates>/<package>`).
     pub source: Option<String>,
     /// Optional acquisition scope override (e.g. `page`, `site`, `repo`).
     /// When omitted, the classified family's default scope is used.
@@ -122,39 +120,4 @@ pub struct BrandRequest {
     /// future Chrome-backed extraction path.
     pub render_mode: Option<McpRenderMode>,
     pub response_mode: Option<ResponseMode>,
-}
-
-// ── vertical_scrape ─────────────────────────────────────────────────────────
-
-/// Subaction for the `vertical_scrape` action.
-///
-/// - `run` — deprecated; returns an error directing callers to `action=scrape`
-/// - `list` — return the extractor catalog (id, label, description, url_patterns)
-/// - `capabilities` — per-extractor auth_required + rate_limit info
-#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum VerticalScrapeSubaction {
-    #[default]
-    Run,
-    List,
-    Capabilities,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct VerticalScrapeRequest {
-    /// Which operation to perform (default: run for backward-compatible error handling).
-    #[serde(default)]
-    pub subaction: VerticalScrapeSubaction,
-    /// Extractor name — optional filter for `capabilities`; ignored by `list`.
-    /// One of: github_repo, github_release, reddit, pypi, npm, crates_io,
-    /// docker_hub, huggingface_model, dev_to, shopify, youtube_video, amazon, ebay.
-    /// Use `list` to discover the full catalog.
-    pub extractor: Option<String>,
-    /// Deprecated with `subaction=run`; use `action=scrape` with this URL instead.
-    pub url: Option<String>,
-    /// Whether to embed the result into Qdrant after extraction.
-    pub embed: Option<bool>,
-    /// Qdrant collection to embed into (overrides cfg.collection).
-    pub collection: Option<String>,
 }

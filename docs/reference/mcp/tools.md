@@ -19,7 +19,7 @@ actions such as `scrape`, `crawl`, `embed`, `ingest`, `code_search`,
   "source": "https://example.com",
   "scope": "page|site|docs|map",
   "embed": true,
-  "response_mode": "path|inline|both|auto_inline"
+  "response_mode": "artifact|inline|both|auto_inline"
 }
 ```
 
@@ -29,7 +29,7 @@ Common fields:
 |---|---|
 | `action` | Required live action name. |
 | `subaction` | Operation within grouped actions such as `jobs`, `extract`, `memory`, `watch`, and `graph`. |
-| `response_mode` | Optional output policy. Most actions default to artifact/path-oriented output; `retrieve` is inline-first. |
+| `response_mode` | Optional output policy. Artifact-backed responses return an opaque `artifact_id`; `retrieve` is inline-first. |
 
 ## Source Action
 
@@ -109,3 +109,5 @@ These names are intentionally rejected before handler dispatch:
 - `elicit_demo`
 
 Use `action=source` for indexing and `action=prune` for destructive cleanup.
+Public callers never provide or receive server filesystem paths for artifacts;
+they use opaque artifact IDs through the artifact service or REST resource.

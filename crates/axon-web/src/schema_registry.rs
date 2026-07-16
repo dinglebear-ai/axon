@@ -281,7 +281,24 @@ static PRE_MEMORY_ROUTES: &[RestRouteSpec] = &[
 ];
 
 static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
-    read("GET", "/v1/artifacts", "artifacts", "ArtifactQueryResponse"),
+    read(
+        "GET",
+        "/v1/artifacts",
+        "list_artifacts",
+        "Page<ArtifactSummary>",
+    ),
+    read(
+        "GET",
+        "/v1/artifacts/{artifact_id}",
+        "get_artifact",
+        "ArtifactDetail",
+    ),
+    read(
+        "GET",
+        "/v1/artifacts/{artifact_id}/content",
+        "artifact_content",
+        "ArtifactContentDescriptor",
+    ),
     job_read("GET", "/v1/jobs", "jobs_list", "JobListPage"),
     job_read("GET", "/v1/jobs/{id}", "jobs_status", "JobSummary"),
     job_read("GET", "/v1/jobs/{id}/events", "jobs_events", "JobEventPage"),
@@ -340,7 +357,18 @@ static POST_MEMORY_ROUTES: &[RestRouteSpec] = &[
 ];
 
 pub fn removed_routes() -> &'static [&'static str] {
-    &["/v1/embed", "/v1/ingest", "/v1/scrape", "/v1/crawl"]
+    &[
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/scrape",
+        "/v1/crawl",
+        "/v1/purge",
+        "/v1/dedupe",
+        "/v1/extract/cleanup",
+        "/v1/extract/recover",
+        "/v1/extract/{id}",
+        "/v1/extract/{id}/cancel",
+    ]
 }
 
 const READ_RESPONSES: &[&str] = &["200", "400", "401", "403", "404", "500", "502"];

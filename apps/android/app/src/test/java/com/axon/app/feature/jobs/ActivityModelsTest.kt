@@ -10,19 +10,20 @@ import org.junit.Test
 
 class ActivityModelsTest {
     @Test fun `recent activity rows prefer live job state when available`() {
-        val recent = listOf(RecentJob(jobId = "job-1", kind = "crawl", target = "https://example.test", submittedAt = 100L))
-        val live = JobUi(
-            kind = JobFamily.Crawl,
-            id = "job-1",
-            status = "failed",
-            url = "https://example.test/live",
-            sourceType = null,
-            target = null,
-            errorText = "boom",
-            resultJson = null,
-        )
+        val recent = listOf(RecentJob(jobId = "job-1", kind = "source", target = "https://example.test", submittedAt = 100L))
+        val live =
+            JobUi(
+                kind = JobFamily.Source,
+                id = "job-1",
+                status = "failed",
+                url = "https://example.test/live",
+                sourceKind = null,
+                target = null,
+                errorText = "boom",
+                resultJson = null,
+            )
 
-        val rows = recentActivityRows(recent, mapOf(JobFamily.Crawl to listOf(live)))
+        val rows = recentActivityRows(recent, mapOf(JobFamily.Source to listOf(live)))
 
         assertEquals(1, rows.size)
         assertTrue(rows.single().live)
@@ -32,13 +33,13 @@ class ActivityModelsTest {
     }
 
     @Test fun `recent activity rows mark local fallback when server job is unavailable`() {
-        val recent = listOf(RecentJob(jobId = "job-2", kind = "ingest", target = "github.com/o/r", submittedAt = 200L))
+        val recent = listOf(RecentJob(jobId = "job-2", kind = "source", target = "github.com/o/r", submittedAt = 200L))
 
         val rows = recentActivityRows(recent, emptyMap())
 
         assertEquals(1, rows.size)
         assertFalse(rows.single().live)
-        assertEquals(JobFamily.Ingest, rows.single().kind)
+        assertEquals(JobFamily.Source, rows.single().kind)
         assertEquals("local-only", rows.single().job.status)
         assertEquals("Latest server status unavailable", rows.single().job.errorText)
         assertEquals("github.com/o/r", rows.single().job.target)

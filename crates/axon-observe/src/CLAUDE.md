@@ -30,6 +30,7 @@ transport-specific status rendering here.
 | `log.rs` | `LogFieldSet`/`LogLevel` — structured log field set (timestamp/level/target/message + correlation ids); `message` is redacted through `axon_core::redact::redact_secrets` at construction (the redaction hook point) |
 | `sequence.rs` | `SequenceRegistry` — monotonic per-`job_id` sequence assignment, applied by sinks at emit time |
 | `reservation.rs` | provider reservation/cooling tracking |
+| `provider_failure.rs` | records typed provider failures and projects enriched `ApiError`, retry state, progress events, and item-level errors without transport formatting |
 | `security_audit.rs` | `to_progress_event()` — projects `axon_api::source::SecurityAuditEvent` (SSRF denials, local path denials, tool execution denials, redaction failures, ...) onto the shared `SourceProgressEvent` shape so security-relevant events flow through the same `ObservabilitySink` as every other pipeline stage |
 | `collector.rs` | `ObservabilitySink` trait (`emit`/`heartbeat`/`metric`/`flush`) — the shared emit boundary |
 | `sink.rs` + `sink/sqlite.rs` + `sink/tracing_sink.rs` | production `ObservabilitySink` impls: `SqliteObservabilitySink` (durable event/heartbeat/provider-health rows, owns an in-crate migration) and `TracingObservabilitySink` (forwards to the `tracing` subscriber via `SpanFieldSet`) |

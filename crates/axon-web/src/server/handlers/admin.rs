@@ -1,14 +1,11 @@
-use axon_api::mcp_schema::PurgeRequest;
+use axon_api::reset::{RESET_STORE_ARTIFACTS, ResetPlan, ResetResult};
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneResult, PruneSelector};
 use axon_core::config::Config;
 use axon_services as services;
 use axon_services::prune::PruneAuthz;
-use axum::{
-    Extension, Json,
-    extract::State,
-    http::{HeaderMap, StatusCode, header},
-};
+use axon_services::reset::ResetAuthz;
+use axum::{Extension, Json, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -18,79 +15,6 @@ use super::super::error::HttpError;
 type WebState = (super::super::state::AppState, Arc<Config>);
 
 const PRUNE_COLLECTION_PREFIX: &str = "collection:";
-
-#[derive(Debug, Deserialize, Default, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub(crate) struct DedupeRequest {
-    collection: Option<String>,
-}
-
-#[utoipa::path(
-    post,
-    path = "/v1/prune/dedupe",
-    request_body(content = Option<DedupeRequest>, content_type = "application/json"),
-    responses(
-        (status = 200, description = "Dedupe result", body = serde_json::Value),
-        (status = 400, description = "Invalid dedupe request", body = crate::server::error::ErrorBody),
-        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
-        (status = 415, description = "Unsupported request body content type", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
-    ),
-    tag = "admin"
-)]
-pub(crate) async fn dedupe(
-    State((_state, cfg)): State<WebState>,
-    headers: HeaderMap,
-    body: String,
-) -> Result<Json<services::types::DedupeResult>, HttpError> {
-    let mut req_cfg = (*cfg).clone();
-    if let Some(req) = parse_optional_json_body::<DedupeRequest>(&headers, &body)?
-        && let Some(collection) = req.collection
-    {
-        axon_core::config::validate_collection_name(&collection)
-            .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
-        req_cfg.collection = collection;
-    }
-    services::system::dedupe(&req_cfg, None)
-        .await
-        .map(Json)
-        .map_err(HttpError::from_box)
-}
-
-#[utoipa::path(
-    post,
-    path = "/v1/prune/purge",
-    request_body = PurgeRequest,
-    responses(
-        (status = 200, description = "Purge result (counts of points/URLs matched or deleted)", body = axon_api::PurgeResult),
-        (status = 400, description = "Invalid purge request", body = crate::server::error::ErrorBody),
-        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
-        (status = 502, description = "Upstream vector service unavailable", body = crate::server::error::ErrorBody)
-    ),
-    tag = "admin"
-)]
-pub(crate) async fn purge(
-    State((_state, cfg)): State<WebState>,
-    Json(req): Json<PurgeRequest>,
-) -> Result<Json<services::types::PurgeResult>, HttpError> {
-    let target = req
-        .target
-        .as_deref()
-        .map(str::trim)
-        .filter(|target| !target.is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| HttpError::bad_request("target is required"))?;
-    let mut req_cfg = (*cfg).clone();
-    if let Some(collection) = req.collection {
-        axon_core::config::validate_collection_name(&collection)
-            .map_err(|e| HttpError::bad_request(format!("collection: {e}").as_str()))?;
-        req_cfg.collection = collection;
-    }
-    services::system::purge(&req_cfg, &target, req.prefix, req.dry_run.unwrap_or(true))
-        .await
-        .map(Json)
-        .map_err(HttpError::from_box)
-}
 
 /// Body for `POST /v1/prune/plan` — a dry-run plan, always safe to call.
 ///
@@ -109,10 +33,11 @@ pub(crate) struct PrunePlanRequest {
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PruneExecRequest {
-    pub target: String,
-    pub generation: Option<String>,
+    pub prune_plan_id: String,
     #[serde(default)]
     pub confirm: bool,
+    #[serde(default)]
+    pub reason: String,
 }
 
 #[utoipa::path(
@@ -163,34 +88,215 @@ pub(crate) async fn prune_exec(
             "prune exec requires confirm=true to run destructively",
         ));
     }
-    let selector = prune_selector_from_body(&req.target, req.generation.as_deref())?;
-    let api_request = ApiPruneRequest::execute(selector, "rest prune exec");
+    validate_reason(&req.reason)?;
+    let plan_id = req.prune_plan_id.trim();
+    if plan_id.is_empty() {
+        return Err(HttpError::bad_request("prune_plan_id is required"));
+    }
+    let authz = prune_authz_from_auth(auth.as_ref());
+    let (_, result, _) =
+        services::prune::prune_execute_saved(&state.service_context, plan_id, req.confirm, &authz)
+            .await
+            .map_err(destructive_error)?;
+    Ok(Json(result))
+}
 
-    // `axon:admin` derived from the caller's real resolved scopes — never
-    // hardcoded. The router's `admin_routes` layer (require_admin_scope) has
-    // already rejected non-admin Mounted callers before this handler runs;
-    // re-deriving here (rather than assuming `PruneAuthz::admin()`) keeps
-    // this handler honest on its own and correct if the router layer is ever
-    // relaxed. `LoopbackDev` has no `AuthContext` at all — the loopback bind
-    // itself is the trust boundary there, matching every other admin route.
-    let authz = match auth {
-        Some(Extension(ref auth_ctx)) => PruneAuthz {
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ResetPlanRequest {
+    #[serde(default)]
+    pub stores: Vec<String>,
+    #[serde(default = "default_true")]
+    pub dry_run: bool,
+    pub collection: Option<String>,
+    pub include_artifacts: Option<bool>,
+    #[serde(default)]
+    pub include_config: bool,
+    #[serde(default)]
+    pub reason: String,
+}
+
+impl Default for ResetPlanRequest {
+    fn default() -> Self {
+        Self {
+            stores: Vec::new(),
+            dry_run: true,
+            collection: None,
+            include_artifacts: None,
+            include_config: false,
+            reason: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ResetExecRequest {
+    pub reset_plan_id: String,
+    #[serde(default)]
+    pub confirm: bool,
+    #[serde(default)]
+    pub reason: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reset/plan",
+    operation_id = "plan_reset",
+    request_body = ResetPlanRequest,
+    responses(
+        (status = 200, description = "Reviewable reset plan", body = ResetPlan),
+        (status = 400, description = "Invalid reset plan request", body = crate::server::error::ErrorBody),
+        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn reset_plan(
+    State((_state, cfg)): State<WebState>,
+    Json(req): Json<ResetPlanRequest>,
+) -> Result<Json<ResetPlan>, HttpError> {
+    validate_reason(&req.reason)?;
+    let plan_cfg = reset_plan_config(cfg.as_ref(), &req)?;
+    let result = services::reset::reset_with_authz(&plan_cfg, &ResetAuthz::anonymous())
+        .await
+        .map_err(destructive_error)?;
+    Ok(Json(result.reset_plan))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reset/exec",
+    operation_id = "execute_reset",
+    request_body = ResetExecRequest,
+    responses(
+        (status = 200, description = "Reset execution receipt", body = ResetResult),
+        (status = 400, description = "Missing confirmation or invalid plan", body = crate::server::error::ErrorBody),
+        (status = 403, description = "Caller lacks axon:admin", body = crate::server::error::ErrorBody),
+        (status = 409, description = "Reviewed reset plan no longer matches inventory or configuration", body = crate::server::error::ErrorBody)
+    ),
+    tag = "admin"
+)]
+pub(crate) async fn reset_exec(
+    State((_state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
+    Json(req): Json<ResetExecRequest>,
+) -> Result<Json<ResetResult>, HttpError> {
+    if !req.confirm {
+        return Err(HttpError::bad_request(
+            "reset exec requires confirm=true to run destructively",
+        ));
+    }
+    validate_reason(&req.reason)?;
+    let plan_id = req.reset_plan_id.trim();
+    if plan_id.is_empty() {
+        return Err(HttpError::bad_request("reset_plan_id is required"));
+    }
+    let mut exec_cfg = (*cfg).clone();
+    exec_cfg.reset_dry_run = false;
+    exec_cfg.yes = true;
+    exec_cfg.reset_plan_id = Some(plan_id.to_string());
+    let authz = reset_authz_from_auth(auth.as_ref());
+    services::reset::reset_with_authz(&exec_cfg, &authz)
+        .await
+        .map(Json)
+        .map_err(destructive_error)
+}
+
+fn reset_plan_config(cfg: &Config, req: &ResetPlanRequest) -> Result<Config, HttpError> {
+    if !req.dry_run {
+        return Err(HttpError::bad_request(
+            "reset planning requires dry_run=true; use /v1/reset/exec to execute",
+        ));
+    }
+    if req.include_config {
+        return Err(HttpError::bad_request(
+            "configuration is not a resettable store",
+        ));
+    }
+    if let Some(collection) = req.collection.as_deref() {
+        axon_core::config::validate_collection_name(collection)
+            .map_err(|error| HttpError::bad_request(format!("collection: {error}")))?;
+        if collection != cfg.collection {
+            return Err(HttpError::bad_request(
+                "collection must match the configured collection for plan-id execution",
+            ));
+        }
+    }
+    let mut plan_cfg = cfg.clone();
+    plan_cfg.reset_dry_run = true;
+    plan_cfg.yes = false;
+    plan_cfg.reset_plan_id = None;
+    plan_cfg.reset_stores = req.stores.clone();
+    if req.include_artifacts == Some(false) {
+        if plan_cfg.reset_stores.is_empty() {
+            plan_cfg.reset_stores = axon_api::reset::RESET_ALL_STORES
+                .iter()
+                .filter(|store| **store != RESET_STORE_ARTIFACTS)
+                .map(|store| (*store).to_string())
+                .collect();
+        } else {
+            plan_cfg
+                .reset_stores
+                .retain(|store| store != RESET_STORE_ARTIFACTS);
+            if plan_cfg.reset_stores.is_empty() {
+                return Err(HttpError::bad_request(
+                    "no reset stores remain after include_artifacts=false",
+                ));
+            }
+        }
+    } else if req.include_artifacts == Some(true)
+        && !plan_cfg.reset_stores.is_empty()
+        && !plan_cfg
+            .reset_stores
+            .iter()
+            .any(|store| store == RESET_STORE_ARTIFACTS)
+    {
+        plan_cfg
+            .reset_stores
+            .push(RESET_STORE_ARTIFACTS.to_string());
+    }
+    Ok(plan_cfg)
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+fn validate_reason(reason: &str) -> Result<(), HttpError> {
+    if reason.len() > 1024 {
+        return Err(HttpError::bad_request("reason must be 1024 bytes or fewer"));
+    }
+    Ok(())
+}
+
+fn prune_authz_from_auth(auth: Option<&Extension<AuthContext>>) -> PruneAuthz {
+    match auth {
+        Some(Extension(auth_ctx)) => PruneAuthz {
             is_admin: axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE),
         },
         None => PruneAuthz::admin(),
-    };
+    }
+}
 
-    let (_plan, result) = services::prune::prune(&state.service_context, &api_request, &authz)
-        .await
-        .map_err(|err| HttpError::new(StatusCode::FORBIDDEN, "forbidden", err.to_string()))?;
-    let result = result.ok_or_else(|| {
-        HttpError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "internal",
-            "prune exec did not produce a result",
-        )
-    })?;
-    Ok(Json(result))
+fn reset_authz_from_auth(auth: Option<&Extension<AuthContext>>) -> ResetAuthz {
+    match auth {
+        Some(Extension(auth_ctx)) => ResetAuthz {
+            is_admin: axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE),
+        },
+        None => ResetAuthz::admin(),
+    }
+}
+
+fn destructive_error(error: impl std::fmt::Display) -> HttpError {
+    let message = error.to_string();
+    let (status, kind) = if message.contains("admin_required") {
+        (StatusCode::FORBIDDEN, "forbidden")
+    } else if message.contains("inventory_changed") || message.contains("config_changed") {
+        (StatusCode::CONFLICT, "bad_request")
+    } else {
+        (StatusCode::BAD_REQUEST, "bad_request")
+    };
+    HttpError::new(status, kind, message)
 }
 
 /// Build a [`PruneSelector`] from a REST body's `target`/`generation` fields.
@@ -232,41 +338,6 @@ fn prune_selector_from_body(
         },
         None => PruneSelector::Source { source_id },
     })
-}
-
-fn parse_optional_json_body<T>(headers: &HeaderMap, body: &str) -> Result<Option<T>, HttpError>
-where
-    T: serde::de::DeserializeOwned,
-{
-    if body.is_empty() {
-        return Ok(None);
-    }
-    if !has_json_content_type(headers) {
-        return Err(HttpError::new(
-            StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "unsupported_media_type",
-            "non-empty request body must use application/json",
-        ));
-    }
-    serde_json::from_str(body)
-        .map(Some)
-        .map_err(|e| HttpError::bad_request(format!("invalid JSON request body: {e}")))
-}
-
-fn has_json_content_type(headers: &HeaderMap) -> bool {
-    headers
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| {
-            let media_type = value
-                .split(';')
-                .next()
-                .unwrap_or_default()
-                .trim()
-                .to_ascii_lowercase();
-            media_type == "application/json" || media_type.ends_with("+json")
-        })
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

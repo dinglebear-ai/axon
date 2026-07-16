@@ -11,14 +11,14 @@
 //!    [`SourceResult`] (`status = Failed`) with a clear warning is returned
 //!    instead of an `Err`, matching the CLI's `require_data_plane` intent while
 //!    keeping the transport contract (`Ok(SourceResult)`).
-//! 3. **Dispatches** to the family's existing acquire helper + bridge
-//!    ([`dispatch`]), which returns the numeric [`result_map::IndexCounts`].
+//! 3. **Dispatches** a routed [`axon_api::source::SourcePlan`] through the
+//!    family adapter's acquisition boundary, then invokes the shared document
+//!    preparation and publication pipeline.
 //! 4. **Maps** the counts onto a [`SourceResult`] via
 //!    [`result_map::to_source_result`].
 //!
-//! This is a relocation of the orchestration that previously lived in the CLI
-//! (`commands/source.rs` + `commands/source/*.rs`). The acquire helpers and the
-//! eight `index_*_source_with_job` bridges are unchanged.
+//! Non-web source acquisition is adapter-owned; services retain one
+//! transport-neutral prepare/embed/publish pipeline.
 
 pub mod authorize;
 pub mod batch;
@@ -29,6 +29,7 @@ pub(crate) mod events;
 pub(crate) mod execution;
 pub mod graph;
 pub mod job_tracking;
+mod non_web;
 pub mod prune;
 pub mod result_map;
 pub mod routing;
@@ -137,6 +138,7 @@ async fn index_source_inner(
     let counts = dispatch_kind(
         kind,
         route.scope,
+        ctx,
         ctx.cfg(),
         runtime,
         &input,
@@ -301,6 +303,7 @@ async fn open_cleanup_debt_stores(
 async fn dispatch_kind(
     kind: SourceInputKind,
     scope: SourceScope,
+    ctx: &ServiceContext,
     cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -336,6 +339,7 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 route,
+                execution,
             )
             .await
         }
@@ -349,6 +353,8 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 limits.max_items,
+                route,
+                execution,
             )
             .await
         }
@@ -379,6 +385,8 @@ async fn dispatch_kind(
                 embed,
                 limits.max_items,
                 project_filter,
+                route,
+                execution,
             )
             .await
         }
@@ -392,6 +400,41 @@ async fn dispatch_kind(
                 auth_snapshot,
                 embed,
                 limits.max_items,
+                route,
+                execution,
+            )
+            .await
+        }
+        SourceInputKind::CliTool => {
+            dispatch::dispatch_cli_tool(runtime, input, owner_id, auth_snapshot, route).await
+        }
+        SourceInputKind::McpTool => {
+            dispatch::dispatch_mcp_tool(runtime, input, owner_id, auth_snapshot, route).await
+        }
+        SourceInputKind::Memory => {
+            dispatch::dispatch_memory(
+                ctx,
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                route,
+                execution,
+            )
+            .await
+        }
+        SourceInputKind::Upload => {
+            dispatch::dispatch_upload(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                route,
+                execution,
             )
             .await
         }
@@ -410,6 +453,8 @@ async fn dispatch_item_limited_kind(
     auth_snapshot: Option<&AuthSnapshot>,
     embed: bool,
     max_items: Option<u64>,
+    route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
         SourceInputKind::Feed => {
@@ -421,6 +466,8 @@ async fn dispatch_item_limited_kind(
                 auth_snapshot,
                 embed,
                 max_items,
+                route,
+                execution,
             )
             .await
         }
@@ -433,6 +480,8 @@ async fn dispatch_item_limited_kind(
                 auth_snapshot,
                 embed,
                 max_items,
+                route,
+                execution,
             )
             .await
         }
@@ -445,6 +494,8 @@ async fn dispatch_item_limited_kind(
                 auth_snapshot,
                 embed,
                 max_items,
+                route,
+                execution,
             )
             .await
         }
@@ -457,6 +508,8 @@ async fn dispatch_item_limited_kind(
                 auth_snapshot,
                 embed,
                 max_items,
+                route,
+                execution,
             )
             .await
         }
@@ -510,6 +563,10 @@ fn adapter_name_for(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Web => "web",
         SourceInputKind::Session => "sessions",
         SourceInputKind::Registry => "registry",
+        SourceInputKind::CliTool => "cli_tool",
+        SourceInputKind::McpTool => "mcp_tool",
+        SourceInputKind::Memory => "memory",
+        SourceInputKind::Upload => "upload",
         SourceInputKind::Unsupported => "unsupported",
     }
 }

@@ -5,29 +5,29 @@ import {
   Copy,
   ExternalLink,
   History,
+  type LucideIcon,
   MoreHorizontal,
   Pin,
   RotateCw,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { memo, useMemo } from "react";
 
 import { AskConversation } from "@/components/palette/AskConversation";
+import { DoctorView } from "@/components/palette/DoctorView";
+import { DomainsView } from "@/components/palette/DomainsView";
 import { ErrorResultView } from "@/components/palette/ErrorResultView";
 import { EvaluateView } from "@/components/palette/EvaluateView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
-import { OutputLiveBadge } from "@/components/palette/OutputLiveBadge";
 import {
   hasStructuredOperationView,
   OperationResultView,
 } from "@/components/palette/OperationResultView";
 import { arrayByKeys } from "@/components/palette/OperationResultViewShared";
-import { DoctorView } from "@/components/palette/DoctorView";
-import { DomainsView } from "@/components/palette/DomainsView";
+import { OutputLiveBadge } from "@/components/palette/OutputLiveBadge";
 import { SourcesView } from "@/components/palette/SourcesView";
 import { StatsView } from "@/components/palette/StatsView";
-import { StatusView, type OpenJobHandler } from "@/components/palette/StatusView";
+import { type OpenJobHandler, StatusView } from "@/components/palette/StatusView";
 import { TerminalView } from "@/components/palette/TerminalView";
 import { Button } from "@/components/ui/aurora/button";
 import { Spinner } from "@/components/ui/aurora/spinner";
@@ -37,8 +37,8 @@ import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { numField, strField, unwrapPayload } from "@/lib/payload";
 import type { ChatSuggestion, RunState } from "@/lib/runState";
 import { buildSourcesModel, type SourceSortMode } from "@/lib/sourcesModel";
-import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 import { firstUrl, hostLabel } from "@/lib/url";
+import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 
 interface OutputPanelProps {
   active?: PaletteAction;
@@ -66,7 +66,7 @@ interface OutputPanelProps {
   onSourcesSortChange?: (sort: SourceSortMode) => void;
   onSourcesGroupedChange?: (grouped: boolean) => void;
   /** Live Axon client + config, forwarded to `OperationResultView` for the
-   * `files` structured view's real ingest call. Every other view ignores them. */
+   * `files` structured view's real source-indexing call. Every other view ignores them. */
   client?: Client | null;
   config?: PaletteConfig | null;
 }
@@ -320,8 +320,8 @@ export const OutputPanel = memo(function OutputPanel({
         {active?.subcommand === "terminal" ? (
           <TerminalView />
         ) : (run.kind === "streaming" || run.kind === "running") &&
-        conversationMode &&
-        transcript?.length ? (
+          conversationMode &&
+          transcript?.length ? (
           <AskConversation
             prompt={run.prompt ?? ""}
             answer={"text" in run ? run.text : ""}

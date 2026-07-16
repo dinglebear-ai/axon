@@ -8,7 +8,7 @@ class FabOpInputCardTest {
     @Test
     fun urlOperationsAddHttpsSchemeForBareDomains() {
         assertEquals("https://example.com", normalizeFabInput(FabOp.Scrape, "example.com"))
-        assertEquals("https://docs.rs", normalizeFabInput(FabOp.Crawl, " docs.rs "))
+        assertEquals("https://docs.rs", normalizeFabInput(FabOp.SourceSite, " docs.rs "))
     }
 
     @Test
@@ -25,28 +25,29 @@ class FabOpInputCardTest {
 
     @Test
     fun broadFabActionsRequireExplicitConfirmation() {
-        assertEquals(false, fabInputCanSubmit(FabOp.Crawl, "https://example.com", broadActionConfirmed = false))
-        assertEquals(false, fabInputCanSubmit(FabOp.Ingest, "github/owner/repo", broadActionConfirmed = false))
+        assertEquals(false, fabInputCanSubmit(FabOp.SourceSite, "https://example.com", broadActionConfirmed = false))
+        assertEquals(false, fabInputCanSubmit(FabOp.Source, "github/owner/repo", broadActionConfirmed = false))
 
-        assertEquals(true, fabInputCanSubmit(FabOp.Crawl, "https://example.com", broadActionConfirmed = true))
-        assertEquals(true, fabInputCanSubmit(FabOp.Ingest, "github/owner/repo", broadActionConfirmed = true))
+        assertEquals(true, fabInputCanSubmit(FabOp.SourceSite, "https://example.com", broadActionConfirmed = true))
+        assertEquals(true, fabInputCanSubmit(FabOp.Source, "github/owner/repo", broadActionConfirmed = true))
         assertEquals(true, fabInputCanSubmit(FabOp.Scrape, "https://example.com", broadActionConfirmed = false))
     }
 
     @Test
     fun broadFabConfirmationLabelsNameCurrentOptions() {
-        assertEquals("Run with current crawl defaults/options", FabOp.Crawl.broadActionConfirmationLabel())
-        assertEquals("Run with current ingest defaults/options", FabOp.Ingest.broadActionConfirmationLabel())
+        assertEquals("Run with current site-source defaults/options", FabOp.SourceSite.broadActionConfirmationLabel())
+        assertEquals("Run with current source defaults/options", FabOp.Source.broadActionConfirmationLabel())
         assertEquals(null, FabOp.Scrape.broadActionConfirmationLabel())
     }
 
     @Test
     fun fabInputBindsImeSendToSubmitHandler() {
-        val sourcePath = listOf(
-            Path.of("src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
-            Path.of("app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
-            Path.of("apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
-        ).first { it.toFile().isFile }
+        val sourcePath =
+            listOf(
+                Path.of("src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
+                Path.of("app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
+                Path.of("apps/android/app/src/main/java/com/axon/app/ui/fab/FabOpInputCard.kt"),
+            ).first { it.toFile().isFile }
         val source = sourcePath.toFile().readText()
 
         assert(source.contains("KeyboardActions(onSend = {") && source.contains("submitIfReady()")) {

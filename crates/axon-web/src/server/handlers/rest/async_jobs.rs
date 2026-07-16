@@ -1,15 +1,11 @@
-//! Family 3: async extract job routes — POST submit + GET status + POST .../cancel.
+//! Family 3: async extract job route — POST submit only.
 //!
 //! For extract:
 //!   - POST /v1/extract             — submit, returns 202 + JobStartOutcome
-//!   - GET  /v1/extract/{id}        — status, 200 + result JSON (404 if unknown)
-//!   - POST /v1/extract/{id}/cancel — cancel, 200 + { canceled: bool }
 //!
-//! Submit and cancel are `axon:write` scope-gated; GET status uses the
-//! `axon:read` guard shared in `rest.rs`. Cancel is `POST .../cancel`
-//! rather than `DELETE /{id}` so the GET (read) and cancel (write) routes
-//! can carry distinct scope-guard layers — axum 0.8 `MethodRouter` layers
-//! apply across all methods on a single path.
+//! Lifecycle operations are intentionally not mounted under `/v1/extract/*`;
+//! callers use the unified `/v1/jobs` routes for status, cancel, cleanup, and
+//! recovery.
 //!
 //! The handlers go through `RestState::service_context()` to share the same
 //! lazy `ServiceContext` (with workers) used by the unified server runtime.
@@ -23,17 +19,14 @@ use super::types::ExtractSubmitBody;
 use axon_services::extract as extract_svc;
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 
 #[path = "async_jobs/helpers.rs"]
 mod helpers;
-use helpers::{
-    cancel_response, count_response, ctx_and_job_id, ctx_only, missing_field, not_found,
-    validate_urls,
-};
+use helpers::{ctx_only, missing_field, validate_urls};
 
 // ── extract ──────────────────────────────────────────────────────────────
 
@@ -72,79 +65,6 @@ pub(crate) async fn v1_extract_submit(
         .await
     {
         Ok(outcome) => (StatusCode::ACCEPTED, Json(outcome)).into_response(),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_list(State(state): State<RestState>) -> Response {
-    let ctx = match ctx_only(&state).await {
-        Ok(ctx) => ctx,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_list(&ctx, 100, 0).await {
-        Ok(jobs) => Json(jobs).into_response(),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_cleanup(State(state): State<RestState>) -> Response {
-    let ctx = match ctx_only(&state).await {
-        Ok(ctx) => ctx,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_cleanup(&ctx).await {
-        Ok(count) => count_response("cleaned", count),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_clear(State(state): State<RestState>) -> Response {
-    let ctx = match ctx_only(&state).await {
-        Ok(ctx) => ctx,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_clear(&ctx).await {
-        Ok(count) => count_response("cleared", count),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_recover(State(state): State<RestState>) -> Response {
-    let ctx = match ctx_only(&state).await {
-        Ok(ctx) => ctx,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_recover(&ctx).await {
-        Ok(count) => count_response("recovered", count),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_status(
-    State(state): State<RestState>,
-    Path(id): Path<String>,
-) -> Response {
-    let (ctx, job_id) = match ctx_and_job_id(&state, &id).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_status(&ctx, job_id).await {
-        Ok(Some(result)) => Json(result.payload).into_response(),
-        Ok(None) => not_found("extract", job_id),
-        Err(err) => map_service_error(err.as_ref()),
-    }
-}
-
-pub(crate) async fn v1_extract_cancel(
-    State(state): State<RestState>,
-    Path(id): Path<String>,
-) -> Response {
-    let (ctx, job_id) = match ctx_and_job_id(&state, &id).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    match extract_svc::extract_cancel(&ctx, job_id).await {
-        Ok(canceled) => cancel_response(canceled),
         Err(err) => map_service_error(err.as_ref()),
     }
 }

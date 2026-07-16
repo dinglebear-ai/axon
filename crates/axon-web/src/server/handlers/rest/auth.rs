@@ -4,13 +4,8 @@
 //! router root; this middleware runs after that and enforces a single
 //! `axon:read` / `axon:write` scope per route.
 //!
-//! Two flavors:
-//!   - [`scope_guard`] — honors `auth_required=false` (LoopbackDev) and lets
-//!     unauthenticated requests through. Used for non-destructive surfaces.
-//!   - [`unconditional_scope_guard`] — always requires a valid `AuthContext`
-//!     regardless of policy. Used for destructive admin routes (dedupe) per
-//!     the invariant documented at
-//!     `src/web/actions.rs:authorize_action`.
+//! Scope guards honor `auth_required=false` for non-destructive LoopbackDev
+//! routes. Destructive routes live on the canonical router's admin surface.
 
 use super::error::rest_error;
 use axon_authz::scope_satisfies;
@@ -43,7 +38,9 @@ pub(crate) fn scope_for_rest_route(method: &str, path: &str) -> Option<&'static 
             | "/v1/memories/search"
             | "/v1/memories/context",
         ) => axon_authz::http::AxonScope::Read,
-        ("POST", "/v1/prune/dedupe" | "/v1/prune/purge") => axon_authz::http::AxonScope::Admin,
+        ("POST", "/v1/prune/plan" | "/v1/prune/exec" | "/v1/reset/plan" | "/v1/reset/exec") => {
+            axon_authz::http::AxonScope::Admin
+        }
         ("POST", p) if p.starts_with("/v1/") => axon_authz::http::AxonScope::Write,
         ("DELETE", p) if p.starts_with("/v1/") => axon_authz::http::AxonScope::Write,
         _ => return None,
@@ -87,16 +84,6 @@ impl ScopeGuard {
             required_scope: "axon:write",
             auth_required,
             unconditional: false,
-        }
-    }
-
-    /// Admin route — destructive, must require a token even in LoopbackDev.
-    #[allow(dead_code)] // Used by Family 4 admin routes
-    pub(crate) const fn admin_write() -> Self {
-        Self {
-            required_scope: "axon:write",
-            auth_required: true,
-            unconditional: true,
         }
     }
 }

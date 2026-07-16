@@ -19,7 +19,7 @@ pub(super) fn resolve_web_run(input: &WebSourceIndexInput) -> anyhow::Result<Web
     let mut request = SourceRequest::new(input.source.clone());
     request.scope = Some(input.scope);
     request.adapter = Some("web".to_string());
-    if input.scope == SourceScope::Map {
+    if input.scope == SourceScope::Map && !input.map_urls.is_empty() {
         request
             .options
             .values

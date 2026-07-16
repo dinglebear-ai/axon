@@ -1,29 +1,32 @@
 package com.axon.app.data.repository
 
-import com.axon.app.core.api.CrawlRequest
-import com.axon.app.core.api.models.IngestRequest
+import com.axon.app.core.api.SiteSourceRequest
+import com.axon.app.core.api.models.SourceRequest
 
-data class CrawlSubmitOptions(
+data class SiteSourceSubmitOptions(
     val maxPages: Int? = null,
     val maxDepth: Int? = null,
     val renderMode: String? = null,
     val includeSubdomains: Boolean? = null,
 ) {
-    fun requestFor(url: String): CrawlRequest = CrawlRequest(
-        urls = listOf(url),
-        maxPages = maxPages,
-        maxDepth = maxDepth,
-        renderMode = renderMode,
-        includeSubdomains = includeSubdomains,
-    )
+    fun requestFor(url: String): SiteSourceRequest =
+        SiteSourceRequest(
+            urls = listOf(url),
+            maxPages = maxPages,
+            maxDepth = maxDepth,
+            renderMode = renderMode,
+            includeSubdomains = includeSubdomains,
+        )
 }
 
-data class IngestSubmitOptions(
-    val includeSource: Boolean? = null,
+data class SourceSubmitOptions(
+    val embed: Boolean? = null,
+    val collection: String? = null,
 ) {
-    fun requestFor(sourceType: String, target: String): IngestRequest = IngestRequest(
-        sourceType = sourceType,
-        target = target,
-        includeSource = includeSource,
-    )
+    fun requestFor(target: String): SourceRequest =
+        SourceRequest(
+            source = target,
+            embed = embed,
+            collection = collection,
+        )
 }

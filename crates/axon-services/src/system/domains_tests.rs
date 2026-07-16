@@ -56,11 +56,9 @@ fn map_domains_empty() {
 }
 
 #[test]
-fn detailed_domains_uses_target_domain_and_canonical_uri_fields() {
+fn domains_uses_web_domain_without_legacy_domain() {
     let payloads = vec![
         json!({
-            "domain": "legacy.example",
-            "url": "https://legacy.example/a",
             "web_domain": "example.com",
             "item_canonical_uri": "https://example.com/a",
         }),
@@ -86,10 +84,9 @@ fn detailed_domains_uses_target_domain_and_canonical_uri_fields() {
 }
 
 #[test]
-fn detailed_domains_does_not_count_legacy_url_without_target_uri() {
+fn detailed_domains_does_not_count_payload_without_target_uri() {
     let payloads = vec![json!({
-        "web_domain": "example.com",
-        "url": "https://legacy.example/a"
+        "web_domain": "example.com"
     })];
 
     let result = summarize_detailed_domains(&payloads);

@@ -243,7 +243,7 @@ function setupContextMenus() {
   }
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: "axon-scrape", title: "Scrape with Axon (copy markdown)", contexts: ["page", "link"] });
-    chrome.contextMenus.create({ id: "axon-crawl", title: "Crawl this page with Axon", contexts: ["page"] });
+    chrome.contextMenus.create({ id: "axon-source-site", title: "Index this site with Axon", contexts: ["page"] });
     chrome.contextMenus.create({ id: "axon-ask", title: 'Ask Axon about "%s"', contexts: ["selection"] });
   });
 }
@@ -254,8 +254,8 @@ chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
     return;
   }
 
-  if (info.menuItemId === "axon-crawl") {
-    await crawlFromContext(info.pageUrl || tab?.url || "", tab);
+  if (info.menuItemId === "axon-source-site") {
+    await sourceSiteFromContext(info.pageUrl || tab?.url || "", tab);
     return;
   }
 
@@ -337,10 +337,10 @@ async function scrapeAndCopyFromContext(url, tab) {
   }
 }
 
-async function crawlFromContext(url, tab) {
+async function sourceSiteFromContext(url, tab) {
   if (!isScrapableUrl(url)) {
     await flashContextError(tab);
-    await notifyContextAction("Axon capture blocked", AxonRedact.blockedCaptureReason(url) || "Only http:// and https:// pages can be crawled.");
+    await notifyContextAction("Axon capture blocked", AxonRedact.blockedCaptureReason(url) || "Only http:// and https:// pages can be indexed.");
     return;
   }
 
@@ -352,7 +352,7 @@ async function crawlFromContext(url, tab) {
     const raw = await postAxon(config, "/v1/sources", { source: url, scope: "site" });
     await chrome.storage.local.set({
       lastContextAction: {
-        action: "crawl",
+        action: "source",
         ok: true,
         url,
         job_id: raw?.job_id || raw?.jobId || raw?.id || raw?.payload?.job_id || "",
@@ -360,11 +360,11 @@ async function crawlFromContext(url, tab) {
       }
     });
     await setContextBadge(tab, "JOB", "#247a6b");
-    await notifyContextAction("Axon crawl queued", `${formatUrlHost(url)} is crawling${raw?.job_id ? ` (${raw.job_id})` : ""}.`);
+    await notifyContextAction("Axon site queued", `${formatUrlHost(url)} is indexing${raw?.job_id ? ` (${raw.job_id})` : ""}.`);
   } catch (error) {
     await chrome.storage.local.set({
       lastContextAction: {
-        action: "crawl",
+        action: "source",
         ok: false,
         url,
         at: new Date().toISOString(),
@@ -372,7 +372,7 @@ async function crawlFromContext(url, tab) {
       }
     });
     await flashContextError(tab);
-    await notifyContextAction("Axon crawl failed", error instanceof Error ? error.message : String(error));
+    await notifyContextAction("Axon site indexing failed", error instanceof Error ? error.message : String(error));
   }
 }
 

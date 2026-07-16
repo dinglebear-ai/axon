@@ -34,10 +34,10 @@ axon diff [OPTIONS] <URL_A> <URL_B>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--max-pages <n>` | `0` (uncapped) | Maximum pages to crawl per URL. |
-| `--max-depth <n>` | `10` | Maximum crawl depth. |
+| `--max-pages <n>` | `0` (uncapped) | Maximum pages to traverse per URL. |
+| `--max-depth <n>` | `10` | Maximum traversal depth. |
 | `--render-mode <mode>` | `auto-switch` | Page fetch mode: `http`, `chrome`, or `auto-switch`. |
-| `--include-subdomains <bool>` | `false` | Include subdomains in crawl scope. |
+| `--include-subdomains <bool>` | `false` | Include subdomains in the web traversal scope. |
 | `--header <HEADER>` | — | Custom HTTP request header (`Key: Value`). Repeatable. |
 | `--skip-embed` | `false` | Fetch/compare without indexing into Qdrant. |
 | `--collection <name>` | `axon` | Qdrant collection name. |
@@ -58,7 +58,7 @@ axon diff https://a.example.com https://b.example.com --skip-embed --json
 
 - Fetches both URLs and computes a structured comparison across content, metadata, and link sets.
 - Reports added, removed, and changed regions rather than a raw line diff.
-- Respects the standard crawl/render flags so both sides are fetched the same way.
+- Respects the standard web traversal/render flags so both sides are fetched the same way.
 
 ## See also
 

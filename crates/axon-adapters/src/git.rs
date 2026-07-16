@@ -1,14 +1,10 @@
 //! Git repository source adapter (GitHub / GitLab / Gitea / generic git).
 //!
-//! Like the `local` adapter, this operates on an already-materialized
-//! filesystem tree — a `repo_root` option pointing at a checked-out clone,
-//! prepared by the caller (the services bridge performs the network clone).
-//! Keeping the network out of the adapter makes it unit-testable with fixture
-//! repositories. The `web` adapter no longer follows this same shape — since
-//! issue #298 Wave 2b it drives acquisition directly through injected
-//! `FetchProvider`/`RenderProvider` boundaries instead of reading a
-//! services-prepared crawl.
+//! The adapter owns repository materialization: [`GitSourceAdapter::materialize`]
+//! validates and shallow-clones the routed target, stamps the checkout path on
+//! the plan, and retains the temporary checkout through the service bridge.
 
+mod acquire;
 mod metadata;
 mod target;
 
@@ -26,6 +22,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+pub use self::acquire::{clone_git_repo, is_git_target};
 use self::metadata::git_source_document;
 pub use self::target::{GitTarget, parse_git_target};
 
@@ -39,6 +36,23 @@ pub struct GitSourceAdapter;
 impl GitSourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        mut plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let checkout = clone_git_repo(&plan.request.source).await.map_err(|err| {
+            crate::acquisition::materialization_error("adapter.git.clone_failed", err.to_string())
+        })?;
+        plan.route.validated_options.values.insert(
+            "repo_root".to_string(),
+            json!(checkout.path().to_string_lossy()),
+        );
+        Ok(crate::acquisition::MaterializedSource::temporary(
+            plan, checkout,
+        ))
     }
 }
 

@@ -4,8 +4,9 @@ use crate::commands::job_progress::{extract_progress_summary, source_progress_su
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::redact::redact_secrets;
+use axon_core::sqlite::diagnostics as sqlite_diagnostics;
 use axon_core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
-use axon_jobs::store::{RECLAIMED_ERROR_TEXT, sqlite_diagnostics};
+use axon_jobs::store::RECLAIMED_ERROR_TEXT;
 use axon_services::context::ServiceContext;
 use axon_services::system::{
     build_status_payload_with_errors_and_sqlite, load_status_jobs, sqlite_status_error,

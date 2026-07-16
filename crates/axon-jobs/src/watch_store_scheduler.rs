@@ -34,10 +34,19 @@ impl SqliteWatchStore {
                  SELECT w.watch_id FROM axon_source_watches w \
                  WHERE w.enabled = 1 AND w.every_seconds >= 30 AND w.next_run_at <= ? \
                    AND (w.lease_expires_at IS NULL OR w.lease_expires_at < ?) \
+                   AND w.watch_id = ( \
+                       SELECT w2.watch_id FROM axon_source_watches w2 \
+                       WHERE w2.source_id = w.source_id \
+                         AND w2.enabled = 1 AND w2.every_seconds >= 30 \
+                         AND w2.next_run_at <= ? \
+                         AND (w2.lease_expires_at IS NULL OR w2.lease_expires_at < ?) \
+                       ORDER BY w2.next_run_at ASC, w2.watch_id ASC LIMIT 1 \
+                   ) \
                    AND NOT EXISTS ( \
                        SELECT 1 FROM axon_source_watch_runs r \
                        JOIN jobs j ON j.job_id = r.job_id \
-                       WHERE r.watch_id = w.watch_id \
+                       JOIN axon_source_watches active_w ON active_w.watch_id = r.watch_id \
+                       WHERE active_w.source_id = w.source_id \
                          AND j.status NOT IN ('completed', 'completed_degraded', 'failed', 'canceled', 'expired', 'skipped') \
                    ) \
                    AND NOT EXISTS ( \
@@ -51,6 +60,8 @@ impl SqliteWatchStore {
              RETURNING *",
         )
         .bind(lease_until)
+        .bind(now)
+        .bind(now)
         .bind(now)
         .bind(now)
         .bind(now)

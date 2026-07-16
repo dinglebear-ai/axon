@@ -76,9 +76,9 @@ const CLI_COMMANDS: &[RemovedOperation] = &[
         "axon query <query> --content-kind code --freshness committed",
     ),
     op("code-search-watch", "axon watch <path>"),
-    op("purge", "axon prune ..."),
-    op("dedupe", "axon prune dedupe ..."),
-    op("refresh", "axon <source> --refresh"),
+    op("purge", "axon prune plan ... then axon prune exec ..."),
+    op("dedupe", "axon prune plan ... then axon prune exec ..."),
+    op("refresh", "axon <source>"),
     op("fresh", "axon watch ..."),
 ];
 
@@ -102,13 +102,41 @@ const REST_ROUTES: &[RemovedRestRoute] = &[
     route("POST", "/v1/ingest", "ingest", "POST /v1/sources"),
     route("POST", "/v1/scrape", "scrape", "POST /v1/sources"),
     route("POST", "/v1/crawl", "crawl", "POST /v1/sources"),
-    route("POST", "/v1/purge", "purge", "POST /v1/prune/purge"),
-    route("POST", "/v1/dedupe", "dedupe", "POST /v1/prune/dedupe"),
+    route(
+        "POST",
+        "/v1/purge",
+        "purge",
+        "POST /v1/prune/plan then /v1/prune/exec",
+    ),
+    route(
+        "POST",
+        "/v1/dedupe",
+        "dedupe",
+        "POST /v1/prune/plan then /v1/prune/exec",
+    ),
+    route(
+        "POST",
+        "/v1/prune/purge",
+        "prune_purge",
+        "POST /v1/prune/plan then /v1/prune/exec",
+    ),
+    route(
+        "POST",
+        "/v1/prune/dedupe",
+        "prune_dedupe",
+        "POST /v1/prune/plan then /v1/prune/exec",
+    ),
     route(
         "POST",
         "/v1/watch/{id}/run",
         "watch_run",
         "POST /v1/watches/{watch_id}/exec",
+    ),
+    route(
+        "GET",
+        "/v1/artifacts/{path}",
+        "artifact_by_path",
+        "GET /v1/artifacts/{artifact_id} or /v1/artifacts/{artifact_id}/content",
     ),
 ];
 
@@ -201,8 +229,10 @@ const GENERATED_CLIENT_OPERATIONS: &[RemovedOperation] = &[
     op("ingest", "create_source"),
     op("scrape", "create_source"),
     op("crawl", "create_source"),
-    op("purge", "prune_purge"),
-    op("dedupe", "prune_dedupe"),
+    op("purge", "prune_plan then prune_exec"),
+    op("dedupe", "prune_plan then prune_exec"),
+    op("prune_purge", "prune_plan then prune_exec"),
+    op("prune_dedupe", "prune_plan then prune_exec"),
     op("watch_run", "exec_watch"),
 ];
 

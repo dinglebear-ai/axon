@@ -271,6 +271,7 @@ fn chunking_hints(source_kind: SourceKind) -> Vec<ChunkHint> {
         SourceKind::Registry | SourceKind::McpTool | SourceKind::CliTool | SourceKind::Upload => {
             ChunkProfile::StructuredRecords
         }
+        SourceKind::Memory => ChunkProfile::AtomicMetadata,
         _ => ChunkProfile::MarkdownSections,
     };
     vec![ChunkHint {
@@ -310,6 +311,7 @@ fn graph_fact_kinds(source_kind: SourceKind) -> Vec<String> {
         SourceKind::Git => vec!["repo".to_string(), "package_manifest".to_string()],
         SourceKind::Registry => vec!["package".to_string()],
         SourceKind::CliTool | SourceKind::McpTool => vec!["tool".to_string()],
+        SourceKind::Memory => vec!["memory".to_string()],
         _ => vec!["source".to_string()],
     }
 }

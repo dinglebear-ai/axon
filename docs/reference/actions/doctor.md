@@ -42,7 +42,7 @@ All global flags apply. Key flags for this command:
 
 `doctor` probes and reports:
 
-- Job pipeline readiness for `crawl`, `extract`, `embed`, `ingest`
+- Job pipeline readiness for `source`, `extract`, `watch`, `prune`
 - Service health for Qdrant, TEI, and optional Chrome endpoint
 - Gemini headless command/config checks for LLM-backed commands; `axon ask` is the completion proof
 - Browser runtime diagnostics settings

@@ -56,6 +56,10 @@ use axon_vectors::store::VectorStore;
 
 use crate::context::ServiceContext;
 
+mod plan_store;
+mod saved_execution;
+pub use saved_execution::prune_execute_saved;
+
 /// Resolve a [`PruneRequest`]'s selector into a reviewable [`PrunePlan`]
 /// without mutating any state. Always safe to call — dry-run planning never
 /// touches a store beyond (future) read-only impact estimation.
@@ -270,12 +274,18 @@ pub async fn prune(
 ) -> Result<(PrunePlan, Option<PruneResult>), Box<dyn Error>> {
     let plan = prune_plan_estimated(ctx, request).await;
     if request.dry_run {
+        plan_store::save_plan(ctx, &plan, &request.reason).await?;
         return Ok((plan, None));
     }
-    let result = prune_execute(ctx, &plan, request.require_confirmation, authz)
-        .await
-        .map_err(|denied| -> Box<dyn Error> { denied.to_string().into() })?;
-    Ok((plan, Some(result)))
+    axon_prune::safety::authorize_execution(
+        &plan.selector,
+        false,
+        true,
+        request.require_confirmation,
+        authz,
+    )
+    .map_err(|denied| -> Box<dyn Error> { denied.to_string().into() })?;
+    Err("prune.plan_required: run `prune plan`, then execute its plan id".into())
 }
 
 /// A scope source that reports zero estimated impact for every selector.

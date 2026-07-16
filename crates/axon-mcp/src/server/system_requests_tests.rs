@@ -1,0 +1,44 @@
+use super::*;
+
+#[test]
+fn reset_exec_requires_only_canonical_wire_fields_at_parse_time() {
+    let request: McpSystemRequest = serde_json::from_value(serde_json::json!({
+        "action": "reset",
+        "subaction": "exec",
+        "plan_id": "reset_plan_123",
+        "confirm": true
+    }))
+    .expect("canonical reset request parses");
+    let McpSystemRequest::Reset(request) = request else {
+        panic!("expected reset request");
+    };
+    assert!(matches!(request.subaction, Some(ResetSubaction::Exec)));
+    assert_eq!(request.plan_id.as_deref(), Some("reset_plan_123"));
+    assert_eq!(request.confirm, Some(true));
+}
+
+#[test]
+fn collections_rejects_unsupported_delete_subaction() {
+    let error = serde_json::from_value::<McpSystemRequest>(serde_json::json!({
+        "action": "collections",
+        "subaction": "delete",
+        "collection": "axon"
+    }))
+    .expect_err("unsupported collection mutation must fail closed");
+    assert!(error.to_string().contains("unknown variant"));
+}
+
+#[test]
+fn watch_accepts_canonical_cursor_and_status_fields() {
+    let request: McpWatchRequest = serde_json::from_value(serde_json::json!({
+        "action": "watch",
+        "subaction": "history",
+        "id": "watch-1",
+        "cursor": "opaque-cursor",
+        "status": "failed"
+    }))
+    .expect("canonical watch cursor/filter request parses");
+    let McpWatchRequest::Watch(request) = request;
+    assert_eq!(request.cursor.as_deref(), Some("opaque-cursor"));
+    assert_eq!(request.status, Some(LifecycleStatus::Failed));
+}

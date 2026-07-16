@@ -1,5 +1,5 @@
+import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText } from "lucide-react";
 import { memo, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, FileImage, FileText, ServerCog } from "lucide-react";
 
 import { AuthenticatedArtifactImage } from "@/components/palette/AuthenticatedArtifactImage";
 import { FilesView } from "@/components/palette/FilesView";
@@ -7,25 +7,25 @@ import { GitHubView } from "@/components/palette/GitHubView";
 import { HelpResultView } from "@/components/palette/HelpResultView";
 import { MarkdownBody } from "@/components/palette/MarkdownBody";
 import { ResultRows } from "@/components/palette/OperationResultRows";
-import { RankedResultView, SearchResultView } from "@/components/palette/SearchResultViews";
 import {
+  arrayByKeys,
   ChipSection,
   DetailLine,
   EmptyResult,
+  formatDetailValue,
   GenericResultView,
+  imagePreviewSrc,
+  isBadStatus,
   JobRows,
   ResultHero,
   ResultSummary,
   StatusDot,
   Swatch,
-  UrlListView,
-  arrayByKeys,
-  formatDetailValue,
-  imagePreviewSrc,
-  isBadStatus,
   sanitizeReaderMarkdown,
   toneForStatus,
+  UrlListView,
 } from "@/components/palette/OperationResultViewShared";
+import { RankedResultView, SearchResultView } from "@/components/palette/SearchResultViews";
 import { actionBehavior, maybeActionBehavior, type StructuredViewKey } from "@/lib/actionRegistry";
 import type { Client, PaletteConfig } from "@/lib/axonClient";
 import {
@@ -40,13 +40,14 @@ import {
 } from "@/lib/payload";
 
 const LIST_LIMIT = 18;
+
 export { sanitizeReaderMarkdown } from "@/components/palette/OperationResultViewShared";
 
 interface OperationResultViewProps {
   payload: unknown;
   subcommand: string;
   fallbackText?: string;
-  /** Live Axon client + config — only consumed by the `files` view (ingest
+  /** Live Axon client + config — only consumed by the `files` view (source-index
    * needs a real request), every other structured view is payload-only. */
   client?: Client | null;
   config?: PaletteConfig | null;
@@ -89,10 +90,9 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   ),
   domains: ({ data }) => <DomainView payload={data} />,
   doctor: ({ data }) => <DoctorView payload={data} />,
-  crawl: ({ data }) => <JobStartView payload={data} family="crawl" />,
-  embed: ({ data }) => <JobStartView payload={data} family="embed" />,
+  "source-site": ({ data }) => <JobStartView payload={data} family="source" />,
+  source: ({ data }) => <JobStartView payload={data} family="source" />,
   extract: ({ data }) => <JobStartView payload={data} family="extract" />,
-  ingest: ({ data }) => <JobStartView payload={data} family="ingest" />,
   // GitHubView needs the WHOLE GitHubBrowseResult (ok/kind/owner/repo/branch/
   // path/rateLimit*), not the inner GitHub JSON `unwrapPayload` would leave
   // after stripping `.payload` — pass the raw payload through instead of `data`.
@@ -101,7 +101,6 @@ const STRUCTURED_VIEWS: Record<StructuredViewKey, (ctx: ViewContext) => ReactNod
   brand: ({ data }) => <BrandView payload={data} />,
   diff: ({ data }) => <DiffView payload={data} />,
   screenshot: ({ data }) => <ScreenshotView payload={data} />,
-  dedupe: ({ data }) => <DedupeView payload={data} />,
   "watch-list": ({ data }) => <WatchListView payload={data} />,
   "watch-create": ({ data }) => <WatchDetailView payload={data} />,
   "watch-run": ({ data }) => <WatchDetailView payload={data} />,
@@ -286,12 +285,12 @@ function JobStartView({ payload, family }: { payload: Record<string, unknown>; f
       <section className="operation-section">
         <div className="operation-detail-card">
           {jobId ? <DetailLine label="Job ID" value={jobId} mono /> : null}
+          <DetailLine label="Status endpoint" value={statusEndpoint} mono />
           <DetailLine
-            label="Status endpoint"
-            value={statusEndpoint}
+            label="Next action"
+            value={jobId ? `open job ${jobId}` : "open job <job_id>"}
             mono
           />
-          <DetailLine label="Next action" value={jobId ? `open job ${jobId}` : "open job <job_id>"} mono />
         </div>
       </section>
     </div>
@@ -306,9 +305,7 @@ function JobLifecycleView({
   subcommand: string;
 }) {
   const rows = arrayByKeys(payload, ["jobs", "items"]);
-  const match = subcommand.match(
-    /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/,
-  );
+  const match = subcommand.match(/^(extract)-(list|status|cancel|cleanup|clear|recover)$/);
   const family = strField(payload, "family") ?? strField(payload, "kind") ?? match?.[1] ?? "job";
   const action = match?.[2] ?? "updated";
   const status = strField(payload, "status") ?? strField(payload, "state") ?? "updated";
@@ -447,23 +444,6 @@ function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
           <DetailLine label="Artifact" value={artifactDisplay ?? "-"} mono />
         </div>
       </section>
-    </div>
-  );
-}
-
-function DedupeView({ payload }: { payload: Record<string, unknown> }) {
-  return (
-    <div className="output-body operation-view aurora-scrollbar">
-      <ResultHero
-        icon={<ServerCog size={16} />}
-        title="Dedupe complete"
-        tone="success"
-        metrics={[
-          ["Removed", numField(payload, "removed") ?? numField(payload, "points_deleted") ?? 0],
-          ["Scanned", numField(payload, "scanned") ?? numField(payload, "points_scanned") ?? "-"],
-          ["Collection", strField(payload, "collection") ?? "axon"],
-        ]}
-      />
     </div>
   );
 }

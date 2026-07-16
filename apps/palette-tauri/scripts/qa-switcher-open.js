@@ -31,7 +31,7 @@ async () => {
           title: document.title,
           menuVisible: Boolean(menu),
           hasAsk: document.body.innerText.includes("Ask"),
-          hasDedupe: document.body.innerText.includes("Dedupe"),
+          hasPrune: document.body.innerText.includes("Prune"),
           shell: { x: shellRect.x, y: shellRect.y, width: shellRect.width, height: shellRect.height },
           wrap: { x: wrapRect.x, y: wrapRect.y, width: wrapRect.width, height: wrapRect.height },
           menu: { x: menuRect.x, y: menuRect.y, width: menuRect.width, height: menuRect.height },

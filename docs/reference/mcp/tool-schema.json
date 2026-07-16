@@ -1290,29 +1290,8 @@
             "null"
           ]
         },
-        "job_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
         "max_pages": {
           "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "offset": {
-          "format": "uint",
           "minimum": 0,
           "type": [
             "integer",
@@ -1329,16 +1308,6 @@
           "anyOf": [
             {
               "$ref": "#/$defs/ExtractRequest_McpRenderMode"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "response_mode": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ExtractRequest_ResponseMode"
             },
             {
               "type": "null"
@@ -1370,13 +1339,7 @@
     },
     "ExtractRequest_ExtractSubaction": {
       "enum": [
-        "start",
-        "status",
-        "cancel",
-        "list",
-        "cleanup",
-        "clear",
-        "recover"
+        "start"
       ],
       "type": "string"
     },
@@ -1388,24 +1351,9 @@
       ],
       "type": "string"
     },
-    "ExtractRequest_ResponseMode": {
-      "enum": [
-        "path",
-        "inline",
-        "both",
-        "auto_inline"
-      ],
-      "type": "string"
-    },
     "ExtractSubaction": {
       "enum": [
-        "start",
-        "status",
-        "cancel",
-        "list",
-        "cleanup",
-        "clear",
-        "recover"
+        "start"
       ],
       "type": "string"
     },
@@ -2876,7 +2824,7 @@
     "PruneMcpRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`action=prune` — the target-state replacement for the legacy\n`dedupe`/`purge` MCP actions\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare\nsource id or `collection:<name>` for a whole-collection prune, mirroring\nthe CLI's `axon prune plan|exec <target>` selector grammar.",
+      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe), `exec` (destructive —\nrequires `axon:admin` and `confirm: true`), or the collection-prune\nconvenience operations `dedupe`/`purge`. `target` is either a bare source\nid or `collection:<name>` for `plan|exec`; `purge` requires a target URL or\nsource key; `dedupe` scans the configured collection.",
       "properties": {
         "collection": {
           "type": [
@@ -2885,7 +2833,7 @@
           ]
         },
         "confirm": {
-          "description": "Required `Some(true)` for `subaction=exec` to proceed — mirrors the\nCLI's `--confirm` gate and [`super::PurgeRequest::dry_run`]'s\n`Option<bool>` idiom (a missing/`false` value is treated identically\nby the handler; `Option` here is purely to match the doc-generator's\nrequired/optional-field heuristic, not a wire-shape requirement).\nIgnored for `subaction=plan`.",
+          "description": "Required `Some(true)` for `subaction=exec` to proceed — mirrors the\nCLI's `--confirm` gate. A missing/`false` value is treated identically\nby the handler; `Option` here is purely to match the doc-generator's\nrequired/optional-field heuristic, not a wire-shape requirement.\nIgnored for `subaction=plan`.",
           "type": [
             "boolean",
             "null"
@@ -2909,14 +2857,14 @@
           ]
         },
         "subaction": {
-          "description": "`plan` (dry-run) or `exec` (destructive). Defaults to `plan` when\nomitted so a bare `prune` call never mutates state.",
+          "description": "`plan`, `exec`, `dedupe`, or `purge`. Defaults to `plan` when omitted\nso a bare `prune` call never mutates state.",
           "type": [
             "string",
             "null"
           ]
         },
         "target": {
-          "description": "Prune target: a bare source id, or `collection:<name>` for a\nwhole-collection prune. **Handler-required despite the `Option`** —\nmirrors `PurgeRequest::target`'s \"clean validation error, not a serde\nrejection\" convention.",
+          "description": "Prune target: a bare source id, or `collection:<name>` for a\nwhole-collection prune. **Handler-required despite the `Option`** —\nkeeps validation errors structured instead of relying on serde's\nmissing-field rejection.",
           "type": [
             "string",
             "null"
@@ -2938,7 +2886,9 @@
     "PruneSubaction": {
       "enum": [
         "plan",
-        "exec"
+        "exec",
+        "dedupe",
+        "purge"
       ],
       "type": "string"
     },
@@ -3332,7 +3282,7 @@
     "SourceRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "Request parameters for the unified `source` action.\n\n`source` is the single indexing entrypoint that replaces the removed\n`embed` / `ingest` / `scrape` / `crawl` / `code_search` / `vertical_scrape`\nMCP actions. The handler maps this onto [`crate::source::SourceRequest`] and\ncalls `axon_services::index_source`, which classifies the input (local path,\ngit URL, feed URL, youtube/reddit target, web URL, session selector, or\nregistry target), acquires it, and indexes it through the unified pipeline.",
+      "description": "Request parameters for the unified `source` action.\n\n`source` is the single indexing entrypoint. The handler maps this onto\n[`crate::source::SourceRequest`] and calls `axon_services::index_source`,\nwhich classifies the input (local path, git URL, feed URL, youtube/reddit\ntarget, web URL, session selector, or registry target), acquires it, and\nindexes it through the unified pipeline.",
       "properties": {
         "collection": {
           "description": "Qdrant collection to index into. Defaults to the server's configured collection.",
@@ -3584,14 +3534,14 @@
       "additionalProperties": false,
       "properties": {
         "collection": {
-          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`). Unused by the legacy\ncreate/list/get/exec/history subactions above.",
+          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`).",
           "type": [
             "string",
             "null"
           ]
         },
         "embed": {
-          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `false` when omitted.",
+          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `true` when omitted.",
           "type": [
             "boolean",
             "null"
@@ -3611,6 +3561,7 @@
           ]
         },
         "id": {
+          "description": "Watch id for get/status/update/pause/resume/delete/exec/history.\n`status`, `exec`, and `history` also accept `source` when the caller does\nnot know the id.",
           "type": [
             "string",
             "null"
@@ -3620,12 +3571,6 @@
           "format": "int64",
           "type": [
             "integer",
-            "null"
-          ]
-        },
-        "name": {
-          "type": [
-            "string",
             "null"
           ]
         },
@@ -3655,13 +3600,6 @@
               "type": "null"
             }
           ]
-        },
-        "task_payload": true,
-        "task_type": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "WatchRequest",
@@ -3683,6 +3621,7 @@
             "create",
             "list",
             "get",
+            "status",
             "exec",
             "history"
           ],
@@ -3715,6 +3654,7 @@
         "create",
         "list",
         "get",
+        "status",
         "exec",
         "history",
         "update",
@@ -3737,10 +3677,6 @@
     "deferred_actions": [
       {
         "action": "chat",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "watches",
         "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       },
       {
@@ -3768,17 +3704,17 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:3eacee7dde24fa4745784bcbf0ac868b0f966907b210a863ea0bc34558ad1779",
+        "checksum": "sha256:7205b09bb63331b113ae4016f191f0113e70bdf05d0e564745af83f3c3020604",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
       {
-        "checksum": "sha256:385d395e928a7ed96ccc4903ac2e56f835193b58d3c67c0c7179180ce4ae9f70",
+        "checksum": "sha256:26b9c44e56bd67c3a16783714d0bb16f60d4a3dec70c891b677226221d169c16",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:c556baa7a90233cb34eb4bd93e06b7421ffd7498ddf5294b5380efd599b35fb4",
+        "checksum": "sha256:92abd2a8908099a9221f486475b78939bc9d19bb86a2a1e6279f17436c00b78f",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
@@ -3793,12 +3729,12 @@
         "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
       },
       {
-        "checksum": "sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990",
+        "checksum": "sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
       {
-        "checksum": "sha256:145a07007148573c36e39c7fe46c8486a25813f82a50288b2f336815a8404cbf",
+        "checksum": "sha256:96cfe605350599e1432f5c3b05a3ac43837de800d594dde2e681f66187c47a6f",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
@@ -3808,22 +3744,22 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:21ccae6b108e6f5fa0c00197e5695fa4e7f3ef46a98aadcdc5a626f1e151fe36",
+        "checksum": "sha256:56ef14cfdf7564d97e1fe633e6351ceda6291fd2ed6960f18ce170b4b0cb03f1",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:d6ce9011c6b8933a6d6893eb0f096d8bd906dd25fb387490718deae588ff3573",
+        "checksum": "sha256:c41f8cc8ec5df5a8ab83693d878d788a2232518ff6896d71cc27a829538dfefa",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
       {
-        "checksum": "sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc",
+        "checksum": "sha256:4b80827f0cd3429b74a18de7f51d266545c13f490a298cb43f05e610157b23d9",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:25a3b6108fc7378ec6f5709a1e5ad605ba85b13d071d434c626cc16f37afdcf0",
+        "checksum": "sha256:f39593aa939f1e5fff1a17832402dfaff5223e65f64e9b9c0a20ef0fbbdbbd27",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

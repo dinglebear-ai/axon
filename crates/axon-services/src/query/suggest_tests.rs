@@ -43,7 +43,7 @@ where
     R: CompletionRunner + ?Sized,
 {
     let req = CompletionRequest::new(user_prompt)
-        .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
+        .system_prompt("You propose complementary documentation source targets. Output JSON only.")
         .stream(false);
     let response = axon_llm::complete_text_with_runner(runner, req).await?;
     Ok(response.text)
@@ -156,6 +156,15 @@ fn indexed_url_from_payload_prefers_unified_canonical_uri() {
         indexed_url_from_payload(&payload).as_deref(),
         Some("https://docs.example.com/page")
     );
+}
+
+#[test]
+fn indexed_url_from_payload_ignores_legacy_url_field() {
+    let payload = serde_json::json!({
+        "url": "https://legacy.example.com/page"
+    });
+
+    assert_eq!(indexed_url_from_payload(&payload), None);
 }
 
 #[test]

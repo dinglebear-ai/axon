@@ -255,6 +255,12 @@ fn collect_drift(root: &Path, artifacts: &[artifact::SchemaArtifact]) -> Result<
         let path = root.join(&artifact.path);
         match std::fs::read_to_string(&path) {
             Ok(existing) if existing == artifact.content => {}
+            Ok(existing)
+                if markdown_body_matches_with_docs_header(
+                    &artifact.path,
+                    &existing,
+                    &artifact.content,
+                ) => {}
             Ok(_) => drift.push(format!(
                 "{} differs; run `cargo xtask schemas generate`",
                 artifact.path.display()
@@ -267,6 +273,24 @@ fn collect_drift(root: &Path, artifacts: &[artifact::SchemaArtifact]) -> Result<
         }
     }
     Ok(drift)
+}
+
+fn markdown_body_matches_with_docs_header(path: &Path, existing: &str, generated: &str) -> bool {
+    if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+        return false;
+    }
+    strip_leading_comment_header(existing) == strip_leading_comment_header(generated)
+}
+
+fn strip_leading_comment_header(text: &str) -> &str {
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        if !line.trim_start().starts_with("<!--") {
+            break;
+        }
+        offset += line.len();
+    }
+    &text[offset..]
 }
 
 fn write_artifacts(root: &Path, artifacts: &[artifact::SchemaArtifact]) -> Result<()> {

@@ -2,7 +2,6 @@ mod adaptive;
 mod apply;
 mod endpoint;
 mod errors;
-mod ingest;
 mod paths;
 
 use std::path::PathBuf;
@@ -13,8 +12,6 @@ use adaptive::AdaptiveConcurrencySnapshot;
 use axon_core::config::{Config, RenderMode, ScrapeFormat};
 use endpoint::{snapshot_chrome_remote_url, snapshot_endpoints};
 use errors::{running_in_container, serde_json_error};
-pub use ingest::decode_ingest_job_config;
-pub use ingest::ingest_config_json;
 use paths::normalize_container_output_dir;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -52,7 +49,6 @@ struct ConfigSnapshot {
     drop_thin_markdown: Option<bool>,
     discover_sitemaps: Option<bool>,
     sitemap_since_days: Option<u32>,
-    map_fallback: Option<axon_core::config::MapFallback>,
     max_sitemaps: Option<usize>,
     discover_llms_txt: Option<bool>,
     max_llms_txt_urls: Option<usize>,
@@ -169,7 +165,6 @@ impl ConfigSnapshot {
             drop_thin_markdown: Some(cfg.drop_thin_markdown),
             discover_sitemaps: Some(cfg.discover_sitemaps),
             sitemap_since_days: Some(cfg.sitemap_since_days),
-            map_fallback: Some(cfg.map_fallback),
             max_sitemaps: Some(cfg.max_sitemaps),
             discover_llms_txt: Some(cfg.discover_llms_txt),
             max_llms_txt_urls: Some(cfg.max_llms_txt_urls),

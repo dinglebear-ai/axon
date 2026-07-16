@@ -25,6 +25,7 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
         "document_id",
         "chunk_id",
         "content_kind",
+        "chunk_content_kind",
         "content_hash",
         "chunk_hash",
         "chunk_text",
@@ -35,6 +36,7 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
         "embedding_profile",
         "embedded_at",
         "redaction_status",
+        "redaction_version",
         // `chunking_profile`/`chunking_method` are distinct fields (S2-27,
         // S2-18): the profile the router selected vs. the concrete method
         // actually used. Neither should be conflated with `embedding_profile`
@@ -48,6 +50,13 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
     }
     require_positive_integer(metadata, "embedding_dimensions")?;
     require_non_negative_integer(metadata, "chunk_index")?;
+    require_non_negative_integer(metadata, "redacted_field_count")?;
+    require_non_negative_integer(metadata, "dropped_field_count")?;
+    require_non_negative_integer(metadata, "detector_count")?;
+    validate_detector_names(metadata)?;
+    validate_optional_non_empty_string(metadata, "content_title")?;
+    validate_optional_non_empty_string(metadata, "chunk_title")?;
+    validate_parser_provenance(metadata)?;
 
     let locator: ChunkLocator =
         serde_json::from_value(metadata.get("chunk_locator").cloned().ok_or_else(|| {
@@ -76,6 +85,57 @@ pub(crate) fn validate_shapes(metadata: &MetadataMap) -> Result<(), VectorPayloa
         })?;
     validate_source_range_shape(&range, "source_range")?;
     Ok(())
+}
+
+fn validate_detector_names(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
+    let names = metadata
+        .get("detector_names")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| VectorPayloadValidationError::InvalidFieldShape {
+            field: "detector_names".to_string(),
+        })?;
+    if names
+        .iter()
+        .any(|name| name.as_str().is_none_or(|name| name.trim().is_empty()))
+    {
+        return Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: "detector_names".to_string(),
+        });
+    }
+    let detector_count = metadata
+        .get("detector_count")
+        .and_then(|value| value.as_u64());
+    if detector_count != u64::try_from(names.len()).ok() {
+        return Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: "detector_count".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_parser_provenance(metadata: &MetadataMap) -> Result<(), VectorPayloadValidationError> {
+    let parser_id = metadata.get("parser_id");
+    let parser_version = metadata.get("parser_version");
+    if parser_id.is_some() != parser_version.is_some() {
+        return Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: "parser_provenance".to_string(),
+        });
+    }
+    validate_optional_non_empty_string(metadata, "parser_id")?;
+    validate_optional_non_empty_string(metadata, "parser_version")
+}
+
+fn validate_optional_non_empty_string(
+    metadata: &MetadataMap,
+    field: &str,
+) -> Result<(), VectorPayloadValidationError> {
+    match metadata.get(field) {
+        None => Ok(()),
+        Some(value) if value.as_str().is_some_and(|value| !value.trim().is_empty()) => Ok(()),
+        Some(_) => Err(VectorPayloadValidationError::InvalidFieldShape {
+            field: field.to_string(),
+        }),
+    }
 }
 
 fn validate_source_range_shape(

@@ -72,26 +72,28 @@ fun ActivityHistoryScreen(
     val rows = remember(recent, jobsByKind) { recentActivityRows(recent, jobsByKind) }
     var selectedJobRef by remember { mutableStateOf<JobRef?>(null) }
     var selectedJobSnapshot by remember { mutableStateOf<JobUi?>(null) }
-    val selectedJob = selectedJobRef?.let { ref ->
-        jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
-    } ?: selectedJobSnapshot
+    val selectedJob =
+        selectedJobRef?.let { ref ->
+            jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
+        } ?: selectedJobSnapshot
     var crawledPages by remember { mutableStateOf<List<String>>(emptyList()) }
     var crawledPagesLoading by remember { mutableStateOf(false) }
     var crawledPagesError by remember { mutableStateOf<String?>(null) }
-    val selectedCrawlManifestPath = remember(selectedJob?.id, selectedJob?.resultJson) {
-        crawlManifestArtifactPath(selectedJob?.resultJson)
-    }
+    val selectedCrawlManifestPath =
+        remember(selectedJob?.id, selectedJob?.resultJson) {
+            crawlManifestArtifactPath(selectedJob?.resultJson)
+        }
     val reveal = rememberRevealState()
 
     LaunchedEffect(selectedJob?.id, selectedCrawlManifestPath) {
         val job = selectedJob
         crawledPages = emptyList()
         crawledPagesError = null
-        crawledPagesLoading = job?.kind == JobFamily.Crawl
-        if (job?.kind == JobFamily.Crawl) {
+        crawledPagesLoading = job?.kind == JobFamily.Source
+        if (job?.kind == JobFamily.Source) {
             vm.crawledPagesFor(job).fold(
                 onSuccess = { pages -> crawledPages = pages },
-                onFailure = { cause -> crawledPagesError = cause.message ?: "Unable to load crawl manifest" },
+                onFailure = { cause -> crawledPagesError = cause.message ?: "Unable to load site page manifest" },
             )
             crawledPagesLoading = false
         }
@@ -114,10 +116,11 @@ fun ActivityHistoryScreen(
                 crawledPages = crawledPages,
                 crawledPagesLoading = crawledPagesLoading,
                 crawledPagesError = crawledPagesError,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 520.dp)
-                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 onBack = {
                     selectedJobRef = null
                     selectedJobSnapshot = null
@@ -125,10 +128,11 @@ fun ActivityHistoryScreen(
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 520.dp)
-                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
@@ -156,7 +160,7 @@ fun ActivityHistoryScreen(
                     item {
                         RecoveryActionCard(
                             title = "No activity yet",
-                            message = "Submit an Ask action, crawl, ingest, embed, or extract job. Recent work will appear here with its latest known status.",
+                            message = "Submit an Ask, source, or extract job. Recent work will appear here with its latest known status.",
                             primaryLabel = "Create activity",
                             onPrimary = onOpenAsk,
                             secondaryLabel = "Refresh",
@@ -174,9 +178,10 @@ fun ActivityHistoryScreen(
                     itemsIndexed(rows, key = { _, row -> "${row.kind}-${row.recent.jobId}-${row.recent.submittedAt}" }) { index, row ->
                         ActivityHistoryRow(
                             row = row,
-                            modifier = Modifier
-                                .animateItem()
-                                .revealOnce(reveal, "activity-${row.recent.jobId}", index),
+                            modifier =
+                                Modifier
+                                    .animateItem()
+                                    .revealOnce(reveal, "activity-${row.recent.jobId}", index),
                             onClick = {
                                 selectedJobRef = JobRef(row.kind, row.job.id)
                                 selectedJobSnapshot = row.job
@@ -190,23 +195,27 @@ fun ActivityHistoryScreen(
 }
 
 @Composable
-private fun ActivitySummaryCard(rows: List<ActivityJobRow>, onRefresh: () -> Unit) {
+private fun ActivitySummaryCard(
+    rows: List<ActivityJobRow>,
+    onRefresh: () -> Unit,
+) {
     val colors = AxonTheme.colors
     val running = rows.count { isActiveJobStatus(it.job.status) }
     val failed = rows.count { isFailedJobStatus(it.job.status) }
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .axonElevation(RoundedCornerShape(12.dp), AxonElevation.Card)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.panelStrong.copy(alpha = 0.64f), RoundedCornerShape(12.dp))
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.26f), RoundedCornerShape(12.dp))
-            .semantics(mergeDescendants = true) {
-                contentDescription = "${rows.size} recent ${if (rows.size == 1) "item" else "items"}, $running active, $failed need attention, refresh activity"
-                role = Role.Button
-            }
-            .clickable(onClick = onRefresh)
-            .padding(14.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .axonElevation(RoundedCornerShape(12.dp), AxonElevation.Card)
+                .clip(RoundedCornerShape(12.dp))
+                .background(colors.panelStrong.copy(alpha = 0.64f), RoundedCornerShape(12.dp))
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.26f), RoundedCornerShape(12.dp))
+                .semantics(mergeDescendants = true) {
+                    contentDescription =
+                        "${rows.size} recent ${if (rows.size == 1) "item" else "items"}, $running active, $failed need attention, refresh activity"
+                    role = Role.Button
+                }.clickable(onClick = onRefresh)
+                .padding(14.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -233,32 +242,45 @@ private fun ActivitySummaryCard(rows: List<ActivityJobRow>, onRefresh: () -> Uni
 }
 
 @Composable
-private fun ActivityHistoryRow(row: ActivityJobRow, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun ActivityHistoryRow(
+    row: ActivityJobRow,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val colors = AxonTheme.colors
     val tone = jobTone(row.kind)
     val statusTone = statusTone(row.job.status, tone)
     val shape = RoundedCornerShape(13.dp)
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.control.copy(alpha = 0.18f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), shape)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "${row.kind.label()} ${statusLabel(row.job.status)}, ${shortTarget(jobDisplayTarget(row.job))}, ${formatWhen(row.recent.submittedAt)}, view details"
-                role = Role.Button
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.control.copy(alpha = 0.18f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.22f), shape)
+                .semantics(mergeDescendants = true) {
+                    contentDescription =
+                        "${row.kind.label()} ${statusLabel(
+                            row.job.status,
+                        )}, ${shortTarget(jobDisplayTarget(row.job))}, ${formatWhen(row.recent.submittedAt)}, view details"
+                    role = Role.Button
+                }.clickable(onClick = onClick)
+                .padding(horizontal = 13.dp, vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier
-                .size(9.dp)
-                .background(statusTone, RoundedCornerShape(999.dp)),
+            modifier =
+                Modifier
+                    .size(9.dp)
+                    .background(statusTone, RoundedCornerShape(999.dp)),
         )
-        Icon(iconForKind(row.kind), contentDescription = null, tint = colors.tint(tone, 80, colors.textPrimary), modifier = Modifier.size(18.dp))
+        Icon(
+            iconForKind(row.kind),
+            contentDescription = null,
+            tint = colors.tint(tone, 80, colors.textPrimary),
+            modifier = Modifier.size(18.dp),
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 shortTarget(jobDisplayTarget(row.job)),
@@ -270,7 +292,9 @@ private fun ActivityHistoryRow(row: ActivityJobRow, modifier: Modifier = Modifie
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${row.kind.label()} · ${statusLabel(row.job.status)} · ${formatWhen(row.recent.submittedAt)}${if (row.live) "" else " · last seen locally"}",
+                "${row.kind.label()} · ${statusLabel(
+                    row.job.status,
+                )} · ${formatWhen(row.recent.submittedAt)}${if (row.live) "" else " · last seen locally"}",
                 color = colors.textMuted,
                 fontSize = 11.sp,
                 lineHeight = 14.sp,

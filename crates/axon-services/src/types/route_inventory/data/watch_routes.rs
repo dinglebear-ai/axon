@@ -27,6 +27,18 @@ pub(crate) const WATCH_ROUTES: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/watches/{watch_id}/status",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
+        method: "GET",
+        path: "/v1/watches/{watch_id}/history",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "PATCH",
         path: "/v1/watches/{watch_id}",
         auth: RestRouteAuth::Write,

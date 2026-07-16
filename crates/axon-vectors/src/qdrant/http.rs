@@ -163,26 +163,6 @@ impl QdrantHttp {
         Ok(Some(body))
     }
 
-    /// DELETE a collection resource, tolerating 404 (already absent).
-    pub async fn delete_json(
-        &self,
-        stage: axon_error::ErrorStage,
-        url: &str,
-        context: &str,
-    ) -> Result<(), ApiError> {
-        let resp = self
-            .request(Method::DELETE)
-            .delete(url)
-            .send()
-            .await
-            .map_err(|err| self.transport(stage, context, &err))?;
-        let status = resp.status();
-        if status == StatusCode::NOT_FOUND || status.is_success() {
-            return Ok(());
-        }
-        Err(self.status_error(stage, context, status))
-    }
-
     /// PUT a JSON body, tolerating 409 (collection already exists).
     pub async fn put_json<B: Serialize + ?Sized>(
         &self,
@@ -317,10 +297,6 @@ impl<'a> AuthedBuilder<'a> {
 
     fn post(self, url: &str) -> reqwest::RequestBuilder {
         self.apply(self.client.post(url))
-    }
-
-    fn delete(self, url: &str) -> reqwest::RequestBuilder {
-        self.apply(self.client.delete(url))
     }
 
     fn apply(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {

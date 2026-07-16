@@ -46,7 +46,6 @@ All global flags apply. Key flags:
 | `--json` | `false` | Emits a JSON object with `count`, `limit`, `offset`, and `urls` for unfiltered output. Domain-filtered JSON uses `cursor` / `next_cursor` instead of `offset`. |
 | `--domain <host-or-url>` | — | Filter indexed source URLs by exact domain/host. URL input is accepted and normalized to its host. |
 | `--all` | `false` | With `--domain`, export up to `AXON_SOURCES_DOMAIN_LIMIT` matching URLs instead of the normal `--limit` page. |
-| `--by-schema-version` | `false` | Include a per-payload-schema-version chunk-count breakdown. Triggers a full collection scroll (O(N)); opt-in only. |
 
 ## Examples
 

@@ -386,6 +386,7 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "windows-build",
         "shell-completions-smoke",
         "web-panel",
+        "chrome-extension",
         "mcp-schema-doc-sync",
         "rest-api-parity",
         "mcp-oauth-smoke",
@@ -407,10 +408,42 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
             "ci-gate must need {job}"
         );
         assert!(
-            gate.contains(&format!("require_success_or_skipped {job}")),
+            gate.contains(&format!("require_success_or_intentional_skip {job}")),
             "ci-gate must verify {job}"
         );
     }
+    assert!(gate.contains("require_success changes"));
+    assert!(
+        !gate.contains("success|skipped"),
+        "ci-gate must not accept an unexplained skipped required job"
+    );
+}
+
+#[test]
+fn ci_runs_docs_and_chrome_contract_checks() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let schema = workflow_job_block(workflow, "schema-contract-sync");
+    assert!(schema.contains("docs generate --check"));
+    assert!(schema.contains("docs check"));
+
+    let chrome = workflow_job_block(workflow, "chrome-extension");
+    assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
+    assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
+
+    let version = workflow_job_block(workflow, "version-sync");
+    assert!(version.contains("needs.changes.outputs.version_files == 'true'"));
+}
+
+#[test]
+fn required_review_and_codeql_are_not_variable_gated() {
+    let review = include_str!("../.github/workflows/claude-code-review.yml");
+    let codeql = include_str!("../.github/workflows/codeql.yml");
+    for workflow in [review, codeql] {
+        assert!(!workflow.contains("AXON_ENABLE_HEAVY_CI"));
+        assert!(!workflow.contains("TEMP(refactor)"));
+    }
+    assert!(codeql.contains("require_success analyze"));
+    assert!(!codeql.contains("success|skipped"));
 }
 
 #[test]
@@ -456,7 +489,7 @@ fn codeql_workflow_routes_language_matrix_by_changed_paths() {
     assert!(workflow.contains("codeql_java_kotlin"));
     assert!(workflow.contains("fromJson(needs.changes.outputs.matrix)"));
     assert!(workflow.contains("codeql-gate:"));
-    assert!(workflow.contains("require_success_or_skipped analyze"));
+    assert!(workflow.contains("require_success analyze"));
 }
 
 #[test]

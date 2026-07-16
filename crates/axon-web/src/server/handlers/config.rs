@@ -7,9 +7,10 @@ use super::super::types::{
 };
 use super::super::utils::authorized;
 use axon_api::mcp_schema::{
-    AxonRequest, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
-    ScrapeRequest, ScreenshotRequest, StatusRequest,
+    AxonRequest, ExtractRequest, ExtractSubaction, ResponseMode, ScreenshotRequest, SourceRequest,
+    StatusRequest,
 };
+use axon_api::source::SourceScope;
 use axon_core::config::Config;
 use axon_services::{action_api, config as config_service, query as query_service, setup, system};
 use axum::{
@@ -310,28 +311,25 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
         )))),
         "scrape" => {
             let url = required_arg(rest, "scrape requires a URL")?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Scrape(
-                ScrapeRequest {
-                    url: Some(normalize_url(url)),
-                    render_mode: None,
-                    format: None,
-                    embed: None,
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Source(
+                SourceRequest {
+                    source: Some(normalize_url(url)),
+                    scope: Some(SourceScope::Page),
+                    collection: None,
                     response_mode: Some(ResponseMode::Inline),
-                    root_selector: None,
-                    exclude_selector: None,
-                    cursor: None,
-                    token_budget: None,
+                    detached: None,
                 },
             ))))
         }
         "crawl" => {
             let url = required_arg(rest, "crawl requires a URL")?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Crawl(
-                CrawlRequest {
-                    subaction: Some(CrawlSubaction::Start),
-                    urls: Some(vec![normalize_url(url)]),
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Source(
+                SourceRequest {
+                    source: Some(normalize_url(url)),
+                    scope: Some(SourceScope::Site),
+                    collection: None,
                     response_mode: Some(ResponseMode::Inline),
-                    ..Default::default()
+                    detached: None,
                 },
             ))))
         }
@@ -348,7 +346,6 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     subaction: Some(ExtractSubaction::Start),
                     urls: Some(vec![normalize_url(url)]),
                     prompt: Some(prompt.to_string()),
-                    response_mode: Some(ResponseMode::Inline),
                     ..Default::default()
                 },
             ))))
@@ -401,12 +398,7 @@ fn sanitize_status_payload(mut value: serde_json::Value) -> serde_json::Value {
     let Some(object) = value.as_object_mut() else {
         return value;
     };
-    for key in [
-        "local_crawl_jobs",
-        "local_extract_jobs",
-        "local_embed_jobs",
-        "local_ingest_jobs",
-    ] {
+    for key in ["source_jobs", "extract_jobs", "watch_jobs", "prune_jobs"] {
         let Some(jobs) = object
             .get_mut(key)
             .and_then(serde_json::Value::as_array_mut)

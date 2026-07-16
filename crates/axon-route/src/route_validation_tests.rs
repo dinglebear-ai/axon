@@ -66,6 +66,19 @@ fn router_reports_credentials_required_by_adapter() {
 }
 
 #[test]
+fn router_marks_memory_and_upload_as_authenticated_sources() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+
+    for source in ["memory://mem_abc", "artifact://art_abc"] {
+        let request = SourceRequest::new(source);
+        let resolved = resolver.resolve(&request).expect("source resolves");
+        let route = router.route(&request, resolved).expect("source routes");
+        assert_eq!(route.safety_class, SafetyClass::AuthenticatedNetwork);
+    }
+}
+
+#[test]
 fn router_rejects_caller_controlled_tool_execution_option() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
@@ -101,6 +114,41 @@ fn router_allows_tool_execution_with_trusted_policy() {
     assert_eq!(route.adapter.name, "cli");
     assert_eq!(route.safety_class, SafetyClass::ToolExecution);
     assert_eq!(route.parser_hints[0].parser_id, "cli_tool");
+}
+
+#[test]
+fn router_carries_tool_execution_options_with_trusted_policy() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("cli:repomix --help");
+    request.scope = Some(SourceScope::Api);
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), json!("execute"));
+    request
+        .options
+        .values
+        .insert("command_allowlist".to_string(), json!(["repomix"]));
+    let resolved = resolver.resolve(&request).expect("cli source resolves");
+
+    let route = router
+        .route_with_policy(
+            &request,
+            resolved,
+            RouteSecurityPolicy::trusted_tool_execution(),
+        )
+        .expect("trusted policy allows cli execution route options");
+
+    assert_eq!(route.scope, SourceScope::Api);
+    assert_eq!(
+        route.validated_options.values["execution_mode"],
+        json!("execute")
+    );
+    assert_eq!(
+        route.validated_options.values["command_allowlist"],
+        json!(["repomix"])
+    );
 }
 
 #[test]

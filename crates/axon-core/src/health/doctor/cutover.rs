@@ -145,6 +145,17 @@ async fn count_sqlite_legacy_rows(path: &std::path::Path) -> Result<u64, String>
         "axon_source_sources",
         "axon_source_manifest_items",
         "axon_source_cleanup_debt",
+        "axon_crawl_jobs",
+        "axon_embed_jobs",
+        "axon_extract_jobs",
+        "axon_ingest_jobs",
+        "axon_ingest_payloads",
+        "axon_code_index_generations",
+        "axon_code_index_files",
+        "axon_watch_defs",
+        "axon_watch_runs",
+        "axon_session_watch_defs",
+        "axon_session_watch_runs",
     ] {
         let present: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -271,9 +282,8 @@ async fn qdrant_point_count(client: &reqwest::Client, base: &str, collection: &s
 /// Scroll a bounded sample and return observed `payload_contract_version`
 /// values plus whether any sampled point is not on the current contract.
 ///
-/// Missing `payload_contract_version` is incompatible: those are old
-/// pre-unification points, even if they happen to carry the retired integer
-/// `payload_schema_version`.
+/// Missing `payload_contract_version` is incompatible: those are
+/// pre-unification points and must not be reused for current-contract writes.
 async fn qdrant_contract_versions(
     client: &reqwest::Client,
     base: &str,

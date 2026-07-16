@@ -5,19 +5,15 @@ package com.axon.app.data.repository
  * ([AxonClient.JobKind] and its [path] field) stay inside [AxonRepository].
  */
 enum class JobFamily {
-    Crawl, Embed, Extract, Ingest;
+    Source, Extract;
 
     fun label(): String = when (this) {
-        Crawl -> "Crawl"
-        Embed -> "Embed"
+        Source -> "Source"
         Extract -> "Extract"
-        Ingest -> "Ingest"
     }
 
     fun drillTitle(): String = when (this) {
-        Crawl -> "Crawls"
-        Embed -> "Embeddings"
+        Source -> "Sources"
         Extract -> "Extractions"
-        Ingest -> "Ingestions"
     }
 }

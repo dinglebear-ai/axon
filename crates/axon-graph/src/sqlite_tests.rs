@@ -36,7 +36,11 @@ fn node(kind: &str, key: &str, label: &str) -> GraphNodeCandidate {
 }
 
 /// A candidate: repo --repo_has_docs--> docs_site, with the given evidence.
-fn repo_docs_candidate(id: &str, source: &str, evidence: Vec<GraphEvidence>) -> GraphCandidate {
+fn repo_docs_candidate(id: &str, source: &str, mut evidence: Vec<GraphEvidence>) -> GraphCandidate {
+    for item in &mut evidence {
+        item.source_id = SourceId::new(source);
+        item.source_item_key = SourceItemKey::new("meta");
+    }
     GraphCandidate {
         candidate_id: id.to_string(),
         job_id: JobId::new(Uuid::from_u128(7)),
@@ -97,6 +101,11 @@ async fn upsert_then_get_node_and_edge_roundtrip() {
     assert_eq!(edge.authority, AuthorityLevel::Official);
     assert_eq!(edge.evidence.len(), 1);
     assert_eq!(edge.evidence[0].evidence_id, "ev-1");
+    assert_eq!(edge.evidence[0].metadata["source_id"], "src");
+    assert_eq!(edge.evidence[0].metadata["source_item_key"], "meta");
+    assert_eq!(edge.evidence[0].metadata["redaction_status"], "clean");
+    assert!(edge.evidence[0].metadata["redaction_version"].is_string());
+    assert_eq!(edge.evidence[0].metadata["visibility"], "public");
 }
 
 #[tokio::test]
@@ -129,6 +138,50 @@ async fn upsert_redacts_secrets_from_node_and_edge_properties() {
             .as_str()
             .unwrap()
             .contains("abcdef0123456789abcdef")
+    );
+}
+
+#[tokio::test]
+async fn upsert_redacts_secrets_from_evidence_quote_and_metadata() {
+    let graph = store().await;
+    let mut evidence = ev("ev-secret", "sitemap", 0.5);
+    evidence.quote = Some("Authorization: Bearer abcdef0123456789abcdef".to_string());
+    evidence.metadata.insert(
+        "note".to_string(),
+        serde_json::json!("api key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789"),
+    );
+
+    graph
+        .upsert_candidates(vec![repo_docs_candidate(
+            "gc-evidence-secret",
+            "src",
+            vec![evidence],
+        )])
+        .await
+        .unwrap();
+
+    let repo_id = node_id_for("repo", "https://github.com/x/y");
+    let docs_id = node_id_for("docs_site", "https://x.dev/docs");
+    let edge_id = edge_id_for("repo_has_docs", &repo_id, &docs_id);
+    let fetched_edge = graph.get_edge(edge_id).await.unwrap().unwrap();
+    let stored_evidence = fetched_edge
+        .evidence
+        .iter()
+        .find(|evidence| evidence.evidence_id == "ev-secret")
+        .expect("stored evidence");
+
+    assert!(
+        !stored_evidence
+            .quote
+            .as_deref()
+            .unwrap_or_default()
+            .contains("abcdef0123456789abcdef")
+    );
+    assert!(
+        !stored_evidence.metadata["note"]
+            .as_str()
+            .unwrap()
+            .contains("sk-proj-")
     );
 }
 

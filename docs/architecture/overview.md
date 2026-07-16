@@ -152,7 +152,9 @@ Key responsibilities:
 
 ### Map Command
 
-`map` consumes a unified URL set from the crawl engine (`map_with_sitemap` in `src/crawl/engine.rs`).
+`map` consumes canonical in-memory URLs from the web adapter's bounded sitemap,
+`llms.txt`, and root-anchor discovery strategies. It does not invoke a crawl or
+use crawl output as a handoff.
 The CLI no longer merges or deduplicates sitemap URLs itself — the engine owns the full URL set with
 deterministic sort+dedup before returning `MapResult`. This keeps the CLI handler as a thin
 delegation layer and ensures the output contract is tested at the engine level.
@@ -225,26 +227,28 @@ Key behaviors:
 - Embedding implementation in `src/vector/ops/tei.rs`.
 - Qdrant operations and collection lifecycle in `src/vector/ops/qdrant/*`.
 - Command-level vector flows in `src/vector/ops/commands/*`.
-- Ingest sources eventually call vector embedding paths so all content lands in Qdrant with metadata.
+- Source adapters eventually call vector embedding paths so all content lands in Qdrant with metadata.
 
-## Ingest Pipeline
+## Source Pipeline
 
-### Unified Ingest Entry Point (v0.12.0)
+### Unified Source Entry Point
 
-`axon ingest <target>` replaces the three separate `github`, `reddit`, and `youtube` CLI commands. `src/ingest/classify.rs` auto-detects the source type from the target string:
+`SourceRequest` is the canonical ingestion contract. CLI, MCP, REST, and app
+surfaces classify a submitted target into `SourceKind`, then route through the
+matching source adapter instead of a legacy ingest-family job:
 
 ```mermaid
 flowchart TD
-  A[axon ingest <target>] --> B[classify_target]
-  B -->|r/ prefix or reddit.com| C[IngestSource::Reddit]
-  B -->|@handle / known YT host / 11-char ID| D[IngestSource::YouTube]
-  B -->|github.com or owner/repo| E[IngestSource::GitHub]
-  C --> F[src/ingest/reddit.rs]
-  D --> G[src/ingest/youtube.rs]
-  E --> H[src/ingest/github.rs]
-  F --> I[embed_prepared_docs -> Qdrant]
-  G --> I
-  H --> I
+  A["CLI/MCP/REST/app source target"] --> B["SourceRequest"]
+  B --> C["SourceKind classifier"]
+  C -->|web URL| D["WebSourceAdapter"]
+  C -->|git repository| E["GitSourceAdapter"]
+  C -->|feed URL| F["FeedSourceAdapter"]
+  C -->|media/social/session/local/tool/upload| G["source-family adapter"]
+  D --> H["ledger -> prepare -> embed -> publish"]
+  E --> H
+  F --> H
+  G --> H
 ```
 
 Detection order: Reddit → YouTube → GitHub (first match wins).

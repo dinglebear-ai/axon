@@ -45,7 +45,7 @@ behavior here.
 - **Ambiguous scopes produce actionable errors** — never a silent guess.
 - **Adapter selection is deterministic** when multiple adapters match, via declared capability.
 - Every source request passes through route **before** acquisition; scopes are declared and validated before execution.
-- Crawl entrypoints normalize from bare domains and known aliases; `map` stays a first-class route.
+- Web `SourceRequest` inputs normalize from bare domains and known aliases; `map` stays a first-class route.
 
 ## DTO ownership
 Wire DTOs (`ResolvedSource`, `RouteDecision`, `CanonicalUri`, `SourceId`,

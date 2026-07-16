@@ -13390,686 +13390,23 @@
         "confirm": {
           "type": "boolean"
         },
-        "plan": {
-          "$ref": "#/$defs/PruneExecuteRequest_PrunePlan"
+        "plan_id": {
+          "$ref": "#/$defs/PruneExecuteRequest_JobId"
         },
         "reason": {
           "type": "string"
         }
       },
       "required": [
-        "plan",
+        "plan_id",
         "confirm",
         "reason"
       ],
       "title": "PruneExecuteRequest",
       "type": "object"
     },
-    "PruneExecuteRequest_ArtifactId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_ChunkId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_CleanupDebtId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_DocumentId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_GraphEdgeId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_GraphNodeId": {
-      "type": "string"
-    },
     "PruneExecuteRequest_JobId": {
       "format": "uuid",
-      "type": "string"
-    },
-    "PruneExecuteRequest_MemoryId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_PruneEstimate": {
-      "additionalProperties": false,
-      "description": "Estimated impact counts for a plan (what *would* be deleted).",
-      "properties": {
-        "artifacts": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "cache_entries": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "graph_edges": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "graph_nodes": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "jobs": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "ledger_generations": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "memory_records": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "vector_points": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "vector_points",
-        "artifacts",
-        "graph_nodes",
-        "graph_edges",
-        "memory_records",
-        "ledger_generations",
-        "jobs",
-        "cache_entries"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PrunePlan": {
-      "additionalProperties": false,
-      "description": "A resolved, reviewable plan describing exactly what a prune would delete.\n\nA plan is produced by dry-run resolution and never mutates state. It must be\nserializable to JSON for review (safety rule: \"prune plans must be\nreviewable as JSON\").",
-      "properties": {
-        "destructive": {
-          "type": "boolean"
-        },
-        "estimated": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneEstimate"
-        },
-        "job_id": {
-          "$ref": "#/$defs/PruneExecuteRequest_JobId"
-        },
-        "requires_admin": {
-          "type": "boolean"
-        },
-        "selector": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneSelector"
-        },
-        "steps": {
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_PruneStep"
-          },
-          "type": "array"
-        },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_SourceWarning"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "job_id",
-        "selector",
-        "destructive",
-        "requires_admin",
-        "estimated",
-        "steps",
-        "warnings"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PruneSelector": {
-      "description": "The scope of a prune. Each variant resolves to a concrete plan by the\n`axon-prune` planner. Variants mirror the pruning contract exactly.",
-      "oneOf": [
-        {
-          "description": "Prune an entire source (all generations).",
-          "properties": {
-            "kind": {
-              "const": "source",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "source_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune one generation of a source (generation-fenced).",
-          "properties": {
-            "generation": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            "kind": {
-              "const": "generation",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "source_id",
-            "generation"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Execute a recorded cleanup-debt entry.",
-          "properties": {
-            "debt_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_CleanupDebtId"
-            },
-            "kind": {
-              "const": "cleanup_debt",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "debt_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a whole vector collection.",
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "collection",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "PruneExecuteRequest_PruneStep": {
-      "additionalProperties": false,
-      "description": "One ordered step in a prune plan. Steps follow the cleanup-debt execution\norder (vector → artifact → graph → memory → ledger → job/cache).",
-      "properties": {
-        "description": {
-          "type": "string"
-        },
-        "estimated_deletes": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "generation": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "graph_edge_ids": {
-          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "graph_stable_keys": {
-          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "memory_ids": {
-          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "source_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "target": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneTargetKind"
-        },
-        "vector_selector": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_VectorDeleteSelector"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "target",
-        "description",
-        "estimated_deletes"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PruneTargetKind": {
-      "description": "The store boundary a prune step targets, in cleanup-debt execution order.",
-      "enum": [
-        "vector",
-        "artifact",
-        "graph",
-        "memory",
-        "ledger",
-        "job_retention",
-        "cache"
-      ],
-      "type": "string"
-    },
-    "PruneExecuteRequest_Severity": {
-      "enum": [
-        "debug",
-        "info",
-        "warning",
-        "degraded",
-        "failed",
-        "fatal"
-      ],
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceGenerationId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceItemKey": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/PruneExecuteRequest_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_VectorDeleteSelector": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "generation": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "source",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "source_id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "generation": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            "kind": {
-              "const": "generation",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "source_id",
-            "generation"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "collection",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "document_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_DocumentId"
-            },
-            "generation": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "document",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "document_id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "chunk_ids": {
-              "items": {
-                "$ref": "#/$defs/PruneExecuteRequest_ChunkId"
-              },
-              "type": "array"
-            },
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "chunks",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "chunk_ids"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "points",
-              "type": "string"
-            },
-            "point_ids": {
-              "items": {
-                "$ref": "#/$defs/PruneExecuteRequest_VectorPointId"
-              },
-              "type": "array"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "point_ids"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "canonical_uri": {
-              "type": "string"
-            },
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "canonical_uri",
-              "type": "string"
-            },
-            "match_prefix": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "canonical_uri",
-            "match_prefix"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "filter": true,
-            "kind": {
-              "const": "filter",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "filter"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "PruneExecuteRequest_VectorPointId": {
       "type": "string"
     },
     "PrunePlan": {
@@ -28003,6 +27340,7 @@
           ]
         },
         "embed": {
+          "default": true,
           "type": "boolean"
         },
         "enabled": {
@@ -28034,7 +27372,6 @@
       "required": [
         "source",
         "schedule",
-        "embed",
         "options"
       ],
       "title": "WatchRequest",
@@ -29017,7 +28354,7 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf",
+        "checksum": "sha256:672c3884bb3d0635676b0a0593a753398259c10b602f83f5a489eb8278f86632",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
@@ -29062,7 +28399,7 @@
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271",
+        "checksum": "sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
@@ -29082,7 +28419,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7",
+        "checksum": "sha256:8cfb0b8738a7384cff7c77d9fbc8754fba72d710f479336a79f4c3bc633ac0f0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -29097,7 +28434,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
+        "checksum": "sha256:ab0e50262007e87270f9c6efacb0d161e2e9e1de623cacefd81ffec9e0ba7f19",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
@@ -29112,12 +28449,12 @@
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7",
+        "checksum": "sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a",
+        "checksum": "sha256:eb1f96a97bb18fe1ead84cec10fcac093e2509ecc3d69e9953d9fcdfc4de4716",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },

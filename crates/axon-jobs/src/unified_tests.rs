@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::redact::{MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -430,6 +431,15 @@ async fn append_event_redacts_secrets_from_message_and_details_before_persisting
 
     let stored = page.events.last().unwrap();
     assert!(!stored.message.contains("abcdef0123456789abcdef"));
+    assert_eq!(
+        stored.details["redaction_status"].as_str(),
+        Some("redacted")
+    );
+    assert_eq!(
+        stored.details["redaction_version"].as_str(),
+        Some(REDACTION_VERSION)
+    );
+    assert_eq!(stored.details["redacted_field_count"].as_u64(), Some(1));
     let stored_event_detail = stored
         .details
         .get("source_progress_event")
@@ -440,6 +450,32 @@ async fn append_event_redacts_secrets_from_message_and_details_before_persisting
             .unwrap()
             .contains("abcdef0123456789abcdef")
     );
+}
+
+#[tokio::test]
+async fn append_event_blocks_oversized_message_before_persisting() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    let mut event = progress_event(job.job_id, 1, Visibility::Public);
+    event.message = "x".repeat(MAX_REDACTABLE_TEXT_BYTES + 1);
+    let err = store.append_event(event).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "job_event.redaction_failed");
+
+    let page = store
+        .events(JobEventListRequest {
+            job_id: job.job_id,
+            after_sequence: None,
+            limit: Some(10),
+            severity: None,
+            visibility: Some(Visibility::Public),
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await
+        .expect("event page");
+    assert!(page.events.is_empty());
 }
 
 #[tokio::test]
@@ -513,7 +549,7 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
     store
         .append_event(next_duplicate)
         .await
-        .expect("expected duplicate dedupe event still consumes sequence");
+        .expect("duplicate dedupe event is coalesced");
 
     let public_events = store
         .events(JobEventListRequest {
@@ -528,18 +564,30 @@ async fn append_event_requires_monotonic_sequences_and_filters_events() {
         })
         .await
         .expect("list events");
-    assert_eq!(public_events.events.len(), 3);
+    assert_eq!(public_events.events.len(), 2);
     assert_eq!(public_events.events[1].sequence, 3);
-    assert_eq!(public_events.events[2].sequence, 4);
-    assert_eq!(
-        public_events.events[2].details.get("dedupe_duplicate"),
-        Some(&serde_json::json!(true))
-    );
     let mut gap_duplicate = progress_event(job.job_id, 99, Visibility::Public);
     gap_duplicate.event_id = "event-dedupe-gap".to_string();
     gap_duplicate.dedupe_key = Some("embedding:src/lib.rs".to_string());
-    let gap = store.append_event(gap_duplicate).await.unwrap_err();
-    assert_eq!(gap.code.to_string(), "job_event.sequence_invalid");
+    store
+        .append_event(gap_duplicate)
+        .await
+        .expect("dedupe key coalesces before sequence validation");
+}
+
+#[tokio::test]
+async fn progress_event_bounds_fail_before_persistence() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    let mut event = progress_event(job.job_id, 1, Visibility::Public);
+    event.message = "x".repeat(MAX_PROGRESS_MESSAGE_BYTES + 1);
+
+    let error = store
+        .append_event(event)
+        .await
+        .expect_err("oversized event");
+    assert_eq!(error.code.to_string(), "job_event.too_large");
+    assert_eq!(store.latest_sequence(job.job_id).await.unwrap(), None);
 }
 
 #[tokio::test]
@@ -1388,11 +1436,12 @@ async fn unified_worker_claims_and_runs_multiple_jobs_concurrently() {
     let concurrency_marker = Arc::new(tokio::sync::Semaphore::new(4));
     let registry = registry_with_slow_concurrent_runner(Arc::clone(&concurrency_marker));
     let handle = tokio::spawn(
-        crate::workers::unified::unified_worker_loop_with_concurrency(
+        crate::workers::unified::unified_worker_loop_with_concurrency_limits(
             Arc::clone(&pool),
             Arc::clone(&notify),
             shutdown.clone(),
             Some(registry),
+            4,
             4,
         ),
     );

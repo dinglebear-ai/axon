@@ -33,7 +33,7 @@ use tokio::sync::mpsc::Sender;
 
 pub use llms_txt::discover_llms_txt_urls;
 pub use map::MapResult;
-pub use map::{append_html_anchor_backfill, map_with_sitemap};
+pub use map::discover_site_urls;
 #[cfg(test)]
 pub use map::{derive_map_scope, merge_map_candidate_urls};
 pub use runtime::resolve_cdp_ws_url;

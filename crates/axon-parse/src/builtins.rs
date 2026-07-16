@@ -51,18 +51,17 @@ impl SourceParser for CodeSymbolsParser {
 
     fn parse(&self, input: &ParseInput) -> ParseResult {
         let (facts, graph_candidates) = code::symbol_facts_with_graph(input);
-        // No tree-sitter/AST grammar is wired in yet (see code.rs); every
-        // fact here is a `regex_fallback` line/indentation heuristic, so the
-        // fallback must be visible per parsing-contract.md, not just implied
-        // by the per-fact `parser_method`/`confidence`.
-        if facts.is_empty() {
+        let used_fallback = facts
+            .iter()
+            .any(|fact| fact.parser_method == code::FALLBACK_PARSER_METHOD);
+        if !used_fallback {
             return completed_result(input, self.capability(), facts, graph_candidates);
         }
         let warning = axon_api::source::SourceWarning {
             code: "parse.code_ast_unavailable".to_string(),
             severity: axon_api::source::Severity::Info,
-            message: "no AST/tree-sitter grammar is wired into axon-parse yet; code symbols \
-                      were extracted with a line/indentation regex_fallback heuristic"
+            message: "tree-sitter was unsupported or could not parse this input; code symbols \
+                      were extracted with the disclosed regex_fallback heuristic"
                 .to_string(),
             source_item_key: Some(input.document.source_item_key.clone()),
             retryable: false,

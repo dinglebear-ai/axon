@@ -131,7 +131,7 @@ CLI equivalents: `axon memory remember "..." --project axon`, `axon memory conte
 - `map` — sitemap-first URL discovery, falls back to fetching the root page and extracting anchors. Fast.
 - `research` — search + LLM synthesis in one shot.
 
-CLI: `axon search "…"`, `axon map <url>` (use `--map-fallback crawl` only when you need a full Spider walk; the structure-fallback default is fast), `axon suggest "…"` (LLM-suggested URLs to crawl next; also the MCP `suggest` action).
+CLI: `axon search "…"`, `axon map <url>` (bounded sitemap, llms.txt, and root-anchor URL discovery only), `axon suggest "…"` (LLM-suggested URLs to crawl next; also the MCP `suggest` action).
 
 ## Fetch + embed
 

@@ -1,15 +1,38 @@
 //! Targeted tests for sitemap-first map behavior.
 //!
-//! Tests cover the 3-stage fallback chain:
-//!   sitemap discovery → bounded-structure fallback → crawl (opt-in only)
+//! Tests cover bounded adapter-owned discovery:
+//!   sitemap discovery -> llms.txt discovery -> root-page anchors
 //!
 //! All tests use httpmock for network isolation.
 
-use super::map_payload;
-use axon_core::config::{Config, MapFallback, RenderMode};
+use axon_core::config::{Config, RenderMode};
 use axon_core::http::LoopbackGuard;
+use axon_services::context::ServiceContext;
+use axon_services::map::discover_with_context;
+use axon_services::types::MapOptions;
 use httpmock::prelude::*;
 use serial_test::serial;
+use std::sync::Arc;
+
+async fn map_payload(
+    cfg: &Config,
+    start_url: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let context = ServiceContext::new_with_workers(Arc::new(cfg.clone()))
+        .await
+        .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
+    let result = discover_with_context(
+        &context,
+        start_url,
+        MapOptions {
+            limit: 0,
+            offset: 0,
+        },
+        None,
+    )
+    .await?;
+    Ok(serde_json::to_value(result)?)
+}
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -413,58 +436,7 @@ async fn test_sitemap_out_of_host_urls_filtered() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 7: --map-fallback crawl opt-in triggers crawl when no sitemap
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[serial]
-async fn test_map_fallback_crawl_opt_in() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    mock_all_sitemaps_404(&server);
-
-    // Root page with links
-    server.mock(|when, then| {
-        when.method(GET).path("/");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body(format!(
-                r#"<html><body>
-                    <a href="{base}/doc-a">Doc A</a>
-                    <a href="{base}/doc-b">Doc B</a>
-                </body></html>"#
-            ));
-    });
-    server.mock(|when, then| {
-        when.method(GET).path("/doc-a");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body("<html><body>Doc A content that is long enough to pass thin check</body></html>");
-    });
-    server.mock(|when, then| {
-        when.method(GET).path("/doc-b");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body("<html><body>Doc B content that is long enough to pass thin check</body></html>");
-    });
-
-    let cfg = Config {
-        map_fallback: MapFallback::Crawl,
-        ..base_config()
-    };
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("crawl"),
-        "expected map_source=crawl when --map-fallback crawl is set"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 8: Security — cross-origin anchor URLs NOT in bounded-structure output
+// Security — cross-origin anchor URLs NOT in bounded-structure output
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -553,7 +525,7 @@ async fn test_pages_seen_zero_in_sitemap_mode() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 10: warning field set when bounded-structure returns fewer than 5 URLs
+// Warning field set when bounded-structure returns fewer than 5 URLs
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -595,8 +567,8 @@ async fn test_warning_when_bounded_structure_too_few_urls() {
     );
     let warning_text = result["warning"].as_str().unwrap();
     assert!(
-        warning_text.contains("crawl") || warning_text.contains("SPA"),
-        "warning should suggest using --map-fallback crawl: {warning_text}"
+        warning_text.contains("dynamic navigation"),
+        "warning should explain bounded discovery limits: {warning_text}"
     );
 }
 
@@ -822,8 +794,8 @@ async fn map_skips_llms_txt_when_disabled() {
 
 /// llms-only branch: every sitemap path 404s (no sitemap parsed) but `/llms.txt` is valid.
 /// The curated llms.txt links must survive — `map_source` is "llms" and they appear in the
-/// result. Guards the early-return-drop regression where no-sitemap collapsed to the
-/// crawl/structure fallback and lost the llms.txt links. `map_source:"llms"` had no test.
+/// result. Guards the early-return-drop regression where no-sitemap root-anchor discovery
+/// lost the llms.txt links. `map_source:"llms"` had no test.
 #[tokio::test]
 #[serial]
 async fn map_llms_only_when_no_sitemap() {

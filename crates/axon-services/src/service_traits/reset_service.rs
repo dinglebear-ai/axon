@@ -1,15 +1,8 @@
 //! `ResetService` — clean-slate destructive reset (plan/execute).
 //!
 //! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
-//! §ResetService. `crate::reset::reset` is the only existing free function
-//! and is a single-shot dry-run-or-execute decided by `Config` flags
-//! (`cfg.reset_dry_run`/`cfg.yes`), not a plan-id-issued/confirm-by-id
-//! two-phase flow. There is no persisted plan keyed by `ResetId` and no
-//! `ResetConfirmation` validation — `plan`/`execute` both call `reset(cfg)`
-//! with a forced dry-run flag as a pragmatic stopgap (see the wiring plan's
-//! risk notes); `execute` re-derives the whole plan from scratch rather than
-//! executing a previously issued plan. This is a known limitation, not a
-//! faithful two-phase contract implementation.
+//! §ResetService. Planning persists a reusable plan; execution requires that
+//! reviewed plan id, explicit confirmation, and caller-derived admin auth.
 
 use std::sync::Arc;
 
@@ -17,11 +10,17 @@ use async_trait::async_trait;
 use axon_api::reset::{ResetPlan, ResetResult};
 
 use crate::context::ServiceContext;
+use crate::reset::ResetAuthz;
 
 #[async_trait]
 pub trait ResetService: Send + Sync {
     async fn plan(&self) -> anyhow::Result<ResetPlan>;
-    async fn execute(&self) -> anyhow::Result<ResetResult>;
+    async fn execute(
+        &self,
+        plan_id: &str,
+        confirmed: bool,
+        authz: &ResetAuthz,
+    ) -> anyhow::Result<ResetResult>;
 }
 
 pub struct ResetServiceImpl {
@@ -45,11 +44,20 @@ impl ResetService for ResetServiceImpl {
         Ok(result.reset_plan)
     }
 
-    async fn execute(&self) -> anyhow::Result<ResetResult> {
+    async fn execute(
+        &self,
+        plan_id: &str,
+        confirmed: bool,
+        authz: &ResetAuthz,
+    ) -> anyhow::Result<ResetResult> {
+        if !confirmed {
+            anyhow::bail!("reset.confirmation_required");
+        }
         let mut cfg = (*self.ctx.cfg()).clone();
         cfg.reset_dry_run = false;
         cfg.yes = true;
-        crate::reset::reset(&cfg)
+        cfg.reset_plan_id = Some(plan_id.to_string());
+        crate::reset::reset_with_authz(&cfg, authz)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
@@ -83,8 +91,19 @@ impl ResetService for FakeResetService {
         })
     }
 
-    async fn execute(&self) -> anyhow::Result<ResetResult> {
+    async fn execute(
+        &self,
+        plan_id: &str,
+        confirmed: bool,
+        authz: &ResetAuthz,
+    ) -> anyhow::Result<ResetResult> {
+        if !confirmed || !authz.is_admin {
+            anyhow::bail!("reset execution denied");
+        }
         let plan = self.plan().await?;
+        if plan.plan_id != plan_id {
+            anyhow::bail!("reset.plan_not_found");
+        }
         Ok(ResetResult {
             plan_id: plan.plan_id.clone(),
             reset_id: plan.reset_id.clone(),

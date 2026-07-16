@@ -46,10 +46,36 @@ fn client_server_response_includes_server_info() {
             .supported_actions
             .contains(&"status".to_string())
     );
+    assert!(
+        response
+            .server
+            .supported_actions
+            .contains(&"source".to_string())
+    );
+    for removed in [
+        "crawl.start",
+        "crawl.status",
+        "embed.start",
+        "embed.status",
+        "ingest.start",
+        "ingest.status",
+        "extract.status",
+        "extract.cancel",
+        "extract.cleanup",
+        "extract.recover",
+    ] {
+        assert!(
+            !response
+                .server
+                .supported_actions
+                .contains(&removed.to_string()),
+            "legacy client-server action still advertised: {removed}"
+        );
+    }
 }
 
 #[test]
-fn rest_capabilities_omit_legacy_action_contract() {
+fn rest_capabilities_omit_action_contract() {
     let info = ServerInfo::rest_capabilities();
 
     assert!(info.required_request_fields.is_empty());

@@ -82,19 +82,6 @@ pub trait ServiceJobRuntime: Send + Sync {
         limit: i64,
         offset: i64,
     ) -> RuntimeResult<Vec<ServiceJob>>;
-    async fn list_ingest_jobs(
-        &self,
-        source_filter: Option<&str>,
-        limit: i64,
-        offset: i64,
-    ) -> RuntimeResult<Vec<ServiceJob>> {
-        if source_filter.is_some() {
-            return Err(
-                "filtered ingest pagination is not supported by this runtime implementation".into(),
-            );
-        }
-        self.list_jobs(JobKind::Source, limit, offset).await
-    }
     async fn job_status(&self, kind: JobKind, id: Uuid) -> RuntimeResult<Option<ServiceJob>>;
     async fn cancel_job(&self, kind: JobKind, id: Uuid) -> RuntimeResult<bool>;
     async fn cleanup_jobs(&self, kind: JobKind) -> RuntimeResult<u64>;

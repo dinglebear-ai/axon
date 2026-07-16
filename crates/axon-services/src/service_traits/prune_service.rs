@@ -1,29 +1,18 @@
-//! `PruneService` — reviewable destructive cleanup (plan/execute/dedupe/
-//! cleanup_debt).
+//! `PruneService` — reviewable destructive cleanup (plan/execute/cleanup debt).
 //!
 //! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
-//! §PruneService. `plan` wraps `crate::prune::prune_plan` exactly (pure,
-//! synchronous, DTOs match 1:1). `execute` wraps `crate::prune::prune_execute`,
-//! but that function requires a caller-derived [`axon_prune::PruneAuthz`]
-//! that this trait's contract signature has no slot for — as a pragmatic
-//! stopgap this production impl uses `PruneAuthz::admin()`, which is **not**
-//! a substitute for real caller-derived authorization and must be replaced
-//! before this trait is wired to any transport that isn't already
-//! locally-trusted (see the wiring plan's risk notes). `dedupe` wraps
-//! `crate::system::dedupe::dedupe`. `cleanup_debt` is SKIP — no
-//! `CleanupDebtRequest` DTO exists and no free function computes/executes
-//! cleanup debt as a public service entrypoint today.
+//! §PruneService. Execution consumes a persisted reviewed plan id and requires
+//! caller-derived authorization; no removed purge/dedupe public operation is
+//! represented here.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axon_api::mcp_schema::DedupeRequest;
 use axon_api::source::{PruneExecuteRequest, PrunePlan, PruneRequest, PruneResult};
 use axon_prune::PruneAuthz;
 
 use crate::context::ServiceContext;
 use crate::service_traits::not_implemented;
-use crate::types::DedupeResult;
 
 /// Deferred per the module doc comment: no `CleanupDebtRequest` DTO and no
 /// backing free function exist yet.
@@ -36,8 +25,11 @@ pub struct CleanupDebtRequest {
 #[async_trait]
 pub trait PruneService: Send + Sync {
     async fn plan(&self, request: PruneRequest) -> anyhow::Result<PrunePlan>;
-    async fn execute(&self, request: PruneExecuteRequest) -> anyhow::Result<PruneResult>;
-    async fn dedupe(&self, request: DedupeRequest) -> anyhow::Result<DedupeResult>;
+    async fn execute(
+        &self,
+        request: PruneExecuteRequest,
+        authz: &PruneAuthz,
+    ) -> anyhow::Result<PruneResult>;
     async fn cleanup_debt(
         &self,
         request: CleanupDebtRequest,
@@ -57,24 +49,26 @@ impl PruneServiceImpl {
 #[async_trait]
 impl PruneService for PruneServiceImpl {
     async fn plan(&self, request: PruneRequest) -> anyhow::Result<PrunePlan> {
-        Ok(crate::prune::prune_plan(&request))
+        let (plan, _) = crate::prune::prune(&self.ctx, &request, &PruneAuthz::anonymous())
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        Ok(plan)
     }
 
-    async fn execute(&self, request: PruneExecuteRequest) -> anyhow::Result<PruneResult> {
-        // Pragmatic stopgap: see the module doc comment. `PruneAuthz::admin()`
-        // is a placeholder until the trait signature carries a real
-        // caller-derived authz.
-        let authz = PruneAuthz::admin();
-        crate::prune::prune_execute(&self.ctx, &request.plan, request.confirm, &authz)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))
-    }
-
-    async fn dedupe(&self, request: DedupeRequest) -> anyhow::Result<DedupeResult> {
-        let _ = request;
-        crate::system::dedupe(self.ctx.cfg(), None)
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))
+    async fn execute(
+        &self,
+        request: PruneExecuteRequest,
+        authz: &PruneAuthz,
+    ) -> anyhow::Result<PruneResult> {
+        crate::prune::prune_execute_saved(
+            &self.ctx,
+            &request.plan_id.0.to_string(),
+            request.confirm,
+            authz,
+        )
+        .await
+        .map(|(_, result, _)| result)
+        .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
     async fn cleanup_debt(
@@ -109,24 +103,23 @@ impl PruneService for FakePruneService {
         })
     }
 
-    async fn execute(&self, request: PruneExecuteRequest) -> anyhow::Result<PruneResult> {
+    async fn execute(
+        &self,
+        request: PruneExecuteRequest,
+        authz: &PruneAuthz,
+    ) -> anyhow::Result<PruneResult> {
         if !request.confirm {
             anyhow::bail!("prune execute requires confirm=true");
         }
+        if !authz.is_admin {
+            anyhow::bail!("prune execute requires axon:admin");
+        }
         Ok(PruneResult {
-            job_id: request.plan.job_id,
+            job_id: request.plan_id,
             status: axon_api::source::LifecycleStatus::Completed,
             steps: Vec::new(),
             deleted_counts: axon_api::source::PruneCounts::default(),
             cleanup_debt_remaining: 0,
-        })
-    }
-
-    async fn dedupe(&self, _request: DedupeRequest) -> anyhow::Result<DedupeResult> {
-        Ok(DedupeResult {
-            completed: true,
-            duplicate_groups: 0,
-            deleted: 0,
         })
     }
 

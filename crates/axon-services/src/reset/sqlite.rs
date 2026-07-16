@@ -4,6 +4,7 @@
 use axon_core::sqlite::open_pool_unlocked;
 use axon_jobs::migrations::apply_all_migrations;
 use sqlx::SqlitePool;
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
@@ -18,6 +19,8 @@ pub struct SqliteInventory {
     /// Total rows across primary content-bearing cutover tables. Best-effort; a
     /// missing table contributes zero.
     pub content_rows: u64,
+    /// Content rows grouped by reset's logical SQLite store names.
+    pub rows_by_store: BTreeMap<String, u64>,
     /// Highest applied migration version recorded in `axon_applied_migrations`.
     pub applied_schema_version: i64,
 }
@@ -56,12 +59,14 @@ async fn read_inventory(pool: &SqlitePool) -> Result<SqliteInventory, sqlx::Erro
     .await?;
 
     let applied_schema_version = max_applied_version(pool).await;
-    let content_rows = count_content_rows(pool).await;
+    let rows_by_store = count_content_rows(pool).await;
+    let content_rows = rows_by_store.values().copied().sum();
 
     Ok(SqliteInventory {
         exists: true,
         table_count: table_count.max(0) as usize,
         content_rows,
+        rows_by_store,
         applied_schema_version,
     })
 }
@@ -89,28 +94,42 @@ async fn max_applied_version(pool: &SqlitePool) -> i64 {
 
 /// Sum rows in the content-bearing tables that exist. A missing table
 /// contributes zero, so this is safe on a partially-migrated DB.
-async fn count_content_rows(pool: &SqlitePool) -> u64 {
-    let mut total: u64 = 0;
-    for table in [
-        "jobs",
-        "job_events",
-        "job_artifacts",
-        "sources",
-        "source_generations",
-        "source_documents",
-        "source_cleanup_debt",
-        "code_index_generations",
-        "code_index_files",
-        "watches",
-        "watch_runs",
-        "memory_records",
-        "memory_edges",
-        "graph_nodes",
-        "graph_edges",
+async fn count_content_rows(pool: &SqlitePool) -> BTreeMap<String, u64> {
+    let mut totals = BTreeMap::new();
+    for (store, table) in [
+        ("jobs", "jobs"),
+        ("jobs", "job_attempts"),
+        ("jobs", "job_stages"),
+        ("jobs", "job_events"),
+        ("jobs", "job_heartbeats"),
+        ("jobs", "job_artifacts"),
+        ("jobs", "provider_reservations"),
+        ("jobs", "config_snapshots"),
+        ("ledger", "sources"),
+        ("ledger", "source_generations"),
+        ("ledger", "source_manifests"),
+        ("ledger", "source_items"),
+        ("ledger", "document_status"),
+        ("ledger", "cleanup_debt"),
+        ("ledger", "leases"),
+        ("watch", "axon_source_watches"),
+        ("watch", "axon_source_watch_runs"),
+        ("graph", "graph_nodes"),
+        ("graph", "graph_aliases"),
+        ("graph", "graph_edges"),
+        ("graph", "graph_evidence"),
+        ("graph", "graph_conflicts"),
+        ("memory", "axon_memory_nodes"),
+        ("memory", "axon_memory_edges"),
+        ("memory", "memory_records"),
+        ("memory", "memory_links"),
+        ("memory", "memory_reinforcement"),
+        ("memory", "memory_reviews"),
     ] {
-        total = total.saturating_add(count_table_if_present(pool, table).await);
+        let count = count_table_if_present(pool, table).await;
+        *totals.entry(store.to_string()).or_default() += count;
     }
-    total
+    totals
 }
 
 async fn count_table_if_present(pool: &SqlitePool, table: &str) -> u64 {

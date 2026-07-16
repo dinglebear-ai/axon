@@ -16,7 +16,7 @@ pub(super) fn cli_tool_source_document(
     acquisition: &SourceAcquisition,
     item: &AcquiredSourceItem,
     source: &CliToolSource,
-    tool_action: &'static str,
+    tool_action: &str,
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("tool"));
@@ -35,7 +35,16 @@ pub(super) fn cli_tool_source_document(
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
-    metadata.insert("redaction_status".to_string(), json!("clean"));
+    let redaction_status = item
+        .metadata
+        .0
+        .get("redaction_status")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("clean");
+    metadata.insert("redaction_status".to_string(), json!(redaction_status));
+    if let Some(artifact_id) = item.raw_artifact_id.as_ref() {
+        metadata.insert("tool_output_artifact_id".to_string(), json!(artifact_id.0));
+    }
     SourceDocument {
         document_id: cli_tool_document_id(
             &acquisition.source_id,

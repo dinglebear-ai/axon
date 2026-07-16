@@ -134,21 +134,21 @@ fn string_array_option(values: &MetadataMap, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Build the `web_engine` `Config` for one `Site`/`Docs` discovery crawl,
+/// Build the `web_engine` `Config` for in-memory web URL discovery,
 /// driven by `plan.route.validated_options` (falling back to `Config::default()`
-/// for anything absent). `output_dir` is the caller's ephemeral scratch
-/// directory — see `web/site_discovery.rs`.
+/// for anything absent). The map lane does not use crawl output as a handoff,
+/// so its output directory is intentionally empty.
 ///
 /// `url_blacklist` maps onto `Config::exclude_path_prefix` — the closest
 /// existing engine knob (`runtime::configure_website_with_crawl_id` folds it,
 /// together with the SSRF blacklist, into Spider's `with_blacklist_url`).
-pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> Config {
+pub(super) fn build_discovery_config(plan: &SourcePlan) -> Config {
     let values = &plan.route.validated_options.values;
     let mut cfg = Config {
-        output_dir,
+        output_dir: Default::default(),
         embed: false,
-        // Defense-in-depth (issue #298 Wave 1b): this ephemeral, adapter-owned
-        // discovery crawl must never opt into Spider's built-in crawl-result
+        // Defense-in-depth: adapter-owned discovery must never opt into
+        // Spider's built-in crawl-result
         // caching or the whole-crawl disk-TTL shortcut that used to live in
         // `axon-services::crawl_sync` — `LedgerStore::diff_manifest` is now the
         // sole staleness authority. `Config::default()` already sets this to
@@ -168,6 +168,12 @@ pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> 
     }
     if let Some(value) = bool_option(values, "discover_sitemaps") {
         cfg.discover_sitemaps = value;
+    }
+    if let Some(value) = bool_option(values, "discover_llms_txt") {
+        cfg.discover_llms_txt = value;
+    }
+    if let Some(value) = usize_option(values, "max_llms_txt_urls") {
+        cfg.max_llms_txt_urls = value;
     }
     if let Some(value) = usize_option(values, "max_sitemaps") {
         cfg.max_sitemaps = value;

@@ -2,7 +2,6 @@ mod config;
 mod config_debug;
 mod config_impls;
 mod enums;
-pub mod freshness;
 pub mod overrides;
 mod session_watch;
 pub mod subconfigs;
@@ -14,10 +13,9 @@ pub const DEFAULT_CRAWL_MEMORY_ABORT_PERCENT: f64 = 85.0;
 
 pub use config::{AdaptiveConcurrencyConfig, Config};
 pub use enums::{
-    ColorChoice, CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    ColorChoice, CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort,
+    RedditTime, RenderMode, ScrapeFormat,
 };
-pub use freshness::{FreshAction, FreshDuration, FreshnessCommand, FreshnessRequest};
 pub use overrides::ConfigOverrides;
 pub use session_watch::CodeSearchWatchConfig;
 #[cfg(test)]

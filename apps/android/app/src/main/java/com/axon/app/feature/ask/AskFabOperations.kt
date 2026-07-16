@@ -5,7 +5,10 @@ import com.axon.app.data.repository.JobFamily
 import com.axon.app.ui.fab.FabOp
 import kotlinx.coroutines.launch
 
-internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
+internal fun AskViewModel.submitFabOperation(
+    op: FabOp,
+    input: String,
+) {
     viewModelScope.launch {
         val repo = container.axonRepository
         when (op) {
@@ -37,6 +40,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown scrape error")) },
                 )
             }
+
             FabOp.Extract -> {
                 appendOperationRequest(FabOp.Extract, input)
                 repo.extractStart(url = input).fold(
@@ -64,6 +68,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown extract error"))) },
                 )
             }
+
             FabOp.Embed -> {
                 appendOperationRequest(FabOp.Embed, input)
                 repo.embedStart(input = input).fold(
@@ -74,7 +79,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                                 op = FabOp.Embed,
                                 target = input,
                                 jobId = jobId,
-                                endpoint = "POST /v1/embed",
+                                endpoint = "POST /v1/sources",
                                 detail = "Embed is queued. Chunks, document count, and errors are tracked in Jobs.",
                             ),
                         )
@@ -82,15 +87,16 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                             op = FabOp.Embed,
                             target = input,
                             status = "Queued",
-                            endpoint = "POST /v1/embed",
+                            endpoint = "POST /v1/sources",
                             jobId = jobId,
                             detail = "Embedding was submitted from Axon mobile.",
                         )
-                        pollJobOnce(JobFamily.Embed, jobId)
+                        pollJobOnce(JobFamily.Source, jobId)
                     },
                     onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown embed error"))) },
                 )
             }
+
             FabOp.Research -> {
                 appendOperationRequest(FabOp.Research, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
@@ -99,43 +105,59 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown research error")) },
                 )
             }
+
             FabOp.Query -> {
                 appendOperationRequest(FabOp.Query, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.query(query = input).fold(
                     onSuccess = { hits ->
-                        val text = hits.take(COMPACT_HIT_LIMIT).joinToString("\n\n") { h ->
-                            "• ${compactSingleLine(h.url, COMPACT_HIT_URL_CHARS)}\n  ${compactSingleLine(h.snippet, COMPACT_HIT_SNIPPET_CHARS)}"
-                        }.ifBlank { "No indexed results found. Try Chat for a general answer, or use Search/Crawl/Embed to add source material first." }
+                        val text =
+                            hits
+                                .take(COMPACT_HIT_LIMIT)
+                                .joinToString("\n\n") { h ->
+                                    "• ${compactSingleLine(
+                                        h.url,
+                                        COMPACT_HIT_URL_CHARS,
+                                    )}\n  ${compactSingleLine(h.snippet, COMPACT_HIT_SNIPPET_CHARS)}"
+                                }.ifBlank {
+                                    "No indexed results found. Try Chat for a general answer, or use Search, Index site, or Source to add material first."
+                                }
                         val countNote = compactHitCountNote(hits.size)
                         replaceLastAxonMsg(text + countNote)
                     },
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown query error")) },
                 )
             }
+
             FabOp.Search -> {
                 appendOperationRequest(FabOp.Search, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
                 repo.searchWeb(query = input).fold(
                     onSuccess = { r ->
-                        val resultsText = r.results.take(COMPACT_HIT_LIMIT).joinToString("\n\n") { h ->
-                            "• ${compactSingleLine(h.title, COMPACT_HIT_TITLE_CHARS)}\n" +
-                                "  ${compactSingleLine(h.url, COMPACT_HIT_URL_CHARS)}\n" +
-                                "  ${compactSingleLine(h.snippet.orEmpty(), COMPACT_HIT_SNIPPET_CHARS)}"
-                        }.ifBlank { "No web results found. Try a broader query or paste a known URL into Scrape/Crawl." }
+                        val resultsText =
+                            r.results
+                                .take(COMPACT_HIT_LIMIT)
+                                .joinToString("\n\n") { h ->
+                                    "• ${compactSingleLine(h.title, COMPACT_HIT_TITLE_CHARS)}\n" +
+                                        "  ${compactSingleLine(h.url, COMPACT_HIT_URL_CHARS)}\n" +
+                                        "  ${compactSingleLine(h.snippet.orEmpty(), COMPACT_HIT_SNIPPET_CHARS)}"
+                                }.ifBlank { "No web results found. Try a broader query or paste a known URL into Scrape or Index site." }
                         val countNote = compactHitCountNote(r.results.size)
-                        val jobsText = r.crawlJobs.takeIf { it.isNotEmpty() }?.let { jobs ->
-                            "\n\nQueued ${jobs.size} crawl jobs from search. Open Jobs for IDs and progress."
-                        }.orEmpty()
-                        r.crawlJobs.forEach { job ->
-                            recordRecentJob(job.jobId, kind = "crawl", target = job.url)
+                        val jobsText =
+                            r.sourceJobs
+                                .takeIf { it.isNotEmpty() }
+                                ?.let { jobs ->
+                                    "\n\nQueued ${jobs.size} source jobs from search. Open Jobs for IDs and progress."
+                                }.orEmpty()
+                        r.sourceJobs.forEach { job ->
+                            recordRecentJob(job.jobId, kind = "source", target = job.url)
                             appendOperationContext(
-                                op = FabOp.Crawl,
+                                op = FabOp.SourceSite,
                                 target = job.url,
                                 status = "Queued",
                                 endpoint = "POST /v1/search",
                                 jobId = job.jobId,
-                                detail = "Search auto-enqueued a crawl job for this result.",
+                                detail = "Search auto-enqueued a source job for this result.",
                             )
                         }
                         replaceLastAxonMsg(resultsText + countNote + jobsText)
@@ -143,6 +165,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown search error")) },
                 )
             }
+
             FabOp.Map -> {
                 appendOperationRequest(FabOp.Map, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
@@ -154,6 +177,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown map error")) },
                 )
             }
+
             FabOp.Retrieve -> {
                 appendOperationRequest(FabOp.Retrieve, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
@@ -162,6 +186,7 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown retrieve error")) },
                 )
             }
+
             FabOp.Summarize -> {
                 appendOperationRequest(FabOp.Summarize, input)
                 appendItem(ChatItem.AxonMsg("", isStreaming = true))
@@ -170,83 +195,78 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
                     onFailure = { e -> replaceLastAxonMsg(userFacingOperationError(op, e.message ?: "Unknown summarize error")) },
                 )
             }
-            FabOp.Crawl -> {
-                appendOperationRequest(FabOp.Crawl, input)
-                repo.crawlSubmit(url = input).fold(
+
+            FabOp.SourceSite -> {
+                appendOperationRequest(FabOp.SourceSite, input)
+                repo.sourceSiteSubmit(url = input).fold(
                     onSuccess = { jobId ->
-                        recordRecentJob(jobId, kind = "crawl", target = input)
+                        recordRecentJob(jobId, kind = "source", target = input)
                         appendItem(
                             ChatItem.Injection(
-                                op = FabOp.Crawl,
+                                op = FabOp.SourceSite,
                                 target = input,
                                 jobId = jobId,
-                                endpoint = "POST /v1/crawl",
-                                detail = "Crawl queued. Pages, errors, and completion state are pulled from the job endpoint.",
+                                endpoint = "POST /v1/sources",
+                                detail = "Site indexing queued. Pages, errors, and completion state are pulled from the job endpoint.",
                             ),
                         )
                         appendOperationContext(
-                            op = FabOp.Crawl,
+                            op = FabOp.SourceSite,
                             target = input,
                             status = "Queued",
-                            endpoint = "POST /v1/crawl",
+                            endpoint = "POST /v1/sources",
                             jobId = jobId,
-                            detail = "Crawl was submitted from Axon mobile. Job status and indexed pages are available from Jobs.",
+                            detail = "Site source was submitted from Axon mobile. Job status and indexed pages are available from Jobs.",
                         )
-                        pollCrawlOnce(jobId)
+                        pollSourceJobOnce(jobId)
                     },
                     onFailure = { e ->
                         appendItem(
                             ChatItem.Injection(
-                                op = FabOp.Crawl,
+                                op = FabOp.SourceSite,
                                 target = input,
                                 jobId = null,
                                 status = "FAILED",
-                                endpoint = "POST /v1/crawl",
-                                detail = "Crawl failed: ${e.message ?: "unknown server error"}",
+                                endpoint = "POST /v1/sources",
+                                detail = "Site indexing failed: ${e.message ?: "unknown server error"}",
                             ),
                         )
                         appendOperationContext(
-                            op = FabOp.Crawl,
+                            op = FabOp.SourceSite,
                             target = input,
                             status = "FAILED",
-                            endpoint = "POST /v1/crawl",
-                            detail = "Crawl failed: ${e.message ?: "unknown server error"}",
+                            endpoint = "POST /v1/sources",
+                            detail = "Site indexing failed: ${e.message ?: "unknown server error"}",
                         )
                     },
                 )
             }
-            FabOp.Ingest -> {
-                appendOperationRequest(FabOp.Ingest, input)
-                val sourceType = inferFabIngestSource(input).fold(
-                    onSuccess = { it.wire },
-                    onFailure = { e ->
-                        appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Invalid ingest target")))
-                        return@launch
-                    },
-                )
-                repo.ingestStart(sourceType = sourceType, target = input).fold(
+
+            FabOp.Source -> {
+                appendOperationRequest(FabOp.Source, input)
+                repo.sourceSubmit(target = input).fold(
                     onSuccess = { jobId ->
-                        recordRecentJob(jobId, kind = "ingest", target = input)
+                        recordRecentJob(jobId, kind = "source", target = input)
                         appendItem(
                             ChatItem.Injection(
-                                op = FabOp.Ingest,
+                                op = FabOp.Source,
                                 target = input,
                                 jobId = jobId,
-                                endpoint = "POST /v1/ingest",
-                                detail = "Ingest queued. Discovery, source processing, and metadata progress are tracked in Jobs.",
+                                endpoint = "POST /v1/sources",
+                                detail = "Source queued. Discovery, source processing, and metadata progress are tracked in Jobs.",
                             ),
                         )
                         appendOperationContext(
-                            op = FabOp.Ingest,
+                            op = FabOp.Source,
                             target = input,
                             status = "Queued",
-                            endpoint = "POST /v1/ingest",
+                            endpoint = "POST /v1/sources",
                             jobId = jobId,
-                            detail = "Ingest was submitted from Axon mobile.",
+                            detail = "Source was submitted from Axon mobile.",
                         )
-                        pollJobOnce(JobFamily.Ingest, jobId)
+                        pollJobOnce(JobFamily.Source, jobId)
                     },
-                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown ingest error"))) },
+                    onFailure = { e -> appendItem(ChatItem.AxonMsg(userFacingOperationError(op, e.message ?: "Unknown source error"))) },
                 )
             }
         }
@@ -256,21 +276,36 @@ internal fun AskViewModel.submitFabOperation(op: FabOp, input: String) {
 internal fun compactHitCountNote(total: Int): String =
     if (total > COMPACT_HIT_LIMIT) "\n\nShowing $COMPACT_HIT_LIMIT of $total results." else ""
 
-internal fun userFacingOperationError(op: FabOp, message: String): String {
+internal fun userFacingOperationError(
+    op: FabOp,
+    message: String,
+): String {
     val detail = message.trim().ifBlank { "Unknown error" }
-    val hint = when (op) {
-        FabOp.Scrape, FabOp.Map, FabOp.Retrieve, FabOp.Summarize ->
-            "Check that the URL is reachable from the Axon server, then retry."
-        FabOp.Crawl ->
-            "Check the crawl URL and server status, then retry or open Jobs for any queued work."
-        FabOp.Search, FabOp.Research, FabOp.Query ->
-            "Check connection/auth status and try a narrower query."
-        FabOp.Embed ->
-            "Check that the input is a URL or server-readable source, then retry."
-        FabOp.Extract ->
-            "Check the target URL and extraction options, then retry."
-        FabOp.Ingest ->
-            "Check the source type and target format, then retry."
-    }
+    val hint =
+        when (op) {
+            FabOp.Scrape, FabOp.Map, FabOp.Retrieve, FabOp.Summarize -> {
+                "Check that the URL is reachable from the Axon server, then retry."
+            }
+
+            FabOp.SourceSite -> {
+                "Check the site URL and server status, then retry or open Jobs for any queued work."
+            }
+
+            FabOp.Search, FabOp.Research, FabOp.Query -> {
+                "Check connection/auth status and try a narrower query."
+            }
+
+            FabOp.Embed -> {
+                "Check that the input is a URL or server-readable source, then retry."
+            }
+
+            FabOp.Extract -> {
+                "Check the target URL and extraction options, then retry."
+            }
+
+            FabOp.Source -> {
+                "Check the source target format, then retry."
+            }
+        }
     return "Error: ${op.label} could not complete. $hint\n\nDetail: $detail"
 }
