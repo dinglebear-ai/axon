@@ -251,6 +251,18 @@ compatibility = "canonical"
 reason = "Server-side allowlist for MCP code-search cwd roots; security boundary remains process env in v1."
 
 [[env]]
+key = "AXON_SOURCE_LOCAL_ALLOWED_ROOTS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "env-template", "docs"]
+secret = false
+url_or_path = true
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Canonical server-side allowlist for local source acquisition roots; this security boundary remains process env."
+
+[[env]]
 key = "AXON_CODE_SEARCH_FRESHNESS_TTL_SECS"
 classification = "keep-env"
 runtime_placement = "both"
@@ -417,6 +429,18 @@ container_allowed = false
 toml_destination = ""
 compatibility = "advanced"
 reason = "Test-only override used by workflow shape guards to locate the sibling Aurora Android project."
+
+[[env]]
+key = "AXON_ENABLE_HEAVY_CI"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["tests", "workflow"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Test-only sentinel used to verify that expensive CI jobs are not controlled by a mutable runtime variable."
 
 [[env]]
 key = "GEMINI_FLASH_MODEL"
