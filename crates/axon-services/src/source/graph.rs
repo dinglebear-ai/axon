@@ -259,6 +259,7 @@ fn build_candidate(
     manifest: &SourceManifest,
 ) -> GraphCandidate {
     let source_id = counts.source_id.clone();
+    let source_item_key = SourceItemKey::new(canonical_uri);
     let container_key = container_stable_key(&source_id, canonical_uri);
     let container = GraphNodeCandidate {
         node_kind: container_node_kind(kind).to_string(),
@@ -286,14 +287,14 @@ fn build_candidate(
             to_stable_key: doc_key,
             properties: MetadataMap::new(),
         });
-        evidence.push(containment_evidence(&source_id, item));
+        evidence.push(containment_evidence(&source_id, &source_item_key, item));
     }
 
     GraphCandidate {
         candidate_id: format!("source-baseline:{}:{}", source_id.0, counts.generation.0),
         job_id: counts.job_id.clone(),
         source_id: source_id.clone(),
-        source_item_key: SourceItemKey::new(canonical_uri),
+        source_item_key,
         item_canonical_uri: canonical_uri.to_string(),
         document_id: None,
         kind: "source_baseline".to_string(),
@@ -314,18 +315,27 @@ fn build_candidate(
 /// One `text_mention` evidence record per containment edge. The manifest is the
 /// direct observation that the item belongs to this source, so it justifies the
 /// containment claim (edges are never "just true").
-fn containment_evidence(source_id: &SourceId, item: &ManifestItem) -> GraphEvidence {
+fn containment_evidence(
+    source_id: &SourceId,
+    candidate_source_item_key: &SourceItemKey,
+    item: &ManifestItem,
+) -> GraphEvidence {
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "contained_source_item_key".to_string(),
+        serde_json::json!(item.source_item_key.0),
+    );
     GraphEvidence {
         evidence_id: format!("contains:{}", item.source_item_key.0),
         evidence_kind: "text_mention".to_string(),
         source_id: source_id.clone(),
-        source_item_key: item.source_item_key.clone(),
+        source_item_key: candidate_source_item_key.clone(),
         document_id: None,
         chunk_id: None,
         range: None,
         quote: None,
         confidence: BASELINE_CONFIDENCE,
-        metadata: MetadataMap::new(),
+        metadata,
     }
 }
 

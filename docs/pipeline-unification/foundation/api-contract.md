@@ -500,6 +500,7 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `UploadCompleteResult` | `upload_id`, `artifact_id`, `source_ref` | `warnings` |
 | `UploadAbortRequest` | none | `reason` |
 | `UploadAbortResult` | `upload_id`, `deleted` | none |
+| `UploadListRequest` | none | `status`, `limit`, `cursor` |
 | `PruneRequest` | `selector`, `dry_run`, `require_confirmation`, `reason` | none |
 | `PrunePlan` | `job_id`, `selector`, `destructive`, `requires_admin`, `estimated`, `steps`, `warnings` | none |
 | `PruneExecuteRequest` | `plan`, `confirm`, `reason` | none |
@@ -894,6 +895,12 @@ pub async fn get_upload(ctx: &ServiceContext, upload_id: UploadId) -> Result<Upl
 pub async fn put_upload_content(ctx: &ServiceContext, upload_id: UploadId, body: ByteStream) -> Result<UploadStatus>;
 pub async fn complete_upload(ctx: &ServiceContext, upload_id: UploadId, request: UploadCompleteRequest) -> Result<UploadCompleteResult>;
 pub async fn abort_upload(ctx: &ServiceContext, upload_id: UploadId, request: UploadAbortRequest) -> Result<UploadAbortResult>;
+
+`UploadId` and `ArtifactId` are disjoint opaque identity domains. Staging uses
+`upl_*`; completion creates an `art_*` and persists the mapping. Implementations
+must never cast, prefix-rewrite, or otherwise derive one identity from the
+other. Upload records retain declared/received sizes, content type, SHA-256,
+expiry, retention, and the completed artifact/source references.
 pub async fn plan_prune(ctx: &ServiceContext, request: PruneRequest) -> Result<PrunePlan>;
 pub async fn exec_prune(ctx: &ServiceContext, request: PruneExecuteRequest) -> Result<PruneResult>;
 pub async fn prune_dedupe(ctx: &ServiceContext, request: PruneDedupeRequest) -> Result<PruneDedupeResult>;

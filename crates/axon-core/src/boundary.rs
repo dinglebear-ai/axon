@@ -226,7 +226,7 @@ impl ArtifactStore for FakeCoreBoundaries {
         let mut counter = self.artifact_counter.lock().await;
         *counter += 1;
         let artifact_id = ArtifactId::new(format!(
-            "artifact_{}_{}",
+            "art_{}_{}",
             artifact.content_type.replace('/', "_"),
             *counter
         ));

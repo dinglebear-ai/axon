@@ -99,6 +99,8 @@ pub struct MemoryRequest {
     pub file: Option<String>,
     pub status: Option<String>,
     pub confidence: Option<f64>,
+    /// Replacement salience for `update`.
+    pub salience: Option<f64>,
     pub limit: Option<usize>,
     pub depth: Option<usize>,
     pub token_budget: Option<usize>,

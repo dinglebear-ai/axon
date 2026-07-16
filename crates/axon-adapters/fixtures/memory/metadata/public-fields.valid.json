@@ -1,0 +1,13 @@
+{
+  "adapter": "memory",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.public-fields",
+  "graph": { "required_fact_kinds": ["memory_document"], "optional_fact_kinds": ["memory_link", "supersedes"] },
+  "item_canonical_uri": "memory://mem_fixture_1",
+  "metadata_family": "memory",
+  "public_metadata": { "memory_id": "mem_fixture_1", "source_family": "memory", "source_kind": "memory" },
+  "redaction_status": "clean",
+  "source_canonical_uri": "memory://mem_fixture_1",
+  "source_id": "src-memory-fixture",
+  "source_item_key": "mem_fixture_1"
+}

@@ -31,7 +31,6 @@ fn mutating_subaction_on_read_family_requires_write() {
 fn destructive_actions_require_admin() {
     assert_eq!(scope_for_action("prune", None), Some("axon:admin"));
     assert_eq!(scope_for_action("reset", None), Some("axon:admin"));
-    assert_eq!(scope_for_action("dedupe", None), Some("axon:admin"));
 }
 
 #[test]

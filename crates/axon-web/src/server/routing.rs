@@ -124,6 +124,11 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
         .route("/v1/artifacts", get(handlers::artifacts::list_artifacts))
+        .route("/v1/uploads", get(handlers::uploads::list_uploads))
+        .route(
+            "/v1/uploads/{upload_id}",
+            get(handlers::uploads::get_upload),
+        )
         .route(
             "/v1/artifacts/{artifact_id}",
             get(handlers::artifacts::get_artifact),
@@ -200,6 +205,15 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
         .route("/v1/sources", post(handlers::sources::index_source))
+        .route("/v1/uploads", post(handlers::uploads::create_upload))
+        .route(
+            "/v1/uploads/{upload_id}",
+            delete(handlers::uploads::abort_upload),
+        )
+        .route(
+            "/v1/uploads/{upload_id}/complete",
+            post(handlers::uploads::complete_upload),
+        )
         .route("/v1/memories", post(handlers::memory::remember_memory))
         .route(
             "/v1/memories/review",
@@ -287,6 +301,10 @@ fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
 /// (prepared session exports ship megabytes of transcript JSON).
 fn large_write_routes(_service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
+        .route(
+            "/v1/uploads/{upload_id}/content",
+            put(handlers::uploads::put_upload_content),
+        )
         .route(
             "/v1/mobile/sessions/{id}",
             put(handlers::mobile_sessions::upsert_mobile_session)

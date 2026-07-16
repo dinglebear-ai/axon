@@ -58,7 +58,7 @@ pub(super) struct ActionSpec {
     pub subaction: SubactionKind,
 }
 
-/// The live 28-action registry, mirroring `MCP_ACTION_SPECS` as read from
+/// The live action registry, mirroring `MCP_ACTION_SPECS` as read from
 /// `crates/axon-mcp/src/server/authz.rs` (read-only reference; do not copy
 /// scope changes here without re-reading that file, and do not edit that
 /// file from this generator).
@@ -197,6 +197,22 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
         async_job: false,
         request_dto: "ResetMcpRequest",
         subaction: SubactionKind::InformalStrings(&["plan", "exec"]),
+    },
+    ActionSpec {
+        name: "uploads",
+        description: "Stage, inspect, complete, list, or abort durable uploads",
+        scope: "write",
+        mutates: true,
+        async_job: false,
+        request_dto: "UploadsMcpRequest",
+        subaction: SubactionKind::InformalStrings(&[
+            "list",
+            "create",
+            "get",
+            "put_content",
+            "complete",
+            "abort",
+        ]),
     },
     ActionSpec {
         name: "ask",
@@ -446,6 +462,28 @@ pub(super) fn request_schema_for(request_dto: &str) -> Value {
                 "reason": { "type": ["string", "null"] },
                 "plan_id": { "type": ["string", "null"] },
                 "confirm": { "type": ["boolean", "null"] },
+                "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
+            }
+        }),
+        "UploadsMcpRequest" => json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "subaction": { "type": "string", "enum": ["list", "create", "get", "put_content", "complete", "abort"], "default": "list" },
+                "upload_id": { "type": ["string", "null"] },
+                "filename": { "type": ["string", "null"] },
+                "content_type": { "type": ["string", "null"] },
+                "size_bytes": { "type": ["integer", "null"], "minimum": 0 },
+                "purpose": { "type": ["string", "null"], "enum": ["source_artifact", "import", "evaluation", null] },
+                "sha256": { "type": ["string", "null"] },
+                "source_hint": { "type": ["string", "null"] },
+                "content": { "type": ["string", "null"] },
+                "content_ref": { "type": ["object", "null"] },
+                "source_options": { "type": ["object", "null"] },
+                "reason": { "type": ["string", "null"] },
+                "status": { "type": ["string", "null"], "enum": ["pending", "received", "completed", "aborted", "expired", null] },
+                "limit": { "type": ["integer", "null"], "minimum": 0 },
+                "cursor": { "type": ["string", "null"] },
                 "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
             }
         }),

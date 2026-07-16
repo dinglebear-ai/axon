@@ -35,6 +35,20 @@ fn watch_not_found_maps_to_not_found() {
 }
 
 #[test]
+fn upload_errors_map_to_stable_transport_statuses() {
+    for (code, expected) in [
+        ("upload.not_found", StatusCode::NOT_FOUND),
+        ("upload.expired", StatusCode::GONE),
+        ("upload.incomplete", StatusCode::CONFLICT),
+        ("upload.too_large", StatusCode::PAYLOAD_TOO_LARGE),
+        ("upload.sha256_mismatch", StatusCode::BAD_REQUEST),
+    ] {
+        let error = ApiError::new(code, ErrorStage::Publishing, "upload failure");
+        assert_eq!(status_for_api_error(&error), expected, "{code}");
+    }
+}
+
+#[test]
 fn rate_limited_kind_is_retryable_provider_error() {
     let err = api_error_from_status_kind(
         StatusCode::TOO_MANY_REQUESTS,

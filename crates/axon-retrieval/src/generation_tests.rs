@@ -13,7 +13,7 @@ fn retrieval_filters_exclude_unpublished_vectors_by_default() {
         generation: None,
         allowed_visibility: vec![Visibility::Public],
         namespace_filters: Vec::new(),
-        excluded_namespaces: Vec::new(),
+        excluded_source_kinds: Vec::new(),
         byte_budget: 4096,
         token_budget: 512,
     };

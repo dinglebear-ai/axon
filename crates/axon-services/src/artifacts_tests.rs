@@ -4,16 +4,16 @@ use std::sync::Arc;
 
 #[test]
 fn artifact_ids_are_opaque_and_path_free() {
-    for valid in ["artifact_report_abc123", "artifact_raw_a-b"] {
+    for valid in ["art_report_abc123", "art_raw_a-b"] {
         assert!(validate_artifact_id(valid).is_ok(), "{valid}");
     }
     for invalid in [
         "",
         "report_abc",
-        "artifact_../secret",
-        "artifact_%2fsecret",
-        "artifact_a.json",
-        "/artifact_report_abc",
+        "art_../secret",
+        "art_%2fsecret",
+        "art_a.json",
+        "/art_report_abc",
     ] {
         assert!(validate_artifact_id(invalid).is_err(), "{invalid}");
     }
@@ -40,7 +40,7 @@ fn unsupported_content_refs_fail_closed() {
 fn manifest_content_paths_cannot_escape_the_store() {
     let manifest = StoredArtifactManifest {
         handle: ArtifactHandle {
-            artifact_id: ArtifactId::new("artifact_report_abc"),
+            artifact_id: ArtifactId::new("art_report_abc"),
             artifact_kind: ArtifactKind::Report,
             uri: None,
         },
@@ -56,19 +56,19 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
     let temp = tempfile::tempdir().unwrap();
     let root = temp.path().join("artifacts");
     tokio::fs::create_dir_all(&root).await.unwrap();
-    tokio::fs::write(root.join("artifact_report_abc.bin"), b"report")
+    tokio::fs::write(root.join("art_report_abc.bin"), b"report")
         .await
         .unwrap();
     tokio::fs::write(
-        root.join("artifact_report_abc.json"),
+        root.join("art_report_abc.json"),
         serde_json::to_vec(&serde_json::json!({
             "handle": {
-                "artifact_id": "artifact_report_abc",
+                "artifact_id": "art_report_abc",
                 "artifact_kind": "report",
                 "uri": "file:///private/path"
             },
             "content_type": "application/json",
-            "content_path": "artifact_report_abc.bin",
+            "content_path": "art_report_abc.bin",
             "content_kind": "inline_bytes",
             "metadata": { "label": "report.json", "producer_refs": ["job:test"] }
         }))
@@ -95,16 +95,13 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
     .await
     .unwrap();
     assert_eq!(page.items.len(), 1);
-    assert_eq!(page.items[0].artifact_id.0, "artifact_report_abc");
+    assert_eq!(page.items[0].artifact_id.0, "art_report_abc");
     assert_eq!(page.items[0].size_bytes, 6);
 
-    let detail = get_artifact(&ctx, ArtifactId::new("artifact_report_abc"))
+    let detail = get_artifact(&ctx, ArtifactId::new("art_report_abc"))
         .await
         .unwrap();
-    assert_eq!(
-        detail.content_url,
-        "/v1/artifacts/artifact_report_abc/content"
-    );
+    assert_eq!(detail.content_url, "/v1/artifacts/art_report_abc/content");
     assert_eq!(detail.producer_refs, ["job:test"]);
     assert_eq!(detail.summary.label.as_deref(), Some("report.json"));
 }

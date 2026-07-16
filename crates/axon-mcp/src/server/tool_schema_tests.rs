@@ -114,7 +114,8 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
     assert!(actual.contains(&"watch"));
     assert!(actual.contains(&"reset"));
     assert!(actual.contains(&"collections"));
-    for unsupported in ["chat", "artifacts", "uploads"] {
+    assert!(actual.contains(&"uploads"));
+    for unsupported in ["chat", "artifacts"] {
         assert!(!actual.contains(&unsupported));
     }
 }
@@ -128,6 +129,10 @@ fn mcp_schema_exposes_only_canonical_prune_and_admin_subactions() {
     );
     assert!(schema.pointer("/x-axon-subactions/reset").is_some());
     assert!(schema.pointer("/x-axon-subactions/collections").is_some());
+    assert_eq!(
+        schema.pointer("/x-axon-subactions/uploads").unwrap(),
+        &serde_json::json!(["abort", "complete", "create", "get", "list", "put_content"])
+    );
     let rendered = serde_json::to_string(&schema).unwrap();
     assert!(!rendered.contains("collection-prune convenience"));
     assert!(!rendered.contains("targeted purge"));

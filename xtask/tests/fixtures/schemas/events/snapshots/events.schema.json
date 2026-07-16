@@ -1889,6 +1889,22 @@
             "null"
           ]
         },
+        "canonical_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "chunk_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_ChunkId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "counts": {
           "anyOf": [
             {
@@ -1899,10 +1915,30 @@
             }
           ]
         },
+        "document_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_DocumentId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "error_code": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_SourceGenerationId"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "job_id": {
@@ -1964,10 +2000,26 @@
               "type": "null"
             }
           ]
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpanFieldSet_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "title": "SpanFieldSet",
       "type": "object"
+    },
+    "SpanFieldSet_ChunkId": {
+      "type": "string"
+    },
+    "SpanFieldSet_DocumentId": {
+      "type": "string"
     },
     "SpanFieldSet_JobId": {
       "format": "uuid",
@@ -2019,7 +2071,13 @@
       ],
       "type": "string"
     },
+    "SpanFieldSet_SourceGenerationId": {
+      "type": "string"
+    },
     "SpanFieldSet_SourceId": {
+      "type": "string"
+    },
+    "SpanFieldSet_SourceItemKey": {
       "type": "string"
     },
     "SpanFieldSet_SourceScope": {

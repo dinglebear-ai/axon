@@ -9,16 +9,14 @@ use super::ResponseMode;
 /// (`docs/pipeline-unification/surfaces/tool-contract.md` "Prune, Collections,
 /// Graph, and Providers Actions").
 ///
-/// `subaction` selects `plan` (dry-run, default-safe), `exec` (destructive —
-/// requires `axon:admin` and `confirm: true`), or the collection-prune
-/// convenience operations `dedupe`/`purge`. `target` is either a bare source
-/// id or `collection:<name>` for `plan|exec`; `purge` requires a target URL or
-/// source key; `dedupe` scans the configured collection.
+/// `subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —
+/// requires `axon:admin` and `confirm: true`). `target` is either a bare source
+/// id or `collection:<name>`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PruneMcpRequest {
-    /// `plan`, `exec`, `dedupe`, or `purge`. Defaults to `plan` when omitted
-    /// so a bare `prune` call never mutates state.
+    /// `plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`
+    /// call never mutates state.
     pub subaction: Option<String>,
     /// Prune target: a bare source id, or `collection:<name>` for a
     /// whole-collection prune. **Handler-required despite the `Option`** —

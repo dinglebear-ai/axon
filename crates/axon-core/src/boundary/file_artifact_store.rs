@@ -57,7 +57,7 @@ impl FileArtifactStore {
             &digest,
         )?;
         let artifact_id = ArtifactId::new(format!(
-            "artifact_{}_{}",
+            "art_{}_{}",
             artifact_kind_slug(kind),
             &identity_digest[..16]
         ));
@@ -170,6 +170,21 @@ impl ArtifactStore for FileArtifactStore {
                     format!("failed to parse artifact manifest: {err}"),
                 )
             })?;
+        let expected_content_path = self
+            .content_path(&handle.artifact_id)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if manifest.handle.artifact_id != handle.artifact_id
+            || manifest.content_path != expected_content_path
+        {
+            return Err(ApiError::new(
+                "artifact.read_failed",
+                ErrorStage::Retrieving,
+                "artifact manifest identity or content path is invalid",
+            ));
+        }
         let content_path = self.root.join(&manifest.content_path);
         let bytes = tokio::fs::read(&content_path).await.map_err(|err| {
             ApiError::new(

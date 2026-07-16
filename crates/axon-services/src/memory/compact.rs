@@ -2,6 +2,7 @@
 //! job-backed operation via [`super::job_tracking`].
 
 use super::*;
+use axon_api::source::MemoryScope;
 
 /// Build the typed [`MemoryCompactRequest`] from the flat CLI/MCP
 /// [`MemoryRequest`] shape. Split out from [`compact`] so the fully-built
@@ -74,16 +75,24 @@ pub async fn compact(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryI
         ctx,
         axon_api::source::OperationKind::MemoryCompaction,
         request_json,
-        || compact_with_store(store, request),
+        || compact_with_store(ctx, store, request),
     )
     .await
 }
 
 async fn compact_with_store(
+    ctx: &ServiceContext,
     store: Arc<dyn MemoryStore>,
     request: MemoryCompactRequest,
 ) -> Result<MemoryItem> {
+    let archived_source_ids = request
+        .archive_sources
+        .then(|| request.memory_ids.clone())
+        .unwrap_or_default();
     let result = store.compact(request).await.map_err(store_err)?;
+    let mut sync_ids = vec![result.memory_id.clone()];
+    sync_ids.extend(archived_source_ids);
+    super::sync::sync_memory_records(ctx, store.as_ref(), sync_ids, "compact").await?;
     let record = store
         .get(result.memory_id.clone())
         .await

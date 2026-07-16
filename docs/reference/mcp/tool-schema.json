@@ -15,6 +15,9 @@
         "search",
         "map",
         "prune",
+        "collections",
+        "reset",
+        "uploads",
         "ask",
         "evaluate",
         "suggest",
@@ -342,6 +345,81 @@
               },
               "subaction": {
                 "$ref": "#/$defs/PruneSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "collections"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CollectionsMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/CollectionsSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "reset"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ResetMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/ResetSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "uploads"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/UploadsMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/UploadsSubaction"
               }
             },
             "required": [
@@ -1003,12 +1081,6 @@
               "type": "null"
             }
           ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "CapabilitiesRequest",
@@ -1020,6 +1092,65 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "CollectionsMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "list",
+          "enum": [
+            "list",
+            "get"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CollectionsSubaction": {
+      "enum": [
+        "list",
+        "get"
       ],
       "type": "string"
     },
@@ -1093,12 +1224,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -1425,13 +1550,6 @@
             "null"
           ]
         },
-        "include_evidence": {
-          "description": "`node`: include edge evidence in the response. Edges already carry\nevidence when loaded; this flag is accepted for contract parity and\ncurrently has no additional effect beyond `include_edges`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
         "kind": {
           "description": "`resolve`: hint for the identifier's expected node kind.",
           "type": [
@@ -1529,12 +1647,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -2106,6 +2218,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "salience": {
+          "description": "Replacement salience for `update`.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
           ]
         },
         "source_id": {
@@ -2824,7 +2944,7 @@
     "PruneMcpRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe), `exec` (destructive —\nrequires `axon:admin` and `confirm: true`), or the collection-prune\nconvenience operations `dedupe`/`purge`. `target` is either a bare source\nid or `collection:<name>` for `plan|exec`; `purge` requires a target URL or\nsource key; `dedupe` scans the configured collection.",
+      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare source\nid or `collection:<name>`.",
       "properties": {
         "collection": {
           "type": [
@@ -2857,7 +2977,7 @@
           ]
         },
         "subaction": {
-          "description": "`plan`, `exec`, `dedupe`, or `purge`. Defaults to `plan` when omitted\nso a bare `prune` call never mutates state.",
+          "description": "`plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`\ncall never mutates state.",
           "type": [
             "string",
             "null"
@@ -2886,9 +3006,7 @@
     "PruneSubaction": {
       "enum": [
         "plan",
-        "exec",
-        "dedupe",
-        "purge"
+        "exec"
       ],
       "type": "string"
     },
@@ -3034,6 +3152,85 @@
         "week",
         "month",
         "year"
+      ],
+      "type": "string"
+    },
+    "ResetMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirm": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_artifacts": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_config": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "plan_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stores": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "plan",
+          "enum": [
+            "plan",
+            "exec"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResetSubaction": {
+      "enum": [
+        "plan",
+        "exec"
       ],
       "type": "string"
     },
@@ -3321,7 +3518,7 @@
           "description": "Optional acquisition scope override (e.g. `page`, `site`, `repo`).\nWhen omitted, the classified family's default scope is used."
         },
         "source": {
-          "description": "Source input string: a local path, git repository URL, feed URL,\nyoutube target, reddit target, web URL, session selector\n(`session:<claude|codex|gemini>:<path>`), or registry target\n(`pkg:<npm|pypi|crates>/<package>`). Accepts the `input` alias.",
+          "description": "Source input string: a local path, git repository URL, feed URL,\nyoutube target, reddit target, web URL, session selector\n(`session:<claude|codex|gemini>:<path>`), or registry target\n(`pkg:<npm|pypi|crates>/<package>`).",
           "type": [
             "string",
             "null"
@@ -3384,12 +3581,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -3526,6 +3717,148 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "UploadsMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_ref": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "content_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "purpose": {
+          "enum": [
+            "source_artifact",
+            "import",
+            "evaluation",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_options": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "received",
+            "completed",
+            "aborted",
+            "expired",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "list",
+          "enum": [
+            "list",
+            "create",
+            "get",
+            "put_content",
+            "complete",
+            "abort"
+          ],
+          "type": "string"
+        },
+        "upload_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UploadsSubaction": {
+      "enum": [
+        "list",
+        "create",
+        "get",
+        "put_content",
+        "complete",
+        "abort"
       ],
       "type": "string"
     },
@@ -3682,22 +4015,10 @@
       {
         "action": "artifacts",
         "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "uploads",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "collections",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "reset",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       }
     ],
     "generated_by": "cargo xtask schemas mcp",
-    "live_action_count": 26,
+    "live_action_count": 29,
     "owner_crates": [
       "axon-mcp",
       "axon-api"
@@ -3709,22 +4030,22 @@
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
       {
-        "checksum": "sha256:26b9c44e56bd67c3a16783714d0bb16f60d4a3dec70c891b677226221d169c16",
+        "checksum": "sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:92abd2a8908099a9221f486475b78939bc9d19bb86a2a1e6279f17436c00b78f",
+        "checksum": "sha256:a293302f1a968bc224a63eb91b6c81887dd7d77401ae32d7788007a4f9446e51",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
       {
-        "checksum": "sha256:fe0bc74dd850407fd249d86e24541f64518e403aa4a6a87130764e7336834548",
+        "checksum": "sha256:0c95fc9c78900b2e1a80a4c51c51f9b9d00a93645f59afc0578bcaaa5169cb0e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs"
       },
       {
-        "checksum": "sha256:0eaaaaaf9782d9165b519401a91bbf784485088ae34a618dd512755606706118",
+        "checksum": "sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
       },
@@ -3734,32 +4055,32 @@
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
       {
-        "checksum": "sha256:96cfe605350599e1432f5c3b05a3ac43837de800d594dde2e681f66187c47a6f",
+        "checksum": "sha256:c110f0119100cbdaf2038ca40ce8c9ca6aafc41d775e85cce8fd1176011cdd27",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
       {
-        "checksum": "sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee",
+        "checksum": "sha256:f525fb9c6b14755f9cc86b02f5604f242dbbd5a80ceb6e6918332c57e6bf976b",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:56ef14cfdf7564d97e1fe633e6351ceda6291fd2ed6960f18ce170b4b0cb03f1",
+        "checksum": "sha256:ed3a76c78dca2dc241ec0b0f8138b798a9079a5e5897f4a4dfc468b0018c0b07",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:c41f8cc8ec5df5a8ab83693d878d788a2232518ff6896d71cc27a829538dfefa",
+        "checksum": "sha256:3695a5406130e632e42ef9a8a5215a139a0711d187c49d7a74301110c0555dcf",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
       {
-        "checksum": "sha256:4b80827f0cd3429b74a18de7f51d266545c13f490a298cb43f05e610157b23d9",
+        "checksum": "sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:f39593aa939f1e5fff1a17832402dfaff5223e65f64e9b9c0a20ef0fbbdbbd27",
+        "checksum": "sha256:459c7000a7147c07fd59d8e7122f1d55926edc454a9395bfba75951ea1af78fb",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

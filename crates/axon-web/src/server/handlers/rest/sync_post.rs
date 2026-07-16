@@ -122,7 +122,11 @@ pub(crate) async fn v1_map(State(state): State<RestState>, Json(req): Json<MapBo
         return r;
     }
     let opts = transport::map_options(req.limit, req.offset);
-    match map_svc::discover(state.cfg.as_ref(), &req.url, opts, None).await {
+    let ctx = match state.service_context().await {
+        Ok(ctx) => ctx,
+        Err(err) => return map_service_error(err.as_ref()),
+    };
+    match map_svc::discover_with_context(ctx.as_ref(), &req.url, opts, None).await {
         Ok(result) => Json(result).into_response(),
         Err(err) => map_service_error(err.as_ref()),
     }

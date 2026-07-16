@@ -29,6 +29,30 @@ fn collections_rejects_unsupported_delete_subaction() {
 }
 
 #[test]
+fn uploads_request_is_strict_and_keeps_staging_identity_explicit() {
+    let request: McpSystemRequest = serde_json::from_value(serde_json::json!({
+        "action": "uploads",
+        "subaction": "complete",
+        "upload_id": "upl_abc",
+        "sha256": "a".repeat(64)
+    }))
+    .unwrap();
+    let McpSystemRequest::Uploads(request) = request else {
+        panic!("expected uploads request")
+    };
+    assert_eq!(request.upload_id.as_deref(), Some("upl_abc"));
+    assert!(
+        serde_json::from_value::<McpSystemRequest>(serde_json::json!({
+            "action": "uploads",
+            "subaction": "get",
+            "upload_id": "upl_abc",
+        "artifact_id": "art_not_allowed"
+        }))
+        .is_err()
+    );
+}
+
+#[test]
 fn watch_accepts_canonical_cursor_and_status_fields() {
     let request: McpWatchRequest = serde_json::from_value(serde_json::json!({
         "action": "watch",

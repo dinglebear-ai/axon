@@ -460,6 +460,24 @@ fn phase_1_operation_dtos_reject_unknown_fields() {
 }
 
 #[test]
+fn upload_lifecycle_keeps_upload_and_artifact_id_domains_distinct() {
+    let created = UploadCreateResult {
+        upload_id: UploadId::new("upl_abc"),
+        put_url: "/v1/uploads/upl_abc/content".to_string(),
+        expires_at: Timestamp("2026-07-17T00:00:00Z".to_string()),
+    };
+    let completed = UploadCompleteResult {
+        upload_id: created.upload_id.clone(),
+        artifact_id: ArtifactId::new("art_raw_def"),
+        source_ref: "artifact://art_raw_def".to_string(),
+        warnings: Vec::new(),
+    };
+    assert_ne!(created.upload_id.0, completed.artifact_id.0);
+    assert!(created.upload_id.0.starts_with("upl_"));
+    assert!(completed.artifact_id.0.starts_with("art_"));
+}
+
+#[test]
 fn phase_1_registered_provider_dtos_reject_unknown_fields() {
     let search_err = serde_json::from_value::<SearchRequest>(serde_json::json!({
         "query": "axon phase 1",

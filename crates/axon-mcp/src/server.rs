@@ -142,7 +142,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph. The `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target. Destructive cleanup lives under action=prune; clean-slate administration lives under action=reset. `domains`, `sources`, `stats`, and `elicit_demo` are not valid MCP actions (see `server_authz::MCP_ACTION_SPECS` for the authoritative list).",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -169,7 +169,7 @@ impl AxonMcpServer {
             tracing::info!(action = %action, subaction = %subaction, dashboard_uri = STATUS_DASHBOARD_URI, "mcp_app status tool called — widget should render");
         }
         tracing::info!(action = %action, subaction = %subaction, "mcp request");
-        let response = if matches!(action.as_str(), "reset" | "collections") {
+        let response = if matches!(action.as_str(), "reset" | "collections" | "uploads") {
             let request: McpSystemRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
                 tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
                 invalid_params(format!("invalid request: {e}"))
@@ -177,6 +177,7 @@ impl AxonMcpServer {
             match request {
                 McpSystemRequest::Reset(req) => self.handle_reset(req).await?,
                 McpSystemRequest::Collections(req) => self.handle_collections(req).await?,
+                McpSystemRequest::Uploads(req) => self.handle_uploads(req).await?,
             }
         } else if action == "watch" {
             let request: McpWatchRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {

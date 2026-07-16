@@ -513,7 +513,7 @@
         "status"
       ],
       "requires_auth_scope": "read",
-      "summary": "Show async job queue status and recent activity"
+      "summary": "Show unified jobs, watches, cleanup, totals, and service status"
     },
     {
       "async": false,
@@ -800,13 +800,27 @@
       "async": false,
       "group": "reset",
       "maps_to_dto": null,
-      "mutates": true,
-      "name": "reset",
+      "mutates": false,
+      "name": "reset plan",
       "path": [
-        "reset"
+        "reset",
+        "plan"
       ],
       "requires_auth_scope": "admin",
-      "summary": "Destructive clean-slate reset of local stores (dry-run by default)"
+      "summary": "Create a reviewable clean-slate reset plan without deleting data"
+    },
+    {
+      "async": false,
+      "group": "reset",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "reset exec",
+      "path": [
+        "reset",
+        "exec"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Execute a reviewed clean-slate reset plan"
     },
     {
       "async": false,
@@ -1150,7 +1164,7 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:8e88ff8fefd05e02f96a3ce2867c694838952b8bf0b29733f1392041a1b2b851",
+        "checksum": "sha256:59ce15c277975d84d96c336bca544eff273919eb017f37e82a8ac41617410dcd",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1170,7 +1184,7 @@
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:332a55ba1a35f8a45a100130c5495a636dad058f02978b8fd27bfcd3c27db739",
+        "checksum": "sha256:564bc02048653da406cc92da5e1885ab1ef24c22934144189d7409f64c2d349e",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },
@@ -1180,7 +1194,7 @@
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },
       {
-        "checksum": "sha256:fe3bc7c5b9109814c097ceca2efca8fb09d3be417b2258aa4bb54b7e4c3d3033",
+        "checksum": "sha256:f02fc12d30fb18e2b3fd2ca52a8fc35d798c8300255e2924c09124dc131456e0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part2.rs"
       },

@@ -68,6 +68,7 @@ pub mod sync;
 pub mod system;
 pub mod transport;
 pub mod types;
+pub mod uploads;
 pub mod watch;
 pub(crate) mod web_source;
 pub use web_source::{

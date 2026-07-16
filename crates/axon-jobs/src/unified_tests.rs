@@ -14,9 +14,8 @@ async fn store() -> SqliteUnifiedJobStore {
 }
 
 async fn seed_source(pool: &sqlx::SqlitePool) {
-    // jobs.source_id FKs to the contract `sources` table (axon-ledger), not the
-    // legacy axon_source_* set. Seed a minimal row so a job with source_id set
-    // satisfies the FK at INSERT.
+    // jobs.source_id FKs to the contract `sources` table (axon-ledger). Seed a
+    // minimal row so a job with source_id set satisfies the FK at INSERT.
     sqlx::query(
         "INSERT OR IGNORE INTO sources (
             source_id, committed_generation, summary_json, created_at, updated_at

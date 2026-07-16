@@ -24,6 +24,7 @@ pub mod authorize;
 pub mod batch;
 pub mod classify;
 pub mod dispatch;
+mod dispatch_kind;
 pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
@@ -135,7 +136,7 @@ async fn index_source_inner(
         .unwrap_or_else(|| ctx.cfg().collection.clone());
     let owner_id = DEFAULT_OWNER_ID;
 
-    let counts = dispatch_kind(
+    let counts = dispatch_kind::dispatch_kind(
         kind,
         route.scope,
         ctx,
@@ -234,7 +235,7 @@ async fn drain_source_cleanup_debt(
         runtime.vector_store.as_ref(),
         graph_store.as_deref(),
         memory_store.as_deref(),
-        None,
+        Some(runtime.jobs.as_ref()),
         Some(runtime.artifact_store.as_ref()),
         Some(runtime.document_cache.as_ref()),
         collection,
@@ -249,10 +250,10 @@ async fn drain_source_cleanup_debt(
 /// Degrades independently per store — a failure to open either one is logged
 /// and yields `None` for that store rather than failing `index_source` (the
 /// generation is already published by the time this runs). The memory store
-/// is opened through [`crate::memory::memory_store`] — the same composed
-/// (graph-mirrored, vector-backed) store every `memory` subaction uses — so a
-/// drained `forget()` also hides the memory's vector points and graph recall
-/// edges, not just its SQLite row.
+/// is opened through [`crate::memory::memory_store`] — the same
+/// SQLite-authoritative store every `memory` subaction uses. The drain also
+/// receives the unified job store so a successful `forget()` enqueues its
+/// canonical terminal `memory://` publication.
 async fn open_cleanup_debt_stores(
     ctx: &ServiceContext,
 ) -> (
@@ -299,149 +300,6 @@ async fn open_cleanup_debt_stores(
 /// `registry`, which each cap their discovered-manifest item count before
 /// diffing. `local`/`git` do not take a `max_items` cap today, so it is not
 /// threaded to them.
-#[allow(clippy::too_many_arguments)]
-async fn dispatch_kind(
-    kind: SourceInputKind,
-    scope: SourceScope,
-    ctx: &ServiceContext,
-    cfg: &axon_core::config::Config,
-    runtime: &TargetLocalSourceRuntime,
-    input: &str,
-    collection: &str,
-    owner_id: &str,
-    auth_snapshot: Option<&AuthSnapshot>,
-    embed: bool,
-    output: &axon_api::source::OutputPolicy,
-    limits: &axon_api::source::SourceLimits,
-    route: &axon_api::source::RoutePlan,
-    project_filter: Option<&str>,
-    execution: &SourceExecutionContext,
-) -> anyhow::Result<IndexCounts> {
-    match kind {
-        SourceInputKind::Local => {
-            dispatch::dispatch_local(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                route,
-            )
-            .await
-        }
-        SourceInputKind::Git => {
-            dispatch::dispatch_git(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::Feed | SourceInputKind::Youtube | SourceInputKind::Reddit => {
-            dispatch_item_limited_kind(
-                kind,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::Web => {
-            dispatch_web_kind(
-                cfg,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                scope,
-                auth_snapshot,
-                embed,
-                output,
-                limits,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::Session => {
-            dispatch::dispatch_session(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
-                project_filter,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::Registry => {
-            dispatch_item_limited_kind(
-                kind,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::CliTool => {
-            dispatch::dispatch_cli_tool(runtime, input, owner_id, auth_snapshot, route).await
-        }
-        SourceInputKind::McpTool => {
-            dispatch::dispatch_mcp_tool(runtime, input, owner_id, auth_snapshot, route).await
-        }
-        SourceInputKind::Memory => {
-            dispatch::dispatch_memory(
-                ctx,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceInputKind::Upload => {
-            dispatch::dispatch_upload(
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                route,
-                execution,
-            )
-            .await
-        }
-        // Unsupported is handled by the caller before dispatch.
-        SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_item_limited_kind(

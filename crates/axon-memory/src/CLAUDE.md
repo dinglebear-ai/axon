@@ -3,8 +3,9 @@
 `axon-memory` owns **durable user/agent memory as a first-class source-like
 domain**: memory records and their full lifecycle (remember, search, show, link,
 supersede, review, decay, reinforce, archive, context), memory graph links, and
-context assembly. Memory is **not** a generic source adapter and does **not** own
-the vector store — it is an observable, SourceGraph-linked durable domain. Full
+context assembly. A narrow `memory://` adapter projects authoritative records
+through the canonical source pipeline; this crate does **not** own source
+orchestration or vector publication. Full
 contract (owns / API / deps / tests):
 [../../../docs/pipeline-unification/crates/axon-memory/README.md](../../../docs/pipeline-unification/crates/axon-memory/README.md)
 · behavior spec:
@@ -13,25 +14,24 @@ contract (owns / API / deps / tests):
 ## Status — live crate, Phase 8 landed
 The full lifecycle is real and tested: `SqliteMemoryStore` (remember, search,
 show, link, supersede, reinforce, decay, review, update, pin, archive, forget,
-compact, import, export), `VectorBackedMemoryStore` (Qdrant indexing via
-`MemoryVectorConfig`/`MemoryBatchLimits`, batched embedding with partial-failure
-recovery), and `GraphBackedMemoryStore` (mirrors lifecycle transitions into
-`axon-graph` via bounded, atomic `GraphBackedMemoryMirror` batches with
-retryable review markers on partial failure) all compose in `axon-services::memory::
-memory_store()` as `Vector(Graph(Sqlite))`. `context.rs`, `link.rs`, `recall.rs`,
+compact, import, export) and recall-only `VectorBackedMemoryStore` are live.
+`axon-services::memory::memory_store()` composes vector recall over SQLite while
+successful mutations synchronously run or durably enqueue canonical
+`memory://` source publication. `GraphBackedMemoryStore` remains available for
+isolated domain tests, but production mutation graph writes come from adapter
+graph candidates in the source pipeline. `context.rs`, `link.rs`, `recall.rs`,
 and `review.rs` remain marker files — their real logic already lives inside
 `store.rs`/`sqlite.rs`/`sqlite/*.rs` rather than as separate modules; do not
-duplicate it there. Memory is still **not** a generic source adapter and does
-**not** own the vector store directly — it composes over injected
-`VectorStore`/`GraphStore` boundaries.
+duplicate it there. SQLite remains authoritative; vector and graph state are
+derived publications.
 
 ## Module map
 | File | Owns |
 |---|---|
 | `store.rs` | `MemoryStore` trait + `FakeMemoryStore` — the durable boundary all callers use |
 | `sqlite.rs` + `sqlite/{error,lifecycle,compact,rows}.rs` | `SqliteMemoryStore` — full lifecycle implementation (remember/search/show/link/supersede/reinforce/decay/review/update/pin/archive/forget/compact/import/export) |
-| `vector.rs` + `vector/{batch,payload}.rs` | `VectorBackedMemoryStore` decorator — Qdrant indexing, batched embed with partial-failure recovery |
-| `graph.rs` | `GraphBackedMemoryStore`/`GraphBackedMemoryMirror` decorator — mirrors lifecycle into `axon-graph`; also `memory_graph_candidates()` |
+| `vector.rs` + `vector/search.rs` | `VectorBackedMemoryStore` recall decorator over canonical `source_kind=memory` vectors; mutation methods delegate only |
+| `graph.rs` | reusable graph decorator/mirror for isolated domain composition; production graph candidates are emitted by `axon-adapters::memory` |
 | `migration.rs` | forward-only SQLite memory schema |
 | `record.rs` | `MemoryRecord` — memory record shape + retention rules |
 | `decay.rs` | `MemoryDecayPolicy` — decay + reinforcement rules |
@@ -40,7 +40,8 @@ duplicate it there. Memory is still **not** a generic source adapter and does
 
 ## Boundary — keep OUT of this crate
 - General source acquisition, source routing, parser registry, general SourceGraph storage.
-- Vector store **implementation** and direct Qdrant client ownership — build indexing requests, do not own the provider.
+- Vector publication, deletion, or direct Qdrant client ownership. Memory
+  mutations hand stable identities to the canonical source pipeline.
 - RAG answer synthesis outside memory context retrieval; transport command rendering.
 
 ## Dependencies
@@ -56,6 +57,10 @@ duplicate it there. Memory is still **not** a generic source adapter and does
 - Public memory export reads authoritative SQLite metadata records. Qdrant
   points are derived recall indexes, so `qdrant_page_size` remains reserved
   for vector maintenance rather than defining export correctness.
+- No memory lifecycle mutation writes a generation-0 vector or directly mirrors
+  a production graph node. A queued source job is the durable publication
+  recovery marker; an enqueue failure appends `memory.source_sync_pending` to
+  memory history.
 
 ## DTO ownership
 Wire DTOs (`MemoryRecord`, `MemoryLink`, `MemoryDecayPolicy`,

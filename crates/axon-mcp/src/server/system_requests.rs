@@ -1,6 +1,6 @@
 use axon_api::mcp_schema::ResponseMode;
 use axon_api::mcp_schema::WatchSubaction;
-use axon_api::source::LifecycleStatus;
+use axon_api::source::{ContentRef, LifecycleStatus, MetadataMap, UploadPurpose, UploadStatusKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 pub(super) enum McpSystemRequest {
     Reset(ResetMcpRequest),
     Collections(CollectionsMcpRequest),
+    Uploads(UploadsMcpRequest),
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -49,6 +50,39 @@ pub(super) enum CollectionsSubaction {
     #[default]
     List,
     Get,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct UploadsMcpRequest {
+    pub subaction: Option<UploadsSubaction>,
+    pub upload_id: Option<String>,
+    pub filename: Option<String>,
+    pub content_type: Option<String>,
+    pub size_bytes: Option<u64>,
+    pub purpose: Option<UploadPurpose>,
+    pub sha256: Option<String>,
+    pub source_hint: Option<String>,
+    pub content: Option<String>,
+    pub content_ref: Option<ContentRef>,
+    pub source_options: Option<MetadataMap>,
+    pub reason: Option<String>,
+    pub status: Option<UploadStatusKind>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum UploadsSubaction {
+    #[default]
+    List,
+    Create,
+    Get,
+    PutContent,
+    Complete,
+    Abort,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

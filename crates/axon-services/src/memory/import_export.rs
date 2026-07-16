@@ -8,9 +8,11 @@
 //! and the MCP `memory` `import`/`export` subactions.
 
 use super::*;
+use anyhow::bail;
 use axon_api::source::{
     ArtifactId, ArtifactKind, ArtifactRef, MemoryExportRequest, MemoryExportResult,
-    MemoryImportMode, MemoryImportRequest, MemoryImportResult, Visibility,
+    MemoryImportMode, MemoryImportRequest, MemoryImportResult, MemoryScope, MemoryStatus,
+    Visibility,
 };
 use axon_core::artifacts::write_configured_output;
 use sha2::{Digest, Sha256};
@@ -88,9 +90,50 @@ pub async fn import(
         ctx,
         axon_api::source::OperationKind::MemoryImport,
         request_json,
-        || async move { store.import(req).await.map_err(store_err) },
+        || async move {
+            let mut sync_ids = replaced_scope_memory_ids(store.as_ref(), &req).await?;
+            let result = store.import(req).await.map_err(store_err)?;
+            sync_ids.extend(result.created_ids.iter().cloned());
+            if !result.dry_run && !sync_ids.is_empty() {
+                super::sync::sync_memory_records(ctx, store.as_ref(), sync_ids, "import").await?;
+            }
+            Ok(result)
+        },
     )
     .await
+}
+
+async fn replaced_scope_memory_ids(
+    store: &dyn MemoryStore,
+    request: &MemoryImportRequest,
+) -> Result<Vec<axon_api::source::MemoryId>> {
+    if request.mode != MemoryImportMode::ReplaceScope || request.dry_run {
+        return Ok(Vec::new());
+    }
+    let scopes = request
+        .records
+        .iter()
+        .map(|record| (record.scope.kind.clone(), record.scope.value.clone()))
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut ids = Vec::new();
+    for (kind, value) in scopes {
+        let existing = store
+            .export(MemoryExportRequest {
+                scope: Some(MemoryScope { kind, value }),
+                include_archived: true,
+                include_working: true,
+            })
+            .await
+            .map_err(store_err)?;
+        ids.extend(
+            existing
+                .records
+                .into_iter()
+                .filter(|record| record.status != MemoryStatus::Archived)
+                .map(|record| record.memory_id),
+        );
+    }
+    Ok(ids)
 }
 
 /// Export memory records matching a scope.

@@ -148,7 +148,8 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 
 fn route_to_test_path(path: &str) -> String {
     path.replace("{id}", &Uuid::nil().to_string())
-        .replace("{artifact_id}", "artifact_report_missing")
+        .replace("{artifact_id}", "art_report_missing")
+        .replace("{upload_id}", "upl_missing")
         .replace("{memory_id}", "mem_test")
         .replace("{watch_id}", "watch_test")
         .replace("{path}", "missing.txt")
@@ -384,6 +385,10 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/artifacts",
         "/v1/artifacts/{artifact_id}",
         "/v1/artifacts/{artifact_id}/content",
+        "/v1/uploads",
+        "/v1/uploads/{upload_id}",
+        "/v1/uploads/{upload_id}/content",
+        "/v1/uploads/{upload_id}/complete",
     ] {
         assert!(
             paths.contains_key(path),

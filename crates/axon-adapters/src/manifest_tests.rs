@@ -63,10 +63,10 @@ fn item_identity_joins_relative_keys_for_source_families() {
         ),
         (
             SourceKind::Upload,
-            "upload://artifact_123",
+            "upload://art_123",
             "file/README.md",
             "file/README.md",
-            "upload://artifact_123/file/README.md",
+            "upload://art_123/file/README.md",
         ),
         (
             SourceKind::CliTool,

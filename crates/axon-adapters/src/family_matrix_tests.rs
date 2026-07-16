@@ -24,7 +24,7 @@ fn family_matrix_contains_required_source_families() {
         SourceFamily::Registry,
         SourceFamily::CliTool,
         SourceFamily::McpTool,
-        SourceFamily::MemoryIntegration,
+        SourceFamily::Memory,
     ] {
         assert!(families.contains(&expected), "missing {expected:?}");
     }
@@ -125,12 +125,12 @@ fn family_matrix_public_resolver_choices_include_memory() {
         .map(|spec| spec.family)
         .collect::<BTreeSet<_>>();
 
-    assert!(public_families.contains(&SourceFamily::MemoryIntegration));
+    assert!(public_families.contains(&SourceFamily::Memory));
 
     let memory = source_family_matrix()
         .iter()
-        .find(|spec| spec.family == SourceFamily::MemoryIntegration)
-        .expect("memory integration row");
+        .find(|spec| spec.family == SourceFamily::Memory)
+        .expect("memory source row");
     assert!(memory.is_source_adapter);
     assert_eq!(memory.supported_schemes, &["memory"]);
     assert_eq!(memory.shorthand_patterns, &["memory://mem_<id>"]);

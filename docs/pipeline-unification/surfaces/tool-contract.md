@@ -643,6 +643,7 @@ Upload subactions:
 | Subaction | Required Fields | Optional Fields | Result |
 |---|---|---|---|
 | `create` | `filename`, `content_type`, `size_bytes`, `purpose` | `sha256`, `source_hint` | upload descriptor |
+| `list` | none | `status`, `limit`, `cursor` | upload page |
 | `get` | `upload_id` | none | upload status |
 | `put_content` | `upload_id`, `content` or `content_ref` | `sha256` | received status |
 | `complete` | `upload_id` | `sha256`, `source_options` | artifact/source ref |
@@ -882,7 +883,6 @@ Required top-level fields:
   "subactions": {},
   "adapters": [],
   "scopes": {},
-  "removed_actions": {},
   "examples": [],
   "limits": {},
   "auth": {},

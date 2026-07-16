@@ -203,7 +203,7 @@ Grouped actions use action-specific subactions:
 | `watch` | `create`, `list`, `get`, `status`, `exec`, `pause`, `resume`, `delete`, `history` |
 | `artifacts` | `list`, `get`, `content` |
 | `uploads` | `create`, `get`, `put_content`, `complete`, `abort` |
-| `prune` | `plan`, `exec`, `dedupe`, `purge` |
+| `prune` | `plan`, `exec` |
 | `collections` | `list`, `get` |
 | `graph` | `kinds`, `resolve`, `query`, `node`, `edge`, `source` |
 | `providers` | `list`, `get` |

@@ -1,5 +1,5 @@
 use super::system_requests::{
-    CollectionsSubaction, McpSystemRequest, ResetSubaction, WatchMcpRequest,
+    CollectionsSubaction, McpSystemRequest, ResetSubaction, UploadsSubaction, WatchMcpRequest,
 };
 use super::{common::MCP_TOOL_SCHEMA_URI, server_authz};
 use crate::schema::{AxonRequest, ExtractSubaction, JobsSubaction, MemorySubaction};
@@ -220,6 +220,7 @@ fn axon_subaction_metadata() -> Value {
         "prune": ["plan", "exec"],
         "collections": enum_values_for::<CollectionsSubaction>(),
         "reset": enum_values_for::<ResetSubaction>(),
+        "uploads": enum_values_for::<UploadsSubaction>(),
     })
 }
 

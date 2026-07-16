@@ -6,13 +6,16 @@ use axon_api::source::*;
 
 use crate::SourceAdapter;
 use crate::local_test_support::*;
-use crate::upload::{UploadSourceAdapter, UploadSourceProvider, upload_id_from_uri};
+use crate::upload::{UploadSourceAdapter, UploadSourceProvider, upload_source_identity_from_uri};
 
 struct StagedProvider(Option<ArtifactReadResult>);
 
 #[async_trait]
 impl UploadSourceProvider for StagedProvider {
-    async fn get(&self, _upload_id: &str) -> crate::adapter::Result<Option<ArtifactReadResult>> {
+    async fn get(
+        &self,
+        _source_identity: &str,
+    ) -> crate::adapter::Result<Option<ArtifactReadResult>> {
         Ok(self.0.clone())
     }
 }
@@ -124,10 +127,19 @@ async fn upload_adapter_rejects_mismatched_route_adapter() {
 
 #[test]
 fn upload_identity_is_strict_and_canonical() {
-    assert_eq!(upload_id_from_uri("upload://upl_abc").unwrap(), "upl_abc");
-    assert_eq!(upload_id_from_uri("artifact://art_abc").unwrap(), "art_abc");
+    assert_eq!(
+        upload_source_identity_from_uri("upload://upl_abc").unwrap(),
+        "upl_abc"
+    );
+    assert_eq!(
+        upload_source_identity_from_uri("artifact://art_abc").unwrap(),
+        "art_abc"
+    );
     for invalid in ["upload://", "upload://relative", "upload://upl_a/child"] {
-        assert!(upload_id_from_uri(invalid).is_err(), "accepted {invalid}");
+        assert!(
+            upload_source_identity_from_uri(invalid).is_err(),
+            "accepted {invalid}"
+        );
     }
 }
 
@@ -141,7 +153,7 @@ async fn upload_materialization_resolves_staged_content_without_path_trust() {
     metadata.insert("filename".to_string(), serde_json::json!("notes.md"));
     let staged = ArtifactReadResult {
         handle: ArtifactHandle {
-            artifact_id: ArtifactId::new("upl_abc"),
+            artifact_id: ArtifactId::new("art_raw_abc"),
             artifact_kind: ArtifactKind::RawContent,
             uri: None,
         },

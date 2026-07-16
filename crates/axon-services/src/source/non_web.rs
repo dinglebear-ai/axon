@@ -1,13 +1,14 @@
 //! Generic adapter-owned pipeline for non-web sources.
 
+mod helpers;
 mod metadata;
 mod publish;
 mod vectorize;
 
-use std::sync::Arc;
+use helpers::*;
 
 use anyhow::Context as _;
-use axon_adapters::{SourceAdapter, SourceEnricher};
+use axon_adapters::SourceAdapter;
 use axon_api::source::*;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
@@ -460,175 +461,4 @@ async fn record_terminal_status(
     })
     .await?;
     Ok(())
-}
-
-fn stage_counts(output: &IndexCounts) -> StageCounts {
-    StageCounts {
-        items_total: Some(output.documents_prepared + output.removed),
-        items_done: output.documents_prepared,
-        documents_total: Some(output.documents_prepared),
-        documents_done: output.documents_prepared,
-        chunks_total: Some(output.chunks_prepared),
-        chunks_done: output.chunks_prepared,
-        bytes_total: None,
-        bytes_done: 0,
-    }
-}
-
-async fn record_running_phase(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    phase: PipelinePhase,
-    message: &str,
-) -> anyhow::Result<()> {
-    runtime
-        .jobs
-        .update_status(JobStatusUpdate {
-            job_id: input.plan.job_id,
-            source_id: Some(input.plan.route.source.source_id.clone()),
-            status: LifecycleStatus::Running,
-            phase,
-            stage_id: None,
-            counts: None,
-            current: None,
-            message: Some(message.to_string()),
-            error: None,
-        })
-        .await?;
-    emitter.running(phase, message).await;
-    Ok(())
-}
-
-async fn enrich(
-    enricher: Arc<dyn SourceEnricher>,
-    plan: &SourcePlan,
-    items: &[AcquiredSourceItem],
-) -> anyhow::Result<std::collections::BTreeMap<SourceItemKey, SourceEnrichment>> {
-    let mut output = std::collections::BTreeMap::new();
-    for item in items {
-        let result = enricher.enrich(plan, item).await?;
-        output.insert(item.manifest_item.source_item_key.clone(), result);
-    }
-    Ok(output)
-}
-
-fn apply_enrichments(
-    documents: &mut [SourceDocument],
-    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
-) {
-    for document in documents {
-        if let Some(enrichment) = enrichments.get(&document.source_item_key) {
-            document.parser_hints.extend(enrichment.parse_hints.clone());
-            document.chunk_hints.extend(enrichment.chunk_hints.clone());
-            document.metadata.extend(enrichment.metadata.clone());
-        }
-    }
-}
-
-fn enrichment_graph_candidates(
-    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
-) -> std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>> {
-    enrichments
-        .iter()
-        .filter_map(|(key, enrichment)| {
-            (!enrichment.graph_candidates.is_empty())
-                .then(|| (key.clone(), enrichment.graph_candidates.clone()))
-        })
-        .collect()
-}
-
-fn collection_spec(collection: &str, dimensions: u32) -> CollectionSpec {
-    CollectionSpec {
-        collection: collection.to_string(),
-        dense: VectorConfig {
-            name: "dense".to_string(),
-            dimensions,
-            distance: VectorDistance::Cosine,
-        },
-        payload_indexes: [
-            "source_id",
-            "source_generation",
-            "source_item_key",
-            "document_id",
-            "chunk_id",
-        ]
-        .into_iter()
-        .map(payload_index)
-        .collect(),
-        sparse: Some(SparseVectorConfig {
-            name: "bm42".to_string(),
-            modifier: SparseVectorModifier::Idf,
-        }),
-        aliases: Vec::new(),
-        distance: Some(VectorDistance::Cosine),
-        metadata: MetadataMap::new(),
-    }
-}
-
-fn payload_index(field_name: &str) -> PayloadIndexSpec {
-    PayloadIndexSpec {
-        field_name: field_name.to_string(),
-        field_schema: PayloadFieldSchema::Keyword,
-        required_for_filters: true,
-    }
-}
-
-fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u64>) {
-    if let Some(limit) = max_items.and_then(|value| usize::try_from(value).ok()) {
-        manifest.items.truncate(limit);
-    }
-}
-
-fn manifest_has_changes(diff: &SourceManifestDiff) -> bool {
-    !diff.added.is_empty()
-        || !diff.modified.is_empty()
-        || !diff.removed.is_empty()
-        || !diff.failed.is_empty()
-}
-
-fn empty_source_counts() -> SourceCounts {
-    SourceCounts {
-        items_total: 0,
-        items_changed: 0,
-        documents_total: 0,
-        chunks_total: 0,
-        vector_points_total: 0,
-        bytes_total: 0,
-    }
-}
-
-async fn ensure_providers_ready(runtime: &TargetLocalSourceRuntime) -> anyhow::Result<()> {
-    let embedding = runtime.embedding_provider.capabilities().await?;
-    let vector = runtime.vector_store.capabilities().await?;
-    for capability in [&embedding, &vector] {
-        if !matches!(
-            capability.health,
-            HealthStatus::Healthy | HealthStatus::Degraded
-        ) {
-            return Err(capability
-                .last_error
-                .clone()
-                .unwrap_or_else(|| {
-                    ApiError::new(
-                        "provider.not_ready",
-                        ErrorStage::Planning,
-                        format!("provider {} is not ready", capability.provider_id.0),
-                    )
-                })
-                .into());
-        }
-    }
-    if !vector
-        .vector_store
-        .as_ref()
-        .is_some_and(|capability| capability.generation_publish)
-    {
-        anyhow::bail!("vector provider does not support source generation publication");
-    }
-    Ok(())
-}
-
-fn timestamp() -> Timestamp {
-    Timestamp::from(chrono::Utc::now())
 }

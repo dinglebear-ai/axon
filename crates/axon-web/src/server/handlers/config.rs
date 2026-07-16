@@ -305,7 +305,6 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
     match verb.as_str() {
         "status" => Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Status(
             StatusRequest {
-                subaction: None,
                 response_mode: Some(ResponseMode::Inline),
             },
         )))),

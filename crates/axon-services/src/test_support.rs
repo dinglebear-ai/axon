@@ -34,13 +34,6 @@ pub(crate) fn committed_generation_payload(generation: &SourceGenerationId) -> V
     )
 }
 
-pub(crate) fn source_generation_payload(generation: &SourceGenerationId) -> Value {
-    json!(
-        generation_payload_i64(generation, "source_generation")
-            .expect("test generation id is payload-encodable")
-    )
-}
-
 pub(crate) fn is_uncommitted_generation(value: &Value) -> bool {
     value.is_null()
 }

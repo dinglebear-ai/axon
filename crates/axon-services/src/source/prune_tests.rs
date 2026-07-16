@@ -557,12 +557,11 @@ async fn drain_full_forgets_named_memory_records_when_memory_store_wired() {
     )
     .await;
 
-    // The pre-existing VectorDelete debt from `seed_two_generations` plus the
-    // MemoryPrune debt just added both resolve. The auto-emitted GraphPrune
-    // debt for the same removed "old" item fails closed — this call passes
-    // `graph_store = None`.
-    assert_eq!(summary.resolved, 2);
-    assert_eq!(summary.failed, 1);
+    // The memory debt resolves. Graph cleanup fails closed because this call
+    // has no graph store, and dependent ledger cleanup remains pending behind
+    // that unresolved graph debt.
+    assert_eq!(summary.resolved, 1);
+    assert_eq!(summary.failed, 2);
     let record = memory.get(memory_id).await.unwrap().unwrap();
     assert_eq!(record.status, MemoryStatus::Forgotten);
 }

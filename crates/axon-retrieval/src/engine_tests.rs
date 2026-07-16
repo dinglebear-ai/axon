@@ -26,7 +26,7 @@ fn request() -> RetrievalRequest {
         source_id: Some(SourceId::new("src-docs")),
         generation: Some(SourceGenerationId::new("7")),
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
-        excluded_namespaces: Vec::new(),
+        excluded_source_kinds: Vec::new(),
         byte_budget: 80,
         token_budget: 20,
     }

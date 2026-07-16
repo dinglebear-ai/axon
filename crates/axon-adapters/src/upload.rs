@@ -35,7 +35,7 @@ pub const MODULE_NAME: &str = "upload";
 const ADAPTER_NAME: &str = "upload";
 
 mod materialize;
-pub use materialize::{UploadSourceProvider, upload_id_from_uri};
+pub use materialize::{UploadSourceProvider, upload_source_identity_from_uri};
 
 #[derive(Debug, Clone, Default)]
 pub struct UploadSourceAdapter;

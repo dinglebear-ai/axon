@@ -26,12 +26,11 @@ this crate per its charter below — it lives in
 internals shared with `code_search`/legacy `query_hits`, which stay in
 `axon-vector` until a separate slice migrates them; porting it here would mean
 either duplicating that shared dispatch layer or changing its ranking
-algorithm, so it was deliberately left out of this cutover. Namespace
-isolation between plain `query`/`ask` and `memory search` is enforced here via
-`RetrievalPlan.excluded_namespaces` (only applied when no positive
-`namespace_filters` is set). `filter.rs`, `rank.rs`, and `graph.rs` remain
-marker files — filtering lives in `engine.rs`'s `search_filters`/
-`excluded_by_namespace`, ranking is delegated to the vector store's hybrid
+algorithm, so it was deliberately left out of this cutover. Memory isolation
+between plain `query`/`ask` and `memory search` is enforced here via
+`RetrievalPlan.excluded_source_kinds`. `filter.rs`, `rank.rs`, and `graph.rs`
+remain marker files — filtering lives in `engine.rs`'s `search_filters`/
+`excluded_by_source_kind`, ranking is delegated to the vector store's hybrid
 RRF fusion, not reimplemented here.
 
 ## Module map
@@ -44,7 +43,7 @@ RRF fusion, not reimplemented here.
 | `context.rs` | `ContextBundle` — context budgets, source grouping, result explanation |
 | `citation.rs` | `Citation` assembly mapped to stored source metadata/chunk spans |
 | `retrieve.rs` | `retrieve_document`/`RetrievedDocument` — full-document fetch by URL, composed over `axon-vectors::QdrantVectorStore::retrieve_by_url` |
-| `memory.rs` | `MEMORY_VECTOR_NAMESPACE`/`memory_retrieval_filter()` — the memory-namespace opt-in boundary |
+| `memory.rs` | `MEMORY_SOURCE_KIND`/`memory_retrieval_filter()` — the memory-source opt-in boundary |
 | `testing.rs` | shared test fixtures |
 | `filter.rs` / `rank.rs` / `graph.rs` | marker files — logic lives in `engine.rs` and the injected vector store; do not duplicate |
 
