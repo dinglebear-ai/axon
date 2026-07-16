@@ -152,7 +152,7 @@ mod detectors;
 pub use boundary::{
     DefaultRedactor, MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION, RedactionContext,
     RedactionReport, RedactionStatus, RedactionSurface, Redactor, redact_metadata,
-    redact_text_checked,
+    redact_metadata_checked, redact_public_write, redact_text_checked, stamp_redaction_metadata,
 };
 pub use detectors::{
     BARE_SECRET_TOKEN_PREFIXES, FORBIDDEN_FIELD_FRAGMENTS, FORBIDDEN_VALUE_FRAGMENTS,

@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use base64::Engine as _;
 
-use super::{ArtifactBytesWriteRequest, ArtifactStore, Result, capability};
+use super::{
+    ArtifactBytesWriteRequest, ArtifactStore, Result, capability, redact_artifact_metadata,
+};
 
 #[derive(Debug, Clone)]
 pub struct FileArtifactStore {
@@ -45,6 +47,7 @@ impl FileArtifactStore {
         metadata: MetadataMap,
         bytes: Vec<u8>,
     ) -> Result<ArtifactHandle> {
+        let metadata = redact_artifact_metadata(metadata)?;
         let digest = sha256_hex(&bytes);
         let identity_digest = artifact_identity_digest_parts(
             kind,

@@ -21,6 +21,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::collector::{ObservabilitySink, Result};
 use crate::metric::MetricSample;
+use crate::redaction::{parse_stamped_event, redact_event, stamp_event_json};
 use crate::sequence::SequenceRegistry;
 
 /// Durable, standalone observability sink.
@@ -93,12 +94,13 @@ impl SqliteObservabilitySink {
     /// registry-assigned value before serialization, so the durable row and the
     /// returned/serialized event agree.
     async fn persist_event(&self, mut event: SourceProgressEvent) -> Result<()> {
+        let write = redact_event(event)?;
+        event = write.payload;
         let job_id = event.job_id;
         event.sequence = self.sequences.next(job_id);
         let sequence = i64::try_from(event.sequence)
             .map_err(|_| map_str("observe.sequence_overflow", "sequence exceeds i64"))?;
-        let event_json = serde_json::to_string(&event)
-            .map_err(|e| map_str("observe.serialize_failed", e.to_string()))?;
+        let event_json = stamp_event_json(&event, &write.redaction)?;
 
         sqlx::query(
             "INSERT INTO axon_observe_events \
@@ -137,8 +139,7 @@ impl SqliteObservabilitySink {
         rows.into_iter()
             .map(|row| {
                 let raw: String = row.get(0);
-                serde_json::from_str(&raw)
-                    .map_err(|e| map_str("observe.deserialize_failed", e.to_string()))
+                parse_stamped_event(&raw)
             })
             .collect()
     }

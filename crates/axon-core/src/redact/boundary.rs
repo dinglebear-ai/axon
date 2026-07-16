@@ -14,18 +14,21 @@
 //! (`axon-jobs`, `axon-memory`, `axon-graph`, `axon-cli`, `axon-mcp`,
 //! `axon-web`) can share one boundary instead of re-implementing detection.
 
-use axon_api::source::{MetadataMap, SourceKind, Visibility};
+use axon_api::source::{MetadataMap, RedactionMetadata, SourceKind, Visibility};
 use serde_json::Value;
+
+pub use axon_api::source::RedactionStatus;
 
 use super::REDACTION_PLACEHOLDER;
 use super::detectors::{
     field_is_opaque_token_context, forbidden_field_name, last_field_segment,
-    secret_like_field_name, value_contains_secret, value_is_high_entropy_token,
+    secret_like_field_name, value_contains_secret, value_is_absolute_local_path,
+    value_is_high_entropy_token,
 };
 
 /// Redaction contract version stamped alongside `redaction_status` so a
 /// payload records which detector generation classified it.
-pub const REDACTION_VERSION: &str = "2026-07-01";
+pub const REDACTION_VERSION: &str = "2026-07-16";
 
 /// Surface a redaction pass is scrubbing for. Mirrors the surface table in
 /// the redaction contract.
@@ -42,27 +45,6 @@ pub enum RedactionSurface {
     RestResponse,
 }
 
-/// Redaction status recorded on every public payload write.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RedactionStatus {
-    /// No detector fired; the payload is unmodified.
-    Clean,
-    /// At least one value was scrubbed or one field was dropped.
-    Redacted,
-    /// Redaction could not be completed safely; the write must be blocked.
-    Failed,
-}
-
-impl RedactionStatus {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Clean => "clean",
-            Self::Redacted => "redacted",
-            Self::Failed => "failed",
-        }
-    }
-}
-
 /// Context passed to every redaction call.
 #[derive(Debug, Clone)]
 pub struct RedactionContext {
@@ -73,6 +55,16 @@ pub struct RedactionContext {
 }
 
 impl RedactionContext {
+    /// Default context for structured logs and trace fields.
+    pub fn logs() -> Self {
+        Self {
+            visibility_ceiling: Visibility::Internal,
+            surface: RedactionSurface::Logs,
+            source_kind: None,
+            allow_internal_paths: false,
+        }
+    }
+
     /// Default context for a vector-payload write: `internal` ceiling, no
     /// internal-path allowance.
     pub fn vector_payload(source_kind: Option<SourceKind>) -> Self {
@@ -160,10 +152,13 @@ impl RedactionContext {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RedactionReport {
     pub status_redacted: bool,
+    pub visibility_ceiling: Visibility,
     pub redacted_fields: Vec<String>,
     pub dropped_fields: Vec<String>,
     pub detectors_triggered: Vec<String>,
 }
+
+const MAX_REDACTION_REPORT_ENTRIES: usize = 256;
 
 impl RedactionReport {
     /// Redaction status derived from what the pass actually did.
@@ -177,28 +172,50 @@ impl RedactionReport {
 
     /// Field count actually scrubbed in place (value replaced), not dropped.
     pub fn redacted_field_count(&self) -> u32 {
-        self.redacted_fields.len() as u32
+        u32::try_from(self.redacted_fields.len()).unwrap_or(u32::MAX)
     }
 
     /// Field count dropped outright (secret-shaped field name).
     pub fn dropped_field_count(&self) -> u32 {
-        self.dropped_fields.len() as u32
+        u32::try_from(self.dropped_fields.len()).unwrap_or(u32::MAX)
+    }
+
+    pub fn detector_count(&self) -> u32 {
+        u32::try_from(self.detectors_triggered.len()).unwrap_or(u32::MAX)
+    }
+
+    pub fn metadata(&self, context: &RedactionContext) -> RedactionMetadata {
+        RedactionMetadata {
+            redaction_status: self.status(),
+            redaction_version: REDACTION_VERSION.to_string(),
+            visibility: context.visibility_ceiling,
+            redacted_field_count: self.redacted_field_count(),
+            dropped_field_count: self.dropped_field_count(),
+            detector_count: self.detector_count(),
+            detector_names: self.detectors_triggered.clone(),
+        }
     }
 
     fn record_redacted(&mut self, field: &str, detector: &str) {
         self.status_redacted = true;
-        self.redacted_fields.push(field.to_string());
+        if self.redacted_fields.len() < MAX_REDACTION_REPORT_ENTRIES {
+            self.redacted_fields.push(field.to_string());
+        }
         self.push_detector(detector);
     }
 
     fn record_dropped(&mut self, field: &str, detector: &str) {
         self.status_redacted = true;
-        self.dropped_fields.push(field.to_string());
+        if self.dropped_fields.len() < MAX_REDACTION_REPORT_ENTRIES {
+            self.dropped_fields.push(field.to_string());
+        }
         self.push_detector(detector);
     }
 
     fn push_detector(&mut self, detector: &str) {
-        if !self.detectors_triggered.iter().any(|d| d == detector) {
+        if self.detectors_triggered.len() < MAX_REDACTION_REPORT_ENTRIES
+            && !self.detectors_triggered.iter().any(|d| d == detector)
+        {
             self.detectors_triggered.push(detector.to_string());
         }
     }
@@ -260,9 +277,12 @@ impl Redactor for DefaultRedactor {
         }
     }
 
-    fn redact_json(&self, input: Value, _context: &RedactionContext) -> (Value, RedactionReport) {
-        let mut report = RedactionReport::default();
-        let redacted = self.redact_value("", input, &mut report);
+    fn redact_json(&self, input: Value, context: &RedactionContext) -> (Value, RedactionReport) {
+        let mut report = RedactionReport {
+            visibility_ceiling: context.visibility_ceiling,
+            ..RedactionReport::default()
+        };
+        let redacted = self.redact_value("", input, context, &mut report);
         (redacted, report)
     }
 
@@ -293,7 +313,13 @@ impl Redactor for DefaultRedactor {
 }
 
 impl DefaultRedactor {
-    fn redact_value(&self, path: &str, value: Value, report: &mut RedactionReport) -> Value {
+    fn redact_value(
+        &self,
+        path: &str,
+        value: Value,
+        context: &RedactionContext,
+        report: &mut RedactionReport,
+    ) -> Value {
         match value {
             Value::String(text) => {
                 // `chunk_text` (the retrievable body) is intentionally NOT
@@ -306,6 +332,10 @@ impl DefaultRedactor {
                 }
                 if value_contains_secret(&text) {
                     report.record_redacted(path, "secret_value");
+                    return Value::String(REDACTION_PLACEHOLDER.to_string());
+                }
+                if !context.allow_internal_paths && value_is_absolute_local_path(&text) {
+                    report.record_redacted(path, "local_path");
                     return Value::String(REDACTION_PLACEHOLDER.to_string());
                 }
                 // Gitea/GitLab/OAuth-style opaque tokens carry no fixed
@@ -324,7 +354,7 @@ impl DefaultRedactor {
                     .into_iter()
                     .enumerate()
                     .map(|(index, item)| {
-                        self.redact_value(&format!("{path}[{index}]"), item, report)
+                        self.redact_value(&format!("{path}[{index}]"), item, context, report)
                     })
                     .collect(),
             ),
@@ -350,7 +380,10 @@ impl DefaultRedactor {
                         report.record_dropped(&child_path, "secret_field_name");
                         continue;
                     }
-                    out.insert(field, self.redact_value(&child_path, child, report));
+                    out.insert(
+                        field,
+                        self.redact_value(&child_path, child, context, report),
+                    );
                 }
                 Value::Object(out)
             }
@@ -396,6 +429,9 @@ pub fn redact_metadata(
     };
     (MetadataMap(map), report)
 }
+
+mod public_write;
+pub use public_write::{redact_metadata_checked, redact_public_write, stamp_redaction_metadata};
 
 #[cfg(test)]
 #[path = "boundary_tests.rs"]
