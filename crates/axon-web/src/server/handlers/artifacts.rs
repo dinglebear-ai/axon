@@ -100,7 +100,17 @@ pub(crate) async fn artifact_content(
     let content = axon_services::artifacts::artifact_content(&state.service_context, artifact_id)
         .await
         .map_err(HttpError::from_api_error)?;
-    let mut response = Body::from(content.bytes).into_response();
+    artifact_content_response(content, query).await
+}
+
+async fn artifact_content_response(
+    content: axon_services::artifacts::ArtifactContentFile,
+    query: ArtifactContentQuery,
+) -> Result<Response, HttpError> {
+    let file = tokio::fs::File::open(&content.path)
+        .await
+        .map_err(|error| open_artifact_error(&error, &content.artifact_id.0))?;
+    let mut response = Body::from_stream(ReaderStream::new(file)).into_response();
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_TYPE,
@@ -115,6 +125,16 @@ pub(crate) async fn artifact_content(
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::CONTENT_LENGTH,
+        HeaderValue::from_str(&content.size_bytes.to_string()).map_err(|_| {
+            HttpError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "read_error",
+                "artifact has an invalid content length",
+            )
+        })?,
     );
     if query.download || !is_inline_content_type(&content.content_type) {
         headers.insert(

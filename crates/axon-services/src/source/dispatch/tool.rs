@@ -1,235 +1,230 @@
-//! CLI/MCP tool source dispatch.
-//!
-//! Tool sources are metadata-only by default. Execution/call mode is a separate
-//! path because it crosses a local-command boundary and must re-check auth,
-//! allowlists, secret-path guards, and artifact redaction immediately before
-//! invoking the adapter.
+//! CLI/MCP tool dispatch through the canonical non-web source pipeline.
 
+use async_trait::async_trait;
 use axon_adapters::{
-    SourceAdapter, cli_tool::CliToolSourceAdapter, mcp_tool::McpToolSourceAdapter,
+    SourceAdapter, acquisition::MaterializedSource, cli_tool::CliToolSourceAdapter,
+    mcp_tool::McpToolSourceAdapter,
 };
 use axon_api::source::{
-    AdapterRef, AuthSnapshot, AuthorityLevel, DocumentCounts, ItemCounts, LifecycleStatus,
-    PublishGenerationRequest, PublishState, SourceCounts, SourceGeneration, SourceGenerationId,
-    SourceKind, SourceManifest, SourceManifestDiff, SourcePlan, SourceRequest, SourceSummary,
-    Timestamp,
+    AdapterRef, AuthSnapshot, ConfigSnapshotId, EffectiveLimits, LifecycleStatus, PipelinePhase,
+    Severity, SourceAcquisition, SourceAdapterCapability, SourceKind, SourceLimits, SourceManifest,
+    SourceManifestDiff, SourcePlan, SourceRequest, StageExecutionResult, Visibility,
 };
 use axon_core::logging::log_info;
+use sha2::{Digest, Sha256};
 
+use super::dispatch_materialized;
+use super::tool_artifacts::capture_tool_output_artifacts;
+use super::tool_auth::{
+    AuthorizedToolExecution, ToolExecutionPolicy, authorize_cli_tool_execution,
+    authorize_mcp_tool_execution,
+};
 use crate::context::TargetLocalSourceRuntime;
+use crate::source::SourceExecutionContext;
 use crate::source::result_map::IndexCounts;
 
-use super::tool_artifacts::capture_tool_output_artifacts;
-use super::tool_auth::{authorize_cli_tool_execution, authorize_mcp_tool_execution};
-
-/// CLI tool source: commit metadata or execute an allowlisted command through
-/// the `CliToolSourceAdapter`. Execution requires `scope=api`, execute auth,
-/// an exact command allowlist, and redacted artifact capture.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_cli_tool(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
+    collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
     route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
+    policy: &ToolExecutionPolicy,
 ) -> anyhow::Result<IndexCounts> {
-    let execution_authorized = authorize_cli_tool_execution(input, auth_snapshot, route)?;
-    log_info(&format!(
-        "command=source kind=cli_tool mode={} input={input}",
-        if execution_authorized {
-            "execute"
-        } else {
-            "metadata"
-        }
-    ));
-    dispatch_static_tool_adapter(
+    let authorization = authorize_cli_tool_execution(input, auth_snapshot, route, policy)?;
+    dispatch_tool_adapter(
         runtime,
         input,
+        collection,
         owner_id,
+        auth_snapshot,
+        embed,
         route,
+        execution,
         SourceKind::CliTool,
         "cli_tool",
         &CliToolSourceAdapter::new(),
-        execution_authorized,
+        authorization,
     )
     .await
 }
 
-/// MCP tool source: commit schema metadata or call an allowlisted target
-/// through the `McpToolSourceAdapter`. Calls require `scope=api`, execute
-/// auth, exact target/caller allowlists, a caller command, and redacted
-/// artifact capture.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_mcp_tool(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
+    collection: &str,
     owner_id: &str,
     auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
     route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
+    policy: &ToolExecutionPolicy,
 ) -> anyhow::Result<IndexCounts> {
-    let execution_authorized = authorize_mcp_tool_execution(input, auth_snapshot, route)?;
-    log_info(&format!(
-        "command=source kind=mcp_tool mode={} input={input}",
-        if execution_authorized {
-            "call"
-        } else {
-            "metadata"
-        }
-    ));
-    dispatch_static_tool_adapter(
+    let authorization = authorize_mcp_tool_execution(input, auth_snapshot, route, policy)?;
+    dispatch_tool_adapter(
         runtime,
         input,
+        collection,
         owner_id,
+        auth_snapshot,
+        embed,
         route,
+        execution,
         SourceKind::McpTool,
         "mcp_tool",
         &McpToolSourceAdapter::new(),
-        execution_authorized,
+        authorization,
     )
     .await
 }
 
-async fn dispatch_static_tool_adapter(
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_tool_adapter(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
+    collection: &str,
     owner_id: &str,
+    auth_snapshot: Option<&AuthSnapshot>,
+    embed: bool,
     route: &axon_api::source::RoutePlan,
+    execution: &SourceExecutionContext,
     source_kind: SourceKind,
     adapter_name: &'static str,
     adapter: &dyn SourceAdapter,
-    execution_authorized: bool,
+    authorization: AuthorizedToolExecution,
 ) -> anyhow::Result<IndexCounts> {
-    let plan = static_tool_plan(
-        input,
-        route,
-        source_kind,
-        adapter_name,
-        execution_authorized,
-    );
-    let mut manifest = adapter.discover(&plan).await?;
-    let previous_source = runtime
-        .ledger
-        .get_source(plan.route.source.source_id.clone())
-        .await?;
-    runtime
-        .ledger
-        .upsert_source(static_tool_source_summary(
-            &plan,
-            owner_id,
-            LifecycleStatus::Running,
-            0,
-            0,
-        ))
-        .await?;
-    let diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
-    if let Some(output) =
-        unchanged_static_tool_output(runtime, previous_source, &plan, owner_id, &manifest, &diff)
-            .await?
-    {
-        return Ok(output);
-    }
-
-    let generation = runtime
-        .ledger
-        .create_generation(plan.route.source.source_id.clone())
-        .await?;
-    manifest.generation = generation.generation.clone();
-    let diff = retarget_diff_generation(diff, &generation.generation);
-    runtime.ledger.put_manifest(manifest.clone()).await?;
-    let mut acquisition = adapter.acquire(&plan, &diff).await?;
-    let artifacts = capture_tool_output_artifacts(runtime, &plan, &mut acquisition).await?;
-    let documents = adapter.normalize(&plan, acquisition).await?.data;
-    let completed = runtime
-        .ledger
-        .complete_generation(completed_static_tool_generation(
-            generation,
-            &diff,
-            manifest.items.len() as u64,
-            documents.len() as u64,
-        ))
-        .await?;
-    let published = runtime
-        .ledger
-        .publish_generation(PublishGenerationRequest {
-            source_id: completed.source_id.clone(),
-            generation: completed.generation.clone(),
-            expected_previous_generation: diff.previous_generation.clone(),
-        })
-        .await?;
-    runtime
-        .ledger
-        .upsert_source(static_tool_source_summary(
-            &plan,
-            owner_id,
-            LifecycleStatus::Completed,
-            manifest.items.len() as u64,
-            documents.len() as u64,
-        ))
-        .await?;
-
-    Ok(IndexCounts {
-        job_id: plan.job_id,
-        source_id: plan.route.source.source_id,
-        generation: published.generation,
-        documents_prepared: documents.len() as u64,
-        chunks_prepared: 0,
-        vector_points_written: 0,
-        removed: diff.counts.removed,
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        artifacts,
-        inline: None,
-    })
-}
-
-async fn unchanged_static_tool_output(
-    runtime: &TargetLocalSourceRuntime,
-    previous_source: Option<SourceSummary>,
-    plan: &SourcePlan,
-    owner_id: &str,
-    manifest: &SourceManifest,
-    diff: &SourceManifestDiff,
-) -> anyhow::Result<Option<IndexCounts>> {
-    if diff.counts.added > 0 || diff.counts.modified > 0 || diff.counts.removed > 0 {
-        return Ok(None);
-    }
-    let Some(committed_generation) = diff.previous_generation.clone() else {
-        return Ok(None);
+    log_info(&format!(
+        "command=source kind={adapter_name} mode={} target_id={}",
+        if authorization.execute {
+            "execute"
+        } else {
+            "metadata"
+        },
+        redacted_target_id(input)
+    ));
+    let plan = tool_plan(route, source_kind, adapter_name, embed, &authorization);
+    let audited = AuditedToolAdapter {
+        inner: adapter,
+        runtime,
+        authorization,
+        caller_id: auth_snapshot.and_then(|snapshot| snapshot.caller_id.clone()),
+        raw_input: input,
     };
-    let documents_total = previous_source
-        .map(|source| source.counts.documents_total)
-        .unwrap_or(0);
-    runtime
-        .ledger
-        .upsert_source(static_tool_source_summary(
-            plan,
-            owner_id,
-            LifecycleStatus::Completed,
-            manifest.items.len() as u64,
-            documents_total,
-        ))
-        .await?;
-    Ok(Some(IndexCounts {
-        job_id: plan.job_id,
-        source_id: plan.route.source.source_id.clone(),
-        generation: committed_generation,
-        documents_prepared: 0,
-        chunks_prepared: 0,
-        vector_points_written: 0,
-        removed: 0,
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        artifacts: Vec::new(),
-        inline: None,
-    }))
+    dispatch_materialized(
+        runtime,
+        &audited,
+        plan,
+        collection,
+        owner_id,
+        auth_snapshot,
+        execution,
+        |plan| async { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
 }
 
-fn static_tool_plan(
-    input: &str,
+struct AuditedToolAdapter<'a> {
+    inner: &'a dyn SourceAdapter,
+    runtime: &'a TargetLocalSourceRuntime,
+    authorization: AuthorizedToolExecution,
+    caller_id: Option<String>,
+    raw_input: &'a str,
+}
+
+#[async_trait]
+impl SourceAdapter for AuditedToolAdapter<'_> {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn version(&self) -> &'static str {
+        self.inner.version()
+    }
+
+    async fn capabilities(&self) -> axon_adapters::adapter::Result<SourceAdapterCapability> {
+        self.inner.capabilities().await
+    }
+
+    async fn discover(&self, plan: &SourcePlan) -> axon_adapters::adapter::Result<SourceManifest> {
+        self.inner.discover(&self.plan_with_policy(plan)).await
+    }
+
+    async fn acquire(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+    ) -> axon_adapters::adapter::Result<SourceAcquisition> {
+        if self.authorization.execute {
+            persist_execution_audit(
+                self.runtime,
+                plan,
+                self.authorization.policy_id,
+                self.caller_id.as_deref(),
+            )
+            .await
+            .map_err(|error| {
+                let safe_error = axon_core::redact::redact_secrets(&error.to_string());
+                tracing::error!(job_id = %plan.job_id.0, error = %safe_error, "tool audit persistence failed");
+                axon_api::source::ApiError::new(
+                    "tool.audit_persist_failed",
+                    axon_error::ErrorStage::Authorizing,
+                    "tool execution blocked because durable audit persistence failed",
+                )
+            })?;
+        }
+        let mut acquisition = self
+            .inner
+            .acquire(&self.plan_with_policy(plan), diff)
+            .await?;
+        capture_tool_output_artifacts(self.runtime, plan, &mut acquisition)
+            .await
+            .map_err(|error| {
+                let safe_error = axon_core::redact::redact_secrets(&error.to_string());
+                tracing::error!(job_id = %plan.job_id.0, error = %safe_error, "tool artifact persistence failed");
+                axon_api::source::ApiError::new(
+                    "tool.artifact_persist_failed",
+                    axon_error::ErrorStage::Publishing,
+                    "tool output artifact persistence failed",
+                )
+            })?;
+        Ok(acquisition)
+    }
+
+    async fn normalize(
+        &self,
+        plan: &SourcePlan,
+        acquisition: SourceAcquisition,
+    ) -> axon_adapters::adapter::Result<StageExecutionResult<Vec<axon_api::source::SourceDocument>>>
+    {
+        self.inner
+            .normalize(&self.plan_with_policy(plan), acquisition)
+            .await
+    }
+}
+
+impl AuditedToolAdapter<'_> {
+    fn plan_with_policy(&self, plan: &SourcePlan) -> SourcePlan {
+        let mut plan = plan.clone();
+        plan.request.source = self.raw_input.to_string();
+        plan.request.metadata.insert(
+            "tool_execution_policy".to_string(),
+            self.authorization.policy_metadata.clone(),
+        );
+        plan
+    }
+}
+
+fn tool_plan(
     routed: &axon_api::source::RoutePlan,
     source_kind: SourceKind,
     adapter_name: &'static str,
-    execution_authorized: bool,
+    embed: bool,
+    authorization: &AuthorizedToolExecution,
 ) -> SourcePlan {
     let adapter = AdapterRef {
         name: adapter_name.to_string(),
@@ -239,108 +234,86 @@ fn static_tool_plan(
     route.adapter = adapter.clone();
     route.source.adapter = adapter;
     route.source.source_kind = source_kind;
-    route.scope = routed.scope;
 
-    let mut request = SourceRequest::new(input.to_string());
-    request.scope = Some(routed.scope);
+    let mut request = SourceRequest::new(route.source.canonical_uri.clone());
+    request.scope = Some(route.scope);
     request.adapter = Some(adapter_name.to_string());
-    request.embed = false;
-    request.options = route.validated_options.clone();
+    request.embed = embed;
+    request.options = invocation_options(routed);
     request.metadata.insert(
         "tool_execute_authorized".to_string(),
-        serde_json::json!(execution_authorized),
+        serde_json::json!(authorization.execute),
     );
-
     SourcePlan {
         job_id: super::placeholder_job_id(),
         request,
         route,
         stage_plan: Vec::new(),
-        limits: axon_api::source::EffectiveLimits {
-            request: axon_api::source::SourceLimits::default(),
-            adapter_defaults: axon_api::source::SourceLimits::default(),
-            config_defaults: axon_api::source::SourceLimits::default(),
-            effective: axon_api::source::SourceLimits::default(),
+        limits: EffectiveLimits {
+            request: SourceLimits::default(),
+            adapter_defaults: SourceLimits::default(),
+            config_defaults: SourceLimits::default(),
+            effective: SourceLimits::default(),
         },
-        config_snapshot_id: axon_api::source::ConfigSnapshotId::new("cfg_tool_source"),
+        config_snapshot_id: ConfigSnapshotId::new("cfg_tool_source"),
         provider_reservations: Vec::new(),
     }
 }
 
-fn static_tool_source_summary(
+fn invocation_options(route: &axon_api::source::RoutePlan) -> axon_api::source::AdapterOptions {
+    const CALLER_POLICY_KEYS: &[&str] = &[
+        "command_allowlist",
+        "tool_allowlist",
+        "mcp_allowlist",
+        "mcp_caller_command",
+        "mcp_caller_allowlist",
+        "env_allowlist",
+        "side_effect_class",
+        "timeout_ms",
+        "output_cap_bytes",
+    ];
+    let mut options = route.validated_options.clone();
+    for key in CALLER_POLICY_KEYS {
+        options.values.0.remove(*key);
+    }
+    options
+}
+
+async fn persist_execution_audit(
+    runtime: &TargetLocalSourceRuntime,
     plan: &SourcePlan,
-    _owner_id: &str,
-    status: LifecycleStatus,
-    items_total: u64,
-    documents_total: u64,
-) -> SourceSummary {
-    SourceSummary {
-        source_id: plan.route.source.source_id.clone(),
-        canonical_uri: plan.route.source.canonical_uri.clone(),
-        display_name: plan.route.source.canonical_uri.clone(),
-        source_kind: plan.route.source.source_kind,
-        adapter: plan.route.adapter.clone(),
-        authority: AuthorityLevel::Inferred,
-        status,
-        counts: SourceCounts {
-            items_total,
-            items_changed: documents_total,
-            documents_total,
-            chunks_total: 0,
-            vector_points_total: 0,
-            bytes_total: 0,
-        },
-        created_at: timestamp(),
-        updated_at: timestamp(),
-        graph_node_ids: Vec::new(),
-        last_refreshed_at: if status == LifecycleStatus::Completed {
-            Some(timestamp())
-        } else {
-            None
-        },
-        user_label: None,
-        tags: vec!["tool".to_string(), "metadata".to_string()],
-        watch_id: None,
-        last_job_id: Some(plan.job_id),
-    }
+    policy_id: &str,
+    caller_id: Option<&str>,
+) -> anyhow::Result<()> {
+    let sequence = runtime
+        .jobs
+        .latest_event_sequence(plan.job_id)
+        .await?
+        .unwrap_or(0)
+        + 1;
+    let mut event = axon_api::source::SourceProgressEvent::minimal(
+        plan.job_id,
+        sequence,
+        PipelinePhase::Authorizing,
+        LifecycleStatus::Completed,
+        Severity::Info,
+        format!(
+            "tool execution authorized policy={policy_id} target_id={} caller_id={}",
+            redacted_target_id(&plan.request.source),
+            caller_id.unwrap_or("trusted-local")
+        ),
+    );
+    event.visibility = Visibility::Internal;
+    event.source_id = Some(plan.route.source.source_id.clone());
+    event.adapter = Some(plan.route.adapter.clone());
+    event.scope = Some(plan.route.scope);
+    event.dedupe_key = Some(format!("tool-audit:{}", plan.job_id.0));
+    runtime.jobs.append_event(event).await?;
+    Ok(())
 }
 
-fn retarget_diff_generation(
-    mut diff: SourceManifestDiff,
-    generation: &SourceGenerationId,
-) -> SourceManifestDiff {
-    diff.next_generation = generation.clone();
-    diff
-}
-
-fn completed_static_tool_generation(
-    generation: SourceGeneration,
-    diff: &SourceManifestDiff,
-    items_total: u64,
-    documents_total: u64,
-) -> SourceGeneration {
-    SourceGeneration {
-        status: LifecycleStatus::Completed,
-        publish_state: PublishState::Publishing,
-        published_at: None,
-        item_counts: ItemCounts {
-            added: diff.counts.added,
-            modified: diff.counts.modified,
-            removed: diff.counts.removed,
-            unchanged: diff.counts.unchanged,
-            failed: diff.counts.failed,
-        },
-        document_counts: DocumentCounts {
-            discovered: items_total,
-            prepared: documents_total,
-            embedded: 0,
-            published: 0,
-            failed: 0,
-        },
-        ..generation
-    }
-}
-
-fn timestamp() -> Timestamp {
-    Timestamp(chrono::Utc::now().to_rfc3339())
+fn redacted_target_id(input: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.as_bytes());
+    hex::encode(hasher.finalize())[..16].to_string()
 }

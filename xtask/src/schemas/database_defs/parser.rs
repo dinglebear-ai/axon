@@ -162,7 +162,7 @@ pub(super) fn inline_column_fk(entry: &str, column: &str) -> Option<ForeignKey> 
     let after = &entry[idx + "REFERENCES".len()..];
     let after_trim = after.trim_start();
     let name_end = after_trim.find('(').unwrap_or(after_trim.len());
-    let ref_table = after_trim[..name_end].trim().to_string();
+    let ref_table = clean_column_ref(after_trim[..name_end].trim().to_string());
     let paren_start = after_trim.find('(')?;
     let (cols, rest_start) = balanced_parens(after_trim, paren_start)?;
     let ref_columns = split_top_level(&cols, ',')
@@ -190,7 +190,7 @@ pub(super) fn parse_foreign_key_constraint(entry: &str) -> Option<ForeignKey> {
     let ref_idx = upper.find("REFERENCES")?;
     let after = &rest[ref_idx + "REFERENCES".len()..].trim_start();
     let name_end = after.find('(').unwrap_or(after.len());
-    let ref_table = after[..name_end].trim().to_string();
+    let ref_table = clean_column_ref(after[..name_end].trim().to_string());
     let paren_start = after.find('(')?;
     let (ref_cols, rest_start) = balanced_parens(after, paren_start)?;
     let ref_columns = split_top_level(&ref_cols, ',')

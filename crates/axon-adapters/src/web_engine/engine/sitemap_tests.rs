@@ -92,6 +92,81 @@ fn request_timeout_secs_rounds_up_with_minimum_one_second() {
 }
 
 #[test]
+fn sitemap_url_budget_caps_zero_and_oversized_page_limits() {
+    let uncapped = Config {
+        max_pages: 0,
+        ..Config::default()
+    };
+    let oversized = Config {
+        max_pages: u32::MAX,
+        ..Config::default()
+    };
+    let explicit = Config {
+        max_pages: 37,
+        ..Config::default()
+    };
+
+    assert_eq!(
+        sitemap_url_limit(&uncapped),
+        super::super::MAX_TRACKED_DISCOVERED_URLS
+    );
+    assert_eq!(
+        sitemap_url_limit(&oversized),
+        super::super::MAX_TRACKED_DISCOVERED_URLS
+    );
+    assert_eq!(sitemap_url_limit(&explicit), 37);
+}
+
+#[test]
+fn sitemap_fetch_budget_caps_zero_and_oversized_limits() {
+    let uncapped = Config {
+        max_sitemaps: 0,
+        ..Config::default()
+    };
+    let oversized = Config {
+        max_sitemaps: usize::MAX,
+        ..Config::default()
+    };
+    let explicit = Config {
+        max_sitemaps: 23,
+        ..Config::default()
+    };
+
+    assert_eq!(
+        sitemap_fetch_limit(&uncapped),
+        super::super::MAX_TRACKED_DISCOVERED_URLS
+    );
+    assert_eq!(
+        sitemap_fetch_limit(&oversized),
+        super::super::MAX_TRACKED_DISCOVERED_URLS
+    );
+    assert_eq!(sitemap_fetch_limit(&explicit), 23);
+}
+
+#[test]
+fn discovered_urls_are_rejected_at_insertion_budget() {
+    let mut urls = std::collections::HashSet::new();
+
+    assert!(insert_discovered_url(
+        &mut urls,
+        "https://example.com/a".to_string(),
+        2
+    ));
+    assert!(!insert_discovered_url(
+        &mut urls,
+        "https://example.com/b".to_string(),
+        2
+    ));
+    assert!(!insert_discovered_url(
+        &mut urls,
+        "https://example.com/c".to_string(),
+        2
+    ));
+    assert_eq!(urls.len(), 2);
+    assert!(!urls.contains("https://example.com/c"));
+}
+
+#[test]
 fn should_retry_status_permanent_dead_hosts_not_retried() {
     use reqwest::StatusCode;
     // 525 (DNS/NXDOMAIN) and 526 (host/TLS unreachable) are permanent —

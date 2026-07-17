@@ -16,6 +16,7 @@ mod execution;
 mod plan_store;
 mod planning;
 mod qdrant;
+mod recovery;
 mod sqlite;
 
 pub use qdrant::QdrantInventory;
@@ -192,17 +193,21 @@ async fn execute_saved_plan(
     if saved.plan_id != plan_id {
         return Err("reset.plan_id_mismatch: stored plan identity does not match request".into());
     }
-    if let Some(receipt) = plan_store::load_receipt(cfg, &saved.reset_id).await? {
+    let existing_receipt = plan_store::load_receipt(cfg, &saved.reset_id).await?;
+    if let Some(receipt) = existing_receipt.as_ref() {
+        if receipt.plan_id != saved.plan_id || receipt.reset_id != saved.reset_id {
+            return Err("reset.receipt_plan_mismatch: refusing another plan's receipt".into());
+        }
         if matches!(
             receipt.state,
             ResetExecutionState::Completed | ResetExecutionState::CompletedDegraded
         ) {
             let path = plan_store::receipt_path(cfg, &saved.reset_id)?;
-            return Ok(result_from_receipt(saved, receipt, path));
+            return Ok(result_from_receipt(saved, receipt.clone(), path));
         }
     }
     let expires = chrono::DateTime::parse_from_rfc3339(&saved.plan_expires_at_utc)?;
-    if expires < chrono::Utc::now() {
+    if expires < chrono::Utc::now() && existing_receipt.is_none() {
         return Err("reset.plan_expired: create and review a new reset plan".into());
     }
     if !saved.blockers.is_empty() {
@@ -211,14 +216,33 @@ async fn execute_saved_plan(
     if !cfg.reset_stores.is_empty() && resolve_stores(cfg)? != saved.stores {
         return Err("reset.plan_scope_changed: --stores differs from reviewed plan".into());
     }
-    let prepared = prepare_reset(cfg, saved.stores, saved.reset_id, saved.plan_id, false).await?;
+    let mut prepared = prepare_reset(
+        cfg,
+        saved.stores.clone(),
+        saved.reset_id.clone(),
+        saved.plan_id.clone(),
+        false,
+    )
+    .await?;
     if prepared.config_snapshot_id != saved.config_snapshot_id {
         return Err("reset.config_changed: create and review a new reset plan".into());
     }
-    if prepared.inventory_checksum != saved.inventory_checksum {
-        return Err("reset.inventory_changed: create and review a new reset plan".into());
-    }
-    execute_prepared_reset(cfg, prepared).await
+    recovery::validate_resumable_inventory(&saved, &prepared, existing_receipt.as_ref())?;
+
+    // Execution must keep returning the exact reviewed plan metadata. The
+    // fresh inventory above exists only to validate pending preconditions and
+    // completed postconditions; it must not silently mint a new expiry or plan.
+    prepared.plan = saved.plan.clone();
+    prepared.reset_plan = saved.reset_plan.clone();
+    prepared.estimates = saved.estimates.clone();
+    prepared.inventory_checksum = saved.inventory_checksum.clone();
+    prepared.config_snapshot_id = saved.config_snapshot_id.clone();
+    prepared.auth_snapshot_id = saved.auth_snapshot_id.clone();
+    prepared.confirmation_text = saved.confirmation_text.clone();
+    prepared.plan_expires_at_utc = saved.plan_expires_at_utc.clone();
+    prepared.receipt_preview_path = saved.receipt_path.clone();
+    prepared.blockers = saved.blockers.clone();
+    execute_prepared_reset(cfg, prepared, existing_receipt).await
 }
 
 fn result_from_receipt(
@@ -275,7 +299,7 @@ async fn prepare_reset(
         &artifact_root,
         artifact_files,
     );
-    let estimates = estimate(&plan);
+    let estimates = estimate(&plan, &sqlite_inv);
     let inventory_checksum = inventory_checksum(&stores, &plan, &estimates);
     let config_snapshot_id = format!("cfg_{}", planning::config_snapshot_id(cfg));
     let auth_snapshot_id = if dry_run {
@@ -356,36 +380,8 @@ fn planned_reset_result(prepared: PreparedReset) -> ResetResult {
 async fn execute_prepared_reset(
     cfg: &Config,
     mut prepared: PreparedReset,
+    existing_receipt: Option<ResetReceipt>,
 ) -> Result<ResetResult, Box<dyn Error>> {
-    let current_qdrant = if wants(&prepared.stores, RESET_STORE_VECTORS) {
-        Some(qdrant::inventory(cfg).await)
-    } else {
-        None
-    };
-    let current_artifacts = wants(&prepared.stores, RESET_STORE_ARTIFACTS)
-        .then(|| artifacts::count_files(&prepared.artifact_root));
-    let before_execute = build_plan(
-        cfg,
-        &prepared.stores,
-        &sqlite::inventory(&cfg.sqlite_path).await?,
-        current_qdrant.as_ref(),
-        &prepared.artifact_root,
-        current_artifacts,
-    );
-    let before_checksum = inventory_checksum(
-        &prepared.stores,
-        &before_execute,
-        &estimate(&before_execute),
-    );
-    if before_checksum != prepared.inventory_checksum {
-        return Err(format!(
-            "reset.inventory_changed: plan {} inventory changed before execution",
-            prepared.plan_id
-        )
-        .into());
-    }
-
-    let existing_receipt = plan_store::load_receipt(cfg, &prepared.reset_id).await?;
     let (receipt, receipt_path) = execution::execute_resumable(
         cfg,
         &prepared.stores,

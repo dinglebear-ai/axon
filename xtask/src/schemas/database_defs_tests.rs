@@ -64,7 +64,40 @@ fn jobs_table_carries_canonical_fields_and_foreign_keys() {
         .collect();
     assert!(fk_targets.contains(&"sources"));
     assert!(fk_targets.contains(&"axon_source_watches"));
+    assert!(
+        fk_targets
+            .iter()
+            .filter(|target| **target == "jobs")
+            .count()
+            >= 2
+    );
+    assert!(!fk_targets.contains(&"\"jobs\""));
     assert!(!fk_targets.contains(&"axon_watch_defs"));
+}
+
+#[test]
+fn migration_records_match_runtime_identity_and_order() {
+    let schema = parse_all(&workspace_root()).expect("parse real migration directories");
+    let namespaces: Vec<&str> = schema
+        .migrations
+        .iter()
+        .map(|migration| migration.namespace)
+        .collect();
+    assert_eq!(
+        namespaces,
+        [
+            "ledger", "jobs", "observe", "graph", "memory", "memory", "memory"
+        ]
+    );
+    for migration in &schema.migrations {
+        assert!(migration.version >= 1);
+        assert!(
+            migration
+                .name
+                .starts_with(&format!("{:04}_", migration.version))
+        );
+        assert_eq!(migration.checksum.len(), 64);
+    }
 }
 
 #[test]
@@ -81,6 +114,27 @@ fn source_manifests_composite_foreign_key_is_captured() {
         .expect("composite FK to source_generations present");
     assert_eq!(fk.columns, vec!["source_id", "generation"]);
     assert_eq!(fk.ref_columns, vec!["source_id", "generation"]);
+}
+
+#[test]
+fn source_watch_foreign_keys_preserve_runtime_lifecycle_boundaries() {
+    let schema = parse_all(&workspace_root()).expect("parse real migration directories");
+    let watches = schema
+        .tables
+        .get("axon_source_watches")
+        .expect("watches parsed");
+    assert!(
+        watches.foreign_keys.is_empty(),
+        "a watch may exist before its ledger source and its last job may be retained independently"
+    );
+
+    let runs = schema
+        .tables
+        .get("axon_source_watch_runs")
+        .expect("watch runs parsed");
+    assert_eq!(runs.foreign_keys.len(), 1);
+    assert_eq!(runs.foreign_keys[0].columns, ["watch_id"]);
+    assert_eq!(runs.foreign_keys[0].ref_table, "axon_source_watches");
 }
 
 #[test]

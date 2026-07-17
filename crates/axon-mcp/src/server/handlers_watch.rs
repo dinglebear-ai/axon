@@ -6,12 +6,12 @@
 
 use super::AxonMcpServer;
 use super::artifacts::{InlineHint, respond_with_mode};
-use super::common::{invalid_params, logged_internal_error};
+use super::common::{CURRENT_CALLER_AUTH_SNAPSHOT, invalid_params, logged_internal_error};
 use super::system_requests::WatchMcpRequest;
 use crate::schema::{AxonToolResponse, WatchSubaction};
 use axon_api::source::{
-    AdapterOptions, WatchExecRequest, WatchHistoryRequest, WatchId, WatchListRequest,
-    WatchSchedule, WatchUpdateRequest,
+    WatchExecRequest, WatchHistoryRequest, WatchId, WatchListRequest, WatchSchedule,
+    WatchUpdateRequest,
 };
 use axon_services::watch::{self as watch_svc, SourceWatchStoreTrait};
 use rmcp::ErrorData;
@@ -68,13 +68,14 @@ impl AxonMcpServer {
                 timezone: None,
             },
             embed: req.embed.unwrap_or(true),
-            options: AdapterOptions::default(),
-            scope: None,
+            options: req.options.clone().unwrap_or_default(),
+            scope: req.scope,
             collection: req.collection.clone(),
             enabled: req.enabled,
         };
+        let caller = current_caller_snapshot();
         let created =
-            watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request, None)
+            watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request, caller)
                 .await
                 .map_err(|e| invalid_params(e.to_string()))?;
         respond_with_mode(
@@ -187,10 +188,10 @@ impl AxonMcpServer {
                 cron: None,
                 timezone: None,
             }),
-            options: None,
-            embed: None,
+            options: req.options.clone(),
+            embed: req.embed,
             collection: req.collection.clone(),
-            scope: None,
+            scope: req.scope,
         };
         let updated = SourceWatchStoreTrait::update(&store, watch_id, update)
             .await
@@ -268,12 +269,8 @@ impl AxonMcpServer {
             &ctx,
             pool.as_deref(),
             watch_id,
-            WatchExecRequest {
-                reason: None,
-                refresh: None,
-                wait: None,
-            },
-            None,
+            watch_exec_request(&req),
+            current_caller_snapshot(),
         )
         .await
         .map_err(|e| logged_internal_error("watch.exec", e.as_ref()))?;
@@ -311,6 +308,20 @@ impl AxonMcpServer {
             InlineHint::Default,
         )
         .await
+    }
+}
+
+fn current_caller_snapshot() -> Option<axon_api::source::AuthSnapshot> {
+    CURRENT_CALLER_AUTH_SNAPSHOT
+        .try_with(Clone::clone)
+        .unwrap_or_default()
+}
+
+fn watch_exec_request(req: &WatchMcpRequest) -> WatchExecRequest {
+    WatchExecRequest {
+        reason: req.reason.clone(),
+        refresh: req.refresh,
+        wait: req.wait,
     }
 }
 

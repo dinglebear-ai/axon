@@ -31,6 +31,42 @@ fn namespaces_are_unique() {
     }
 }
 
+#[tokio::test]
+async fn pre_cutover_version_one_store_is_rejected_without_mutation() {
+    let pool = SqlitePool::connect(":memory:")
+        .await
+        .expect("open fixture pool");
+    sqlx::raw_sql(include_str!("migrations/fixtures/legacy_jobs_v1.sql"))
+        .execute(&pool)
+        .await
+        .expect("create legacy fixture");
+
+    let error = apply_all_migrations(&pool)
+        .await
+        .expect_err("legacy version-one store must fail closed");
+    let message = error.to_string();
+    assert!(message.contains("startup.incompatible_store"), "{message}");
+    assert!(message.contains("axon reset"), "{message}");
+
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read unchanged table inventory");
+    assert_eq!(tables, ["axon_applied_migrations", "jobs"]);
+    let receipt_columns: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('axon_applied_migrations') ORDER BY cid",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read unchanged receipt columns");
+    assert_eq!(
+        receipt_columns,
+        ["namespace", "version", "name", "applied_at"]
+    );
+}
+
 /// A fresh on-disk DB migrates cleanly: all sets apply, the contract `sources`
 /// table exists (SOLE-created by the ledger set), the jobs `jobs` table exists
 /// and its FK to `sources` resolves, and the observe/graph/memory tables exist.
@@ -146,4 +182,74 @@ async fn repeated_run_is_noop() {
         .await
         .expect("count after");
     assert_eq!(before, after, "no duplicate applied-migration rows");
+}
+
+#[tokio::test]
+async fn canonical_store_with_tampered_checksum_is_rejected() {
+    let pool = open_sqlite_pool(":memory:")
+        .await
+        .expect("create canonical store");
+    sqlx::query(
+        "UPDATE axon_applied_migrations SET checksum = 'tampered' \
+         WHERE namespace = 'jobs' AND version = 1",
+    )
+    .execute(&pool)
+    .await
+    .expect("tamper receipt");
+
+    let error = apply_all_migrations(&pool)
+        .await
+        .expect_err("tampered checksum must fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("names, versions, checksums, or epochs"),
+        "{error}"
+    );
+}
+
+#[tokio::test]
+async fn canonical_store_with_extra_table_is_rejected() {
+    let pool = open_sqlite_pool(":memory:")
+        .await
+        .expect("create canonical store");
+    sqlx::query("CREATE TABLE legacy_extra (id TEXT PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .expect("add legacy table");
+
+    let error = apply_all_migrations(&pool)
+        .await
+        .expect_err("table drift must fail closed");
+    assert!(error.to_string().contains("table inventory"), "{error}");
+}
+
+#[tokio::test]
+async fn migration_failure_rolls_back_schema_and_receipts_atomically() {
+    static BROKEN: &[SqlMigration] = &[SqlMigration {
+        version: 1,
+        name: "0001_broken",
+        sql: "CREATE TABLE partial_write (id TEXT); INVALID SQL",
+    }];
+    let pool = SqlitePool::connect(":memory:").await.expect("open pool");
+    let mut tx = pool.begin().await.expect("begin");
+    ensure_applied_table(&mut tx)
+        .await
+        .expect("create receipt table");
+    let error = apply_set(&mut tx, MigrationSet::new("broken", BROKEN))
+        .await
+        .expect_err("broken migration must fail");
+    assert!(error.to_string().contains("migration broken/0001_broken"));
+    tx.rollback().await.expect("rollback");
+
+    let table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count tables");
+    assert_eq!(
+        table_count, 0,
+        "failed migration must leave no schema writes"
+    );
 }

@@ -16,6 +16,23 @@ fn mcp_tool_plan(source: &str, scope: SourceScope) -> SourcePlan {
     )
 }
 
+fn authorize_call(plan: &mut SourcePlan, caller: Option<&str>) {
+    plan.request.metadata.insert(
+        "tool_execute_authorized".to_string(),
+        serde_json::json!(true),
+    );
+    plan.request.metadata.insert(
+        "tool_execution_policy".to_string(),
+        serde_json::json!({
+            "mcp_allowlist": ["labby/search"],
+            "mcp_caller_command": caller,
+            "env_allowlist": [],
+            "timeout_ms": 5_000,
+            "output_cap_bytes": 65_536,
+        }),
+    );
+}
+
 #[tokio::test]
 async fn mcp_tool_adapter_declares_tool_api_scopes() {
     let adapter = McpToolSourceAdapter::new();
@@ -103,18 +120,7 @@ async fn mcp_tool_adapter_call_scope_invokes_command_caller_once() {
         .options
         .values
         .insert("execution_mode".to_string(), serde_json::json!("call"));
-    plan.request.options.values.insert(
-        "mcp_allowlist".to_string(),
-        serde_json::json!(["labby/search"]),
-    );
-    plan.request.options.values.insert(
-        "mcp_caller_command".to_string(),
-        serde_json::json!("/bin/echo"),
-    );
-    plan.request.metadata.insert(
-        "tool_execute_authorized".to_string(),
-        serde_json::json!(true),
-    );
+    authorize_call(&mut plan, Some("/bin/echo"));
 
     let manifest = adapter.discover(&plan).await.unwrap();
     let diff = manifest_diff(&plan, manifest.items.clone());
@@ -143,14 +149,7 @@ async fn mcp_tool_adapter_call_requires_caller() {
         .options
         .values
         .insert("execution_mode".to_string(), serde_json::json!("call"));
-    plan.request.options.values.insert(
-        "mcp_allowlist".to_string(),
-        serde_json::json!(["labby/search"]),
-    );
-    plan.request.metadata.insert(
-        "tool_execute_authorized".to_string(),
-        serde_json::json!(true),
-    );
+    authorize_call(&mut plan, None);
 
     let manifest = adapter.discover(&plan).await.unwrap();
     let diff = manifest_diff(&plan, manifest.items.clone());

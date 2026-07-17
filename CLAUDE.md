@@ -482,8 +482,8 @@ Checks: Qdrant, TEI, LLM endpoint reachability.
 ## Database Schema
 
 `docs/reference/runtime/database-schema.json` is the authoritative generated
-schema. Its current schema version is 1 and it contains 28 tables parsed from
-35 migration files. Keep this summary grouped by ownership; use the JSON for
+schema. Its current clean-break epoch is 1 and it contains 29 domain tables
+parsed from 7 canonical migration files. Keep this summary grouped by ownership; use the JSON for
 columns, indexes, foreign keys, and migration provenance.
 
 | Family | Current tables |
@@ -491,6 +491,7 @@ columns, indexes, foreign keys, and migration provenance.
 | Unified jobs | `jobs`, `job_attempts`, `job_stages`, `job_events`, `job_heartbeats`, `job_artifacts`, `provider_reservations`, `config_snapshots` |
 | Source ledger | `sources`, `source_generations`, `source_manifests`, `source_items`, `document_status`, `cleanup_debt`, `leases` |
 | Source watches | `axon_source_watches`, `axon_source_watch_runs` |
+| Observability | `axon_observe_events`, `axon_observe_heartbeats`, `axon_observe_provider_health` |
 | Source graph | `graph_nodes`, `graph_aliases`, `graph_edges`, `graph_evidence`, `graph_conflicts` |
 | Memory | `axon_memory_nodes`, `axon_memory_edges`, `memory_records`, `memory_links`, `memory_reinforcement`, `memory_reviews` |
 

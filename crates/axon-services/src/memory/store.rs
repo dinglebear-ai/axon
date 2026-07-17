@@ -59,15 +59,17 @@ pub(crate) async fn memory_store(ctx: &ServiceContext) -> Result<Arc<dyn MemoryS
     let path = ctx.cfg().sqlite_path.to_string_lossy().to_string();
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let sqlite: Arc<dyn MemoryStore> = Arc::new(
-        SqliteMemoryStore::open(&path, clock)
+        SqliteMemoryStore::open_migrated(&path, clock)
             .map_err(|e| anyhow::anyhow!("open memory store at {path}: {}", e.message))?
             .with_compaction_synthesizer(Arc::new(LlmCompactionSynthesizer {
                 cfg: Arc::clone(&ctx.cfg),
             })),
     );
-    let graph = SqliteGraphStore::connect(&path)
-        .await
-        .map_err(|e| anyhow::anyhow!("open memory graph mirror at {path}: {}", e.message))?;
+    let pool = ctx
+        .jobs
+        .sqlite_pool()
+        .ok_or_else(|| anyhow::anyhow!("shared SQLite pool is unavailable"))?;
+    let graph = SqliteGraphStore::from_pool((*pool).clone());
     let graph: Arc<dyn axon_graph::store::GraphStore> = Arc::new(graph);
     let Some(runtime) = ctx.target_local_source_runtime() else {
         return Ok(sqlite);

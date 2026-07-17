@@ -28,15 +28,6 @@ fn download_disposition_cannot_inject_headers() {
 }
 
 #[test]
-fn unsupported_content_refs_fail_closed() {
-    let result = content_bytes(Some(ContentRef::External {
-        uri: "https://example.com/private".to_string(),
-        integrity: None,
-    }));
-    assert!(result.is_err());
-}
-
-#[test]
 fn manifest_content_paths_cannot_escape_the_store() {
     let manifest = StoredArtifactManifest {
         handle: ArtifactHandle {
@@ -104,4 +95,67 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
     assert_eq!(detail.content_url, "/v1/artifacts/art_report_abc/content");
     assert_eq!(detail.producer_refs, ["job:test"]);
     assert_eq!(detail.summary.label.as_deref(), Some("report.json"));
+
+    let content = artifact_content(&ctx, ArtifactId::new("art_report_abc"))
+        .await
+        .unwrap();
+    assert_eq!(content.size_bytes, 6);
+    assert_eq!(content.path, root.join("art_report_abc.bin"));
+    assert_eq!(content.content_type, "application/json");
+
+    tokio::fs::write(root.join("art_report_abc.json"), b"not valid json")
+        .await
+        .unwrap();
+    let cached_page = list_artifacts(
+        &ctx,
+        ArtifactListRequest {
+            source_id: None,
+            job_id: None,
+            kind: None,
+            limit: Some(1),
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(cached_page.items.len(), 1);
+    assert!(root.join(INDEX_DIR).join(INDEX_FILE).is_file());
+}
+
+#[test]
+fn metadata_index_uses_the_narrowest_available_filter() {
+    let summary = |id: &str, kind, source: Option<&str>| ArtifactSummary {
+        artifact_id: ArtifactId::new(id),
+        kind,
+        created_at: Timestamp("2026-07-16T00:00:00Z".to_string()),
+        size_bytes: 1,
+        source_id: source.map(SourceId::new),
+        job_id: None,
+        content_type: Some("text/plain".to_string()),
+        label: None,
+    };
+    let index = ArtifactMetadataIndex::from_entries(
+        DirectoryStamp::default(),
+        vec![
+            summary("art_raw_a", ArtifactKind::RawContent, Some("src_a")),
+            summary("art_raw_b", ArtifactKind::RawContent, Some("src_b")),
+            summary("art_report_c", ArtifactKind::Report, Some("src_a")),
+        ],
+    );
+    let request = ArtifactListRequest {
+        source_id: Some(SourceId::new("src_a")),
+        job_id: None,
+        kind: Some(ArtifactKind::RawContent),
+        limit: Some(1),
+        cursor: None,
+    };
+
+    assert_eq!(
+        index
+            .candidates(&request)
+            .iter()
+            .map(|id| id.0.as_str())
+            .collect::<Vec<_>>(),
+        ["art_raw_a", "art_raw_b"]
+    );
 }

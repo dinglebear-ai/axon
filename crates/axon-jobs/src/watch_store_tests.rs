@@ -135,6 +135,46 @@ async fn sqlite_watch_store_reconstructs_stored_request() {
 }
 
 #[tokio::test]
+async fn sqlite_watch_store_schedule_update_recomputes_next_run_at() {
+    let (store, pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    sqlx::query("UPDATE axon_source_watches SET next_run_at = 1 WHERE watch_id = ?")
+        .bind(&created.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    WatchStore::update(
+        &store,
+        created.watch_id.clone(),
+        WatchUpdateRequest {
+            enabled: None,
+            schedule: Some(WatchSchedule {
+                every_seconds: 120,
+                cron: None,
+                timezone: None,
+            }),
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let next_run_at: i64 =
+        sqlx::query_scalar("SELECT next_run_at FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&created.watch_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    let delay_ms = next_run_at - now;
+    assert!((110_000..=120_000).contains(&delay_ms));
+}
+
+#[tokio::test]
 async fn sqlite_watch_store_create_resolved_preserves_canonical_identity() {
     let (store, _pool, _temp) = store().await;
     let created = store

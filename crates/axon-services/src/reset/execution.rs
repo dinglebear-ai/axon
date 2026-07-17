@@ -12,6 +12,7 @@ pub(super) async fn execute_resumable(
     plan: &ResetPlan,
     existing: Option<ResetReceipt>,
 ) -> Result<(ResetReceipt, String), Box<dyn Error>> {
+    let resumed = existing.is_some();
     let mut receipt = existing.unwrap_or_else(|| ResetReceipt {
         plan_id: plan.plan_id.clone(),
         reset_id: plan.reset_id.clone(),
@@ -30,11 +31,7 @@ pub(super) async fn execute_resumable(
     }
     if receipt.state != ResetExecutionState::Completed {
         receipt.state = ResetExecutionState::Executing;
-        if receipt
-            .chunks
-            .iter()
-            .any(|chunk| chunk.status == "completed")
-        {
+        if resumed {
             receipt.audit_events.push("reset.resume".to_string());
         }
     }
@@ -89,7 +86,7 @@ pub(super) async fn execute_resumable(
     Ok((receipt, path))
 }
 
-fn planned_chunks(stores: &[String]) -> Vec<ResetChunkReceipt> {
+pub(super) fn planned_chunks(stores: &[String]) -> Vec<ResetChunkReceipt> {
     let mut chunks = Vec::new();
     if wants_any_sqlite(stores) {
         chunks.push(pending_chunk("chunk_0000", "sqlite"));
@@ -127,10 +124,14 @@ async fn execute_physical_chunk(
     match store {
         "sqlite" => {
             deleted.sqlite_tables = sqlite_inv.table_count;
-            created.sqlite_schema_version = sqlite::wipe_and_remigrate(&cfg.sqlite_path).await?;
+            let schema = sqlite::wipe_and_remigrate(&cfg.sqlite_path).await?;
+            created.sqlite_schema_version = schema.version;
             Ok((
                 sqlite_inv.content_rows,
-                format!("schema_version={}", created.sqlite_schema_version),
+                format!(
+                    "schema_version={};schema_checksum={}",
+                    schema.version, schema.checksum
+                ),
             ))
         }
         RESET_STORE_VECTORS => {
@@ -141,7 +142,13 @@ async fn execute_physical_chunk(
             reset_qdrant(cfg, qdrant_inv, deleted, created, warnings).await?;
             Ok((
                 before.points,
-                format!("created={}", created.qdrant_collections.join(",")),
+                format!(
+                    "created={}",
+                    created
+                        .qdrant_collections
+                        .iter()
+                        .any(|name| name == &cfg.collection)
+                ),
             ))
         }
         RESET_STORE_ARTIFACTS => {
@@ -173,11 +180,13 @@ async fn reset_qdrant(
     if dropped {
         deleted.qdrant_collections.push(cfg.collection.clone());
     }
-    // No process-wide vector-mode cache to invalidate here: `axon-vectors`
-    // (the replacement for the legacy `axon-vector` crate) resolves a
-    // collection's vector mode per request rather than caching it in a
-    // process-wide static, so there is nothing stale left behind by the
-    // drop+recreate above.
+    // Existing service contexts cache detected collection specs. A raw reset
+    // bypasses those store instances, so invalidate their epoch immediately
+    // after the drop before any concurrent request can reuse the old shape.
+    axon_vectors::QdrantVectorStore::invalidate_collection_spec_cache(
+        &cfg.qdrant_url,
+        &cfg.collection,
+    );
     match qdrant::probe_tei_dim(cfg).await {
         Some(dim) => {
             qdrant::create_named_collection(cfg, dim).await?;

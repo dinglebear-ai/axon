@@ -6,7 +6,7 @@
 
 mod tool;
 mod tool_artifacts;
-mod tool_auth;
+pub(super) mod tool_auth;
 mod virtual_sources;
 mod web;
 pub(crate) mod web_options;
@@ -156,19 +156,21 @@ pub(crate) async fn dispatch_git(
         "command=source collection={collection} kind=git embed={embed}"
     ));
     let adapter = GitSourceAdapter::new();
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, None, None))
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("git clone failed")?;
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, None, None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("git source indexing failed")
@@ -192,19 +194,21 @@ pub(crate) async fn dispatch_feed(
         "command=source collection={collection} kind=feed embed={embed} max_items={max_items:?}"
     ));
     let adapter = FeedSourceAdapter::new();
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, max_items, None))
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("feed fetch failed")?;
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("feed source indexing failed")
@@ -228,19 +232,21 @@ pub(crate) async fn dispatch_reddit(
         "command=source collection={collection} kind=reddit embed={embed} max_items={max_items:?}"
     ));
     let adapter = RedditSourceAdapter::new();
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, max_items, None))
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("reddit fetch failed")?;
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("reddit source indexing failed")
@@ -264,19 +270,21 @@ pub(crate) async fn dispatch_youtube(
         "command=source collection={collection} kind=youtube embed={embed} max_items={max_items:?}"
     ));
     let adapter = YoutubeSourceAdapter::new();
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, max_items, None))
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("youtube fetch failed")?;
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("youtube source indexing failed")
@@ -300,19 +308,21 @@ pub(crate) async fn dispatch_registry(
         "command=source collection={collection} kind=registry embed={embed} max_items={max_items:?}"
     ));
     let adapter = RegistrySourceAdapter::new();
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, max_items, None))
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("registry fetch failed")?;
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("registry source indexing failed")
@@ -368,38 +378,42 @@ async fn dispatch_session_with_roots(
         "command=source collection={collection} kind=session embed={embed} max_items={max_items:?}"
     ));
     let adapter = SessionSourceAdapter::new();
-    let acquired = adapter
-        .materialize_with_roots(
-            family_source_plan(input, route, embed, max_items, project_filter),
-            roots,
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!(e.to_string()))
-        .context("session selection failed")?;
+    let materializer = adapter.clone();
+    let roots = roots.clone();
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, max_items, project_filter),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize_with_roots(plan, &roots)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
     .context("session source indexing failed")
 }
 
-async fn dispatch_materialized(
-    runtime: &TargetLocalSourceRuntime,
-    adapter: &dyn SourceAdapter,
-    materialized: MaterializedSource,
-    collection: &str,
-    owner_id: &str,
-    auth_snapshot: Option<&AuthSnapshot>,
-    execution: &SourceExecutionContext,
-) -> anyhow::Result<IndexCounts> {
-    let plan = materialized.plan.clone();
-    let result = index_materialized_source(
+async fn dispatch_materialized<'a, F, Fut>(
+    runtime: &'a TargetLocalSourceRuntime,
+    adapter: &'a dyn SourceAdapter,
+    plan: SourcePlan,
+    collection: &'a str,
+    owner_id: &'a str,
+    auth_snapshot: Option<&'a AuthSnapshot>,
+    execution: &'a SourceExecutionContext,
+    materialize: F,
+) -> anyhow::Result<IndexCounts>
+where
+    F: FnOnce(SourcePlan) -> Fut + Send + 'a,
+    Fut: std::future::Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
+{
+    index_materialized_source(
         runtime,
         NonWebPipelineInput {
             adapter,
@@ -409,10 +423,9 @@ async fn dispatch_materialized(
             auth_snapshot,
             execution,
         },
+        materialize,
     )
-    .await;
-    drop(materialized);
-    result
+    .await
 }
 
 #[cfg(test)]

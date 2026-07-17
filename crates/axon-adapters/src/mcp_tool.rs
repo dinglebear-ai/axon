@@ -17,8 +17,8 @@
 //! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. `discover`
 //! stays schema-only; `acquire` selects [`McpExecutionMode::Execute`] only
 //! when the service layer stamps an execution-auth marker and supplies the
-//! target allowlist, caller command, caller allowlist, timeout, and output-cap
-//! policy in validated route options.
+//! server-owned target allowlist, caller command, timeout, and output-cap
+//! snapshot in private metadata.
 
 mod adapter;
 mod metadata;
@@ -119,8 +119,9 @@ pub struct McpToolTarget {
 /// the tool (this crate never does so itself — see module docs). Returns
 /// the raw, unredacted tool response as text; `resolve_and_acquire` applies
 /// redaction before it is ever returned.
-pub trait McpToolCaller {
-    fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError>;
+#[async_trait::async_trait]
+pub trait McpToolCaller: Send + Sync {
+    async fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,8 +132,9 @@ pub struct CommandMcpToolCaller {
     pub output_cap_bytes: usize,
 }
 
+#[async_trait::async_trait]
 impl McpToolCaller for CommandMcpToolCaller {
-    fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError> {
+    async fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError> {
         let source = CliToolSource {
             command: self.command.clone(),
             argv: vec![target.server.clone(), target.tool.clone()],
@@ -142,7 +144,7 @@ impl McpToolCaller for CommandMcpToolCaller {
             output_cap_bytes: self.output_cap_bytes,
             audit_metadata: vec![("execution_mode".to_string(), "mcp_call".to_string())],
         };
-        let outcome = execute_command(&source).map_err(|err| McpToolError {
+        let outcome = execute_command(&source).await.map_err(|err| McpToolError {
             code: err.code,
             message: err.message,
         })?;
@@ -164,7 +166,7 @@ impl McpToolCaller for CommandMcpToolCaller {
 /// verbatim in `allowlist` (checked by [`validate_execute_allowed`]) before
 /// `caller` (if supplied) is invoked; the raw response is always redacted
 /// before it lands in `documents`/the vector payload.
-pub fn resolve_and_acquire(
+pub async fn resolve_and_acquire(
     uri: &str,
     mode: McpExecutionMode,
     has_execute_scope: bool,
@@ -221,7 +223,7 @@ pub fn resolve_and_acquire(
         });
     };
 
-    let raw_payload = caller.call(&target)?;
+    let raw_payload = caller.call(&target).await?;
     let (redacted_payload, was_redacted) = redact_mcp_output(&raw_payload);
 
     Ok(McpToolAcquireResult {

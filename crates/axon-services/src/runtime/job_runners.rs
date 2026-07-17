@@ -65,15 +65,11 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
         Arc::new(SourceRunner::new(Arc::clone(cfg))),
     );
 
-    // Open once and reuse: `SqliteMemoryStore::open` runs a schema migration
-    // via a bare `rusqlite::Connection` with no busy-timeout configured. Doing
-    // this on every job execution races the shared sqlx pool that already
-    // holds this same SQLite file open for the unified job store, producing
-    // intermittent "database is locked" failures under concurrent load.
-    // Opening once at registry-build time and reusing the connection avoids
-    // the repeated open/migrate race entirely.
+    // The composed migration runner owns the shared schema. Open this handle
+    // without running the standalone memory migration (which would overwrite
+    // the canonical schema epoch before the job backend starts).
     let path = cfg.sqlite_path.to_string_lossy().to_string();
-    let memory_store = SqliteMemoryStore::open(&path, Arc::new(SystemClock))
+    let memory_store = SqliteMemoryStore::open_migrated(&path, Arc::new(SystemClock))
         .map_err(|error| compaction_error(format!("open memory store: {}", error.message)))?;
     registry.register(
         JobKind::Memory,
@@ -231,21 +227,23 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                     serde_json::from_value(payload.clone()).map_err(|error| {
                         compaction_error(format!("invalid memory_import payload: {error}"))
                     })?;
+                let mut sync_ids = crate::memory::import_export::replaced_scope_memory_ids(
+                    self.memory_store.as_ref(),
+                    &request,
+                )
+                .await
+                .map_err(|error| compaction_error(error.to_string()))?;
                 let result = self
                     .memory_store
                     .import(request)
                     .await
                     .map_err(|error| compaction_error(error.message))?;
-                if result.dry_run || result.created_ids.is_empty() {
+                sync_ids.extend(result.created_ids);
+                if result.dry_run || sync_ids.is_empty() {
                     return Ok(());
                 }
-                enqueue_runner_memory_sync(
-                    self.memory_store.as_ref(),
-                    store,
-                    result.created_ids,
-                    "import",
-                )
-                .await
+                enqueue_runner_memory_sync(self.memory_store.as_ref(), store, sync_ids, "import")
+                    .await
             }
             _ => self
                 .memory_store

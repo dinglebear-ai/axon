@@ -5,6 +5,7 @@ use axon_api::reset::{
 };
 use axon_core::config::Config;
 use serial_test::serial;
+use sqlx::Acquire;
 
 fn cfg_with(stores: Vec<&str>, dry_run: bool, yes: bool) -> Config {
     let mut cfg = Config::test_default();
@@ -115,10 +116,14 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
     let dir = tempfile::tempdir().expect("tempdir");
     let db_path = dir.path().join("jobs.db");
     // A fresh wipe on a non-existent DB re-migrates cleanly.
-    let version = sqlite::wipe_and_remigrate(&db_path)
+    let schema = sqlite::wipe_and_remigrate(&db_path)
         .await
         .expect("wipe + remigrate");
-    assert!(version > 0, "re-migrated DB should have applied migrations");
+    assert!(
+        schema.version > 0,
+        "re-migrated DB should have applied migrations"
+    );
+    assert_eq!(schema.checksum.len(), 64);
     assert!(db_path.exists());
 
     // Inventory of the fresh DB: tables present, zero content rows.
@@ -127,6 +132,18 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
     assert!(inv.table_count > 0);
     assert_eq!(inv.content_rows, 0);
     assert!(!inv.non_empty());
+    assert_eq!(inv.schema_identity, schema);
+    for table in [
+        "axon_applied_migrations",
+        "axon_observe_events",
+        "axon_observe_heartbeats",
+        "axon_observe_provider_health",
+    ] {
+        assert!(
+            inv.tables.contains_key(table),
+            "composed inventory must include {table}"
+        );
+    }
 
     let pool = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
         .await
@@ -278,4 +295,143 @@ async fn reset_receipt_redacts_secrets_before_writing() {
     let written = std::fs::read_to_string(&path).expect("read receipt");
     let _ = std::fs::remove_file(&path);
     assert!(!written.contains("abcdef0123456789abcdef"));
+}
+
+#[tokio::test]
+async fn reset_resume_validates_completed_sqlite_postcondition_per_chunk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = cfg_with(vec!["jobs"], false, false);
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    let saved = reset(&cfg).await.expect("reviewed plan");
+
+    let schema = sqlite::wipe_and_remigrate(&cfg.sqlite_path)
+        .await
+        .expect("simulate completed sqlite chunk");
+    let current = prepare_reset(
+        &cfg,
+        saved.stores.clone(),
+        saved.reset_id.clone(),
+        saved.plan_id.clone(),
+        false,
+    )
+    .await
+    .expect("current inventory");
+    let mut chunks = execution::planned_chunks(&saved.stores);
+    chunks[0].status = "completed".to_string();
+    chunks[0].checkpoint = format!(
+        "schema_version={};schema_checksum={}",
+        schema.version, schema.checksum
+    );
+    let receipt = ResetReceipt {
+        plan_id: saved.plan_id.clone(),
+        reset_id: saved.reset_id.clone(),
+        state: ResetExecutionState::Executing,
+        chunks,
+        deleted: ResetDeleted::default(),
+        created: ResetCreated::default(),
+        audit_events: vec!["reset.chunk.complete:sqlite".to_string()],
+    };
+
+    recovery::validate_resumable_inventory(&saved, &current, Some(&receipt))
+        .expect("completed chunk validates its postcondition, not the original checksum");
+
+    let mut failed_receipt = receipt.clone();
+    failed_receipt.chunks[0].status = "failed".to_string();
+    recovery::validate_resumable_inventory(&saved, &current, Some(&failed_receipt))
+        .expect("failed chunk may resume a bounded remainder of the reviewed store");
+
+    let pool = axon_core::sqlite::open_pool_unlocked(&cfg.sqlite_path.to_string_lossy())
+        .await
+        .expect("open reset DB");
+    sqlx::query("CREATE TABLE unexpected_after_reset (id INTEGER PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .expect("mutate completed schema");
+    pool.close().await;
+    let changed = prepare_reset(
+        &cfg,
+        saved.stores.clone(),
+        saved.reset_id.clone(),
+        saved.plan_id.clone(),
+        false,
+    )
+    .await
+    .expect("changed inventory");
+    let error = recovery::validate_resumable_inventory(&saved, &changed, Some(&receipt))
+        .expect_err("completed postcondition drift must be rejected");
+    assert!(error.to_string().contains("completed_chunk_changed"));
+}
+
+#[tokio::test]
+async fn expired_reset_plan_rejects_first_start_but_allows_started_resume() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = cfg_with(vec!["jobs"], false, false);
+    cfg.sqlite_path = dir.path().join("jobs.db");
+    let mut saved = reset(&cfg).await.expect("reviewed plan");
+    saved.plan_expires_at_utc = (chrono::Utc::now() - chrono::Duration::minutes(1)).to_rfc3339();
+    saved.reset_plan.expires_at_utc = saved.plan_expires_at_utc.clone();
+    plan_store::save_plan(&cfg, &saved)
+        .await
+        .expect("persist expired plan");
+
+    cfg.yes = true;
+    cfg.reset_plan_id = Some(saved.plan_id.clone());
+    let error = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect_err("expired unstarted plan must be rejected");
+    assert!(error.to_string().contains("plan_expired"));
+
+    let started = ResetReceipt {
+        plan_id: saved.plan_id.clone(),
+        reset_id: saved.reset_id.clone(),
+        state: ResetExecutionState::Executing,
+        chunks: execution::planned_chunks(&saved.stores),
+        deleted: ResetDeleted::default(),
+        created: ResetCreated::default(),
+        audit_events: vec!["reset.execute".to_string()],
+    };
+    plan_store::save_receipt(&cfg, &started)
+        .await
+        .expect("persist started checkpoint");
+
+    let resumed = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect("started plan remains resumable after expiry");
+    assert_eq!(resumed.execution_state, ResetExecutionState::Completed);
+    assert!(
+        resumed
+            .audit_events
+            .iter()
+            .any(|event| event == "reset.resume")
+    );
+}
+
+#[tokio::test]
+async fn sqlite_reset_refuses_a_concurrent_writer() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db_path = dir.path().join("jobs.db");
+    sqlite::wipe_and_remigrate(&db_path)
+        .await
+        .expect("seed canonical DB");
+    let blocker = axon_core::sqlite::open_pool_unlocked(&db_path.to_string_lossy())
+        .await
+        .expect("open competing writer");
+    let mut transaction = blocker.begin().await.expect("begin competing transaction");
+    sqlx::query("CREATE TABLE writer_holds_reset_lock (id INTEGER PRIMARY KEY)")
+        .execute(&mut *transaction)
+        .await
+        .expect("hold write lock");
+
+    let error = sqlite::wipe_and_remigrate(&db_path)
+        .await
+        .expect_err("reset must fail closed while another writer holds the DB");
+
+    assert!(
+        error.to_string().contains("locked") || error.to_string().contains("sqlite_not_exclusive")
+    );
+    transaction
+        .rollback()
+        .await
+        .expect("release competing writer");
+    blocker.close().await;
 }

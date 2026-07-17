@@ -1,4 +1,6 @@
-use crate::cli_tool::{ToolExecutionMode, resolve_and_acquire};
+use crate::cli_tool::{
+    ToolExecutionMode, resolve_and_acquire, validate_persistable_cli_invocation,
+};
 
 #[tokio::test]
 async fn cli_tool_defaults_to_metadata_only() {
@@ -8,6 +10,7 @@ async fn cli_tool_defaults_to_metadata_only() {
         false,
         &[],
     )
+    .await
     .unwrap();
 
     assert_eq!(result.documents.len(), 1);
@@ -30,10 +33,12 @@ async fn cli_tool_defaults_to_metadata_only() {
 #[tokio::test]
 async fn cli_tool_exec_requires_execute_scope_and_allowlist() {
     let err = resolve_and_acquire("tool:rg --help", ToolExecutionMode::Execute, false, &["rg"])
+        .await
         .unwrap_err();
     assert_eq!(err.code, "auth.scope_required");
 
     let err = resolve_and_acquire("tool:sh -c env", ToolExecutionMode::Execute, true, &["rg"])
+        .await
         .unwrap_err();
     assert_eq!(err.code, "tool.command_denied");
 }
@@ -48,6 +53,7 @@ async fn cli_tool_exec_records_one_execution_when_explicitly_allowed() {
         true,
         &["/bin/echo"],
     )
+    .await
     .unwrap();
 
     assert_eq!(result.execution_count, 1);
@@ -64,6 +70,7 @@ async fn cli_tool_exec_redacts_secret_shaped_output() {
         true,
         &["/bin/echo"],
     )
+    .await
     .unwrap();
 
     assert_eq!(result.execution_count, 1);
@@ -79,7 +86,17 @@ async fn cli_tool_exec_denies_secret_like_local_paths() {
         true,
         &["/bin/echo"],
     )
+    .await
     .unwrap_err();
 
     assert_eq!(err.code, "security.local_secret_denied");
+}
+
+#[test]
+fn detached_cli_tool_rejects_secret_bearing_arguments_before_persistence() {
+    let error = validate_persistable_cli_invocation(
+        "cli:/bin/echo Authorization:Bearer sk-detached-secret",
+    )
+    .unwrap_err();
+    assert_eq!(error.code, "tool.secret_argument_denied");
 }

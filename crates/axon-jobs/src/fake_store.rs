@@ -46,6 +46,17 @@ impl FakeJobWatchStore {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Test-only inspection seam that bypasses public event visibility rules.
+    pub async fn recorded_events(&self, job_id: JobId) -> Vec<JobEvent> {
+        self.state
+            .lock()
+            .await
+            .events
+            .get(&job_id)
+            .cloned()
+            .unwrap_or_default()
+    }
 }
 
 #[async_trait]
@@ -396,73 +407,8 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn recover(&self, request: JobRecoveryRequest) -> Result<JobRecoveryResult> {
-        if request.older_than_seconds.is_none() && !request.allow_without_cutoff {
-            return Err(ApiError::new(
-                "job_recovery.cutoff_required",
-                ErrorStage::Planning,
-                "recovery requires older_than_seconds unless allow_without_cutoff is explicit",
-            ));
-        }
         let mut state = self.state.lock().await;
-        let now = state.timestamp();
-        let mut scanned = 0;
-        let mut failed = 0;
-        for job in state.jobs.values_mut() {
-            if request.kind.is_some_and(|kind| kind != job.kind)
-                || !matches!(
-                    job.status,
-                    LifecycleStatus::Running | LifecycleStatus::Waiting
-                )
-                || !is_stale(job, &now, request.older_than_seconds)
-            {
-                continue;
-            }
-            scanned += 1;
-            if !request.dry_run {
-                job.status = LifecycleStatus::Failed;
-                job.phase = PipelinePhase::Complete;
-                job.updated_at = now.clone();
-                job.finished_at = Some(now.clone());
-                if let Some(heartbeat) = job.heartbeat.as_mut() {
-                    heartbeat.status = LifecycleStatus::Failed;
-                    heartbeat.phase = PipelinePhase::Complete;
-                    heartbeat.heartbeat_at = now.clone();
-                }
-                failed += 1;
-            }
-        }
-        if !request.dry_run {
-            for job_id in state
-                .jobs
-                .iter()
-                .filter_map(|(job_id, job)| {
-                    (job.status == LifecycleStatus::Failed && job.updated_at == now)
-                        .then_some(*job_id)
-                })
-                .collect::<Vec<_>>()
-            {
-                if let Some(stages) = state.stages.get_mut(&job_id) {
-                    for stage in stages {
-                        if matches!(
-                            stage.status,
-                            LifecycleStatus::Running | LifecycleStatus::Waiting
-                        ) {
-                            stage.status = LifecycleStatus::Failed;
-                            stage.completed_at = Some(now.clone());
-                            stage.error = Some(recovery_api_error());
-                        }
-                    }
-                }
-            }
-        }
-        Ok(JobRecoveryResult {
-            recovered: 0,
-            job_ids: Vec::new(),
-            warnings: Vec::new(),
-            jobs_scanned: scanned,
-            jobs_requeued: 0,
-            jobs_failed: failed,
-        })
+        recover_locked(&mut state, request)
     }
 
     async fn cleanup(&self, request: JobCleanupRequest) -> Result<JobCleanupResult> {

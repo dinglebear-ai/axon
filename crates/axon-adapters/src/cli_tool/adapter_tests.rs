@@ -16,6 +16,23 @@ fn cli_tool_plan(source: &str, scope: SourceScope) -> SourcePlan {
     )
 }
 
+fn authorize_execution(plan: &mut SourcePlan, command: &str) {
+    plan.request.metadata.insert(
+        "tool_execute_authorized".to_string(),
+        serde_json::json!(true),
+    );
+    plan.request.metadata.insert(
+        "tool_execution_policy".to_string(),
+        serde_json::json!({
+            "command_allowlist": [command],
+            "env_allowlist": [],
+            "side_effect_class": "read",
+            "timeout_ms": 5_000,
+            "output_cap_bytes": 65_536,
+        }),
+    );
+}
+
 #[tokio::test]
 async fn cli_tool_adapter_declares_tool_script_api_scopes() {
     let adapter = CliToolSourceAdapter::new();
@@ -104,14 +121,7 @@ async fn cli_tool_adapter_execute_scope_runs_once_and_redacts_output() {
         .options
         .values
         .insert("execution_mode".to_string(), serde_json::json!("execute"));
-    plan.request.options.values.insert(
-        "command_allowlist".to_string(),
-        serde_json::json!(["/bin/echo"]),
-    );
-    plan.request.metadata.insert(
-        "tool_execute_authorized".to_string(),
-        serde_json::json!(true),
-    );
+    authorize_execution(&mut plan, "/bin/echo");
 
     let manifest = adapter.discover(&plan).await.unwrap();
     let diff = manifest_diff(&plan, manifest.items.clone());

@@ -6,6 +6,8 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 use uuid::Uuid;
 
+const TEMP_CREATE_ATTEMPTS: usize = 16;
+
 #[derive(Debug)]
 pub enum ArtifactWriteError {
     Validation(String),
@@ -176,28 +178,17 @@ pub async fn atomic_write_under(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("artifact");
-    let tmp_name = format!(".{file_name}.tmp-{}-{}", std::process::id(), Uuid::new_v4());
-    let tmp_path = parent.join(tmp_name);
+    let (tmp_path, mut file) = create_unique_temp_file(parent, file_name).await?;
     let write_result = async {
-        let mut file = tokio::fs::File::create(&tmp_path)
-            .await
-            .map_err(|err| ArtifactWriteError::io("create temp file", &tmp_path, err))?;
         tokio::io::AsyncWriteExt::write_all(&mut file, bytes)
             .await
             .map_err(|err| ArtifactWriteError::io("write temp file", &tmp_path, err))?;
         file.sync_all()
             .await
             .map_err(|err| ArtifactWriteError::io("sync temp file", &tmp_path, err))?;
-        tokio::fs::rename(&tmp_path, &final_path)
-            .await
-            .map_err(|err| ArtifactWriteError::io("rename temp file", &final_path, err))?;
-        let parent_dir = tokio::fs::File::open(parent)
-            .await
-            .map_err(|err| ArtifactWriteError::io("open parent directory", parent, err))?;
-        parent_dir
-            .sync_all()
-            .await
-            .map_err(|err| ArtifactWriteError::io("sync parent directory", parent, err))?;
+        drop(file);
+        atomic_replace_file(&tmp_path, &final_path).await?;
+        sync_parent_directory(parent).await?;
         Ok::<(), ArtifactWriteError>(())
     }
     .await;
@@ -225,31 +216,17 @@ pub async fn atomic_write_explicit(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("artifact");
-    let tmp_path = parent.join(format!(
-        ".{file_name}.tmp-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
+    let (tmp_path, mut file) = create_unique_temp_file(parent, file_name).await?;
     let write_result = async {
-        let mut file = tokio::fs::File::create(&tmp_path)
-            .await
-            .map_err(|err| ArtifactWriteError::io("create temp file", &tmp_path, err))?;
         tokio::io::AsyncWriteExt::write_all(&mut file, bytes)
             .await
             .map_err(|err| ArtifactWriteError::io("write temp file", &tmp_path, err))?;
         file.sync_all()
             .await
             .map_err(|err| ArtifactWriteError::io("sync temp file", &tmp_path, err))?;
-        tokio::fs::rename(&tmp_path, path)
-            .await
-            .map_err(|err| ArtifactWriteError::io("rename temp file", path, err))?;
-        let parent_dir = tokio::fs::File::open(parent)
-            .await
-            .map_err(|err| ArtifactWriteError::io("open parent directory", parent, err))?;
-        parent_dir
-            .sync_all()
-            .await
-            .map_err(|err| ArtifactWriteError::io("sync parent directory", parent, err))?;
+        drop(file);
+        atomic_replace_file(&tmp_path, path).await?;
+        sync_parent_directory(parent).await?;
         Ok::<(), ArtifactWriteError>(())
     }
     .await;
@@ -260,6 +237,110 @@ pub async fn atomic_write_explicit(
     }
 
     Ok(path.to_path_buf())
+}
+
+async fn create_unique_temp_file(
+    parent: &Path,
+    file_name: &str,
+) -> Result<(PathBuf, tokio::fs::File), ArtifactWriteError> {
+    for _ in 0..TEMP_CREATE_ATTEMPTS {
+        let path = parent.join(format!(
+            ".{file_name}.tmp-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        match tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .await
+        {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(ArtifactWriteError::io("create temp file", path, error));
+            }
+        }
+    }
+    Err(ArtifactWriteError::io(
+        "create temp file",
+        parent,
+        io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "could not allocate a unique temporary file",
+        ),
+    ))
+}
+
+/// Atomically replace `destination` with a fully-written file from the same directory.
+pub async fn atomic_replace_file(
+    temporary: impl AsRef<Path>,
+    destination: impl AsRef<Path>,
+) -> Result<(), ArtifactWriteError> {
+    let temporary = temporary.as_ref();
+    let destination = destination.as_ref();
+    atomic_replace_file_platform(temporary, destination)
+        .await
+        .map_err(|error| ArtifactWriteError::io("replace destination file", destination, error))
+}
+
+#[cfg(not(windows))]
+async fn atomic_replace_file_platform(temporary: &Path, destination: &Path) -> io::Result<()> {
+    tokio::fs::rename(temporary, destination).await
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+async fn atomic_replace_file_platform(temporary: &Path, destination: &Path) -> io::Result<()> {
+    use std::os::windows::ffi::OsStrExt as _;
+
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MoveFileExW(existing: *const u16, replacement: *const u16, flags: u32) -> i32;
+    }
+
+    let existing = temporary
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let replacement = destination
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let replaced = unsafe {
+        MoveFileExW(
+            existing.as_ptr(),
+            replacement.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if replaced == 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+async fn sync_parent_directory(parent: &Path) -> Result<(), ArtifactWriteError> {
+    let parent_dir = tokio::fs::File::open(parent)
+        .await
+        .map_err(|err| ArtifactWriteError::io("open parent directory", parent, err))?;
+    parent_dir
+        .sync_all()
+        .await
+        .map_err(|err| ArtifactWriteError::io("sync parent directory", parent, err))
+}
+
+#[cfg(windows)]
+async fn sync_parent_directory(_parent: &Path) -> Result<(), ArtifactWriteError> {
+    // MoveFileExW with MOVEFILE_WRITE_THROUGH flushes the replacement operation.
+    Ok(())
 }
 
 pub async fn write_configured_output(

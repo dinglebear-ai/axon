@@ -104,6 +104,11 @@ pub(super) struct WatchMcpRequest {
     pub collection: Option<String>,
     pub source: Option<String>,
     pub embed: Option<bool>,
+    pub scope: Option<axon_api::source::SourceScope>,
+    pub options: Option<axon_api::source::AdapterOptions>,
+    pub reason: Option<String>,
+    pub refresh: Option<axon_api::source::SourceRefreshPolicy>,
+    pub wait: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
 

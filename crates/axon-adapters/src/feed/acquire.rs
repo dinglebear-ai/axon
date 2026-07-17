@@ -64,9 +64,26 @@ pub async fn fetch_feed_to_file(feed_input: &str) -> Result<PathBuf> {
         .await
         .map_err(|err| anyhow::anyhow!("refusing to fetch {}: {err}", redact_url(&feed_url)))?;
 
-    let bytes = fetch_feed_bytes(&feed_url).await?;
-
     let path = feed_cache_path(&feed_url);
+    fetch_feed_to_path(&feed_url, &path).await?;
+    Ok(path)
+}
+
+pub(super) async fn fetch_feed_to_temporary_file(
+    feed_input: &str,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    let feed_url = normalize_feed_target(feed_input);
+    validate_source_url(&feed_url)
+        .await
+        .map_err(|err| anyhow::anyhow!("refusing to fetch {}: {err}", redact_url(&feed_url)))?;
+    let temporary = tempfile::tempdir().context("failed to create feed run directory")?;
+    let path = temporary.path().join("feed.xml");
+    fetch_feed_to_path(&feed_url, &path).await?;
+    Ok((temporary, path))
+}
+
+async fn fetch_feed_to_path(feed_url: &str, path: &std::path::Path) -> Result<()> {
+    let bytes = fetch_feed_bytes(feed_url).await?;
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -78,7 +95,7 @@ pub async fn fetch_feed_to_file(feed_input: &str) -> Result<PathBuf> {
             redact_url(&feed_url)
         )
     })?;
-    Ok(path)
+    Ok(())
 }
 
 /// Deterministic on-disk path for a feed URL: `<tmp>/axon-feeds/<sha256>.xml`.

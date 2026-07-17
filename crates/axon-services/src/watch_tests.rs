@@ -30,8 +30,9 @@ fn watch_request(source: &str, every_seconds: u64) -> WatchRequest {
 /// `create_source_watch` writes only the canonical `SqliteWatchStore` row.
 #[tokio::test]
 async fn create_source_watch_writes_only_canonical_row() {
-    let (pool, _temp) = open_pool().await;
-    let cfg = Config::test_default();
+    let (pool, temp) = open_pool().await;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = temp.path().to_path_buf();
 
     let created = create_source_watch(
         &cfg,
@@ -118,8 +119,9 @@ async fn create_source_watch_ensures_existing_canonical_source() {
 
 #[tokio::test]
 async fn source_watch_denies_local_session_scope_without_local_auth() {
-    let (pool, _temp) = open_pool().await;
-    let cfg = Config::test_default();
+    let (pool, temp) = open_pool().await;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = temp.path().to_path_buf();
     let auth_without_local = AuthSnapshot::default();
     let session_source = "session:claude:/tmp/axon-session-watch-local";
 

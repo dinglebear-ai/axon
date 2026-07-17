@@ -2,13 +2,16 @@ use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_embedding::reservation::{ProviderReservation, ProviderReservationContext};
+use axon_ledger::store::LedgerStore;
 use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
+use futures_util::future::try_join_all;
 use uuid::Uuid;
 
 use super::{NonWebPipelineInput, SourceEventEmitter, TargetLocalSourceRuntime, timestamp};
 
 const DOCUMENT_BATCH_SIZE: usize = 64;
 const CHUNK_BATCH_SIZE: usize = 512;
+const DOCUMENT_STATUS_BATCH_SIZE: usize = 64;
 
 #[derive(Debug, Default)]
 pub(super) struct VectorizeResult {
@@ -41,14 +44,10 @@ pub(super) async fn prepare_embed_publish(
         for batch in chunk_batches(prepared) {
             let result =
                 vectorize_batch(runtime, input, batch, collection.clone(), emitter).await?;
-            output.documents_prepared += result.documents_prepared;
-            output.chunks_prepared += result.chunks_prepared;
-            output.points_written += result.points_written;
-            output.document_statuses.extend(result.document_statuses);
-            output.graph_candidates.extend(result.graph_candidates);
-            output.warnings.extend(result.warnings);
+            merge_vectorize_result(&mut output, result);
         }
     }
+    write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
     Ok(output)
 }
 
@@ -92,7 +91,7 @@ fn chunk_batches(documents: Vec<PreparedDocument>) -> Vec<Vec<PreparedDocument>>
     let mut batches = Vec::new();
     let mut current = Vec::new();
     let mut chunks = 0;
-    for document in documents {
+    for document in documents.into_iter().flat_map(split_oversized_document) {
         let count = document.chunks.len().max(1);
         if !current.is_empty() && chunks + count > CHUNK_BATCH_SIZE {
             batches.push(std::mem::take(&mut current));
@@ -107,6 +106,48 @@ fn chunk_batches(documents: Vec<PreparedDocument>) -> Vec<Vec<PreparedDocument>>
     batches
 }
 
+fn split_oversized_document(document: PreparedDocument) -> Vec<PreparedDocument> {
+    if document.chunks.len() <= CHUNK_BATCH_SIZE {
+        return vec![document];
+    }
+    let mut windows = Vec::new();
+    for (index, chunks) in document.chunks.chunks(CHUNK_BATCH_SIZE).enumerate() {
+        let mut window = document.clone();
+        window.chunks = chunks.to_vec();
+        if index > 0 {
+            window.graph_candidates.clear();
+            window.warnings.clear();
+        }
+        windows.push(window);
+    }
+    windows
+}
+
+fn merge_vectorize_result(output: &mut VectorizeResult, result: VectorizeResult) {
+    output.chunks_prepared = output
+        .chunks_prepared
+        .saturating_add(result.chunks_prepared);
+    output.points_written = output.points_written.saturating_add(result.points_written);
+    output.graph_candidates.extend(result.graph_candidates);
+    output.warnings.extend(result.warnings);
+    for status in result.document_statuses {
+        if let Some(existing) = output
+            .document_statuses
+            .iter_mut()
+            .find(|existing| existing.document_id == status.document_id)
+        {
+            existing.chunk_count = existing.chunk_count.saturating_add(status.chunk_count);
+            existing.vector_point_count = existing
+                .vector_point_count
+                .saturating_add(status.vector_point_count);
+            existing.updated_at = status.updated_at;
+        } else {
+            output.documents_prepared = output.documents_prepared.saturating_add(1);
+            output.document_statuses.push(status);
+        }
+    }
+}
+
 async fn vectorize_batch(
     runtime: &TargetLocalSourceRuntime,
     input: &NonWebPipelineInput<'_>,
@@ -115,7 +156,7 @@ async fn vectorize_batch(
     emitter: &SourceEventEmitter,
 ) -> anyhow::Result<VectorizeResult> {
     if !input.plan.request.embed {
-        return statuses_only(runtime, documents, DocumentLifecycleStatus::Prepared).await;
+        return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
     }
     super::record_running_phase(
         runtime,
@@ -157,7 +198,7 @@ async fn vectorize_batch(
     let write = runtime.vector_store.upsert(point_batch).await?;
     drop(vector_reservation);
 
-    let mut result = statuses_only(runtime, documents, DocumentLifecycleStatus::Vectorized).await?;
+    let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embeddings.warnings);
     for status in &mut result.document_statuses {
@@ -166,11 +207,10 @@ async fn vectorize_batch(
     Ok(result)
 }
 
-async fn statuses_only(
-    runtime: &TargetLocalSourceRuntime,
+fn statuses_only(
     documents: Vec<PreparedDocument>,
     lifecycle: DocumentLifecycleStatus,
-) -> anyhow::Result<VectorizeResult> {
+) -> VectorizeResult {
     let mut result = VectorizeResult::default();
     for document in documents {
         result.documents_prepared += 1;
@@ -191,13 +231,25 @@ async fn statuses_only(
             error: None,
             cleanup_status: None,
         };
-        runtime
-            .ledger
-            .update_document_status(status.clone())
-            .await?;
         result.document_statuses.push(status);
     }
-    Ok(result)
+    result
+}
+
+pub(super) async fn write_document_statuses(
+    ledger: &dyn LedgerStore,
+    statuses: &[DocumentStatus],
+) -> anyhow::Result<()> {
+    for batch in statuses.chunks(DOCUMENT_STATUS_BATCH_SIZE) {
+        try_join_all(
+            batch
+                .iter()
+                .cloned()
+                .map(|status| ledger.update_document_status(status)),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 fn embedding_batch(
@@ -209,7 +261,8 @@ fn embedding_batch(
         &Uuid::NAMESPACE_URL,
         documents
             .iter()
-            .map(|document| document.document_id.0.as_str())
+            .flat_map(|document| document.chunks.iter())
+            .map(|chunk| chunk.chunk_id.0.as_str())
             .collect::<Vec<_>>()
             .join(":")
             .as_bytes(),
@@ -363,3 +416,7 @@ fn sanitize_session_chunk_metadata(document: &mut PreparedDocument) {
         });
     }
 }
+
+#[cfg(test)]
+#[path = "vectorize_tests.rs"]
+mod tests;

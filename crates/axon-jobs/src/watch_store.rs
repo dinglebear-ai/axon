@@ -254,10 +254,15 @@ impl WatchStore for SqliteWatchStore {
         };
 
         let now = now_ms();
+        let next_run_at: i64 = if request.schedule.is_some() {
+            now + every_seconds * 1000
+        } else {
+            existing.get("next_run_at")
+        };
         sqlx::query(
             "UPDATE axon_source_watches \
              SET enabled = ?, every_seconds = ?, cron = ?, timezone = ?, embed = ?, \
-                 options_json = ?, collection = ?, scope = ?, updated_at = ? \
+                 options_json = ?, collection = ?, scope = ?, next_run_at = ?, updated_at = ? \
              WHERE watch_id = ?",
         )
         .bind(enabled)
@@ -268,6 +273,7 @@ impl WatchStore for SqliteWatchStore {
         .bind(&options_json)
         .bind(&collection)
         .bind(&scope)
+        .bind(next_run_at)
         .bind(now)
         .bind(&watch_id.0)
         .execute(&self.pool)

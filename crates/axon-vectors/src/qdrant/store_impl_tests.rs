@@ -59,6 +59,22 @@ async fn collection_spec_cache_is_shared_across_store_clones() {
     assert_eq!(cached.dense.dimensions, 1024);
 }
 
+#[tokio::test]
+async fn collection_spec_cache_invalidation_reaches_existing_store_instances() {
+    let store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");
+    store
+        .cache_collection_spec(collection_spec("axon-reset"))
+        .await;
+    assert!(store.cached_collection_spec("axon-reset").await.is_some());
+
+    QdrantVectorStore::invalidate_collection_spec_cache("http://127.0.0.1:9", "axon-reset");
+
+    assert!(
+        store.cached_collection_spec("axon-reset").await.is_none(),
+        "raw reset must invalidate caches held by already-live contexts"
+    );
+}
+
 #[test]
 fn detect_named_mode_collection_with_sparse_and_indexes() {
     let body = json!({

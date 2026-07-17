@@ -7,8 +7,9 @@ struct FakeCaller {
     response: &'static str,
 }
 
+#[async_trait::async_trait]
 impl McpToolCaller for FakeCaller {
-    fn call(&self, _target: &McpToolTarget) -> Result<String, McpToolError> {
+    async fn call(&self, _target: &McpToolTarget) -> Result<String, McpToolError> {
         Ok(self.response.to_string())
     }
 }
@@ -22,6 +23,7 @@ async fn mcp_tool_source_indexes_schema_without_calling_by_default() {
         &[],
         None,
     )
+    .await
     .unwrap();
 
     assert_eq!(result.tool_call_count, 0);
@@ -42,6 +44,7 @@ async fn mcp_tool_call_requires_execute_scope_and_allowlist() {
         &[("server", "tool")],
         None,
     )
+    .await
     .unwrap_err();
     assert_eq!(err.code, "auth.scope_required");
 
@@ -52,6 +55,7 @@ async fn mcp_tool_call_requires_execute_scope_and_allowlist() {
         &[("other-server", "other-tool")],
         None,
     )
+    .await
     .unwrap_err();
     assert_eq!(err.code, "mcp.tool_denied");
 
@@ -62,6 +66,7 @@ async fn mcp_tool_call_requires_execute_scope_and_allowlist() {
         &[("server", "tool")],
         None,
     )
+    .await
     .unwrap_err();
     assert_eq!(err.code, "mcp.caller_missing");
 }
@@ -79,11 +84,11 @@ async fn mcp_tool_call_invokes_the_injected_caller_and_redacts_output() {
         &[("server", "tool")],
         Some(&caller),
     )
+    .await
     .unwrap();
 
     assert_eq!(result.tool_call_count, 1);
     assert_eq!(result.redaction_status, RedactionStatus::Redacted);
-    assert!(!result.vector_payload_contains("authorization"));
     assert!(!result.vector_payload_contains("Bearer secret"));
 
     // The real redacted tool-call output must land in `documents`, not just
@@ -94,7 +99,10 @@ async fn mcp_tool_call_invokes_the_injected_caller_and_redacts_output() {
     assert_eq!(doc.content_kind, "tool_output");
     assert!(doc.content.contains("[redacted-secret]"));
     assert!(doc.content.contains("\"body\":\"ok\""));
-    assert!(!doc.content.to_ascii_lowercase().contains("authorization"));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&doc.content).unwrap()["headers"]["authorization"],
+        "[redacted-secret]"
+    );
     assert!(!doc.content.contains("Bearer secret"));
 
     assert!(
@@ -123,6 +131,7 @@ async fn mcp_tool_call_rejects_invalid_uri() {
         &[],
         None,
     )
+    .await
     .unwrap_err();
     assert_eq!(err.code, "mcp.uri_invalid");
 }

@@ -41,7 +41,7 @@ impl RegistrySourceAdapter {
         let (registry, package) = parse_registry_target(&plan.request.source).map_err(|err| {
             crate::acquisition::materialization_error("adapter.registry.target_invalid", err)
         })?;
-        let path = fetch_registry_dump(&registry, &package)
+        let (temporary, path) = acquire::fetch_registry_dump_to_temporary_file(&registry, &package)
             .await
             .map_err(|err| {
                 crate::acquisition::materialization_error(
@@ -53,8 +53,8 @@ impl RegistrySourceAdapter {
             "registry_dump_path".to_string(),
             serde_json::json!(path.to_string_lossy()),
         );
-        Ok(crate::acquisition::MaterializedSource::persistent(
-            plan, path,
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
         ))
     }
 }

@@ -93,6 +93,24 @@ async fn atomic_write_under_writes_relative_path_inside_root() {
     assert_eq!(std::fs::read(path).expect("read artifact"), b"png");
 }
 
+#[tokio::test]
+async fn atomic_write_explicit_replaces_an_existing_file_without_temp_leaks() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let path = temp.path().join("state.json");
+    tokio::fs::write(&path, b"old").await.expect("seed file");
+
+    atomic_write_explicit(&path, b"new")
+        .await
+        .expect("replace existing file");
+
+    assert_eq!(tokio::fs::read(&path).await.expect("read file"), b"new");
+    let entries = std::fs::read_dir(temp.path())
+        .expect("read tempdir")
+        .map(|entry| entry.expect("entry").file_name())
+        .collect::<Vec<_>>();
+    assert_eq!(entries, [std::ffi::OsString::from("state.json")]);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn atomic_write_under_rejects_symlinked_parent_escape() {

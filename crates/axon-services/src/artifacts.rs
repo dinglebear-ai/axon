@@ -5,11 +5,9 @@
 
 use crate::context::ServiceContext;
 use axon_api::source::{
-    ApiError, ArtifactHandle, ArtifactId, ArtifactKind, ArtifactListRequest, ContentRef,
-    ErrorStage, JobId, MetadataMap, Page, SourceId, Timestamp,
+    ApiError, ArtifactHandle, ArtifactId, ArtifactKind, ArtifactListRequest, ErrorStage, JobId,
+    MetadataMap, Page, SourceId, Timestamp,
 };
-use axon_core::boundary::{ArtifactStore, FileArtifactStore};
-use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use utoipa::ToSchema;
@@ -20,6 +18,10 @@ pub(crate) use crate::reset::artifacts::{artifact_root, count_files, purge_files
 
 const DEFAULT_LIMIT: u32 = 50;
 const MAX_LIMIT: u32 = 200;
+
+#[path = "artifacts/index.rs"]
+mod index;
+use index::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ArtifactSummary {
@@ -55,6 +57,15 @@ pub struct ArtifactContentDescriptor {
     pub bytes: Vec<u8>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArtifactContentFile {
+    pub artifact_id: ArtifactId,
+    pub content_type: String,
+    pub disposition: String,
+    pub size_bytes: u64,
+    pub path: PathBuf,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct StoredArtifactManifest {
     handle: ArtifactHandle,
@@ -67,24 +78,25 @@ pub async fn list_artifacts(
     ctx: &ServiceContext,
     request: ArtifactListRequest,
 ) -> Result<Page<ArtifactSummary>, ApiError> {
+    crate::uploads::cleanup_expired_uploads(ctx).await?;
     let limit = request.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     if let Some(cursor) = request.cursor.as_deref() {
         validate_artifact_id(cursor)?;
     }
 
-    let mut manifests = read_manifests(&artifact_root_for(ctx)).await?;
-    manifests.sort_by(|left, right| left.handle.artifact_id.cmp(&right.handle.artifact_id));
-    let mut matching = Vec::new();
-    for manifest in manifests {
-        let artifact_id = &manifest.handle.artifact_id.0;
-        if request
+    let index = load_artifact_index(ctx).await?;
+    let candidates = index.candidates(&request);
+    let start = candidates.partition_point(|artifact_id| {
+        request
             .cursor
             .as_deref()
-            .is_some_and(|cursor| artifact_id.as_str() <= cursor)
-        {
+            .is_some_and(|cursor| artifact_id.0.as_str() <= cursor)
+    });
+    let mut matching = Vec::new();
+    for artifact_id in &candidates[start..] {
+        let Some(summary) = index.summary(artifact_id) else {
             continue;
-        }
-        let summary = manifest_summary(ctx, &manifest).await?;
+        };
         if request.kind.is_some_and(|kind| summary.kind != kind)
             || request
                 .source_id
@@ -97,7 +109,7 @@ pub async fn list_artifacts(
         {
             continue;
         }
-        matching.push(summary);
+        matching.push(summary.clone());
         if matching.len() > limit as usize {
             break;
         }
@@ -124,6 +136,7 @@ pub async fn get_artifact(
     ctx: &ServiceContext,
     artifact_id: ArtifactId,
 ) -> Result<ArtifactDetail, ApiError> {
+    crate::uploads::cleanup_expired_uploads(ctx).await?;
     let manifest = read_manifest(ctx, &artifact_id).await?;
     let summary = manifest_summary(ctx, &manifest).await?;
     let retention = manifest
@@ -144,18 +157,27 @@ pub async fn get_artifact(
 pub async fn artifact_content(
     ctx: &ServiceContext,
     artifact_id: ArtifactId,
-) -> Result<ArtifactContentDescriptor, ApiError> {
+) -> Result<ArtifactContentFile, ApiError> {
+    crate::uploads::cleanup_expired_uploads(ctx).await?;
     let manifest = read_manifest(ctx, &artifact_id).await?;
-    let store = FileArtifactStore::new(artifact_root_for(ctx));
-    let result = store.get(manifest.handle).await?;
-    let bytes = content_bytes(result.content)?;
-    let label = metadata_string(&result.metadata, "label")
+    let path = artifact_root_for(ctx).join(&manifest.content_path);
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|error| io_error("artifact.read_failed", &path, error))?;
+    if !metadata.is_file() {
+        return Err(artifact_error(
+            "artifact.content_unavailable",
+            "artifact content is not a regular file",
+        ));
+    }
+    let label = metadata_string(&manifest.metadata, "label")
         .unwrap_or_else(|| format!("{}.bin", artifact_id.0));
-    Ok(ArtifactContentDescriptor {
+    Ok(ArtifactContentFile {
         artifact_id,
-        content_type: result.content_type,
+        content_type: manifest.content_type,
         disposition: safe_disposition(&label),
-        bytes,
+        size_bytes: metadata.len(),
+        path,
     })
 }
 
@@ -246,21 +268,6 @@ async fn manifest_summary(
         content_type: Some(manifest.content_type.clone()),
         label: metadata_string(&manifest.metadata, "label"),
     })
-}
-
-fn content_bytes(content: Option<ContentRef>) -> Result<Vec<u8>, ApiError> {
-    match content {
-        Some(ContentRef::InlineText { text }) => Ok(text.into_bytes()),
-        Some(ContentRef::InlineBytes { bytes_base64, .. }) => {
-            base64::engine::general_purpose::STANDARD
-                .decode(bytes_base64)
-                .map_err(|error| artifact_error("artifact.invalid_content", error.to_string()))
-        }
-        _ => Err(artifact_error(
-            "artifact.content_unavailable",
-            "artifact content is not available as stored bytes",
-        )),
-    }
 }
 
 fn validate_artifact_id(value: &str) -> Result<(), ApiError> {

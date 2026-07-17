@@ -31,6 +31,11 @@ fn watch_request(subaction: WatchSubaction) -> WatchMcpRequest {
         collection: None,
         source: None,
         embed: None,
+        scope: None,
+        options: None,
+        reason: None,
+        refresh: None,
+        wait: None,
         response_mode: None,
     }
 }
@@ -149,4 +154,49 @@ fn mcp_watch_forwards_list_and_history_cursors_and_status() {
         projected.status,
         Some(axon_api::source::LifecycleStatus::Failed)
     );
+}
+
+#[test]
+fn mcp_watch_forwards_exec_reason_refresh_and_wait() {
+    let mut request = watch_request(WatchSubaction::Exec);
+    request.reason = Some("manual verification".to_string());
+    request.refresh = Some(axon_api::source::SourceRefreshPolicy::Force);
+    request.wait = Some(true);
+
+    let projected = watch_exec_request(&request);
+    assert_eq!(projected.reason.as_deref(), Some("manual verification"));
+    assert_eq!(
+        projected.refresh,
+        Some(axon_api::source::SourceRefreshPolicy::Force)
+    );
+    assert_eq!(projected.wait, Some(true));
+}
+
+#[tokio::test]
+async fn mcp_watch_create_uses_authenticated_caller_snapshot_for_local_scope() {
+    let (server, _tmp) = watch_test_server();
+    let mut request = watch_request(WatchSubaction::Create);
+    request.source = Some("/tmp/axon-watch-private".to_string());
+    request.scope = Some(axon_api::source::SourceScope::Directory);
+    request.every_seconds = Some(3600);
+    let caller = axon_api::source::AuthSnapshot::from_caller(
+        &axon_api::source::CallerContext {
+            caller_id: Some("mcp-reviewer".to_string()),
+            transport: axon_api::source::TransportKind::Mcp,
+            trusted_local: false,
+            scopes: vec!["axon:write".to_string()],
+            visibility_ceiling: axon_api::source::Visibility::Internal,
+            auth_mode: axon_api::source::AuthMode::Oauth,
+            token_id: None,
+            display_name: None,
+        },
+        axon_api::source::Visibility::Internal,
+        "test",
+    );
+
+    let error = CURRENT_CALLER_AUTH_SNAPSHOT
+        .scope(Some(caller), server.handle_watch(request))
+        .await
+        .expect_err("caller without local scope must not create a local watch");
+    assert!(error.message.contains("scope") || error.message.contains("local"));
 }

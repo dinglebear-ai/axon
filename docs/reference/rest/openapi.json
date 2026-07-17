@@ -1814,7 +1814,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:f004a70b1fbb6244f1cd39a5b458fe27845fde3dccb4a54b6c872ec034688f59",
+        "checksum": "sha256:27cb2ee8ec9a6f0920842885b028266fdf5c551172a8e5da60cb2dd016807e73",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },
