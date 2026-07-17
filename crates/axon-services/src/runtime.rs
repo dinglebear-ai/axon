@@ -14,10 +14,12 @@ use axon_core::config::Config;
 use axon_jobs::SqliteJobBackend;
 use axon_jobs::workers::JobRunnerRegistry;
 
+pub mod drain_lock;
 pub mod job_runners;
 pub mod sqlite;
 pub mod traits;
 
+pub use drain_lock::{DRAIN_LOCK_SUFFIX, WorkerDrainLock, drain_lock_path};
 pub use sqlite::SqliteServiceRuntime;
 pub use traits::{JobPagination, RuntimeResult, ServiceJobRuntime, WorkerMode};
 

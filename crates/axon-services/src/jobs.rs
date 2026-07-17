@@ -13,6 +13,7 @@ use axon_api::source::{
 };
 
 mod unified_ops;
+pub mod worker_loop;
 use unified_ops::box_send_sync;
 pub use unified_ops::{
     cancel_unified_job, cleanup_unified_jobs, clear_unified_jobs, list_unified_jobs,

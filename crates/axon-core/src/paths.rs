@@ -139,6 +139,27 @@ pub async fn ensure_private_dir_async(path: PathBuf) -> std::io::Result<()> {
         .await
         .unwrap_or_else(|e| Err(std::io::Error::other(format!("join error: {e}"))))
 }
+
+/// Open a file for private (owner-only) append, creating it if absent.
+///
+/// On Unix the file is created/opened at mode `0o600` with `O_NOFOLLOW`, so it
+/// is never world-readable and a pre-existing symlink at the path is rejected
+/// rather than followed — the same hardening `sqlite.rs` applies to the jobs
+/// DB. Callers that hold potentially-sensitive runtime output (e.g. the
+/// auto-worker log, which records scraped URLs and local paths) must use this
+/// instead of a bare `OpenOptions::append`. Callers should
+/// [`ensure_private_dir`] the parent first so the containing directory is also
+/// 0o700.
+pub fn open_private_append(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600).custom_flags(libc::O_NOFOLLOW);
+    }
+    options.open(path)
+}
 #[cfg(test)]
 #[path = "paths_tests.rs"]
 mod tests;

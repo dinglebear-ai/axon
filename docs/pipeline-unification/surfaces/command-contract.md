@@ -568,6 +568,20 @@ Memory is not a source adapter.
 | `axon jobs recover` | none | `--kind`, `--older-than` | recovery summary |
 | `axon jobs cleanup` | none | `--older-than`, `--dry-run` | cleanup summary |
 | `axon jobs clear` | none | `--status`, `--older-than`, `--confirm` | clear summary |
+| `axon jobs worker` | none | `--idle-exit-secs` | worker run summary |
+
+`axon jobs worker` hosts the in-process worker runtime in a standalone
+process: it drains the durable queue, keeps serving while work keeps
+arriving, and exits after the configured idle window (`--idle-exit-secs`,
+default `jobs.worker-idle-exit-secs`, `0` = run until stopped). It acquires the
+worker drain lock — a `BEGIN EXCLUSIVE` SQLite file beside the jobs DB — before
+constructing any job-claiming runtime, so a losing invocation exits immediately
+having claimed nothing. Every worker-bearing runtime holds that same lock:
+`axon serve` and HTTP `axon mcp` hold it for their lifetime, so a worker (manual
+or auto-spawned) started while a server is running also exits immediately. The
+source and sessions detached defaults auto-start a worker only when the lock is
+unheld, so detached jobs never require a manually started `axon serve`, and a
+running server never triggers a redundant spawn.
 
 ### artifacts and uploads
 

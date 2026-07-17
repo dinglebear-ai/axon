@@ -306,3 +306,24 @@ async fn build_registry_only_registers_in_scope_kinds() {
     assert!(!registry.contains(UnifiedJobKind::Watch));
     assert!(!registry.contains(UnifiedJobKind::Research));
 }
+
+/// Regression for `axon_rust-x4gxr.4`: the standalone worker loop watches
+/// [`WORKER_JOB_KINDS`] for idle-exit and stale recovery, so that set must equal
+/// the kinds `build_registry` actually registers — otherwise the process can
+/// idle-exit while running a job of an unwatched kind. Guards against either
+/// list drifting when a runner is added or removed.
+#[tokio::test]
+async fn registered_kinds_match_worker_job_kinds() {
+    let (_tmp, cfg) = test_cfg().await;
+    let registry = build_registry(&cfg).expect("build registry");
+
+    let mut registered = registry.registered_kinds();
+    registered.sort_by_key(|k| format!("{k:?}"));
+    let mut watched = WORKER_JOB_KINDS.to_vec();
+    watched.sort_by_key(|k| format!("{k:?}"));
+
+    assert_eq!(
+        registered, watched,
+        "WORKER_JOB_KINDS must equal build_registry's registered kinds"
+    );
+}

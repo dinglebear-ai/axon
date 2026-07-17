@@ -1,5 +1,8 @@
+use crate::commands::source::detach::ensure_worker_process;
 use crate::commands::source::{render_source_result, source_result_json};
-use axon_api::source::{LifecycleStatus, ResponseMode, SourceIntent, SourceRequest, SourceScope};
+use axon_api::source::{
+    AuthSnapshot, LifecycleStatus, ResponseMode, SourceIntent, SourceRequest, SourceScope,
+};
 use axon_core::config::Config;
 use axon_services::context::ServiceContext;
 use axon_services::sessions::{SessionProvider, SessionRoots};
@@ -35,6 +38,7 @@ async fn run_session_sources(
     }
 
     let mut results = Vec::new();
+    let mut enqueued_detached = false;
     for (provider, root) in selectors {
         let request = session_source_request(cfg, provider, root);
         let result = if cfg.wait {
@@ -45,9 +49,18 @@ async fn run_session_sources(
             let store = service_context
                 .job_store()
                 .ok_or("sessions source enqueue requires a unified job store")?;
-            enqueue_source(request, store.as_ref(), None)
-                .await
-                .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?
+            // Same trusted-local CLI snapshot as `axon <source>`, so detached
+            // session jobs carry an accurate CLI origin rather than the generic
+            // system snapshot (`axon_rust-x4gxr.11`).
+            let result = enqueue_source(
+                request,
+                store.as_ref(),
+                Some(AuthSnapshot::trusted_cli(env!("CARGO_PKG_VERSION"))),
+            )
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+            enqueued_detached |= result.job.is_some();
+            result
         };
         if !cfg.json_output {
             render_source_result(cfg, &result);
@@ -61,6 +74,13 @@ async fn run_session_sources(
             return Err(msg.into());
         }
         results.push(result);
+    }
+
+    // Sessions enqueue through the same detached path as `axon <source>`, so it
+    // must also guarantee a worker picks the jobs up without a manual
+    // `axon serve` (`axon_rust-x4gxr.11`).
+    if enqueued_detached {
+        ensure_worker_process(cfg).await;
     }
 
     if cfg.json_output {

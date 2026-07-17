@@ -1679,6 +1679,42 @@ compatibility = "canonical"
 reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_JOBS_AUTO_WORKER"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob (also jobs.auto-worker in config.toml); env wins. Gates auto-spawn of a background worker after a detached CLI enqueue."
+
+[[env]]
+key = "AXON_JOBS_WORKER_IDLE_EXIT_SECS"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src", "docs", "config-example"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Non-secret tuning knob (also jobs.worker-idle-exit-secs in config.toml); env wins. Idle seconds before an auto-started worker exits."
+
+[[env]]
+key = "AXON_ALLOW_INCOMPATIBLE_STORE_STARTUP"
+classification = "keep-env"
+runtime_placement = "both"
+surfaces = ["src"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = ""
+compatibility = "canonical"
+reason = "Operator/dev escape hatch that bypasses the cutover store-compatibility startup gate (crates/axon-core/src/health/doctor/cutover.rs); env-only, never a config.toml field."
+
+[[env]]
 key = "AXON_TASK_RESULT_WAIT_TIMEOUT_SECS"
 classification = "keep-env"
 runtime_placement = "both"

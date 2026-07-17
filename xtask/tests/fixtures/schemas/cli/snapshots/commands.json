@@ -634,6 +634,19 @@
     },
     {
       "async": false,
+      "group": "jobs",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "jobs worker",
+      "path": [
+        "jobs",
+        "worker"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Run a standalone worker process for the unified durable queue"
+    },
+    {
+      "async": false,
       "group": "memory",
       "maps_to_dto": null,
       "mutates": true,
@@ -1422,7 +1435,7 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:269b2a966c87b9d8bba32dcd492be6171a647de027d7402fdb95cdc83d2fde43",
+        "checksum": "sha256:f56f35b0f9ed0060565962aabbf311bf0393283b3f493ac212bc2803cf2aa47c",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1457,7 +1470,7 @@
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },
       {
-        "checksum": "sha256:f02fc12d30fb18e2b3fd2ca52a8fc35d798c8300255e2924c09124dc131456e0",
+        "checksum": "sha256:ff5d1b6ff19ba79d4e81b4b0439558ae89457795656af0dfee9b9050f51e7ab1",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part2.rs"
       },

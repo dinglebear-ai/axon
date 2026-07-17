@@ -414,6 +414,14 @@ fn populate_misc(
             .or(inputs.toml.workers.jobs_interactive_starvation_slo_secs)
             .unwrap_or(30)
             .clamp(0, 3600);
+    cfg.jobs_auto_worker = parse_bool_env_opt("AXON_JOBS_AUTO_WORKER")
+        .or(inputs.toml.workers.jobs_auto_worker)
+        .unwrap_or(true);
+    cfg.jobs_worker_idle_exit_secs = parse_i64_env("AXON_JOBS_WORKER_IDLE_EXIT_SECS")
+        .map(|value| value.clamp(0, 86_400) as u64)
+        .or(inputs.toml.workers.jobs_worker_idle_exit_secs)
+        .unwrap_or(300)
+        .min(86_400);
     cfg.json_output = g.json;
     cfg.reclaimed_status_only = g.reclaimed;
     cfg.active_status_only = g.active;

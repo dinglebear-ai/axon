@@ -58,6 +58,25 @@ impl AuthSnapshot {
         }
     }
 
+    /// Trusted local CLI context per the auth contract's "Trusted CLI
+    /// Context": only for local CLI invocations running as the local user,
+    /// never inferred for remote transports. Grants `Local` so detached
+    /// local-path source jobs enqueued by the CLI pass
+    /// `enforce_local_source_policy`.
+    pub fn trusted_cli(policy_version: impl Into<String>) -> Self {
+        Self {
+            caller_id: Some("axon-cli".to_string()),
+            transport: TransportKind::Cli,
+            granted_scopes: vec![AuthScope::Read, AuthScope::Write, AuthScope::Local],
+            visibility_ceiling: Visibility::Internal,
+            request_time: Timestamp::from(Utc::now()),
+            policy_version: policy_version.into(),
+            auth_mode: AuthMode::TrustedLocal,
+            token_id: None,
+            display_name: Some("Axon CLI".to_string()),
+        }
+    }
+
     pub fn from_caller(
         caller: &CallerContext,
         visibility_ceiling: Visibility,

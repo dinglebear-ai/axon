@@ -38,10 +38,27 @@ mod source_runner;
 use source_runner::SourceRunner;
 pub(crate) use source_runner::run_source_request_with_context;
 
+/// Every `JobKind` the in-process worker runtime executes — the exact set
+/// [`build_registry`] registers runners for. The standalone worker loop watches
+/// precisely this set for idle-exit and stale recovery, so it must stay in sync
+/// with `build_registry`; `job_runners_tests::registered_kinds_match_worker_job_kinds`
+/// asserts that. Deriving the watch set from one shared constant (rather than a
+/// second hand-maintained literal in `worker_loop.rs`) closes the drift that let
+/// idle-exit kill running `Memory`/`ProviderProbe` jobs (`axon_rust-x4gxr.4`).
+pub const WORKER_JOB_KINDS: &[JobKind] = &[
+    JobKind::ProviderProbe,
+    JobKind::Extract,
+    JobKind::Source,
+    JobKind::Memory,
+];
+
 /// Build the [`JobRunnerRegistry`] handed to the unified worker at
 /// composition time. Additive by design — any kind not registered here keeps
 /// falling back to `job_runner.unsupported_stage`, so this function can only
 /// ever make more kinds executable, never fewer.
+///
+/// The registered kinds must equal [`WORKER_JOB_KINDS`]; keep the two together
+/// when adding a runner.
 ///
 /// Returns an error only if opening the memory store fails outright (bad
 /// path, unwritable directory, …) — callers should treat that as fatal for

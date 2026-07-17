@@ -10,6 +10,10 @@ use axon_services::context::ServiceContext;
 use std::error::Error;
 use uuid::Uuid;
 
+mod worker;
+
+pub(crate) use worker::run_worker_process;
+
 pub async fn run_jobs(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -23,6 +27,10 @@ pub async fn run_jobs(
         "recover" => recover_jobs(cfg, service_context).await,
         "cleanup" => cleanup_jobs(cfg, service_context).await,
         "clear" => clear_jobs(cfg, service_context).await,
+        // `worker` is dispatched early in `run()` via `run_worker_process`
+        // (before any ServiceContext is built) so it can take the drain lock
+        // before constructing a claim-capable runtime. It never reaches here.
+        "worker" => unreachable!("jobs worker is dispatched before run_once"),
         other => Err(format!("unknown jobs subcommand: {other}").into()),
     }
 }

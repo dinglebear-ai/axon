@@ -408,6 +408,10 @@ pub(super) struct TomlWorkersSection {
     pub jobs_retention_sweep_secs: Option<i64>,
     /// SLO in seconds for the priority-aware interactive-lane starvation watchdog.
     pub jobs_interactive_starvation_slo_secs: Option<i64>,
+    /// Auto-start a background worker after detached CLI enqueues.
+    pub jobs_auto_worker: Option<bool>,
+    /// Idle seconds before an auto-started worker exits (0 = run forever).
+    pub jobs_worker_idle_exit_secs: Option<u64>,
     /// Timeout in seconds for `--wait true` job polling (clamped 30–3600).
     /// Env: `AXON_JOB_WAIT_TIMEOUT_SECS`.
     pub job_wait_timeout_secs: Option<u64>,

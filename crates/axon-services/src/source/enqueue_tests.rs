@@ -95,6 +95,23 @@ async fn empty_source_input_does_not_enqueue_a_job() {
 }
 
 #[tokio::test]
+async fn enqueue_source_local_path_allowed_for_trusted_cli() {
+    let store = FakeJobWatchStore::new();
+    let request = SourceRequest::local_path("/tmp/axon-local-source", false);
+
+    let result = enqueue_source(request, &store, Some(AuthSnapshot::trusted_cli("test")))
+        .await
+        .expect("enqueue should succeed");
+
+    assert!(
+        result.job.is_some(),
+        "trusted CLI context must be allowed to detach local sources: {:?}",
+        result.warnings
+    );
+    assert_eq!(result.status, LifecycleStatus::Queued);
+}
+
+#[tokio::test]
 async fn enqueue_source_local_path_denied_without_local_scope() {
     let store = FakeJobWatchStore::new();
     let request = SourceRequest::local_path("/tmp/axon-local-source", false);
