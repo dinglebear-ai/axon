@@ -119,6 +119,17 @@ fn commands_sources_stats_jobs() -> Vec<CliRegistryCommand> {
             false,
             "admin",
         ),
+        c(
+            &["jobs", "worker"],
+            "Run a standalone worker process for the unified durable queue",
+            None,
+            true,
+            false,
+            // admin: the worker performs the same stale-job reclaim as
+            // `jobs recover` (admin) automatically on a timer, so it is at
+            // least as privileged (axon_rust-x4gxr.13).
+            "admin",
+        ),
     ]
 }
 

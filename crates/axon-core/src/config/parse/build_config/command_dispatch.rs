@@ -464,6 +464,10 @@ fn apply_jobs(out: &mut DispatchOutput, action: Option<JobsSubcommand>) {
                 positional.push("--confirm".to_string());
             }
         }
+        JobsSubcommand::Worker { idle_exit_secs } => {
+            positional.push("worker".to_string());
+            push_u64(&mut positional, "--idle-exit-secs", idle_exit_secs);
+        }
     }
     out.positional = positional;
 }

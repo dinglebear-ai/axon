@@ -812,6 +812,14 @@ pub(super) enum JobsSubcommand {
         #[arg(long, action = ArgAction::SetTrue)]
         confirm: bool,
     },
+    /// Run a standalone worker process for the unified durable queue.
+    Worker {
+        /// Exit after the queue is idle this many seconds (0 = run until
+        /// stopped). Defaults to `jobs.worker-idle-exit-secs`
+        /// (`AXON_JOBS_WORKER_IDLE_EXIT_SECS`).
+        #[arg(long = "idle-exit-secs")]
+        idle_exit_secs: Option<u64>,
+    },
 }
 #[cfg(test)]
 #[path = "cli_tests.rs"]

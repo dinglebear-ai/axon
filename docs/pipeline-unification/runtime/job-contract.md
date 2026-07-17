@@ -32,7 +32,7 @@ provider work.
 
 ## Current Implementation Snapshot
 
-Refreshed 2026-07-15 against the closeout-audit branch:
+Refreshed 2026-07-17 against the source-detach-default branch:
 
 Implemented today:
 
@@ -44,6 +44,13 @@ Implemented today:
 - Web page/site/docs acquisition, retained `scrape`, source-backed `map`,
   search/research auto-index, refresh, and URL watch now enqueue `source` jobs.
   They do not hand off to child embedding jobs.
+- The bare CLI source command matches the command contract: `axon <source>`
+  without `--wait` enqueues a detached `source` job (trusted-local CLI auth
+  snapshot) and returns the job descriptor; `--wait true` is the foreground
+  opt-in. After a detached enqueue the CLI guarantees pickup by probing the
+  worker drain lock and auto-spawning a detached `axon jobs worker` when no
+  worker process is alive; the spawned worker recovers stale attempts, drains,
+  lingers `jobs.worker-idle-exit-secs`, and exits.
 - REST now exposes a generic `/v1/jobs` collection
   (`handlers::jobs::unified_jobs_read_router` /
   `unified_jobs_write_router` / `unified_jobs_admin_router` in

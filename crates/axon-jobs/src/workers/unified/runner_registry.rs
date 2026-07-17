@@ -72,6 +72,16 @@ impl JobRunnerRegistry {
     pub fn contains(&self, kind: JobKind) -> bool {
         self.runners.contains_key(&kind)
     }
+
+    /// Every `JobKind` with a registered runner — i.e. every kind this worker
+    /// process actually executes. Order is unspecified (backed by a `HashMap`);
+    /// callers that need a stable order should sort. Used by the standalone
+    /// worker loop to derive its idle-exit / stale-recovery watch set from the
+    /// live registry instead of a hand-maintained second list (see
+    /// `axon_rust-x4gxr.4`).
+    pub fn registered_kinds(&self) -> Vec<JobKind> {
+        self.runners.keys().copied().collect()
+    }
 }
 
 #[cfg(test)]

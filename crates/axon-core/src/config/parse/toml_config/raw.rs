@@ -190,6 +190,10 @@ pub(in crate::config) struct RawJobsSection {
     pub worker_starvation_secs: Option<i64>,
     pub crawl_job_timeout_secs: Option<i64>,
     pub max_job_attempts: Option<i64>,
+    /// Auto-start a background worker after detached CLI enqueues.
+    pub auto_worker: Option<bool>,
+    /// Idle seconds before an auto-started worker exits (0 = run forever).
+    pub worker_idle_exit_secs: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]

@@ -105,9 +105,30 @@ pub fn authorize_safety_class(
 
 /// Whether a persisted caller snapshot is trusted for a concrete scope at the
 /// source execution boundary.
+///
+/// An explicit grant in `granted_scopes` always authorizes. A
+/// [`AuthMode::TrustedLocal`] snapshot (local CLI / loopback / system runtime)
+/// *additionally* holds the "local data" scopes implicitly — `Read`, `Write`,
+/// `Local` — because a local caller already has filesystem-level access to the
+/// same data. It does **not** implicitly hold `Execute` or `Admin`: tool
+/// execution and admin operations must appear explicitly in `granted_scopes`.
+///
+/// Before this split, `TrustedLocal` blanket-passed *every* scope, which made a
+/// snapshot's deliberate omission of a scope decorative — e.g.
+/// [`AuthSnapshot::trusted_cli`](axon_api::source::AuthSnapshot::trusted_cli)
+/// excludes `Execute` on purpose, but the old rule granted it anyway. Keeping
+/// the elevated scopes explicit-only means the granted-scope list is the single
+/// source of truth for `Execute`/`Admin` even on trusted local callers. See
+/// the auth contract's "Trusted CLI Context" and bead `axon_rust-x4gxr.8`.
 pub(crate) fn snapshot_allows_scope(snapshot: &AuthSnapshot, required: AuthScope) -> bool {
+    if snapshot.granted_scopes.contains(&required) {
+        return true;
+    }
     matches!(snapshot.auth_mode, AuthMode::TrustedLocal)
-        || snapshot.granted_scopes.contains(&required)
+        && matches!(
+            required,
+            AuthScope::Read | AuthScope::Write | AuthScope::Local
+        )
 }
 
 #[cfg(test)]

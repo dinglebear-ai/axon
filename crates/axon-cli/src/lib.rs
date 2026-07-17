@@ -116,10 +116,10 @@ fn job_command_mode(cfg: &Config) -> Option<JobCommandMode<'_>> {
 
 fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>) -> bool {
     cfg.wait
-        || matches!(
-            cfg.command,
-            CommandKind::Source | CommandKind::Scrape | CommandKind::Map
-        )
+        // Source is detached-by-default now (an enqueue-only context); `--wait`
+        // Source is covered by the `cfg.wait` clause above. Scrape and Map stay
+        // foreground and need the worker-bearing runtime.
+        || matches!(cfg.command, CommandKind::Scrape | CommandKind::Map)
         || matches!(
             command_mode,
             Some(JobCommandMode::Subcommand {
@@ -127,6 +127,14 @@ fn command_needs_workers(cfg: &Config, command_mode: Option<JobCommandMode<'_>>)
                 ..
             })
         )
+}
+
+/// `axon jobs worker` hosts the in-process worker runtime in this process. It is
+/// dispatched early (before any `ServiceContext` is built) so it can take the
+/// drain lock before constructing a claim-capable runtime — see
+/// [`commands::run_worker_process`] and `axon_rust-x4gxr.3`.
+fn jobs_worker_invocation(cfg: &Config) -> bool {
+    cfg.command == CommandKind::Jobs && cfg.positional.first().map(String::as_str) == Some("worker")
 }
 
 /// Returns true if the process argv is the `setup plugin-hook` (or `setup hook`)
@@ -262,13 +270,27 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     }
 
     let cfg_arc = Arc::new(cfg);
+
+    // `axon jobs worker` must acquire the drain lock BEFORE any claim-capable
+    // ServiceContext exists, so it owns its runtime construction entirely (like
+    // `reset` above). Dispatch it here, before the shared context is built.
+    if jobs_worker_invocation(&cfg_arc) {
+        let result = commands::run_worker_process(Arc::clone(&cfg_arc)).await;
+        if result.is_ok() {
+            log_done("command=jobs worker complete");
+        }
+        return result;
+    }
+
     // CLI commands use ServiceContext::new() (enqueue-only) unless the command
     // intentionally needs in-process workers. Fire-and-forget submits enqueue
     // and exit; operator `worker` subcommands spawn workers in this process.
     let command_mode = job_command_mode(&cfg_arc);
-    // `source` and retained `scrape` index synchronously in the foreground but
-    // need the data-plane runtime (ledger/embedding/vector stores), which is
-    // only attached to a worker-bearing ServiceContext.
+    // Retained `scrape` (and any command under `--wait true`) indexes
+    // synchronously in the foreground and needs the data-plane runtime
+    // (ledger/embedding/vector stores), which is only attached to a
+    // worker-bearing ServiceContext. Detached-default `source` enqueues via
+    // an enqueue-only context; `jobs worker` hosts workers explicitly.
     let needs_workers = command_needs_workers(cfg_arc.as_ref(), command_mode);
     let service_context = if needs_workers {
         ServiceContext::new_with_workers(Arc::clone(&cfg_arc)).await

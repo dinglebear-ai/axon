@@ -110,3 +110,4 @@ axon-core = { path = "../axon-core", features = ["test-util"] }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"
+tokio = { version = "1", features = ["test-util"] }

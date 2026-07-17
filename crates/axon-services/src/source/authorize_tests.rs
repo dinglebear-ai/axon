@@ -145,3 +145,40 @@ fn authorize_safety_class_uses_route_safety_for_execute_sources() {
         Some("axon:execute")
     );
 }
+
+/// Regression for `axon_rust-x4gxr.8`: a `trusted_cli` snapshot deliberately
+/// excludes `Execute` from `granted_scopes`, and the `TrustedLocal` implicit
+/// grant must NOT silently restore it. Before the hardening in
+/// `snapshot_allows_scope`, `TrustedLocal` blanket-passed every scope and this
+/// tool-execution source would have been (incorrectly) authorized via the
+/// CLI's new default detached path.
+#[test]
+fn trusted_cli_snapshot_is_denied_tool_execution() {
+    let snapshot = AuthSnapshot::trusted_cli("test");
+    assert!(
+        !snapshot.granted_scopes.contains(&AuthScope::Execute),
+        "precondition: trusted_cli must not list Execute"
+    );
+
+    let err = authorize_safety_class(SafetyClass::ToolExecution, Some(&snapshot))
+        .expect_err("trusted CLI must not implicitly hold Execute");
+
+    assert_eq!(err.code.to_string(), "auth.scope_required");
+    assert_eq!(
+        err.details.get("required_scope").map(String::as_str),
+        Some("axon:execute")
+    );
+}
+
+/// The `TrustedLocal` implicit grant still covers the "local data" scopes so
+/// local-path sources keep working detached — only `Execute`/`Admin` are
+/// withheld.
+#[test]
+fn trusted_cli_snapshot_still_allows_local_scope_implicitly() {
+    let snapshot = AuthSnapshot::trusted_cli("test");
+    assert!(snapshot_allows_scope(&snapshot, AuthScope::Local));
+    assert!(snapshot_allows_scope(&snapshot, AuthScope::Read));
+    assert!(snapshot_allows_scope(&snapshot, AuthScope::Write));
+    assert!(!snapshot_allows_scope(&snapshot, AuthScope::Execute));
+    assert!(!snapshot_allows_scope(&snapshot, AuthScope::Admin));
+}

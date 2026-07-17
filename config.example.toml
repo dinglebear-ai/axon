@@ -143,6 +143,13 @@
 # Maximum reclaim attempts before a stale job is dead-lettered. 0 = unlimited.
 # Env: AXON_MAX_JOB_ATTEMPTS
 # max-job-attempts = 5
+# Auto-start a background `axon jobs worker` after a detached CLI enqueue
+# (`axon <source>` without --wait) when no worker process is already running.
+# Env: AXON_JOBS_AUTO_WORKER
+# auto-worker = true
+# Idle seconds before an auto-started worker exits. 0 = run until stopped.
+# Env: AXON_JOBS_WORKER_IDLE_EXIT_SECS
+# worker-idle-exit-secs = 300
 
 [providers.embedding]
 # This section is critical for avoiding embedding-pipeline bottlenecks.

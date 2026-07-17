@@ -144,6 +144,8 @@ fn apply_jobs(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.workers.jobs_retention_artifact_days = j.artifact_retention_days.map(i64::from);
     legacy.workers.jobs_retention_sweep_secs = j.retention_sweep_secs;
     legacy.workers.jobs_interactive_starvation_slo_secs = j.interactive_starvation_slo_secs;
+    legacy.workers.jobs_auto_worker = j.auto_worker;
+    legacy.workers.jobs_worker_idle_exit_secs = j.worker_idle_exit_secs;
 }
 
 fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {

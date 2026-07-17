@@ -18,6 +18,8 @@ use axon_services::context::ServiceContext;
 use axon_services::index_source;
 use std::error::Error;
 
+pub(crate) mod detach;
+
 pub async fn run_source(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -29,16 +31,34 @@ pub async fn run_source(
     run_source_request(cfg, service_context, request).await
 }
 
+/// Per the command contract, `axon <source>` is detached by default: it
+/// enqueues a durable job and returns a job descriptor. `--wait true` opts
+/// into blocking foreground execution. Retained `scrape` stays foreground —
+/// its whole purpose is returning the one page inline.
+pub(crate) fn should_detach(cfg: &Config) -> bool {
+    cfg.command == CommandKind::Source && !cfg.wait
+}
+
 pub(crate) async fn run_source_request(
     cfg: &Config,
     service_context: &ServiceContext,
     request: SourceRequest,
 ) -> Result<(), Box<dyn Error>> {
-    let result = index_source(request, service_context)
-        .await
-        .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
+    let detached = should_detach(cfg);
+    let result = if detached {
+        detach::enqueue_source_detached(service_context, request).await?
+    } else {
+        index_source(request, service_context)
+            .await
+            .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?
+    };
 
     render_source_result(cfg, &result);
+    if detached && result.job.is_some() {
+        detach::ensure_worker_process(cfg).await;
+    }
+    // Retained `scrape` (never detached) writes its one page to --output when
+    // requested; a detached source job has no inline content so this no-ops.
     write_scrape_output_if_requested(cfg, service_context, &result).await?;
 
     // A degraded/failed result (unsupported input, no data plane, …) carries a
@@ -127,13 +147,59 @@ pub(crate) fn source_result_json(cfg: &Config, result: &SourceResult) -> serde_j
     })
 }
 
+/// True when the result represents a still-running detached job (a job
+/// descriptor is present and the status is non-terminal). Such a result carries
+/// no real counts yet, so it must render as a queued descriptor rather than the
+/// terminal "Source Indexed" summary (`axon_rust-x4gxr.7` / `.10`).
+fn is_queued_descriptor(result: &SourceResult) -> bool {
+    result.job.is_some()
+        && matches!(
+            result.status,
+            LifecycleStatus::Queued
+                | LifecycleStatus::Pending
+                | LifecycleStatus::Running
+                | LifecycleStatus::Waiting
+                | LifecycleStatus::Blocked
+                | LifecycleStatus::Canceling
+        )
+}
+
+/// Lean job-descriptor JSON for a detached, not-yet-run source job — the
+/// contract's queued-descriptor shape, not the zero-filled full `SourceResult`.
+/// Poll/stream hints are CLI commands so `--json` callers get actionable
+/// next-steps too (`axon_rust-x4gxr.10`).
+fn queued_descriptor_json(result: &SourceResult) -> serde_json::Value {
+    let job_id = result.job_id.0.to_string();
+    serde_json::json!({
+        "job_id": job_id,
+        "kind": "source",
+        "status": result.status,
+        "canonical_uri": result.canonical_uri,
+        "poll": { "command": format!("axon jobs get {job_id}") },
+        "events": { "command": format!("axon jobs events {job_id}") },
+        "warnings": result.warnings,
+    })
+}
+
 pub(crate) fn render_source_result(cfg: &Config, result: &SourceResult) {
     if cfg.json_output {
-        println!("{}", source_result_json(cfg, result));
+        if is_queued_descriptor(result) {
+            println!("{}", queued_descriptor_json(result));
+        } else {
+            println!("{}", source_result_json(cfg, result));
+        }
         return;
     }
 
     if cfg.scrape_inline && render_inline_source_content(result) {
+        return;
+    }
+
+    if render_queued_source_descriptor(result) {
+        return;
+    }
+
+    if render_failed_source(result) {
         return;
     }
 
@@ -142,7 +208,7 @@ pub(crate) fn render_source_result(cfg: &Config, result: &SourceResult) {
         primary("Source Indexed"),
         accent(&result.source_id.0)
     );
-    println!("  {}", muted(&format!("Input: {}", result.canonical_uri)));
+    print_input_line(result);
     println!(
         "  {}",
         muted(&format!("Generation: {}", result.ledger.generation.0))
@@ -163,9 +229,55 @@ pub(crate) fn render_source_result(cfg: &Config, result: &SourceResult) {
             result.graph.nodes_upserted, result.graph.edges_upserted, result.graph.evidence_records,
         ))
     );
+    print_warnings(result);
+}
+
+fn print_input_line(result: &SourceResult) {
+    println!("  {}", muted(&format!("Input: {}", result.canonical_uri)));
+}
+
+fn print_warnings(result: &SourceResult) {
     for warning in &result.warnings {
         println!("  {}", muted(&format!("Warning: {}", warning.message)));
     }
+}
+
+/// Render the job-descriptor shape for a detached (still non-terminal) source
+/// result. Returns false for terminal results so the full indexed / failed
+/// rendering runs instead.
+fn render_queued_source_descriptor(result: &SourceResult) -> bool {
+    if !is_queued_descriptor(result) {
+        return false;
+    }
+
+    let job_id = result.job_id.0.to_string();
+    println!("  {} {}", primary("Source Queued"), accent(&job_id));
+    print_input_line(result);
+    println!(
+        "  {}",
+        muted(&format!(
+            "Poll: axon jobs get {job_id}  ·  Stream: axon jobs events {job_id}"
+        ))
+    );
+    println!("  {}", muted("Foreground instead: re-run with --wait true"));
+    print_warnings(result);
+    true
+}
+
+/// Render a failed source result instead of the misleading zero-count "Source
+/// Indexed" banner. `run_source_request` still returns a non-zero exit, so this
+/// is the human context line for that failure (`axon_rust-x4gxr.7`).
+fn render_failed_source(result: &SourceResult) -> bool {
+    if result.status != LifecycleStatus::Failed {
+        return false;
+    }
+    println!(
+        "  {} {}",
+        primary("Source Failed"),
+        accent(&result.canonical_uri)
+    );
+    print_warnings(result);
+    true
 }
 
 fn render_inline_source_content(result: &SourceResult) -> bool {
