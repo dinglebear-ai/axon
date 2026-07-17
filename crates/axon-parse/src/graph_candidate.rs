@@ -22,7 +22,7 @@ pub fn graph_candidate(
         parser_id,
         kind,
         name,
-        line.map(|line| crate::facts::line_range(line)),
+        line.map(crate::facts::line_range),
         quote,
     )
 }

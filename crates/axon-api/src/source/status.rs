@@ -249,26 +249,26 @@ pub const MAX_PROGRESS_DEDUPE_KEY_BYTES: usize = 512;
 impl SourceProgressEvent {
     /// Rejects progress payloads that would create unbounded durable rows or
     /// transport frames. Producers should put large diagnostics in artifacts.
-    pub fn validate_bounds(&self) -> Result<(), ApiError> {
+    pub fn validate_bounds(&self) -> Result<(), Box<ApiError>> {
         if self.message.len() > MAX_PROGRESS_MESSAGE_BYTES {
-            return Err(progress_too_large("message", self.message.len()));
+            return Err(Box::new(progress_too_large("message", self.message.len())));
         }
         if let Some(key) = self.dedupe_key.as_deref()
             && key.len() > MAX_PROGRESS_DEDUPE_KEY_BYTES
         {
-            return Err(progress_too_large("dedupe_key", key.len()));
+            return Err(Box::new(progress_too_large("dedupe_key", key.len())));
         }
         let encoded_bytes = serde_json::to_vec(self)
             .map_err(|error| {
-                ApiError::new(
+                Box::new(ApiError::new(
                     "job_event.serialization_failed",
                     ErrorStage::Publishing,
                     error.to_string(),
-                )
+                ))
             })?
             .len();
         if encoded_bytes > MAX_PROGRESS_EVENT_BYTES {
-            return Err(progress_too_large("event", encoded_bytes));
+            return Err(Box::new(progress_too_large("event", encoded_bytes)));
         }
         Ok(())
     }

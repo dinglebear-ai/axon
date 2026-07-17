@@ -40,7 +40,7 @@ impl TracingObservabilitySink {
 #[async_trait]
 impl ObservabilitySink for TracingObservabilitySink {
     async fn emit(&self, mut event: SourceProgressEvent) -> Result<()> {
-        let write = redact_event(event)?;
+        let write = redact_event(event).map_err(|error| *error)?;
         event = write.payload;
         event.sequence = self.sequences.next(event.job_id);
         // Bounded identifier/count/severity fields come from the shared

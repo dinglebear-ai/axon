@@ -282,7 +282,7 @@ fn js_ts_language(input: &ParseInput) -> Option<&'static str> {
         .document
         .path
         .as_deref()
-        .or_else(|| Some(input.document.canonical_uri.as_str()))
+        .or(Some(input.document.canonical_uri.as_str()))
         .unwrap_or_default()
         .to_ascii_lowercase();
     if path.ends_with(".ts")

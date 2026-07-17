@@ -154,10 +154,9 @@ async fn process_sitemap_batch(
                     scope.start_host,
                     scope.start_path,
                     scope.scoped_to_root,
-                ) {
-                    if !insert_discovered_url(output.out, canonical_loc, output.url_limit) {
-                        break;
-                    }
+                ) && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+                {
+                    break;
                 }
             }
         } else {
@@ -175,10 +174,10 @@ async fn process_sitemap_batch(
                             < output.sitemap_fetch_limit
                     {
                         output.queue.push_back(canonical_loc);
-                    } else if !is_index {
-                        if !insert_discovered_url(output.out, canonical_loc, output.url_limit) {
-                            break;
-                        }
+                    } else if !is_index
+                        && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+                    {
+                        break;
                     }
                 }
             }
