@@ -20,20 +20,20 @@ CONFIG_PATH=""
 MCPORTER=()
 
 EXPECTED_ROUTES="$(cat <<'EOF'
+artifacts:content
+artifacts:get
+artifacts:list
 ask
 brand
 capabilities
+chat:chat
+collections:get
+collections:list
 diff
 doctor
 endpoints
 evaluate
-extract:cancel
-extract:cleanup
-extract:clear
-extract:list
-extract:recover
 extract:start
-extract:status
 graph:edge
 graph:kinds
 graph:node
@@ -70,12 +70,12 @@ memory:import
 memory:export
 providers:get
 providers:list
-prune:dedupe
 prune:exec
 prune:plan
-prune:purge
 query
 research
+reset:exec
+reset:plan
 resolve
 retrieve
 screenshot
@@ -84,6 +84,12 @@ source
 status
 summarize
 suggest
+uploads:abort
+uploads:complete
+uploads:create
+uploads:get
+uploads:list
+uploads:put_content
 watch:create
 watch:delete
 watch:exec
@@ -99,9 +105,12 @@ EOF
 
 DIRECT_ACTIONS_JSON='["ask","brand","capabilities","diff","doctor","endpoints","evaluate","help","map","query","research","resolve","retrieve","screenshot","search","source","status","suggest","summarize"]'
 EXPECTED_TOP_LEVEL_ACTIONS="$(cat <<'EOF'
+artifacts
 ask
 brand
 capabilities
+chat
+collections
 diff
 doctor
 endpoints
@@ -116,6 +125,7 @@ providers
 prune
 query
 research
+reset
 resolve
 retrieve
 screenshot
@@ -124,6 +134,7 @@ source
 status
 summarize
 suggest
+uploads
 watch
 EOF
 )"
@@ -290,7 +301,7 @@ build_suite_config() {
         AXON_HOME: $axon_home,
         AXON_DATA_DIR: $data_dir,
         AXON_CODE_SEARCH_ALLOWED_ROOTS: $repo_root,
-        AXON_MCP_EMBED_ALLOWED_ROOTS: $repo_root,
+        AXON_SOURCE_LOCAL_ALLOWED_ROOTS: $repo_root,
         AXON_LOG_FILE: $log_file,
         AXON_SQLITE_PATH: $sqlite_path
       })
@@ -328,7 +339,7 @@ run_suite() {
   run_case "${prefix}_help_top_actions_match_description" assert_sorted_equals "$(normalize_description_actions "$schema_file")" "$(normalize_help_top_actions "$help_file")"
 
   echo "== $mode direct actions ==" | tee -a "$SUMMARY"
-  run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.path | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
+  run_json_case "${prefix}_status" '.ok == true and .action == "status" and .subaction == "status" and (((.data.data | type) == "object") or (.data.artifact.artifact_id | type == "string")) and (.data.response_mode | type == "string")' call_tool action:status
   run_json_case "${prefix}_help" '.ok == true and .action == "help" and .subaction == "help" and (.data.data.actions | type == "object")' call_tool action:help
   run_json_case "${prefix}_doctor" '.ok == true and .action == "doctor" and .subaction == "doctor" and (((.data.data.all_ok | type) == "boolean") or ((.data.shape.all_ok | type) == "boolean"))' call_tool action:doctor
   run_json_case "${prefix}_capabilities" '.ok == true and .action == "capabilities" and .subaction == "capabilities" and (.data.data.actions | type == "array") and (.data.data.providers | type == "array")' call_tool action:capabilities
@@ -338,7 +349,7 @@ run_suite() {
   run_json_case "${prefix}_query" '(.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk") or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
   run_json_case "${prefix}_source_detached" '.ok == true and .action == "source" and .subaction == "source" and (((.data.inline.job.id | type) == "string") or ((.data.inline.job_id | type) == "string") or ((.data.data.job.job_id | type) == "string"))' call_tool action:source source:"$REAL_PAGE_URL" scope:page detached:true response_mode:inline
   run_json_case "${prefix}_map" ".ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\"" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
-  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.path | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.path | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
   if [[ "$URL_MODE" == "1" ]]; then
     run_error_case "${prefix}_search_unavailable" "search requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:search query:'rust programming language' limit:3 offset:0
     run_error_case "${prefix}_research_unavailable" "research requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:research query:'rust async best practices' limit:3 offset:0
@@ -382,13 +393,13 @@ run_suite() {
   # Artifact-first response mode still persists large payloads to disk and returns
   # a path; the in-process server makes that path directly readable. (The standalone
   # `artifacts` MCP action was removed in 5.0.0.)
-  run_json_case "${prefix}_help_path" '.ok == true and .action == "help" and .subaction == "help" and .data.response_mode == "path" and (.data.artifact.path | type == "string")' call_tool action:help response_mode:path
+  run_json_case "${prefix}_help_path" '.ok == true and .action == "help" and .subaction == "help" and .data.response_mode == "path" and (.data.artifact.artifact_id | type == "string")' call_tool action:help response_mode:path
 
   echo "== $mode lifecycle start/status/cancel/list ==" | tee -a "$SUMMARY"
   run_json_case "${prefix}_jobs_list" '.ok == true and .action == "jobs" and .subaction == "list" and (.data.data.items | type == "array")' call_tool action:jobs subaction:list limit:5
-  run_json_case "${prefix}_watch_create" '.ok == true and .action == "watch" and .subaction == "create" and (.data.data.watch_id | type == "string")' call_tool action:watch subaction:create source:"$REAL_PAGE_URL" every_seconds:3600 response_mode:inline
+  run_json_case "${prefix}_watch_create" '.ok == true and .action == "watch" and .subaction == "create" and ((.data.data.watch_id // .data.inline.watch_id) | type == "string")' call_tool action:watch subaction:create source:"$REAL_PAGE_URL" every_seconds:3600 response_mode:inline
   local watch_id
-  watch_id="$(extract_json_field "$OUTDIR/${prefix}_watch_create.log" '.data.data.watch_id')"
+  watch_id="$(extract_json_field "$OUTDIR/${prefix}_watch_create.log" '.data.data.watch_id // .data.inline.watch_id')"
   run_json_case "${prefix}_watch_status" '.ok == true and .action == "watch" and .subaction == "status" and (.data.data.watch.watch_id | type == "string")' call_tool action:watch subaction:status id:"$watch_id" response_mode:inline
   run_json_case "${prefix}_watch_exec" '.ok == true and .action == "watch" and .subaction == "exec" and (.data.data.job_id | type == "string")' call_tool action:watch subaction:exec id:"$watch_id" response_mode:inline
   run_json_case "${prefix}_watch_history" '.ok == true and .action == "watch" and .subaction == "history" and (.data.data.runs | type == "array")' call_tool action:watch subaction:history id:"$watch_id" response_mode:inline
