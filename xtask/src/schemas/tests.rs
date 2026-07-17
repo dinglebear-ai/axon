@@ -115,22 +115,27 @@ pub(super) fn fixture_repo() -> TempDir {
     }
     write_fixture(
         tmp.path(),
-        "crates/axon-jobs/src/migrations/0001.sql",
+        "crates/axon-jobs/src/migrations/0001_create_jobs.sql",
         "create table jobs(id text);",
     );
     write_fixture(
         tmp.path(),
-        "crates/axon-ledger/src/migrations/0001.sql",
+        "crates/axon-ledger/src/migrations/0001_create_sources.sql",
         "create table sources(source_id text);",
     );
     write_fixture(
         tmp.path(),
-        "crates/axon-graph/src/migrations/0001.sql",
+        "crates/axon-observe/src/migrations/0001_create_observability_tables.sql",
+        "create table source_events(event_id text primary key);",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-graph/src/migrations/0001_create_graph.sql",
         "create table graph_nodes(node_id text primary key);",
     );
     write_fixture(
         tmp.path(),
-        "crates/axon-memory/src/migrations/0001.sql",
+        "crates/axon-memory/src/migrations/0001_create_memory.sql",
         "create table memory_records(memory_id text primary key);",
     );
     seed_schema_fixtures(tmp.path());

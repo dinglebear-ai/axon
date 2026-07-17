@@ -144,12 +144,12 @@ impl AxonToolResponse {
 }
 
 pub fn parse_axon_request(raw: Map<String, Value>) -> Result<AxonRequest, String> {
-    if let Some(action) = raw.get("action").and_then(Value::as_str) {
-        if let Some(guidance) = removed_action_guidance(action) {
-            return Err(format!(
-                "action `{action}` was removed from MCP; {guidance}"
-            ));
-        }
+    if let Some(action) = raw.get("action").and_then(Value::as_str)
+        && let Some(guidance) = removed_action_guidance(action)
+    {
+        return Err(format!(
+            "action `{action}` was removed from MCP; {guidance}"
+        ));
     }
     serde_json::from_value(Value::Object(raw)).map_err(|e| format!("invalid request shape: {e}"))
 }

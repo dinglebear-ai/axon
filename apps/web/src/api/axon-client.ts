@@ -27,7 +27,6 @@ export type AxonClientOptions = {
 type Schemas = components['schemas'];
 export type AxonApiPaths = paths;
 export type AxonApiOperations = operations;
-export type ArtifactRouteQuery = paths['/v1/artifacts']['get']['parameters']['query'];
 type ErrorBodySchema = Schemas['ErrorBody'];
 type RestQueryRequestSchema = Schemas['RestQueryRequest'];
 type RestRetrieveRequestSchema = Schemas['RestRetrieveRequest'];
@@ -248,10 +247,6 @@ export class AxonClient {
 
   deleteMemory(memoryId: string): Promise<MemoryShowResponse> {
     return this.delete(`/v1/memories/${encodeURIComponent(memoryId)}`);
-  }
-
-  artifactUrl(path: ArtifactRouteQuery['path']): string {
-    return this.url('/v1/artifacts', { path });
   }
 
   openApi(): Promise<unknown> {

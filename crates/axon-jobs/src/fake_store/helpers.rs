@@ -31,7 +31,7 @@ pub(super) fn append_event_locked(
     state: &mut FakeJobWatchState,
     event: SourceProgressEvent,
 ) -> crate::boundary::Result<()> {
-    event.validate_bounds()?;
+    event.validate_bounds().map_err(|error| *error)?;
     if !state.jobs.contains_key(&event.job_id) {
         return Err(missing_job(event.job_id));
     }

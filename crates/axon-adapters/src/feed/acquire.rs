@@ -89,12 +89,9 @@ async fn fetch_feed_to_path(feed_url: &str, path: &std::path::Path) -> Result<()
             .await
             .context("failed to create feed cache directory")?;
     }
-    tokio::fs::write(&path, &bytes).await.with_context(|| {
-        format!(
-            "failed to write feed document for {}",
-            redact_url(&feed_url)
-        )
-    })?;
+    tokio::fs::write(&path, &bytes)
+        .await
+        .with_context(|| format!("failed to write feed document for {}", redact_url(feed_url)))?;
     Ok(())
 }
 

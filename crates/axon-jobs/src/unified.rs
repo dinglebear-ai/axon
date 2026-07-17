@@ -11,6 +11,8 @@ use crate::boundary::{JobDeleteResult, JobStore, Result};
 mod control;
 #[path = "unified/control_helpers.rs"]
 mod control_helpers;
+#[path = "unified/event_ops.rs"]
+mod event_ops;
 #[path = "unified/heartbeat.rs"]
 mod heartbeat;
 #[path = "unified/observe.rs"]
