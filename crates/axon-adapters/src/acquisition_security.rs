@@ -28,7 +28,8 @@
 //! decision via `tracing`. Wiring a job-correlated sink through every acquire
 //! call site is a larger, separate change than this audit finding asked for.
 
-use axon_core::http::{HttpError, validate_url_with_audit};
+use anyhow::{Context, Result};
+use axon_core::http::validate_url_with_audit;
 use axon_observe::collector::ObservabilitySink;
 use axon_observe::security_audit::emit_security_audit;
 use axon_observe::sink::TracingObservabilitySink;
@@ -43,20 +44,17 @@ use axon_observe::sink::TracingObservabilitySink;
 pub(crate) async fn validate_source_url_audited(
     url: &str,
     sink: &dyn ObservabilitySink,
-) -> Result<(), HttpError> {
+) -> Result<()> {
     // redirect_chain_index=0: this validates the original request URL, not a
     // resolved redirect hop (the acquire paths that call this do not follow
     // redirects manually before this check). headers_present=false: none of
     // the current call sites attach caller-supplied headers to the request
     // this check gates.
     let (result, event) = validate_url_with_audit(url, 0, false);
-    if let Err(emit_err) = emit_security_audit(sink, &event).await {
-        // The audit trail is best-effort: a sink failure must not turn an
-        // otherwise-allowed fetch into a denial, and must not mask the real
-        // SSRF policy error when the check itself failed.
-        tracing::warn!(error = %emit_err, "failed to emit ssrf security audit event");
-    }
-    result
+    emit_security_audit(sink, &event)
+        .await
+        .context("required SSRF security audit could not be persisted")?;
+    result.map_err(anyhow::Error::from)
 }
 
 /// Production entrypoint used by the git/feed/youtube acquire paths: validates
@@ -64,7 +62,7 @@ pub(crate) async fn validate_source_url_audited(
 /// [`TracingObservabilitySink`]. See the module doc comment for why a fresh
 /// per-call sink (rather than a shared, job-correlated one) is the right
 /// tradeoff at these call sites today.
-pub async fn validate_source_url(url: &str) -> Result<(), HttpError> {
+pub async fn validate_source_url(url: &str) -> Result<()> {
     validate_source_url_audited(url, &TracingObservabilitySink::new()).await
 }
 

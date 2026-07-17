@@ -50,7 +50,7 @@ async fn the_underlying_ssrf_check_result_is_unchanged_by_auditing() {
 }
 
 #[tokio::test]
-async fn a_sink_failure_does_not_change_the_validation_result() {
+async fn a_sink_failure_blocks_acquisition() {
     struct FailingSink;
     #[async_trait::async_trait]
     impl axon_observe::collector::ObservabilitySink for FailingSink {
@@ -78,10 +78,8 @@ async fn a_sink_failure_does_not_change_the_validation_result() {
     }
 
     let result = validate_source_url_audited("https://example.com/repo.git", &FailingSink).await;
-    assert!(
-        result.is_ok(),
-        "a broken audit sink must not turn an allowed fetch into a denial"
-    );
+    let error = result.expect_err("a required audit failure must deny acquisition");
+    assert!(error.to_string().contains("could not be persisted"));
 }
 
 #[tokio::test]

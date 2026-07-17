@@ -1,4 +1,5 @@
 pub mod auth_enforcement;
+mod cancel_registry;
 mod spawn_unified;
 mod starvation;
 pub mod unified;
@@ -7,6 +8,8 @@ mod watchdog;
 
 use spawn_unified::spawn_unified_worker;
 pub use unified::{JobRunnerRegistry, UnifiedJobRunner};
+
+pub(crate) use cancel_registry::cancel_job;
 
 use axon_core::config::Config;
 use sqlx::SqlitePool;

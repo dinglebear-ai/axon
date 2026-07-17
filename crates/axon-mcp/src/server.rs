@@ -6,8 +6,6 @@ pub mod common;
 mod handler_meta;
 #[path = "server/handlers_discovery.rs"]
 mod handlers_discovery;
-#[path = "server/handlers_elicit.rs"]
-mod handlers_elicit;
 #[path = "server/handlers_extract.rs"]
 mod handlers_extract;
 #[path = "server/handlers_graph.rs"]
@@ -148,10 +146,7 @@ impl AxonMcpServer {
     )]
     async fn axon<'a>(
         &'a self,
-        // `elicit_demo` (the only handler that needed the live peer for a
-        // server->client elicitation round-trip) was removed from the MCP
-        // action surface per the tool contract (issue #298 WS-G); no
-        // dispatch arm below needs `peer` anymore.
+        // No dispatch arm currently needs the live MCP peer.
         _peer: rmcp::Peer<RoleServer>,
         Parameters(raw): Parameters<serde_json::Map<String, Value>>,
     ) -> Result<String, ErrorData> {
@@ -209,21 +204,17 @@ impl AxonMcpServer {
                 AxonRequest::Resolve(req) => self.handle_resolve(req).await?,
                 AxonRequest::Capabilities(req) => self.handle_capabilities(req).await?,
                 AxonRequest::Providers(req) => self.handle_providers(req).await?,
-                // `sources`, `domains`, `stats`, and `elicit_demo` are removed
+                // `sources`, `domains`, and `stats` are removed
                 // from the MCP surface per the tool contract (issue #298 WS-G):
                 // `sources`/`domains` have no contracted equivalent yet (tracked
                 // as a WS-G followup), `stats` folds toward `action=collections`
                 // once a real CollectionService backs it (also a followup), and
-                // `elicit_demo` was a developer-only demo action never in the
-                // contract's canonical list. All four remain on the shared
+                // contract's canonical list. These remain on the shared
                 // `AxonRequest` enum for REST/CLI compatibility, but MCP authz
                 // (`MCP_ACTION_SPECS`) already denies them before dispatch; this
                 // arm keeps the match exhaustive and gives a clear message for
                 // LoopbackDev callers that skip the authz gate.
-                AxonRequest::Sources(_)
-                | AxonRequest::Domains(_)
-                | AxonRequest::Stats(_)
-                | AxonRequest::ElicitDemo(_) => {
+                AxonRequest::Sources(_) | AxonRequest::Domains(_) | AxonRequest::Stats(_) => {
                     return Err(invalid_params(
                         "this action was removed from MCP; use action=query/retrieve for indexed \
                      content lookups, or action=doctor for service health",

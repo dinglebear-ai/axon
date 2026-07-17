@@ -34,7 +34,6 @@ pub use headers::{parse_custom_headers, validate_custom_header_policy};
 pub use normalize::normalize_url;
 #[cfg(any(test, feature = "test-util"))]
 pub use ssrf::LoopbackGuard;
-#[cfg(any(test, feature = "test-util"))]
 pub use ssrf::validate_resolved_ips;
 #[cfg(any(test, feature = "test-util"))]
 pub use ssrf::{get_allow_loopback, set_allow_loopback};
