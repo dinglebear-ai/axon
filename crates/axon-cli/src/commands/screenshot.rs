@@ -35,13 +35,18 @@ pub(crate) fn emit_screenshot_result(
     if cfg.json_output {
         println!("{}", serde_json::to_string(result)?);
         log_done(&format!(
-            "command=screenshot url={normalized} bytes={} format=png",
-            result.size_bytes
+            "command=screenshot url={normalized} artifact_id={} format=png",
+            result.artifact_id.0
         ));
     } else {
+        let explicit_output = cfg
+            .output_path
+            .as_ref()
+            .map(|path| format!(" output={}", path.display()))
+            .unwrap_or_default();
         log_done(&format!(
-            "saved: {} ({} bytes) url={normalized} format=png",
-            result.path, result.size_bytes
+            "captured: artifact_id={} url={normalized} format=png{explicit_output}",
+            result.artifact_id.0
         ));
     }
     Ok(())

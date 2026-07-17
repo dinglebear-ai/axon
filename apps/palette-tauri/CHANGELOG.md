@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.3](https://github.com/jmagar/axon/compare/palette-v5.14.2...palette-v5.14.3) (2026-07-17)
+
+### Changed
+
+* consume opaque artifact identifiers and canonical action/resource output from the unified pipeline (#298 closeout) ([#442](https://github.com/jmagar/axon/pull/442))
+
 ## [5.14.2](https://github.com/jmagar/axon/compare/palette-v5.14.1...palette-v5.14.2) (2026-07-15)
 
 

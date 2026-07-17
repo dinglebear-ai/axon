@@ -2,11 +2,13 @@
 //!
 //! Mirrors the "Web Adapter" required-options table in
 //! `docs/pipeline-unification/sources/adapter-scopes.md` (lines 188-210):
-//! `max_pages`, `max_depth`, `include_subdomains`, `render_mode`,
-//! `discover_sitemaps`, `max_sitemaps`, `sitemap_since_days`,
-//! `url_whitelist`, `url_blacklist`, `etag_conditional`,
+//! `max_pages`, `max_depth`, `include_subdomains`, `respect_robots`, `render_mode`, `headers`,
+//! `discover_sitemaps`, `discover_llms_txt`, `max_llms_txt_urls`,
+//! `max_sitemaps`, `sitemap_since_days`,
+//! `url_whitelist`, `url_blacklist`, `etag_conditional`, `cache_policy`,
 //! `min_markdown_chars`, `drop_thin_markdown`, `warc_path`,
-//! `automation_script`, `verticals_enabled`, `auto_dispatch_skip`, `user_agent`.
+//! `automation_script`, `verticals_enabled`, `vertical_cache_ttl_secs`,
+//! `auto_dispatch_skip`, `user_agent`.
 //!
 //! This is a **parsing/validation** pass only (#298 Wave 0 prerequisite): it
 //! rejects malformed option values before a `RoutePlan` is constructed, so a
@@ -24,7 +26,7 @@
 //! replaced, not hardened, by this pass; [`validate`] passes them through
 //! untouched via its catch-all arm.
 
-use axon_api::{MetadataMap, RenderMode};
+use axon_api::{CachePolicy, MetadataMap, RenderMode};
 use axon_error::{ApiError, ErrorStage};
 use serde_json::Value;
 
@@ -43,11 +45,16 @@ pub(crate) fn validate(values: &MetadataMap) -> Result<(), ApiError> {
 
 fn validate_option(key: &str, value: &Value) -> Result<(), ApiError> {
     match key {
-        "max_pages" | "max_depth" | "max_sitemaps" | "sitemap_since_days"
+        "max_pages" | "max_depth" | "max_sitemaps" | "max_llms_txt_urls" | "sitemap_since_days"
         | "min_markdown_chars" => expect_non_negative_integer(key, value),
-        "include_subdomains" | "discover_sitemaps" | "etag_conditional" | "drop_thin_markdown"
-        | "verticals_enabled" => expect_bool(key, value),
+        "include_subdomains" | "respect_robots" | "discover_sitemaps" | "discover_llms_txt"
+        | "etag_conditional" | "drop_thin_markdown" | "verticals_enabled" => {
+            expect_bool(key, value)
+        }
         "render_mode" => expect_render_mode(value),
+        "headers" => expect_headers(value),
+        "cache_policy" => expect_cache_policy(value),
+        "vertical_cache_ttl_secs" => expect_non_negative_integer_map(key, value),
         "url_whitelist" | "url_blacklist" | "auto_dispatch_skip" => expect_string_array(key, value),
         "warc_path" | "automation_script" | "user_agent" => expect_nonempty_string(key, value),
         // Legacy disk-handoff keys (`manifest_path`, `markdown_root`,
@@ -55,6 +62,59 @@ fn validate_option(key: &str, value: &Value) -> Result<(), ApiError> {
         // further to validate here.
         _ => Ok(()),
     }
+}
+
+fn expect_headers(value: &Value) -> Result<(), ApiError> {
+    let Some(headers) = value.as_object() else {
+        return Err(invalid_option(
+            "headers",
+            "expected an object of string values",
+        ));
+    };
+    for (name, value) in headers {
+        if name.trim().is_empty() {
+            return Err(invalid_option("headers", "header names must not be empty"));
+        }
+        match value.as_str() {
+            Some(text) if !text.trim().is_empty() => {}
+            _ => {
+                return Err(invalid_option(
+                    "headers",
+                    &format!("header `{name}` must have a non-empty string value"),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn expect_cache_policy(value: &Value) -> Result<(), ApiError> {
+    serde_json::from_value::<CachePolicy>(value.clone())
+        .map(|_| ())
+        .map_err(|_| {
+            invalid_option(
+                "cache_policy",
+                "expected \"bypass\", \"use\", \"revalidate\", or \"offline\"",
+            )
+        })
+}
+
+fn expect_non_negative_integer_map(key: &str, value: &Value) -> Result<(), ApiError> {
+    let Some(entries) = value.as_object() else {
+        return Err(invalid_option(
+            key,
+            "expected an object of non-negative integers",
+        ));
+    };
+    for (name, ttl) in entries {
+        if name.trim().is_empty() || ttl.as_u64().is_none() {
+            return Err(invalid_option(
+                key,
+                &format!("entry `{name}` must be a non-negative integer"),
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn expect_bool(key: &str, value: &Value) -> Result<(), ApiError> {
@@ -65,8 +125,9 @@ fn expect_bool(key: &str, value: &Value) -> Result<(), ApiError> {
     }
 }
 
-/// `max_pages`/`max_depth`/`max_sitemaps`/`sitemap_since_days`/
-/// `min_markdown_chars` are all documented as plain (non-negative) integers
+/// `max_pages`/`max_depth`/`max_sitemaps`/`max_llms_txt_urls`/
+/// `sitemap_since_days`/`min_markdown_chars` are all documented as plain
+/// (non-negative) integers
 /// with no fixed upper bound of their own — the doc calls them "hard caps",
 /// not range-limited fields — so this only rejects negative numbers,
 /// non-integers, and non-numbers.

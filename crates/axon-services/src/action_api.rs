@@ -104,7 +104,8 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         | AxonRequest::Domains(_)
         | AxonRequest::Sources(_)
         | AxonRequest::Stats(_)
-        | AxonRequest::Help(_) => Some("axon:read"),
+        | AxonRequest::Help(_)
+        | AxonRequest::Chat(_) => Some("axon:read"),
         // These trigger Gemini headless completions (external process, API quota) — write scope.
         // Note: Debug runs LLM-assisted troubleshooting (Gemini) so it belongs here, not above.
         AxonRequest::Ask(_)
@@ -205,5 +206,6 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Capabilities(_) => "capabilities",
         AxonRequest::Providers(_) => "providers",
         AxonRequest::Graph(_) => "graph",
+        AxonRequest::Chat(_) => "chat",
     }
 }

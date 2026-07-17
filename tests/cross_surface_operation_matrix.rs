@@ -144,9 +144,9 @@ fn operation_matrix_fixture_is_not_vacuous() {
         fully_consistent >= 5,
         "expected several operations present on all three surfaces; matrix may be miscoded"
     );
-    assert!(
-        documented_divergences >= 3,
-        "expected at least a few KNOWN_DIVERGENCES rows; matrix may be miscoded"
+    assert_eq!(
+        documented_divergences, 0,
+        "canonical CLI/REST/MCP operations must not retain known divergences"
     );
 }
 

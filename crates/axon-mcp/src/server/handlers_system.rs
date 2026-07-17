@@ -17,6 +17,8 @@ use serde_json::Value;
 
 const PRUNE_COLLECTION_PREFIX: &str = "collection:";
 
+#[path = "handlers_system/artifacts.rs"]
+mod artifact_actions;
 #[path = "handlers_system/screenshot.rs"]
 mod screenshot;
 #[path = "handlers_system/uploads.rs"]
@@ -358,6 +360,8 @@ fn help_payload() -> Value {
             "screenshot": ["screenshot"],
             "endpoints": ["endpoints"],
             "extract": ["start"],
+            "artifacts": ["list", "get", "content"],
+            "chat": ["chat"],
             "jobs": ["list", "get", "status", "events", "stream", "cancel", "retry", "recover", "cleanup", "clear"],
             "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact", "import", "export"],
             "query": ["query"],

@@ -26,6 +26,7 @@ pub mod prune;
 pub mod query;
 pub mod research;
 pub mod reset;
+pub mod resources;
 pub mod retrieve;
 pub mod screenshot;
 pub mod search;
@@ -70,6 +71,10 @@ pub use prune::run_prune;
 pub use query::run_query;
 pub use research::run_research;
 pub use reset::run_reset;
+pub use resources::{
+    run_artifacts, run_capabilities, run_chat, run_collections, run_graph, run_providers,
+    run_uploads,
+};
 pub use retrieve::run_retrieve;
 pub use screenshot::run_screenshot;
 pub use search::run_search;

@@ -15,9 +15,9 @@ data class ExtractRequest(
     val headers: List<String> = emptyList(),
 )
 
-/** Source embed request submitted through POST /v1/sources. */
+/** Source indexing request submitted through POST /v1/sources. */
 @Serializable
-data class EmbedRequest(
+data class SourceIndexRequest(
     val input: String,
     val collection: String? = null,
 )

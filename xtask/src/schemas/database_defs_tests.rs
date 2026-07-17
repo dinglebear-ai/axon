@@ -37,12 +37,10 @@ fn parses_real_migrations_and_finds_known_tables() {
     }
     // Tables renamed away by ALTER TABLE ... RENAME TO must not survive as
     // stray `_v2` entries in the final snapshot.
-    for stray in ["jobs_v2"] {
-        assert!(
-            !schema.tables.contains_key(stray),
-            "renamed-away table {stray:?} should not remain in the final snapshot"
-        );
-    }
+    assert!(
+        !schema.tables.contains_key("jobs_v2"),
+        "renamed-away table \"jobs_v2\" should not remain in the final snapshot"
+    );
 }
 
 #[test]

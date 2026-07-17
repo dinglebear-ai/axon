@@ -1,52 +1,18 @@
-use crate::types::{ArtifactHandle, ScreenshotResult};
-use axon_adapters::web_engine::screenshot::{
-    spider_screenshot_with_options, url_to_screenshot_filename,
-};
-use axon_core::artifacts::write_configured_output;
+use crate::types::ScreenshotResult;
+use axon_adapters::web_engine::screenshot::spider_screenshot_with_options;
+use axon_api::source::{ArtifactKind, MetadataMap, Timestamp};
+use axon_core::artifacts::atomic_write_explicit;
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url};
 use std::error::Error;
 
-// --- Pure mapping helper (no I/O, testable without live services) ---
-
-#[derive(Debug, thiserror::Error)]
-#[error("screenshot payload parse error: {0}")]
-pub struct ScreenshotPayloadError(String);
-
-pub fn map_screenshot_result(
-    payload: &serde_json::Value,
-) -> Result<ScreenshotResult, ScreenshotPayloadError> {
-    let url = payload
-        .get("url")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| ScreenshotPayloadError("missing url".into()))?
-        .to_string();
-    let path = payload
-        .get("path")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| ScreenshotPayloadError("missing path".into()))?
-        .to_string();
-    let size_bytes = payload
-        .get("size_bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| ScreenshotPayloadError("missing size_bytes".into()))?;
-    Ok(ScreenshotResult {
-        url,
-        path,
-        size_bytes,
-        artifact_handle: payload
-            .get("artifact_handle")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok()),
-    })
-}
-
 // --- Service functions ---
 
-/// Capture a screenshot of the given URL and save it to the output directory.
+/// Capture a screenshot and persist it behind an opaque artifact identifier.
 ///
-/// Requires Chrome to be configured via cfg.chrome_remote_url. Returns a
-/// `ScreenshotResult` containing the URL, output path, and file size in bytes.
+/// An explicitly configured output path is also written for CLI convenience,
+/// but filesystem paths never cross the service contract.
 #[must_use = "screenshot_capture returns a Result that should be handled"]
 pub async fn screenshot_capture(
     cfg: &Config,
@@ -71,46 +37,39 @@ pub async fn screenshot_capture(
     )
     .await?;
 
-    let (path, default_relative_path) = screenshot_output_paths(cfg, &normalized);
+    if let Some(output_path) = cfg.output_path.as_deref() {
+        atomic_write_explicit(output_path, &bytes)
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+    }
 
-    write_configured_output(
-        &cfg.output_dir,
-        cfg.output_path.as_deref(),
-        &default_relative_path,
-        &bytes,
-    )
-    .await
-    .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
-
-    let artifact_handle = ArtifactHandle::try_from_path(
-        "screenshot",
-        &cfg.output_dir,
-        &path,
-        bytes.len() as u64,
-        None,
-        None,
-        Some(normalized.to_string()),
-    );
+    let captured_at = Timestamp::from(chrono::Utc::now());
+    let mut metadata = MetadataMap::new();
+    metadata.insert("source_url".to_string(), normalized.to_string().into());
+    metadata.insert("width".to_string(), cfg.viewport_width.into());
+    metadata.insert("height".to_string(), cfg.viewport_height.into());
+    metadata.insert("full_page".to_string(), cfg.screenshot_full_page.into());
+    metadata.insert("captured_at".to_string(), captured_at.0.clone().into());
+    metadata.insert("label".to_string(), "screenshot.png".into());
+    let handle = FileArtifactStore::new(cfg.output_dir.join("artifacts"))
+        .put_bytes(ArtifactBytesWriteRequest {
+            kind: ArtifactKind::Screenshot,
+            content_type: "image/png".to_string(),
+            bytes,
+            source_id: None,
+            job_id: None,
+            metadata,
+        })
+        .await
+        .map_err(|err| -> Box<dyn Error> { Box::new(err) })?;
 
     Ok(ScreenshotResult {
-        url: normalized.to_string(),
-        path: path.to_string_lossy().into_owned(),
-        size_bytes: bytes.len() as u64,
-        artifact_handle,
+        artifact_id: handle.artifact_id,
+        width: cfg.viewport_width,
+        height: cfg.viewport_height,
+        captured_at,
+        warnings: Vec::new(),
     })
-}
-
-fn screenshot_output_paths(
-    cfg: &Config,
-    normalized: &str,
-) -> (std::path::PathBuf, std::path::PathBuf) {
-    let default_relative_path =
-        std::path::PathBuf::from("screenshots").join(url_to_screenshot_filename(normalized, 1));
-    let path = cfg
-        .output_path
-        .clone()
-        .unwrap_or_else(|| cfg.output_dir.join(&default_relative_path));
-    (path, default_relative_path)
 }
 
 async fn capture_screenshot_bytes(

@@ -41,11 +41,13 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-cli/src/schema_registry.rs",
         "crates/axon-core/src/config/cli.rs",
         "crates/axon-core/src/config/cli/config_args.rs",
+        "crates/axon-core/src/config/cli/resources_args.rs",
         "crates/axon-core/src/config/cli/setup_args.rs",
         "xtask/src/schemas/cli_registry.rs",
         "xtask/src/schemas/cli_registry/part1.rs",
         "xtask/src/schemas/cli_registry/part2.rs",
         "xtask/src/schemas/cli_registry/part3.rs",
+        "xtask/src/schemas/cli_registry/part4.rs",
         "xtask/src/schemas/database_defs.rs",
         "xtask/src/schemas/database_defs/parser.rs",
         "crates/axon-core/src/config/schema_registry.rs",
@@ -2011,14 +2013,14 @@ fn schema_generation_is_idempotent_across_all_families() {
 
     // First pass: --update-fixtures regenerates docs/reference/** artifacts
     // and the fixture snapshots together.
-    run(
+    run_families_with_ci_policy(
         tmp.path(),
-        SchemasArgs {
-            command: SchemaCommand::Generate(SchemaGenerateArgs {
-                update_fixtures: true,
-                ..SchemaGenerateArgs::default()
-            }),
+        all_families(),
+        &SchemaGenerateArgs {
+            update_fixtures: true,
+            ..SchemaGenerateArgs::default()
         },
+        false,
     )
     .unwrap();
     let first_pass = generated_artifact_contents(tmp.path());
@@ -2030,14 +2032,14 @@ fn schema_generation_is_idempotent_across_all_families() {
 
     // Second pass over the same tree must be byte-identical: no drift from
     // running the generator again with no source changes.
-    run(
+    run_families_with_ci_policy(
         tmp.path(),
-        SchemasArgs {
-            command: SchemaCommand::Generate(SchemaGenerateArgs {
-                update_fixtures: true,
-                ..SchemaGenerateArgs::default()
-            }),
+        all_families(),
+        &SchemaGenerateArgs {
+            update_fixtures: true,
+            ..SchemaGenerateArgs::default()
         },
+        false,
     )
     .unwrap();
     let second_pass = generated_artifact_contents(tmp.path());

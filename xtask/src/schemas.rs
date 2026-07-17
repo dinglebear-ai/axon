@@ -159,7 +159,16 @@ fn run_single_family(root: &Path, family: SchemaFamily, args: &SchemaGenerateArg
 }
 
 fn run_families(root: &Path, families: Vec<SchemaFamily>, args: &SchemaGenerateArgs) -> Result<()> {
-    if args.update_fixtures && std::env::var_os("CI").is_some() {
+    run_families_with_ci_policy(root, families, args, true)
+}
+
+fn run_families_with_ci_policy(
+    root: &Path,
+    families: Vec<SchemaFamily>,
+    args: &SchemaGenerateArgs,
+    enforce_ci_policy: bool,
+) -> Result<()> {
+    if enforce_ci_policy && args.update_fixtures && std::env::var_os("CI").is_some() {
         bail!("--update-fixtures is forbidden in CI");
     }
     if args.print && args.json {

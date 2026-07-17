@@ -45,6 +45,18 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "Resources And Providers",
+        &[
+            "artifacts",
+            "uploads",
+            "collections",
+            "graph",
+            "providers",
+            "capabilities",
+            "chat",
+        ],
+    ),
+    (
         "Runtime And Setup",
         &[
             "debug",

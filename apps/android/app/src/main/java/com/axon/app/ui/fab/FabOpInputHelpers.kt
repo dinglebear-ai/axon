@@ -57,7 +57,7 @@ internal fun FabOp.expectsUrl(): Boolean =
         -> true
 
         FabOp.Research,
-        FabOp.Embed,
+        FabOp.Index,
         FabOp.Query,
         FabOp.Search,
         FabOp.Source,
@@ -69,7 +69,7 @@ internal fun FabOp.shortDescription(): String =
         FabOp.Scrape -> "Fetch one page → markdown"
         FabOp.Research -> "Search + synthesize"
         FabOp.Extract -> "Structured extraction"
-        FabOp.Embed -> "Index content"
+        FabOp.Index -> "Index content"
         FabOp.Query -> "Semantic vector search"
         FabOp.Search -> "Web search + index"
         FabOp.Map -> "Discover site URLs"
@@ -91,7 +91,7 @@ internal fun FabOp.inputPlaceholder(): String =
         FabOp.Scrape -> "Page URL, e.g. https://example.com/docs"
         FabOp.Research -> "Research question or topic"
         FabOp.Extract -> "Page URL to extract structured data from"
-        FabOp.Embed -> "URL, server path, or text to index"
+        FabOp.Index -> "URL, server path, or text to index"
         FabOp.Query -> "Question to search indexed content"
         FabOp.Search -> "Web search query"
         FabOp.Map -> "Site URL to discover"
@@ -106,7 +106,7 @@ internal fun FabOp.inputExamples(): List<String> =
         FabOp.Scrape -> listOf("https://example.com/docs", "axon.tootie.tv")
         FabOp.Research -> listOf("latest Android edge-to-edge guidance", "how to structure a RAG eval")
         FabOp.Extract -> listOf("https://example.com/product", "https://github.com/jmagar/axon")
-        FabOp.Embed -> listOf("https://example.com/docs", "/home/jmagar/workspace/axon/docs")
+        FabOp.Index -> listOf("https://example.com/docs", "/home/jmagar/workspace/axon/docs")
         FabOp.Query -> listOf("watch scheduler lease handling", "hybrid search recall knobs")
         FabOp.Search -> listOf("Qwen3 embedding model dimensions", "Spider.rs crawl examples")
         FabOp.Map -> listOf("https://example.com", "https://docs.rs")

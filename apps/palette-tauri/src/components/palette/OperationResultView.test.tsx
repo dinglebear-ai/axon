@@ -22,15 +22,11 @@ vi.mock("@/lib/artifactPreview", () => ({
 
 function screenshotWithArtifactHandle() {
   return {
-    url: "https://example.com",
-    path: "/home/axon/.axon/output/screenshots/example.png",
-    size_bytes: 1024,
-    artifact_handle: {
-      relative_path: "screenshots/example.png",
-      display_path: "screenshots/example.png",
-      kind: "screenshot",
-      bytes: 1024,
-    },
+    artifact_id: "art_screenshot_123",
+    width: 1280,
+    height: 720,
+    captured_at: "2026-07-16T00:00:00Z",
+    warnings: [],
   };
 }
 
@@ -171,13 +167,13 @@ describe("OperationResultView routing", () => {
       <OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />,
     );
 
-    const img = await screen.findByRole("img", { name: /screenshot of https:\/\/example.com/i });
+    const img = await screen.findByRole("img", { name: /captured screenshot/i });
     expect(img).toHaveAttribute("src", "blob:test-shot");
-    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("screenshots/example.png");
+    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("art_screenshot_123");
     expect(
       screen.queryByText("/home/axon/.axon/output/screenshots/example.png"),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("screenshots/example.png")).toBeInTheDocument();
+    expect(screen.getByText("art_screenshot_123")).toBeInTheDocument();
   });
 
   it("shows a compact artifact preview failure state", async () => {

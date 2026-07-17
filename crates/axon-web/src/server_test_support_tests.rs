@@ -2,8 +2,9 @@
 
 use super::{ScopeRequirement, ask_router, protect_routes};
 use async_trait::async_trait;
-use axon_api::source::JobKind;
+use axon_api::source::{ArtifactKind, JobKind, MetadataMap};
 use axon_authz::http::AuthPolicy;
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_services::context::ServiceContext;
 use axon_services::runtime::{RuntimeResult, ServiceJobRuntime};
 use axon_services::types::ServiceJob;
@@ -195,9 +196,18 @@ pub(super) async fn stop(shutdown: oneshot::Sender<()>, handle: tokio::task::Joi
 async fn panel_artifact_requires_panel_token_and_serves_png() {
     let _guard = EnvGuard::set(Some("api-secret"));
     let temp = tempfile::tempdir().unwrap();
-    let screenshot_dir = temp.path().join("screenshots");
-    std::fs::create_dir_all(&screenshot_dir).unwrap();
-    std::fs::write(screenshot_dir.join("shot.png"), b"png-bytes").unwrap();
+    let artifact = FileArtifactStore::new(temp.path().join("artifacts"))
+        .put_bytes(ArtifactBytesWriteRequest {
+            kind: ArtifactKind::Screenshot,
+            content_type: "image/png".to_string(),
+            bytes: b"png-bytes".to_vec(),
+            source_id: None,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .unwrap();
+    let route = format!("/api/panel/artifacts/{}/content", artifact.artifact_id.0);
 
     let cfg = axon_core::config::Config {
         output_dir: temp.path().to_path_buf(),
@@ -208,14 +218,14 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
     let client = reqwest::Client::new();
 
     let unauthorized = client
-        .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))
+        .get(format!("{base}{route}"))
         .send()
         .await
         .expect("unauthorized request");
     assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
 
     let bearer_rejected = client
-        .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))
+        .get(format!("{base}{route}"))
         .header("authorization", "Bearer api-secret")
         .send()
         .await
@@ -223,7 +233,7 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
     assert_eq!(bearer_rejected.status(), StatusCode::UNAUTHORIZED);
 
     let authorized = client
-        .get(format!("{base}/api/panel/artifact/screenshots/shot.png"))
+        .get(format!("{base}{route}"))
         .header("x-axon-panel-token", "test-panel-token")
         .send()
         .await
@@ -288,48 +298,6 @@ async fn v1_artifacts_use_opaque_ids_and_reject_path_access() {
         .await
         .expect("removed wildcard request");
     assert_eq!(wildcard.status(), StatusCode::NOT_FOUND);
-
-    stop(shutdown, handle).await;
-}
-
-#[tokio::test]
-#[serial]
-async fn panel_artifact_rejects_unsafe_paths_when_authorized() {
-    // The unit tests for `is_structurally_unsafe` feed it raw strings, but the
-    // live `/api/panel/artifact/{*path}` route percent-decodes the segment first
-    // (an HTTP client normalizes literal `..`/`.` away, but it forwards encoded
-    // octets like `%5c` verbatim and axum decodes them to a backslash). This
-    // guards the decode-then-validate interaction at the route boundary: an
-    // authorized request with an encoded Windows separator must still be rejected
-    // before any file is served.
-    let temp = tempfile::tempdir().unwrap();
-    let screenshots = temp.path().join("screenshots");
-    std::fs::create_dir_all(&screenshots).unwrap();
-    std::fs::write(screenshots.join("shot.png"), b"png-bytes").unwrap();
-
-    let cfg = axon_core::config::Config {
-        output_dir: temp.path().to_path_buf(),
-        ..Default::default()
-    };
-    let (base, shutdown, handle) =
-        spawn_full_test_server_with_config(AuthPolicy::LoopbackDev, cfg).await;
-    let client = reqwest::Client::new();
-
-    for encoded in ["screenshots%5cshot.png", "screenshots%5c..%5csecret.txt"] {
-        let response = client
-            .get(format!("{base}/api/panel/artifact/{encoded}"))
-            .header("x-axon-panel-token", "test-panel-token")
-            .send()
-            .await
-            .expect("artifact request");
-        assert_eq!(
-            response.status(),
-            StatusCode::BAD_REQUEST,
-            "expected {encoded} to be rejected as structurally unsafe"
-        );
-        let body = response.bytes().await.unwrap();
-        assert_ne!(body.as_ref(), b"png-bytes", "artifact served for {encoded}");
-    }
 
     stop(shutdown, handle).await;
 }

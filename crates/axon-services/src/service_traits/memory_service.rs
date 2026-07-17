@@ -180,10 +180,11 @@ impl MemoryService for MemoryServiceImpl {
 
     async fn compact(&self, request: MemoryCompactRequest) -> anyhow::Result<MemoryResult> {
         let store = crate::memory::memory_store(&self.ctx).await?;
-        let archived = request
-            .archive_sources
-            .then(|| request.memory_ids.clone())
-            .unwrap_or_default();
+        let archived = if request.archive_sources {
+            request.memory_ids.clone()
+        } else {
+            Default::default()
+        };
         let result = store.compact(request).await.map_err(store_error)?;
         let mut ids = vec![result.memory_id.clone()];
         ids.extend(archived);

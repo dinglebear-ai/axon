@@ -41,6 +41,10 @@ fn repo_docs_candidate(id: &str, source: &str, mut evidence: Vec<GraphEvidence>)
         item.source_id = SourceId::new(source);
         item.source_item_key = SourceItemKey::new("meta");
     }
+    let evidence_ids = evidence
+        .iter()
+        .map(|item| item.evidence_id.clone())
+        .collect();
     GraphCandidate {
         candidate_id: id.to_string(),
         job_id: JobId::new(Uuid::from_u128(7)),
@@ -63,6 +67,7 @@ fn repo_docs_candidate(id: &str, source: &str, mut evidence: Vec<GraphEvidence>)
             edge_kind: "repo_has_docs".to_string(),
             from_stable_key: "https://github.com/x/y".to_string(),
             to_stable_key: "https://x.dev/docs".to_string(),
+            evidence_ids,
             properties: MetadataMap::new(),
         }],
         evidence,

@@ -157,8 +157,6 @@ pub fn supported_actions() -> Vec<String> {
     .collect()
 }
 
-pub use axon_api::contract::ArtifactHandle;
-
 #[cfg(test)]
 #[path = "client_server_tests.rs"]
 mod tests;

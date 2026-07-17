@@ -91,6 +91,7 @@ pub(super) fn edge_candidate(
             edge_kind: edge_kind.as_str().to_string(),
             from_stable_key: from_stable_key.to_string(),
             to_stable_key: to_stable_key.to_string(),
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {

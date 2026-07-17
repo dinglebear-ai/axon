@@ -1,4 +1,4 @@
-use crate::types::client_server::ArtifactHandle;
+use axon_api::source::{ArtifactId, SourceWarning, Timestamp};
 // Lifecycle: extract.
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -25,13 +25,13 @@ pub struct MigrateResult {
 
 // ── Screenshot ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ScreenshotResult {
-    pub url: String,
-    pub path: String,
-    pub size_bytes: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact_handle: Option<ArtifactHandle>,
+    pub artifact_id: ArtifactId,
+    pub width: u32,
+    pub height: u32,
+    pub captured_at: Timestamp,
+    pub warnings: Vec<SourceWarning>,
 }
 
 // ── Job list pagination ──────────────────────────────────────────────────

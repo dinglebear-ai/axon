@@ -160,14 +160,13 @@ export function formatDiff(value: Record<string, unknown>): string {
 
 export function formatScreenshot(value: Record<string, unknown>): string {
   const artifact = recordField(value, "artifact_handle");
-  const artifactDisplay = artifact
-    ? (nonEmptyStringField(artifact, "display_path") ?? nonEmptyStringField(artifact, "relative_path"))
-    : undefined;
+  const artifactId = nonEmptyStringField(value, "artifact_id")
+    ?? (artifact ? nonEmptyStringField(artifact, "artifact_id") : undefined);
   return [
     "## Screenshot captured",
-    stringField(value, "url") ?? "",
-    artifactDisplay ? `artifact: ${artifactDisplay}` : "",
-    numberField(value, "size_bytes") !== undefined ? `bytes: ${numberField(value, "size_bytes")}` : "",
+    artifactId ? `artifact: ${artifactId}` : "",
+    numberField(value, "width") !== undefined ? `width: ${numberField(value, "width")}` : "",
+    numberField(value, "height") !== undefined ? `height: ${numberField(value, "height")}` : "",
   ]
     .filter(Boolean)
     .join("\n");

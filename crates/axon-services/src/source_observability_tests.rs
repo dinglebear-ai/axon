@@ -1,5 +1,5 @@
 use axon_api::source::{
-    JobEventListRequest, PipelinePhase, SourceRequest, SourceScope, Visibility,
+    JobEventListRequest, LifecycleStatus, PipelinePhase, SourceRequest, SourceScope, Visibility,
 };
 
 struct SourceObservabilityHarness {
@@ -27,7 +27,7 @@ impl SourceObservabilityHarness {
     async fn event_phases(
         &self,
         job_id: axon_api::source::JobId,
-    ) -> anyhow::Result<Vec<PipelinePhase>> {
+    ) -> anyhow::Result<Vec<(PipelinePhase, LifecycleStatus)>> {
         let page = self
             .harness
             .ctx()
@@ -44,7 +44,11 @@ impl SourceObservabilityHarness {
                 cursor: None,
             })
             .await?;
-        Ok(page.events.into_iter().map(|event| event.phase).collect())
+        Ok(page
+            .events
+            .into_iter()
+            .map(|event| (event.phase, event.status))
+            .collect())
     }
 
     async fn service_events(
@@ -81,22 +85,45 @@ async fn page_source_emits_ordered_phase_events() {
         .await
         .expect("event phases");
 
-    assert_eq!(
-        phases,
-        vec![
-            PipelinePhase::Resolving,
-            PipelinePhase::Routing,
-            PipelinePhase::Authorizing,
-            PipelinePhase::Discovering,
-            PipelinePhase::Diffing,
-            PipelinePhase::Fetching,
-            PipelinePhase::Normalizing,
-            PipelinePhase::Preparing,
-            PipelinePhase::Embedding,
-            PipelinePhase::Upserting,
+    // Whether document preparation degrades here is feature-dependent (a
+    // default-features build registers no web parser and emits a structured
+    // `CompletedDegraded` warning event at the Publishing phase; an
+    // all-features build parses cleanly and emits none), so the ordered spine
+    // is asserted with warning events filtered out, and any warning events
+    // that do occur must sit at the Publishing phase.
+    for (phase, status) in phases
+        .iter()
+        .filter(|(_, status)| *status == LifecycleStatus::CompletedDegraded)
+    {
+        assert_eq!(
+            *phase,
             PipelinePhase::Publishing,
-            PipelinePhase::Cleaning,
-            PipelinePhase::Complete,
+            "unexpected degraded event at {phase:?} ({status:?})"
+        );
+    }
+    let spine = phases
+        .into_iter()
+        .filter(|(_, status)| *status != LifecycleStatus::CompletedDegraded)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spine,
+        vec![
+            (PipelinePhase::Resolving, LifecycleStatus::Running),
+            (PipelinePhase::Routing, LifecycleStatus::Running),
+            (PipelinePhase::Authorizing, LifecycleStatus::Running),
+            (PipelinePhase::Discovering, LifecycleStatus::Running),
+            (PipelinePhase::Discovering, LifecycleStatus::Completed),
+            (PipelinePhase::Diffing, LifecycleStatus::Running),
+            (PipelinePhase::Diffing, LifecycleStatus::Completed),
+            (PipelinePhase::Fetching, LifecycleStatus::Running),
+            (PipelinePhase::Normalizing, LifecycleStatus::Running),
+            (PipelinePhase::Preparing, LifecycleStatus::Running),
+            (PipelinePhase::Embedding, LifecycleStatus::Running),
+            (PipelinePhase::Upserting, LifecycleStatus::Running),
+            (PipelinePhase::Publishing, LifecycleStatus::Running),
+            (PipelinePhase::Publishing, LifecycleStatus::Completed),
+            (PipelinePhase::Cleaning, LifecycleStatus::Running),
+            (PipelinePhase::Complete, LifecycleStatus::Completed),
         ]
     );
 }

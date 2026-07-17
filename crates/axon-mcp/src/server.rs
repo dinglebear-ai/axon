@@ -140,7 +140,7 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
@@ -164,7 +164,10 @@ impl AxonMcpServer {
             tracing::info!(action = %action, subaction = %subaction, dashboard_uri = STATUS_DASHBOARD_URI, "mcp_app status tool called — widget should render");
         }
         tracing::info!(action = %action, subaction = %subaction, "mcp request");
-        let response = if matches!(action.as_str(), "reset" | "collections" | "uploads") {
+        let response = if matches!(
+            action.as_str(),
+            "reset" | "collections" | "uploads" | "artifacts"
+        ) {
             let request: McpSystemRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
                 tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
                 invalid_params(format!("invalid request: {e}"))
@@ -173,6 +176,7 @@ impl AxonMcpServer {
                 McpSystemRequest::Reset(req) => self.handle_reset(req).await?,
                 McpSystemRequest::Collections(req) => self.handle_collections(req).await?,
                 McpSystemRequest::Uploads(req) => self.handle_uploads(req).await?,
+                McpSystemRequest::Artifacts(req) => self.handle_artifacts(req).await?,
             }
         } else if action == "watch" {
             let request: McpWatchRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
@@ -233,6 +237,7 @@ impl AxonMcpServer {
                     ));
                 }
                 AxonRequest::Graph(req) => self.handle_graph(req).await?,
+                AxonRequest::Chat(req) => self.handle_chat(req).await?,
                 AxonRequest::Debug(_) | AxonRequest::Migrate(_) | AxonRequest::Setup(_) => {
                     return Err(invalid_params(
                         "this action is available through the HTTP API, not MCP",

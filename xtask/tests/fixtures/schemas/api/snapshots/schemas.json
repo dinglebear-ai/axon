@@ -4569,6 +4569,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -4584,6 +4590,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -10291,6 +10298,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -10306,6 +10319,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -11788,6 +11802,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -11803,6 +11823,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -15916,6 +15937,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -15931,6 +15958,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -18219,6 +18247,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -18234,6 +18268,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -20003,6 +20038,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -20018,6 +20059,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -20872,6 +20914,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -20887,6 +20935,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -28661,7 +28710,7 @@
         "path": "crates/axon-api/src/source/enums.rs"
       },
       {
-        "checksum": "sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511",
+        "checksum": "sha256:9996d283cf15c1b9e069e474d048f5e4e9745f01ecfac6189ef2935aa3bc0d28",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/graph.rs"
       },
@@ -28711,7 +28760,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:ab0e50262007e87270f9c6efacb0d161e2e9e1de623cacefd81ffec9e0ba7f19",
+        "checksum": "sha256:e891b0f9215e7c4fb1b5fd44a1793b20475aca9105e519c7d9c9f42137d7cd30",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },

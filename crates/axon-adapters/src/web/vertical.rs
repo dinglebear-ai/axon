@@ -25,6 +25,7 @@ pub(super) struct VerticalOptions {
     pub(super) enabled: bool,
     pub(super) auto_dispatch_skip: Vec<String>,
     pub(super) user_agent: Option<String>,
+    pub(super) cache_ttl_secs: std::collections::HashMap<String, u64>,
 }
 
 #[derive(Debug)]
@@ -65,6 +66,7 @@ fn vertical_config(opts: &VerticalOptions) -> Config {
         enable_verticals: opts.enabled,
         auto_dispatch_skip: opts.auto_dispatch_skip.clone(),
         user_agent: opts.user_agent.clone(),
+        vertical_cache_ttl_secs: opts.cache_ttl_secs.clone(),
         ..Config::default()
     }
 }

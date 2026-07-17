@@ -10,11 +10,11 @@
 use super::*;
 use anyhow::bail;
 use axon_api::source::{
-    ArtifactId, ArtifactKind, ArtifactRef, MemoryExportRequest, MemoryExportResult,
-    MemoryImportMode, MemoryImportRequest, MemoryImportResult, MemoryScope, MemoryStatus,
+    ArtifactKind, ArtifactRef, MemoryExportRequest, MemoryExportResult, MemoryImportMode,
+    MemoryImportRequest, MemoryImportResult, MemoryScope, MemoryStatus, MetadataMap, Timestamp,
     Visibility,
 };
-use axon_core::artifacts::write_configured_output;
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use sha2::{Digest, Sha256};
 
 /// Hard cap on the number of records accepted by a single import request.
@@ -147,8 +147,7 @@ pub(crate) async fn replaced_scope_memory_ids(
 ///   memory_record()` — so this is a classification-level access gate, not a
 ///   second content scrub).
 /// - artifact backing: the filtered record set is written through the
-///   artifact boundary (`axon_core::artifacts::write_configured_output`)
-///   under `cfg.output_dir`, and the result carries the resulting
+///   artifact boundary under `cfg.output_dir/artifacts`, and the result carries the resulting
 ///   `ArtifactRef` so REST/CLI/MCP callers get a durable, hashable export
 ///   even when the response body itself is also returned inline.
 pub async fn export(
@@ -171,16 +170,24 @@ pub async fn export(
     let mut hasher = Sha256::new();
     hasher.update(&payload);
     let content_hash = format!("{:x}", hasher.finalize());
-    let relative_path = format!("memory-exports/{}.json", uuid::Uuid::new_v4());
-    let written = write_configured_output(&ctx.cfg().output_dir, None, &relative_path, &payload)
+    let size_bytes = payload.len() as u64;
+    let handle = FileArtifactStore::new(ctx.cfg().output_dir.join("artifacts"))
+        .put_bytes(ArtifactBytesWriteRequest {
+            kind: ArtifactKind::Report,
+            content_type: "application/json".to_string(),
+            bytes: payload,
+            source_id: None,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        })
         .await
         .map_err(|err| anyhow::anyhow!("write memory export artifact: {err}"))?;
 
     result.artifact = Some(ArtifactRef {
-        artifact_id: ArtifactId::new(format!("art_mem_export_{}", &content_hash[..16])),
+        artifact_id: handle.artifact_id,
         artifact_kind: ArtifactKind::Report,
-        uri: written.to_string_lossy().to_string(),
-        size_bytes: Some(payload.len() as u64),
+        uri: handle.uri.unwrap_or_default(),
+        size_bytes: Some(size_bytes),
         content_hash: Some(content_hash),
         created_at: Timestamp::from(chrono::Utc::now()),
     });

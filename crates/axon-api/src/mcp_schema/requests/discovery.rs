@@ -24,6 +24,15 @@ pub struct CapabilitiesRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
+/// `action=chat` — direct completion through the configured chat-purpose LLM.
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ChatRequest {
+    pub message: Option<String>,
+    pub session_id: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
 /// `action=providers` — provider capability/health discovery. `list`
 /// (default) and `get` (requires `provider_id`) mirror the REST
 /// `/v1/providers` resource-tier routes (`crates/axon-web/src/server/

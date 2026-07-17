@@ -143,7 +143,7 @@ pub(crate) async fn embed_and_upsert_documents(
     documents: Vec<PreparedDocument>,
 ) -> anyhow::Result<ContractWriteSummary> {
     if documents.is_empty() {
-        return Ok(ContractWriteSummary::default());
+        return Ok(ContractWriteSummary);
     }
     let stores = build_read_stores_from_config(cfg).await;
     let job_id = JobId::new(Uuid::new_v4());

@@ -757,6 +757,7 @@ jobs:
             apps/chrome-extension
             apps/palette-tauri
             apps/web/openapi/axon.json
+            plugins/axon/references/rag-synthesize/SKILL.md
             migrations
             vendor
             README.md
@@ -1540,7 +1541,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
-        run: ./target/release/axon embed "docs/reference/mcp/overview.md" --wait true --json
+        run: ./target/release/axon source "docs/reference/mcp/overview.md" --wait true --json
 
       - name: Start axon MCP HTTP server
         env:

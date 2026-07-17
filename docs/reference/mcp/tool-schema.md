@@ -99,7 +99,7 @@ These actions do not require `subaction`:
 | `query` | `query` (string) | `limit`, `offset`, `collection`, `since`, `before`, `hybrid_search`, `response_mode` |
 | `research` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
 | `retrieve` | `url` (string) | `max_points`, `collection`, `since`, `before`, `response_mode`, `cursor`, `token_budget` |
-| `screenshot` | `url` (string) | `full_page`, `viewport`, `output`, `response_mode` |
+| `screenshot` | `url` (string) | `full_page`, `viewport`, `response_mode` |
 | `search` | `query` (string) | `limit`, `offset`, `search_time_range`, `response_mode` |
 | `source` | -- | `source`, `scope`, `collection`, `response_mode`, `detached` |
 | `status` | -- | `response_mode` |

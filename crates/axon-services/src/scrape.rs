@@ -7,9 +7,10 @@ use crate::types::ScrapeResult;
 use axon_adapters::vertical_registry::dispatch_by_url;
 use axon_api::result::DocumentBackend;
 use axon_api::source::{
-    ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint, PreparedDocument,
-    SourceDocument, SourceId, SourceItemKey, SourceScope,
+    ArtifactKind, ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint,
+    PreparedDocument, SourceDocument, SourceId, SourceItemKey, SourceScope,
 };
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
 use axon_extract::VerticalContext;
@@ -62,14 +63,25 @@ pub async fn scrape(
         axon_core::artifacts::atomic_write_explicit(output_path, result.output.as_bytes())
             .await
             .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
-        result.artifact_handle = axon_api::contract::ArtifactHandle::try_from_path(
-            "scrape",
-            &cfg.output_dir,
-            output_path,
-            result.output.len() as u64,
-            Some(result.output.lines().count() as u64),
-            None,
-            Some(normalized.to_string()),
+        let mut metadata = MetadataMap::new();
+        metadata.insert("source_url".to_string(), normalized.to_string().into());
+        metadata.insert("label".to_string(), "scrape.md".into());
+        metadata.insert(
+            "line_count".to_string(),
+            result.output.lines().count().into(),
+        );
+        result.artifact_handle = Some(
+            FileArtifactStore::new(cfg.output_dir.join("artifacts"))
+                .put_bytes(ArtifactBytesWriteRequest {
+                    kind: ArtifactKind::NormalizedContent,
+                    content_type: "text/markdown".to_string(),
+                    bytes: result.output.as_bytes().to_vec(),
+                    source_id: None,
+                    job_id: None,
+                    metadata,
+                })
+                .await
+                .map_err(|error| -> Box<dyn Error> { Box::new(error) })?,
         );
     }
     Ok(result)

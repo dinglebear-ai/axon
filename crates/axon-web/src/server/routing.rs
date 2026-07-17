@@ -362,7 +362,10 @@ fn panel_routes() -> Router<ServeState> {
             post(super::super::panel_first_run::first_run_ask),
         )
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
-        .route("/api/panel/artifact/{*path}", get(handlers::panel_artifact))
+        .route(
+            "/api/panel/artifacts/{artifact_id}/content",
+            get(handlers::panel_artifact),
+        )
 }
 
 #[utoipa::path(
@@ -403,8 +406,7 @@ where
         .route("/v1/chat", post(handlers::v1_chat))
         .route("/v1/chat/stream", post(handlers::v1_chat_stream))
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
-        // `ask`/`ask/stream` read the runtime through this Extension (issue #298
-        // retrieval cutover); `chat` handlers ignore it and use `cfg` only.
+        // RAG and direct-chat handlers share the same service context.
         .layer(Extension(service_context))
         .layer(Extension(cfg))
 }

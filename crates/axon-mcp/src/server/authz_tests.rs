@@ -27,3 +27,16 @@ fn uploads_split_read_and_write_scopes_and_reject_unknown_subactions() {
     }
     assert_eq!(required_scope_for("uploads", "delete"), Some("__deny__"));
 }
+
+#[test]
+fn artifacts_and_chat_are_read_scoped() {
+    for subaction in ["list", "get", "content"] {
+        assert_eq!(
+            required_scope_for("artifacts", subaction),
+            Some("axon:read")
+        );
+    }
+    assert_eq!(required_scope_for("artifacts", "delete"), Some("__deny__"));
+    assert_eq!(required_scope_for("chat", ""), Some("axon:read"));
+    assert_eq!(required_scope_for("chat", "stream"), Some("__deny__"));
+}

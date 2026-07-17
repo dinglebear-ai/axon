@@ -303,9 +303,7 @@ pub(super) fn enrichment_graph_candidates(
 ) -> std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>> {
     enrichments
         .iter()
-        .filter_map(|(key, enrichment)| {
-            (!enrichment.graph_candidates.is_empty())
-                .then(|| (key.clone(), enrichment.graph_candidates.clone()))
-        })
+        .filter(|&(_key, enrichment)| !enrichment.graph_candidates.is_empty())
+        .map(|(key, enrichment)| (key.clone(), enrichment.graph_candidates.clone()))
         .collect()
 }

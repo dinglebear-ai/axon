@@ -1128,6 +1128,264 @@
       ],
       "requires_auth_scope": "read",
       "summary": "Resolve, launch, and optionally install the axon-palette desktop binary"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": "ArtifactListRequest",
+      "mutates": false,
+      "name": "artifacts list",
+      "path": [
+        "artifacts",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List artifacts by kind, source, or job"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "artifacts get",
+      "path": [
+        "artifacts",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one artifact record by opaque artifact id"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "artifacts content",
+      "path": [
+        "artifacts",
+        "content"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Read or download artifact content by opaque artifact id"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadListRequest",
+      "mutates": false,
+      "name": "uploads list",
+      "path": [
+        "uploads",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List staged uploads"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "uploads get",
+      "path": [
+        "uploads",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one staged upload"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadCreateRequest",
+      "mutates": true,
+      "name": "uploads create",
+      "path": [
+        "uploads",
+        "create"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Stage a local file as a durable upload"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadCompleteRequest",
+      "mutates": true,
+      "name": "uploads complete",
+      "path": [
+        "uploads",
+        "complete"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Finalize a staged upload into a durable source reference"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadAbortRequest",
+      "mutates": true,
+      "name": "uploads abort",
+      "path": [
+        "uploads",
+        "abort"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Abort and discard a staged upload"
+    },
+    {
+      "async": false,
+      "group": "collections",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "collections list",
+      "path": [
+        "collections",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List configured vector collections"
+    },
+    {
+      "async": false,
+      "group": "collections",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "collections get",
+      "path": [
+        "collections",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one vector collection with optional schema and indexes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph kinds",
+      "path": [
+        "graph",
+        "kinds"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List SourceGraph node and edge kinds"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph resolve",
+      "path": [
+        "graph",
+        "resolve"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Resolve an identifier to SourceGraph nodes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph query",
+      "path": [
+        "graph",
+        "query"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Query SourceGraph nodes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph node",
+      "path": [
+        "graph",
+        "node"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one SourceGraph node with optional edges and evidence"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph edge",
+      "path": [
+        "graph",
+        "edge"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one SourceGraph edge with optional evidence"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph source",
+      "path": [
+        "graph",
+        "source"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Walk the SourceGraph neighborhood of a source"
+    },
+    {
+      "async": false,
+      "group": "providers",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "providers list",
+      "path": [
+        "providers",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List providers by kind or status"
+    },
+    {
+      "async": false,
+      "group": "providers",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "providers get",
+      "path": [
+        "providers",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one provider with optional health and limits"
+    },
+    {
+      "async": false,
+      "group": "capabilities",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "capabilities",
+      "path": [
+        "capabilities"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Print machine-readable runtime capabilities"
+    },
+    {
+      "async": false,
+      "group": "chat",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "chat",
+      "path": [
+        "chat"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Send a direct prompt to the configured LLM"
     }
   ],
   "properties": {
@@ -1164,7 +1422,7 @@
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:59ce15c277975d84d96c336bca544eff273919eb017f37e82a8ac41617410dcd",
+        "checksum": "sha256:269b2a966c87b9d8bba32dcd492be6171a647de027d7402fdb95cdc83d2fde43",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1172,6 +1430,11 @@
         "checksum": "sha256:ee3bae44b57a96696213245d225b14d09ac95415d4ca8da10403f7949fabd2e6",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli/config_args.rs"
+      },
+      {
+        "checksum": "sha256:73badd087b225420442a48784f2d8f8a039e5c17176d02875baef134146164b4",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/config/cli/resources_args.rs"
       },
       {
         "checksum": "sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7",
@@ -1184,7 +1447,7 @@
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:564bc02048653da406cc92da5e1885ab1ef24c22934144189d7409f64c2d349e",
+        "checksum": "sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },
@@ -1202,6 +1465,11 @@
         "checksum": "sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part3.rs"
+      },
+      {
+        "checksum": "sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry/part4.rs"
       }
     ],
     "status": "RegistryBacked"

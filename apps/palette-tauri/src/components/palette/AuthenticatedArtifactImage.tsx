@@ -9,10 +9,10 @@ import { loadArtifactObjectUrl } from "@/lib/artifactPreview";
  * onError handler — so a decode failure or unmount never leaks it.
  */
 export function AuthenticatedArtifactImage({
-  relativePath,
+  artifactId,
   alt,
 }: {
-  relativePath: string;
+  artifactId: string;
   alt: string;
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function AuthenticatedArtifactImage({
     setObjectUrl(null);
     setError(null);
 
-    loadArtifactObjectUrl(relativePath)
+    loadArtifactObjectUrl(artifactId)
       .then((url) => {
         if (cancelled) {
           URL.revokeObjectURL(url);
@@ -51,7 +51,7 @@ export function AuthenticatedArtifactImage({
       cancelled = true;
       revokeActiveUrl();
     };
-  }, [relativePath, revokeActiveUrl]);
+  }, [artifactId, revokeActiveUrl]);
 
   if (error) {
     return (

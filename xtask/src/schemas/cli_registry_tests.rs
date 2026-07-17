@@ -6,21 +6,40 @@ use std::path::Path;
 /// clap's default `Subcommand` naming) directly from the live clap source,
 /// so this registry can be cross-checked against the real command tree
 /// without needing to build/parse `axon --help` output.
+///
+/// The `Resource(ResourceCliCommand)` variant is `#[command(flatten)]`ed, so
+/// it is not a `resource` command at runtime — its own variants (artifacts,
+/// uploads, collections, graph, providers, capabilities, chat) surface as
+/// top-level commands instead. Expand it the same way here.
 fn live_cli_command_names() -> BTreeSet<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask has a workspace parent");
     let source = std::fs::read_to_string(root.join("crates/axon-core/src/config/cli.rs"))
         .expect("read crates/axon-core/src/config/cli.rs");
+    let mut names = enum_variant_names(&source, "pub(super) enum CliCommand {");
 
+    assert!(
+        names.remove("resource"),
+        "CliCommand::Resource flatten variant expected in the live clap source"
+    );
+    let resources =
+        std::fs::read_to_string(root.join("crates/axon-core/src/config/cli/resources_args.rs"))
+            .expect("read crates/axon-core/src/config/cli/resources_args.rs");
+    names.extend(enum_variant_names(
+        &resources,
+        "pub(crate) enum ResourceCliCommand {",
+    ));
+    names
+}
+
+fn enum_variant_names(source: &str, enum_header: &str) -> BTreeSet<String> {
     let start = source
-        .find("pub(super) enum CliCommand {")
-        .expect("CliCommand enum present");
+        .find(enum_header)
+        .unwrap_or_else(|| panic!("{enum_header:?} present"));
     let body_start = start + source[start..].find('{').unwrap() + 1;
     let rest = &source[body_start..];
-    let end = rest
-        .find("\n}")
-        .expect("CliCommand enum has a closing brace");
+    let end = rest.find("\n}").expect("enum body has a closing brace");
     let body = &rest[..end];
 
     let mut names = BTreeSet::new();

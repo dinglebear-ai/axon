@@ -1,10 +1,11 @@
 {
   "degraded": false,
-  "errors": [],
-  "source_jobs": [],
-  "extract_jobs": [],
-  "watch_jobs": [],
-  "prune_jobs": [],
+  "warnings": [],
+  "jobs": [],
+  "watches": [],
+  "cleanup": {
+    "jobs": []
+  },
   "sqlite": {
     "active_lock_exists": true,
     "active_lock_file_exists": true,

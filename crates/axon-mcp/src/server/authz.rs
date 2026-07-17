@@ -238,6 +238,18 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Stage, inspect, complete, list, or abort durable uploads",
         cost: "write",
     },
+    McpActionSpec {
+        name: "artifacts",
+        scope: ActionScope::Read,
+        description: "List, inspect, or read artifacts by opaque artifact id",
+        cost: "cheap",
+    },
+    McpActionSpec {
+        name: "chat",
+        scope: ActionScope::Read,
+        description: "Send a direct prompt to the configured chat-purpose LLM",
+        cost: "moderate",
+    },
 ];
 
 pub(super) fn mcp_action_names() -> Vec<&'static str> {
@@ -321,6 +333,15 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
             "create" | "put_content" | "complete" | "abort" => Some("axon:write"),
             _ => Some("__deny__"),
         };
+    }
+    if action == "artifacts" {
+        return match subaction {
+            "" | "list" | "get" | "content" => Some("axon:read"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "chat" && !subaction.is_empty() {
+        return Some("__deny__");
     }
     if action == "jobs" {
         return match subaction {

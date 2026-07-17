@@ -53,17 +53,20 @@ pub async fn upsert_candidates(
         }
 
         for edge in &candidate.edges {
-            let Some(resolved) = resolve_edge(
-                edge,
-                &resolved_nodes,
-                &candidate.evidence,
-                candidate.confidence,
-            ) else {
+            let edge_evidence = candidate
+                .evidence
+                .iter()
+                .filter(|evidence| edge.evidence_ids.contains(&evidence.evidence_id))
+                .cloned()
+                .collect::<Vec<_>>();
+            let Some(resolved) =
+                resolve_edge(edge, &resolved_nodes, &edge_evidence, candidate.confidence)
+            else {
                 continue;
             };
             upsert_edge(&mut tx, &resolved).await?;
             edges_upserted += 1;
-            for ev in &candidate.evidence {
+            for ev in &edge_evidence {
                 upsert_evidence(&mut tx, &resolved.edge_id.0, ev).await?;
                 evidence_records += 1;
             }

@@ -6,7 +6,7 @@ import com.axon.app.core.api.models.CancelResponse
 import com.axon.app.core.api.models.DoctorResponse
 import com.axon.app.core.api.models.DomainIndexedResponse
 import com.axon.app.core.api.models.DomainsResponse
-import com.axon.app.core.api.models.EmbedRequest
+import com.axon.app.core.api.models.SourceIndexRequest
 import com.axon.app.core.api.models.ExtractRequest
 import com.axon.app.core.api.models.JobSummaryPage
 import com.axon.app.core.api.models.SearchWebRequest
@@ -33,7 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -221,7 +221,7 @@ class AxonClient(
                                 request.renderMode?.let { put("render_mode", JsonPrimitive(it)) }
                                 request.includeSubdomains?.let { put("include_subdomains", JsonPrimitive(it)) }
                                 if (request.headers.isNotEmpty()) {
-                                    put("custom_headers", JsonArray(request.headers.map(::JsonPrimitive)))
+                                    put("headers", headerOptions(request.headers))
                                 }
                             },
                     ).takeIf { it.values.isNotEmpty() },
@@ -277,7 +277,7 @@ class AxonClient(
      * Submits a local-path or text embed through the unified
      * `POST /v1/sources` pipeline (the legacy `/v1/embed` route hard-404s).
      */
-    suspend fun embedStart(req: EmbedRequest): Result<AcceptedJob> =
+    suspend fun indexStart(req: SourceIndexRequest): Result<AcceptedJob> =
         withContext(Dispatchers.IO) {
             submitSourceRequest(source = req.input, collection = req.collection).map { it.toAcceptedJob() }
         }
@@ -309,6 +309,16 @@ class AxonClient(
             jobId = job?.id?.ifBlank { null } ?: jobId,
             status = status.ifBlank { "pending" },
             statusUrl = job?.statusUrl,
+        )
+
+    private fun headerOptions(headers: List<String>): JsonObject =
+        JsonObject(
+            headers.mapNotNull { raw ->
+                raw.split(':', limit = 2)
+                    .takeIf { it.size == 2 }
+                    ?.let { (name, value) -> name.trim() to JsonPrimitive(value.trim()) }
+                    ?.takeIf { (name, value) -> name.isNotEmpty() && value.content.isNotEmpty() }
+            }.toMap(),
         )
 
     /** GET /v1/jobs/{id} — unified job detail. Long-poll-friendly via httpLong. */

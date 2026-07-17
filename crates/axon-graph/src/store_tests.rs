@@ -36,6 +36,7 @@ fn candidate() -> GraphCandidate {
             edge_kind: "depends_on".to_string(),
             from_stable_key: "pkg:axon".to_string(),
             to_stable_key: "crate:tokio".to_string(),
+            evidence_ids: vec!["ev-a".to_string()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
@@ -68,6 +69,7 @@ fn multi_edge_candidate() -> GraphCandidate {
         edge_kind: "contains".to_string(),
         from_stable_key: "pkg:axon".to_string(),
         to_stable_key: "module:store".to_string(),
+        evidence_ids: vec!["ev-a".to_string()],
         properties: MetadataMap::new(),
     });
     candidate
@@ -212,9 +214,11 @@ async fn fake_graph_store_merges_evidence_for_existing_edge() {
     let graph = FakeGraphStore::new();
     let mut first = candidate();
     first.evidence[0].evidence_id = "ev-first".to_string();
+    first.edges[0].evidence_ids = vec!["ev-first".to_string()];
     let mut second = candidate();
     second.candidate_id = "cand-second".to_string();
     second.evidence[0].evidence_id = "ev-second".to_string();
+    second.edges[0].evidence_ids = vec!["ev-second".to_string()];
     second.evidence[0].quote = Some("tokio = { version = \"1\" }".to_string());
 
     graph.upsert_candidates(vec![first]).await.unwrap();

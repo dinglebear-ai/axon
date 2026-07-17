@@ -275,6 +275,7 @@ fn build_candidate(
 
     for item in &manifest.items {
         let doc_key = document_stable_key(item);
+        let item_evidence = containment_evidence(&source_id, &source_item_key, item);
         nodes.push(GraphNodeCandidate {
             node_kind: document_node_kind(item).to_string(),
             stable_key: doc_key.clone(),
@@ -285,9 +286,10 @@ fn build_candidate(
             edge_kind: edge_kind.to_string(),
             from_stable_key: container_key.clone(),
             to_stable_key: doc_key,
+            evidence_ids: vec![item_evidence.evidence_id.clone()],
             properties: MetadataMap::new(),
         });
-        evidence.push(containment_evidence(&source_id, &source_item_key, item));
+        evidence.push(item_evidence);
     }
 
     GraphCandidate {

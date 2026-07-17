@@ -276,7 +276,7 @@ export function CommandResultCard({ result, panelToken }: CommandResultCardProps
       )}
       {result.imageUrl && result.imageArtifact && (
         <AuthenticatedPanelArtifactImage
-          alt={result.imageArtifact.display_path}
+          alt={result.imageArtifact.artifact_id}
           panelToken={panelToken}
           src={result.imageUrl}
         />
@@ -286,7 +286,7 @@ export function CommandResultCard({ result, panelToken }: CommandResultCardProps
         <div className="artifact-list">
           <p className="artifact-list-label">Artifacts</p>
           {result.artifacts.map((a) => (
-            <ArtifactRow key={a.relative_path} artifact={a} panelToken={panelToken} />
+            <ArtifactRow key={a.artifact_id} artifact={a} panelToken={panelToken} />
           ))}
         </div>
       )}
@@ -373,8 +373,8 @@ type ArtifactRowProps = {
 
 export function ArtifactRow({ artifact, panelToken }: ArtifactRowProps) {
   const isImage = isPreviewableRasterArtifact(artifact);
-  const src = panelArtifactUrl(artifact.relative_path);
-  const name = artifact.display_path.split('/').pop() ?? artifact.display_path;
+  const src = panelArtifactUrl(artifact.artifact_id);
+  const name = artifact.artifact_id;
   const meta = formatBytes(artifact.bytes ?? 0) + (artifact.line_count ? ` · ${artifact.line_count.toLocaleString()} lines` : '');
   const actionLabel = isImage ? '↗' : '↓';
   const [error, setError] = useState<string | null>(null);
@@ -382,8 +382,8 @@ export function ArtifactRow({ artifact, panelToken }: ArtifactRowProps) {
   return (
     <>
       <div className={`artifact-row${isImage ? ' artifact-row-image' : ''}`}>
-        <span className="artifact-kind">{artifact.kind}</span>
-        <span className="artifact-name" title={artifact.display_path}>{name}</span>
+        <span className="artifact-kind">{artifact.artifact_kind}</span>
+        <span className="artifact-name" title={artifact.artifact_id}>{name}</span>
         <span className="artifact-meta">{meta}</span>
         <button
           type="button"

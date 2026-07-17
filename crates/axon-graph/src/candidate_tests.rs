@@ -38,6 +38,7 @@ fn base_candidate() -> GraphCandidate {
             edge_kind: "repo_declares_dependency".to_string(),
             from_stable_key: "repo:x".to_string(),
             to_stable_key: "pkg:tokio".to_string(),
+            evidence_ids: vec!["ev-1".to_string()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {

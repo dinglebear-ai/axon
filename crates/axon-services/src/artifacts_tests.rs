@@ -56,7 +56,7 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
             "handle": {
                 "artifact_id": "art_report_abc",
                 "artifact_kind": "report",
-                "uri": "file:///private/path"
+                "uri": "artifact://art_report_abc"
             },
             "content_type": "application/json",
             "content_path": "art_report_abc.bin",

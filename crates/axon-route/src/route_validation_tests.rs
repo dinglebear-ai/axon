@@ -113,7 +113,7 @@ fn router_allows_tool_execution_with_trusted_policy() {
 
     assert_eq!(route.adapter.name, "cli");
     assert_eq!(route.safety_class, SafetyClass::ToolExecution);
-    assert_eq!(route.parser_hints[0].parser_id, "cli_tool");
+    assert!(route.parser_hints.is_empty());
 }
 
 #[test]
@@ -166,7 +166,7 @@ fn router_uses_api_style_parser_ids_for_mcp_tools() {
         )
         .expect("trusted policy allows mcp route");
 
-    assert_eq!(route.parser_hints[0].parser_id, "mcp_tool");
+    assert!(route.parser_hints.is_empty());
 }
 
 #[test]
@@ -268,6 +268,14 @@ fn router_carries_full_web_option_set_into_validated_options() {
         .options
         .values
         .insert("discover_sitemaps".to_string(), json!(true));
+    request
+        .options
+        .values
+        .insert("discover_llms_txt".to_string(), json!(true));
+    request
+        .options
+        .values
+        .insert("max_llms_txt_urls".to_string(), json!(256));
     request
         .options
         .values
@@ -373,4 +381,19 @@ fn router_rejects_non_array_web_url_whitelist_value() {
 
     assert_eq!(err.code.0, "route.options.invalid");
     assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+#[test]
+fn router_does_not_force_source_kind_as_a_web_parser() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let request = SourceRequest::new("https://example.com/docs");
+    let resolved = resolver.resolve(&request).expect("web source resolves");
+
+    let route = router.route(&request, resolved).expect("web source routes");
+
+    assert!(
+        route.parser_hints.is_empty(),
+        "web documents must select parsers from content, MIME type, path, or sniffing"
+    );
 }

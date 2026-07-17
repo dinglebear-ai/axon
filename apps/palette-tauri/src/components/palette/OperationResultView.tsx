@@ -12,7 +12,6 @@ import {
   ChipSection,
   DetailLine,
   EmptyResult,
-  formatDetailValue,
   GenericResultView,
   imagePreviewSrc,
   isBadStatus,
@@ -413,21 +412,23 @@ function DiffView({ payload }: { payload: Record<string, unknown> }) {
 
 function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
   const artifact = isRecord(payload.artifact_handle) ? payload.artifact_handle : {};
-  const relativePath = strField(artifact, "relative_path");
-  const artifactDisplay = strField(artifact, "display_path") ?? relativePath;
+  const artifactId = strField(payload, "artifact_id") ?? strField(artifact, "artifact_id");
   const previewSrc =
     imagePreviewSrc(strField(payload, "preview_url")) ??
     imagePreviewSrc(strField(payload, "image_url")) ??
     imagePreviewSrc(strField(payload, "data_url")) ??
     imagePreviewSrc(strField(artifact, "url"));
-  const alt = `Screenshot of ${strField(payload, "url") ?? "captured page"}`;
+  const alt = "Captured screenshot";
   return (
     <div className="output-body operation-view aurora-scrollbar">
       <ResultHero
         icon={<FileImage size={16} />}
         title="Screenshot captured"
         tone="violet"
-        metrics={[["Size", formatDetailValue("size_bytes", numField(payload, "size_bytes"))]]}
+        metrics={[
+          ["Width", numField(payload, "width") ?? 0],
+          ["Height", numField(payload, "height") ?? 0],
+        ]}
       />
       {previewSrc ? (
         <section className="operation-section">
@@ -435,13 +436,13 @@ function ScreenshotView({ payload }: { payload: Record<string, unknown> }) {
             <img src={previewSrc} alt={alt} />
           </figure>
         </section>
-      ) : relativePath ? (
-        <AuthenticatedArtifactImage relativePath={relativePath} alt={alt} />
+      ) : artifactId ? (
+        <AuthenticatedArtifactImage artifactId={artifactId} alt={alt} />
       ) : null}
       <section className="operation-section">
         <div className="operation-detail-card">
-          <DetailLine label="URL" value={strField(payload, "url") ?? "-"} mono />
-          <DetailLine label="Artifact" value={artifactDisplay ?? "-"} mono />
+          <DetailLine label="Artifact" value={artifactId ?? "-"} mono />
+          <DetailLine label="Captured" value={strField(payload, "captured_at") ?? "-"} mono />
         </div>
       </section>
     </div>

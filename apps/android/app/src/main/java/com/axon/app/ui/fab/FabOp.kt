@@ -26,8 +26,8 @@ enum class FabOp(
         icon = Icons.Rounded.DataObject,
         placeholder = "https://",
     ),
-    Embed(
-        label = "Embed",
+    Index(
+        label = "Index",
         icon = Icons.Rounded.DatasetLinked,
         isAsync = true,
         placeholder = "URL, text, or server path…",

@@ -366,7 +366,7 @@ pub struct StatsRequest {
 
 #[path = "requests/discovery.rs"]
 mod discovery;
-pub use discovery::{CapabilitiesRequest, ProvidersRequest, ResolveRequest};
+pub use discovery::{CapabilitiesRequest, ChatRequest, ProvidersRequest, ResolveRequest};
 
 #[path = "requests/graph.rs"]
 mod graph;

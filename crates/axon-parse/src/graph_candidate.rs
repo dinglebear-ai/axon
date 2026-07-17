@@ -85,6 +85,7 @@ pub fn graph_candidate_ranged(
             edge_kind: "source_indexed_as".to_string(),
             from_stable_key: file_key,
             to_stable_key: item_key,
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
@@ -142,6 +143,7 @@ pub fn candidate_edge(
     let evidence_token = stable_token(&format!(
         "{candidate_kind}:{to_stable_key}:{line:?}:{quote:?}"
     ));
+    let evidence_id = format!("ev_{evidence_token}");
 
     GraphCandidate {
         candidate_id: format!("cand_{candidate_kind}_{candidate_token}"),
@@ -178,10 +180,11 @@ pub fn candidate_edge(
             edge_kind: edge_kind.to_string(),
             from_stable_key: from_stable_key.to_string(),
             to_stable_key: to_stable_key.to_string(),
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
-            evidence_id: format!("ev_{evidence_token}"),
+            evidence_id,
             evidence_kind: evidence_kind.to_string(),
             source_id: input.document.source_id.clone(),
             source_item_key: input.document.source_item_key.clone(),

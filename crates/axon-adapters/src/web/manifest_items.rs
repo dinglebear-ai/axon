@@ -13,6 +13,7 @@ use crate::boundary::FetchProvider;
 use crate::manifest::item_identity;
 
 use super::metadata::web_metadata;
+use super::options::{cache_policy, headers};
 use super::url_parts::WebUrlParts;
 
 /// `Map` scope: the manifest is exactly the caller-supplied `map_urls`
@@ -62,20 +63,23 @@ pub(super) async fn page_manifest_item(
     fetch: &dyn FetchProvider,
 ) -> Result<ManifestItem> {
     let web = WebUrlParts::parse(&plan.route.source.canonical_uri)?;
-    let fetched = fetch.fetch(build_discover_fetch_request(&web)).await?;
+    let fetched = fetch
+        .fetch(build_discover_fetch_request(
+            &web,
+            headers(&plan.route.validated_options.values),
+        ))
+        .await?;
     let content_hash = Some(content_ref_hash(&fetched.content));
     let mut item = web_manifest_item(plan, &web, content_hash, fetched.bytes, None);
     attach_conditional_metadata(&mut item, fetched.etag.as_deref());
     Ok(item)
 }
 
-fn build_discover_fetch_request(web: &WebUrlParts) -> FetchRequest {
+fn build_discover_fetch_request(web: &WebUrlParts, headers: Vec<RedactedHeader>) -> FetchRequest {
     FetchRequest {
         uri: web.normalized_url.clone(),
         method: "GET".to_string(),
-        headers: RedactedHeaders {
-            headers: Vec::new(),
-        },
+        headers: RedactedHeaders { headers },
         body: None,
         timeout_ms: None,
         max_bytes: None,
@@ -142,7 +146,22 @@ pub(super) fn web_manifest_item(
         content_hash,
         mtime: None,
         version: None,
-        fetch_plan: None,
+        fetch_plan: Some(FetchPlan {
+            uri: web.normalized_url.clone(),
+            method: "GET".to_string(),
+            headers: RedactedHeaders {
+                headers: headers(&plan.route.validated_options.values)
+                    .into_iter()
+                    .map(|header| RedactedHeader {
+                        name: header.name,
+                        value: "[REDACTED]".to_string(),
+                        redacted: true,
+                    })
+                    .collect(),
+            },
+            render_required: false,
+            cache_policy: cache_policy(&plan.route.validated_options.values),
+        }),
         metadata,
         graph_hints: Vec::new(),
     }

@@ -23,30 +23,6 @@ pub struct Citation {
 }
 
 impl Citation {
-    pub(crate) fn new(
-        source_id: SourceId,
-        source_item_key: SourceItemKey,
-        generation: SourceGenerationId,
-        document_id: DocumentId,
-        chunk_id: ChunkId,
-        job_id: JobId,
-        canonical_uri: String,
-        range: SourceRange,
-        redaction: RedactionMetadata,
-    ) -> Self {
-        Self {
-            source_id,
-            source_item_key,
-            generation,
-            document_id,
-            chunk_id,
-            job_id,
-            canonical_uri,
-            range,
-            redaction,
-        }
-    }
-
     pub(crate) fn from_vector_match(item: &VectorSearchMatch) -> Result<Self, ApiError> {
         let chunk_id = item.chunk_id.clone().ok_or_else(|| {
             ApiError::new(
