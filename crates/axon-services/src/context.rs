@@ -135,16 +135,16 @@ impl ServiceContext {
     /// Construct the production target local-source runtime, when applicable.
     ///
     /// Only worker-bearing contexts (`spawn_workers`, i.e. `serve`/`mcp` and
-    /// foreground `--wait`) attach it, and only when both `qdrant_url` and
-    /// `tei_url` are configured. Missing endpoints leave it unset rather than
-    /// failing startup; a construction error (e.g. the ledger migrations) is
-    /// logged and treated as absent so the process still comes up.
+    /// foreground `--wait`) attach it. Provider construction is lazy, so
+    /// acquisition-only requests such as `map` remain operational without TEI
+    /// or Qdrant; an embedding request still fails at the provider boundary
+    /// when its configured endpoint is unavailable.
     async fn build_target_local_source(
         cfg: &Config,
         jobs: &Arc<dyn ServiceJobRuntime>,
         spawn_workers: bool,
     ) -> Option<Arc<TargetLocalSourceRuntime>> {
-        if !spawn_workers || cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
+        if !spawn_workers {
             return None;
         }
         let Some(pool) = jobs.sqlite_pool() else {

@@ -53,6 +53,28 @@ fn uploads_request_is_strict_and_keeps_staging_identity_explicit() {
 }
 
 #[test]
+fn artifacts_request_uses_only_opaque_artifact_identity() {
+    let request: McpSystemRequest = serde_json::from_value(serde_json::json!({
+        "action": "artifacts",
+        "subaction": "content",
+        "artifact_id": "art_report_abc"
+    }))
+    .expect("canonical artifact request parses");
+    let McpSystemRequest::Artifacts(request) = request else {
+        panic!("expected artifacts request")
+    };
+    assert_eq!(request.artifact_id.as_deref(), Some("art_report_abc"));
+    assert!(
+        serde_json::from_value::<McpSystemRequest>(serde_json::json!({
+            "action": "artifacts",
+            "subaction": "content",
+            "path": "screenshots/secret.png"
+        }))
+        .is_err()
+    );
+}
+
+#[test]
 fn watch_accepts_canonical_cursor_and_status_fields() {
     let request: McpWatchRequest = serde_json::from_value(serde_json::json!({
         "action": "watch",

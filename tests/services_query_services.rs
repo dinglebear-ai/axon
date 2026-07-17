@@ -3,13 +3,35 @@ use axon_services::query::{
     map_suggest_payload,
 };
 
+fn citation(uri: &str, chunk_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "source_id": "source-test",
+        "source_item_key": uri,
+        "generation": "1",
+        "document_id": format!("document-{chunk_id}"),
+        "chunk_id": chunk_id,
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "canonical_uri": uri,
+        "source_range": { "line_start": 1, "line_end": 2 },
+        "redaction": {
+            "redaction_status": "clean",
+            "redaction_version": "test-v1",
+            "visibility": "public",
+            "redacted_field_count": 0,
+            "dropped_field_count": 0,
+            "detector_count": 0,
+            "detector_names": []
+        }
+    })
+}
+
 // ── map_query_results ─────────────────────────────────────────────────────────
 
 #[test]
 fn map_query_results_preserves_all_items() {
     let items = vec![
-        serde_json::json!({"rank": 1, "score": 0.9, "rerank_score": 0.8, "url": "https://a.com", "source": "docs", "snippet": "alpha", "chunk_index": null}),
-        serde_json::json!({"rank": 2, "score": 0.7, "rerank_score": 0.6, "url": "https://b.com", "source": "docs", "snippet": "beta", "chunk_index": 2}),
+        serde_json::json!({"rank": 1, "score": 0.9, "rerank_score": 0.8, "url": "https://a.com", "source": "docs", "snippet": "alpha", "citation": citation("https://a.com", "chunk-a"), "chunk_index": null}),
+        serde_json::json!({"rank": 2, "score": 0.7, "rerank_score": 0.6, "url": "https://b.com", "source": "docs", "snippet": "beta", "citation": citation("https://b.com", "chunk-b"), "chunk_index": 2}),
     ];
     let result = map_query_results(items.clone()).expect("valid query results");
     assert_eq!(result.results.len(), 2);
@@ -53,6 +75,7 @@ fn map_ask_payload_wraps_value() {
     let payload = serde_json::json!({
         "query": "what is a vector database?",
         "answer": "A vector database stores embeddings...",
+        "citations": [],
         "timing_ms": {"retrieval": 1, "context_build": 2, "llm": 4, "total": 10}
     });
     let result = map_ask_payload(payload.clone()).expect("valid ask payload");
@@ -65,6 +88,7 @@ fn map_ask_payload_preserves_adaptive_diagnostics() {
     let payload = serde_json::json!({
         "query": "compare retrieval modes",
         "answer": "Hybrid uses rank fusion.",
+        "citations": [],
         "diagnostics": {
             "candidate_pool": 10,
             "reranked_pool": 8,
@@ -109,6 +133,7 @@ fn map_evaluate_payload_wraps_value() {
         "rag_answer": "Yes, RAG improves grounding.",
         "baseline_answer": "It depends.",
         "analysis_answer": "RAG wins on accuracy.",
+        "citations": [],
         "source_urls": [],
         "crawl_suggestions": [],
         "crawl_enqueue_outcomes": [],

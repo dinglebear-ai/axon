@@ -18,6 +18,10 @@ use super::super::helpers::{positional_from_job, positional_from_watch_subcomman
 use clap::ValueEnum;
 use std::env;
 
+#[path = "command_dispatch/resources.rs"]
+mod resources;
+use resources::apply_resource;
+
 fn env_usize_or(var: &str, default: usize) -> usize {
     env::var(var)
         .ok()
@@ -159,6 +163,7 @@ impl DispatchOutput {
 pub(super) fn dispatch(cli_command: CliCommand) -> DispatchOutput {
     let mut out = DispatchOutput::defaults();
     match cli_command {
+        CliCommand::Resource(command) => apply_resource(&mut out, command),
         CliCommand::Watch(args) => {
             out.command = CommandKind::Watch;
             out.positional = if let Some(action) = args.action {

@@ -12,15 +12,15 @@
 //! (`embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`,
 //! `purge`, `dedupe`, `refresh`, `fresh` — see
 //! `xtask/src/schemas/registry.rs::REMOVED_SURFACE_RULES`) are intentionally
-//! excluded. Target-only command groups from the Phase #298 clean-break contract
-//! that do not exist as real clap commands yet (`graph`, `providers`,
-//! `collections`, `artifacts`, `uploads`, `capabilities`, `chat`) are
-//! likewise NOT fabricated here — see `docs/pipeline-unification/schemas/
-//! cli-schema.md` for that target shape, and
+//! excluded. The #298 resource command groups (`artifacts`, `uploads`,
+//! `collections`, `graph`, `providers`, `capabilities`, `chat`) are live clap
+//! commands (the flattened `ResourceCliCommand` variants in
+//! `crates/axon-core/src/config/cli/resources_args.rs`) and are registered in
+//! `cli_registry/part4.rs`; see
 //! `xtask/src/schemas/cli_registry_tests.rs` for the cross-check against the
 //! live clap source.
 //!
-//! The actual command data is split across `cli_registry/part{1,2,3}.rs` to
+//! The actual command data is split across `cli_registry/part{1,2,3,4}.rs` to
 //! stay under the repo's 500-line file cap.
 use serde_json::{Value, json};
 
@@ -30,6 +30,8 @@ mod part1;
 mod part2;
 #[path = "cli_registry/part3.rs"]
 mod part3;
+#[path = "cli_registry/part4.rs"]
+mod part4;
 
 /// One CLI command or grouped-subcommand record.
 pub(super) struct CliRegistryCommand {
@@ -68,6 +70,7 @@ pub(super) fn command_registry() -> Vec<CliRegistryCommand> {
     let mut commands = part1::commands();
     commands.extend(part2::commands());
     commands.extend(part3::commands());
+    commands.extend(part4::commands());
     commands
 }
 

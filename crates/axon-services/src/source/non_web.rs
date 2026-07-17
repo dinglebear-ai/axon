@@ -6,6 +6,7 @@ mod publish;
 mod vectorize;
 use super::events::SourceEventEmitter;
 use super::execution::SourceExecutionContext;
+use super::progress;
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
 use anyhow::Context as _;
@@ -65,6 +66,10 @@ where
             input.plan.route.source.source_kind,
             input.plan.route.scope,
             input.plan.route.adapter.clone(),
+        )
+        .with_source(
+            input.plan.route.source.source_id.clone(),
+            input.plan.route.source.canonical_uri.clone(),
         )
         .with_attempt(input.execution.attempt);
 
@@ -128,6 +133,9 @@ where
         Err(error) => Err(error),
     };
     if let Err(error) = &result {
+        progress::pipeline_failed(emitter, error).await;
+    }
+    if let Err(error) = &result {
         runtime
             .ledger
             .upsert_source(metadata::source_summary(
@@ -177,6 +185,7 @@ async fn run_generation(
     .await?;
     let mut manifest = input.adapter.discover(&input.plan).await?;
     apply_max_items(&mut manifest, input.plan.limits.effective.max_items);
+    progress::discovered(emitter, &manifest).await;
     manifest.metadata.insert(
         PUBLICATION_CONFIG_KEY.to_string(),
         serde_json::json!(input.plan.config_snapshot_id.0.clone()),
@@ -190,6 +199,7 @@ async fn run_generation(
     )
     .await?;
     let mut diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
+    progress::diffed(emitter, &diff).await;
     let publication_config_unchanged = match diff.previous_generation.as_ref() {
         Some(generation) => runtime
             .ledger
@@ -282,6 +292,7 @@ async fn run_created_generation(
     )
     .await?;
     let acquisition = input.adapter.acquire(&input.plan, &diff).await?;
+    progress::acquired(emitter, &acquisition).await;
     let mut artifacts = acquisition.artifacts.clone();
     let mut warnings = acquisition.header.warnings.clone();
     let enrichments = enrich(
@@ -299,6 +310,7 @@ async fn run_created_generation(
     )
     .await?;
     let normalized = input.adapter.normalize(&input.plan, acquisition).await?;
+    progress::normalized(emitter, &generation.generation, &normalized.header).await;
     warnings.extend(normalized.header.warnings.clone());
     let mut documents = normalized.data;
     apply_enrichments(&mut documents, &enrichments);
@@ -392,9 +404,15 @@ async fn publish_created_generation(
             previous.as_ref(),
         ))
         .await?;
-    emitter
-        .completed(PipelinePhase::Publishing, "published source generation")
-        .await;
+    progress::published(
+        emitter,
+        &published.generation,
+        manifest.items.len() as u64,
+        &vectorized.warnings,
+        vectorized.documents_prepared,
+        vectorized.chunks_prepared,
+    )
+    .await;
     Ok(IndexCounts {
         job_id: input.plan.job_id,
         source_id: manifest.source_id,

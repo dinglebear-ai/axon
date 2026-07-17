@@ -19,7 +19,7 @@ import com.axon.app.core.api.chatStream
 import com.axon.app.core.api.deleteMobileSession
 import com.axon.app.core.api.getMobileSession
 import com.axon.app.core.api.listMobileSessions
-import com.axon.app.core.api.models.EmbedRequest
+import com.axon.app.core.api.models.SourceIndexRequest
 import com.axon.app.core.api.models.ExtractRequest
 import com.axon.app.core.api.models.MobileSessionDto
 import com.axon.app.core.api.upsertMobileSession
@@ -445,12 +445,12 @@ class AxonRepository(
             client.extractStart(ExtractRequest(urls = listOf(url), prompt = prompt?.takeIf { it.isNotBlank() })).map { it.jobId }
         }
 
-    suspend fun embedStart(
+    suspend fun indexStart(
         input: String,
         collection: String? = null,
     ): Result<String> =
         withAuth {
-            client.embedStart(EmbedRequest(input = input, collection = collection)).map { it.jobId }
+            client.indexStart(SourceIndexRequest(input = input, collection = collection)).map { it.jobId }
         }
 
     suspend fun getJob(

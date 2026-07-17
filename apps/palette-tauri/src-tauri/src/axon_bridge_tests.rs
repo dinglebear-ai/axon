@@ -163,23 +163,20 @@ fn validates_saved_server_url_accepts_ipv6() {
 }
 
 #[test]
-fn artifact_relative_path_validation_rejects_unsafe_values() {
-    assert!(validate_artifact_relative_path("../secret").is_err());
-    assert!(validate_artifact_relative_path("screenshots/%2e/secret").is_err());
-    assert!(validate_artifact_relative_path("screenshots/%2e%2e/secret").is_err());
-    assert!(validate_artifact_relative_path("screenshots%5csecret").is_err());
-    assert!(validate_artifact_relative_path(r"screenshots\\..\\secret").is_err());
-    assert!(validate_artifact_relative_path("C:\\secret").is_err());
-    assert!(validate_artifact_relative_path("screenshots/shot.png\0").is_err());
-    assert!(validate_artifact_relative_path("screenshots/shot.png").is_ok());
+fn artifact_id_validation_accepts_only_opaque_ids() {
+    assert!(validate_artifact_id("art_screenshot_123").is_ok());
+    assert!(validate_artifact_id("../secret").is_err());
+    assert!(validate_artifact_id("screenshots/shot.png").is_err());
+    assert!(validate_artifact_id("artifact_123").is_err());
+    assert!(validate_artifact_id("art_bad%2fid").is_err());
 }
 
 #[test]
-fn artifact_url_uses_query_encoding_without_accepting_raw_query_paths() {
-    let url = artifact_url("https://axon.local", "screenshots/foo #1.png").unwrap();
+fn artifact_url_uses_opaque_content_route() {
+    let url = artifact_url("https://axon.local", "art_screenshot_123").unwrap();
     assert_eq!(
         url.as_str(),
-        "https://axon.local/v1/artifacts?path=screenshots%2Ffoo+%231.png"
+        "https://axon.local/v1/artifacts/art_screenshot_123/content"
     );
 }
 

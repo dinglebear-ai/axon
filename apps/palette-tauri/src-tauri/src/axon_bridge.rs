@@ -1,6 +1,5 @@
 use base64::Engine as _;
 use futures_util::{Stream, StreamExt as _};
-use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
@@ -169,11 +168,11 @@ pub(crate) async fn axon_artifact_request(
     app: AppHandle,
     bridge: tauri::State<'_, BridgeClient>,
     oauth_state: tauri::State<'_, crate::oauth::OauthState>,
-    relative_path: String,
+    artifact_id: String,
 ) -> Result<AxonArtifactResult, String> {
     let settings = merged_settings(&app)?;
     let base_url = validate_saved_server_url(&settings.server_url)?;
-    let url = artifact_url(&base_url, &relative_path)?;
+    let url = artifact_url(&base_url, &artifact_id)?;
     let client = (*bridge).client();
 
     let static_token = settings
@@ -270,44 +269,21 @@ where
     Ok(body)
 }
 
-fn validate_artifact_relative_path(path: &str) -> Result<(), String> {
-    if path.is_empty()
-        || path.starts_with('/')
-        || path.contains('\0')
-        || path.contains('\\')
-        || path.contains(':')
-    {
-        return Err("artifact path must be a safe relative path".to_string());
-    }
-    let decoded = percent_decode_str(path).decode_utf8_lossy();
-    if decoded.contains(':')
-        || decoded.contains('\\')
-        || decoded
-            .split('/')
-            .any(|segment| segment == "." || segment == "..")
-        || decoded.split('/').any(str::is_empty)
-        || std::path::Path::new(decoded.as_ref())
-            .components()
-            .any(|part| {
-                matches!(
-                    part,
-                    std::path::Component::CurDir
-                        | std::path::Component::ParentDir
-                        | std::path::Component::RootDir
-                        | std::path::Component::Prefix(_)
-                )
-            })
-    {
-        return Err("artifact path must be a safe relative path".to_string());
-    }
-    Ok(())
+fn validate_artifact_id(artifact_id: &str) -> Result<(), String> {
+    let valid = artifact_id.starts_with("art_")
+        && artifact_id.len() <= 160
+        && artifact_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+    valid
+        .then_some(())
+        .ok_or_else(|| "artifact_id must be an opaque art_ identifier".to_string())
 }
 
-fn artifact_url(base_url: &str, relative_path: &str) -> Result<url::Url, String> {
-    validate_artifact_relative_path(relative_path)?;
+fn artifact_url(base_url: &str, artifact_id: &str) -> Result<url::Url, String> {
+    validate_artifact_id(artifact_id)?;
     let mut url = url::Url::parse(base_url).map_err(|err| err.to_string())?;
-    url.set_path("/v1/artifacts");
-    url.query_pairs_mut().append_pair("path", relative_path);
+    url.set_path(&format!("/v1/artifacts/{artifact_id}/content"));
     Ok(url)
 }
 

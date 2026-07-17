@@ -115,9 +115,8 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
     assert!(actual.contains(&"reset"));
     assert!(actual.contains(&"collections"));
     assert!(actual.contains(&"uploads"));
-    for unsupported in ["chat", "artifacts"] {
-        assert!(!actual.contains(&unsupported));
-    }
+    assert!(actual.contains(&"chat"));
+    assert!(actual.contains(&"artifacts"));
 }
 
 #[test]

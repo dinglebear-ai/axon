@@ -145,3 +145,20 @@ fn graph_requests_reject_unknown_fields() {
         .expect_err("graph filters must reject unknown fields");
     assert!(err.to_string().contains("unknown field"), "{err}");
 }
+
+#[test]
+fn graph_edge_candidate_accepts_explicit_evidence_ids() {
+    let edge: GraphEdgeCandidate = serde_json::from_value(serde_json::json!({
+        "edge_kind": "docs_site_contains_page",
+        "from_stable_key": "source:src_web:https://example.com/",
+        "to_stable_key": "https://example.com/docs",
+        "evidence_ids": ["contains:https://example.com/docs"],
+        "properties": {}
+    }))
+    .expect("edge evidence references are part of the graph candidate contract");
+
+    assert_eq!(
+        serde_json::to_value(edge).expect("serialize graph edge")["evidence_ids"],
+        serde_json::json!(["contains:https://example.com/docs"])
+    );
+}

@@ -31,6 +31,7 @@ pub(crate) mod execution;
 pub mod graph;
 pub mod job_tracking;
 mod non_web;
+pub(crate) mod progress;
 pub mod prune;
 pub mod result_map;
 pub mod routing;
@@ -170,7 +171,7 @@ async fn index_source_inner(
         ctx.jobs.sqlite_pool(),
         runtime.ledger.as_ref(),
         &counts,
-        &input,
+        &route.source.canonical_uri,
         counts.graph_candidates.clone(),
     )
     .await;
@@ -306,7 +307,6 @@ async fn open_cleanup_debt_stores(
 /// `registry`, which each cap their discovered-manifest item count before
 /// diffing. `local`/`git` do not take a `max_items` cap today, so it is not
 /// threaded to them.
-
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_item_limited_kind(
     kind: SourceInputKind,

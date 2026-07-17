@@ -9,6 +9,7 @@
 //! - edge candidates refer to node stable keys that exist in the candidate;
 //! - every edge candidate references at least one evidence record.
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use axon_api::source::{ApiError, GraphCandidate, SourceRange};
@@ -39,9 +40,30 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
         }
     }
 
+    // Edges are claims with evidence — if a candidate declares edges it must
+    // carry evidence to justify them (source-graph.md: "Edges are never just
+    // true"). Check this before resolving individual references so callers get
+    // the direct missing-evidence diagnostic.
+    if !candidate.edges.is_empty() && candidate.evidence.is_empty() {
+        return Err(graph_validation_error(format!(
+            "candidate {:?} declares edges but carries no evidence",
+            candidate.candidate_id
+        )));
+    }
+
+    let mut evidence_ids = HashSet::with_capacity(candidate.evidence.len());
+    for evidence in &candidate.evidence {
+        if !evidence_ids.insert(evidence.evidence_id.as_str()) {
+            return Err(graph_validation_error(format!(
+                "candidate {:?} contains duplicate evidence id {:?}",
+                candidate.candidate_id, evidence.evidence_id
+            )));
+        }
+    }
+
     // Every edge kind must be in the closed registry, both endpoints must refer
-    // to a node stable key present in the candidate, and the candidate must
-    // carry at least one evidence record for its edges.
+    // to a node stable key present in the candidate, and every edge must name
+    // the evidence records that justify that specific claim.
     for edge in &candidate.edges {
         GraphEdgeKind::from_str(&edge.edge_kind)?;
         if !candidate
@@ -64,16 +86,20 @@ pub fn validate_candidate(candidate: &GraphCandidate) -> Result<(), ApiError> {
                 edge.edge_kind, edge.to_stable_key
             )));
         }
-    }
-
-    // Edges are claims with evidence — if a candidate declares edges it must
-    // carry evidence to justify them (source-graph.md: "Edges are never just
-    // true").
-    if !candidate.edges.is_empty() && candidate.evidence.is_empty() {
-        return Err(graph_validation_error(format!(
-            "candidate {:?} declares edges but carries no evidence",
-            candidate.candidate_id
-        )));
+        if edge.evidence_ids.is_empty() {
+            return Err(graph_validation_error(format!(
+                "edge {:?} carries no evidence references",
+                edge.edge_kind
+            )));
+        }
+        for evidence_id in &edge.evidence_ids {
+            if !evidence_ids.contains(evidence_id.as_str()) {
+                return Err(graph_validation_error(format!(
+                    "edge {:?} references unknown evidence id {:?}",
+                    edge.edge_kind, evidence_id
+                )));
+            }
+        }
     }
 
     for evidence in &candidate.evidence {

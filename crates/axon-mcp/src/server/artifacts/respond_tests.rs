@@ -71,16 +71,17 @@ async fn explicit_path_mode_respected_even_for_small_payload() {
     assert_eq!(resp.data["response_mode"], "path");
     assert!(resp.data["artifact"].is_object());
     assert_eq!(
-        resp.data["artifact_handle"]["relative_path"],
-        resp.data["artifact"]["relative_path"]
+        resp.data["artifact_handle"]["artifact_id"],
+        resp.data["artifact"]["artifact_id"]
     );
     assert!(
-        !resp.data["artifact_handle"]["relative_path"]
+        resp.data["artifact_handle"]["artifact_id"]
             .as_str()
             .unwrap()
-            .starts_with('/')
+            .starts_with("art_")
     );
-    assert!(resp.data["artifact_handle"]["display_path"].is_string());
+    assert!(resp.data["artifact_handle"].get("relative_path").is_none());
+    assert!(resp.data["artifact_handle"].get("display_path").is_none());
     assert!(resp.data["shape"].is_object());
     restore_artifact_env(prev);
 }

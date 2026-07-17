@@ -3,6 +3,13 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
+    Artifacts,
+    Uploads,
+    Collections,
+    Graph,
+    Providers,
+    Capabilities,
+    Chat,
     Watch,
     Monitor,
     Map,
@@ -50,6 +57,13 @@ pub enum CommandKind {
 impl CommandKind {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Artifacts => "artifacts",
+            Self::Uploads => "uploads",
+            Self::Collections => "collections",
+            Self::Graph => "graph",
+            Self::Providers => "providers",
+            Self::Capabilities => "capabilities",
+            Self::Chat => "chat",
             Self::Watch => "watch",
             Self::Monitor => "monitor",
             Self::Map => "map",

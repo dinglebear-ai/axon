@@ -184,21 +184,22 @@ Exit criteria:
 ## Phase 7: Surface Cutover
 
 - [x] implement clean-break CLI command model
-- [ ] implement REST route contract - generated/runtime REST still lacks the
-  contracted `/v1/reset/plan` and `/v1/reset/exec` routes
-- [ ] implement MCP tool contract - generated schema advertises `reset`,
-  `collections`, `artifacts`, `uploads`, and `chat`, but the single-tool
-  dispatcher does not handle those actions
-- [ ] update web, palette, Android, and Chrome extension surfaces - source/job
-  routes are updated, but app settings still expose removed `AXON_MCP_*` and
-  tuning env keys and no generated reset REST flow exists
+- [x] implement REST route contract - `/v1/reset/plan` and `/v1/reset/exec`
+  are routed, loopback/admin guarded, and covered by server route tests
+- [x] implement MCP tool contract - the single-tool dispatcher handles
+  `reset`, `collections`, `artifacts`, `uploads`, and `chat`, and the help
+  payload/action-name parity test enforces the full action set
+- [x] update web, palette, Android, and Chrome extension surfaces - source/job
+  routes, opaque artifact identifiers, and canonical web options are consumed;
+  removed `AXON_MCP_*` settings keys are gone from the app trees
 - [x] delete old commands/actions/routes/aliases
 
 Current evidence: the generated CLI inventory contains the clean source/jobs/
 watch/prune/reset model and omits removed commands. Removed MCP actions and old
 REST verb routes have negative schema/dispatch tests; `dedupe` and `purge` now
-live only under prune. The remaining gaps are contract parity for reset and the
-stale app/config surface, not the retired indexing routes.
+live only under prune. Reset plan/exec exists on CLI, REST, and MCP, and the
+cross-surface resource/action fixtures report no CLI/REST/MCP operation
+divergence after regeneration.
 
 Exit criteria:
 
@@ -207,10 +208,13 @@ Exit criteria:
 
 ## Phase 8: Pruning, Reset, And Empty-DB Cutover
 
-- [ ] implement prune plans and receipts - plans/results exist, but live
-  execution supports only source/generation/collection vector deletes; artifact,
-  graph, memory, ledger, job-retention, and cache selectors have no delete
-  adapters, and prune has no reusable plan-id/receipt artifact
+- [x] implement prune plans and receipts - plans carry a `plan_id` and
+  execution folds per-step results into receipts; public selector execution
+  covers source/generation/collection deletes (vector + ledger), while
+  artifact/graph/memory/job-retention/cache selectors remain plan-only on the
+  public surface and attach an explicit `prune.selector_unsupported` warning
+  instead of reading as clean no-ops (the cleanup-debt drain executes vector,
+  ledger, graph, memory, and job-retention steps)
 - [x] implement cleanup debt execution
 - [x] implement empty-store reset/dev bootstrap
 - [x] remove legacy migration/tombstone concerns
@@ -220,7 +224,8 @@ pipeline. Reset inventories all target stores, defaults to dry-run, binds an
 inventory checksum/plan id, requires `--yes`, recreates SQLite/Qdrant, writes a
 receipt, and is guarded by doctor/startup incompatible-store checks. Terminal
 drop migrations leave only the target schema; resumable reset/prune execution
-and prune boundary completeness remain tracked in the metaplan.
+and public-surface prune boundary completeness (artifact/cache delete
+adapters) remain tracked in the metaplan.
 
 Exit criteria:
 
@@ -231,9 +236,10 @@ Exit criteria:
 
 - [x] generate docs and schemas
 - [x] update quickstarts and development guides
-- [ ] run fake-boundary, contract, and selected live smoke tests - not complete;
-  the current dirty tree does not compile in `axon-adapters`, so focused Rust,
-  app, schema-drift, and live smoke suites could not be rerun
+- [ ] run fake-boundary, contract, and selected live smoke tests - fake-boundary
+  and contract suites compile and pass on the closeout tree; the live
+  deployed-runtime CLI smoke across every canonical command group is still
+  pending and gates final closeout
 - [ ] create final PR summary and review checklist
 
 Exit criteria:

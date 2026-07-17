@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.2.2"
+    "version": "7.0.0"
   },
   "paths": {
     "/healthz": {
@@ -7890,51 +7890,6 @@
           }
         ]
       },
-      "ArtifactHandle": {
-        "type": "object",
-        "required": [
-          "kind",
-          "relative_path",
-          "display_path",
-          "bytes"
-        ],
-        "properties": {
-          "bytes": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "display_path": {
-            "type": "string"
-          },
-          "job_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
-            "type": "string"
-          },
-          "line_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "relative_path": {
-            "type": "string"
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "ArtifactId": {
         "type": "string"
       },
@@ -13825,31 +13780,34 @@
       "ScreenshotResult": {
         "type": "object",
         "required": [
-          "url",
-          "path",
-          "size_bytes"
+          "artifact_id",
+          "width",
+          "height",
+          "captured_at",
+          "warnings"
         ],
         "properties": {
-          "artifact_handle": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ArtifactHandle"
-              }
-            ]
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
           },
-          "path": {
-            "type": "string"
+          "captured_at": {
+            "$ref": "#/components/schemas/Timestamp"
           },
-          "size_bytes": {
+          "height": {
             "type": "integer",
-            "format": "int64",
+            "format": "int32",
             "minimum": 0
           },
-          "url": {
-            "type": "string"
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },

@@ -85,10 +85,11 @@ async fn compact_with_store(
     store: Arc<dyn MemoryStore>,
     request: MemoryCompactRequest,
 ) -> Result<MemoryItem> {
-    let archived_source_ids = request
-        .archive_sources
-        .then(|| request.memory_ids.clone())
-        .unwrap_or_default();
+    let archived_source_ids = if request.archive_sources {
+        request.memory_ids.clone()
+    } else {
+        Default::default()
+    };
     let result = store.compact(request).await.map_err(store_err)?;
     let mut sync_ids = vec![result.memory_id.clone()];
     sync_ids.extend(archived_source_ids);

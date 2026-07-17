@@ -109,6 +109,7 @@ fn ledger_vector_graph_fixture_shares_source_generation_lineage() {
             edge_kind: "repo_uses_container_image".to_string(),
             from_stable_key: "local://src_local_repo".to_string(),
             to_stable_key: "docker:qdrant/qdrant:v1.13.1".to_string(),
+            evidence_ids: vec!["ev_1".to_string()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {

@@ -60,6 +60,24 @@ fn etag_conditional_threads_into_validated_options() {
 }
 
 #[test]
+fn llms_txt_discovery_options_thread_into_validated_options() {
+    let cfg = Config {
+        discover_llms_txt: false,
+        max_llms_txt_urls: 17,
+        ..Config::default()
+    };
+    let options = web_crawl_options(&cfg, None, None);
+    assert_eq!(
+        options.get("discover_llms_txt").unwrap(),
+        &serde_json::json!(false)
+    );
+    assert_eq!(
+        options.get("max_llms_txt_urls").unwrap(),
+        &serde_json::json!(17)
+    );
+}
+
+#[test]
 fn url_whitelist_and_blacklist_only_set_when_nonempty() {
     let cfg = Config::default();
     let options = web_crawl_options(&cfg, None, None);
@@ -102,8 +120,31 @@ fn warc_automation_and_headers_thread_into_validated_options() {
         &serde_json::json!("/tmp/automation.json")
     );
     assert_eq!(
-        options.get("custom_headers").unwrap(),
-        &serde_json::json!(["X-Test: ok"])
+        options.get("headers").unwrap(),
+        &serde_json::json!({"X-Test": "ok"})
+    );
+}
+
+#[test]
+fn robots_cache_and_vertical_ttls_thread_into_validated_options() {
+    let cfg = Config {
+        respect_robots: true,
+        etag_conditional: true,
+        vertical_cache_ttl_secs: [("github".to_string(), 60)].into_iter().collect(),
+        ..Config::default()
+    };
+    let options = web_crawl_options(&cfg, None, None);
+    assert_eq!(
+        options.get("respect_robots"),
+        Some(&serde_json::json!(true))
+    );
+    assert_eq!(
+        options.get("cache_policy"),
+        Some(&serde_json::json!("revalidate"))
+    );
+    assert_eq!(
+        options.get("vertical_cache_ttl_secs"),
+        Some(&serde_json::json!({"github": 60}))
     );
 }
 

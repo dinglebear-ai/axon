@@ -49,12 +49,13 @@ fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
         mode,
         min_markdown_chars,
         automation_script: None,
-        custom_headers: Vec::new(),
-        etag_conditional: false,
+        headers: Vec::new(),
+        cache_policy: CachePolicy::Bypass,
         vertical: VerticalOptions {
             enabled: false,
             auto_dispatch_skip: Vec::new(),
             user_agent: None,
+            cache_ttl_secs: Default::default(),
         },
     }
 }
@@ -299,7 +300,7 @@ async fn etag_conditional_uses_prior_overlay_not_current_discovery_etag() {
     let url = format!("{}/page", server.base_url());
     let manifest_item = item_with_current_and_prior_etags(&url, "\"v2\"", "\"v1\"");
 
-    let acquired = acquire_via_fetch(&provider, &manifest_item, true, &[])
+    let acquired = acquire_via_fetch(&provider, &manifest_item, CachePolicy::Revalidate, &[])
         .await
         .unwrap()
         .expect("conditional miss should still fetch content");
@@ -325,7 +326,7 @@ async fn etag_conditional_304_marks_the_item_for_reuse() {
     let url = format!("{}/page", server.base_url());
     let manifest_item = item_with_current_and_prior_etags(&url, "\"v2\"", "\"v1\"");
 
-    let result = acquire_via_fetch(&provider, &manifest_item, true, &[])
+    let result = acquire_via_fetch(&provider, &manifest_item, CachePolicy::Revalidate, &[])
         .await
         .unwrap();
     let acquired = result.expect("304 should produce a reuse marker item");
@@ -353,7 +354,7 @@ async fn etag_conditional_disabled_sends_no_conditional_header() {
     let url = format!("{}/page", server.base_url());
     let manifest_item = item_with_etag(&url, "\"v1\"");
 
-    let acquired = acquire_via_fetch(&provider, &manifest_item, false, &[])
+    let acquired = acquire_via_fetch(&provider, &manifest_item, CachePolicy::Bypass, &[])
         .await
         .unwrap()
         .expect("etag_conditional=false must not skip the item");
@@ -375,7 +376,7 @@ async fn rejects_304_without_sending_a_prior_validator() {
     let url = format!("{}/page", server.base_url());
     let manifest_item = item_with_etag(&url, "\"v1\"");
 
-    let err = acquire_via_fetch(&provider, &manifest_item, false, &[])
+    let err = acquire_via_fetch(&provider, &manifest_item, CachePolicy::Bypass, &[])
         .await
         .expect_err("304 without a sent validator must fail");
     assert_eq!(
@@ -403,7 +404,7 @@ async fn etag_conditional_200_updates_stored_etag() {
     let url = format!("{}/page", server.base_url());
     let manifest_item = item_with_etag(&url, "\"v1\"");
 
-    let acquired = acquire_via_fetch(&provider, &manifest_item, true, &[])
+    let acquired = acquire_via_fetch(&provider, &manifest_item, CachePolicy::Revalidate, &[])
         .await
         .unwrap()
         .expect("200 must not be skipped");
@@ -427,7 +428,7 @@ async fn no_prior_etag_still_fetches_normally_when_conditional_enabled() {
     let provider = HttpFetchProvider::new(HttpFetchConfig::default());
     let url = format!("{}/page", server.base_url());
 
-    let acquired = acquire_via_fetch(&provider, &item(&url), true, &[])
+    let acquired = acquire_via_fetch(&provider, &item(&url), CachePolicy::Revalidate, &[])
         .await
         .unwrap()
         .expect("first fetch with no prior etag must not be skipped");

@@ -98,7 +98,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
         // Actual shipped `pub mod` surface (crates/axon-api/src/lib.rs), not
         // the target-contract minimal list — see module doc comment above.
         modules: &[
-            "contract",
             "diff",
             "explain",
             "job_dto",

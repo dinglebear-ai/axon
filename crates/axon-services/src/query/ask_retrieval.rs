@@ -191,8 +191,7 @@ fn build_ask_context_from_hits(
 ) -> AskContext {
     let chunk_limit = cfg
         .ask_chunk_limit
-        .max(1)
-        .min(axon_api::MAX_CANONICAL_CITATIONS);
+        .clamp(1, axon_api::MAX_CANONICAL_CITATIONS);
     let max_context_chars = cfg.ask_max_context_chars;
 
     let mut context = String::from(CONTEXT_PREFIX);

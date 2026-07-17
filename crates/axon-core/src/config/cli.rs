@@ -1,5 +1,6 @@
 mod config_args;
 mod global_args;
+mod resources_args;
 mod setup_args;
 
 use super::types::{EvaluateResponsesMode, McpTransport};
@@ -7,6 +8,7 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 pub(super) use config_args::{ConfigArgs, ConfigSubcommand, SyncArgs, SyncSubcommand};
 pub(super) use global_args::{DEFAULT_OUTPUT_DIR, GlobalArgs};
+pub(super) use resources_args::*;
 pub(super) use setup_args::{ComposeArgs, ComposeSubcommand, SetupAuthMode, SetupInitArgs};
 
 #[derive(Debug, Parser)]
@@ -25,6 +27,8 @@ pub(super) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum CliCommand {
+    #[command(flatten)]
+    Resource(ResourceCliCommand),
     /// Manage recurring watch definitions and runs
     Watch(WatchArgs),
     /// Monitor job lifecycle events as a line-oriented stream

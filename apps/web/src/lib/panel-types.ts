@@ -69,10 +69,9 @@ export type ServiceJob = {
 };
 
 export type ArtifactHandle = {
-  relative_path: string;
+  artifact_id: string;
   bytes?: number;
-  kind: string;
-  display_path: string;
+  artifact_kind: string;
   line_count?: number;
 };
 

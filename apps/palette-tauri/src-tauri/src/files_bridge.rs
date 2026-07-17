@@ -6,7 +6,7 @@
 //! # Threat model
 //!
 //! The renderer is untrusted input for path strings (same posture as
-//! `axon_bridge::validate_axon_route` / `validate_artifact_relative_path`).
+//! `axon_bridge::validate_axon_route` / `validate_artifact_id`).
 //! `resolve_within_root` is the single choke point every command routes
 //! through:
 //!

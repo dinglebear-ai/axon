@@ -119,6 +119,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -134,6 +140,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -2515,7 +2522,7 @@
         "path": "crates/axon-graph/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:9e62401eb732eb673b9529bfe544c17afb7d7b387d449782eb77741286564a12",
+        "checksum": "sha256:3762daffd2a22c2117ad023cce6fa03bcc39c42e58111a31d6c77b02891aa6d4",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/graph-schema.md"
       }

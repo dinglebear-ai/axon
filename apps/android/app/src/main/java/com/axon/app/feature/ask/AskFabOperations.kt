@@ -23,7 +23,7 @@ internal fun AskViewModel.submitFabOperation(
                                 op = op,
                                 target = r.url.ifBlank { input },
                                 status = "200 OK",
-                                endpoint = "POST /v1/scrape",
+                                endpoint = "POST /v1/sources",
                                 summary = summary,
                                 body = previewText(humanMarkdownPreview(r.markdown), limit = 900),
                             ),
@@ -32,7 +32,7 @@ internal fun AskViewModel.submitFabOperation(
                             op = op,
                             target = r.url.ifBlank { input },
                             status = "200 OK",
-                            endpoint = "POST /v1/scrape",
+                            endpoint = "POST /v1/sources",
                             summary = summary,
                             detail = "Scraped markdown is now available in this conversation. Use the Axon skill when reasoning over scraped or indexed content.",
                         )
@@ -69,27 +69,27 @@ internal fun AskViewModel.submitFabOperation(
                 )
             }
 
-            FabOp.Embed -> {
-                appendOperationRequest(FabOp.Embed, input)
-                repo.embedStart(input = input).fold(
+            FabOp.Index -> {
+                appendOperationRequest(FabOp.Index, input)
+                repo.indexStart(input = input).fold(
                     onSuccess = { jobId ->
-                        recordRecentJob(jobId, kind = "embed", target = input)
+                        recordRecentJob(jobId, kind = "source", target = input)
                         appendItem(
                             ChatItem.Injection(
-                                op = FabOp.Embed,
+                                op = FabOp.Index,
                                 target = input,
                                 jobId = jobId,
                                 endpoint = "POST /v1/sources",
-                                detail = "Embed is queued. Chunks, document count, and errors are tracked in Jobs.",
+                                detail = "Indexing is queued. Chunks, document count, and errors are tracked in Jobs.",
                             ),
                         )
                         appendOperationContext(
-                            op = FabOp.Embed,
+                            op = FabOp.Index,
                             target = input,
                             status = "Queued",
                             endpoint = "POST /v1/sources",
                             jobId = jobId,
-                            detail = "Embedding was submitted from Axon mobile.",
+                            detail = "Source indexing was submitted from Axon mobile.",
                         )
                         pollJobOnce(JobFamily.Source, jobId)
                     },
@@ -295,7 +295,7 @@ internal fun userFacingOperationError(
                 "Check connection/auth status and try a narrower query."
             }
 
-            FabOp.Embed -> {
+            FabOp.Index -> {
                 "Check that the input is a URL or server-readable source, then retry."
             }
 

@@ -1426,17 +1426,6 @@ export interface components {
             producer_refs: string[];
             retention: unknown;
         };
-        ArtifactHandle: {
-            /** Format: int64 */
-            bytes: number;
-            display_path: string;
-            job_id?: string | null;
-            kind: string;
-            /** Format: int64 */
-            line_count?: number | null;
-            relative_path: string;
-            url?: string | null;
-        };
         ArtifactId: string;
         /** @enum {string} */
         ArtifactKind: "raw_content" | "normalized_content" | "manifest" | "report" | "screenshot" | "warc" | "provider_trace";
@@ -2906,11 +2895,13 @@ export interface components {
         /** @enum {string} */
         SafetyClass: "public_network" | "authenticated_network" | "local_filesystem" | "tool_execution";
         ScreenshotResult: {
-            artifact_handle?: null | components["schemas"]["ArtifactHandle"];
-            path: string;
-            /** Format: int64 */
-            size_bytes: number;
-            url: string;
+            artifact_id: components["schemas"]["ArtifactId"];
+            captured_at: components["schemas"]["Timestamp"];
+            /** Format: int32 */
+            height: number;
+            warnings: components["schemas"]["SourceWarning"][];
+            /** Format: int32 */
+            width: number;
         };
         SecretRef: {
             key: string;

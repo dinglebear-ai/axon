@@ -16,16 +16,24 @@ fn accepts_every_documented_option_with_a_good_value() {
         ("max_pages", json!(0)),
         ("max_depth", json!(10)),
         ("include_subdomains", json!(false)),
+        ("respect_robots", json!(true)),
         ("render_mode", json!("http")),
         ("render_mode", json!("chrome")),
         ("render_mode", json!("auto_switch")),
+        ("headers", json!({"Authorization": "Bearer secret"})),
         ("discover_sitemaps", json!(true)),
+        ("discover_llms_txt", json!(true)),
+        ("max_llms_txt_urls", json!(256)),
         ("max_sitemaps", json!(512)),
         ("sitemap_since_days", json!(0)),
         ("url_whitelist", json!(["/docs", "/blog"])),
         ("url_whitelist", json!([])),
         ("url_blacklist", json!(["/private"])),
         ("etag_conditional", json!(true)),
+        ("cache_policy", json!("bypass")),
+        ("cache_policy", json!("use")),
+        ("cache_policy", json!("revalidate")),
+        ("cache_policy", json!("offline")),
         ("min_markdown_chars", json!(200)),
         ("drop_thin_markdown", json!(true)),
         ("warc_path", json!("artifact://warc/site.warc")),
@@ -34,6 +42,7 @@ fn accepts_every_documented_option_with_a_good_value() {
             json!("artifact://automation/steps.json"),
         ),
         ("verticals_enabled", json!(true)),
+        ("vertical_cache_ttl_secs", json!({"github": 86400})),
     ];
 
     for (key, value) in good_values {
@@ -74,6 +83,7 @@ fn rejects_negative_integer_options() {
         "max_pages",
         "max_depth",
         "max_sitemaps",
+        "max_llms_txt_urls",
         "sitemap_since_days",
         "min_markdown_chars",
     ] {
@@ -105,7 +115,9 @@ fn rejects_wrong_type_for_integer_option() {
 fn rejects_wrong_type_for_bool_options() {
     for key in [
         "include_subdomains",
+        "respect_robots",
         "discover_sitemaps",
+        "discover_llms_txt",
         "etag_conditional",
         "drop_thin_markdown",
         "verticals_enabled",
@@ -113,6 +125,29 @@ fn rejects_wrong_type_for_bool_options() {
         let values = single(key, json!("yes"));
         let err = validate(&values).expect_err(&format!("string {key} must fail"));
         assert_eq!(err.code.0, "route.options.invalid", "{key}");
+    }
+}
+
+#[test]
+fn rejects_invalid_headers() {
+    for value in [
+        json!(["X-Test: ok"]),
+        json!({"": "ok"}),
+        json!({"X-Test": 4}),
+    ] {
+        assert!(validate(&single("headers", value)).is_err());
+    }
+}
+
+#[test]
+fn rejects_invalid_cache_policy() {
+    assert!(validate(&single("cache_policy", json!("read_write"))).is_err());
+}
+
+#[test]
+fn rejects_invalid_vertical_cache_ttl_map() {
+    for value in [json!(60), json!({"github": -1}), json!({"": 60})] {
+        assert!(validate(&single("vertical_cache_ttl_secs", value)).is_err());
     }
 }
 
@@ -183,13 +218,18 @@ fn accepts_full_documented_option_set_together() {
     values.insert("max_pages".to_string(), json!(2000));
     values.insert("max_depth".to_string(), json!(10));
     values.insert("include_subdomains".to_string(), json!(false));
+    values.insert("respect_robots".to_string(), json!(true));
     values.insert("render_mode".to_string(), json!("auto_switch"));
+    values.insert("headers".to_string(), json!({"X-Test": "ok"}));
     values.insert("discover_sitemaps".to_string(), json!(true));
+    values.insert("discover_llms_txt".to_string(), json!(true));
+    values.insert("max_llms_txt_urls".to_string(), json!(256));
     values.insert("max_sitemaps".to_string(), json!(512));
     values.insert("sitemap_since_days".to_string(), json!(0));
     values.insert("url_whitelist".to_string(), json!(["/docs"]));
     values.insert("url_blacklist".to_string(), json!(["/private"]));
     values.insert("etag_conditional".to_string(), json!(true));
+    values.insert("cache_policy".to_string(), json!("revalidate"));
     values.insert("min_markdown_chars".to_string(), json!(200));
     values.insert("drop_thin_markdown".to_string(), json!(true));
     values.insert("warc_path".to_string(), json!("artifact://warc/site.warc"));
@@ -198,6 +238,10 @@ fn accepts_full_documented_option_set_together() {
         json!("artifact://automation/steps.json"),
     );
     values.insert("verticals_enabled".to_string(), json!(true));
+    values.insert(
+        "vertical_cache_ttl_secs".to_string(),
+        json!({"github": 86400}),
+    );
 
     assert!(validate(&values).is_ok());
 }

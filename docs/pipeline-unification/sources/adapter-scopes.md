@@ -144,9 +144,14 @@ metadata fields.
 | `cli_tool` | `cli_tool` | `tool`, `script`, `command`, `run`, `help`, `schema`, `map` | `run` |
 | `mcp_tool` | `mcp_tool` | `server`, `tool`, `resource`, `prompt`, `schema`, `call`, `map` | detected |
 | `deepwiki` | `web`, `git` | `repo`, `org`, `index`, `map` | `repo` |
+| `memory` | `memory` | `api` | `api` |
 
-Memory is intentionally not a source adapter. Durable memory lifecycle belongs
-to `axon-memory`.
+Memory is a deliberately narrow source family: the `memory` adapter accepts
+exactly one `memory://mem_<id>` record per request and projects it through the
+shared preparation, payload, graph, and publication pipeline. Durable memory
+lifecycle and persistence stay owned by `axon-memory`; the adapter reads
+through the neutral `MemorySourceProvider` boundary and never becomes a
+general-purpose memory ingestion surface.
 
 ## Common Scope Semantics
 
@@ -196,18 +201,20 @@ Required web adapter options:
 | `render_mode` | enum | `auto_switch` | `page`, `site`, `docs` | `http`, `chrome`, or `auto_switch`; Chrome fallback is observable. |
 | `headers` | redacted map | empty | all web scopes | Custom fetch/render headers, never public. |
 | `discover_sitemaps` | bool | `true` | `site`, `docs`, `map` | Crawl sitemap indexes and sitemap files. |
+| `discover_llms_txt` | bool | config | `site`, `docs`, `map` | Discover canonical URLs from `/llms.txt` and `/llms-full.txt`. |
+| `max_llms_txt_urls` | integer | config | `site`, `docs`, `map` | Hard cap for URLs imported from `llms.txt` discovery. |
 | `max_sitemaps` | integer | config | `site`, `docs`, `map` | Hard cap for sitemap entries/imports. |
 | `sitemap_since_days` | integer | `0` | `site`, `docs`, `map` | Optional lastmod filter. |
 | `url_whitelist` | string[] | empty | `site`, `docs`, `map` | Allowlist paths/hosts after canonicalization. |
 | `url_blacklist` | string[] | empty | `site`, `docs`, `map` | Denylist paths/hosts after canonicalization. |
 | `etag_conditional` | bool | config | `site`, `docs`, `page` | Uses ETag/Last-Modified to avoid unchanged fetches. |
-| `cache_policy` | enum | config | all web scopes | `bypass`, `read`, `write`, `read_write`; records cache hit/miss. |
+| `cache_policy` | enum | config | all web scopes | `bypass`, `use`, `revalidate`, `offline`; records cache hit/miss. |
 | `min_markdown_chars` | integer | config | `page`, `site`, `docs` | Thin-content threshold. |
 | `drop_thin_markdown` | bool | config | `page`, `site`, `docs` | Drops thin pages from embedding but records item status. |
 | `warc_path` | artifact path | none | `site`, `docs` | Writes WARC through ArtifactStore and links pages to WARC artifact. |
 | `automation_script` | artifact/source ref | none | Chrome scopes | Bounded Chrome automation steps before capture. |
 | `verticals_enabled` | bool | config | `page`, `site`, `docs` | Allows registered vertical extractors before generic page processing. |
-| `vertical_cache_ttl_secs` | integer | config | verticals | Cache TTL for vertical extraction metadata. |
+| `vertical_cache_ttl_secs` | object<string, integer> | config | verticals | Per-extractor cache TTL for vertical extraction metadata. |
 
 Chrome fallback and vertical extraction are optional capabilities. If requested
 and unavailable, the web adapter must either fail before mutation or mark the
@@ -381,7 +388,7 @@ Prepared uploads are source inputs, not a replacement for adapters.
 | WARC | `web` scope `site`/`docs` with archived fetch evidence |
 | captured CLI output | `cli_tool` scope `run` |
 | captured MCP response | `mcp_tool` scope `call` |
-| memory import bundle | `axon-memory`, not source adapter |
+| memory import bundle | `axon-memory` import surface; imported records may then project individually through the narrow `memory` adapter (`memory://mem_<id>`) |
 
 ## Default Scope Rules
 

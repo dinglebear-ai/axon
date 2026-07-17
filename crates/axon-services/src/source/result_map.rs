@@ -68,7 +68,7 @@ pub fn to_source_result_with_counts(
     graph: GraphWriteSummary,
     authoritative_counts: Option<SourceCounts>,
 ) -> SourceResult {
-    let source_counts = authoritative_counts.unwrap_or_else(|| SourceCounts {
+    let source_counts = authoritative_counts.unwrap_or(SourceCounts {
         items_total: counts.documents_prepared,
         items_changed: counts.documents_prepared,
         documents_total: counts.documents_prepared,

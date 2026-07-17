@@ -97,7 +97,6 @@ pub struct ScreenshotRequest {
     pub url: Option<String>,
     pub full_page: Option<bool>,
     pub viewport: Option<String>,
-    pub output: Option<String>,
     pub response_mode: Option<ResponseMode>,
 }
 

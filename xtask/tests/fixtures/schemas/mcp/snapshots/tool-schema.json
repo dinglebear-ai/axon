@@ -3367,12 +3367,6 @@
             "null"
           ]
         },
-        "output": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "response_mode": {
           "anyOf": [
             {
@@ -4025,7 +4019,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:95b31dd43991ff710b50eaef8580555f79cd93eaa03674304c08813f44a68d5e",
+        "checksum": "sha256:901e8f74737618b4aa1ae2fee254dae508a41f2dceecf281e7fac233b3183dff",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
@@ -4035,12 +4029,12 @@
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:a293302f1a968bc224a63eb91b6c81887dd7d77401ae32d7788007a4f9446e51",
+        "checksum": "sha256:eae4ecdacb0babcea192182e53b98ab5018695e276bb4c1098ad9c2be21a09fb",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
       {
-        "checksum": "sha256:0c95fc9c78900b2e1a80a4c51c51f9b9d00a93645f59afc0578bcaaa5169cb0e",
+        "checksum": "sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs"
       },
@@ -4055,7 +4049,7 @@
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
       {
-        "checksum": "sha256:8c6599a14b32167ef0d5d9dead679459836b282c235ca46af41e99c8378c85ae",
+        "checksum": "sha256:df13036a5056567904ea8a9de7fe5ce08aab9a79e068e8cb865a3d57c00b6396",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
@@ -4065,12 +4059,12 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:bd15c2bb9124546e2d916ad799838af26b9093bf43bd86d8dc66ddd24178af55",
+        "checksum": "sha256:d0ade1dd329d53586de36f3c0cb6818503e7aafa85a855cac072a6aea5ac8dc2",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:3695a5406130e632e42ef9a8a5215a139a0711d187c49d7a74301110c0555dcf",
+        "checksum": "sha256:9845c9784b913e04592ab162887347bd7aa181af98faec6e9a24a6f94638c74e",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },

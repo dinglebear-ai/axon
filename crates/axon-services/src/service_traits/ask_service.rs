@@ -1,4 +1,4 @@
-//! `AskService` — RAG ask/evaluate/suggest (and the not-yet-real `chat`).
+//! `AskService` — RAG ask/evaluate/suggest and direct LLM chat.
 //!
 //! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
 //! §AskService. `ask` mirrors the MCP `handle_ask` handler exactly: every
@@ -12,9 +12,8 @@
 //! }` DTO — the contract's `EvaluationRequest` wrapper doesn't exist in
 //! `axon-api` and would only ever carry that one field today, so it is
 //! defined locally here rather than skipped (fits the <=30-line DTO rule).
-//! `chat` has no backing free function or DTO (`ChatRequest`/`ChatResult`
-//! don't exist anywhere in `axon-api`) — SKIP per the approved wiring plan;
-//! only the trait method and `Fake` exist.
+//! `chat` calls the configured chat-purpose LLM backend directly. Conversation
+//! persistence is intentionally outside this request/response operation.
 
 use std::sync::{Arc, Mutex};
 
@@ -24,22 +23,19 @@ use axon_api::mcp_schema::SuggestRequest;
 use axon_api::result::{AskResult, AskTiming, EvaluateResult, EvaluateTiming, SuggestResult};
 
 use crate::context::ServiceContext;
-use crate::service_traits::not_implemented;
 use crate::transport::{AskTransportOverrides, apply_ask_overrides};
 
-/// Deferred per the module doc comment: `ChatRequest`/`ChatResult` have no
-/// `axon-api` analog and no backing free function (no multi-turn
-/// conversational state exists in `axon-services` today).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChatRequest {
     pub session_id: Option<String>,
     pub message: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChatResult {
     pub session_id: String,
     pub reply: String,
+    pub model: Option<String>,
 }
 
 /// Minimal local DTO for `AskService::evaluate` — the contract's
@@ -101,8 +97,25 @@ impl AskService for AskServiceImpl {
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
 
-    async fn chat(&self, _request: ChatRequest) -> anyhow::Result<ChatResult> {
-        Err(not_implemented("AskService::chat"))
+    async fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResult> {
+        let message = request.message.trim();
+        if message.is_empty() {
+            anyhow::bail!("chat message is required");
+        }
+        let completion_request = axon_llm::CompletionRequest::new(message)
+            .backend_from_config_for(self.ctx.cfg(), axon_llm::LlmModelPurpose::Chat)
+            .stream(false);
+        let model = completion_request.model.clone();
+        let completion = axon_llm::complete_text(completion_request)
+            .await
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        Ok(ChatResult {
+            session_id: request
+                .session_id
+                .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
+            reply: completion.text,
+            model,
+        })
     }
 
     async fn evaluate(&self, request: EvaluationRequest) -> anyhow::Result<EvaluateResult> {
@@ -190,6 +203,7 @@ impl AskService for FakeAskService {
                 .session_id
                 .unwrap_or_else(|| "fake-session".to_string()),
             reply: format!("fake reply to: {}", request.message),
+            model: Some("fake-chat-model".to_string()),
         })
     }
 

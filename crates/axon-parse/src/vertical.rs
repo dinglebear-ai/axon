@@ -91,6 +91,7 @@ fn github_repo_parts(url: &str) -> Option<(String, String)> {
 
 fn github_repo_candidate(input: VerticalParseInput<'_>, owner: &str, repo: &str) -> GraphCandidate {
     let repo_key = format!("repo:github.com/{owner}/{repo}");
+    let evidence_id = format!("ev_vertical_github_repo_{owner}_{repo}");
     GraphCandidate {
         candidate_id: format!("cand_vertical_github_repo_{owner}_{repo}"),
         job_id: input.job_id,
@@ -127,10 +128,11 @@ fn github_repo_candidate(input: VerticalParseInput<'_>, owner: &str, repo: &str)
             edge_kind: "official_for".to_string(),
             from_stable_key: input.url.to_string(),
             to_stable_key: repo_key,
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
-            evidence_id: format!("ev_vertical_github_repo_{owner}_{repo}"),
+            evidence_id,
             evidence_kind: "github_homepage".to_string(),
             source_id: input.source_id.clone(),
             source_item_key: input.source_item_key.clone(),

@@ -60,20 +60,15 @@ describe("formatPayload", () => {
 
   it("formats screenshot artifact metadata without exposing absolute server paths", () => {
     const output = formatPayload("screenshot", {
-      url: "https://example.com",
-      path: "/home/axon/.axon/output/screenshots/example.png",
-      size_bytes: 1024,
-      artifact_handle: {
-        relative_path: "screenshots/example.png",
-        display_path: "screenshots/example.png",
-        kind: "screenshot",
-        bytes: 1024,
-      },
+      artifact_id: "art_screenshot_123",
+      width: 1280,
+      height: 720,
+      captured_at: "2026-07-16T00:00:00Z",
+      warnings: [],
     });
 
-    expect(output).toContain("artifact: screenshots/example.png");
+    expect(output).toContain("artifact: art_screenshot_123");
     expect(output).not.toContain("path:");
-    expect(output).not.toContain("/home/axon/.axon/output/screenshots/example.png");
   });
 
   it("formats representative payloads for every moved formatter", () => {

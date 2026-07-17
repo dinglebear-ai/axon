@@ -209,10 +209,11 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                     serde_json::from_value(payload.clone()).map_err(|error| {
                         compaction_error(format!("invalid memory_compaction payload: {error}"))
                     })?;
-                let archived_ids = request
-                    .archive_sources
-                    .then(|| request.memory_ids.clone())
-                    .unwrap_or_default();
+                let archived_ids = if request.archive_sources {
+                    request.memory_ids.clone()
+                } else {
+                    Default::default()
+                };
                 let result = self
                     .memory_store
                     .compact(request)

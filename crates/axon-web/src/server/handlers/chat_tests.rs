@@ -1,21 +1,13 @@
-use axum::{Json, response::IntoResponse};
-use std::sync::Arc;
-
 use axon_core::config::Config;
-use axon_services::client_contract::RestChatRequest;
+use axum::response::IntoResponse;
 
-#[tokio::test]
-async fn v1_chat_rejects_empty_message() {
-    let response = super::v1_chat(
-        axum::Extension(Arc::new(Config::default())),
-        Json(RestChatRequest {
-            message: "   ".to_string(),
-        }),
-    )
-    .await
-    .into_response();
-
-    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+#[test]
+fn v1_chat_rejects_empty_message() {
+    let error = super::validate_chat_message("   ").expect_err("empty chat must fail");
+    assert_eq!(
+        error.into_response().status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
 }
 
 #[test]

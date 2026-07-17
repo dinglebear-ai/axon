@@ -146,7 +146,7 @@ data class StatsResponse(
 
 // ── Scrape ────────────────────────────────────────────────────────────────────
 
-/** Request body for POST /v1/scrape. Mirrors `RestScrapeRequest`. */
+/** One-page convenience request projected onto POST /v1/sources. */
 @Serializable
 data class ScrapeRequest(
     val url: String,
@@ -156,7 +156,7 @@ data class ScrapeRequest(
     val collection: String? = null,
 )
 
-/** Response body from POST /v1/scrape. */
+/** One-page content projection from the canonical source result. */
 @Serializable
 data class ScrapeResponse(
     val url: String = "",

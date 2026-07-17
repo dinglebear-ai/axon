@@ -1,6 +1,8 @@
 use axon_api::mcp_schema::ResponseMode;
 use axon_api::mcp_schema::WatchSubaction;
-use axon_api::source::{ContentRef, LifecycleStatus, MetadataMap, UploadPurpose, UploadStatusKind};
+use axon_api::source::{
+    ArtifactKind, ContentRef, LifecycleStatus, MetadataMap, UploadPurpose, UploadStatusKind,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, schemars::JsonSchema)]
@@ -9,6 +11,7 @@ pub(super) enum McpSystemRequest {
     Reset(ResetMcpRequest),
     Collections(CollectionsMcpRequest),
     Uploads(UploadsMcpRequest),
+    Artifacts(ArtifactsMcpRequest),
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
@@ -83,6 +86,28 @@ pub(super) enum UploadsSubaction {
     PutContent,
     Complete,
     Abort,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct ArtifactsMcpRequest {
+    pub subaction: Option<ArtifactsSubaction>,
+    pub artifact_id: Option<String>,
+    pub source_id: Option<String>,
+    pub job_id: Option<String>,
+    pub kind: Option<ArtifactKind>,
+    pub limit: Option<u32>,
+    pub cursor: Option<String>,
+    pub response_mode: Option<ResponseMode>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ArtifactsSubaction {
+    #[default]
+    List,
+    Get,
+    Content,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

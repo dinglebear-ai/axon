@@ -87,7 +87,7 @@ impl FileArtifactStore {
         let handle = ArtifactHandle {
             artifact_id: artifact_id.clone(),
             artifact_kind: write.kind,
-            uri: Some(format!("file://{}", content_path.display())),
+            uri: Some(format!("artifact://{}", artifact_id.0)),
         };
         let manifest = FileArtifactManifest {
             handle: handle.clone(),

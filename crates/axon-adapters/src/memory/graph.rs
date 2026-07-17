@@ -33,22 +33,26 @@ pub(super) fn memory_graph_candidates(
                 properties: MetadataMap::new(),
             });
         }
+        let link_evidence = if link.evidence.is_empty() {
+            vec![graph_evidence(plan, record, item, format!("link-{index}"))]
+        } else {
+            link.evidence
+                .iter()
+                .cloned()
+                .map(|stored| rebase_evidence(stored, plan, record, item))
+                .collect::<Vec<_>>()
+        };
         edges.push(GraphEdgeCandidate {
             edge_kind,
             from_stable_key: memory_key.clone(),
             to_stable_key: stable_key,
+            evidence_ids: link_evidence
+                .iter()
+                .map(|evidence| evidence.evidence_id.clone())
+                .collect(),
             properties: MetadataMap::new(),
         });
-        if link.evidence.is_empty() {
-            evidence.push(graph_evidence(plan, record, item, format!("link-{index}")));
-        } else {
-            evidence.extend(
-                link.evidence
-                    .iter()
-                    .cloned()
-                    .map(|stored| rebase_evidence(stored, plan, record, item)),
-            );
-        }
+        evidence.extend(link_evidence);
     }
     if let Some(replacement) = &record.superseded_by {
         let replacement_key = format!("memory:{}", replacement.0);
@@ -58,13 +62,15 @@ pub(super) fn memory_graph_candidates(
             replacement_key.clone(),
             replacement.0.clone(),
         );
+        let superseded_evidence = graph_evidence(plan, record, item, "superseded".to_string());
         edges.push(GraphEdgeCandidate {
             edge_kind: "memory_supersedes".to_string(),
             from_stable_key: replacement_key,
             to_stable_key: memory_key.clone(),
+            evidence_ids: vec![superseded_evidence.evidence_id.clone()],
             properties: MetadataMap::new(),
         });
-        evidence.push(graph_evidence(plan, record, item, "superseded".to_string()));
+        evidence.push(superseded_evidence);
     }
     if let Some(conflict) = &record.contradicts {
         let conflict_key = format!("memory:{}", conflict.0);
@@ -74,18 +80,16 @@ pub(super) fn memory_graph_candidates(
             conflict_key.clone(),
             conflict.0.clone(),
         );
+        let contradiction_evidence =
+            graph_evidence(plan, record, item, "contradiction".to_string());
         edges.push(GraphEdgeCandidate {
             edge_kind: "memory_contradicts".to_string(),
             from_stable_key: memory_key.clone(),
             to_stable_key: conflict_key,
+            evidence_ids: vec![contradiction_evidence.evidence_id.clone()],
             properties: MetadataMap::new(),
         });
-        evidence.push(graph_evidence(
-            plan,
-            record,
-            item,
-            "contradiction".to_string(),
-        ));
+        evidence.push(contradiction_evidence);
     }
 
     vec![GraphCandidate {

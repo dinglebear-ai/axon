@@ -10,7 +10,7 @@ use axon_api::mcp_schema::{
     AxonRequest, ExtractRequest, ExtractSubaction, ResponseMode, ScreenshotRequest, SourceRequest,
     StatusRequest,
 };
-use axon_api::source::SourceScope;
+use axon_api::source::{ArtifactId, SourceScope};
 use axon_core::config::Config;
 use axon_services::{action_api, config as config_service, query as query_service, setup, system};
 use axum::{
@@ -356,7 +356,6 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     url: Some(normalize_url(url)),
                     full_page: Some(true),
                     viewport: None,
-                    output: None,
                     response_mode: Some(ResponseMode::Inline),
                 },
             ))))
@@ -413,23 +412,17 @@ fn sanitize_status_payload(mut value: serde_json::Value) -> serde_json::Value {
     value
 }
 
-/// Serve an artifact file from the configured output directory.
-///
-/// Requires a valid panel session, then delegates to
-/// [`super::artifacts::serve_artifact_from_path`], which validates `rel_path`
-/// (rejecting absolute paths, `..` traversal, symlinks, and escapes of
-/// `cfg.output_dir`) before streaming the file. The output root is the same one
-/// used when constructing the artifact handle paths the panel links to.
+/// Serve artifact content by opaque identifier to an authenticated panel.
 pub async fn panel_artifact(
-    State((state, cfg)): State<(AppState, Arc<Config>)>,
+    State((state, _cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
-    Path(rel_path): Path<String>,
+    Path(artifact_id): Path<ArtifactId>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
         return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
             .into_response();
     }
-    match super::artifacts::serve_artifact_from_path(&cfg, rel_path).await {
+    match super::artifacts::serve_panel_artifact(&state.service_context, artifact_id).await {
         Ok(response) => response,
         Err(err) => err.into_response(),
     }

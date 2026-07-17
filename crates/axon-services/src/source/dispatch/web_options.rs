@@ -28,8 +28,20 @@ pub(crate) fn web_crawl_options(
         serde_json::json!(cfg.include_subdomains),
     );
     options.insert(
+        "respect_robots".to_string(),
+        serde_json::json!(cfg.respect_robots),
+    );
+    options.insert(
         "discover_sitemaps".to_string(),
         serde_json::json!(cfg.discover_sitemaps),
+    );
+    options.insert(
+        "discover_llms_txt".to_string(),
+        serde_json::json!(cfg.discover_llms_txt),
+    );
+    options.insert(
+        "max_llms_txt_urls".to_string(),
+        serde_json::json!(cfg.max_llms_txt_urls as u64),
     );
     options.insert(
         "max_sitemaps".to_string(),
@@ -52,12 +64,24 @@ pub(crate) fn web_crawl_options(
         serde_json::json!(cfg.etag_conditional),
     );
     options.insert(
+        "cache_policy".to_string(),
+        serde_json::json!(if cfg.etag_conditional {
+            "revalidate"
+        } else {
+            "bypass"
+        }),
+    );
+    options.insert(
         "render_mode".to_string(),
         serde_json::json!(api_render_mode(cfg.render_mode)),
     );
     options.insert(
         "verticals_enabled".to_string(),
         serde_json::json!(cfg.enable_verticals),
+    );
+    options.insert(
+        "vertical_cache_ttl_secs".to_string(),
+        serde_json::json!(cfg.vertical_cache_ttl_secs),
     );
     if !cfg.auto_dispatch_skip.is_empty() {
         options.insert(
@@ -82,8 +106,8 @@ pub(crate) fn web_crawl_options(
     }
     if !cfg.custom_headers.is_empty() {
         options.insert(
-            "custom_headers".to_string(),
-            serde_json::json!(cfg.custom_headers),
+            "headers".to_string(),
+            serde_json::Value::Object(header_options(&cfg.custom_headers)),
         );
     }
     if !cfg.url_whitelist.is_empty() {
@@ -99,6 +123,19 @@ pub(crate) fn web_crawl_options(
         );
     }
     options
+}
+
+fn header_options(headers: &[String]) -> serde_json::Map<String, serde_json::Value> {
+    headers
+        .iter()
+        .filter_map(|raw| raw.split_once(':'))
+        .map(|(name, value)| {
+            (
+                name.trim().to_string(),
+                serde_json::Value::String(value.trim().to_string()),
+            )
+        })
+        .collect()
 }
 
 /// Merge caller-provided web adapter options into trusted config-derived

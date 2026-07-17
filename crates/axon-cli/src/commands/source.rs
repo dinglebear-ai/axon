@@ -39,7 +39,7 @@ pub(crate) async fn run_source_request(
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
 
     render_source_result(cfg, &result);
-    write_scrape_output_if_requested(cfg, &result).await?;
+    write_scrape_output_if_requested(cfg, service_context, &result).await?;
 
     // A degraded/failed result (unsupported input, no data plane, …) carries a
     // warning but no error — surface it as a nonzero exit for CLI callers.
@@ -187,6 +187,7 @@ fn render_inline_source_content(result: &SourceResult) -> bool {
 
 async fn write_scrape_output_if_requested(
     cfg: &Config,
+    service_context: &ServiceContext,
     result: &SourceResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.command != CommandKind::Scrape {
@@ -212,16 +213,24 @@ async fn write_scrape_output_if_requested(
         .iter()
         .find(|artifact| artifact.artifact_kind == ArtifactKind::NormalizedContent)
         .ok_or_else(|| "scrape completed without cleaned content to write".to_string())?;
-    let artifact_path = artifact.uri.strip_prefix("file://").ok_or_else(|| {
-        format!(
-            "scrape cleaned content artifact is not a local file: {}",
-            artifact.uri
-        )
-    })?;
-    let bytes = tokio::fs::read(artifact_path)
+    let content =
+        axon_services::artifacts::artifact_content(service_context, artifact.artifact_id.clone())
+            .await
+            .map_err(|err| -> Box<dyn Error> {
+                format!(
+                    "failed to read scrape cleaned content artifact {}: {err}",
+                    artifact.artifact_id.0
+                )
+                .into()
+            })?;
+    let bytes = tokio::fs::read(&content.path)
         .await
         .map_err(|err| -> Box<dyn Error> {
-            format!("failed to read scrape cleaned content artifact {artifact_path}: {err}").into()
+            format!(
+                "failed to read scrape cleaned content artifact {}: {err}",
+                artifact.artifact_id.0
+            )
+            .into()
         })?;
     axon_core::artifacts::atomic_write_explicit(path, &bytes)
         .await

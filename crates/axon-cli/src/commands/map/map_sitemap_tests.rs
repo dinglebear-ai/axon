@@ -18,7 +18,11 @@ async fn map_payload(
     cfg: &Config,
     start_url: &str,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let context = ServiceContext::new_with_workers(Arc::new(cfg.clone()))
+    let temp = tempfile::tempdir()?;
+    let mut isolated_cfg = cfg.clone();
+    isolated_cfg.sqlite_path = temp.path().join("jobs.db");
+    isolated_cfg.output_dir = temp.path().join("output");
+    let context = ServiceContext::new_with_workers(Arc::new(isolated_cfg))
         .await
         .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
     let result = discover_with_context(
@@ -31,6 +35,13 @@ async fn map_payload(
         None,
     )
     .await?;
+    if result.map_source == "unsupported" {
+        return Err(format!(
+            "map source pipeline failed: {}",
+            result.warning.as_deref().unwrap_or("no warning")
+        )
+        .into());
+    }
     Ok(serde_json::to_value(result)?)
 }
 

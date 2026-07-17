@@ -152,7 +152,7 @@ async fn target_code_search(
         .results
         .into_iter()
         .skip(opts.offset)
-        .take(opts.limit.max(1).min(axon_api::MAX_CANONICAL_CITATIONS))
+        .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
         .enumerate()
         .map(|(index, hit)| target_vector_match_to_query_hit(index as u64 + 1, hit))
         .collect::<Result<Vec<_>, _>>()?;

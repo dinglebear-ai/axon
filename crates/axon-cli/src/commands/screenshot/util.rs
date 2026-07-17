@@ -17,17 +17,6 @@ pub(super) fn require_chrome(cfg: &Config) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Format screenshot result as JSON for `--json` mode.
-#[cfg(test)]
-pub(super) fn format_screenshot_json(url: &str, path: &str, size_bytes: u64) -> String {
-    serde_json::to_string_pretty(&serde_json::json!({
-        "url": url,
-        "path": path,
-        "size_bytes": size_bytes,
-    }))
-    .unwrap_or_default()
-}
-
 #[cfg(test)]
 #[path = "util_tests.rs"]
 mod tests;

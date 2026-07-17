@@ -1,8 +1,8 @@
 //! Transport-neutral scrape / extract result DTOs shared by the
 //! services layer and the jobs layer (runners + watch change-detector).
 
-use crate::contract::ArtifactHandle;
 use crate::result::DocumentBackend;
+use crate::source::ArtifactHandle;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScrapeResult {

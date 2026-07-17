@@ -661,15 +661,15 @@ fn context_assembly_counts_separator_bytes_against_budget() {
 
 #[test]
 fn citations_always_include_source_document_chunk_uri_and_range() {
-    let citation = Citation::new(
-        SourceId::new("src-docs"),
-        SourceItemKey::new("docs/guide"),
-        SourceGenerationId::new("7"),
-        DocumentId::new("doc-1"),
-        ChunkId::new("chunk-1"),
-        JobId::new(Uuid::from_u128(7)),
-        "https://example.com/docs/guide".to_string(),
-        SourceRange {
+    let citation = Citation {
+        source_id: SourceId::new("src-docs"),
+        source_item_key: SourceItemKey::new("docs/guide"),
+        generation: SourceGenerationId::new("7"),
+        document_id: DocumentId::new("doc-1"),
+        chunk_id: ChunkId::new("chunk-1"),
+        job_id: JobId::new(Uuid::from_u128(7)),
+        canonical_uri: "https://example.com/docs/guide".to_string(),
+        range: SourceRange {
             line_start: Some(10),
             line_end: Some(14),
             byte_start: Some(100),
@@ -687,8 +687,8 @@ fn citations_always_include_source_document_chunk_uri_and_range() {
             turn_start: None,
             turn_end: None,
         },
-        clean_redaction(),
-    );
+        redaction: clean_redaction(),
+    };
 
     assert_eq!(citation.source_id, SourceId::new("src-docs"));
     assert_eq!(citation.document_id, DocumentId::new("doc-1"));
