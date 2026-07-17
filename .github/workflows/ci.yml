@@ -758,6 +758,11 @@ jobs:
             apps/palette-tauri
             apps/web/openapi/axon.json
             plugins/axon/references/rag-synthesize/SKILL.md
+            # axon-services include_str!s these at compile time; a sparse
+            # checkout without them cannot build xtask's dependency graph.
+            config
+            config.example.toml
+            docker-compose.prod.yaml
             migrations
             vendor
             README.md
@@ -1434,6 +1439,13 @@ jobs:
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
         with:
           install_args: node npm:mcporter@0.7.3
+      - name: Pin mcporter for mise shims
+        # `mise install` fetches the tools but leaves no version pinned for
+        # the shims, so every `mcporter` invocation dies with "No version is
+        # set for shim: mcporter". Pin globally, exactly as that error asks.
+        run: |
+          mise use -g node npm:mcporter@0.7.3
+          mcporter --version
 
       - name: Restore Hugging Face model cache
         uses: actions/cache@v5
