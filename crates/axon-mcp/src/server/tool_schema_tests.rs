@@ -44,7 +44,7 @@ fn axon_tool_actions_sentence(description: &str) -> std::collections::BTreeSet<&
 /// no more, no less — or a caller reading only the description (not the
 /// schema) will try actions that 400/403, or miss real ones entirely. Guards
 /// against the drift found in the #298 alignment audit, where the
-/// description advertised `domains`/`sources`/`stats`/`elicit_demo` (all
+/// description advertised `domains`/`sources`/`stats` (all
 /// explicitly rejected by `server.rs`'s dispatch match) while omitting real
 /// actions like `jobs`, `resolve`, `capabilities`, `providers`, `prune`,
 /// `watch`, and `graph`.

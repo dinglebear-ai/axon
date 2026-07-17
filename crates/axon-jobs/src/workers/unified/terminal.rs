@@ -193,7 +193,12 @@ pub(super) async fn mark_terminal(
             finished_at = COALESCE(finished_at, ?),
             last_error_json = ?,
             cooldown_until = NULL
-         WHERE job_id = ? AND attempt = ?",
+         WHERE job_id = ? AND attempt = ?
+           AND (
+             (? = 'canceled' AND status IN ('running', 'waiting', 'canceling'))
+             OR
+             (? <> 'canceled' AND status IN ('running', 'waiting'))
+           )",
     )
     .bind(status.as_str())
     .bind(phase.as_str())
@@ -202,6 +207,8 @@ pub(super) async fn mark_terminal(
     .bind(source_error_json.as_deref())
     .bind(claimed.job_id.0.to_string())
     .bind(claimed.attempt as i64)
+    .bind(status.as_str())
+    .bind(status.as_str())
     .execute(&mut *tx)
     .await
     .map_err(sql_error)?;

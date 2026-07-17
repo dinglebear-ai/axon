@@ -362,7 +362,6 @@ run_suite() {
   run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
   run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
   run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
-  run_error_case "${prefix}_removed_elicit_demo" "this action was removed from MCP" call_tool action:elicit_demo
   run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
   if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then

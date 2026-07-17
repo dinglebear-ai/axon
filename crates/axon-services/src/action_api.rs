@@ -123,9 +123,6 @@ pub fn required_scope(action: &AxonRequest) -> Option<&'static str> {
         // axon_services::prune::prune's own PruneAuthz derivation is the
         // fine-grained "is this specific execution destructive" gate.
         AxonRequest::Prune(_) => Some("axon:admin"),
-        // ElicitDemo is an MCP elicitation primitive. Explicit arm prevents it silently
-        // absorbing a future wildcard default change.
-        AxonRequest::ElicitDemo(_) => Some("axon:write"),
         AxonRequest::Watch(req) => match req.subaction.unwrap_or(WatchSubaction::List) {
             WatchSubaction::List
             | WatchSubaction::Get
@@ -203,7 +200,6 @@ fn action_name(action: &AxonRequest) -> &'static str {
         AxonRequest::Migrate(_) => "migrate",
         AxonRequest::Watch(_) => "watch",
         AxonRequest::Setup(_) => "setup",
-        AxonRequest::ElicitDemo(_) => "elicit_demo",
         AxonRequest::Source(_) => "source",
         AxonRequest::Resolve(_) => "resolve",
         AxonRequest::Capabilities(_) => "capabilities",

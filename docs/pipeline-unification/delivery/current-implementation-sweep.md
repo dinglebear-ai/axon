@@ -229,7 +229,6 @@ Direct actions include:
 - `diff`
 - `evaluate`
 - `suggest`
-- `elicit_demo`
 - `purge`
 - `memory`
 - `vertical_scrape`

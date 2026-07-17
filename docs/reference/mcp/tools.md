@@ -106,7 +106,6 @@ These names are intentionally rejected before handler dispatch:
 - `sources`
 - `domains`
 - `stats`
-- `elicit_demo`
 
 Use `action=source` for indexing and `action=prune` for destructive cleanup.
 Public callers never provide or receive server filesystem paths for artifacts;

@@ -41,7 +41,6 @@ pub enum AxonRequest {
     Migrate(MigrateRequest),
     Watch(WatchRequest),
     Setup(SetupRequest),
-    ElicitDemo(ElicitDemoRequest),
     Source(SourceRequest),
     Resolve(ResolveRequest),
     Capabilities(CapabilitiesRequest),

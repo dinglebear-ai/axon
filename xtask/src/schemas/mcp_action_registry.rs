@@ -350,7 +350,6 @@ pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
     "sources",
     "domains",
     "stats",
-    "elicit_demo",
     "debug",
     "migrate",
     "setup",

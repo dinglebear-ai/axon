@@ -101,15 +101,6 @@ pub struct ScreenshotRequest {
     pub response_mode: Option<ResponseMode>,
 }
 
-/// Request parameters for the elicit_demo action.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ElicitDemoRequest {
-    /// Optional prompt message shown to the user above the elicitation form.
-    pub message: Option<String>,
-    pub response_mode: Option<ResponseMode>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrandRequest {

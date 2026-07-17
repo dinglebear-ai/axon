@@ -149,6 +149,9 @@ impl SqliteUnifiedJobStore {
             .await?;
         }
         tx.commit().await.map_err(sql_error)?;
+        if target == LifecycleStatus::Canceling {
+            crate::workers::cancel_job(job_id);
+        }
         Ok(JobCancelResult {
             job_id,
             status: target,

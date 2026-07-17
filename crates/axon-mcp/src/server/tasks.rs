@@ -378,7 +378,6 @@ fn unsupported_task_request(request: &AxonRequest) -> ErrorData {
         AxonRequest::Ask(_) => ("ask", "None".to_string()),
         AxonRequest::Summarize(_) => ("summarize", "None".to_string()),
         AxonRequest::Screenshot(_) => ("screenshot", "None".to_string()),
-        AxonRequest::ElicitDemo(_) => ("elicit_demo", "None".to_string()),
         AxonRequest::Brand(_) => ("brand", "None".to_string()),
         AxonRequest::Diff(_) => ("diff", "None".to_string()),
         AxonRequest::Debug(_) => ("debug", "None".to_string()),
