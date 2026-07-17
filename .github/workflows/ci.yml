@@ -758,6 +758,8 @@ jobs:
             apps/palette-tauri
             apps/web/openapi/axon.json
             plugins/axon/references/rag-synthesize/SKILL.md
+            # check-version-sync asserts this manifest carries no version key.
+            plugins/axon/.claude-plugin
             # axon-services include_str!s these at compile time; a sparse
             # checkout without them cannot build xtask's dependency graph.
             config

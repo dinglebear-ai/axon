@@ -400,23 +400,18 @@ run_suite() {
   run_json_case "${prefix}_watch_create" '.ok == true and .action == "watch" and .subaction == "create" and ((.data.data.watch_id // .data.inline.watch_id) | type == "string")' call_tool action:watch subaction:create source:"$REAL_PAGE_URL" every_seconds:3600 response_mode:inline
   local watch_id
   watch_id="$(extract_json_field "$OUTDIR/${prefix}_watch_create.log" '.data.data.watch_id // .data.inline.watch_id')"
-  run_json_case "${prefix}_watch_status" '.ok == true and .action == "watch" and .subaction == "status" and (.data.data.watch.watch_id | type == "string")' call_tool action:watch subaction:status id:"$watch_id" response_mode:inline
-  run_json_case "${prefix}_watch_exec" '.ok == true and .action == "watch" and .subaction == "exec" and (.data.data.job_id | type == "string")' call_tool action:watch subaction:exec id:"$watch_id" response_mode:inline
-  run_json_case "${prefix}_watch_history" '.ok == true and .action == "watch" and .subaction == "history" and (.data.data.runs | type == "array")' call_tool action:watch subaction:history id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_status" '.ok == true and .action == "watch" and .subaction == "status" and ((.data.data.watch.watch_id // .data.inline.watch.watch_id) | type == "string")' call_tool action:watch subaction:status id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_exec" '.ok == true and .action == "watch" and .subaction == "exec" and ((.data.data.job_id // .data.inline.job_id // .data.inline.id) | type == "string")' call_tool action:watch subaction:exec id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_history" '.ok == true and .action == "watch" and .subaction == "history" and ((.data.data.runs // .data.inline.runs // .data.inline.jobs) | type == "array")' call_tool action:watch subaction:history id:"$watch_id" response_mode:inline
   run_json_case "${prefix}_extract_start" '.ok == true and .action == "extract" and .subaction == "start" and (.data.job_id | type == "string")' call_tool_json "{\"action\":\"extract\",\"subaction\":\"start\",\"urls\":[\"$REAL_PAGE_URL\"],\"prompt\":\"Extract the page title.\",\"max_pages\":1}"
-  local extract_job_id
-  extract_job_id="$(extract_json_field "$OUTDIR/${prefix}_extract_start.log" '.data.job_id')"
-  run_json_case "${prefix}_extract_status" '.ok == true and .action == "extract" and .subaction == "status" and .data.response_mode != null and (((.data.data.job | type) == "object") or (.data.data.job == null))' call_tool action:extract subaction:status job_id:"$extract_job_id"
-  run_json_case "${prefix}_extract_cancel" '.ok == true and .action == "extract" and .subaction == "cancel" and (.data.job_id | type == "string") and (.data.canceled | type == "boolean")' call_tool action:extract subaction:cancel job_id:"$extract_job_id"
-  run_json_case "${prefix}_extract_list" '.ok == true and .action == "extract" and .subaction == "list" and (((.data.data.jobs | type) == "array" and .data.data.limit == 5) or ((.data.shape.jobs | type) == "object" and .data.shape.limit == 5))' call_tool action:extract subaction:list limit:5 offset:0
+  # The extract lifecycle (status/cancel/list/cleanup/recover/clear) is
+  # retired MCP surface — the request schema is start-only and the unified
+  # jobs action owns lifecycle, exercised by the jobs cases below.
 
   echo "== $mode lifecycle maintenance ==" | tee -a "$SUMMARY"
-  run_json_case "${prefix}_extract_cleanup" '.ok == true and .action == "extract" and .subaction == "cleanup" and (.data.deleted | type == "number")' call_tool action:extract subaction:cleanup
-  run_json_case "${prefix}_extract_recover" '.ok == true and .action == "extract" and .subaction == "recover" and (.data.recovered | type == "number")' call_tool action:extract subaction:recover
-  run_json_case "${prefix}_extract_clear" '.ok == true and .action == "extract" and .subaction == "clear" and (.data.deleted | type == "number")' call_tool action:extract subaction:clear
-  run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool action:jobs subaction:recover dry_run:true limit:5
+  run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool_json '{"action":"jobs","subaction":"recover","dry_run":true,"limit":5,"stale_before":"2020-01-01T00:00:00Z"}'
   run_json_case "${prefix}_jobs_cleanup" '.ok == true and .action == "jobs" and .subaction == "cleanup" and ((.data.data.deleted | type) == "number" or (.data.data.deleted_jobs | type) == "number")' call_tool action:jobs subaction:cleanup dry_run:true limit:5
-  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and (.data.data.plan | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
+  run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
 }
 
 if [[ "$URL_MODE" == "1" ]]; then
