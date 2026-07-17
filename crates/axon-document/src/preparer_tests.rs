@@ -764,3 +764,52 @@ fn request(
         errors: Vec::new(),
     }
 }
+
+/// Regression: pre-chunk redaction must run BEFORE the self-parse so parse
+/// facts and graph candidates carry line numbers and quotes from the same
+/// (redacted) text that range/quote validation later slices. Seen live: a
+/// fenced `Authorization: Bearer …` example line was scrubbed after parsing,
+/// shifting the text under every later heading candidate and failing
+/// preparation with "quote outside source range".
+#[test]
+fn redacted_content_parses_and_validates_after_scrub() {
+    let text = "# Title\n\n```bash\ncurl --header \"Authorization: Bearer secret-token-value\"\n```\n\n## After the secret\n\nBody text.\n";
+    let mut request = request(
+        ContentKind::Markdown,
+        text,
+        "gen-1",
+        ChunkingProfile::MarkdownSections,
+    );
+    // Let the preparer self-parse so heading graph candidates are produced
+    // from the content instead of being pre-supplied.
+    request.profile = None;
+
+    let result = DocumentPreparer::default()
+        .prepare(request)
+        .expect("preparation must survive pre-chunk redaction");
+    let prepared = result.document;
+
+    // The secret is scrubbed from every chunk...
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| !chunk.content.contains("secret-token-value")),
+        "pre-chunk redaction must scrub the bearer token"
+    );
+    // ...and the self-parsed heading candidates (produced from the redacted
+    // text) survive range/quote validation, including the heading AFTER the
+    // redacted line.
+    assert!(
+        prepared.graph_candidates.iter().any(|candidate| candidate
+            .merge_key
+            .as_deref()
+            .is_some_and(|key| key.contains("After the secret"))),
+        "heading candidates after the redacted line must survive validation; got: {:?}",
+        prepared
+            .graph_candidates
+            .iter()
+            .map(|candidate| candidate.merge_key.clone())
+            .collect::<Vec<_>>()
+    );
+}

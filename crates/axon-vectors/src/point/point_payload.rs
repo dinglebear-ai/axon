@@ -197,5 +197,37 @@ fn insert_embedding_metadata(
 /// profile would add a second constant here, not repurpose this one.
 const DEFAULT_EMBEDDING_PROFILE: &str = "document";
 
-const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] =
-    &["chunking_profile", "chunking_method", "preparer_version"];
+/// Chunk-metadata keys that are preparer/chunker-internal annotations and
+/// must never reach the vector payload: the payload's per-source-family field
+/// allowlist fail-closes on unknown keys, so one leaked annotation fails the
+/// whole source (seen live: `json_key` from the structured-JSON chunker, then
+/// `schema_chunk` from the schema chunker). Chunk identity/anchor data lives
+/// on the chunk's `SourceRange`, not here.
+const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
+    "chunking_profile",
+    "chunking_method",
+    "preparer_version",
+    // chunk routing/build annotations
+    "actual_chunking_method",
+    "preferred_chunking_method",
+    "chunking_fallback",
+    // structured-data / schema / manifest chunkers
+    "schema_chunk",
+    "structured_record_kind",
+    "toml_table",
+    "json_key",
+    "json_index",
+    "json_pointer",
+    "synthetic_source_range",
+    "structured_payload_attached",
+    "structured_payload_source",
+    // markdown / code chunkers (keys the family allowlists do NOT carry;
+    // symbol_extraction_status / manifest / segment_kind / code_file_type /
+    // code_language / code_parse_status are contract fields for their
+    // families and stay OFF this denylist)
+    "markdown_block_kind",
+    "section_level",
+    "code_chunk_source",
+    "code_fence_language",
+    "original_path",
+];

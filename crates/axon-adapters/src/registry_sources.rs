@@ -312,16 +312,27 @@ fn registry_source_document(
     })
 }
 
+/// This adapter is the single implementation behind every registry-family
+/// adapter the router can select (`crates`, `npm`, `pypi`, `docker`, …), all
+/// of which resolve to `SourceKind::Registry`. Validate on the source *kind*,
+/// not the exact adapter name: the resolver picks `crates`/`npm`/`pypi` for
+/// those targets, and keying off the literal name `"registry"` rejected every
+/// real package target with `adapter.registry.mismatch` (seen live indexing
+/// `crates:anyhow`). Mirrors the git adapter's kind-based validation.
 fn validate_adapter(plan: &SourcePlan) -> Result<()> {
-    if plan.route.adapter.name == ADAPTER_NAME {
+    if plan.route.source.source_kind == SourceKind::Registry {
         return Ok(());
     }
     Err(ApiError::new(
         "adapter.registry.mismatch",
         axon_error::ErrorStage::Routing,
-        "route selected a different adapter",
+        "route selected a non-registry source kind",
     )
-    .with_context("adapter", plan.route.adapter.name.clone()))
+    .with_context("adapter", plan.route.adapter.name.clone())
+    .with_context(
+        "source_kind",
+        format!("{:?}", plan.route.source.source_kind),
+    ))
 }
 
 fn public_base_uri(canonical_uri: &str, dump: &RegistryDump) -> String {

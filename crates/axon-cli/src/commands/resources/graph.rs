@@ -57,15 +57,12 @@ async fn query(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Err
     let result = GraphStore::query(
         &graph,
         GraphQueryRequest {
-            start: GraphIdentifier {
-                kind: String::new(),
-                canonical_uri: None,
-                value: None,
-                node_id: Some(GraphNodeId::new(positional(cfg, 1, "query")?)),
-                source_id: None,
-                source_item_key: None,
-                metadata: Default::default(),
-            },
+            // Accept the start identifier as a canonical URI, a stable key, or
+            // a node id — same as `graph resolve`. Previously the arg was only
+            // ever tried as a node_id, so `graph query <uri>` resolved nothing
+            // (URIs are `canonical_uri`/`stable_key` aliases, not node ids) and
+            // returned zero nodes.
+            start: query_start_identifier(positional(cfg, 1, "query")?),
             edges: Vec::new(),
             direction: GraphDirection::Both,
             depth: 1,
@@ -77,6 +74,24 @@ async fn query(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Err
     .await
     .map_err(api_error)?;
     print_value(result)
+}
+
+/// Build a start identifier for `graph query` that resolves whether the arg is
+/// a canonical URI, a stable key, or a node id. `GraphStore::query`'s
+/// `resolve_one` tries `node_id`, then `canonical_uri`, then `value`
+/// (stable_key) in order and returns the first hit, so a URI is offered as
+/// `canonical_uri` and anything else as both a `value` and a `node_id`.
+fn query_start_identifier(identifier: &str) -> GraphIdentifier {
+    let is_uri = identifier.contains("://");
+    GraphIdentifier {
+        kind: String::new(),
+        canonical_uri: is_uri.then(|| identifier.to_string()),
+        value: (!is_uri).then(|| identifier.to_string()),
+        node_id: (!is_uri).then(|| GraphNodeId::new(identifier.to_string())),
+        source_id: None,
+        source_item_key: None,
+        metadata: Default::default(),
+    }
 }
 
 async fn node(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
@@ -122,3 +137,7 @@ async fn source(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Er
 fn api_error(error: axon_api::source::ApiError) -> Box<dyn Error> {
     error.to_string().into()
 }
+
+#[cfg(test)]
+#[path = "graph_tests.rs"]
+mod tests;

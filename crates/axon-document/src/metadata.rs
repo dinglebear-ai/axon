@@ -50,11 +50,11 @@ pub(crate) fn structured_records(
     if let Some(value) = structured_payload {
         let mut chunks = Vec::new();
         if !text.trim().is_empty() {
-            chunks.extend(atomic_text(text).into_iter().map(|chunk| {
-                chunk
-                    .with_metadata("structured_payload_attached", true.into())
-                    .with_metadata("structured_payload_source", "document".into())
-            }));
+            // No `structured_payload_*` marker metadata here: chunk metadata
+            // flows into the vector payload, whose family allowlists reject
+            // unknown keys fail-closed (same class as the `json_key` break —
+            // see `chunks_from_json_value`). Nothing reads these markers.
+            chunks.extend(atomic_text(text));
         }
         chunks.extend(chunks_from_json_value(value));
         return Ok(chunks);
@@ -86,6 +86,13 @@ pub(crate) fn atomic_metadata(text: &str) -> Vec<DocumentChunk> {
     atomic_text(text)
 }
 
+/// Structured-JSON chunks carry their identity in the chunk's `SourceRange`
+/// (`json_pointer`), which is a contract-legal anchor field. Do NOT attach
+/// chunker-internal keys (`json_key`/`json_index`/`json_pointer`/
+/// `synthetic_source_range`) as chunk METADATA: chunk metadata flows into the
+/// vector payload, whose per-source-family field allowlist fail-closes on
+/// unknown keys — one structured chunk then fails the whole source (seen live
+/// as "unknown vector payload field `json_key` for source family").
 fn chunks_from_json_value(value: &serde_json::Value) -> Vec<DocumentChunk> {
     match value {
         serde_json::Value::Array(items) => items
@@ -93,27 +100,20 @@ fn chunks_from_json_value(value: &serde_json::Value) -> Vec<DocumentChunk> {
             .enumerate()
             .map(|(idx, item)| {
                 let pointer = format!("/{idx}");
-                DocumentChunk::new(item.to_string(), json_range(pointer.clone()))
-                    .with_metadata("json_index", idx.into())
-                    .with_metadata("json_pointer", pointer.into())
-                    .with_metadata("synthetic_source_range", true.into())
+                DocumentChunk::new(item.to_string(), json_range(pointer))
             })
             .collect(),
         serde_json::Value::Object(map) => map
             .iter()
             .map(|(key, item)| {
                 let pointer = format!("/{}", pointer_escape(key));
-                DocumentChunk::new(item.to_string(), json_range(pointer.clone()))
-                    .with_metadata("json_key", key.clone().into())
-                    .with_metadata("json_pointer", pointer.into())
-                    .with_metadata("synthetic_source_range", true.into())
+                DocumentChunk::new(item.to_string(), json_range(pointer))
             })
             .collect(),
-        _ => vec![
-            DocumentChunk::new(value.to_string(), json_range("".to_string()))
-                .with_metadata("json_pointer", "".into())
-                .with_metadata("synthetic_source_range", true.into()),
-        ],
+        _ => vec![DocumentChunk::new(
+            value.to_string(),
+            json_range(String::new()),
+        )],
     }
 }
 

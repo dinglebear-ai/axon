@@ -50,7 +50,11 @@ pub(crate) async fn run_source_request(
     } else {
         index_source(request, service_context)
             .await
-            .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?
+            // Preserve the whole error chain: `anyhow::Error` erases to a
+            // `Box<dyn Error>` whose `.source()` walk `main` renders, so the
+            // actionable cause (e.g. the git adapter's clone failure) survives
+            // instead of being flattened to only the outermost context.
+            .map_err(|e| -> Box<dyn Error> { e.into() })?
     };
 
     render_source_result(cfg, &result);

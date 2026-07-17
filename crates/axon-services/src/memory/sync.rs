@@ -86,14 +86,20 @@ pub(crate) async fn enqueue_memory_records(
             )
             .await
             .with_context(|| format!("enqueue memory source sync for {}", record.memory_id.0))?;
-            if !matches!(
-                result.status,
-                LifecycleStatus::Queued
-                    | LifecycleStatus::Pending
-                    | LifecycleStatus::Running
-                    | LifecycleStatus::Completed
-                    | LifecycleStatus::CompletedDegraded
-            ) {
+            // The recovery contract is "a durable, retryable job row exists",
+            // and `enqueue_source` carries a `job` descriptor exactly when the
+            // row was persisted — including the idempotency-dedup case where an
+            // existing row is returned. That existing row can legitimately be
+            // terminal-`Failed`: the *inline* publication attempt for this same
+            // record (`sync_memory_records`) shares this recovery idempotency
+            // key, so when it fails (e.g. TEI down) this enqueue idempotently
+            // returns that already-`Failed` row. The recovery marker is still
+            // present and job recovery re-runs it once the data plane returns,
+            // so status is not the acceptance signal — the presence of the row
+            // is. Only a routing/authorization failure yields no descriptor
+            // (`route_error_result` sets `job = None`); that is the sole case
+            // where nothing was persisted and the caller must be told.
+            if result.job.is_none() {
                 bail!(
                     "memory source sync for {} was not accepted: {:?}",
                     record.memory_id.0,

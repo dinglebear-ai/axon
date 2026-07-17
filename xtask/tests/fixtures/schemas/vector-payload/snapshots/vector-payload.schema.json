@@ -1049,6 +1049,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -1547,6 +1572,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2015,6 +2065,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2478,6 +2553,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -2902,6 +3002,31 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
               ]
             },
             {
@@ -3424,6 +3549,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -3928,6 +4078,31 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
               ]
             },
             {
@@ -4446,6 +4621,31 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
               ]
             },
             {
@@ -5471,6 +5671,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "tool_name"
               ]
             },
@@ -5980,6 +6205,31 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
               ]
             },
             {
@@ -6497,6 +6747,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -7006,6 +7281,31 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
               ]
             },
             {
@@ -7533,6 +7833,31 @@
             },
             {
               "required": [
+                "memory_acquire"
+              ]
+            },
+            {
+              "required": [
+                "memory_decay_profile"
+              ]
+            },
+            {
+              "required": [
+                "memory_embedding_ref_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_link_count"
+              ]
+            },
+            {
+              "required": [
+                "memory_normalize"
+              ]
+            },
+            {
+              "required": [
                 "local_checkout"
               ]
             },
@@ -7884,7 +8209,16 @@
     "media_url": {
       "type": "string"
     },
+    "memory_acquire": {
+      "type": "string"
+    },
     "memory_confidence": {
+      "type": "string"
+    },
+    "memory_decay_profile": {
+      "type": "string"
+    },
+    "memory_embedding_ref_count": {
       "type": "string"
     },
     "memory_id": {
@@ -7892,6 +8226,12 @@
     },
     "memory_importance": {
       "type": "integer"
+    },
+    "memory_link_count": {
+      "type": "string"
+    },
+    "memory_normalize": {
+      "type": "string"
     },
     "memory_recallable": {
       "type": "string"
@@ -9096,9 +9436,14 @@
         "embedding_provider": "tei",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-memory",
+        "memory_acquire": "memory_acquire",
         "memory_confidence": "memory_confidence",
+        "memory_decay_profile": "memory_decay_profile",
+        "memory_embedding_ref_count": "memory_embedding_ref_count",
         "memory_id": "memory-memory",
         "memory_importance": 5,
+        "memory_link_count": "memory_link_count",
+        "memory_normalize": "memory_normalize",
         "memory_recallable": "memory_recallable",
         "memory_salience": "memory_salience",
         "memory_scope_kind": "memory_scope_kind",
@@ -9759,7 +10104,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:e6313e43941f06b361ec034e7d42868fdfae4609f2bd881e826015a045eeddb5",
+        "checksum": "sha256:d2728946df52670c8788a0e5807851f761dfbbf97ad8c399cd0b22669a0e4991",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -9924,7 +10269,12 @@
           "memory_scope_kind",
           "memory_scope_value",
           "memory_confidence",
-          "memory_salience"
+          "memory_salience",
+          "memory_acquire",
+          "memory_decay_profile",
+          "memory_embedding_ref_count",
+          "memory_link_count",
+          "memory_normalize"
         ],
         "source_family": "memory"
       },

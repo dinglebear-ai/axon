@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.1] - 2026-07-17
+
+### Fixed
+
+- Post-cutover live-smoke fixes across the source pipeline: document
+  preparation survives secret-bearing content (span-level redaction before
+  self-parse), chunker-internal metadata no longer leaks into vector payloads,
+  baseline graph nodes carry canonical URIs, `graph query`/`resolve` accept a
+  URI, git- and registry-family adapter routes are accepted, the generic
+  non-web pipeline upserts the source row before its first job-status update
+  and persists a worker-parseable request, and CLI/`main` error output shows
+  the full (redacted) cause chain.
+
 ## [7.1.0] - 2026-07-17
 
 ### Changed
