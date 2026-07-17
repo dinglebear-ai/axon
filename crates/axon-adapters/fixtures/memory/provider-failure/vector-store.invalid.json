@@ -1,0 +1,13 @@
+{
+  "adapter": "memory",
+  "adapter_version": "1",
+  "expected_error_code": "provider.required_unavailable",
+  "fixture_kind": "provider-failure.vector-store",
+  "graph": { "required_fact_kinds": ["memory_document"], "optional_fact_kinds": ["memory_link", "supersedes"] },
+  "item_canonical_uri": "memory://mem_fixture_1",
+  "metadata_family": "memory",
+  "redaction_status": "clean",
+  "source_canonical_uri": "memory://mem_fixture_1",
+  "source_id": "src-memory-fixture",
+  "source_item_key": "mem_fixture_1"
+}

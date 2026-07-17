@@ -204,7 +204,7 @@ fn events_markdown(inputs: &[SourceInput]) -> String {
 fn database_markdown(inputs: &[SourceInput], summary: &Value) -> String {
     let mut out = markdown("database", inputs);
     out.push_str(&format!(
-        "\n## Parsed Migration Summary\n\n{} tables, {} indexes, {} migration files parsed from `crates/axon-jobs/src/migrations`, `crates/axon-ledger/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.\n",
+        "\n## Parsed Migration Summary\n\n{} tables, {} indexes, {} migration files parsed from `crates/axon-ledger/src/migrations`, `crates/axon-jobs/src/migrations`, `crates/axon-observe/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.\n",
         summary["table_count"], summary["index_count"], summary["migration_count"]
     ));
     out.push_str(

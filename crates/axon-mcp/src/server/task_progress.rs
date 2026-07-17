@@ -1,7 +1,6 @@
 use super::AxonMcpServer;
 use super::task_id::{kind_name, task_id_for};
-use axon_api::source::JobKind;
-use axon_jobs::status::JobStatus;
+use axon_api::{job_status::JobStatus, source::JobKind};
 use axon_services::runtime::ServiceJobRuntime;
 use rmcp::model::{ProgressNotificationParam, ProgressToken};
 use rmcp::{Peer, RoleServer};
@@ -267,9 +266,12 @@ fn source_progress(object: &serde_json::Map<String, Value>) -> MappedProgress {
     let message = allowlisted_phase(object.get("phase").and_then(Value::as_str));
     count_progress(object, "pages_crawled", "pages_discovered", "indexing")
         .or_else(|| count_progress(object, "docs_embedded", "docs_total", "embedding"))
+        .or_else(|| count_progress(object, "documents_done", "documents_total", "embedding"))
+        .or_else(|| count_progress(object, "items_done", "items_total", message))
         .or_else(|| count_progress(object, "files_done", "files_total", message))
         .or_else(|| count_progress(object, "tasks_done", "tasks_total", message))
         .or_else(|| count_progress(object, "chunks_embedded", "chunks_total", message))
+        .or_else(|| count_progress(object, "chunks_done", "chunks_total", message))
         .unwrap_or(MappedProgress {
             progress: 0.0,
             total: None,
@@ -324,6 +326,71 @@ fn allowlisted_phase(phase: Option<&str>) -> &'static str {
         Some("completed") => "completed",
         _ => "indexing",
     }
+}
+
+pub(super) fn structured_source_progress(value: Option<&Value>) -> Option<Value> {
+    let object = value?.as_object()?;
+    let counts = object
+        .get("counts")
+        .filter(|value| value.is_object())
+        .cloned()
+        .or_else(|| flat_stage_counts(object));
+    let current = object
+        .get("current")
+        .filter(|value| value.is_object())
+        .cloned();
+    let warnings = diagnostic_array(object, "warnings", "warning");
+    let errors = diagnostic_array(object, "errors", "error");
+
+    if counts.is_none() && current.is_none() && warnings.is_empty() && errors.is_empty() {
+        return None;
+    }
+
+    Some(serde_json::json!({
+        "counts": counts,
+        "current": current,
+        "warnings": warnings,
+        "errors": errors,
+    }))
+}
+
+fn flat_stage_counts(object: &serde_json::Map<String, Value>) -> Option<Value> {
+    const COUNT_KEYS: [&str; 8] = [
+        "items_total",
+        "items_done",
+        "documents_total",
+        "documents_done",
+        "chunks_total",
+        "chunks_done",
+        "bytes_total",
+        "bytes_done",
+    ];
+    let counts = COUNT_KEYS
+        .into_iter()
+        .filter_map(|key| {
+            object
+                .get(key)
+                .cloned()
+                .map(|value| (key.to_string(), value))
+        })
+        .collect::<serde_json::Map<_, _>>();
+    (!counts.is_empty()).then_some(Value::Object(counts))
+}
+
+fn diagnostic_array(
+    object: &serde_json::Map<String, Value>,
+    array_key: &str,
+    singular_key: &str,
+) -> Vec<Value> {
+    let mut diagnostics = object
+        .get(array_key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if let Some(diagnostic) = object.get(singular_key).filter(|value| value.is_object()) {
+        diagnostics.push(diagnostic.clone());
+    }
+    diagnostics
 }
 
 #[cfg(test)]

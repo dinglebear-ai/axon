@@ -1,15 +1,12 @@
 //! Regression coverage for issue #298 WS-D (bead axon_rust-ruzox.4): full
 //! `dispatch_session`/`dispatch_feed` round trips proving `SourceRequest.embed`
-//! / `limits.max_items` reach the real acquire-then-index path, not just the
-//! pure `*SourceIndexInput` builders covered by `dispatch/index_inputs_tests.rs`.
+//! / `limits.max_items` reach the shared acquire-then-index path.
 //! `session` needs no network (a local selector); `feed` is exercised against
 //! a local `httpmock` server (loopback allowed via `LoopbackGuard`) so the
 //! real `fetch_feed_to_file` acquire step runs too. `reddit`/`youtube`/
 //! `registry` acquisition requires live OAuth credentials, a `yt-dlp`
 //! subprocess, or a live public registry respectively — none mockable
-//! offline — so their threading is covered by `index_inputs_tests.rs` plus
-//! the existing bridge-level `embed`/`max_items` tests in
-//! `reddit_source_tests.rs`/`youtube_source_tests.rs`/`registry_source_tests.rs`.
+//! offline, so their materialization behavior is covered in `axon-adapters`.
 
 use axon_api::source::{AuthScope, AuthSnapshot, ProviderId, SourceRequest};
 use axon_core::http::LoopbackGuard;
@@ -55,9 +52,18 @@ fn test_runtime(
     )
 }
 
+fn route_for(source: &str) -> axon_api::source::RoutePlan {
+    crate::source::routing::resolve_source_route(&SourceRequest::new(source.to_string()))
+        .expect("test source should route")
+        .route
+}
+
+fn test_execution(source: &str) -> SourceExecutionContext {
+    SourceExecutionContext::inline(SourceRequest::new(source), None)
+}
+
 /// Two session transcript files under one directory root, so the discovered
-/// manifest has two items for `max_items`/`embed` assertions (mirrors
-/// `sessions_source_tests.rs::write_two_claude_fixtures`).
+/// manifest has two items for `max_items`/`embed` assertions.
 fn write_two_session_fixtures(dir: &std::path::Path) {
     std::fs::write(
         dir.join("session1.jsonl"),
@@ -132,6 +138,8 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
     let runtime = test_runtime(vectors.clone(), ledger.clone());
 
     let selector = format!("session:claude:{}", dir.display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
     let counts = dispatch_session_with_roots(
         &runtime,
         &selector,
@@ -141,7 +149,9 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
         false,
         None,
         None,
+        &route,
         &roots,
+        &execution,
     )
     .await
     .expect("dispatch_session should succeed");
@@ -174,6 +184,8 @@ async fn dispatch_session_max_items_caps_documents_prepared() {
     let runtime = test_runtime(vectors, ledger);
 
     let selector = format!("session:claude:{}", dir.display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
     let counts = dispatch_session_with_roots(
         &runtime,
         &selector,
@@ -183,7 +195,9 @@ async fn dispatch_session_max_items_caps_documents_prepared() {
         true,
         Some(1),
         None,
+        &route,
         &roots,
+        &execution,
     )
     .await
     .expect("dispatch_session should succeed");
@@ -205,6 +219,8 @@ async fn dispatch_session_rejects_paths_outside_provider_roots() {
     let runtime = test_runtime(vectors.clone(), ledger);
 
     let selector = format!("session:claude:{}", outside.path().display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
     let err = dispatch_session_with_roots(
         &runtime,
         &selector,
@@ -214,13 +230,16 @@ async fn dispatch_session_rejects_paths_outside_provider_roots() {
         true,
         None,
         None,
+        &route,
         &roots,
+        &execution,
     )
     .await
     .expect_err("outside provider roots should be rejected");
 
+    let error_chain = format!("{err:#}");
     assert!(
-        err.to_string().contains("outside provider roots"),
+        error_chain.contains("outside provider roots"),
         "expected provider-root denial, got: {err:?}"
     );
     assert!(vectors.points("axon-test").await.is_empty());
@@ -240,14 +259,19 @@ async fn dispatch_feed_embed_false_writes_no_vectors() {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors.clone(), ledger.clone());
 
+    let source = server.url("/feed.xml");
+    let route = route_for(&source);
+    let execution = test_execution(&source);
     let counts = dispatch_feed(
         &runtime,
-        &server.url("/feed.xml"),
+        &source,
         "axon-test",
         "test-owner",
         None,
         false,
         None,
+        &route,
+        &execution,
     )
     .await
     .expect("dispatch_feed should succeed");
@@ -275,14 +299,19 @@ async fn dispatch_feed_max_items_caps_documents_prepared() {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let runtime = test_runtime(vectors, ledger);
 
+    let source = server.url("/feed.xml");
+    let route = route_for(&source);
+    let execution = test_execution(&source);
     let counts = dispatch_feed(
         &runtime,
-        &server.url("/feed.xml"),
+        &source,
         "axon-test",
         "test-owner",
         None,
         true,
         Some(1),
+        &route,
+        &execution,
     )
     .await
     .expect("dispatch_feed should succeed");

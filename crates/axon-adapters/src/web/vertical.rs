@@ -1,7 +1,8 @@
 //! Web vertical-extractor bridge.
 //!
-//! The extractor catalog lives in `axon-extract`; the web adapter owns when it
-//! participates in acquisition. Automatic vertical dispatch is a per-item
+//! Extractor implementations live in `axon-extract`; the adapter-owned
+//! vertical registry owns URL/name routing and when extraction participates in
+//! acquisition. Automatic vertical dispatch is a per-item
 //! optimization/enrichment stage: unsupported URLs return `None`, extractor
 //! failures become visible warnings and the caller falls back to generic web
 //! fetch/render.
@@ -11,18 +12,20 @@ use std::sync::Arc;
 use axon_api::source::*;
 use axon_core::config::Config;
 use axon_extract::{ScrapedDoc, VerticalContext};
+use axon_parse::vertical::{
+    VERTICAL_GRAPH_CANDIDATES_METADATA_KEY, VERTICAL_PARSE_FACTS_METADATA_KEY, VerticalParseInput,
+    parse_artifacts,
+};
 use serde_json::{Value, json};
 
 use super::metadata::web_document_id;
-
-pub(super) const VERTICAL_PARSE_FACTS_KEY: &str = "_axon_vertical_parse_facts";
-pub(super) const VERTICAL_GRAPH_CANDIDATES_KEY: &str = "_axon_vertical_graph_candidates";
 
 #[derive(Debug, Clone)]
 pub(super) struct VerticalOptions {
     pub(super) enabled: bool,
     pub(super) auto_dispatch_skip: Vec<String>,
     pub(super) user_agent: Option<String>,
+    pub(super) cache_ttl_secs: std::collections::HashMap<String, u64>,
 }
 
 #[derive(Debug)]
@@ -42,7 +45,7 @@ pub(super) async fn try_acquire(
     }
 
     let ctx = VerticalContext::new(Arc::new(vertical_config(opts)));
-    match axon_extract::dispatch_by_url(&item.canonical_uri, &ctx).await {
+    match crate::vertical_registry::dispatch_by_url(&item.canonical_uri, &ctx).await {
         None => VerticalAcquire::Unsupported,
         Some(Ok(doc)) => VerticalAcquire::Handled(acquired_from_doc(item, doc, job_id)),
         Some(Err(err)) => VerticalAcquire::Degraded(SourceWarning {
@@ -63,6 +66,7 @@ fn vertical_config(opts: &VerticalOptions) -> Config {
         enable_verticals: opts.enabled,
         auto_dispatch_skip: opts.auto_dispatch_skip.clone(),
         user_agent: opts.user_agent.clone(),
+        vertical_cache_ttl_secs: opts.cache_ttl_secs.clone(),
         ..Config::default()
     }
 }
@@ -72,12 +76,16 @@ fn acquired_from_doc(item: &ManifestItem, doc: ScrapedDoc, job_id: JobId) -> Acq
     manifest_item.content_kind = Some(ContentKind::Markdown);
 
     let document_id = web_document_id(&manifest_item.source_id, &manifest_item.source_item_key);
-    let parse = doc.parse_artifacts(
+    let parse = parse_artifacts(VerticalParseInput {
+        url: &doc.url,
+        title: doc.title.as_deref(),
+        extractor_name: doc.extractor_name,
+        extractor_version: doc.extractor_version,
         job_id,
-        manifest_item.source_id.clone(),
-        document_id,
-        manifest_item.source_item_key.clone(),
-    );
+        source_id: &manifest_item.source_id,
+        document_id: &document_id,
+        source_item_key: &manifest_item.source_item_key,
+    });
 
     let mut metadata = MetadataMap::new();
     metadata.insert("web_fetch_method".to_string(), json!("vertical_extractor"));
@@ -93,12 +101,12 @@ fn acquired_from_doc(item: &ManifestItem, doc: ScrapedDoc, job_id: JobId) -> Acq
     if !parse.facts.is_empty()
         && let Ok(value) = serde_json::to_value(&parse.facts)
     {
-        metadata.insert(VERTICAL_PARSE_FACTS_KEY.to_string(), value);
+        metadata.insert(VERTICAL_PARSE_FACTS_METADATA_KEY.to_string(), value);
     }
     if !parse.graph_candidates.is_empty()
         && let Ok(value) = serde_json::to_value(&parse.graph_candidates)
     {
-        metadata.insert(VERTICAL_GRAPH_CANDIDATES_KEY.to_string(), value);
+        metadata.insert(VERTICAL_GRAPH_CANDIDATES_METADATA_KEY.to_string(), value);
     }
     let structured = vertical_structured_payload(&doc);
     if structured != Value::Null {
@@ -199,13 +207,13 @@ mod tests {
 
         let parse_facts = acquired
             .metadata
-            .get(VERTICAL_PARSE_FACTS_KEY)
+            .get(VERTICAL_PARSE_FACTS_METADATA_KEY)
             .and_then(Value::as_array)
             .expect("vertical parse facts should be carried to prepare");
         assert_eq!(parse_facts.len(), 1);
         let graph_candidates = acquired
             .metadata
-            .get(VERTICAL_GRAPH_CANDIDATES_KEY)
+            .get(VERTICAL_GRAPH_CANDIDATES_METADATA_KEY)
             .and_then(Value::as_array)
             .expect("vertical graph candidates should be carried to prepare");
         assert_eq!(graph_candidates.len(), 1);

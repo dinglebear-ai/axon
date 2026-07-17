@@ -1,16 +1,15 @@
 //! Vertical-extractor framework (axon_rust-upnq).
 //!
-//! Routes a URL to a specialized per-site extractor module before the
-//! generic HTTP scrape pipeline runs. When an extractor claims the URL
-//! and succeeds, the caller uses the richer `ScrapedDoc` output. On
-//! `None` or `Err`, fall through to the generic path.
+//! Implements specialized per-site extraction functions consumed by source
+//! adapters. URL/name matching order and dispatch policy belong to
+//! `axon-adapters`; this crate owns only extractor implementations and their
+//! narrow shared context/output types.
 //!
 //! ## Design (plain-module dispatch, no trait objects)
 //! Each vertical is a plain module exposing `INFO`, `matches()`, and
-//! `extract()`. A match-chain in `registry.rs` is fast, readable, and
-//! avoids dyn-dispatch overhead. See the exhaustiveness test in
-//! `registry.rs` for the compile-time-ish guarantee that replaces
-//! trait enforcement.
+//! `extract()`. `axon-adapters::vertical_registry` composes those functions
+//! into acquisition routing without giving this implementation crate
+//! pipeline ownership.
 //!
 //! ## Module layout
 //! ```text
@@ -18,7 +17,6 @@
 //! src/extract/
 //!   context.rs           — VerticalContext (narrowed ServiceContext view)
 //!   error.rs             — VerticalError (re-export from a9l6 taxonomy)
-//!   registry.rs          — dispatch_by_url / dispatch_by_name / list
 //!   types.rs             — ScrapedDoc, ExtractorInfo
 //!   verticals.rs         — declares all vertical sub-modules
 //!   verticals/
@@ -29,15 +27,9 @@
 mod context;
 mod error;
 mod git_payload;
-mod registry;
 mod types;
-mod verticals;
+pub mod verticals;
 
 pub use context::VerticalContext;
 pub use error::VerticalError;
-pub use registry::{dispatch_by_name, dispatch_by_url, list as list_extractors};
 pub use types::{ExtractorInfo, ScrapedDoc};
-
-#[cfg(test)]
-#[path = "vertical_parse_facts_tests.rs"]
-mod vertical_parse_facts_tests;

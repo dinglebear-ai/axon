@@ -1,0 +1,25 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "canonical_uri": "upload:staged-example-1",
+  "confidence": 1.0,
+  "fixture_kind": "resolve.explicit",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "redaction_status": "clean",
+  "requested_uri": "upload:staged-example-1",
+  "scope": "file",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

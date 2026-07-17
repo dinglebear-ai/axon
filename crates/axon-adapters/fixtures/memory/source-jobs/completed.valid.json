@@ -1,0 +1,18 @@
+{
+  "adapter": "memory",
+  "adapter_version": "1",
+  "cleanup_debt_behavior": "terminal records publish an empty manifest",
+  "counts": { "items_done": 1, "documents_done": 1, "chunks_done": 1 },
+  "fixture_kind": "source-job.completed",
+  "generation_publish_state": "committed",
+  "graph": { "required_fact_kinds": ["memory_document"], "optional_fact_kinds": ["memory_link", "supersedes"] },
+  "item_canonical_uri": "memory://mem_fixture_1",
+  "job_id": "00000000-0000-0000-0000-000000000051",
+  "metadata_family": "memory",
+  "provider_degradation_behavior": "enqueue durable source recovery",
+  "redaction_status": "clean",
+  "source_canonical_uri": "memory://mem_fixture_1",
+  "source_id": "src-memory-fixture",
+  "source_item_key": "mem_fixture_1",
+  "stage_sequence": ["resolving", "discovering", "acquiring", "preparing", "embedding", "publishing"]
+}

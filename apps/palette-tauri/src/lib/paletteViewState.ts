@@ -3,7 +3,7 @@
 // Before this module, App.tsx encoded the view as ~4 interdependent useState
 // flags (`settingsOpen`, `browseOpen`, `historyOpen`, `modeAction`) plus ~9
 // derived booleans, and the two stateful hooks (`useActionRunner`,
-// `useCrawlJob`) reached back into App by drilling 5–6 raw setters each to
+// `useJobPoll`) reached back into App by drilling 5–6 raw setters each to
 // enforce view transitions. That made illegal combinations representable (e.g.
 // settings + history both open) and scattered the transition rules.
 //
@@ -36,7 +36,7 @@ export const INITIAL_VIEW: View = { kind: "launcher", mode: null, browse: false 
 
 // ── Intents ──────────────────────────────────────────────────────────────────
 // Every legal view transition is one of these. App, useActionRunner, and
-// useCrawlJob dispatch intents; only the reducer knows how each intent rewrites
+// useJobPoll dispatches intents; only the reducer knows how each intent rewrites
 // the view. Orthogonal `query`/`run` resets stay in App's intent-callback
 // wrappers beside the dispatch (they are not view state) — but the view rules
 // themselves (which overlays/modes a transition clears) live only here.
@@ -63,7 +63,7 @@ export type ViewIntent =
   // Action-runner driven
   | { type: "enterModeForRun"; action: PaletteAction } // submit() locks in the running action's mode
   | { type: "showHelp"; action: PaletteAction } //       local-help run shows under the launcher
-  // Crawl-job driven
+  // Source-job driven
   | { type: "minimizeJob" } //                      job tray: bare launcher, mode cleared
   | { type: "expandJob" } //                        expand the tray back into the job card
   | { type: "closeJob" }; //                        dismiss the job → bare launcher

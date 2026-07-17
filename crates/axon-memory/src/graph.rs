@@ -14,10 +14,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use axon_graph::GraphEdgeKind;
-use axon_graph::store::GraphStore;
+use axon_graph::{GraphEdgeKind, store::GraphStore};
 
 use crate::store::{MemoryStore, Result};
+
+mod batch;
+mod candidates;
+use candidates::*;
 
 pub const MODULE_NAME: &str = "graph";
 pub const MEMORY_GRAPH_REQUIRED_FACT: &str = "memory_document";
@@ -49,6 +52,17 @@ pub trait MemoryGraphMirror: Send + Sync {
     /// any status transition so the node's `memory_status` property stays
     /// current for graph queries.
     async fn upsert_memory_node(&self, record: &MemoryRecord) -> Result<()>;
+
+    /// Upsert one transaction-sized group of memory nodes. Implementations
+    /// backed by a transactional graph store should override this so the
+    /// whole slice commits atomically. The default preserves compatibility
+    /// for lightweight mirrors while still bounding caller-side work.
+    async fn upsert_memory_nodes(&self, records: &[MemoryRecord]) -> Result<()> {
+        for record in records {
+            self.upsert_memory_node(record).await?;
+        }
+        Ok(())
+    }
 
     /// Record that `replacement` supersedes `old`.
     async fn supersedes(
@@ -108,6 +122,20 @@ impl MemoryGraphMirror for GraphBackedMemoryMirror {
             memory_node(record),
         );
         self.graph.upsert_candidates(vec![candidate]).await?;
+        Ok(())
+    }
+
+    async fn upsert_memory_nodes(&self, records: &[MemoryRecord]) -> Result<()> {
+        let candidates = records
+            .iter()
+            .map(|record| {
+                node_only_candidate(
+                    format!("memory-upsert:{}", record.memory_id.0),
+                    memory_node(record),
+                )
+            })
+            .collect();
+        self.graph.upsert_candidates(candidates).await?;
         Ok(())
     }
 
@@ -224,117 +252,6 @@ impl MemoryGraphMirror for GraphBackedMemoryMirror {
     }
 }
 
-fn memory_stable_key(memory_id: &MemoryId) -> String {
-    format!("memory:{}", memory_id.0)
-}
-
-/// Map a [`MemoryLink::link_type`] to the closed [`GraphEdgeKind`] registry
-/// (contract "Graph Integration": "link | create evidence-backed edge to
-/// source/repo/file/issue/pr/entity"). Unrecognized/free-text link types
-/// fall back to the generic `memory_relates_to` edge rather than failing the
-/// link write — the link type is caller-supplied free text, not a closed
-/// enum on the wire (see [`MemoryLink::link_type`]).
-fn link_type_to_edge_kind(link_type: &str) -> GraphEdgeKind {
-    match link_type.to_ascii_lowercase().as_str() {
-        "source" | "repo" | "repository" => GraphEdgeKind::MemoryAboutSource,
-        "file" => GraphEdgeKind::MemoryAboutFile,
-        "issue" | "pr" | "pull_request" | "ticket" => GraphEdgeKind::MemoryAboutIssue,
-        _ => GraphEdgeKind::MemoryRelatesTo,
-    }
-}
-
-fn memory_node(record: &MemoryRecord) -> GraphNodeCandidate {
-    let mut properties = MetadataMap::new();
-    properties.insert(
-        "memory_status".to_string(),
-        serde_json::Value::String(format!("{:?}", record.status).to_lowercase()),
-    );
-    properties.insert(
-        "memory_type".to_string(),
-        serde_json::Value::String(format!("{:?}", record.memory_type).to_lowercase()),
-    );
-    GraphNodeCandidate {
-        node_kind: MEMORY_NODE_KIND.to_string(),
-        stable_key: memory_stable_key(&record.memory_id),
-        label: record
-            .title
-            .clone()
-            .unwrap_or_else(|| record.memory_id.0.clone()),
-        properties,
-    }
-}
-
-fn node_only_candidate(candidate_id: String, node: GraphNodeCandidate) -> GraphCandidate {
-    GraphCandidate {
-        candidate_id: candidate_id.clone(),
-        job_id: JobId::new(uuid::Uuid::new_v4()),
-        source_id: SourceId::new(MEMORY_SOURCE_ID),
-        source_item_key: SourceItemKey::new(candidate_id),
-        item_canonical_uri: format!("memory://{}", node.stable_key),
-        document_id: None,
-        kind: "memory_lifecycle".to_string(),
-        merge_key: None,
-        producer: GraphCandidateProducer {
-            adapter: MEMORY_SOURCE_ID.to_string(),
-            parser: None,
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        nodes: vec![node],
-        edges: Vec::new(),
-        evidence: Vec::new(),
-        confidence: 1.0,
-        metadata: MetadataMap::new(),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn edge_candidate(
-    candidate_id: String,
-    nodes: Vec<GraphNodeCandidate>,
-    edge_kind: GraphEdgeKind,
-    from_stable_key: &str,
-    to_stable_key: &str,
-    reason: Option<&str>,
-) -> GraphCandidate {
-    let evidence_id = format!("{candidate_id}:evidence");
-    GraphCandidate {
-        candidate_id: candidate_id.clone(),
-        job_id: JobId::new(uuid::Uuid::new_v4()),
-        source_id: SourceId::new(MEMORY_SOURCE_ID),
-        source_item_key: SourceItemKey::new(candidate_id.clone()),
-        item_canonical_uri: format!("memory://{from_stable_key}"),
-        document_id: None,
-        kind: "memory_lifecycle".to_string(),
-        merge_key: None,
-        producer: GraphCandidateProducer {
-            adapter: MEMORY_SOURCE_ID.to_string(),
-            parser: None,
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        },
-        nodes,
-        edges: vec![GraphEdgeCandidate {
-            edge_kind: edge_kind.as_str().to_string(),
-            from_stable_key: from_stable_key.to_string(),
-            to_stable_key: to_stable_key.to_string(),
-            properties: MetadataMap::new(),
-        }],
-        evidence: vec![GraphEvidence {
-            evidence_id,
-            evidence_kind: MEMORY_EVIDENCE_KIND.to_string(),
-            source_id: SourceId::new(MEMORY_SOURCE_ID),
-            source_item_key: SourceItemKey::new(candidate_id),
-            document_id: None,
-            chunk_id: None,
-            range: None,
-            quote: reason.map(ToOwned::to_owned),
-            confidence: 1.0,
-            metadata: MetadataMap::new(),
-        }],
-        confidence: 1.0,
-        metadata: MetadataMap::new(),
-    }
-}
-
 /// [`MemoryStore`] decorator that mirrors lifecycle events into the graph
 /// via an injected [`MemoryGraphMirror`], delegating everything else to
 /// `inner`. Composes the same way [`crate::vector::VectorBackedMemoryStore`]
@@ -342,11 +259,28 @@ fn edge_candidate(
 pub struct GraphBackedMemoryStore {
     inner: Arc<dyn MemoryStore>,
     mirror: Arc<dyn MemoryGraphMirror>,
+    graph: Option<Arc<dyn GraphStore>>,
+    graph_tx_batch_size: usize,
 }
 
 impl GraphBackedMemoryStore {
     pub fn new(inner: Arc<dyn MemoryStore>, mirror: Arc<dyn MemoryGraphMirror>) -> Self {
-        Self { inner, mirror }
+        Self {
+            inner,
+            mirror,
+            graph: None,
+            graph_tx_batch_size: crate::vector::MemoryBatchLimits::default().graph_tx_batch_size,
+        }
+    }
+
+    pub fn with_graph_store(mut self, graph: Arc<dyn GraphStore>) -> Self {
+        self.graph = Some(graph);
+        self
+    }
+
+    pub fn with_graph_tx_batch_size(mut self, graph_tx_batch_size: usize) -> Self {
+        self.graph_tx_batch_size = graph_tx_batch_size.max(1);
+        self
     }
 
     async fn load_or_missing(&self, memory_id: &MemoryId) -> Result<MemoryRecord> {
@@ -383,7 +317,18 @@ impl MemoryStore for GraphBackedMemoryStore {
     }
 
     async fn search(&self, request: MemorySearchRequest) -> Result<MemorySearchResult> {
-        self.inner.search(request).await
+        let mut inner_request = request.clone();
+        inner_request.include_graph = false;
+        let mut result = self.inner.search(inner_request).await?;
+        if request.include_graph && result.graph.is_none() {
+            result.graph = crate::graph_refs::graph_refs_for_memory_results(
+                self.graph.as_deref(),
+                &result.results,
+                &mut result.warnings,
+            )
+            .await?;
+        }
+        Ok(result)
     }
 
     async fn context(&self, request: MemoryContextRequest) -> Result<MemoryContextResult> {
@@ -506,7 +451,26 @@ impl MemoryStore for GraphBackedMemoryStore {
     }
 
     async fn import(&self, request: MemoryImportRequest) -> Result<MemoryImportResult> {
-        self.inner.import(request).await
+        let dry_run = request.dry_run;
+        let mut result = self.inner.import(request).await?;
+        if dry_run || result.created_ids.is_empty() {
+            return Ok(result);
+        }
+
+        let loaded = self.inner.load_many(result.created_ids.clone()).await?;
+        let records = result
+            .created_ids
+            .iter()
+            .zip(loaded)
+            .map(|(memory_id, record)| record.ok_or_else(|| missing_memory(memory_id)))
+            .collect::<Result<Vec<_>>>()?;
+        for chunk in records.chunks(self.graph_tx_batch_size) {
+            if let Err(error) = self.mirror.upsert_memory_nodes(chunk).await {
+                self.mark_graph_recovery(chunk, &error, &mut result.warnings)
+                    .await?;
+            }
+        }
+        Ok(result)
     }
 
     async fn export(&self, request: MemoryExportRequest) -> Result<MemoryExportResult> {

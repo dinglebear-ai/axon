@@ -79,6 +79,26 @@ fn fixtures_required_families_have_required_fixture_packs() {
 }
 
 #[test]
+fn source_request_schema_examples_cover_every_canonical_source_kind() {
+    let mut kinds = source_family_matrix()
+        .iter()
+        .flat_map(|spec| spec.source_kinds.iter().copied())
+        .map(|kind| serde_json::to_value(kind).expect("serialize source kind"))
+        .filter_map(|kind| kind.as_str().map(ToOwned::to_owned))
+        .collect::<Vec<_>>();
+    kinds.sort();
+    kinds.dedup();
+
+    assert_eq!(kinds.len(), 12, "canonical SourceKind coverage drifted");
+    for kind in kinds {
+        let path = repo_root()
+            .join("crates/axon-api/tests/fixtures/schema")
+            .join(format!("source_request.{kind}.valid.json"));
+        assert!(path.is_file(), "missing schema example {}", path.display());
+    }
+}
+
+#[test]
 fn fixture_packs_required_family_fixtures_have_contract_fields() {
     for spec in source_family_matrix()
         .iter()

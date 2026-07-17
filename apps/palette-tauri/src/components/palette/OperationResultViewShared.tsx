@@ -10,7 +10,14 @@ const LIST_LIMIT = 18;
 
 type Tone = "info" | "success" | "warn" | "error" | "neutral" | "rose" | "violet";
 type EmptyKind =
-  | "generic" | "results" | "urls" | "sources" | "jobs" | "watches" | "scrape" | "retrieve";
+  | "generic"
+  | "results"
+  | "urls"
+  | "sources"
+  | "jobs"
+  | "watches"
+  | "scrape"
+  | "retrieve";
 
 export function UrlListView({
   title,
@@ -257,7 +264,7 @@ function emptyCopy(kind: EmptyKind): { title: string; body: string } {
     case "sources":
       return {
         title: "No indexed sources",
-        body: "This collection does not have source URLs yet. Scrape, crawl, or ingest something first.",
+        body: "This collection does not have source URLs yet. Scrape or index a source first.",
       };
     case "jobs":
       return {
@@ -267,7 +274,7 @@ function emptyCopy(kind: EmptyKind): { title: string; body: string } {
     case "watches":
       return {
         title: "No watches configured",
-        body: "Create a watch from a URL to schedule recurring crawls or diffs.",
+        body: "Create a watch from a URL to schedule recurring source jobs or diffs.",
       };
     case "scrape":
       return {
@@ -347,22 +354,15 @@ function isEmptyBulletLine(line: string): boolean {
   return /^\s*$/.test(line) || /^\s*(?:[-+*]\s*|[•‣◦]\s*)$/.test(line);
 }
 
-// Resolve a screenshot path/URL to something the WebView can render. Remote
-// http(s) and inline data:image sources pass through. Local filesystem paths are
-// converted via Tauri's `convertFileSrc` (the `asset:` protocol the CSP allows),
-// not a raw `file://` URL — `file:` is excluded from `img-src`, so the old branch
-// only produced broken images and let payload-controlled paths build arbitrary
-// `file://` references (S-L2).
+// Resolve trusted fixture and user-selected image paths to something the
+// WebView can render. Server-produced artifacts use authenticated opaque-ID
+// URLs and do not flow through this helper.
 export function imagePreviewSrc(path: string | undefined): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path) || path.startsWith("data:image/")) return path;
   if (!/\.(png|jpe?g|webp|gif|avif)$/i.test(path)) return undefined;
   if (!path.startsWith("/")) return path;
-  // Local absolute path. In Tauri, route through the asset protocol so the
-  // WebView's CSP (img-src ... asset:) allows it — a raw file:// URL is not
-  // covered and silently fails on WebKitGTK/WebView2. Outside Tauri (vite dev /
-  // fixture route) convertFileSrc is unavailable and the path isn't a real local
-  // file the browser can read, so fall back to the raw path unchanged.
+  // In Tauri, local absolute paths use the asset protocol allowed by CSP.
   return isTauriRuntime ? convertFileSrc(path) : path;
 }
 

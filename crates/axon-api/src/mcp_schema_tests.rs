@@ -318,6 +318,22 @@ fn parse_domains_action_with_domain() {
 }
 
 #[test]
+fn parse_source_action_with_canonical_source_field() {
+    let raw = obj(json!({
+        "action": "source",
+        "source": "https://example.com",
+        "scope": "page",
+        "response_mode": "auto_inline"
+    }));
+    let Ok(AxonRequest::Source(req)) = parse_axon_request(raw) else {
+        panic!("expected source request");
+    };
+    assert_eq!(req.source.as_deref(), Some("https://example.com"));
+    assert!(matches!(req.scope, Some(crate::source::SourceScope::Page)));
+    assert!(matches!(req.response_mode, Some(ResponseMode::AutoInline)));
+}
+
+#[test]
 fn parse_rejects_removed_acp_action() {
     let raw = obj(json!({
         "action": "acp",
@@ -352,10 +368,10 @@ fn parse_query_action_with_all_optional_fields() {
 }
 
 #[test]
-fn parse_evaluate_action_with_question_alias() {
+fn parse_evaluate_action_with_canonical_query() {
     let raw = obj(json!({
         "action": "evaluate",
-        "question": "does retrieval answer this?",
+        "query": "does retrieval answer this?",
         "diagnostics": true,
         "retrieval_ab": true,
         "collection": "docs_v2",
@@ -381,10 +397,10 @@ fn parse_evaluate_action_with_question_alias() {
 }
 
 #[test]
-fn parse_suggest_action_with_query_alias() {
+fn parse_suggest_action_with_canonical_focus() {
     let raw = obj(json!({
         "action": "suggest",
-        "query": "refresh scheduler internals",
+        "focus": "refresh scheduler internals",
         "limit": 5,
         "collection": "docs_v2",
         "response_mode": "auto_inline"
@@ -434,70 +450,37 @@ fn parse_retrieve_action_with_collection_and_time_filters() {
 }
 
 #[test]
-fn parse_crawl_start_action() {
-    let raw = obj(json!({
-        "action": "crawl",
-        "subaction": "start",
-        "urls": ["https://example.com"]
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "crawl start should parse successfully");
-    if let Ok(AxonRequest::Crawl(c)) = result {
-        assert!(matches!(c.subaction, Some(CrawlSubaction::Start)));
-        assert_eq!(
-            c.urls.as_deref(),
-            Some(&["https://example.com".to_string()][..])
+fn removed_mcp_actions_fail_closed_with_guidance() {
+    for (action, guidance) in [
+        ("crawl", "action=source with scope=site"),
+        ("scrape", "action=source with scope=page"),
+        ("embed", "action=source"),
+        ("ingest", "action=source"),
+        ("vertical_scrape", "action=source"),
+        ("code_search", "action=query"),
+        ("dedupe", "action=prune"),
+        ("purge", "action=prune"),
+    ] {
+        let raw = obj(json!({
+            "action": action,
+            "subaction": "start",
+            "urls": ["https://example.com"],
+            "input": "https://example.com",
+            "target": "https://example.com",
+            "url": "https://example.com"
+        }));
+        let err = match parse_axon_request(raw) {
+            Ok(_) => panic!("{action} must not parse as an MCP request"),
+            Err(err) => err,
+        };
+        assert!(
+            err.contains(&format!("action `{action}` was removed from MCP")),
+            "{action} error should identify the removed action: {err}"
         );
-    } else {
-        panic!("expected Crawl variant");
-    }
-}
-
-#[test]
-fn parse_crawl_list_action() {
-    let raw = obj(json!({
-        "action": "crawl",
-        "subaction": "list",
-        "limit": 10
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "crawl list should parse successfully");
-    assert!(matches!(result.unwrap(), AxonRequest::Crawl(_)));
-}
-
-#[test]
-fn parse_embed_start_action() {
-    let raw = obj(json!({
-        "action": "embed",
-        "subaction": "start",
-        "input": "https://docs.example.com"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "embed start should parse successfully");
-    if let Ok(AxonRequest::Embed(e)) = result {
-        assert!(matches!(e.subaction, Some(EmbedSubaction::Start)));
-        assert_eq!(e.input.as_deref(), Some("https://docs.example.com"));
-    } else {
-        panic!("expected Embed variant");
-    }
-}
-
-#[test]
-fn parse_scrape_action() {
-    let raw = obj(json!({
-        "action": "scrape",
-        "url": "https://example.com/page",
-        "cursor": "opaque-cursor",
-        "token_budget": 4096
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "scrape should parse successfully");
-    if let Ok(AxonRequest::Scrape(s)) = result {
-        assert_eq!(s.url.as_deref(), Some("https://example.com/page"));
-        assert_eq!(s.cursor.as_deref(), Some("opaque-cursor"));
-        assert_eq!(s.token_budget, Some(4096));
-    } else {
-        panic!("expected Scrape variant");
+        assert!(
+            err.contains(guidance),
+            "{action} error should include replacement guidance {guidance:?}: {err}"
+        );
     }
 }
 
@@ -518,191 +501,40 @@ fn parse_stats_action() {
 }
 
 #[test]
-fn parse_help_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "help",
-        "subaction": "help",
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "help should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Help(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("help"));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Help variant");
-    }
-}
-
-#[test]
-fn parse_status_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "status",
-        "subaction": "status",
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "status should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Status(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("status"));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Status variant");
-    }
-}
-
-#[test]
-fn parse_doctor_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "doctor",
-        "subaction": "doctor",
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "doctor should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Doctor(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("doctor"));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Doctor variant");
-    }
-}
-
-#[test]
-fn parse_domains_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "domains",
-        "subaction": "domains",
-        "limit": 10,
-        "offset": 0,
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "domains should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Domains(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("domains"));
-        assert_eq!(req.limit, Some(10));
-        assert_eq!(req.offset, Some(0));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Domains variant");
-    }
-}
-
-#[test]
-fn parse_sources_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "sources",
-        "subaction": "sources",
-        "limit": 10,
-        "offset": 0,
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "sources should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Sources(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("sources"));
-        assert_eq!(req.limit, Some(10));
-        assert_eq!(req.offset, Some(0));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Sources variant");
-    }
-}
-
-#[test]
-fn parse_stats_action_with_singleton_subaction() {
-    let raw = obj(json!({
-        "action": "stats",
-        "subaction": "stats",
-        "response_mode": "inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "stats should accept singleton subaction for API compatibility"
-    );
-    if let Ok(AxonRequest::Stats(req)) = result {
-        assert_eq!(req.subaction.as_deref(), Some("stats"));
-        assert!(matches!(req.response_mode, Some(ResponseMode::Inline)));
-    } else {
-        panic!("expected Stats variant");
-    }
-}
-
-#[test]
-fn parse_query_action_with_auto_inline_alias() {
-    let raw = obj(json!({
-        "action": "query",
-        "query": "semantic search test",
-        "response_mode": "auto-inline"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "auto-inline should deserialize as a supported response mode alias"
-    );
-    if let Ok(AxonRequest::Query(q)) = result {
-        assert_eq!(q.query.as_deref(), Some("semantic search test"));
-        assert!(matches!(q.response_mode, Some(ResponseMode::AutoInline)));
-    } else {
-        panic!("expected Query variant");
-    }
-}
-
-#[test]
-fn parse_ingest_start_github() {
-    let raw = obj(json!({
-        "action": "ingest",
-        "subaction": "start",
-        "source_type": "github",
-        "target": "owner/repo"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "ingest start github should parse");
-    if let Ok(AxonRequest::Ingest(i)) = result {
-        assert!(matches!(i.subaction, Some(IngestSubaction::Start)));
-        assert!(matches!(i.source_type, Some(IngestSourceType::Github)));
-        assert_eq!(i.target.as_deref(), Some("owner/repo"));
-    } else {
-        panic!("expected Ingest variant");
-    }
-}
-
-#[test]
-fn parse_ingest_start_gitlab() {
-    let raw = obj(json!({
-        "action": "ingest",
-        "subaction": "start",
-        "source_type": "gitlab",
-        "target": "https://gitlab.com/group/project"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(result.is_ok(), "ingest start gitlab should parse");
-    if let Ok(AxonRequest::Ingest(i)) = result {
-        assert!(matches!(i.subaction, Some(IngestSubaction::Start)));
-        assert!(matches!(i.source_type, Some(IngestSourceType::Gitlab)));
-        assert_eq!(
-            i.target.as_deref(),
-            Some("https://gitlab.com/group/project")
+fn compatibility_only_request_fields_fail_at_parse_boundary() {
+    for request in [
+        json!({"action": "help", "subaction": "help"}),
+        json!({"action": "status", "subaction": "status"}),
+        json!({"action": "doctor", "subaction": "doctor"}),
+        json!({"action": "domains", "subaction": "domains"}),
+        json!({"action": "domains", "response_mode": "inline"}),
+        json!({"action": "sources", "subaction": "sources"}),
+        json!({"action": "sources", "response_mode": "inline"}),
+        json!({"action": "stats", "subaction": "stats"}),
+        json!({"action": "capabilities", "subaction": "capabilities"}),
+        json!({"action": "graph", "include_evidence": true}),
+    ] {
+        let result = parse_axon_request(obj(request.clone()));
+        assert!(
+            result.is_err(),
+            "compatibility-only request field must be rejected: {request}"
         );
-    } else {
-        panic!("expected Ingest variant");
+    }
+}
+
+#[test]
+fn removed_request_aliases_fail_at_parse_boundary() {
+    for request in [
+        json!({"action": "source", "input": "https://example.com"}),
+        json!({"action": "evaluate", "question": "does retrieval answer this?"}),
+        json!({"action": "suggest", "query": "refresh scheduler internals"}),
+        json!({"action": "query", "query": "semantic search test", "response_mode": "auto-inline"}),
+    ] {
+        let result = parse_axon_request(obj(request.clone()));
+        assert!(
+            result.is_err(),
+            "removed request alias must be rejected: {request}"
+        );
     }
 }
 
@@ -749,104 +581,20 @@ fn case_sensitive_action_no_folding() {
     );
 }
 
-// --- missing required field -> validation error ---
+// --- removed action boundary and field validation ---
 
 #[test]
-fn crawl_missing_subaction_defaults_to_start() {
-    // subaction is optional; omitting it should default to Start in the handler.
-    let raw = obj(json!({
-        "action": "crawl",
-        "urls": ["https://example.com"]
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "crawl without subaction should parse successfully"
-    );
-    if let Ok(AxonRequest::Crawl(c)) = result {
-        assert!(
-            c.subaction.is_none(),
-            "subaction should be None when omitted"
-        );
-    }
-}
-
-#[test]
-fn embed_missing_subaction_defaults_to_start() {
-    let raw = obj(json!({
-        "action": "embed",
-        "input": "https://docs.example.com"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "embed without subaction should parse successfully"
-    );
-    if let Ok(AxonRequest::Embed(e)) = result {
-        assert!(
-            e.subaction.is_none(),
-            "subaction should be None when omitted"
-        );
-    }
-}
-
-#[test]
-fn ingest_missing_subaction_defaults_to_start() {
-    let raw = obj(json!({
-        "action": "ingest",
-        "source_type": "github",
-        "target": "owner/repo"
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "ingest without subaction should parse successfully"
-    );
-    if let Ok(AxonRequest::Ingest(i)) = result {
-        assert!(
-            i.subaction.is_none(),
-            "subaction should be None when omitted"
-        );
-    }
-}
-
-#[test]
-fn crawl_unknown_subaction_returns_error() {
+fn removed_crawl_unknown_subaction_returns_guidance_error() {
     let raw = obj(json!({
         "action": "crawl",
         "subaction": "fly_to_moon"
     }));
     let result = parse_axon_request(raw);
-    assert!(
-        result.is_err(),
-        "crawl with unknown subaction must return an error"
-    );
+    assert!(result.is_err(), "removed crawl action must return an error");
 }
 
 #[test]
-fn llms_txt_request_fields_roundtrip_and_map() {
-    let raw = obj(json!({
-        "action": "crawl",
-        "subaction": "start",
-        "urls": ["https://x.com"],
-        "discover_llms_txt": false,
-        "max_llms_txt_urls": 50
-    }));
-    let parsed = parse_axon_request(raw).expect("crawl request parses");
-    let AxonRequest::Crawl(req) = parsed else {
-        panic!("expected crawl request");
-    };
-    assert_eq!(req.discover_llms_txt, Some(false));
-    assert_eq!(req.max_llms_txt_urls, Some(50));
-    // Serialize back and confirm snake_case wire names (guards a silent casing mismatch).
-    let out = serde_json::to_string(&req).unwrap();
-    assert!(out.contains("discover_llms_txt"));
-    assert!(out.contains("max_llms_txt_urls"));
-}
-
-#[test]
-fn crawl_deny_unknown_fields() {
-    // CrawlRequest uses #[serde(deny_unknown_fields)]
+fn removed_crawl_with_unknown_fields_returns_guidance_error() {
     let raw = obj(json!({
         "action": "crawl",
         "subaction": "start",
@@ -854,10 +602,7 @@ fn crawl_deny_unknown_fields() {
         "totally_unknown_field": true
     }));
     let result = parse_axon_request(raw);
-    assert!(
-        result.is_err(),
-        "unknown fields must be rejected by deny_unknown_fields"
-    );
+    assert!(result.is_err(), "removed crawl action must return an error");
 }
 
 #[test]
@@ -878,13 +623,13 @@ fn status_deny_unknown_fields() {
 #[test]
 fn serde_roundtrip_axon_tool_response() {
     let data = json!({ "jobs": [], "count": 0 });
-    let resp = AxonToolResponse::ok("crawl", "list", data.clone());
+    let resp = AxonToolResponse::ok("jobs", "list", data.clone());
 
     let serialized = serde_json::to_string(&resp).expect("serialization must succeed");
     let parsed: Value = serde_json::from_str(&serialized).expect("must parse back to JSON");
 
     assert_eq!(parsed["ok"], true);
-    assert_eq!(parsed["action"], "crawl");
+    assert_eq!(parsed["action"], "jobs");
     assert_eq!(parsed["subaction"], "list");
     assert_eq!(parsed["data"]["jobs"], json!([]));
     assert_eq!(parsed["data"]["count"], 0);
@@ -939,22 +684,6 @@ fn serde_response_mode_variants() {
 }
 
 #[test]
-fn serde_crawl_render_mode_variants() {
-    for subaction_str in ["http", "chrome", "auto_switch"] {
-        let raw = obj(json!({
-            "action": "crawl",
-            "subaction": "start",
-            "render_mode": subaction_str
-        }));
-        let result = parse_axon_request(raw);
-        assert!(
-            result.is_ok(),
-            "render_mode '{subaction_str}' should parse successfully"
-        );
-    }
-}
-
-#[test]
 fn serde_search_time_range_variants() {
     for range in ["day", "week", "month", "year"] {
         let raw = obj(json!({
@@ -965,24 +694,6 @@ fn serde_search_time_range_variants() {
         assert!(
             result.is_ok(),
             "search_time_range '{range}' should parse successfully"
-        );
-    }
-}
-
-#[test]
-fn serde_ingest_source_type_variants() {
-    for src in [
-        "github", "gitlab", "gitea", "git", "reddit", "youtube", "sessions",
-    ] {
-        let raw = obj(json!({
-            "action": "ingest",
-            "subaction": "start",
-            "source_type": src
-        }));
-        let result = parse_axon_request(raw);
-        assert!(
-            result.is_ok(),
-            "ingest source_type '{src}' should parse successfully"
         );
     }
 }
@@ -1002,30 +713,6 @@ fn parse_ask_rejects_removed_graph_field() {
 }
 
 #[test]
-fn parse_scrape_with_render_mode_format_embed() {
-    let raw = obj(json!({
-        "action": "scrape",
-        "url": "https://example.com",
-        "render_mode": "chrome",
-        "format": "html",
-        "embed": false
-    }));
-    let result = parse_axon_request(raw);
-    assert!(
-        result.is_ok(),
-        "scrape with render_mode/format/embed should parse"
-    );
-    if let Ok(AxonRequest::Scrape(s)) = result {
-        assert_eq!(s.url.as_deref(), Some("https://example.com"));
-        assert!(matches!(s.render_mode, Some(McpRenderMode::Chrome)));
-        assert!(matches!(s.format, Some(McpScrapeFormat::Html)));
-        assert_eq!(s.embed, Some(false));
-    } else {
-        panic!("expected Scrape variant");
-    }
-}
-
-#[test]
 fn parse_extract_with_max_pages() {
     let raw = obj(json!({
         "action": "extract",
@@ -1039,20 +726,5 @@ fn parse_extract_with_max_pages() {
         assert_eq!(e.max_pages, Some(5));
     } else {
         panic!("expected Extract variant");
-    }
-}
-
-#[test]
-fn serde_scrape_format_variants() {
-    for fmt in ["markdown", "html", "raw_html", "json"] {
-        let raw = obj(json!({
-            "action": "scrape",
-            "format": fmt
-        }));
-        let result = parse_axon_request(raw);
-        assert!(
-            result.is_ok(),
-            "scrape format '{fmt}' should parse successfully"
-        );
     }
 }

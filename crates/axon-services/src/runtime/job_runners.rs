@@ -65,15 +65,11 @@ pub fn build_registry(cfg: &Arc<Config>) -> Result<JobRunnerRegistry, ApiError> 
         Arc::new(SourceRunner::new(Arc::clone(cfg))),
     );
 
-    // Open once and reuse: `SqliteMemoryStore::open` runs a schema migration
-    // via a bare `rusqlite::Connection` with no busy-timeout configured. Doing
-    // this on every job execution races the shared sqlx pool that already
-    // holds this same SQLite file open for the unified job store, producing
-    // intermittent "database is locked" failures under concurrent load.
-    // Opening once at registry-build time and reusing the connection avoids
-    // the repeated open/migrate race entirely.
+    // The composed migration runner owns the shared schema. Open this handle
+    // without running the standalone memory migration (which would overwrite
+    // the canonical schema epoch before the job backend starts).
     let path = cfg.sqlite_path.to_string_lossy().to_string();
-    let memory_store = SqliteMemoryStore::open(&path, Arc::new(SystemClock))
+    let memory_store = SqliteMemoryStore::open_migrated(&path, Arc::new(SystemClock))
         .map_err(|error| compaction_error(format!("open memory store: {}", error.message)))?;
     registry.register(
         JobKind::Memory,
@@ -171,12 +167,10 @@ fn probe_error(message: impl Into<String>) -> ApiError {
 /// foreground path or enqueued directly against the unified store for
 /// detached execution — runs the same real domain call either way.
 ///
-/// This runner opens a plain `SqliteMemoryStore` (not the graph/vector-
-/// decorated composition `crate::memory::store::memory_store` builds, which
-/// needs an async `ServiceContext` this registry-build seam does not have
-/// available) — so a compaction executed through this detached path mirrors
-/// into the graph and embeds into the vector store only when it *also* runs
-/// through the foreground `axon-services::memory` call. A job with no
+/// This runner opens the authoritative `SqliteMemoryStore`. After each write it
+/// enqueues canonical `memory://` source jobs on the same unified store, so
+/// detached compaction/import uses the same prepare/embed/publish/graph path as
+/// foreground mutations. A job with no
 /// recognized `operation`/`payload` (e.g. a bare smoke-test job) falls back
 /// to a safe, idempotent `capabilities()` call rather than failing, so the
 /// registry seam itself stays provable independent of a real payload.
@@ -215,22 +209,42 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                     serde_json::from_value(payload.clone()).map_err(|error| {
                         compaction_error(format!("invalid memory_compaction payload: {error}"))
                     })?;
-                self.memory_store
+                let archived_ids = if request.archive_sources {
+                    request.memory_ids.clone()
+                } else {
+                    Default::default()
+                };
+                let result = self
+                    .memory_store
                     .compact(request)
                     .await
-                    .map(|_result| ())
-                    .map_err(|error| compaction_error(error.message))
+                    .map_err(|error| compaction_error(error.message))?;
+                let mut ids = vec![result.memory_id];
+                ids.extend(archived_ids);
+                enqueue_runner_memory_sync(self.memory_store.as_ref(), store, ids, "compact").await
             }
             (Some("memory_import"), Some(payload)) => {
                 let request: axon_api::source::MemoryImportRequest =
                     serde_json::from_value(payload.clone()).map_err(|error| {
                         compaction_error(format!("invalid memory_import payload: {error}"))
                     })?;
-                self.memory_store
+                let mut sync_ids = crate::memory::import_export::replaced_scope_memory_ids(
+                    self.memory_store.as_ref(),
+                    &request,
+                )
+                .await
+                .map_err(|error| compaction_error(error.to_string()))?;
+                let result = self
+                    .memory_store
                     .import(request)
                     .await
-                    .map(|_result| ())
-                    .map_err(|error| compaction_error(error.message))
+                    .map_err(|error| compaction_error(error.message))?;
+                sync_ids.extend(result.created_ids);
+                if result.dry_run || sync_ids.is_empty() {
+                    return Ok(());
+                }
+                enqueue_runner_memory_sync(self.memory_store.as_ref(), store, sync_ids, "import")
+                    .await
             }
             _ => self
                 .memory_store
@@ -240,6 +254,40 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                 .map_err(|error| compaction_error(error.message)),
         }
     }
+}
+
+async fn enqueue_runner_memory_sync(
+    memory_store: &dyn MemoryStore,
+    job_store: &dyn JobStore,
+    memory_ids: Vec<axon_api::source::MemoryId>,
+    operation: &str,
+) -> Result<(), ApiError> {
+    let mut records = Vec::with_capacity(memory_ids.len());
+    for memory_id in memory_ids {
+        let record = memory_store
+            .get(memory_id.clone())
+            .await
+            .map_err(|error| compaction_error(error.message))?
+            .ok_or_else(|| {
+                compaction_error(format!(
+                    "memory {} missing after detached mutation",
+                    memory_id.0
+                ))
+            })?;
+        records.push(record);
+    }
+    if let Err(error) =
+        crate::memory::sync::enqueue_memory_records(job_store, &records, operation).await
+    {
+        let message = error.to_string();
+        for record in &records {
+            crate::memory::sync::mark_sync_recovery(memory_store, record, operation, &message)
+                .await
+                .map_err(|marker_error| compaction_error(marker_error.to_string()))?;
+        }
+        return Err(compaction_error(message));
+    }
+    Ok(())
 }
 
 fn compaction_error(message: impl Into<String>) -> ApiError {

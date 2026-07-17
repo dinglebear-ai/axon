@@ -216,6 +216,10 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
         .payload
         .insert("chunk_id".to_string(), serde_json::json!("stale-src-lib"));
     stale_point.payload.insert(
+        "vector_point_id".to_string(),
+        serde_json::json!("stale-src-lib"),
+    );
+    stale_point.payload.insert(
         "chunk_text".to_string(),
         serde_json::json!("stale generation"),
     );

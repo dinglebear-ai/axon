@@ -1,5 +1,5 @@
 use super::*;
-use EnvClassification::{KeepEnv, MoveToml};
+use EnvClassification::{Delete, KeepEnv, MoveToml};
 use std::collections::BTreeSet;
 
 #[test]
@@ -9,6 +9,27 @@ fn service_urls_are_env_not_toml() {
         assert_eq!(spec.classification, KeepEnv);
         assert_eq!(spec.toml_destination, None);
     }
+}
+
+#[test]
+fn removed_aliases_are_delete_on_migration() {
+    for key in [
+        "AXON_OPENAI_MODEL",
+        "AXON_MCP_EMBED_ALLOWED_ROOTS",
+        "AXON_HNSW_EF_SEARCH_LEGACY",
+    ] {
+        let spec = spec_for(key).expect("removed key remains registered for migration");
+        assert_eq!(spec.classification, Delete, "{key}");
+        assert_eq!(
+            spec.legacy_behavior,
+            LegacyBehavior::DeleteOnMigration,
+            "{key}"
+        );
+        assert_eq!(spec.toml_destination, None, "{key}");
+    }
+    let canonical = spec_for("AXON_SOURCE_LOCAL_ALLOWED_ROOTS").expect("canonical local roots");
+    assert_eq!(canonical.classification, KeepEnv);
+    assert_eq!(canonical.legacy_behavior, LegacyBehavior::Canonical);
 }
 
 #[test]
@@ -104,6 +125,7 @@ fn implemented_env_keys_are_registered() {
         "AXON_MCP_EMBED_MAX_LOCAL_BYTES",
         "AXON_MCP_EMBED_MAX_LOCAL_DEPTH",
         "AXON_MCP_EMBED_MAX_LOCAL_ENTRIES",
+        "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
     ];
 
     let registered: BTreeSet<_> = all_specs().map(|spec| spec.key).collect();

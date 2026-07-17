@@ -5,35 +5,32 @@ use serde::{Deserialize, Serialize};
 
 use super::ResponseMode;
 
-/// `action=prune` — the target-state replacement for the legacy
-/// `dedupe`/`purge` MCP actions
+/// `action=prune` — canonical cleanup planning and execution
 /// (`docs/pipeline-unification/surfaces/tool-contract.md` "Prune, Collections,
 /// Graph, and Providers Actions").
 ///
 /// `subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —
-/// requires `axon:admin` and `confirm: true`). `target` is either a bare
-/// source id or `collection:<name>` for a whole-collection prune, mirroring
-/// the CLI's `axon prune plan|exec <target>` selector grammar.
+/// requires `axon:admin` and `confirm: true`). `target` is either a bare source
+/// id or `collection:<name>`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PruneMcpRequest {
-    /// `plan` (dry-run) or `exec` (destructive). Defaults to `plan` when
-    /// omitted so a bare `prune` call never mutates state.
+    /// `plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`
+    /// call never mutates state.
     pub subaction: Option<String>,
     /// Prune target: a bare source id, or `collection:<name>` for a
     /// whole-collection prune. **Handler-required despite the `Option`** —
-    /// mirrors `PurgeRequest::target`'s "clean validation error, not a serde
-    /// rejection" convention.
+    /// keeps validation errors structured instead of relying on serde's
+    /// missing-field rejection.
     pub target: Option<String>,
     /// Narrow a source-id target to one generation. Invalid with a
     /// `collection:` target.
     pub generation: Option<String>,
     pub collection: Option<String>,
     /// Required `Some(true)` for `subaction=exec` to proceed — mirrors the
-    /// CLI's `--confirm` gate and [`super::PurgeRequest::dry_run`]'s
-    /// `Option<bool>` idiom (a missing/`false` value is treated identically
+    /// CLI's `--confirm` gate. A missing/`false` value is treated identically
     /// by the handler; `Option` here is purely to match the doc-generator's
-    /// required/optional-field heuristic, not a wire-shape requirement).
+    /// required/optional-field heuristic, not a wire-shape requirement.
     /// Ignored for `subaction=plan`.
     pub confirm: Option<bool>,
     pub response_mode: Option<ResponseMode>,

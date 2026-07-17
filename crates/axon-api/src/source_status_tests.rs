@@ -3,6 +3,31 @@ use chrono::Utc;
 use super::*;
 
 #[test]
+fn progress_event_bounds_reject_large_messages_and_dedupe_keys() {
+    let mut event = SourceProgressEvent::minimal(
+        JobId::new(uuid::Uuid::nil()),
+        1,
+        PipelinePhase::Fetching,
+        LifecycleStatus::Running,
+        Severity::Info,
+        "ok",
+    );
+    assert!(event.validate_bounds().is_ok());
+
+    event.message = "x".repeat(MAX_PROGRESS_MESSAGE_BYTES + 1);
+    assert_eq!(
+        event.validate_bounds().unwrap_err().code.to_string(),
+        "job_event.too_large"
+    );
+    event.message = "ok".to_string();
+    event.dedupe_key = Some("x".repeat(MAX_PROGRESS_DEDUPE_KEY_BYTES + 1));
+    assert_eq!(
+        event.validate_bounds().unwrap_err().code.to_string(),
+        "job_event.too_large"
+    );
+}
+
+#[test]
 fn status_envelope_and_progress_event_round_trip() {
     let job_id = JobId(uuid::Uuid::new_v4());
     let counts = StageCounts {
@@ -432,6 +457,24 @@ fn phase_1_operation_dtos_reject_unknown_fields() {
         collection_err.to_string().contains("unknown field"),
         "{collection_err}"
     );
+}
+
+#[test]
+fn upload_lifecycle_keeps_upload_and_artifact_id_domains_distinct() {
+    let created = UploadCreateResult {
+        upload_id: UploadId::new("upl_abc"),
+        put_url: "/v1/uploads/upl_abc/content".to_string(),
+        expires_at: Timestamp("2026-07-17T00:00:00Z".to_string()),
+    };
+    let completed = UploadCompleteResult {
+        upload_id: created.upload_id.clone(),
+        artifact_id: ArtifactId::new("art_raw_def"),
+        source_ref: "artifact://art_raw_def".to_string(),
+        warnings: Vec::new(),
+    };
+    assert_ne!(created.upload_id.0, completed.artifact_id.0);
+    assert!(created.upload_id.0.starts_with("upl_"));
+    assert!(completed.artifact_id.0.starts_with("art_"));
 }
 
 #[test]

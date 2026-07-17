@@ -13,8 +13,10 @@ fn family_matrix_contains_required_source_families() {
 
     for expected in [
         SourceFamily::Local,
+        SourceFamily::Upload,
         SourceFamily::Git,
         SourceFamily::Web,
+        SourceFamily::Deepwiki,
         SourceFamily::Feed,
         SourceFamily::Youtube,
         SourceFamily::Reddit,
@@ -22,9 +24,59 @@ fn family_matrix_contains_required_source_families() {
         SourceFamily::Registry,
         SourceFamily::CliTool,
         SourceFamily::McpTool,
-        SourceFamily::MemoryIntegration,
+        SourceFamily::Memory,
     ] {
         assert!(families.contains(&expected), "missing {expected:?}");
+    }
+}
+
+#[test]
+fn family_matrix_accounts_for_every_canonical_source_kind() {
+    let declared = source_family_matrix()
+        .iter()
+        .flat_map(|spec| spec.source_kinds.iter().copied())
+        .collect::<Vec<_>>();
+
+    for expected in [
+        SourceKind::Web,
+        SourceKind::Local,
+        SourceKind::Git,
+        SourceKind::Registry,
+        SourceKind::Feed,
+        SourceKind::Reddit,
+        SourceKind::Youtube,
+        SourceKind::Session,
+        SourceKind::CliTool,
+        SourceKind::McpTool,
+        SourceKind::Memory,
+        SourceKind::Upload,
+    ] {
+        assert!(declared.contains(&expected), "missing {expected:?}");
+    }
+}
+
+#[test]
+fn every_source_kind_has_an_enforced_adapter_row() {
+    for expected in [
+        SourceKind::Web,
+        SourceKind::Local,
+        SourceKind::Git,
+        SourceKind::Registry,
+        SourceKind::Feed,
+        SourceKind::Reddit,
+        SourceKind::Youtube,
+        SourceKind::Session,
+        SourceKind::CliTool,
+        SourceKind::McpTool,
+        SourceKind::Memory,
+        SourceKind::Upload,
+    ] {
+        assert!(
+            source_family_matrix()
+                .iter()
+                .any(|spec| spec.is_source_adapter && spec.source_kinds.contains(&expected)),
+            "{expected:?} lacks an enforced source-adapter row"
+        );
     }
 }
 
@@ -66,22 +118,22 @@ fn family_matrix_rows_have_contract_basics() {
 }
 
 #[test]
-fn family_matrix_public_resolver_choices_exclude_memory_integration() {
+fn family_matrix_public_resolver_choices_include_memory() {
     let public_families = source_family_matrix()
         .iter()
         .filter(|spec| spec.public_resolver_family())
         .map(|spec| spec.family)
         .collect::<BTreeSet<_>>();
 
-    assert!(!public_families.contains(&SourceFamily::MemoryIntegration));
+    assert!(public_families.contains(&SourceFamily::Memory));
 
     let memory = source_family_matrix()
         .iter()
-        .find(|spec| spec.family == SourceFamily::MemoryIntegration)
-        .expect("memory integration row");
-    assert!(!memory.is_source_adapter);
-    assert!(memory.supported_schemes.is_empty());
-    assert!(memory.shorthand_patterns.is_empty());
+        .find(|spec| spec.family == SourceFamily::Memory)
+        .expect("memory source row");
+    assert!(memory.is_source_adapter);
+    assert_eq!(memory.supported_schemes, &["memory"]);
+    assert_eq!(memory.shorthand_patterns, &["memory://mem_<id>"]);
     assert_eq!(memory.source_kinds, &[SourceKind::Memory]);
 }
 

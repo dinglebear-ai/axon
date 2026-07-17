@@ -58,7 +58,7 @@ impl PruneRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PruneExecuteRequest {
-    pub plan: PrunePlan,
+    pub plan_id: JobId,
     pub confirm: bool,
     pub reason: String,
 }

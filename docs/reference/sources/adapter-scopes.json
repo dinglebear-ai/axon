@@ -261,7 +261,17 @@
   "x-axon": {
     "adapters": [
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "execution_mode",
+          "tool_action",
+          "execute",
+          "command_allowlist",
+          "tool_allowlist",
+          "env_allowlist",
+          "timeout_ms",
+          "output_cap_bytes",
+          "side_effect_class"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "tool",
@@ -274,7 +284,9 @@
         "safety_class": "tool_execution",
         "source_kind": "cli_tool",
         "supported_scopes": [
-          "tool"
+          "tool",
+          "script",
+          "api"
         ],
         "version": "1",
         "watch_supported": false
@@ -459,7 +471,18 @@
         "watch_supported": true
       },
       {
-        "allowed_option_keys": [],
+        "allowed_option_keys": [
+          "execution_mode",
+          "tool_action",
+          "call",
+          "mcp_allowlist",
+          "tool_allowlist",
+          "mcp_caller_command",
+          "mcp_caller_allowlist",
+          "env_allowlist",
+          "timeout_ms",
+          "output_cap_bytes"
+        ],
         "chunking_hints": [],
         "credential_requirements": [],
         "default_scope": "tool",
@@ -472,7 +495,27 @@
         "safety_class": "tool_execution",
         "source_kind": "mcp_tool",
         "supported_scopes": [
-          "tool"
+          "tool",
+          "api"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
+        "allowed_option_keys": [],
+        "chunking_hints": [],
+        "credential_requirements": [],
+        "default_scope": "api",
+        "execution_affinity": "worker",
+        "name": "memory",
+        "option_schema_id": "adapter:memory:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "authenticated_network",
+        "source_kind": "memory",
+        "supported_scopes": [
+          "api"
         ],
         "version": "1",
         "watch_supported": false
@@ -576,7 +619,7 @@
         "parser_hints": [],
         "provider_requirements": [],
         "refresh_supported": true,
-        "safety_class": "public_network",
+        "safety_class": "authenticated_network",
         "source_kind": "upload",
         "supported_scopes": [
           "file"
@@ -589,18 +632,24 @@
           "max_pages",
           "max_depth",
           "include_subdomains",
+          "respect_robots",
           "render_mode",
+          "headers",
           "discover_sitemaps",
+          "discover_llms_txt",
+          "max_llms_txt_urls",
           "max_sitemaps",
           "sitemap_since_days",
           "url_whitelist",
           "url_blacklist",
           "etag_conditional",
+          "cache_policy",
           "min_markdown_chars",
           "drop_thin_markdown",
           "warc_path",
           "automation_script",
           "verticals_enabled",
+          "vertical_cache_ttl_secs",
           "auto_dispatch_skip",
           "user_agent",
           "manifest_path",
@@ -736,8 +785,7 @@
           "symlink-outside-root"
         ],
         "family": "upload",
-        "integration": "upload",
-        "is_source_adapter": false,
+        "is_source_adapter": true,
         "may_access_local_paths": true,
         "may_call_render_provider": false,
         "may_execute_tools": false,
@@ -1352,8 +1400,7 @@
           "output-capped"
         ],
         "family": "cli_tool",
-        "integration": "cli_tool",
-        "is_source_adapter": false,
+        "is_source_adapter": true,
         "may_access_local_paths": true,
         "may_call_render_provider": false,
         "may_execute_tools": true,
@@ -1393,13 +1440,15 @@
           }
         ],
         "shorthand_patterns": [
-          "tool:<command>"
+          "tool:<command>",
+          "cli:<command>"
         ],
         "source_kinds": [
           "cli_tool"
         ],
         "supported_schemes": [
-          "tool"
+          "tool",
+          "cli"
         ],
         "vector_namespace": "source:cli_tool",
         "version": "1",
@@ -1415,8 +1464,7 @@
           "output-capped"
         ],
         "family": "mcp_tool",
-        "integration": "mcp_tool",
-        "is_source_adapter": false,
+        "is_source_adapter": true,
         "may_access_local_paths": false,
         "may_call_render_provider": false,
         "may_execute_tools": true,
@@ -1474,8 +1522,7 @@
           "superseded-memory"
         ],
         "family": "memory",
-        "integration": "memory",
-        "is_source_adapter": false,
+        "is_source_adapter": true,
         "may_access_local_paths": false,
         "may_call_render_provider": false,
         "may_execute_tools": false,
@@ -1494,17 +1541,27 @@
           "memory",
           "markdown"
         ],
-        "refresh_supported": false,
+        "refresh_supported": true,
         "required_graph_fact_kinds": [
           "memory_document"
         ],
-        "scopes": [],
-        "shorthand_patterns": [],
+        "scopes": [
+          {
+            "notes": "one durable memory record",
+            "required": true,
+            "scope": "api"
+          }
+        ],
+        "shorthand_patterns": [
+          "memory://mem_<id>"
+        ],
         "source_kinds": [
           "memory"
         ],
-        "supported_schemes": [],
-        "vector_namespace": "memory",
+        "supported_schemes": [
+          "memory"
+        ],
+        "vector_namespace": "dense",
         "version": "1",
         "watch_supported": false
       }
@@ -1526,22 +1583,22 @@
         "path": "crates/axon-adapters/src/onboarding.rs"
       },
       {
-        "checksum": "sha256:5f9e6da4d9d3fb6870c95818425fdfef853edf3f9525b036d50f4fe4a7308e71",
+        "checksum": "sha256:1f6cb8d9e61ef997ca66cbd545db9b5f6a85e0c387f706425442950093269c9a",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:356a256c23ddf16e42e507140ae85de0c8fb601ae9a75e77febb5f354e336cef",
+        "checksum": "sha256:795d0d7a2c78900ac18303471e6b529c4d27127ef13a475c0c7534e75c1612c3",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:ba55212e0f21cc9e079e28a26c96dfd0bcc7a04583b9144527bdea852d233182",
+        "checksum": "sha256:8e9985a3dccda4782551a112e420814b3ac74075526773a95f74e2dd8ac00992",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:c6278b9b235886bcce7a3c55e931f2349c254e639399ed8e9a42e67bb06c3491",
+        "checksum": "sha256:b156c244dc58a5f2d3e60897967b4c7c36fa9e4df85b9ece1f3be3a27794dcf8",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

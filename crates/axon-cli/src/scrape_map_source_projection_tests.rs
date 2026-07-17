@@ -20,12 +20,12 @@ fn scrape_map_source_projection_needs_workers_without_wait() {
 }
 
 #[test]
-fn map_discovery_does_not_need_source_workers() {
+fn map_projection_needs_source_workers_to_publish_manifest() {
     let cfg = cfg(CommandKind::Map, &["https://example.com"], false);
     let command_mode = job_command_mode(&cfg);
 
     assert_eq!(command_mode, None);
-    assert!(!command_needs_workers(&cfg, command_mode));
+    assert!(command_needs_workers(&cfg, command_mode));
 }
 
 #[test]
@@ -66,4 +66,18 @@ fn scrape_no_embed_is_only_source_embed_false() {
 
     assert_eq!(request.scope, Some(axon_api::source::SourceScope::Page));
     assert!(!request.embed);
+}
+
+#[test]
+fn scrape_output_path_requests_clean_content_artifact() {
+    let mut cfg = cfg(CommandKind::Scrape, &["https://example.test/intro"], false);
+    cfg.output_path = Some("/tmp/axon-scrape-output.md".into());
+
+    let request = build_source_request(&cfg, cfg.positional[0].clone()).expect("source request");
+
+    assert_eq!(request.scope, Some(axon_api::source::SourceScope::Page));
+    assert_eq!(
+        request.output.artifact_mode,
+        axon_api::source::ArtifactMode::Always
+    );
 }

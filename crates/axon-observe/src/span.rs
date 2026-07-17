@@ -18,8 +18,8 @@
 pub const MODULE_NAME: &str = "span";
 
 use axon_api::source::{
-    ApiError, JobHeartbeat, JobId, PipelinePhase, ProviderId, Severity, SourceId,
-    SourceProgressEvent, SourceScope, StageCounts,
+    ApiError, ChunkId, DocumentId, JobHeartbeat, JobId, PipelinePhase, ProviderId, Severity,
+    SourceGenerationId, SourceId, SourceItemKey, SourceProgressEvent, SourceScope, StageCounts,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,16 @@ pub struct SpanFieldSet {
     pub job_id: Option<JobId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_id: Option<SourceId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_item_key: Option<SourceItemKey>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<SourceGenerationId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_uri: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_id: Option<DocumentId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<ChunkId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -53,6 +63,20 @@ impl SpanFieldSet {
         Self {
             job_id: Some(event.job_id),
             source_id: event.source_id.clone(),
+            source_item_key: event
+                .current
+                .as_ref()
+                .and_then(|current| current.source_item_key.clone()),
+            generation: event.generation.clone(),
+            canonical_uri: event.canonical_uri.clone(),
+            document_id: event
+                .current
+                .as_ref()
+                .and_then(|current| current.document_id.clone()),
+            chunk_id: event
+                .current
+                .as_ref()
+                .and_then(|current| current.chunk_id.clone()),
             adapter: event.adapter.as_ref().map(|adapter| adapter.name.clone()),
             scope: event.scope,
             phase: Some(event.phase),
@@ -71,6 +95,11 @@ impl SpanFieldSet {
         Self {
             job_id: Some(heartbeat.job_id),
             source_id: None,
+            source_item_key: None,
+            generation: None,
+            canonical_uri: None,
+            document_id: None,
+            chunk_id: None,
             adapter: None,
             scope: None,
             phase: Some(heartbeat.phase),

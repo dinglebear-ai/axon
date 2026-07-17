@@ -2,11 +2,11 @@ use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use axon_api::QueryHit;
 use axon_api::source::{
     BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
-    SourceGenerationId, SourceId, VectorSearchRequest,
+    RedactionMetadata, SourceGenerationId, SourceId, SourceRange, VectorSearchRequest,
 };
+use axon_api::{CanonicalCitation, QueryHit};
 use axon_core::config::Config;
 use axon_embedding::reservation::ProviderReservationContext;
 use axon_vectors::payload::generation_payload_i64;
@@ -152,10 +152,10 @@ async fn target_code_search(
         .results
         .into_iter()
         .skip(opts.offset)
-        .take(opts.limit.max(1))
+        .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
         .enumerate()
         .map(|(index, hit)| target_vector_match_to_query_hit(index as u64 + 1, hit))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(CodeSearchResult {
         query: text.to_string(),
@@ -205,18 +205,21 @@ fn target_code_search_request(
 fn target_vector_match_to_query_hit(
     rank: u64,
     hit: axon_api::source::VectorSearchMatch,
-) -> QueryHit {
+) -> Result<QueryHit, Box<dyn Error + Send + Sync>> {
     let source_range = hit.payload.get("source_range");
     let chunk_locator = hit.payload.get("chunk_locator");
-    QueryHit {
+    let canonical_uri = payload_string(&hit.payload, "item_canonical_uri")
+        .or_else(|| payload_string(&hit.payload, "source_item_key"))
+        .unwrap_or_else(|| hit.point_id.0.clone());
+    let citation = code_search_citation(&hit, &canonical_uri)?;
+    Ok(QueryHit {
         rank,
         score: hit.score,
         rerank_score: hit.score,
-        url: payload_string(&hit.payload, "item_canonical_uri")
-            .or_else(|| payload_string(&hit.payload, "source_item_key"))
-            .unwrap_or_else(|| hit.point_id.0.clone()),
+        url: canonical_uri,
         source: payload_string(&hit.payload, "source_item_key").unwrap_or_default(),
         snippet: hit.text.unwrap_or_default(),
+        citation,
         chunk_index: None,
         file_path: chunk_locator_path(chunk_locator)
             .or_else(|| payload_string(&hit.payload, "source_item_key")),
@@ -233,7 +236,109 @@ fn target_vector_match_to_query_hit(
         content_kind: payload_string(&hit.payload, "content_kind"),
         chunking_method: None,
         symbol_extraction_status: None,
-    }
+    })
+}
+
+fn code_search_citation(
+    hit: &axon_api::source::VectorSearchMatch,
+    canonical_uri: &str,
+) -> Result<CanonicalCitation, Box<dyn Error + Send + Sync>> {
+    let source_id = hit
+        .source_id
+        .clone()
+        .ok_or_else(|| missing_lineage("source_id"))?;
+    let source_item_key = hit
+        .source_item_key
+        .clone()
+        .ok_or_else(|| missing_lineage("source_item_key"))?;
+    let document_id = hit
+        .document_id
+        .clone()
+        .ok_or_else(|| missing_lineage("document_id"))?;
+    let chunk_id = hit
+        .chunk_id
+        .clone()
+        .ok_or_else(|| missing_lineage("chunk_id"))?;
+    let generation = hit
+        .payload
+        .get("source_generation")
+        .and_then(|value| {
+            value
+                .as_str()
+                .map(ToString::to_string)
+                .or_else(|| value.as_i64().map(|value| value.to_string()))
+        })
+        .map(SourceGenerationId::new)
+        .ok_or_else(|| missing_lineage("source_generation"))?;
+    let job_id = payload_string(&hit.payload, "job_id")
+        .and_then(|value| uuid::Uuid::parse_str(&value).ok())
+        .map(JobId::new)
+        .ok_or_else(|| missing_lineage("job_id"))?;
+    let source_range = hit
+        .payload
+        .get("source_range")
+        .cloned()
+        .map(serde_json::from_value::<SourceRange>)
+        .transpose()?
+        .ok_or_else(|| missing_lineage("source_range"))?;
+    let redaction = RedactionMetadata {
+        redaction_status: payload_value(&hit.payload, "redaction_status")?,
+        redaction_version: required_payload_string(&hit.payload, "redaction_version")?,
+        visibility: payload_value(&hit.payload, "visibility")?,
+        redacted_field_count: required_payload_u32(&hit.payload, "redacted_field_count")?,
+        dropped_field_count: required_payload_u32(&hit.payload, "dropped_field_count")?,
+        detector_count: required_payload_u32(&hit.payload, "detector_count")?,
+        detector_names: payload_value(&hit.payload, "detector_names")?,
+    };
+    Ok(CanonicalCitation {
+        source_id,
+        source_item_key,
+        generation,
+        document_id,
+        chunk_id,
+        job_id,
+        canonical_uri: canonical_uri.to_string(),
+        source_range,
+        redaction,
+    })
+}
+
+fn payload_value<T: serde::de::DeserializeOwned>(
+    payload: &MetadataMap,
+    field: &str,
+) -> Result<T, Box<dyn Error + Send + Sync>> {
+    payload
+        .get(field)
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()?
+        .ok_or_else(|| missing_lineage(field))
+}
+
+fn required_payload_string(
+    payload: &MetadataMap,
+    field: &str,
+) -> Result<String, Box<dyn Error + Send + Sync>> {
+    payload_string(payload, field).ok_or_else(|| missing_lineage(field))
+}
+
+fn required_payload_u32(
+    payload: &MetadataMap,
+    field: &str,
+) -> Result<u32, Box<dyn Error + Send + Sync>> {
+    payload
+        .get(field)
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| missing_lineage(field))
+}
+
+fn missing_lineage(field: &str) -> Box<dyn Error + Send + Sync> {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!("code search hit is missing canonical lineage field `{field}`"),
+    )
+    .into()
 }
 
 fn payload_string(payload: &MetadataMap, field: &str) -> Option<String> {

@@ -883,7 +883,7 @@ fn release_manifest_requires_release_please_path() {
     let fixture = Fixture::new();
     let path = fixture.path("release/components.toml");
     let content = fs::read_to_string(&path).unwrap();
-    fs::write(&path, content.replace("release_please_path = \".\"\n", "")).unwrap();
+    fs::write(&path, content.replace("release_please_path = \".\"", "")).unwrap();
 
     let err = plan(fixture.root(), Some("origin/main"), "HEAD", GateMode::Pr)
         .expect_err("missing release_please_path must fail");

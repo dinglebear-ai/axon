@@ -15,7 +15,7 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Ingest local AI session history (Claude, Codex, Gemini) into Qdrant.
+Index local AI session history (Claude, Codex, Gemini) into Qdrant.
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/sessions.md`](../../guides/ingest/sessions.md).
 
@@ -23,7 +23,6 @@ Ingest local AI session history (Claude, Codex, Gemini) into Qdrant.
 
 ```bash
 axon sessions [FLAGS]
-axon sessions <SUBCOMMAND> [ARGS]
 ```
 
 ## Provider Sources
@@ -44,27 +43,23 @@ All global flags apply. Sessions-specific and key flags:
 | `--codex` | off | Include Codex sessions. Presence flag — include to enable. |
 | `--gemini` | off | Include Gemini sessions. Presence flag — include to enable. |
 | `--project <name>` | — | Case-insensitive substring filter on export path or transcript content. Reliable for Claude project directories and Codex exports with `cwd`; Gemini only matches when the export path/content contains the token. |
-| `--wait <bool>` | `false` | Block until ingestion completes; otherwise enqueue async ingest job. |
+| `--wait <bool>` | `false` | Block until indexing completes; otherwise enqueue an async source job. |
 | `--collection <name>` | `axon` | Target Qdrant collection. |
 | `--json` | `false` | Machine-readable output. |
 
 Provider selection rule:
-- If none of `--claude/--codex/--gemini` is set, all providers are ingested.
+- If none of `--claude/--codex/--gemini` is set, all providers are indexed.
 
-## Job Subcommands
+## Job Lifecycle
+
+`axon sessions` enqueues unified source jobs when `--wait false` (the default).
+Use the canonical job commands for lifecycle operations:
 
 ```bash
-axon sessions status <job_id>
-axon sessions cancel <job_id>
-axon sessions errors <job_id>
-axon sessions list
-axon sessions cleanup
-axon sessions clear
-axon sessions recover
-axon sessions worker
+axon jobs list --kind source
+axon jobs get <job_id>
+axon jobs cancel <job_id>
 ```
-
-These subcommands operate on the shared ingest queue across source types.
 
 ## Unified Source Path
 
@@ -104,9 +99,6 @@ axon sessions --codex --wait true
 
 # Claude + Codex filtered to project path/content match
 axon sessions --claude --codex --project axon --wait true
-
-# Check job status
-axon sessions status 550e8400-e29b-41d4-a716-446655440000
 
 # Transport-neutral source path for one Codex export
 axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait true

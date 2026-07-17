@@ -264,11 +264,11 @@ fn resolver_keys_equivalent_local_path_spellings_together() {
 fn resolver_normalizes_upload_sources() {
     let resolver = resolver_with_authority();
     let resolved = resolver
-        .resolve(&SourceRequest::new("upload:artifact_123"))
+        .resolve(&SourceRequest::new("artifact://art_123"))
         .expect("upload source resolves");
 
     assert_eq!(resolved.source_kind, SourceKind::Upload);
-    assert_eq!(resolved.canonical_uri, "upload://artifact_123");
+    assert_eq!(resolved.canonical_uri, "upload://art_123");
     assert_eq!(resolved.default_scope, SourceScope::File);
     assert_eq!(resolved.adapter.name, "upload");
 }

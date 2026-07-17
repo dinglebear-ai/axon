@@ -123,10 +123,14 @@ async fn detached_memory_compaction_job_actually_compacts_seeded_memories() {
 
     let (_tmp, cfg) = test_cfg().await;
 
-    // Seed two memories directly against the same sqlite_path the registry's
-    // `MemoryCompactionRunner` will open.
+    // Initialize the shared schema through the canonical composed runner,
+    // then seed through the migration-free domain handle.
+    let pool = axon_jobs::store::open_sqlite_pool(&cfg.sqlite_path.to_string_lossy())
+        .await
+        .expect("initialize canonical schema");
+    pool.close().await;
     let seed_store =
-        SqliteMemoryStore::open(&cfg.sqlite_path.to_string_lossy(), Arc::new(MemoryClock))
+        SqliteMemoryStore::open_migrated(&cfg.sqlite_path.to_string_lossy(), Arc::new(MemoryClock))
             .expect("open seed memory store");
     let scope = MemoryScope {
         kind: "project".to_string(),

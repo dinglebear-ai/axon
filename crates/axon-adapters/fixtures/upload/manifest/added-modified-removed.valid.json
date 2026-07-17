@@ -1,0 +1,35 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "fixture_kind": "manifest.diff",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "items": [
+    {
+      "source_item_key": "upload-added",
+      "status": "added"
+    },
+    {
+      "source_item_key": "upload-modified",
+      "status": "modified"
+    },
+    {
+      "source_item_key": "upload-removed",
+      "status": "removed"
+    }
+  ],
+  "metadata_family": "upload",
+  "redaction_status": "clean",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

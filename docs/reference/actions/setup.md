@@ -45,7 +45,7 @@ axon setup plugin-hook [--json]
 | `compose down` | Stop the Docker service stack. |
 | `compose restart` | Restart the Docker service stack. |
 | `compose rebuild` | Rebuild the Axon image and start the Docker service stack. |
-| `smoke` | Prewarm TEI, crawl `example.com`, and run a simple `ask` proof. |
+| `smoke` | Prewarm TEI, index `example.com` through the source pipeline, and run a simple `ask` proof. |
 | `setup targets` | List concrete SSH aliases from `~/.ssh/config`. |
 | `setup plugin-hook` | Probe-only path used by Claude Code SessionStart. Checks `/readyz`; exits silently when the stack is up, or advises `/axon-deploy` when it is down. Never deploys. |
 
@@ -77,9 +77,9 @@ restart the stack, use the `/axon-deploy` plugin slash command, or `axon setup` 
 | `--google-client-secret <secret>` | `AXON_GOOGLE_CLIENT_SECRET` | Required for OAuth mode. |
 | `--auth-admin-email <email>` | `AXON_AUTH_ADMIN_EMAIL` | Required for OAuth mode. |
 | `--tavily-api-key <key>` | `TAVILY_API_KEY` | Enables Tavily fallback search/research when SearXNG is not configured. |
-| `--github-token <token>` | `GITHUB_TOKEN` | Raises GitHub ingest rate limits. |
-| `--reddit-client-id <id>` | `REDDIT_CLIENT_ID` | Required for Reddit ingest. |
-| `--reddit-client-secret <secret>` | `REDDIT_CLIENT_SECRET` | Required for Reddit ingest. |
+| `--github-token <token>` | `GITHUB_TOKEN` | Raises GitHub source indexing rate limits. |
+| `--reddit-client-id <id>` | `REDDIT_CLIENT_ID` | Required for Reddit source indexing. |
+| `--reddit-client-secret <secret>` | `REDDIT_CLIENT_SECRET` | Required for Reddit source indexing. |
 
 ## Minimum Configuration
 
@@ -93,8 +93,8 @@ Optional features need their own credentials:
 |---------|-----------------------|
 | LLM features (`ask`, `evaluate`, `suggest`, LLM fallback extract, research synthesis) | Gemini CLI authenticated under `~/.gemini`. |
 | Web search / research | `TAVILY_API_KEY`. |
-| GitHub ingest with higher rate limits | `GITHUB_TOKEN`. |
-| Reddit ingest | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
+| GitHub source indexing with higher rate limits | `GITHUB_TOKEN`. |
+| Reddit source indexing | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`. |
 | OAuth MCP auth | `AXON_PUBLIC_URL`, `AXON_GOOGLE_CLIENT_ID`, `AXON_GOOGLE_CLIENT_SECRET`, and `AXON_AUTH_ADMIN_EMAIL`. |
 
 ## Examples

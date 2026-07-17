@@ -54,8 +54,8 @@ use crate::adapter::Result;
 use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::options::{
-    auto_dispatch_skip, automation_script_ref, custom_headers, effective_render_mode,
-    etag_conditional, min_markdown_chars, user_agent, verticals_enabled, warc_path,
+    auto_dispatch_skip, automation_script_ref, cache_policy, effective_render_mode, headers,
+    min_markdown_chars, user_agent, verticals_enabled, warc_path,
 };
 use super::vertical::{VerticalAcquire, VerticalOptions};
 
@@ -74,8 +74,8 @@ struct AcquireOptions {
     mode: RenderMode,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
-    custom_headers: Vec<RedactedHeader>,
-    etag_conditional: bool,
+    headers: Vec<RedactedHeader>,
+    cache_policy: CachePolicy,
     vertical: VerticalOptions,
 }
 
@@ -108,14 +108,32 @@ pub(super) async fn acquire_changed_items(
         mode: effective_render_mode(values),
         min_markdown_chars: min_markdown_chars(values),
         automation_script: automation_script_ref(values),
-        custom_headers: custom_headers(values),
-        etag_conditional: etag_conditional(values),
+        headers: headers(values),
+        cache_policy: cache_policy(values),
         vertical: VerticalOptions {
             enabled: verticals_enabled(values),
             auto_dispatch_skip: auto_dispatch_skip(values),
             user_agent: user_agent(values),
+            cache_ttl_secs: values
+                .get("vertical_cache_ttl_secs")
+                .and_then(Value::as_object)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(|(name, value)| value.as_u64().map(|ttl| (name.clone(), ttl)))
+                        .collect()
+                })
+                .unwrap_or_default(),
         },
     };
+    if opts.cache_policy == CachePolicy::Offline && !manifest_items.is_empty() {
+        return Err(ApiError::new(
+            "web.cache.offline_miss",
+            axon_error::ErrorStage::Fetching,
+            "offline cache policy cannot acquire changed web items",
+        )
+        .with_context("changed_items", manifest_items.len().to_string()));
+    }
     let warc_path = warc_path(values);
 
     let (items, warnings) = match warc_path.as_deref() {
@@ -231,6 +249,15 @@ async fn acquire_item(
     item: &ManifestItem,
     opts: &AcquireOptions,
 ) -> Result<AcquiredItem> {
+    axon_core::http::validate_url(&item.canonical_uri).map_err(|err| {
+        ApiError::new(
+            "web.acquire.invalid_uri",
+            axon_error::ErrorStage::Resolving,
+            format!("web target rejected by SSRF policy: {err}"),
+        )
+        .with_source_id(item.source_id.0.clone())
+        .with_context("uri", item.canonical_uri.clone())
+    })?;
     let mut warnings = Vec::new();
     match super::vertical::try_acquire(item, &opts.vertical, opts.job_id).await {
         VerticalAcquire::Handled(item) => {
@@ -245,8 +272,7 @@ async fn acquire_item(
 
     match opts.mode {
         RenderMode::Http => {
-            let fetched =
-                acquire_via_fetch(fetch, item, opts.etag_conditional, &opts.custom_headers).await?;
+            let fetched = acquire_via_fetch(fetch, item, opts.cache_policy, &opts.headers).await?;
             Ok(AcquiredItem {
                 item: fetched,
                 warnings,
@@ -284,17 +310,17 @@ async fn acquire_item(
 pub(crate) async fn acquire_via_fetch(
     fetch: &dyn FetchProvider,
     item: &ManifestItem,
-    etag_conditional: bool,
-    custom_headers: &[RedactedHeader],
+    cache_policy: CachePolicy,
+    headers: &[RedactedHeader],
 ) -> Result<Option<AcquiredSourceItem>> {
-    let prior_etag = if etag_conditional {
+    let prior_etag = if cache_policy == CachePolicy::Revalidate {
         item.metadata.get("web_prior_etag").and_then(Value::as_str)
     } else {
         None
     };
     let sent_prior_validator = prior_etag.is_some();
     let fetched = fetch
-        .fetch(build_fetch_request(item, prior_etag, custom_headers))
+        .fetch(build_fetch_request(item, prior_etag, headers))
         .await?;
     if fetched.status == 304 {
         if !sent_prior_validator {
@@ -308,10 +334,7 @@ pub(crate) async fn acquire_via_fetch(
             )
             .with_source_id(item.source_id.0.clone())
             .with_context("uri", item.canonical_uri.clone())
-            .with_context(
-                "etag_conditional",
-                if etag_conditional { "true" } else { "false" },
-            )
+            .with_context("cache_policy", format!("{cache_policy:?}").to_lowercase())
             .with_context(
                 "has_web_prior_etag",
                 if item.metadata.contains_key("web_prior_etag") {
@@ -451,9 +474,9 @@ async fn acquire_via_auto_switch(
 fn build_fetch_request(
     item: &ManifestItem,
     prior_etag: Option<&str>,
-    custom_headers: &[RedactedHeader],
+    headers: &[RedactedHeader],
 ) -> FetchRequest {
-    let mut headers = custom_headers.to_vec();
+    let mut headers = headers.to_vec();
     if let Some(etag) = prior_etag {
         headers.push(RedactedHeader {
             name: "If-None-Match".to_string(),

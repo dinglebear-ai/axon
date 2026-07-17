@@ -47,10 +47,10 @@ fn maps_domain_facets_to_domains_result() {
 #[test]
 fn summarizes_detailed_domains_with_unique_url_counts() {
     let payloads = vec![
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/a"}),
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/a"}),
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/b"}),
-        serde_json::json!({"domain": "docs.example.com", "url": "https://docs.example.com/guide"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/a"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/a"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/b"}),
+        serde_json::json!({"web_domain": "docs.example.com", "item_canonical_uri": "https://docs.example.com/guide"}),
     ];
 
     let result = summarize_detailed_domains(&payloads);
@@ -66,10 +66,10 @@ fn summarizes_detailed_domains_with_unique_url_counts() {
 #[test]
 fn summarizes_detailed_domains_respects_vector_cap() {
     let payloads = vec![
-        serde_json::json!({"domain": "docs.example.com", "url": "https://docs.example.com/guide"}),
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/a"}),
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/b"}),
-        serde_json::json!({"domain": "example.com", "url": "https://example.com/c"}),
+        serde_json::json!({"web_domain": "docs.example.com", "item_canonical_uri": "https://docs.example.com/guide"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/a"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/b"}),
+        serde_json::json!({"web_domain": "example.com", "item_canonical_uri": "https://example.com/c"}),
     ];
 
     let result = summarize_detailed_domains_limited(&payloads, Some(3));

@@ -31,6 +31,7 @@
       "edge_kind": "repo_declares_dependency",
       "from_stable_key": "repo:local/x",
       "to_stable_key": "pkg:crates.io:tokio",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     }
   ],

@@ -56,8 +56,10 @@ async fn source_local_path_denied_without_local_scope() {
 
 /// The same local-filesystem source is allowed once the caller also holds
 /// `axon:local` — proceeds past the authorization boundary into
-/// `index_source_with_auth`, which degrades to a `Failed` `SourceResult`
-/// (`Ok`, not `Err`) because this test has no qdrant/tei configured.
+/// `index_source_with_auth`. Provider construction is lazy (`ServiceContext::
+/// build_target_local_source`), so with no qdrant/tei configured the request
+/// reaches the provider boundary and fails there; the assertion is only that
+/// the scope gate did not refuse it.
 #[tokio::test]
 async fn source_local_path_allowed_with_local_scope() {
     let source_dir = tempfile::tempdir().expect("tempdir");
@@ -81,7 +83,7 @@ async fn source_local_path_allowed_with_local_scope() {
         )
         .await;
 
-    result.expect("local source with axon:local must pass the authorization boundary");
+    assert_passed_source_authorization(result);
 }
 
 /// A web-URL source is unaffected by the local-filesystem scope upgrade — a
@@ -109,7 +111,27 @@ async fn source_web_url_allowed_with_write_scope_only() {
         })
         .await;
 
-    result.expect("web source with only axon:write must pass the authorization boundary");
+    assert_passed_source_authorization(result);
+}
+
+/// Assert a `handle_source` outcome got past `enforce_source_safety_scope`:
+/// either the pipeline succeeded, or it failed later (e.g. at the lazily
+/// constructed provider boundary when no data plane is configured) with an
+/// error that is not the scope refusal.
+fn assert_passed_source_authorization(result: Result<AxonToolResponse, ErrorData>) {
+    if let Err(err) = result {
+        assert_ne!(
+            err.code,
+            rmcp::model::ErrorCode::INVALID_REQUEST,
+            "request must not be refused at the authorization boundary; got: {}",
+            err.message
+        );
+        assert!(
+            !err.message.contains("axon:local"),
+            "error must not be the axon:local scope refusal; got: {}",
+            err.message
+        );
+    }
 }
 
 #[tokio::test]
@@ -142,11 +164,13 @@ async fn source_blank_input_returns_invalid_params() {
 }
 
 #[tokio::test]
-async fn source_without_data_plane_returns_degraded_result() {
-    // With no qdrant/tei configured the base service context has no local-source
-    // runtime, so `index_source` returns a degraded (status=Failed) SourceResult
-    // rather than an error. `handle_source` must surface that as an Ok response —
-    // proving it routes through `axon_services::index_source`.
+async fn source_without_data_plane_fails_at_provider_boundary() {
+    // Provider construction is lazy (`ServiceContext::build_target_local_source`),
+    // so with no qdrant/tei configured an indexing request still routes through
+    // `axon_services::index_source` and fails at the provider boundary (fetch or
+    // vector provider, depending on network reachability). `handle_source`
+    // surfaces that as the service's wrapped source failure — proving the
+    // request reached the pipeline instead of being rejected during parsing.
     let tmp = tempfile::tempdir().expect("tempdir");
     let cfg = axon_core::config::Config {
         qdrant_url: String::new(),
@@ -162,23 +186,14 @@ async fn source_without_data_plane_returns_degraded_result() {
         ..Default::default()
     };
 
-    let response = server
+    let err = server
         .handle_source(req)
         .await
-        .expect("degraded source result is Ok, not an error");
-    assert_eq!(response.action, "source");
-    // The serialized SourceResult carries a canonical_uri and a Failed status
-    // when the data plane is unconfigured.
-    let data = &response.data;
-    let status = data
-        .get("status")
-        .or_else(|| data.get("data").and_then(|d| d.get("status")))
-        .and_then(serde_json::Value::as_str);
-    // Either the inline payload or a path-mode wrapper — assert the response is
-    // well-formed and names the source action; the degraded status is an
-    // index_source concern already covered in axon-services tests.
+        .expect_err("indexing without a data plane fails at the provider boundary");
+    assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
     assert!(
-        response.ok || status == Some("failed"),
-        "handle_source should return a well-formed response; got: {response:?}"
+        err.message.contains("source 'https://example.com' failed"),
+        "error must be the service-wrapped source failure; got: {}",
+        err.message
     );
 }

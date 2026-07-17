@@ -1,6 +1,5 @@
-use super::super::common::{internal_error, invalid_params};
+use super::super::common::internal_error;
 use axon_core::paths::axon_data_base_dir;
-use axon_services::types::ArtifactHandle;
 use rmcp::ErrorData;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -135,117 +134,6 @@ pub async fn ensure_artifact_root() -> Result<PathBuf, ErrorData> {
         "artifact dir '{}' is not writable",
         root.display()
     )))
-}
-
-pub async fn build_artifact_path(stem: &str, ext: &str) -> Result<PathBuf, ErrorData> {
-    let root = ensure_artifact_root().await?;
-    let (action, name) = split_artifact_stem(stem);
-    Ok(root.join(action).join(format!("{name}.{ext}")))
-}
-
-fn split_artifact_stem(stem: &str) -> (String, String) {
-    let mut parts = stem.splitn(2, '-');
-    let action_raw = parts.next().unwrap_or("misc");
-    let name_raw = parts.next().unwrap_or(stem);
-    let action = sanitize_segment(action_raw, "misc");
-    let name = sanitize_segment(name_raw, "artifact");
-    (action, name)
-}
-
-fn sanitize_segment(raw: &str, fallback: &str) -> String {
-    let sanitized = raw
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_string();
-    if sanitized.is_empty() {
-        fallback.to_string()
-    } else {
-        sanitized
-    }
-}
-
-fn reject_relative_traversal(candidate: &Path, label: &str) -> Result<(), ErrorData> {
-    if candidate.components().any(|c| {
-        matches!(
-            c,
-            std::path::Component::ParentDir
-                | std::path::Component::RootDir
-                | std::path::Component::Prefix(_)
-        )
-    }) {
-        return Err(invalid_params(format!(
-            "{label} cannot contain traversal components"
-        )));
-    }
-    Ok(())
-}
-
-pub async fn artifact_handle_for_path(
-    kind: &str,
-    path: &Path,
-    bytes: u64,
-    line_count: Option<u64>,
-    job_id: Option<String>,
-    url: Option<String>,
-) -> Result<ArtifactHandle, ErrorData> {
-    let root = tokio::fs::canonicalize(ensure_artifact_root().await?)
-        .await
-        .map_err(|e| internal_error(e.to_string()))?;
-    let canonical = tokio::fs::canonicalize(path)
-        .await
-        .map_err(|e| invalid_params(format!("artifact path not found: {e}")))?;
-    if !canonical.starts_with(&root) {
-        return Err(invalid_params(format!(
-            "artifact path must be inside {}",
-            root.display()
-        )));
-    }
-    ArtifactHandle::try_from_path(kind, &root, &canonical, bytes, line_count, job_id, url)
-        .ok_or_else(|| invalid_params(format!("artifact path must be inside {}", root.display())))
-}
-
-pub async fn resolve_artifact_output_path(raw: &str) -> Result<PathBuf, ErrorData> {
-    let candidate = PathBuf::from(raw);
-    if candidate.as_os_str().is_empty() {
-        return Err(invalid_params("output path cannot be empty"));
-    }
-    if candidate.is_absolute() {
-        return Err(invalid_params(format!(
-            "output path must be relative to {}",
-            ensure_artifact_root().await?.display()
-        )));
-    }
-    reject_relative_traversal(&candidate, "output path")?;
-    let root = ensure_artifact_root().await?;
-    let resolved = root.join(candidate);
-    if let Some(parent) = resolved.parent() {
-        let canonical_root = tokio::fs::canonicalize(&root)
-            .await
-            .map_err(|e| internal_error(e.to_string()))?;
-        if tokio::fs::try_exists(parent)
-            .await
-            .map_err(|e| internal_error(e.to_string()))?
-        {
-            let canonical_parent = tokio::fs::canonicalize(parent)
-                .await
-                .map_err(|e| invalid_params(format!("output path parent invalid: {e}")))?;
-            if !canonical_parent.starts_with(&canonical_root) {
-                return Err(invalid_params(format!(
-                    "output path must stay inside {}",
-                    canonical_root.display()
-                )));
-            }
-        }
-    }
-    Ok(resolved)
 }
 
 /// Shared mutex for serializing tests that mutate `MCP_ARTIFACT_DIR_ENV` /

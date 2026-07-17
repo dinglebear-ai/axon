@@ -1,34 +1,33 @@
 import {
+  type Dispatch,
+  type SetStateAction,
   startTransition,
   useActionState,
   useEffect,
   useRef,
-  type Dispatch,
-  type SetStateAction,
 } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
-import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
+import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
+import { newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import { appendAskPendingTurn } from "@/lib/askTranscript";
-import { crawlSeedUrl, newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import {
   buildActionRequest,
-  executeAction,
   type Client,
+  executeAction,
   type PaletteConfig,
   type PaletteResult,
 } from "@/lib/axonClient";
-import { hostFromUrl, summarizeCrawl } from "@/lib/crawlJob";
+import { formatPayload, type OutputKind, outputKindFor } from "@/lib/format";
+import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
 import {
-  asyncJobFamilyForSubcommand,
   type AsyncJobFamily,
+  asyncJobFamilyForSubcommand,
   pendingJobSnapshot,
   summarizeJob,
 } from "@/lib/jobProgress";
-import { formatPayload, outputKindFor, type OutputKind } from "@/lib/format";
-import { appWindow, invoke, isTauriRuntime } from "@/lib/invoke";
-import { argumentFor, validationMessage, type ParsedCommand } from "@/lib/paletteView";
+import { argumentFor, type ParsedCommand, validationMessage } from "@/lib/paletteView";
 import type { AskTurn, RunState } from "@/lib/runState";
 import {
   jobLabel,
@@ -38,7 +37,7 @@ import {
   reduceStreamEvent,
   statusFallbackAction,
 } from "@/lib/useActionRunner/runFactories";
-import { runOneShotAction, type OneShotInput } from "@/lib/useActionRunner/runOneShotAction";
+import { type OneShotInput, runOneShotAction } from "@/lib/useActionRunner/runOneShotAction";
 
 // Re-exported for import compatibility: other modules (and tests) import
 // `reduceStreamEvent` from "@/lib/useActionRunner".
@@ -72,7 +71,7 @@ interface UseActionRunnerArgs {
 }
 
 // Action-execution engine for the palette: turns a selected action + argument
-// into a backend call, routing crawl → live job, ask → streamed answer, and
+// into a backend call, routing source jobs, streamed answers, and
 // everything else → one-shot request, while recording each run into history.
 // `run`/`history` state stays owned by App; this hook holds the logic only.
 export function useActionRunner({
@@ -138,93 +137,7 @@ export function useActionRunner({
     { kind: "idle" },
   );
 
-  // ── Crawl branch: submit the job, then hand the live poll off to useCrawlJob ─
-  async function submitCrawl(
-    action: RemotePaletteAction,
-    argument: string,
-    cli: Client,
-    cfg: PaletteConfig,
-  ) {
-    const commandLine = `${action.subcommand}${argument ? ` ${argument}` : ""}`;
-    const seedUrl = crawlSeedUrl(argument);
-    const startedAtMs = Date.now();
-    const pendingSnapshot = summarizeCrawl(
-      { job: { status: "pending" } },
-      { jobId: "", url: seedUrl },
-    );
-    setRun({
-      kind: "job",
-      family: "crawl",
-      title: `Crawling ${hostFromUrl(seedUrl)}`,
-      subtitle: "submitting…",
-      jobId: "",
-      statusUrl: "",
-      url: seedUrl,
-      startedAtMs,
-      maxPages: 0,
-      maxDepth: 0,
-      snapshot: pendingSnapshot,
-      minimized: false,
-    });
-    try {
-      const result = await executeAction(cli, action, argument, cfg);
-      const payload = (result.payload ?? {}) as Record<string, unknown>;
-      const jobId =
-        typeof payload.job_id === "string"
-          ? payload.job_id
-          : typeof payload.id === "string"
-            ? payload.id
-            : null;
-      if (!result.ok || !jobId) {
-        const text = formatPayload(action.subcommand, result.payload);
-        const subtitle = `${result.method} ${result.path} | HTTP ${result.status}`;
-        pushHistory(action, seedUrl, {
-          status: result.status,
-          title: "Crawl failed",
-          subtitle,
-          text,
-          outputKind: "code",
-          result,
-        });
-        setRun({
-          kind: "error",
-          title: "Crawl failed",
-          subtitle,
-          text,
-          outputKind: "code",
-          result,
-        });
-        return;
-      }
-      pushHistory(action, seedUrl, {
-        status: result.status,
-        title: `Crawling ${hostFromUrl(seedUrl)}`,
-        subtitle: `job ${jobId}`,
-        outputKind: "code",
-        result,
-      });
-      setRun((current) =>
-        current.kind === "job" && current.url === seedUrl
-          ? {
-              ...current,
-              jobId,
-              // Unified route (bead axon_rust-ruzox.9) — `/v1/crawl/{id}` no longer exists.
-              statusUrl: `/v1/jobs/${jobId}`,
-              subtitle: `job ${jobId}`,
-              snapshot: { ...current.snapshot, jobId },
-            }
-          : current,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setRun(
-        makeErrorRun({ title: "Crawl failed", subtitle: commandLine, message, path: "/v1/crawl" }),
-      );
-    }
-  }
-
-  // ── Async-job branch: submit source-backed/extract jobs, then hand the live poll
-  // off to useJobPoll. Mirrors submitCrawl but uses the generic JobSnapshot.
+  // Submit source-backed/extract jobs, then hand the live poll to useJobPoll.
   async function submitAsyncJob(
     action: RemotePaletteAction,
     argument: string,
@@ -415,8 +328,7 @@ export function useActionRunner({
     });
   }
 
-  // Latest in-flight guard for the imperative (crawl/stream) paths. One-shots are
-  // serialized by useActionState's `oneShotPending`; crawl/stream guard on `run`.
+  // Latest in-flight guard for imperative streaming/job paths.
   const runRef = useRef(run);
   runRef.current = run;
 
@@ -425,11 +337,10 @@ export function useActionRunner({
     if (!action) return;
     const current = runRef.current;
     // In-flight guard: one-shot serialization is the runtime's job (oneShotPending),
-    // but a live crawl-job or active stream must still block re-entry.
+    // but a live source job or active stream must still block re-entry.
     if (
       oneShotPending ||
       current.kind === "streaming" ||
-      (current.kind === "job" && !current.jobId) ||
       (current.kind === "asyncJob" && !current.jobId)
     )
       return;
@@ -488,14 +399,10 @@ export function useActionRunner({
 
     enterModeForRun(executableAction, argument);
 
-    if (executableAction.subcommand === "crawl") {
-      await submitCrawl(executableAction, argument, client, config);
-      return;
-    }
     if (
-      executableAction.subcommand === "embed" ||
-      executableAction.subcommand === "extract" ||
-      executableAction.subcommand === "ingest"
+      executableAction.subcommand === "source-site" ||
+      executableAction.subcommand === "source" ||
+      executableAction.subcommand === "extract"
     ) {
       await submitAsyncJob(
         executableAction,

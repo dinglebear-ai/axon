@@ -31,40 +31,50 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.axon.app.data.repository.JobUi
 import com.axon.app.data.repository.WatchUi
-import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.AxonBadge
+import com.axon.app.ui.common.AxonElevation
 import com.axon.app.ui.common.axonElevation
 import com.axon.app.ui.theme.AxonTheme
 import com.axon.app.ui.theme.tint
 
-/** Overview row rendered for one [JobDrill] entry (crawl/embed/ingest/extract/watches). */
+/** Overview row rendered for one [JobDrill] entry (source/extract/watches). */
 @Composable
-internal fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun JobOverviewRow(
+    row: JobOverviewRowModel,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(8.dp)
     val quiet = row.runningCount == 0 && row.failedCount == 0 && row.progress == null
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .axonElevation(shape, AxonElevation.Row)
-            .clip(shape)
-            .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
-            .semantics(mergeDescendants = true) {
-                contentDescription = buildString {
-                    append(row.title)
-                    if (row.detail.isNotBlank()) append(", ").append(row.detail)
-                    if (row.runningCount > 0) append(", ").append(row.runningCount).append(" running")
-                    if (row.failedCount > 0) append(", ").append(row.failedCount).append(" failed")
-                }
-                role = Role.Button
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .axonElevation(shape, AxonElevation.Row)
+                .clip(shape)
+                .background(colors.control.copy(alpha = if (quiet) 0.018f else 0.07f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = if (quiet) 0.04f else 0.14f), shape)
+                .semantics(mergeDescendants = true) {
+                    contentDescription =
+                        buildString {
+                            append(row.title)
+                            if (row.detail.isNotBlank()) append(", ").append(row.detail)
+                            if (row.runningCount > 0) append(", ").append(row.runningCount).append(" running")
+                            if (row.failedCount > 0) append(", ").append(row.failedCount).append(" failed")
+                        }
+                    role = Role.Button
+                }.clickable(onClick = onClick)
+                .padding(horizontal = if (quiet) 18.dp else 20.dp, vertical = if (quiet) 13.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(if (quiet) 13.dp else 15.dp),
     ) {
-        Icon(row.icon, contentDescription = null, tint = colors.tint(row.tone, 78, colors.textPrimary), modifier = Modifier.size(if (quiet) 22.dp else 24.dp))
+        Icon(
+            row.icon,
+            contentDescription = null,
+            tint = colors.tint(row.tone, 78, colors.textPrimary),
+            modifier = Modifier.size(if (quiet) 22.dp else 24.dp),
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (quiet) 4.dp else 9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -104,44 +114,56 @@ internal fun JobOverviewRow(row: JobOverviewRowModel, modifier: Modifier = Modif
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.76f), modifier = Modifier.size(18.dp))
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.textMuted.copy(alpha = 0.76f),
+                modifier = Modifier.size(18.dp),
+            )
         }
     }
 }
 
 /** Hierarchy row rendered for one job inside a [JobDrill.Kind] drill-down list. */
 @Composable
-internal fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun HierarchyJobRow(
+    job: JobUi,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
     val colors = AxonTheme.colors
     val tone = jobTone(job.kind)
     val statusTone = jobStatusTone(job.status, tone)
-    val source = job.sourceType
-        ?.replace('_', ' ')
-        ?.replaceFirstChar { it.uppercase() }
-        ?: job.kind?.label()
-        ?: "Job"
+    val source =
+        job.sourceKind
+            ?.replace('_', ' ')
+            ?.replaceFirstChar { it.uppercase() }
+            ?: job.kind?.label()
+            ?: "Job"
     val shape = RoundedCornerShape(8.dp)
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .axonElevation(shape, AxonElevation.Row)
-            .clip(shape)
-            .background(colors.control.copy(alpha = 0.045f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "${job.kind?.label() ?: "Job"} ${job.status}, ${shortTarget(jobDisplayTarget(job))}, view job details"
-                role = Role.Button
-            }
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .axonElevation(shape, AxonElevation.Row)
+                .clip(shape)
+                .background(colors.control.copy(alpha = 0.045f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
+                .semantics(mergeDescendants = true) {
+                    contentDescription =
+                        "${job.kind?.label() ?: "Job"} ${job.status}, ${shortTarget(jobDisplayTarget(job))}, view job details"
+                    role = Role.Button
+                }.clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .background(statusTone, RoundedCornerShape(999.dp)),
+                modifier =
+                    Modifier
+                        .size(9.dp)
+                        .background(statusTone, RoundedCornerShape(999.dp)),
             )
             Text(
                 shortTarget(jobDisplayTarget(job)),
@@ -162,7 +184,12 @@ internal fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick:
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
             )
-            Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = colors.textMuted.copy(alpha = 0.66f), modifier = Modifier.size(16.dp))
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = colors.textMuted.copy(alpha = 0.66f),
+                modifier = Modifier.size(16.dp),
+            )
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AxonBadge(job.kind?.label() ?: "Job", tone)
@@ -200,25 +227,30 @@ internal fun HierarchyJobRow(job: JobUi, modifier: Modifier = Modifier, onClick:
 
 /** Hierarchy row rendered for one watch inside the [JobDrill.Watches] drill-down list. */
 @Composable
-internal fun HierarchyWatchRow(watch: WatchUi, modifier: Modifier = Modifier) {
+internal fun HierarchyWatchRow(
+    watch: WatchUi,
+    modifier: Modifier = Modifier,
+) {
     val colors = AxonTheme.colors
     val tone = if (watch.enabled) colors.accentPrimary else colors.textMuted
     val shape = RoundedCornerShape(8.dp)
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .axonElevation(shape, AxonElevation.Row)
-            .clip(shape)
-            .background(colors.control.copy(alpha = 0.04f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .axonElevation(shape, AxonElevation.Row)
+                .clip(shape)
+                .background(colors.control.copy(alpha = 0.04f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.1f), shape)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
             Box(
-                modifier = Modifier
-                    .size(9.dp)
-                    .background(tone, RoundedCornerShape(999.dp)),
+                modifier =
+                    Modifier
+                        .size(9.dp)
+                        .background(tone, RoundedCornerShape(999.dp)),
             )
             Text(
                 watch.name,
@@ -250,7 +282,10 @@ internal fun HierarchyWatchRow(watch: WatchUi, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun jobStatusTone(status: String, activeTone: Color): Color {
+private fun jobStatusTone(
+    status: String,
+    activeTone: Color,
+): Color {
     val colors = AxonTheme.colors
     return when (status.lowercase()) {
         in ACTIVE_JOB_STATUSES -> activeTone
@@ -261,13 +296,17 @@ private fun jobStatusTone(status: String, activeTone: Color): Color {
 }
 
 @Composable
-private fun StatusCount(count: Int, tone: Color) {
+private fun StatusCount(
+    count: Int,
+    tone: Color,
+) {
     val colors = AxonTheme.colors
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         Box(
-            modifier = Modifier
-                .size(5.dp)
-                .background(if (count > 0) tone else colors.textMuted.copy(alpha = 0.45f), RoundedCornerShape(999.dp)),
+            modifier =
+                Modifier
+                    .size(5.dp)
+                    .background(if (count > 0) tone else colors.textMuted.copy(alpha = 0.45f), RoundedCornerShape(999.dp)),
         )
         Text(
             count.toString(),

@@ -4,6 +4,7 @@ use crate::context::ServiceContext;
 use crate::jobs as job_service;
 use crate::system::watchdog::{include_status_job, include_status_view};
 use crate::types::{ServiceJob, StatusResult, StatusTotals};
+use axon_api::service_job::StatusJob;
 use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_jobs::store::sqlite_diagnostics;
@@ -51,7 +52,7 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         text: text.join("\n"),
         totals,
         degraded: !errors.is_empty(),
-        errors,
+        warnings: errors,
     })
 }
 
@@ -249,23 +250,48 @@ pub fn build_status_payload_with_errors_and_sqlite(
     errors: &[String],
     sqlite: &serde_json::Value,
 ) -> serde_json::Value {
-    serde_json::json!({
-        "source_jobs": wire_jobs(source_jobs),
-        "extract_jobs": wire_jobs(extract_jobs),
-        "watch_jobs": wire_jobs(watch_jobs),
-        "prune_jobs": wire_jobs(prune_jobs),
-        "totals": {
-            "source": totals.source,
-            "extract": totals.extract,
-            "watch": totals.watch,
-            "prune": totals.prune,
+    let jobs = status_jobs(JobKind::Source, source_jobs)
+        .into_iter()
+        .chain(status_jobs(JobKind::Extract, extract_jobs))
+        .collect();
+    let payload = StatusPayload {
+        jobs,
+        watches: status_jobs(JobKind::Watch, watch_jobs),
+        cleanup: StatusCleanup {
+            jobs: status_jobs(JobKind::Prune, prune_jobs),
         },
-        "sqlite": sqlite,
-        "degraded": !errors.is_empty(),
-        "errors": errors,
-    })
+        totals: totals.clone(),
+        sqlite: sqlite.clone(),
+        degraded: !errors.is_empty(),
+        warnings: errors.to_vec(),
+    };
+    serde_json::to_value(payload).expect("StatusPayload serialization is infallible")
 }
 
-fn wire_jobs(jobs: &[ServiceJob]) -> Vec<serde_json::Value> {
-    jobs.iter().map(ServiceJob::wire_json_compat).collect()
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatusPayload {
+    jobs: Vec<StatusJob>,
+    watches: Vec<StatusJob>,
+    cleanup: StatusCleanup,
+    totals: StatusTotals,
+    sqlite: serde_json::Value,
+    degraded: bool,
+    warnings: Vec<String>,
 }
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatusCleanup {
+    jobs: Vec<StatusJob>,
+}
+
+fn status_jobs(kind: JobKind, jobs: &[ServiceJob]) -> Vec<StatusJob> {
+    jobs.iter()
+        .map(|job| StatusJob::from_service_job(kind, job))
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "status_tests.rs"]
+mod tests;

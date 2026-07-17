@@ -35,6 +35,40 @@ fn watch_not_found_maps_to_not_found() {
 }
 
 #[test]
+fn upload_errors_map_to_stable_transport_statuses() {
+    for (code, expected) in [
+        ("upload.not_found", StatusCode::NOT_FOUND),
+        ("upload.expired", StatusCode::GONE),
+        ("upload.incomplete", StatusCode::CONFLICT),
+        ("upload.too_large", StatusCode::PAYLOAD_TOO_LARGE),
+        ("upload.sha256_mismatch", StatusCode::BAD_REQUEST),
+    ] {
+        let error = ApiError::new(code, ErrorStage::Publishing, "upload failure");
+        assert_eq!(status_for_api_error(&error), expected, "{code}");
+    }
+}
+
+#[test]
+fn artifact_errors_map_to_stable_transport_statuses() {
+    // All artifact errors carry ErrorStage::Retrieving, whose stage fallback
+    // is 500 — the code-family arm must pin the caller-facing statuses so a
+    // stale panel artifact link renders as 404, not a server error.
+    for (code, expected) in [
+        ("artifact.not_found", StatusCode::NOT_FOUND),
+        ("artifact.invalid_id", StatusCode::BAD_REQUEST),
+        ("artifact.read_failed", StatusCode::INTERNAL_SERVER_ERROR),
+        ("artifact.list_failed", StatusCode::INTERNAL_SERVER_ERROR),
+        (
+            "artifact.invalid_manifest",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    ] {
+        let error = ApiError::new(code, ErrorStage::Retrieving, "artifact failure");
+        assert_eq!(status_for_api_error(&error), expected, "{code}");
+    }
+}
+
+#[test]
 fn rate_limited_kind_is_retryable_provider_error() {
     let err = api_error_from_status_kind(
         StatusCode::TOO_MANY_REQUESTS,

@@ -13,13 +13,13 @@ Use `axon map` when the user knows the site but not the exact URL, or when you n
 mkdir -p .axon
 
 axon map "https://docs.example.com" --json > .axon/docs-map.json
-axon map "https://docs.example.com" --map-fallback crawl --json > .axon/docs-map-crawl.json
+axon map "https://docs.example.com" --json > .axon/docs-map.json
 ```
 
 ## Guidance
 
 - Use map before crawl when the site may be huge.
-- Use sitemap-backed map for quick discovery, and `--map-fallback crawl` only when necessary.
+- Map is bounded URL discovery only: sitemap and llms.txt first, then one root-page anchor fetch.
 - After mapping, select the relevant URLs and pass them to `scrape`, `crawl`, or `extract`.
 
 ## See Also

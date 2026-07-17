@@ -98,6 +98,18 @@ async fn query_via_retrieval_maps_engine_hits_from_ctx_runtime() {
     assert!(!result.results.is_empty());
     assert_eq!(result.results[0].rank, 1);
     assert!(result.results.iter().all(|hit| !hit.snippet.is_empty()));
+    assert!(
+        result
+            .results
+            .iter()
+            .all(|hit| hit.citation.canonical_uri == hit.url)
+    );
+    assert!(
+        result
+            .results
+            .iter()
+            .all(|hit| hit.citation.redaction.visibility == Visibility::Internal)
+    );
     assert!(result.results.iter().any(|hit| hit.source == "example.com"));
     assert!(
         result

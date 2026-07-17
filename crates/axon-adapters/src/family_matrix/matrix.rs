@@ -70,16 +70,7 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         may_perform_network_fetches: false,
         may_call_render_provider: false,
         may_execute_tools: false,
-        // `UploadSourceAdapter` is real and fully tested (`upload.rs` /
-        // `upload_tests.rs`) via the `SourceAdapter` trait directly. This is
-        // kept `false` only because `fixture_tests.rs` requires a matching
-        // fixture pack in `crates/axon-parse/fixtures`,
-        // `crates/axon-graph/fixtures`, and
-        // `crates/axon-vectors/tests/fixtures/payload` for every
-        // `is_source_adapter = true` row, and this workstream's territory is
-        // `crates/axon-adapters/**` only. Flip to `true` and add those three
-        // fixtures as a follow-up.
-        is_source_adapter: false,
+        is_source_adapter: true,
         degraded_modes: &[
             "permission-denied",
             "file-too-large",
@@ -361,8 +352,8 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         version: "1",
         source_kinds: &[SourceKind::CliTool],
         vector_namespace: "source:cli_tool",
-        supported_schemes: &["tool"],
-        shorthand_patterns: &["tool:<command>"],
+        supported_schemes: &["tool", "cli"],
+        shorthand_patterns: &["tool:<command>", "cli:<command>"],
         default_scope: SourceScope::Tool,
         scopes: TOOL_SCOPES,
         credential_requirements: NO_CREDENTIALS,
@@ -375,13 +366,7 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         may_perform_network_fetches: false,
         may_call_render_provider: false,
         may_execute_tools: true,
-        // `CliToolSourceAdapter` (`cli_tool/adapter.rs`) is a real
-        // `discover`/`acquire`/`normalize` implementation, but it is not a
-        // production `index_source` adapter yet. Tool execution needs caller
-        // scopes and configured allowlists threaded through the source
-        // contract; until that exists, keep this out of generated "wired
-        // source adapter" inventories.
-        is_source_adapter: false,
+        is_source_adapter: true,
         degraded_modes: &["metadata-only", "command-denied", "output-capped"],
         required_graph_fact_kinds: &["tool"],
         optional_graph_fact_kinds: &["tool_call", "artifact"],
@@ -406,23 +391,19 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         may_perform_network_fetches: true,
         may_call_render_provider: false,
         may_execute_tools: true,
-        // `McpToolSourceAdapter` (`mcp_tool/adapter.rs`) is a real
-        // implementation, but not a production `index_source` adapter yet.
-        // Keep it out of generated wired-adapter inventories until the
-        // execute-scope/allowlist/caller threading contract exists.
-        is_source_adapter: false,
+        is_source_adapter: true,
         degraded_modes: &["schema-only", "tool-unavailable", "output-capped"],
         required_graph_fact_kinds: &["mcp_server", "mcp_tool"],
         optional_graph_fact_kinds: &["tool_call", "external_resource"],
     },
     SourceAdapterSpec {
-        family: SourceFamily::MemoryIntegration,
+        family: SourceFamily::Memory,
         adapter: "memory",
         version: "1",
         source_kinds: &[SourceKind::Memory],
-        vector_namespace: "memory",
-        supported_schemes: &[],
-        shorthand_patterns: &[],
+        vector_namespace: "dense",
+        supported_schemes: &["memory"],
+        shorthand_patterns: &["memory://mem_<id>"],
         default_scope: SourceScope::Api,
         scopes: MEMORY_SCOPES,
         credential_requirements: NO_CREDENTIALS,
@@ -430,12 +411,12 @@ pub(super) const MATRIX: &[SourceAdapterSpec] = &[
         parser_families: &[ParserFamily::Memory, ParserFamily::Markdown],
         metadata_families: &["memory", "retrieval", "graph"],
         watch_supported: false,
-        refresh_supported: false,
+        refresh_supported: true,
         may_access_local_paths: false,
         may_perform_network_fetches: false,
         may_call_render_provider: false,
         may_execute_tools: false,
-        is_source_adapter: false,
+        is_source_adapter: true,
         degraded_modes: &["namespace-filtered", "superseded-memory"],
         required_graph_fact_kinds: &["memory_document"],
         optional_graph_fact_kinds: &["memory_link", "supersedes"],

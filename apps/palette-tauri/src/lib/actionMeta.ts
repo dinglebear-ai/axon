@@ -21,10 +21,9 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   retrieve: { category: "Fetch & read", input: "URL", output: "chunks", label: "Retrieve" },
   screenshot: { category: "Fetch & read", input: "URL", output: "PNG", label: "Screenshot" },
   diff: { category: "Fetch & read", input: "two URLs", output: "changes", label: "Diff" },
-  crawl: { category: "Crawl & ingest", input: "start URL", output: "job", label: "Crawl" },
-  ingest: { category: "Crawl & ingest", input: "target", output: "job", label: "Ingest" },
-  embed: { category: "Crawl & ingest", input: "input", output: "vectors", label: "Embed" },
-  extract: { category: "Crawl & ingest", input: "URLs", output: "data", label: "Extract" },
+  "source-site": { category: "Sources", input: "start URL", output: "job", label: "Index site" },
+  source: { category: "Sources", input: "source", output: "job", label: "Index source" },
+  extract: { category: "Sources", input: "URLs", output: "data", label: "Extract" },
   github: { category: "Fetch & read", input: "owner/repo/path", output: "repos, tree, or file", label: "GitHub" },
   search: { category: "Search & discover", input: "query", output: "results", label: "Search" },
   research: { category: "Search & discover", input: "query", output: "brief", label: "Research" },
@@ -41,8 +40,6 @@ const ACTION_META: Partial<Record<PaletteSubcommand, ActionDisplayDetails>> = {
   doctor: { category: "System", input: "none", output: "health", label: "Doctor" },
   endpoints: { category: "Fetch & read", input: "URL", output: "endpoints", label: "Endpoints" },
   brand: { category: "Fetch & read", input: "URL", output: "brand", label: "Brand" },
-  dedupe: { category: "System", input: "settings", output: "report", label: "Dedupe" },
-  purge: { category: "System", input: "url", output: "report", label: "Purge" },
   "watch-list": { category: "System", input: "none", output: "watches", label: "Watch list" },
   "watch-create": { category: "System", input: "URL", output: "watch", label: "Watch create" },
   "watch-run": { category: "System", input: "watch id", output: "run", label: "Watch run" },
@@ -96,9 +93,9 @@ export function actionKindTone(action: PaletteAction): "info" | "success" | "war
 }
 
 function lifecycleDisplayDetails(action: PaletteAction): ActionDisplayDetails | undefined {
-  const match = /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.exec(action.subcommand);
+  const match = /^jobs-(list|status|cancel|cleanup|clear|recover)$/.exec(action.subcommand);
   if (!match) return undefined;
-  const [, , operation] = match;
+  const [, operation] = match;
   const input = ["list", "cleanup", "clear", "recover"].includes(operation) ? "none" : "job id";
   return {
     category: "Jobs",

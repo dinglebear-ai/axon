@@ -211,64 +211,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Generated Axon schema contract artifact.",
-  "divergences": [
-    {
-      "kind": "duplicate_domain_naming",
-      "note": "Two independent 'memory' schemas coexist: the earlier agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision.",
-      "tables": [
-        "axon_memory_nodes",
-        "axon_memory_edges",
-        "memory_records",
-        "memory_links",
-        "memory_reinforcement",
-        "memory_reviews"
-      ]
-    },
-    {
-      "kind": "watch_naming_overlap",
-      "note": "axon_watch_defs/axon_watch_runs (migration 0002) back the task_type/task_payload watch scheduler; axon_source_watches/axon_source_watch_runs (migration 0023) back the newer SourceRequest-shaped WatchStore used by `watch get|update|pause|resume|delete`. Both are live; not merged here.",
-      "tables": [
-        "axon_watch_defs",
-        "axon_watch_runs",
-        "axon_source_watches",
-        "axon_source_watch_runs"
-      ]
-    }
-  ],
+  "divergences": [],
   "foreign_keys": [
-    {
-      "columns": [
-        "freshness_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_freshness_defs",
-      "table": "axon_freshness_runs"
-    },
-    {
-      "columns": [
-        "source_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_memory_nodes",
-      "table": "axon_memory_edges"
-    },
-    {
-      "columns": [
-        "target_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_memory_nodes",
-      "table": "axon_memory_edges"
-    },
     {
       "columns": [
         "watch_id"
@@ -279,39 +223,6 @@
       ],
       "references_table": "axon_source_watches",
       "table": "axon_source_watch_runs"
-    },
-    {
-      "columns": [
-        "watch_run_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_watch_runs",
-      "table": "axon_watch_run_artifacts"
-    },
-    {
-      "columns": [
-        "watch_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_watch_defs",
-      "table": "axon_watch_runs"
-    },
-    {
-      "columns": [
-        "watch_id"
-      ],
-      "on_delete": "CASCADE",
-      "references_columns": [
-        "id"
-      ],
-      "references_table": "axon_watch_defs",
-      "table": "axon_watch_url_state"
     },
     {
       "columns": [
@@ -453,7 +364,7 @@
       "references_columns": [
         "job_id"
       ],
-      "references_table": "jobs_v4",
+      "references_table": "jobs",
       "table": "jobs"
     },
     {
@@ -464,7 +375,7 @@
       "references_columns": [
         "job_id"
       ],
-      "references_table": "jobs_v4",
+      "references_table": "jobs",
       "table": "jobs"
     },
     {
@@ -484,9 +395,9 @@
       ],
       "on_delete": "SET NULL",
       "references_columns": [
-        "id"
+        "watch_id"
       ],
-      "references_table": "axon_watch_defs",
+      "references_table": "axon_source_watches",
       "table": "jobs"
     },
     {
@@ -583,46 +494,6 @@
     }
   ],
   "indexes": [
-    {
-      "columns": [
-        "enabled",
-        "next_run_at",
-        "lease_expires_at"
-      ],
-      "name": "idx_axon_freshness_due",
-      "table": "axon_freshness_defs",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
-        "created_at"
-      ],
-      "name": "idx_axon_freshness_runs_created",
-      "table": "axon_freshness_runs",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
-        "freshness_id",
-        "created_at DESC"
-      ],
-      "name": "idx_axon_freshness_runs_def_created",
-      "table": "axon_freshness_runs",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
-        "command",
-        "target"
-      ],
-      "name": "idx_axon_freshness_target",
-      "table": "axon_freshness_defs",
-      "unique": false,
-      "where": null
-    },
     {
       "columns": [
         "job_id",
@@ -863,40 +734,12 @@
     },
     {
       "columns": [
-        "source_id"
-      ],
-      "name": "idx_memory_edges_source",
-      "table": "axon_memory_edges",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
-        "target_id"
-      ],
-      "name": "idx_memory_edges_target",
-      "table": "axon_memory_edges",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
         "memory_id"
       ],
       "name": "idx_memory_links_memory",
       "table": "memory_links",
       "unique": false,
       "where": null
-    },
-    {
-      "columns": [
-        "project",
-        "type"
-      ],
-      "name": "idx_memory_nodes_active",
-      "table": "axon_memory_nodes",
-      "unique": false,
-      "where": "status='active'"
     },
     {
       "columns": [
@@ -986,6 +829,26 @@
     },
     {
       "columns": [
+        "job_id",
+        "created_at"
+      ],
+      "name": "idx_observe_events_job_created",
+      "table": "axon_observe_events",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "job_id",
+        "sequence"
+      ],
+      "name": "idx_observe_events_job_sequence",
+      "table": "axon_observe_events",
+      "unique": true,
+      "where": null
+    },
+    {
+      "columns": [
         "source_id",
         "sequence"
       ],
@@ -1039,6 +902,16 @@
     },
     {
       "columns": [
+        "created_at DESC",
+        "watch_id DESC"
+      ],
+      "name": "idx_source_watches_created_cursor",
+      "table": "axon_source_watches",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "next_run_at"
       ],
       "name": "idx_source_watches_due",
@@ -1073,25 +946,6 @@
       "name": "idx_sources_canonical_uri",
       "table": "sources",
       "unique": true,
-      "where": null
-    },
-    {
-      "columns": [
-        "next_run_at"
-      ],
-      "name": "idx_watch_defs_due",
-      "table": "axon_watch_defs",
-      "unique": false,
-      "where": null
-    },
-    {
-      "columns": [
-        "watch_id",
-        "created_at DESC"
-      ],
-      "name": "idx_watch_runs_watch_id",
-      "table": "axon_watch_runs",
-      "unique": false,
       "where": null
     },
     {
@@ -1316,8 +1170,12 @@
   ],
   "migrations": [
     {
+      "checksum": "16b0313a9f47d7f18492bc19560f6b58d7278c1e0fd46fcb30cfe2227e228240",
       "file": "crates/axon-ledger/src/migrations/0001_ledger_lifecycle.sql",
+      "name": "0001_ledger_lifecycle",
       "owner_crate": "axon-ledger",
+      "runtime_namespace": "ledger",
+      "schema_epoch": 1,
       "tables_touched": [
         "cleanup_debt",
         "document_status",
@@ -1326,113 +1184,20 @@
         "source_items",
         "source_manifests",
         "sources"
-      ]
+      ],
+      "version": 1
     },
     {
-      "file": "crates/axon-jobs/src/migrations/0001_create_tables.sql",
+      "checksum": "51b238e740621b42a5b1bc53f4f0aab0c97fa19e70168d1597742290202551bf",
+      "file": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
+      "name": "0001_canonical_jobs",
       "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
-      "owner_crate": "axon-jobs",
+      "runtime_namespace": "jobs",
+      "schema_epoch": 1,
       "tables_touched": [
-        "axon_watch_defs",
-        "axon_watch_run_artifacts",
-        "axon_watch_runs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0003_add_status_checks.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0004_status_created_at_index.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0005_add_attempt_metadata.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0006_create_ingest_payloads.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0007_create_watch_url_state.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_watch_url_state"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0008_add_embed_fs_namespace.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_memory_edges",
-        "axon_memory_nodes"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0010_create_session_watch_tables.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0011_add_session_watch_checkpoint_state.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0012_add_memory_runtime_metadata.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_memory_nodes"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0013_add_job_progress_json.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0014_backfill_active_job_progress_json.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0015_freshness.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_freshness_defs",
-        "axon_freshness_runs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0016_freshness_run_retention_index.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_freshness_runs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0017_source_ledger.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
+        "axon_source_watch_runs",
+        "axon_source_watches",
+        "config_snapshots",
         "job_artifacts",
         "job_attempts",
         "job_events",
@@ -1440,111 +1205,76 @@
         "job_stages",
         "jobs",
         "provider_reservations"
-      ]
+      ],
+      "version": 1
     },
     {
-      "file": "crates/axon-jobs/src/migrations/0019_unified_jobs_contract_fields.sql",
-      "owner_crate": "axon-jobs",
+      "checksum": "1a76f2350e0178842585fa6f8262bb8f61d31e0e51af5d8dbf5d84e0e0bbb7f1",
+      "file": "crates/axon-observe/src/migrations/0001_create_observability_tables.sql",
+      "name": "0001_create_observability_tables",
+      "owner_crate": "axon-observe",
+      "runtime_namespace": "observe",
+      "schema_epoch": 1,
       "tables_touched": [
-        "job_attempts",
-        "job_events",
-        "job_stages",
-        "jobs"
-      ]
+        "axon_observe_events",
+        "axon_observe_heartbeats",
+        "axon_observe_provider_health"
+      ],
+      "version": 1
     },
     {
-      "file": "crates/axon-jobs/src/migrations/0020_job_cutover_receipts.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0021_job_kind_family_cutover.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "jobs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0022_add_job_cooldown_until.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "jobs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_source_watch_runs",
-        "axon_source_watches"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0024_job_intent_widen_and_deadline.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "jobs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0025_config_snapshots.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "config_snapshots"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0026_remove_legacy_job_families.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "jobs"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0027_source_watch_scheduler_leases.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": [
-        "axon_source_watches"
-      ]
-    },
-    {
-      "file": "crates/axon-jobs/src/migrations/0028_drop_session_watch_tables.sql",
-      "owner_crate": "axon-jobs",
-      "tables_touched": []
-    },
-    {
+      "checksum": "c8f9fb2ba205872633432505d3b8691c553c4aaa26f803ac9bcd5b043a37decf",
       "file": "crates/axon-graph/src/migrations/0001_create_graph_tables.sql",
+      "name": "0001_create_graph_tables",
       "owner_crate": "axon-graph",
+      "runtime_namespace": "graph",
+      "schema_epoch": 1,
       "tables_touched": [
         "graph_aliases",
         "graph_conflicts",
         "graph_edges",
         "graph_evidence",
         "graph_nodes"
-      ]
+      ],
+      "version": 1
     },
     {
+      "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
       "file": "crates/axon-memory/src/migrations/0001_create_memory_tables.sql",
+      "name": "0001_create_memory_tables",
       "owner_crate": "axon-memory",
+      "runtime_namespace": "memory",
+      "schema_epoch": 1,
       "tables_touched": [
         "memory_links",
         "memory_records",
         "memory_reinforcement",
         "memory_reviews"
-      ]
+      ],
+      "version": 1
     },
     {
+      "checksum": "1ffee54372287e607c49a909fbb89f8b4732cfb1bd0f6c8671429ccca178d74a",
       "file": "crates/axon-memory/src/migrations/0002_batch_recovery_indexes.sql",
+      "name": "0002_batch_recovery_indexes",
       "owner_crate": "axon-memory",
+      "runtime_namespace": "memory",
+      "schema_epoch": 1,
       "tables_touched": [
         "memory_records",
         "memory_reinforcement"
-      ]
+      ],
+      "version": 2
     },
     {
+      "checksum": "ff07e5966ea8df767e5bff28cd7ef863985f3dea6b8f6b0078314e885604b4dd",
       "file": "crates/axon-memory/src/migrations/0003_add_memory_visibility.sql",
+      "name": "0003_add_memory_visibility",
       "owner_crate": "axon-memory",
-      "tables_touched": []
+      "runtime_namespace": "memory",
+      "schema_epoch": 1,
+      "tables_touched": [],
+      "version": 3
     }
   ],
   "schema_version": 1,
@@ -1552,108 +1282,25 @@
     {
       "columns": [
         {
-          "name": "id",
-          "nullable": true,
+          "name": "event_id",
+          "nullable": false,
           "primary_key": true,
           "type": "text"
         },
         {
-          "name": "name",
+          "name": "job_id",
           "nullable": false,
           "primary_key": false,
           "type": "text"
         },
         {
-          "name": "command",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "target",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "identity_hash",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "request_json",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "config_json",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "every_seconds",
+          "name": "sequence",
           "nullable": false,
           "primary_key": false,
           "type": "integer"
         },
         {
-          "name": "enabled",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "next_run_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "lease_expires_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "last_run_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "updated_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        }
-      ],
-      "foreign_keys": [],
-      "introduced_in": "crates/axon-jobs/src/migrations/0015_freshness.sql",
-      "name": "axon_freshness_defs",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "id",
-          "nullable": true,
-          "primary_key": true,
-          "type": "text"
-        },
-        {
-          "name": "freshness_id",
+          "name": "phase",
           "nullable": false,
           "primary_key": false,
           "type": "text"
@@ -1665,46 +1312,99 @@
           "type": "text"
         },
         {
-          "name": "dispatched_job_id",
-          "nullable": true,
+          "name": "severity",
+          "nullable": false,
           "primary_key": false,
           "type": "text"
         },
         {
-          "name": "error_text",
-          "nullable": true,
+          "name": "visibility",
+          "nullable": false,
           "primary_key": false,
           "type": "text"
         },
         {
-          "name": "result_json",
-          "nullable": true,
+          "name": "message",
+          "nullable": false,
           "primary_key": false,
           "type": "text"
         },
         {
-          "name": "started_at",
-          "nullable": true,
+          "name": "timestamp",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "event_json",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-observe/src/migrations/0001_create_observability_tables.sql",
+      "name": "axon_observe_events",
+      "owner_crate": "axon-observe",
+      "primary_key": [
+        "event_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "job_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
           "primary_key": false,
           "type": "integer"
         },
         {
-          "name": "finished_at",
+          "name": "worker_id",
           "nullable": true,
           "primary_key": false,
-          "type": "integer"
+          "type": "text"
+        },
+        {
+          "name": "phase",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
         },
         {
           "name": "heartbeat_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "last_event_sequence",
           "nullable": true,
           "primary_key": false,
           "type": "integer"
         },
         {
-          "name": "created_at",
+          "name": "heartbeat_json",
           "nullable": false,
           "primary_key": false,
-          "type": "integer"
+          "type": "text"
         },
         {
           "name": "updated_at",
@@ -1713,128 +1413,25 @@
           "type": "integer"
         }
       ],
-      "foreign_keys": [
-        {
-          "columns": [
-            "freshness_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_freshness_defs"
-        }
-      ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0015_freshness.sql",
-      "name": "axon_freshness_runs",
-      "owner_crate": "axon-jobs",
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-observe/src/migrations/0001_create_observability_tables.sql",
+      "name": "axon_observe_heartbeats",
+      "owner_crate": "axon-observe",
       "primary_key": [
-        "id"
+        "job_id"
       ]
     },
     {
       "columns": [
         {
-          "name": "id",
-          "nullable": true,
+          "name": "provider_id",
+          "nullable": false,
           "primary_key": true,
           "type": "text"
         },
         {
-          "name": "source_id",
+          "name": "provider_kind",
           "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "target_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "type",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "updated_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        }
-      ],
-      "foreign_keys": [
-        {
-          "columns": [
-            "source_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_memory_nodes"
-        },
-        {
-          "columns": [
-            "target_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_memory_nodes"
-        }
-      ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
-      "name": "axon_memory_edges",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "id",
-          "nullable": true,
-          "primary_key": true,
-          "type": "text"
-        },
-        {
-          "name": "type",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "title",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "project",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "repo",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "file_path",
-          "nullable": true,
           "primary_key": false,
           "type": "text"
         },
@@ -1845,78 +1442,30 @@
           "type": "text"
         },
         {
-          "name": "confidence",
-          "nullable": false,
-          "primary_key": false,
-          "type": "real"
-        },
-        {
-          "name": "source",
-          "nullable": false,
+          "name": "cooldown_until",
+          "nullable": true,
           "primary_key": false,
           "type": "text"
         },
         {
-          "name": "access_count",
-          "nullable": false,
+          "name": "last_error_code",
+          "nullable": true,
           "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
+          "type": "text"
         },
         {
           "name": "updated_at",
           "nullable": false,
           "primary_key": false,
           "type": "integer"
-        },
-        {
-          "name": "last_seen_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "workspace",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "git_branch",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "git_commit",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "git_dirty",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "cwd",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
         }
       ],
       "foreign_keys": [],
-      "introduced_in": "crates/axon-jobs/src/migrations/0009_create_memory_tables.sql",
-      "name": "axon_memory_nodes",
-      "owner_crate": "axon-jobs",
+      "introduced_in": "crates/axon-observe/src/migrations/0001_create_observability_tables.sql",
+      "name": "axon_observe_provider_health",
+      "owner_crate": "axon-observe",
       "primary_key": [
-        "id"
+        "provider_id"
       ]
     },
     {
@@ -1958,7 +1507,7 @@
           "references_table": "axon_source_watches"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "axon_source_watch_runs",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -2095,311 +1644,11 @@
         }
       ],
       "foreign_keys": [],
-      "introduced_in": "crates/axon-jobs/src/migrations/0023_create_source_watch_store.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "axon_source_watches",
       "owner_crate": "axon-jobs",
       "primary_key": [
         "watch_id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "id",
-          "nullable": true,
-          "primary_key": true,
-          "type": "text"
-        },
-        {
-          "name": "name",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "task_type",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "task_payload",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "every_seconds",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "enabled",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "next_run_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "lease_expires_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "last_run_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "updated_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        }
-      ],
-      "foreign_keys": [],
-      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
-      "name": "axon_watch_defs",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "id",
-          "nullable": true,
-          "primary_key": true,
-          "type": "integer"
-        },
-        {
-          "name": "watch_run_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "kind",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "path",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "payload",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        }
-      ],
-      "foreign_keys": [
-        {
-          "columns": [
-            "watch_run_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_watch_runs"
-        }
-      ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
-      "name": "axon_watch_run_artifacts",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "id",
-          "nullable": true,
-          "primary_key": true,
-          "type": "text"
-        },
-        {
-          "name": "watch_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "status",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "dispatched_job_id",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "error_text",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "result_json",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "started_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "finished_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "created_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "updated_at",
-          "nullable": false,
-          "primary_key": false,
-          "type": "integer"
-        }
-      ],
-      "foreign_keys": [
-        {
-          "columns": [
-            "watch_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_watch_defs"
-        }
-      ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0002_create_watch_tables.sql",
-      "name": "axon_watch_runs",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "id"
-      ]
-    },
-    {
-      "columns": [
-        {
-          "name": "watch_id",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "url",
-          "nullable": false,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "etag",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "last_modified",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "content_hash",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "last_markdown",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "last_links_json",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        },
-        {
-          "name": "last_checked_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "last_changed_at",
-          "nullable": true,
-          "primary_key": false,
-          "type": "integer"
-        },
-        {
-          "name": "last_crawl_job_id",
-          "nullable": true,
-          "primary_key": false,
-          "type": "text"
-        }
-      ],
-      "foreign_keys": [
-        {
-          "columns": [
-            "watch_id"
-          ],
-          "on_delete": "CASCADE",
-          "references_columns": [
-            "id"
-          ],
-          "references_table": "axon_watch_defs"
-        }
-      ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0007_create_watch_url_state.sql",
-      "name": "axon_watch_url_state",
-      "owner_crate": "axon-jobs",
-      "primary_key": [
-        "watch_id",
-        "url"
       ]
     },
     {
@@ -2524,7 +1773,7 @@
         }
       ],
       "foreign_keys": [],
-      "introduced_in": "crates/axon-jobs/src/migrations/0025_config_snapshots.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "config_snapshots",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3010,7 +2259,7 @@
           "references_table": "jobs"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "job_artifacts",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3086,7 +2335,7 @@
           "references_table": "jobs"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "job_attempts",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3196,7 +2445,7 @@
           "references_table": "job_stages"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "job_events",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3242,7 +2491,7 @@
           "references_table": "jobs"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "job_heartbeats",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3325,7 +2574,7 @@
           "references_table": "jobs"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "job_stages",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -3544,9 +2793,9 @@
           ],
           "on_delete": "SET NULL",
           "references_columns": [
-            "id"
+            "watch_id"
           ],
-          "references_table": "axon_watch_defs"
+          "references_table": "axon_source_watches"
         },
         {
           "columns": [
@@ -3556,7 +2805,7 @@
           "references_columns": [
             "job_id"
           ],
-          "references_table": "jobs_v4"
+          "references_table": "jobs"
         },
         {
           "columns": [
@@ -3566,10 +2815,10 @@
           "references_columns": [
             "job_id"
           ],
-          "references_table": "jobs_v4"
+          "references_table": "jobs"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0026_remove_legacy_job_families.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "jobs",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -4031,7 +3280,7 @@
           "references_table": "job_stages"
         }
       ],
-      "introduced_in": "crates/axon-jobs/src/migrations/0018_unified_jobs_observability.sql",
+      "introduced_in": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "provider_reservations",
       "owner_crate": "axon-jobs",
       "primary_key": [
@@ -4284,6 +3533,7 @@
     "owner_crates": [
       "axon-jobs",
       "axon-ledger",
+      "axon-observe",
       "axon-graph",
       "axon-memory"
     ],
@@ -4294,7 +3544,7 @@
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:b53c187d41506badc0cb6785424d58f95dca3e4ef8567207df64680263ce40f5",
+        "checksum": "sha256:9e3f41be96e7af63e3d066027047303a27880f72cf6e0fc2dc3084b61be5746f",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },
@@ -4309,17 +3559,22 @@
         "path": "crates/axon-memory/src/migrations"
       },
       {
+        "checksum": "sha256:ae4a86b45a62940c12d472880ab4facf253c284dcc985721d58ae0c8c7f2f723",
+        "kind": "sql_migration_directory",
+        "path": "crates/axon-observe/src/migrations"
+      },
+      {
         "checksum": "sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/database-schema.md"
       },
       {
-        "checksum": "sha256:2e5498edd8d2f4638346fd7ea77c5e5063b0abf5be0021dc4e755f8cf93fd9e1",
+        "checksum": "sha256:d1848c8f952a77bcc2d440ea403eb7dc82d3023c2ba9fdf380c57a4fcef059ca",
         "kind": "rust_module",
         "path": "xtask/src/schemas/database_defs.rs"
       },
       {
-        "checksum": "sha256:4ffeb151312c88f1b1d316f58d57450bed1224a374689d6fae02761de788ec4c",
+        "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b",
         "kind": "rust_module",
         "path": "xtask/src/schemas/database_defs/parser.rs"
       }

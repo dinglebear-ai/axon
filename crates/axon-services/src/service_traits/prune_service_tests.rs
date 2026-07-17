@@ -35,11 +35,11 @@ async fn fake_prune_service_execute_requires_confirm() {
         .await
         .expect("plan should succeed");
     let request = PruneExecuteRequest {
-        plan,
+        plan_id: plan.job_id,
         confirm: false,
         reason: "test".to_string(),
     };
-    assert!(fake.execute(request).await.is_err());
+    assert!(fake.execute(request, &PruneAuthz::admin()).await.is_err());
 }
 
 #[tokio::test]
@@ -54,26 +54,18 @@ async fn fake_prune_service_execute_succeeds_when_confirmed() {
         ))
         .await
         .expect("plan should succeed");
-    let job_id = plan.job_id.clone();
+    let job_id = plan.job_id;
     let request = PruneExecuteRequest {
-        plan,
+        plan_id: plan.job_id,
         confirm: true,
         reason: "test".to_string(),
     };
-    let result = fake.execute(request).await.expect("execute should succeed");
+    let result = fake
+        .execute(request, &PruneAuthz::admin())
+        .await
+        .expect("execute should succeed");
     assert_eq!(result.job_id, job_id);
     assert_eq!(result.status, axon_api::source::LifecycleStatus::Completed);
-}
-
-#[tokio::test]
-async fn fake_prune_service_dedupe_reports_completed() {
-    let fake: Arc<dyn PruneService> = Arc::new(FakePruneService::new());
-    let request = DedupeRequest {
-        collection: None,
-        response_mode: None,
-    };
-    let result = fake.dedupe(request).await.expect("dedupe should succeed");
-    assert!(result.completed);
 }
 
 #[tokio::test]

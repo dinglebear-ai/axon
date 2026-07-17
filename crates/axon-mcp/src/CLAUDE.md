@@ -8,12 +8,12 @@ caller via `axon-authz`, and maps every call into `axon-services`. Full contract
 · surface spec:
 [../../../docs/pipeline-unification/surfaces/tool-contract.md](../../../docs/pipeline-unification/surfaces/tool-contract.md).
 
-## Status — live crate, cutover at Phase 10
+## Status — live unified transport
 The single `axon` tool is the live MCP surface. Source acquisition is under
 `action=source`; removed indexing actions are omitted from the live action enum
-and rejected at dispatch. Job-kind DTOs may still mention crawl/embed/ingest for
-status/backcompat metadata, but they are not callable MCP actions. Responses are
-still being tightened toward the full shared envelope.
+and rejected during strict request parsing. Job DTOs use canonical kinds such as
+`source`; there are no crawl/embed/ingest compatibility variants. Artifact-backed
+responses return opaque artifact IDs rather than server filesystem paths.
 
 ## Module map
 Current groups from `crates/axon-mcp/src/`:

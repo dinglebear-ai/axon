@@ -1,0 +1,47 @@
+{
+  "source": "https://example.com/docs",
+  "intent": "watch",
+  "embed": true,
+  "refresh": "force",
+  "watch": "enabled",
+  "execution": {
+    "mode": "background",
+    "priority": "high",
+    "detached": false,
+    "heartbeat_interval_secs": 5,
+    "wait_timeout_secs": 120
+  },
+  "output": {
+    "json": true,
+    "response_mode": "auto",
+    "inline_limit_bytes": 65536,
+    "artifact_mode": "on_large_output",
+    "include_progress": true
+  },
+  "limits": {
+    "max_items": 100,
+    "max_pages": 100,
+    "max_depth": 4,
+    "max_chunks": 1000,
+    "max_bytes_per_item": 1048576,
+    "max_total_bytes": 10485760,
+    "provider_timeout_ms": 30000
+  },
+  "options": {
+    "values": {
+      "discover_sitemaps": true
+    }
+  },
+  "scope": "docs",
+  "collection": "axon",
+  "adapter": "web",
+  "authority_hint": {
+    "authority": "verified",
+    "canonical_uri": "https://example.com/docs",
+    "evidence": []
+  },
+  "metadata": {
+    "fixture": "full"
+  },
+  "idempotency_key": "source-request-full-001"
+}

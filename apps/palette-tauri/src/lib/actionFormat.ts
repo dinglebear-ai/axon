@@ -160,14 +160,13 @@ export function formatDiff(value: Record<string, unknown>): string {
 
 export function formatScreenshot(value: Record<string, unknown>): string {
   const artifact = recordField(value, "artifact_handle");
-  const artifactDisplay = artifact
-    ? (nonEmptyStringField(artifact, "display_path") ?? nonEmptyStringField(artifact, "relative_path"))
-    : undefined;
+  const artifactId = nonEmptyStringField(value, "artifact_id")
+    ?? (artifact ? nonEmptyStringField(artifact, "artifact_id") : undefined);
   return [
     "## Screenshot captured",
-    stringField(value, "url") ?? "",
-    artifactDisplay ? `artifact: ${artifactDisplay}` : "",
-    numberField(value, "size_bytes") !== undefined ? `bytes: ${numberField(value, "size_bytes")}` : "",
+    artifactId ? `artifact: ${artifactId}` : "",
+    numberField(value, "width") !== undefined ? `width: ${numberField(value, "width")}` : "",
+    numberField(value, "height") !== undefined ? `height: ${numberField(value, "height")}` : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -176,34 +175,6 @@ export function formatScreenshot(value: Record<string, unknown>): string {
 function nonEmptyStringField(value: Record<string, unknown>, key: string): string | undefined {
   const text = stringField(value, key)?.trim();
   return text ? text : undefined;
-}
-
-export function formatDedupe(value: Record<string, unknown>): string {
-  const pairs = [
-    ["collection", stringField(value, "collection")],
-    ["removed", numberField(value, "removed") ?? numberField(value, "points_deleted")],
-    ["scanned", numberField(value, "scanned") ?? numberField(value, "points_scanned")],
-  ].filter(([, field]) => field !== undefined);
-  return pairs.map(([key, field]) => `${key}: ${field}`).join("\n") || compact(value);
-}
-
-/**
- * Format a purge response for compact human output.
- *
- * @param value - Parsed purge response payload.
- * @returns A newline-delimited summary of matched or deleted index entries.
- */
-export function formatPurge(value: Record<string, unknown>): string {
-  const dryRun = value.dry_run === true;
-  const points = dryRun
-    ? numberField(value, "matched_points")
-    : numberField(value, "deleted_points");
-  const pairs = [
-    ["target", stringField(value, "target")],
-    [dryRun ? "would delete" : "deleted", points],
-    ["urls", numberField(value, "matched_url_count")],
-  ].filter(([, field]) => field !== undefined);
-  return pairs.map(([key, field]) => `${key}: ${field}`).join("\n") || compact(value);
 }
 
 export function formatWatchList(value: Record<string, unknown>): string {

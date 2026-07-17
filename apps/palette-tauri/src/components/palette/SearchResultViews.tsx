@@ -14,10 +14,10 @@ export function SearchResultView({
 }) {
   const summary = strField(payload, "summary");
   const rows = arrayByKeys(payload, ["results", "search_results"]);
-  const jobs = arrayByKeys(payload, ["crawl_jobs", "jobs"]);
+  const jobs = arrayByKeys(payload, ["source_jobs", "jobs"]);
   return (
     <div className="output-body operation-view aurora-scrollbar">
-      <ResultSummary metrics={[["Results", rows.length], ["Queued crawls", jobs.length], ["View", title]]} />
+      <ResultSummary metrics={[["Results", rows.length], ["Queued source jobs", jobs.length], ["View", title]]} />
       {includeSummary && summary ? (
         <section className="operation-section">
           <h3 className="stats-heading">Summary</h3>
@@ -27,7 +27,7 @@ export function SearchResultView({
         </section>
       ) : null}
       <ResultRows rows={rows} />
-      {jobs.length > 0 ? <JobRows title="Queued crawl jobs" rows={jobs} /> : null}
+      {jobs.length > 0 ? <JobRows title="Queued source jobs" rows={jobs} /> : null}
     </div>
   );
 }

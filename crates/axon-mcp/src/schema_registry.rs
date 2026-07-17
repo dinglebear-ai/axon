@@ -103,30 +103,12 @@ pub fn action_registry() -> &'static [McpActionSpec] {
     ]
 }
 
-pub fn removed_actions() -> &'static [&'static str] {
-    &[
-        "embed",
-        "ingest",
-        "scrape",
-        "crawl",
-        "code_search",
-        "code_search_watch",
-        "vertical_scrape",
-        "purge",
-        "dedupe",
-        "sources",
-        "domains",
-        "stats",
-        "elicit_demo",
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn schema_registry_contains_canonical_actions_and_removed_metadata() {
+    fn schema_registry_contains_only_canonical_actions() {
         let actions = action_registry()
             .iter()
             .map(|action| action.action)
@@ -134,6 +116,5 @@ mod tests {
         assert!(actions.contains("map"));
         assert!(actions.contains("extract"));
         assert!(!actions.contains("crawl"));
-        assert!(removed_actions().contains(&"crawl"));
     }
 }

@@ -49,8 +49,12 @@ fn parse_search_time_range_rejects_unknown_values() {
 #[tokio::test]
 async fn run_search_rejects_empty_tavily_key() {
     // run_search bails before touching service_context when the key is empty,
-    // so any constructible context works here.
-    let cfg = make_search_cfg("", "rust async");
+    // so any constructible context works here. Isolate the jobs DB so building
+    // the context never opens a shared on-disk ~/.axon/jobs.db from another
+    // checkout or runtime (which may hold a non-canonical schema).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let mut cfg = make_search_cfg("", "rust async");
+    cfg.sqlite_path = tmp.path().join("jobs.db");
     let ctx = ServiceContext::new(std::sync::Arc::new(cfg.clone()))
         .await
         .unwrap();

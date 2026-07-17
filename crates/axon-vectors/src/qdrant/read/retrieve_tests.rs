@@ -44,7 +44,7 @@ fn retrieve_max_points_clamps_to_ceiling() {
 }
 
 #[test]
-fn url_match_filter_shape() {
+fn canonical_uri_filter_uses_target_fields() {
     let filter = url_match_filter("https://x/y");
     let should = filter["should"]
         .as_array()

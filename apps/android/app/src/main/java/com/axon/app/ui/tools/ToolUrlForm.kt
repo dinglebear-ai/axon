@@ -16,7 +16,7 @@ import tv.tootie.aurora.components.AuroraButton
 import tv.tootie.aurora.components.AuroraTextField
 
 /**
- * URL field + submit button shared by the Scrape, Map, Crawl, and Research tabs.
+ * URL field + submit button shared by the Scrape, Map, and Research tabs.
  *
  * The trimmed URL is passed to [onSubmit] when the button is pressed. When
  * [actionLeft] is provided, it renders to the left of the submit button so a

@@ -1,8 +1,6 @@
 //! `SourceAdapter` wiring for `mcp://server/tool` sources: discover/acquire/
 //! normalize built on top of the metadata-only-by-default
-//! `resolve_and_acquire` contract in the parent `mcp_tool` module. See that
-//! module's doc comment for why real (`Execute`-mode) tool calls are not
-//! wired here yet.
+//! `resolve_and_acquire` contract in the parent `mcp_tool` module.
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -16,14 +14,13 @@ use crate::manifest::item_identity;
 
 use super::metadata::mcp_tool_source_document;
 use super::{
-    McpExecutionMode, McpToolAcquireResult, McpToolTarget, parse_mcp_target, resolve_and_acquire,
+    CommandMcpToolCaller, McpExecutionMode, McpToolAcquireResult, McpToolDocument, McpToolTarget,
+    RedactionStatus, parse_mcp_target, resolve_and_acquire,
 };
 
 const ADAPTER_NAME: &str = "mcp_tool";
 
-/// Real `SourceAdapter` wiring for `mcp://server/tool` sources. See the
-/// parent module's doc comment for why this always resolves in
-/// [`McpExecutionMode::MetadataOnly`] today.
+/// Real `SourceAdapter` wiring for `mcp://server/tool` sources.
 #[derive(Debug, Clone, Default)]
 pub struct McpToolSourceAdapter;
 
@@ -48,7 +45,7 @@ impl SourceAdapter for McpToolSourceAdapter {
     }
 
     async fn discover(&self, plan: &SourcePlan) -> AdapterResult<SourceManifest> {
-        discover_sync(plan)
+        discover_plan(plan)
     }
 
     async fn acquire(
@@ -56,7 +53,7 @@ impl SourceAdapter for McpToolSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> AdapterResult<SourceAcquisition> {
-        acquire_sync(plan, diff)
+        acquire_plan(plan, diff).await
     }
 
     async fn normalize(
@@ -88,20 +85,34 @@ fn resolve_target(plan: &SourcePlan) -> AdapterResult<McpToolTarget> {
         .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
 }
 
-/// Resolves `plan.request.source` in metadata-only mode. See the parent
-/// module's doc comment for why `Execute` mode is never selected here today.
-fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult> {
+async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult> {
+    let mode = execution_mode(plan);
+    let has_execute_scope = plan
+        .request
+        .metadata
+        .0
+        .get("tool_execute_authorized")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    let allowlist = mcp_allowlist(plan);
+    let caller = command_caller(plan);
     resolve_and_acquire(
         &plan.request.source,
-        McpExecutionMode::MetadataOnly,
-        false,
-        &[],
-        None,
+        mode,
+        has_execute_scope,
+        &allowlist
+            .iter()
+            .map(|(server, tool)| (server.as_str(), tool.as_str()))
+            .collect::<Vec<_>>(),
+        caller
+            .as_ref()
+            .map(|caller| caller as &dyn super::McpToolCaller),
     )
-    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
+    .await
+    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
 }
 
-fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
+fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     mcp_tool_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = resolve_target(plan)?;
@@ -125,7 +136,7 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
         display_path: Some(item_key),
         parent_key: None,
         size_bytes: None,
-        content_hash: None,
+        content_hash: execution_content_hash(plan),
         mtime: None,
         version: None,
         fetch_plan: None,
@@ -144,7 +155,10 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     })
 }
 
-fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<SourceAcquisition> {
+async fn acquire_plan(
+    plan: &SourcePlan,
+    diff: &SourceManifestDiff,
+) -> AdapterResult<SourceAcquisition> {
     validate_adapter(plan)?;
     let manifest_items = diff
         .added
@@ -152,12 +166,18 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let resolved = resolve_metadata(plan)?;
+    let resolved = resolve_for_acquire(plan).await?;
     let content = resolved
         .documents
         .first()
         .map(|doc| doc.content.clone())
         .unwrap_or_default();
+    let document = resolved.documents.first();
+    let tool_action = if resolved.tool_call_count > 0 {
+        "call"
+    } else {
+        "metadata"
+    };
 
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     for item in &manifest_items {
@@ -172,7 +192,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
                 headers: Vec::new(),
             },
             fetched_at: timestamp(),
-            metadata: MetadataMap::new(),
+            metadata: item_metadata(document, tool_action, resolved.redaction_status),
         });
     }
 
@@ -209,16 +229,19 @@ fn normalize_sync(
 ) -> AdapterResult<StageExecutionResult<Vec<SourceDocument>>> {
     validate_adapter(plan)?;
     let target = resolve_target(plan)?;
-    let resolved = resolve_metadata(plan)?;
-    let tool_action = if resolved.tool_call_count > 0 {
-        "call"
-    } else {
-        "metadata"
-    };
     let documents = acquisition
         .fetched_items
         .iter()
-        .map(|item| mcp_tool_source_document(plan, &acquisition, item, &target, tool_action))
+        .map(|item| {
+            let tool_action = item
+                .metadata
+                .0
+                .get("tool_action")
+                .and_then(serde_json::Value::as_str)
+                .filter(|action| *action == "call")
+                .unwrap_or("metadata");
+            mcp_tool_source_document(plan, &acquisition, item, &target, tool_action)
+        })
         .collect::<Vec<_>>();
     Ok(StageExecutionResult {
         header: stage_header(
@@ -229,6 +252,115 @@ fn normalize_sync(
         ),
         data: documents,
     })
+}
+
+fn item_metadata(
+    document: Option<&McpToolDocument>,
+    tool_action: &'static str,
+    redaction_status: RedactionStatus,
+) -> MetadataMap {
+    let mut metadata = MetadataMap::new();
+    metadata.insert("tool_action".to_string(), json!(tool_action));
+    if document.is_some() {
+        metadata.insert(
+            "redaction_status".to_string(),
+            json!(match redaction_status {
+                RedactionStatus::Clean => "clean",
+                RedactionStatus::Redacted => "redacted",
+            }),
+        );
+    }
+    metadata
+}
+
+fn execution_mode(plan: &SourcePlan) -> McpExecutionMode {
+    let requested = option_string_any(plan, &["execution_mode", "tool_action"])
+        .is_some_and(|mode| matches!(mode.as_str(), "call" | "invoke" | "execute" | "exec"))
+        || bool_option(plan, "call").unwrap_or(false);
+    if requested {
+        McpExecutionMode::Execute
+    } else {
+        McpExecutionMode::MetadataOnly
+    }
+}
+
+fn mcp_allowlist(plan: &SourcePlan) -> Vec<(String, String)> {
+    policy_string_list(plan, "mcp_allowlist")
+        .into_iter()
+        .filter_map(|entry| {
+            let (server, tool) = entry.split_once('/')?;
+            Some((server.to_string(), tool.to_string()))
+        })
+        .collect()
+}
+
+fn command_caller(plan: &SourcePlan) -> Option<CommandMcpToolCaller> {
+    Some(CommandMcpToolCaller {
+        command: policy_string(plan, "mcp_caller_command")?,
+        env_allowlist: policy_string_list(plan, "env_allowlist"),
+        timeout_ms: policy_u64(plan, "timeout_ms").unwrap_or(5_000),
+        output_cap_bytes: policy_u64(plan, "output_cap_bytes").unwrap_or(64 * 1024) as usize,
+    })
+}
+
+fn execution_content_hash(plan: &SourcePlan) -> Option<String> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execute_authorized")
+        .and_then(serde_json::Value::as_bool)
+        .filter(|authorized| *authorized)
+        .map(|_| format!("tool-execution:{}", plan.job_id.0))
+}
+
+fn policy_value<'a>(plan: &'a SourcePlan, key: &str) -> Option<&'a serde_json::Value> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execution_policy")?
+        .as_object()?
+        .get(key)
+}
+
+fn policy_string(plan: &SourcePlan, key: &str) -> Option<String> {
+    policy_value(plan, key)?.as_str().map(str::to_string)
+}
+
+fn policy_string_list(plan: &SourcePlan, key: &str) -> Vec<String> {
+    policy_value(plan, key)
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn policy_u64(plan: &SourcePlan, key: &str) -> Option<u64> {
+    policy_value(plan, key)?.as_u64()
+}
+
+fn option_string_any(plan: &SourcePlan, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| string_option(plan, key))
+}
+
+fn string_option(plan: &SourcePlan, key: &str) -> Option<String> {
+    plan.request
+        .options
+        .values
+        .0
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn bool_option(plan: &SourcePlan, key: &str) -> Option<bool> {
+    plan.request
+        .options
+        .values
+        .0
+        .get(key)
+        .and_then(serde_json::Value::as_bool)
 }
 
 fn validate_adapter(plan: &SourcePlan) -> AdapterResult<()> {

@@ -1,7 +1,5 @@
 use axon_adapters::{SourceFamily, source_family_matrix};
-use axon_retrieval::memory::{
-    MEMORY_VECTOR_NAMESPACE, matches_memory_namespace, memory_retrieval_filter,
-};
+use axon_retrieval::memory::{matches_memory_source_kind, memory_retrieval_filter};
 use serde_json::Value;
 
 use crate::graph::{MEMORY_GRAPH_OPTIONAL_FACTS, memory_graph_candidates};
@@ -11,19 +9,19 @@ const VECTOR_PAYLOAD_FIXTURE: &str =
     include_str!("../../axon-vectors/tests/fixtures/payload/memory.valid.json");
 
 #[test]
-fn memory_integration_matrix_row_stays_distinct_from_source_adapters() {
+fn memory_matrix_row_is_a_canonical_source_adapter() {
     let matrix = source_family_matrix();
     let memory = matrix
         .iter()
-        .find(|spec| spec.family == SourceFamily::MemoryIntegration)
-        .expect("memory integration matrix row");
+        .find(|spec| spec.family == SourceFamily::Memory)
+        .expect("memory source matrix row");
 
     assert_eq!(memory.adapter, "memory");
-    assert!(!memory.is_source_adapter);
-    assert_eq!(memory.supported_schemes, &[] as &[&str]);
-    assert_eq!(memory.shorthand_patterns, &[] as &[&str]);
-    assert_eq!(memory.vector_namespace, MEMORY_VECTOR_NAMESPACE);
-    assert!(memory.scopes.is_empty());
+    assert!(memory.is_source_adapter);
+    assert_eq!(memory.supported_schemes, &["memory"]);
+    assert_eq!(memory.shorthand_patterns, &["memory://mem_<id>"]);
+    assert_eq!(memory.vector_namespace, "dense");
+    assert!(!memory.scopes.is_empty());
     assert!(memory.credential_requirements.is_empty());
     assert!(memory.metadata_families.contains(&"memory"));
     assert!(
@@ -39,15 +37,15 @@ fn memory_integration_matrix_row_stays_distinct_from_source_adapters() {
 }
 
 #[test]
-fn memory_fixture_flows_through_shared_pipeline_contract_without_source_ledger() {
+fn memory_fixture_flows_through_the_canonical_source_pipeline() {
     let fixture: Value = serde_json::from_str(FIXTURE).expect("valid memory fixture");
     let vector_payload: Value =
         serde_json::from_str(VECTOR_PAYLOAD_FIXTURE).expect("valid memory vector payload fixture");
 
     assert_eq!(fixture["source_family"], "memory");
-    assert_eq!(fixture["vector_namespace"], MEMORY_VECTOR_NAMESPACE);
+    assert_eq!(fixture["vector_namespace"], "dense");
     assert_eq!(vector_payload["source_family"], "memory");
-    assert_eq!(vector_payload["vector_namespace"], MEMORY_VECTOR_NAMESPACE);
+    assert_eq!(vector_payload["vector_namespace"], "dense");
 
     let chunks = fixture["prepared_chunks"]
         .as_array()
@@ -66,15 +64,15 @@ fn memory_fixture_flows_through_shared_pipeline_contract_without_source_ledger()
 
     let retrieval_filter = memory_retrieval_filter();
     assert_eq!(
-        fixture["retrieval_filter"]["namespace"],
-        retrieval_filter.vector_namespace
+        fixture["retrieval_filter"]["source_kind"],
+        retrieval_filter.source_kind
     );
-    assert!(matches_memory_namespace(
-        fixture["retrieval_filter"]["namespace"]
+    assert!(matches_memory_source_kind(
+        fixture["retrieval_filter"]["source_kind"]
             .as_str()
-            .expect("retrieval namespace")
+            .expect("retrieval source kind")
     ));
 
-    assert_eq!(fixture["source_adapter_row"], false);
-    assert!(fixture["source_ledger_generation"].is_null());
+    assert_eq!(fixture["source_adapter_row"], true);
+    assert_eq!(fixture["source_ledger_generation"], 1);
 }

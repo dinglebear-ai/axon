@@ -14,7 +14,7 @@ pub struct RetrievalPlan {
     pub generation: Option<SourceGenerationId>,
     pub allowed_visibility: Vec<Visibility>,
     pub namespace_filters: Vec<String>,
-    pub excluded_namespaces: Vec<String>,
+    pub excluded_source_kinds: Vec<String>,
     pub byte_budget: u64,
     pub token_budget: u32,
 }
@@ -31,7 +31,7 @@ impl RetrievalPlan {
             generation: request.generation.clone(),
             allowed_visibility,
             namespace_filters: request.namespace_filters.clone(),
-            excluded_namespaces: request.excluded_namespaces.clone(),
+            excluded_source_kinds: request.excluded_source_kinds.clone(),
             byte_budget: request.byte_budget,
             token_budget: request.token_budget,
         }

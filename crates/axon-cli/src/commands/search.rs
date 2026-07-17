@@ -6,7 +6,9 @@ use axon_core::config::Config;
 use axon_core::logging::{log_done, log_info, log_warn};
 use axon_core::ui::{muted, primary, print_phase};
 use axon_services::context::ServiceContext;
-use axon_services::search_crawl::{SearchCrawlJob, SearchCrawlRejection, search_and_crawl};
+use axon_services::search_crawl::{
+    SearchSourceJob, SearchSourceRejection, search_and_index_sources,
+};
 use axon_services::types::SearchOptions as ServiceSearchOptions;
 use serde_json::Value;
 use std::error::Error;
@@ -40,7 +42,7 @@ pub async fn run_search(
     };
 
     let search_start = std::time::Instant::now();
-    let result = search_and_crawl(cfg, service_context, &query, opts)
+    let result = search_and_index_sources(cfg, service_context, &query, opts)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     let duration_ms = search_start.elapsed().as_millis();
@@ -49,25 +51,25 @@ pub async fn run_search(
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "auto_crawl_status": result.auto_crawl_status,
+                "source_index_status": result.source_index_status,
                 "query": query,
                 "limit": cfg.search_limit,
                 "offset": 0,
                 "search_time_range": cfg.search_time_range.as_deref(),
                 "results": result.results,
-                "crawl_jobs": result.crawl_jobs,
-                "crawl_jobs_rejected": result.crawl_rejected,
+                "source_jobs": result.source_jobs,
+                "source_jobs_rejected": result.source_jobs_rejected,
             }))?
         );
         return Ok(());
     }
 
     print_search_results(&query, &result.results);
-    log_crawl_summary(cfg, &result.crawl_jobs, &result.crawl_rejected);
+    log_source_index_summary(cfg, &result.source_jobs, &result.source_jobs_rejected);
 
-    if !result.results.is_empty() && result.crawl_jobs.is_empty() {
+    if !result.results.is_empty() && result.source_jobs.is_empty() {
         let reason = result
-            .crawl_rejected
+            .source_jobs_rejected
             .first()
             .map(|r| r.reason.as_str())
             .unwrap_or("unknown rejection");
@@ -87,7 +89,11 @@ pub async fn run_search(
     Ok(())
 }
 
-fn log_crawl_summary(cfg: &Config, jobs: &[SearchCrawlJob], rejected: &[SearchCrawlRejection]) {
+fn log_source_index_summary(
+    cfg: &Config,
+    jobs: &[SearchSourceJob],
+    rejected: &[SearchSourceRejection],
+) {
     if !jobs.is_empty() && !cfg.quiet {
         log_info(&format!(
             "search auto-index: queued {} source job(s). Run 'axon serve' if workers are not running.",

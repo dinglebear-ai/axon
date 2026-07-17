@@ -2,11 +2,11 @@ package com.axon.app.core.api.models
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Request body for POST /v1/sources — the unified source-pipeline entrypoint
- * that replaced the legacy `/v1/scrape`, `/v1/crawl`, `/v1/embed`, and
- * `/v1/ingest` routes (all four now hard-404; see `rest_tests.rs`).
+ * used by every supported source kind.
  * Mirrors `axon_api::source::SourceRequest`. Only the subset of fields the
  * Android client currently populates is modeled here — the server fills the
  * rest via serde defaults (`#[serde(deny_unknown_fields)]` means unmodeled
@@ -17,10 +17,17 @@ data class SourceRequest(
     val source: String,
     val embed: Boolean? = null,
     val collection: String? = null,
+    val scope: String? = null,
     val limits: SourceRequestLimits? = null,
+    val options: SourceAdapterOptions? = null,
 )
 
-/** Subset of `axon_api::source::SourceLimits` used for crawl page/depth caps. */
+@Serializable
+data class SourceAdapterOptions(
+    val values: Map<String, JsonElement>,
+)
+
+/** Subset of `axon_api::source::SourceLimits` used for site page/depth caps. */
 @Serializable
 data class SourceRequestLimits(
     @SerialName("max_pages") val maxPages: Long? = null,
@@ -29,8 +36,8 @@ data class SourceRequestLimits(
 
 /**
  * Response body from POST /v1/sources. Mirrors `axon_api::source::SourceResult`.
- * Only fields needed to reconstruct the legacy scrape/crawl/embed/ingest UI
- * shapes are modeled; the full DTO also carries ledger/graph/counts/warnings
+ * Only fields needed by the Android source UI are modeled; the full DTO also
+ * carries ledger/graph/counts/warnings
  * not yet surfaced by these call sites.
  */
 @Serializable

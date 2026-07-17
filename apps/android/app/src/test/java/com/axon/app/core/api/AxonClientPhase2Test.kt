@@ -1,7 +1,7 @@
 package com.axon.app.core.api
 
 import com.axon.app.core.api.models.ExtractRequest
-import com.axon.app.core.api.models.IngestRequest
+import com.axon.app.core.api.models.SourceRequest
 import com.axon.app.core.api.models.SearchWebRequest
 import com.axon.app.core.api.models.SummarizeRequest
 import kotlinx.coroutines.runBlocking
@@ -35,18 +35,18 @@ class AxonClientPhase2Test {
         assertTrue(req.body.readUtf8().contains("\"url\":\"https://a\""))
     }
 
-    @Test fun `searchWeb posts to v1 search and decodes hits + crawl jobs`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"query":"k","results":[{"title":"t","url":"https://x"}],"crawl_jobs":[{"job_id":"j1","url":"https://x"}]}""").addHeader("Content-Type","application/json"))
+    @Test fun `searchWeb posts to v1 search and decodes hits plus source jobs`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"query":"k","results":[{"title":"t","url":"https://x"}],"source_jobs":[{"job_id":"j1","url":"https://x"}]}""").addHeader("Content-Type","application/json"))
         val r = client.searchWeb(SearchWebRequest(query = "k"))
         assertTrue(r.isSuccess)
         val resp = r.getOrThrow()
         assertEquals(1, resp.results.size)
-        assertEquals("j1", resp.crawlJobs[0].jobId)
+        assertEquals("j1", resp.sourceJobs[0].jobId)
     }
 
-    @Test fun `ingestStart posts to v1 sources and decodes AcceptedJob`() = runBlocking {
+    @Test fun `source submission posts to v1 sources and decodes AcceptedJob`() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(202).setBody("""{"job_id":"abc","canonical_uri":"https://github.com/o/r","status":"queued"}""").addHeader("Content-Type","application/json"))
-        val r = client.ingestStart(IngestRequest(sourceType = "github", target = "https://github.com/o/r"))
+        val r = client.sourceSubmit(SourceRequest(source = "https://github.com/o/r"))
         assertTrue(r.isSuccess)
         assertEquals("abc", r.getOrThrow().jobId)
         val req = server.takeRequest()
@@ -79,17 +79,17 @@ class AxonClientPhase2Test {
         assertTrue(body.contains("\"headers\":[\"Authorization: Bearer test\"]"))
     }
 
-    @Test fun `getJob unwraps job detail envelope`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"job":{"id":"j","status":"completed","target":"https://example.com"}}""").addHeader("Content-Type","application/json"))
+    @Test fun `getJob decodes unified job summary`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"job_id":"j","kind":"source","status":"completed"}""").addHeader("Content-Type","application/json"))
         val r = client.getJob(AxonClient.JobKind.Extract, "j")
         assertTrue(r.isSuccess)
         assertEquals("j", r.getOrThrow().id)
-        assertEquals("/v1/extract/j", server.takeRequest().path)
+        assertEquals("/v1/jobs/j", server.takeRequest().path)
     }
 
-    @Test fun `ingestList GETs v1 ingest list and decodes ServiceJob array`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"jobs":[{"id":"j","status":"completed","source_type":"github","target":"https://github.com/o/r"}],"limit":100,"offset":0}""").addHeader("Content-Type","application/json"))
-        val r = client.listJobs(AxonClient.JobKind.Ingest)
+    @Test fun `listJobs GETs unified jobs and decodes summaries`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"items":[{"job_id":"j","kind":"source","status":"completed"}],"limit":25}""").addHeader("Content-Type","application/json"))
+        val r = client.listJobs(AxonClient.JobKind.Source)
         assertTrue(r.isSuccess)
         assertEquals("j", r.getOrThrow()[0].id)
     }
@@ -98,12 +98,12 @@ class AxonClientPhase2Test {
         server.enqueue(
             MockResponse()
                 .setBody(
-                    """{"jobs":[{"id":"j","status":"running","progress_json":{"lifecycle_progress":0.42,"pages_crawled":42}}],"limit":25,"offset":0}"""
+                    """{"items":[{"job_id":"j","kind":"source","status":"running","counts":{"lifecycle_progress":0.42,"pages_crawled":42}}],"limit":25}"""
                 )
                 .addHeader("Content-Type", "application/json")
         )
 
-        val r = client.listJobs(AxonClient.JobKind.Crawl)
+        val r = client.listJobs(AxonClient.JobKind.Source)
 
         assertTrue(r.isSuccess)
         val progress = r.getOrThrow()[0].progressJson!!.jsonObject
@@ -121,11 +121,11 @@ class AxonClientPhase2Test {
         assertTrue("expected path starting with /v1/watches, got ${req.path}", req.path!!.startsWith("/v1/watches"))
     }
 
-    @Test fun `cancelJob POSTs v1 kind id cancel`() = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"canceled":true}""").addHeader("Content-Type","application/json"))
-        val r = client.cancelJob(AxonClient.JobKind.Crawl, "j1")
+    @Test fun `cancelJob POSTs unified job cancel route`() = runBlocking {
+        server.enqueue(MockResponse().setBody("""{"job_id":"j1","status":"cancelled"}""").addHeader("Content-Type","application/json"))
+        val r = client.cancelJob(AxonClient.JobKind.Source, "j1")
         assertTrue(r.isSuccess && r.getOrThrow().canceled)
-        assertEquals("/v1/crawl/j1/cancel", server.takeRequest().path)
+        assertEquals("/v1/jobs/j1/cancel", server.takeRequest().path)
     }
 
     @Test fun `status GETs v1 status`() = runBlocking {

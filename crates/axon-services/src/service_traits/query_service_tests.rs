@@ -1,5 +1,44 @@
 use super::*;
 
+fn citation(url: &str) -> axon_api::CanonicalCitation {
+    axon_api::CanonicalCitation {
+        source_id: axon_api::SourceId::new("source-test"),
+        source_item_key: axon_api::SourceItemKey::new(url),
+        generation: axon_api::SourceGenerationId::new("1"),
+        document_id: axon_api::DocumentId::new("document-test"),
+        chunk_id: axon_api::ChunkId::new("chunk-test"),
+        job_id: axon_api::JobId::new(uuid::Uuid::from_u128(1)),
+        canonical_uri: url.to_string(),
+        source_range: axon_api::SourceRange {
+            line_start: Some(1),
+            line_end: Some(1),
+            byte_start: None,
+            byte_end: None,
+            char_start: None,
+            char_end: None,
+            time_start_ms: None,
+            time_end_ms: None,
+            dom_selector: None,
+            json_pointer: None,
+            yaml_path: None,
+            xml_xpath: None,
+            csv_row: None,
+            session_turn_id: None,
+            turn_start: None,
+            turn_end: None,
+        },
+        redaction: axon_api::RedactionMetadata {
+            redaction_status: axon_api::RedactionStatus::Clean,
+            redaction_version: "test-v1".to_string(),
+            visibility: axon_api::Visibility::Public,
+            redacted_field_count: 0,
+            dropped_field_count: 0,
+            detector_count: 0,
+            detector_names: Vec::new(),
+        },
+    }
+}
+
 fn sample_hit(url: &str) -> QueryHit {
     QueryHit {
         rank: 1,
@@ -8,6 +47,7 @@ fn sample_hit(url: &str) -> QueryHit {
         url: url.to_string(),
         source: "fake".to_string(),
         snippet: "fake snippet".to_string(),
+        citation: citation(url),
         chunk_index: Some(0),
         file_path: None,
         symbol: None,

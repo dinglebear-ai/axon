@@ -15,9 +15,28 @@ async fn fake_reset_service_plan_then_execute() {
     let plan = fake.plan().await.expect("plan should succeed");
     assert_eq!(plan.plan_id, "fake-reset-plan-1");
 
-    let result = fake.execute().await.expect("execute should succeed");
+    let result = fake
+        .execute(&plan.plan_id, true, &ResetAuthz::admin())
+        .await
+        .expect("execute should succeed");
     assert!(!result.dry_run);
     assert_eq!(result.plan_id, plan.plan_id);
+}
+
+#[tokio::test]
+async fn fake_reset_service_requires_confirmation_and_admin() {
+    let fake: Arc<dyn ResetService> = Arc::new(FakeResetService::new());
+    let plan = fake.plan().await.expect("plan should succeed");
+    assert!(
+        fake.execute(&plan.plan_id, false, &ResetAuthz::admin())
+            .await
+            .is_err()
+    );
+    assert!(
+        fake.execute(&plan.plan_id, true, &ResetAuthz::anonymous())
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

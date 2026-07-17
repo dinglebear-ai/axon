@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use axon_api::result::CanonicalCitation;
 use axon_api::source::ProviderId;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_error::ApiError;
@@ -49,6 +50,8 @@ pub struct QueryServiceHit {
     pub score: f64,
     /// Chunk text.
     pub text: String,
+    /// Validated source and redaction lineage for this chunk.
+    pub citation: CanonicalCitation,
 }
 
 /// Result of [`run_query`].
@@ -98,11 +101,10 @@ pub async fn run_query(
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
-        // Plain `query` is unrestricted (no positive namespace_filters), so
-        // exclude the memory namespace by default — memory search has its
+        // Exclude memory documents by source kind — memory search has its
         // own dedicated request path (`crate::memory::memory_retrieval_filter`)
         // that opts in explicitly.
-        excluded_namespaces: vec![crate::memory::MEMORY_VECTOR_NAMESPACE.to_string()],
+        excluded_source_kinds: vec![crate::memory::MEMORY_SOURCE_KIND.to_string()],
         byte_budget: DEFAULT_BYTE_BUDGET,
         token_budget: DEFAULT_TOKEN_BUDGET,
     };
@@ -112,11 +114,25 @@ pub async fn run_query(
     let hits = result
         .matches
         .into_iter()
-        .map(|item| QueryServiceHit {
-            canonical_uri: item.canonical_uri,
-            chunk_id: item.chunk_id.0,
-            score: item.score,
-            text: item.text,
+        .map(|item| {
+            let citation = item.citation;
+            QueryServiceHit {
+                canonical_uri: item.canonical_uri,
+                chunk_id: item.chunk_id.0,
+                score: item.score,
+                text: item.text,
+                citation: CanonicalCitation {
+                    source_id: citation.source_id,
+                    source_item_key: citation.source_item_key,
+                    generation: citation.generation,
+                    document_id: citation.document_id,
+                    chunk_id: citation.chunk_id,
+                    job_id: citation.job_id,
+                    canonical_uri: citation.canonical_uri,
+                    source_range: citation.range,
+                    redaction: citation.redaction,
+                },
+            }
         })
         .collect();
 

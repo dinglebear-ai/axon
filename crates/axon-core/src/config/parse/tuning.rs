@@ -256,11 +256,6 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.crawl_job_concurrency_limit = crawl_job_concurrency_limit(toml);
     cfg.embed_doc_timeout_secs = embed_doc_timeout_secs(toml);
     cfg.queue_summary_secs = queue_summary_secs(toml);
-    cfg.freshness_tick_secs = freshness_tick_secs(toml);
-    cfg.freshness_lease_secs = freshness_lease_secs(toml);
-    cfg.freshness_max_due_per_tick = freshness_max_due_per_tick(toml);
-    cfg.freshness_max_concurrent_runs = freshness_max_concurrent_runs(toml);
-    cfg.freshness_run_retention_days = freshness_run_retention_days(toml);
     cfg.qdrant_point_buffer = qdrant_point_buffer(toml);
     cfg.max_pending_crawl_jobs = max_pending(toml, "crawl");
     cfg.max_pending_embed_jobs = max_pending(toml, "embed");
@@ -268,13 +263,7 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.max_pending_ingest_jobs = max_pending(toml, "ingest");
     cfg.hnsw_ef_search =
         resolve_clamped_usize("AXON_HNSW_EF_SEARCH", toml.search.hnsw_ef, 128, 32, 512);
-    cfg.hnsw_ef_search_legacy = resolve_clamped_usize(
-        "AXON_HNSW_EF_SEARCH_LEGACY",
-        toml.search.hnsw_ef_legacy,
-        64,
-        16,
-        256,
-    );
+    cfg.hnsw_ef_search_legacy = cfg.hnsw_ef_search;
     cfg.job_wait_timeout_secs = job_wait_timeout_secs(toml);
 
     // ── Webclaw port (axon_rust-zehr) ──────────────────────────────────────
@@ -1028,54 +1017,6 @@ fn queue_summary_secs(toml: &TomlConfig) -> u64 {
         0,
         3600,
     )
-}
-
-fn freshness_tick_secs(toml: &TomlConfig) -> u64 {
-    resolve_clamped_u64(
-        "AXON_FRESHNESS_TICK_SECS",
-        toml.freshness.tick_secs,
-        60,
-        1,
-        3600,
-    )
-}
-
-fn freshness_lease_secs(toml: &TomlConfig) -> u64 {
-    resolve_clamped_u64(
-        "AXON_FRESHNESS_LEASE_SECS",
-        toml.freshness.lease_secs,
-        1800,
-        1,
-        86_400,
-    )
-}
-
-fn freshness_max_due_per_tick(toml: &TomlConfig) -> i64 {
-    std::env::var("AXON_FRESHNESS_MAX_DUE_PER_TICK")
-        .ok()
-        .and_then(|raw| raw.parse::<i64>().ok())
-        .or(toml.freshness.max_due_per_tick)
-        .map(|value| value.clamp(1, 100))
-        .unwrap_or(4)
-}
-
-fn freshness_max_concurrent_runs(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize(
-        "AXON_FRESHNESS_MAX_CONCURRENT_RUNS",
-        toml.freshness.max_concurrent_runs,
-        2,
-        1,
-        16,
-    )
-}
-
-fn freshness_run_retention_days(toml: &TomlConfig) -> i64 {
-    std::env::var("AXON_FRESHNESS_RUN_RETENTION_DAYS")
-        .ok()
-        .and_then(|raw| raw.parse::<i64>().ok())
-        .or(toml.freshness.run_retention_days)
-        .map(|value| value.clamp(1, 3660))
-        .unwrap_or(90)
 }
 
 fn qdrant_point_buffer(toml: &TomlConfig) -> usize {

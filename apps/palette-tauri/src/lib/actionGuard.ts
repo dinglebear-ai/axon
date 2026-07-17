@@ -12,23 +12,12 @@ export interface PendingActionConfirmation {
 }
 
 const DESTRUCTIVE_SUBCOMMANDS = new Set([
-  "dedupe",
-  "purge",
-  "crawl-clear",
-  "embed-clear",
-  "extract-clear",
-  "ingest-clear",
+  "jobs-clear",
 ]);
 
 const STATEFUL_SUBCOMMANDS = new Set([
-  "crawl-cancel",
-  "embed-cancel",
-  "extract-cancel",
-  "ingest-cancel",
-  "crawl-cleanup",
-  "embed-cleanup",
-  "extract-cleanup",
-  "ingest-cleanup",
+  "jobs-cancel",
+  "jobs-cleanup",
   "watch-create",
   "watch-run",
 ]);

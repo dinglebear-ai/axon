@@ -478,7 +478,7 @@ Progress event shape is defined in `observability-contract.md`.
 | source run | `axon <source>` | `action=source` | `POST /v1/sources` |
 | map | `axon map <source>` | `action=map` | `POST /v1/map` |
 | refresh existing | `axon <source> --refresh` | `action=source refresh=force` | `POST /v1/sources/{id}/refresh` |
-| watch | `axon watch <source>` | `action=watches subaction=create` | `POST /v1/watches` |
+| watch | `axon watch <source>` | `action=watch subaction=create` | `POST /v1/watches` |
 | status | `axon jobs get <job_id>` | `action=jobs subaction=get` | `GET /v1/jobs/{job_id}` |
 | events | `axon jobs events <job_id>` | `action=jobs subaction=events` | `GET /v1/jobs/{job_id}/events` |
 

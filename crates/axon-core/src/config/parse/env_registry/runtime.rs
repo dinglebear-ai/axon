@@ -203,7 +203,14 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         Canonical,
         false,
     ),
-    spec("AXON_OPENAI_MODEL", KeepEnv, Both, None, Canonical, false),
+    spec(
+        "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
+        KeepEnv,
+        Both,
+        None,
+        Canonical,
+        false,
+    ),
     spec(
         "AXON_CHAT_OPENAI_MODEL",
         KeepEnv,

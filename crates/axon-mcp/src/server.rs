@@ -6,8 +6,6 @@ pub mod common;
 mod handler_meta;
 #[path = "server/handlers_discovery.rs"]
 mod handlers_discovery;
-#[path = "server/handlers_elicit.rs"]
-mod handlers_elicit;
 #[path = "server/handlers_extract.rs"]
 mod handlers_extract;
 #[path = "server/handlers_graph.rs"]
@@ -33,6 +31,8 @@ mod server_authz;
 mod services_migration_tests;
 #[path = "server/stdio.rs"]
 mod stdio_runner;
+#[path = "server/system_requests.rs"]
+mod system_requests;
 #[path = "server/task_id.rs"]
 mod task_id;
 #[path = "server/task_progress.rs"]
@@ -47,6 +47,7 @@ mod tool_schema;
 #[path = "server/tool_schema_tests.rs"]
 mod tool_schema_tests;
 
+use self::system_requests::{McpSystemRequest, McpWatchRequest};
 use super::auth::AuthPolicy;
 use super::schema::{AxonRequest, parse_axon_request};
 use axon_core::config::Config;
@@ -139,16 +140,13 @@ impl AxonMcpServer {
 impl AxonMcpServer {
     #[tool(
         name = "axon",
-        description = "Unified Axon MCP tool. Use action/subaction routing. Valid actions and subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Actions: status, help, jobs, source, extract, memory, query, retrieve, resolve, capabilities, providers, search, map, endpoints, evaluate, suggest, doctor, research, ask, summarize, screenshot, brand, diff, prune, watch, graph. The single `source` action indexes any local path, git/web/feed/youtube/reddit/session/registry target (replaces the former embed/ingest/scrape/crawl/code_search/vertical_scrape actions). Destructive cleanup lives under action=prune. `domains`, `sources`, `stats`, and `elicit_demo` are not valid MCP actions (see `server_authz::MCP_ACTION_SPECS` for the authoritative list).",
+        description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
         input_schema = tool_schema::axon_tool_input_schema(),
         execution(task_support = "optional")
     )]
     async fn axon<'a>(
         &'a self,
-        // `elicit_demo` (the only handler that needed the live peer for a
-        // server->client elicitation round-trip) was removed from the MCP
-        // action surface per the tool contract (issue #298 WS-G); no
-        // dispatch arm below needs `peer` anymore.
+        // No dispatch arm currently needs the live MCP peer.
         _peer: rmcp::Peer<RoleServer>,
         Parameters(raw): Parameters<serde_json::Map<String, Value>>,
     ) -> Result<String, ErrorData> {
@@ -166,90 +164,85 @@ impl AxonMcpServer {
             tracing::info!(action = %action, subaction = %subaction, dashboard_uri = STATUS_DASHBOARD_URI, "mcp_app status tool called — widget should render");
         }
         tracing::info!(action = %action, subaction = %subaction, "mcp request");
-        let request: AxonRequest = parse_axon_request(raw).map_err(|e| {
-            tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
-            invalid_params(format!("invalid request: {e}"))
-        })?;
-        let response = match request {
-            AxonRequest::Status(req) => self.handle_status(req).await?,
-            AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
-            AxonRequest::Source(req) => self.handle_source(req).await?,
-            AxonRequest::Extract(req) => self.handle_extract(req).await?,
-            AxonRequest::Memory(req) => self.handle_memory(req).await?,
-            AxonRequest::Query(req) => self.handle_query(req).await?,
-            AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
-            AxonRequest::Search(req) => self.handle_search(req).await?,
-            AxonRequest::Map(req) => self.handle_map(req).await?,
-            AxonRequest::Endpoints(req) => self.handle_endpoints(req).await?,
-            AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
-            AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
-            AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
-            AxonRequest::Help(req) => self.handle_help(req).await?,
-            AxonRequest::Resolve(req) => self.handle_resolve(req).await?,
-            AxonRequest::Capabilities(req) => self.handle_capabilities(req).await?,
-            AxonRequest::Providers(req) => self.handle_providers(req).await?,
-            // `sources`, `domains`, `stats`, and `elicit_demo` are removed
-            // from the MCP surface per the tool contract (issue #298 WS-G):
-            // `sources`/`domains` have no contracted equivalent yet (tracked
-            // as a WS-G followup), `stats` folds toward `action=collections`
-            // once a real CollectionService backs it (also a followup), and
-            // `elicit_demo` was a developer-only demo action never in the
-            // contract's canonical list. All four remain on the shared
-            // `AxonRequest` enum for REST/CLI compatibility, but MCP authz
-            // (`MCP_ACTION_SPECS`) already denies them before dispatch; this
-            // arm keeps the match exhaustive and gives a clear message for
-            // LoopbackDev callers that skip the authz gate.
-            AxonRequest::Sources(_)
-            | AxonRequest::Domains(_)
-            | AxonRequest::Stats(_)
-            | AxonRequest::ElicitDemo(_) => {
-                return Err(invalid_params(
-                    "this action was removed from MCP; use action=query/retrieve for indexed \
+        let response = if matches!(
+            action.as_str(),
+            "reset" | "collections" | "uploads" | "artifacts"
+        ) {
+            let request: McpSystemRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
+                tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
+                invalid_params(format!("invalid request: {e}"))
+            })?;
+            match request {
+                McpSystemRequest::Reset(req) => self.handle_reset(req).await?,
+                McpSystemRequest::Collections(req) => self.handle_collections(req).await?,
+                McpSystemRequest::Uploads(req) => self.handle_uploads(req).await?,
+                McpSystemRequest::Artifacts(req) => self.handle_artifacts(req).await?,
+            }
+        } else if action == "watch" {
+            let request: McpWatchRequest = serde_json::from_value(Value::Object(raw)).map_err(|e| {
+                tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
+                invalid_params(format!("invalid request: {e}"))
+            })?;
+            let McpWatchRequest::Watch(req) = request;
+            self.handle_watch(req).await?
+        } else {
+            let request: AxonRequest = parse_axon_request(raw).map_err(|e| {
+                tracing::warn!(action = %action, subaction = %subaction, error = %e, "mcp error");
+                invalid_params(format!("invalid request: {e}"))
+            })?;
+            match request {
+                AxonRequest::Status(req) => self.handle_status(req).await?,
+                AxonRequest::Jobs(req) => self.handle_jobs(req).await?,
+                AxonRequest::Source(req) => self.handle_source(req).await?,
+                AxonRequest::Extract(req) => self.handle_extract(req).await?,
+                AxonRequest::Memory(req) => self.handle_memory(req).await?,
+                AxonRequest::Query(req) => self.handle_query(req).await?,
+                AxonRequest::Retrieve(req) => self.handle_retrieve(req).await?,
+                AxonRequest::Search(req) => self.handle_search(req).await?,
+                AxonRequest::Map(req) => self.handle_map(req).await?,
+                AxonRequest::Endpoints(req) => self.handle_endpoints(req).await?,
+                AxonRequest::Evaluate(req) => self.handle_evaluate(req).await?,
+                AxonRequest::Suggest(req) => self.handle_suggest(req).await?,
+                AxonRequest::Doctor(req) => self.handle_doctor(req).await?,
+                AxonRequest::Help(req) => self.handle_help(req).await?,
+                AxonRequest::Resolve(req) => self.handle_resolve(req).await?,
+                AxonRequest::Capabilities(req) => self.handle_capabilities(req).await?,
+                AxonRequest::Providers(req) => self.handle_providers(req).await?,
+                // `sources`, `domains`, and `stats` are removed
+                // from the MCP surface per the tool contract (issue #298 WS-G):
+                // `sources`/`domains` have no contracted equivalent yet (tracked
+                // as a WS-G followup), `stats` folds toward `action=collections`
+                // once a real CollectionService backs it (also a followup), and
+                // contract's canonical list. These remain on the shared
+                // `AxonRequest` enum for REST/CLI compatibility, but MCP authz
+                // (`MCP_ACTION_SPECS`) already denies them before dispatch; this
+                // arm keeps the match exhaustive and gives a clear message for
+                // LoopbackDev callers that skip the authz gate.
+                AxonRequest::Sources(_) | AxonRequest::Domains(_) | AxonRequest::Stats(_) => {
+                    return Err(invalid_params(
+                        "this action was removed from MCP; use action=query/retrieve for indexed \
                      content lookups, or action=doctor for service health",
-                ));
-            }
-            AxonRequest::Research(req) => self.handle_research(req).await?,
-            AxonRequest::Ask(req) => self.handle_ask(req).await?,
-            AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
-            AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
-            AxonRequest::Diff(req) => self.handle_diff(req).await?,
-            AxonRequest::Brand(req) => self.handle_brand(req).await?,
-            AxonRequest::Prune(req) => self.handle_prune(req).await?,
-            // Removed indexing actions: `embed`, `ingest`, `scrape`, `crawl`,
-            // `code_search`, and `vertical_scrape` are folded into `source`.
-            // These variants remain on the shared `AxonRequest` for the REST
-            // surface, but the MCP authz allow-list rejects them before
-            // dispatch; the arm here keeps the match exhaustive and gives a
-            // clear message if one is ever reached.
-            AxonRequest::Embed(_)
-            | AxonRequest::Ingest(_)
-            | AxonRequest::Scrape(_)
-            | AxonRequest::Crawl(_)
-            | AxonRequest::CodeSearch(_)
-            | AxonRequest::VerticalScrape(_) => {
-                return Err(invalid_params(
-                    "this action was removed from MCP; use action=source to index any local path, \
-                     git/web/feed/youtube/reddit/session/registry target",
-                ));
-            }
-            // `purge` is removed from MCP; destructive cleanup lives under
-            // `action=prune`. The variant remains on the shared `AxonRequest`
-            // for the REST surface, but the MCP authz allow-list rejects it
-            // before dispatch; this arm keeps the match exhaustive.
-            AxonRequest::Purge(_) => {
-                return Err(invalid_params(
-                    "this action was removed from MCP; use action=prune for destructive cleanup",
-                ));
-            }
-            AxonRequest::Watch(req) => self.handle_watch(req).await?,
-            AxonRequest::Graph(req) => self.handle_graph(req).await?,
-            AxonRequest::Debug(_)
-            | AxonRequest::Dedupe(_)
-            | AxonRequest::Migrate(_)
-            | AxonRequest::Setup(_) => {
-                return Err(invalid_params(
-                    "this action is available through the HTTP API, not MCP",
-                ));
+                    ));
+                }
+                AxonRequest::Research(req) => self.handle_research(req).await?,
+                AxonRequest::Ask(req) => self.handle_ask(req).await?,
+                AxonRequest::Summarize(req) => self.handle_summarize(req).await?,
+                AxonRequest::Screenshot(req) => self.handle_screenshot(req).await?,
+                AxonRequest::Diff(req) => self.handle_diff(req).await?,
+                AxonRequest::Brand(req) => self.handle_brand(req).await?,
+                AxonRequest::Prune(req) => self.handle_prune(req).await?,
+                AxonRequest::Watch(_) => {
+                    return Err(invalid_params(
+                        "watch requests must use the canonical MCP watch DTO",
+                    ));
+                }
+                AxonRequest::Graph(req) => self.handle_graph(req).await?,
+                AxonRequest::Chat(req) => self.handle_chat(req).await?,
+                AxonRequest::Debug(_) | AxonRequest::Migrate(_) | AxonRequest::Setup(_) => {
+                    return Err(invalid_params(
+                        "this action is available through the HTTP API, not MCP",
+                    ));
+                }
             }
         };
         let response = handler_meta::append_stale_binary_warning(response);
@@ -259,7 +252,7 @@ impl AxonMcpServer {
 
     #[tool(
         name = "axon_status_dashboard",
-        description = "Render Axon's interactive MCP Apps status dashboard. Use this when the user wants to inspect live crawl, embed, extract, ingest, worker, and service status visually.",
+        description = "Render Axon's interactive MCP Apps status dashboard. Use this when the user wants to inspect live source, extract, worker, and service status visually.",
         meta = handler_meta::status_dashboard_tool_meta()
     )]
     async fn axon_status_dashboard(&self) -> Result<CallToolResult, ErrorData> {
@@ -379,7 +372,7 @@ impl ServerHandler for AxonMcpServer {
         };
 
         // Real caller-derived AuthSnapshot for job-submission handlers
-        // (extract.start, and any future MCP-side crawl/embed/ingest starts)
+        // such as extract.start and future source-backed starts.
         // — `None` in LoopbackDev mode, where there is no per-caller identity
         // to snapshot and the loopback bind is the trust boundary itself.
         let caller_auth_snapshot = auth.map(|auth_ctx| {
@@ -407,14 +400,26 @@ impl ServerHandler for AxonMcpServer {
         // Delegate to the tool router generated by #[tool_router], with the
         // resolved prune/memory authz and caller auth snapshot available to
         // handlers via task-local (see `common.rs` module docs).
+        let reset_authz = axon_services::reset::ResetAuthz {
+            is_admin: action == "reset"
+                && match auth {
+                    None => true,
+                    Some(auth_ctx) => {
+                        axon_authz::scope_satisfies(&auth_ctx.scopes, axon_authz::AXON_ADMIN_SCOPE)
+                    }
+                },
+        };
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         common::CURRENT_PRUNE_AUTHZ
             .scope(
                 prune_authz,
-                common::CURRENT_MEMORY_AUTHZ.scope(
-                    memory_authz,
-                    common::CURRENT_CALLER_AUTH_SNAPSHOT
-                        .scope(caller_auth_snapshot, Self::tool_router().call(tcc)),
+                common::CURRENT_RESET_AUTHZ.scope(
+                    reset_authz,
+                    common::CURRENT_MEMORY_AUTHZ.scope(
+                        memory_authz,
+                        common::CURRENT_CALLER_AUTH_SNAPSHOT
+                            .scope(caller_auth_snapshot, Self::tool_router().call(tcc)),
+                    ),
                 ),
             )
             .await

@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  isJobPhaseTerminal,
-  jobFamilyVerb,
-  pendingJobSnapshot,
-  summarizeJob,
-} from "./jobProgress";
+import { isJobPhaseTerminal, jobFamilyVerb, pendingJobSnapshot, summarizeJob } from "./jobProgress";
 
 describe("summarizeJob", () => {
   it("reads the server-derived progress block (phase / percent / metrics)", () => {
@@ -18,7 +13,7 @@ describe("summarizeJob", () => {
           phase: "running",
           percent: 40,
           metrics: [
-            { label: "Phase", value: "ingesting" },
+            { label: "Phase", value: "preparing" },
             { label: "Chunks", value: "1,024" },
           ],
           error: null,
@@ -29,7 +24,7 @@ describe("summarizeJob", () => {
     expect(snap.phase).toBe("running");
     expect(snap.percent).toBe(40);
     expect(snap.metrics).toEqual([
-      { label: "Phase", value: "ingesting" },
+      { label: "Phase", value: "preparing" },
       { label: "Chunks", value: "1,024" },
     ]);
     expect(snap.label).toBe("owner/repo");
@@ -40,7 +35,12 @@ describe("summarizeJob", () => {
       "source",
       {
         job: { status: "failed" },
-        progress: { phase: "failed", percent: null, metrics: [], error: "github_repo target not found: owner/typo" },
+        progress: {
+          phase: "failed",
+          percent: null,
+          metrics: [],
+          error: "github_repo target not found: owner/typo",
+        },
       },
       { jobId: "j2", label: "owner/typo" },
     );
@@ -49,14 +49,22 @@ describe("summarizeJob", () => {
   });
 
   it("falls back to a status-only snapshot when there is no progress (202 accept response)", () => {
-    const snap = summarizeJob("source", { job_id: "j3", status: "pending" }, { jobId: "j3", label: "notes" });
+    const snap = summarizeJob(
+      "source",
+      { job_id: "j3", status: "pending" },
+      { jobId: "j3", label: "notes" },
+    );
     expect(snap.phase).toBe("pending");
     expect(snap.percent).toBeNull();
     expect(snap.metrics).toEqual([]);
   });
 
   it("fallback marks a completed status as done at 100%", () => {
-    const snap = summarizeJob("source", { job: { status: "completed" } }, { jobId: "j4", label: "x" });
+    const snap = summarizeJob(
+      "source",
+      { job: { status: "completed" } },
+      { jobId: "j4", label: "x" },
+    );
     expect(snap.phase).toBe("done");
     expect(snap.percent).toBe(100);
   });
@@ -116,7 +124,12 @@ describe("summarizeJob", () => {
       "source",
       {
         job: { status: "running" },
-        progress: { phase: "running", percent: null, metrics: { label: "x", value: "1" }, error: null },
+        progress: {
+          phase: "running",
+          percent: null,
+          metrics: { label: "x", value: "1" },
+          error: null,
+        },
       },
       { jobId: "j8", label: "x" },
     );

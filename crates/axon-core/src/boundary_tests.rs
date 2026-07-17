@@ -170,6 +170,109 @@ async fn file_artifact_store_ids_are_owner_unique_for_identical_content() {
 }
 
 #[tokio::test]
+async fn file_artifact_store_rejects_tampered_manifest_paths() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let store = FileArtifactStore::new(temp.path());
+    let handle = ArtifactStore::put(
+        &store,
+        ArtifactWriteRequest {
+            kind: ArtifactKind::RawContent,
+            content_type: "text/plain".to_string(),
+            content: ContentRef::InlineText {
+                text: "safe".to_string(),
+            },
+            source_id: None,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let manifest_path = temp.path().join(format!("{}.json", handle.artifact_id.0));
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&tokio::fs::read(&manifest_path).await.unwrap()).unwrap();
+    manifest["content_path"] = serde_json::json!("../outside.txt");
+    tokio::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap())
+        .await
+        .unwrap();
+
+    let error = ArtifactStore::get(&store, handle).await.unwrap_err();
+    assert_eq!(error.code.0, "artifact.read_failed");
+}
+
+#[tokio::test]
+async fn artifact_stores_redact_secret_metadata_before_persisting() {
+    async fn assert_redacts(store: &dyn ArtifactStore) {
+        let mut metadata = MetadataMap::new();
+        metadata.insert(
+            "summary".to_string(),
+            serde_json::json!("rotated Authorization: Bearer abcdef0123456789abcdef"),
+        );
+        let handle = store
+            .put(ArtifactWriteRequest {
+                kind: ArtifactKind::Report,
+                content_type: "application/json".to_string(),
+                content: ContentRef::InlineText {
+                    text: "{}".to_string(),
+                },
+                source_id: Some(SourceId::new("src")),
+                job_id: Some(JobId::new(uuid::Uuid::from_u128(3))),
+                metadata,
+            })
+            .await
+            .unwrap();
+        let stored = store.get(handle).await.unwrap();
+        assert!(
+            !stored.metadata["summary"]
+                .as_str()
+                .unwrap()
+                .contains("abcdef0123456789abcdef")
+        );
+    }
+
+    let fake = FakeCoreBoundaries::new();
+    assert_redacts(&fake).await;
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let file = FileArtifactStore::new(temp.path());
+    assert_redacts(&file).await;
+}
+
+#[tokio::test]
+async fn artifact_redaction_failure_writes_no_files_or_fake_rows() {
+    let mut forbidden_metadata = MetadataMap::new();
+    forbidden_metadata.insert(
+        "authorization".to_string(),
+        serde_json::json!("Bearer definitely-secret"),
+    );
+    let fake = FakeCoreBoundaries::new();
+    let request = ArtifactWriteRequest {
+        kind: ArtifactKind::Report,
+        content_type: "application/json".to_string(),
+        content: ContentRef::InlineText {
+            text: "safe body".to_string(),
+        },
+        source_id: None,
+        job_id: None,
+        metadata: forbidden_metadata.clone(),
+    };
+
+    let fake_error = ArtifactStore::put(&fake, request.clone())
+        .await
+        .expect_err("fake write must fail closed");
+    assert_eq!(fake_error.code.0, "redaction.failed");
+    assert!(fake.artifacts.lock().await.is_empty());
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let store = FileArtifactStore::new(temp.path());
+    let file_error = ArtifactStore::put(&store, request)
+        .await
+        .expect_err("file write must fail closed");
+    assert_eq!(file_error.code.0, "redaction.failed");
+    assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
 async fn fake_core_boundaries_report_health_override() {
     let fake = FakeCoreBoundaries::new().with_health(HealthStatus::Cooling);
 

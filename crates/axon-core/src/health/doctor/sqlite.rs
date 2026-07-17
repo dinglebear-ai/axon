@@ -107,15 +107,15 @@ pub(super) async fn build(
         },
         "capabilities": [
             {
-                "tier": "tier_1_crawl_retrieve",
+                "tier": "tier_1_source_retrieve",
                 "available": qdrant_ok,
-                "impact": ["crawl, retrieve, and query require Qdrant for indexed data"],
+                "impact": ["source indexing, retrieve, and query require Qdrant for indexed data"],
                 "remedies": if qdrant_ok { Vec::<String>::new() } else { vec!["start qdrant with `just services-up`".to_string()] },
             },
             {
                 "tier": "tier_2_embedding",
                 "available": tei_ok,
-                "impact": ["embed and semantic search require TEI embeddings"],
+                "impact": ["source embedding and semantic search require TEI embeddings"],
                 "remedies": if tei_ok { Vec::<String>::new() } else { vec!["start TEI or configure TEI_URL".to_string()] },
             }
         ],
@@ -129,13 +129,13 @@ pub(super) async fn build(
         "config_diagnostics": config_diagnostics,
         "services": Value::Object(services),
         "pipelines": {
-            "crawl": true,
+            "source": true,
             "extract": true,
             // Readiness now reflects a real LLM round-trip (OPS-M4): a present
             // command with expired creds / unreachable endpoint reports false.
             "extract_llm_ready": llm_roundtrip.0,
-            "embed": true,
-            "ingest": true,
+            "watch": true,
+            "prune": true,
         },
         "queue_names": {},
         "browser_runtime": browser_runtime,

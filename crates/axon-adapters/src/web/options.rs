@@ -63,25 +63,45 @@ pub(super) fn user_agent(values: &MetadataMap) -> Option<String> {
         .map(str::to_string)
 }
 
-pub(super) fn custom_headers(values: &MetadataMap) -> Vec<RedactedHeader> {
-    string_array_option(values, "custom_headers")
+pub(super) fn headers(values: &MetadataMap) -> Vec<RedactedHeader> {
+    values
+        .get("headers")
+        .and_then(Value::as_object)
         .into_iter()
-        .filter_map(|raw| parse_header(&raw))
+        .flat_map(|entries| entries.iter())
+        .filter_map(|(name, value)| {
+            value.as_str().map(|value| RedactedHeader {
+                name: name.clone(),
+                value: value.to_string(),
+                redacted: false,
+            })
+        })
         .collect()
 }
 
-fn parse_header(raw: &str) -> Option<RedactedHeader> {
-    let (name, value) = raw.split_once(':')?;
-    let name = name.trim();
-    let value = value.trim();
-    if name.is_empty() || value.is_empty() {
-        return None;
-    }
-    Some(RedactedHeader {
-        name: name.to_string(),
-        value: value.to_string(),
-        redacted: false,
-    })
+pub(super) fn cache_policy(values: &MetadataMap) -> CachePolicy {
+    values
+        .get("cache_policy")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .unwrap_or_else(|| {
+            if etag_conditional(values) {
+                CachePolicy::Revalidate
+            } else {
+                CachePolicy::Bypass
+            }
+        })
+}
+
+fn vertical_cache_ttl_secs(values: &MetadataMap) -> Option<std::collections::HashMap<String, u64>> {
+    values
+        .get("vertical_cache_ttl_secs")
+        .and_then(Value::as_object)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(name, value)| value.as_u64().map(|ttl| (name.clone(), ttl)))
+                .collect()
+        })
 }
 
 /// `--automation-script <PATH>` / `validated_options.automation_script`
@@ -134,21 +154,21 @@ fn string_array_option(values: &MetadataMap, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Build the `web_engine` `Config` for one `Site`/`Docs` discovery crawl,
+/// Build the `web_engine` `Config` for in-memory web URL discovery,
 /// driven by `plan.route.validated_options` (falling back to `Config::default()`
-/// for anything absent). `output_dir` is the caller's ephemeral scratch
-/// directory — see `web/site_discovery.rs`.
+/// for anything absent). The map lane does not use crawl output as a handoff,
+/// so its output directory is intentionally empty.
 ///
 /// `url_blacklist` maps onto `Config::exclude_path_prefix` — the closest
 /// existing engine knob (`runtime::configure_website_with_crawl_id` folds it,
 /// together with the SSRF blacklist, into Spider's `with_blacklist_url`).
-pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> Config {
+pub(super) fn build_discovery_config(plan: &SourcePlan) -> Config {
     let values = &plan.route.validated_options.values;
     let mut cfg = Config {
-        output_dir,
+        output_dir: Default::default(),
         embed: false,
-        // Defense-in-depth (issue #298 Wave 1b): this ephemeral, adapter-owned
-        // discovery crawl must never opt into Spider's built-in crawl-result
+        // Defense-in-depth: adapter-owned discovery must never opt into
+        // Spider's built-in crawl-result
         // caching or the whole-crawl disk-TTL shortcut that used to live in
         // `axon-services::crawl_sync` — `LedgerStore::diff_manifest` is now the
         // sole staleness authority. `Config::default()` already sets this to
@@ -166,8 +186,17 @@ pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> 
     if let Some(value) = bool_option(values, "include_subdomains") {
         cfg.include_subdomains = value;
     }
+    if let Some(value) = bool_option(values, "respect_robots") {
+        cfg.respect_robots = value;
+    }
     if let Some(value) = bool_option(values, "discover_sitemaps") {
         cfg.discover_sitemaps = value;
+    }
+    if let Some(value) = bool_option(values, "discover_llms_txt") {
+        cfg.discover_llms_txt = value;
+    }
+    if let Some(value) = usize_option(values, "max_llms_txt_urls") {
+        cfg.max_llms_txt_urls = value;
     }
     if let Some(value) = usize_option(values, "max_sitemaps") {
         cfg.max_sitemaps = value;
@@ -184,9 +213,19 @@ pub(super) fn build_discovery_config(plan: &SourcePlan, output_dir: PathBuf) -> 
     if let Some(value) = bool_option(values, "etag_conditional") {
         cfg.etag_conditional = value;
     }
+    if values.contains_key("cache_policy") {
+        cfg.etag_conditional = cache_policy(values) == CachePolicy::Revalidate;
+    }
     cfg.enable_verticals = verticals_enabled(values);
+    if let Some(value) = vertical_cache_ttl_secs(values) {
+        cfg.vertical_cache_ttl_secs = value;
+    }
     cfg.auto_dispatch_skip = auto_dispatch_skip(values);
     cfg.user_agent = user_agent(values);
+    cfg.custom_headers = headers(values)
+        .into_iter()
+        .map(|header| format!("{}: {}", header.name, header.value))
+        .collect();
     let whitelist = string_array_option(values, "url_whitelist");
     if !whitelist.is_empty() {
         cfg.url_whitelist = whitelist;

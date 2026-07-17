@@ -194,16 +194,10 @@ fn chunk_locator_canonical_uri(payload: &serde_json::Value) -> Option<&str> {
 }
 
 fn indexed_url_from_payload(payload: &serde_json::Value) -> Option<String> {
-    [
-        "item_canonical_uri",
-        "source_canonical_uri",
-        "url",
-        "web_url",
-        "web_normalized_url",
-    ]
-    .into_iter()
-    .find_map(|field| payload_str(payload, field).and_then(parse_http_url))
-    .or_else(|| chunk_locator_canonical_uri(payload).and_then(parse_http_url))
+    ["item_canonical_uri", "source_canonical_uri"]
+        .into_iter()
+        .find_map(|field| payload_str(payload, field).and_then(parse_http_url))
+        .or_else(|| chunk_locator_canonical_uri(payload).and_then(parse_http_url))
 }
 
 fn ranked_base_urls_from_context(
@@ -261,9 +255,6 @@ async fn fetch_indexed_urls(
             serde_json::json!({ "include": [
                 "item_canonical_uri",
                 "source_canonical_uri",
-                "url",
-                "web_url",
-                "web_normalized_url",
                 "chunk_locator"
             ] }),
             256,
@@ -311,7 +302,7 @@ async fn build_suggest_prompt_context(
     };
 
     if indexed_urls.is_empty() {
-        return Err("No indexed URLs found in Qdrant collection; run crawl/scrape first".into());
+        return Err("No indexed URLs found in Qdrant collection; index a source first".into());
     }
 
     // Build lookup set: stored URLs are already normalised, so only slash variants needed.
@@ -377,7 +368,7 @@ ALREADY_INDEXED_URLS (sample — more may be indexed):\n{}",
 
 fn build_suggest_completion_request(cfg: &Config, user_prompt: &str) -> CompletionRequest {
     let req = CompletionRequest::new(user_prompt)
-        .system_prompt("You propose complementary documentation crawl targets. Output JSON only.")
+        .system_prompt("You propose complementary documentation source targets. Output JSON only.")
         .stream(false);
     let req = req.backend_from_config(cfg);
     match llm::configured_model_from_config(cfg) {

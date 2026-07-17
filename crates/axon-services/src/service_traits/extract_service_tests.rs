@@ -19,10 +19,6 @@ async fn fake_extract_service_extract_echoes_urls() {
         max_pages: None,
         render_mode: None,
         embed: None,
-        job_id: None,
-        limit: None,
-        offset: None,
-        response_mode: None,
     };
     let result: ExtractResult = fake.extract(request).await.expect("extract should succeed");
     assert_eq!(result.urls, vec!["https://example.com".to_string()]);
@@ -40,10 +36,6 @@ async fn fake_extract_service_extract_through_trait_object() {
         max_pages: None,
         render_mode: None,
         embed: None,
-        job_id: None,
-        limit: None,
-        offset: None,
-        response_mode: None,
     };
     let result = fake.extract(request).await.expect("extract should succeed");
     assert_eq!(result.urls, vec!["https://example.org".to_string()]);

@@ -48,7 +48,7 @@ Replace `axon reddit` with `axon <source>`; inspect async work with `axon jobs`.
 | `--min-score <n>` | `0` | Minimum score threshold for posts and comments |
 | `--depth <n>` | `2` | Comment traversal depth |
 | `--scrape-links` | off | Scrape content of linked URLs in link posts. Presence flag — include to enable. |
-| `--wait <bool>` | `false` | Block until ingestion completes |
+| `--wait <bool>` | `false` | Block until indexing completes |
 | `--collection <name>` | `axon` | Target Qdrant collection |
 | `--json` | `false` | Machine-readable output |
 

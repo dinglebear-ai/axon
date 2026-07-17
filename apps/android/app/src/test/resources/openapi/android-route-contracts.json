@@ -85,6 +85,56 @@
     "requiresAuth": true
   },
   {
+    "method": "GET",
+    "path": "/v1/artifacts/{artifact_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/artifacts/{artifact_id}/content",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/uploads",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/uploads",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/uploads/{upload_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "DELETE",
+    "path": "/v1/uploads/{upload_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "PUT",
+    "path": "/v1/uploads/{upload_id}/content",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/uploads/{upload_id}/complete",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reset/plan",
+    "requiresAuth": true
+  },
+  {
+    "method": "POST",
+    "path": "/v1/reset/exec",
+    "requiresAuth": true
+  },
+  {
     "method": "POST",
     "path": "/v1/endpoints",
     "requiresAuth": true
@@ -162,11 +212,6 @@
   {
     "method": "POST",
     "path": "/v1/research/stream",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/memory",
     "requiresAuth": true
   },
   {
@@ -325,36 +370,6 @@
     "requiresAuth": true
   },
   {
-    "method": "GET",
-    "path": "/v1/extract",
-    "requiresAuth": true
-  },
-  {
-    "method": "GET",
-    "path": "/v1/extract/{id}",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/{id}/cancel",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/cleanup",
-    "requiresAuth": true
-  },
-  {
-    "method": "DELETE",
-    "path": "/v1/extract",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/extract/recover",
-    "requiresAuth": true
-  },
-  {
     "method": "POST",
     "path": "/v1/prune/plan",
     "requiresAuth": true
@@ -362,16 +377,6 @@
   {
     "method": "POST",
     "path": "/v1/prune/exec",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/prune/dedupe",
-    "requiresAuth": true
-  },
-  {
-    "method": "POST",
-    "path": "/v1/prune/purge",
     "requiresAuth": true
   },
   {
@@ -387,6 +392,16 @@
   {
     "method": "GET",
     "path": "/v1/watches/{watch_id}",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches/{watch_id}/status",
+    "requiresAuth": true
+  },
+  {
+    "method": "GET",
+    "path": "/v1/watches/{watch_id}/history",
     "requiresAuth": true
   },
   {

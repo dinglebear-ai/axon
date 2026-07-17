@@ -157,8 +157,9 @@ fn source_kind_to_dispatch_kind(kind: SourceKind) -> SourceInputKind {
         SourceKind::Web => SourceInputKind::Web,
         SourceKind::Session => SourceInputKind::Session,
         SourceKind::Registry => SourceInputKind::Registry,
-        SourceKind::Memory | SourceKind::Upload | SourceKind::CliTool | SourceKind::McpTool => {
-            SourceInputKind::Unsupported
-        }
+        SourceKind::CliTool => SourceInputKind::CliTool,
+        SourceKind::McpTool => SourceInputKind::McpTool,
+        SourceKind::Memory => SourceInputKind::Memory,
+        SourceKind::Upload => SourceInputKind::Upload,
     }
 }

@@ -1,7 +1,8 @@
 # src/core
 Last Modified: 2026-03-03
 
-Shared runtime primitives used across CLI, jobs, crawl, vector, and web modules.
+Shared runtime primitives used across CLI, jobs, source adapters, vectors, and
+web transport modules.
 
 ## Purpose
 - Provide centralized config parsing/resolution.
@@ -28,7 +29,7 @@ Each `<name>.rs` below is a module **root** with a sibling `<name>/` subdirector
 ## Integration Points
 - `lib.rs` command dispatch consumes config produced here.
 - `src/cli` command handlers depend on `Config` and utility helpers.
-- `src/crawl` and `src/vector` use HTTP/content layers.
+- Source adapters and vector providers use the shared HTTP/content layers.
 - `src/jobs` workers use config, health, and logging utilities.
 
 ## Notes

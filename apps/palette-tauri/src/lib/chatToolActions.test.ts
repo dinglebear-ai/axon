@@ -22,10 +22,10 @@ describe("chatToolActions", () => {
   });
 
   it("formats queued jobs with the job id", () => {
-    const crawl = ACTIONS.find((action) => action.subcommand === "crawl");
-    if (!crawl) throw new Error("missing crawl action");
+    const source = ACTIONS.find((action) => action.subcommand === "source-site");
+    if (!source) throw new Error("missing site source action");
 
-    const message = chatToolMessage(crawl, "https://example.com/docs", {
+    const message = chatToolMessage(source, "https://example.com/docs", {
       ok: true,
       status: 202,
       method: "POST",
@@ -33,7 +33,7 @@ describe("chatToolActions", () => {
       payload: { job_id: "job-123", status: "queued" },
     });
 
-    expect(message).toContain("Crawl queued");
+    expect(message).toContain("Index site queued");
     expect(message).toContain("Job id: `job-123`");
     expect(message).toContain("Status: queued");
   });

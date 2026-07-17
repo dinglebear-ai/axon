@@ -8,7 +8,7 @@
 
 use super::router;
 use async_trait::async_trait;
-use axon_api::source::JobKind;
+use axon_api::source::{JobKind, WatchId, WatchRequest};
 use axon_authz::http::AuthPolicy;
 use axon_services::context::ServiceContext;
 use axon_services::runtime::{RuntimeResult, ServiceJobRuntime};
@@ -44,12 +44,9 @@ fn extract_submit_body_accepts_cli_parity_knobs() {
 }
 
 #[test]
-fn async_lifecycle_routes_are_declared_for_extract() {
+fn only_extract_start_route_is_declared_for_extract() {
     let routes = crate::server::handlers::rest::documented_rest_paths_for_tests();
-    assert!(routes.contains(&"GET /v1/extract".to_string()));
-    assert!(routes.contains(&"POST /v1/extract/cleanup".to_string()));
-    assert!(routes.contains(&"DELETE /v1/extract".to_string()));
-    assert!(routes.contains(&"POST /v1/extract/recover".to_string()));
+    assert_eq!(routes, vec!["POST /v1/extract".to_string()]);
 }
 
 #[test]
@@ -60,26 +57,47 @@ fn sources_submit_is_write_scope() {
     );
 }
 
+#[test]
+fn reset_and_prune_execution_are_admin_scope() {
+    for path in [
+        "/v1/prune/plan",
+        "/v1/prune/exec",
+        "/v1/reset/plan",
+        "/v1/reset/exec",
+    ] {
+        assert_eq!(
+            crate::server::handlers::rest::auth::scope_for_rest_route("POST", path),
+            Some("axon:admin"),
+            "{path}"
+        );
+    }
+}
+
 struct EnvGuard {
+    key: &'static str,
     prev: Option<String>,
 }
 
 impl EnvGuard {
     fn set(value: Option<&str>) -> Self {
-        let prev = std::env::var(ENV_KEY).ok();
+        Self::set_key(ENV_KEY, value)
+    }
+
+    fn set_key(key: &'static str, value: Option<&str>) -> Self {
+        let prev = std::env::var(key).ok();
         match value {
-            Some(v) => unsafe { std::env::set_var(ENV_KEY, v) },
-            None => unsafe { std::env::remove_var(ENV_KEY) },
+            Some(v) => unsafe { std::env::set_var(key, v) },
+            None => unsafe { std::env::remove_var(key) },
         }
-        Self { prev }
+        Self { key, prev }
     }
 }
 
 impl Drop for EnvGuard {
     fn drop(&mut self) {
         match self.prev.take() {
-            Some(v) => unsafe { std::env::set_var(ENV_KEY, v) },
-            None => unsafe { std::env::remove_var(ENV_KEY) },
+            Some(v) => unsafe { std::env::set_var(self.key, v) },
+            None => unsafe { std::env::remove_var(self.key) },
         }
     }
 }
@@ -218,8 +236,8 @@ async fn loopback_dev_read_routes_are_reachable_without_auth() {
     stop(shutdown, handle).await;
 }
 
-/// The legacy indexing routes (embed/ingest/scrape/crawl) were removed in
-/// favor of the unified `POST /v1/sources`. They must now 404, while the
+/// The legacy indexing/admin routes were removed in favor of the unified
+/// `POST /v1/sources` and `/v1/prune/*` surfaces. They must now 404, while the
 /// replacement `POST /v1/sources` route is mounted (never 404/405).
 #[tokio::test]
 #[serial]
@@ -228,7 +246,14 @@ async fn legacy_indexing_routes_are_absent_and_sources_present() {
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    for path in ["/v1/embed", "/v1/ingest", "/v1/scrape", "/v1/crawl"] {
+    for path in [
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/scrape",
+        "/v1/crawl",
+        "/v1/purge",
+        "/v1/dedupe",
+    ] {
         let response = client
             .post(format!("{base}{path}"))
             .json(&serde_json::json!({}))
@@ -443,59 +468,57 @@ async fn async_submit_routes_reject_private_urls_before_enqueue() {
     stop(shutdown, handle).await;
 }
 
-/// F3 GET / cancel routes reject non-UUID :id with 400.
+/// Extract lifecycle/status/control routes moved under `/v1/jobs`; the
+/// family-scoped `/v1/extract/*` routes must stay absent.
 #[tokio::test]
 #[serial]
-async fn async_job_id_routes_reject_invalid_uuid() {
+async fn extract_lifecycle_routes_are_removed() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
 
-    for path in ["/v1/extract/not-a-uuid"] {
-        let response = client
-            .get(format!("{base}{path}"))
-            .send()
-            .await
-            .unwrap_or_else(|e| panic!("get {path}: {e}"));
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-    }
-
-    for path in ["/v1/extract/not-a-uuid/cancel"] {
-        let response = client
-            .post(format!("{base}{path}"))
-            .send()
-            .await
-            .unwrap_or_else(|e| panic!("post {path}: {e}"));
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-    }
-
-    stop(shutdown, handle).await;
-}
-
-/// F3 review-followup: valid-UUID-but-unknown-job returns 404 (not 200 with
-/// a null payload). Specifically guards the crawl path which uses a service
-/// that returns `Result<CrawlJobResult>` rather than `Result<Option<_>>`.
-#[tokio::test]
-#[serial]
-async fn async_status_returns_404_for_unknown_job() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
     let unknown = "00000000-0000-0000-0000-000000000000";
-
-    for kind in ["extract"] {
-        let response = client
-            .get(format!("{base}/v1/{kind}/{unknown}"))
-            .send()
-            .await
-            .unwrap_or_else(|e| panic!("get {kind}/{unknown}: {e}"));
-        let status = response.status();
-        let body: serde_json::Value = response.json().await.expect("json body");
-        assert_eq!(status, StatusCode::NOT_FOUND, "{kind} expected 404");
-        assert_eq!(
-            body["error"]["code"], "source.acquire.not_found",
-            "{kind} code"
-        );
+    for (method, path, expected) in [
+        (
+            "GET",
+            "/v1/extract".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ),
+        (
+            "DELETE",
+            "/v1/extract".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ),
+        (
+            "POST",
+            "/v1/extract/cleanup".to_string(),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "POST",
+            "/v1/extract/recover".to_string(),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "GET",
+            format!("/v1/extract/{unknown}"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "POST",
+            format!("/v1/extract/{unknown}/cancel"),
+            StatusCode::NOT_FOUND,
+        ),
+    ] {
+        let url = format!("{base}{path}");
+        let response = match method {
+            "GET" => client.get(url).send().await,
+            "POST" => client.post(url).send().await,
+            "DELETE" => client.delete(url).send().await,
+            _ => unreachable!(),
+        }
+        .unwrap_or_else(|e| panic!("{method} {path}: {e}"));
+        assert_eq!(response.status(), expected, "{method} {path}");
     }
 
     stop(shutdown, handle).await;
@@ -567,89 +590,6 @@ async fn bearer_token_passes_write_scope_guard() {
     // incorrectly blocked the valid write token.
     assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
     assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
-}
-
-/// Review-followup: positive auth test for admin routes. With a valid bearer
-/// token (axon:write scope) the dedupe route passes the admin_write guard
-/// and reaches body validation — proving the request crossed the auth boundary.
-#[tokio::test]
-#[serial]
-async fn admin_routes_accept_valid_bearer() {
-    let _env = EnvGuard::set(Some("secret"));
-    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/prune/dedupe"))
-        .header("authorization", "Bearer secret")
-        .json(&serde_json::json!({ "collection": "invalid/name" }))
-        .send()
-        .await
-        .expect("dedupe request");
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json body");
-
-    stop(shutdown, handle).await;
-    assert_eq!(
-        status,
-        StatusCode::BAD_REQUEST,
-        "should reach handler, got {status}"
-    );
-    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
-    assert!(
-        body["error"]["message"]
-            .as_str()
-            .unwrap_or("")
-            .contains("collection"),
-        "should be collection validation, got {body}"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn admin_dedupe_rejects_body_without_json_content_type() {
-    let _env = EnvGuard::set(Some("secret"));
-    let (base, shutdown, handle) = spawn(AuthPolicy::Mounted { auth_state: None }).await;
-    let client = reqwest::Client::new();
-
-    let response = client
-        .post(format!("{base}/v1/prune/dedupe"))
-        .header("authorization", "Bearer secret")
-        .body(r#"{"collection":"invalid/name"}"#)
-        .send()
-        .await
-        .expect("dedupe request");
-    let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("json body");
-
-    stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
-    assert_eq!(body["ok"], false);
-    assert_eq!(body["error"]["code"], "route.validation.unsupported_media");
-}
-
-/// F4: POST /v1/prune/dedupe requires auth EVEN in LoopbackDev (admin_write guard).
-/// Migrate is intentionally not exposed as REST.
-#[tokio::test]
-#[serial]
-async fn admin_routes_require_auth_in_loopback_dev() {
-    let _env = EnvGuard::set(None);
-    let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
-    let client = reqwest::Client::new();
-
-    let dedupe = client
-        .post(format!("{base}/v1/prune/dedupe"))
-        .send()
-        .await
-        .expect("dedupe request");
-    let dedupe_status = dedupe.status();
-
-    stop(shutdown, handle).await;
-    assert_eq!(
-        dedupe_status,
-        StatusCode::UNAUTHORIZED,
-        "dedupe must require auth in LoopbackDev"
-    );
 }
 
 /// F4: migrate is intentionally not exposed as REST.
@@ -771,7 +711,7 @@ async fn axon_write_token_satisfies_read_scope_route() {
 
 #[tokio::test]
 #[serial]
-async fn legacy_watch_routes_are_absent() {
+async fn retired_watch_routes_are_absent() {
     let _env = EnvGuard::set(None);
     let (base, shutdown, handle) = spawn(AuthPolicy::LoopbackDev).await;
     let client = reqwest::Client::new();
@@ -788,9 +728,124 @@ async fn legacy_watch_routes_are_absent() {
             "POST" => client.post(format!("{base}{path}")),
             _ => unreachable!(),
         };
-        let response = request.send().await.expect("legacy watch request");
+        let response = request.send().await.expect("retired watch route request");
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method} {path}");
     }
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn source_watch_exec_history_status_routes_use_canonical_store() {
+    let _env = EnvGuard::set(None);
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let _home = EnvGuard::set_key("HOME", tmp.path().to_str());
+    let mut cfg = axon_core::config::Config::default_minimal();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    let cfg = Arc::new(cfg);
+    let request: WatchRequest = serde_json::from_value(serde_json::json!({
+        "source": "https://example.com/rest-watch",
+        "schedule": { "every_seconds": 3600 },
+        "options": { "values": {} }
+    }))
+    .expect("watch request default");
+    assert!(request.embed, "omitted REST watch embed defaults to true");
+    let created = axon_services::watch::create_source_watch(cfg.as_ref(), None, request, None)
+        .await
+        .expect("create source watch");
+    let watch_id = created.watch_id.0.clone();
+
+    let panel =
+        Arc::new(crate::server::PanelRuntimeState::initialize("127.0.0.1", 0).expect("panel"));
+    let ctx = Arc::new(
+        ServiceContext::new(Arc::clone(&cfg))
+            .await
+            .expect("service context"),
+    );
+    let app_state = crate::server::AppState {
+        panel,
+        service_context: ctx,
+    };
+    let app = axum::Router::new()
+        .route(
+            "/v1/watches/{watch_id}/status",
+            axum::routing::get(crate::server::handlers::source_watch::status_watch),
+        )
+        .route(
+            "/v1/watches/{watch_id}/exec",
+            axum::routing::post(crate::server::handlers::source_watch::exec_watch),
+        )
+        .route(
+            "/v1/watches/{watch_id}/history",
+            axum::routing::get(crate::server::handlers::source_watch::history_watch),
+        )
+        .with_state((app_state, Arc::clone(&cfg)));
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (shutdown, rx) = oneshot::channel();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                let _ = rx.await;
+            })
+            .await
+            .expect("serve");
+    });
+    let base = format!("http://{addr}");
+    let client = reqwest::Client::new();
+
+    let executed: serde_json::Value = client
+        .post(format!("{base}/v1/watches/{watch_id}/exec"))
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .expect("watch exec")
+        .error_for_status()
+        .expect("watch exec code")
+        .json()
+        .await
+        .expect("watch exec json");
+    assert_eq!(executed["kind"], "source");
+    let job_id = executed["id"].as_str().expect("watch exec job id");
+
+    let status: serde_json::Value = client
+        .get(format!("{base}/v1/watches/{watch_id}/status"))
+        .send()
+        .await
+        .expect("watch status")
+        .error_for_status()
+        .expect("watch status code")
+        .json()
+        .await
+        .expect("watch status json");
+    assert_eq!(status["watch"]["watch_id"], watch_id);
+    assert_eq!(status["latest_job_summary"]["job_id"], job_id);
+
+    let history: serde_json::Value = client
+        .get(format!("{base}/v1/watches/{watch_id}/history"))
+        .send()
+        .await
+        .expect("watch history")
+        .error_for_status()
+        .expect("watch history code")
+        .json()
+        .await
+        .expect("watch history json");
+    assert_eq!(history["watch_id"], watch_id);
+    assert_eq!(history["jobs"][0]["id"], job_id);
+
+    let store = axon_services::watch::open_source_watch_store(cfg.as_ref(), None)
+        .await
+        .expect("watch store");
+    let stored = store
+        .request(WatchId::new(&watch_id))
+        .await
+        .expect("stored request")
+        .expect("stored request present");
+    assert!(stored.embed, "REST-created watches should embed by default");
 
     stop(shutdown, handle).await;
 }

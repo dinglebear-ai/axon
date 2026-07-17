@@ -97,32 +97,23 @@ catch a missing arm the moment you add a new `AxonRequest` variant.
 
 When an action is removed (folded into another action, e.g. `embed`/
 `ingest`/`scrape`/`crawl`/`code_search`/`vertical_scrape` folding into
-`source`), the pattern is **not** to delete the `AxonRequest` variant — REST
-still needs it for backward request-shape compatibility in some paths — but
-to reject it before dispatch. `server.rs` keeps the match arm exhaustive with
-an explicit comment and error:
+`source`), remove the `AxonRequest` variant from normal parsing/schema and add
+an explicit pre-parse guidance entry in `parse_axon_request`. Removed action
+tokens must fail closed before handler dispatch:
 
 ```rust
-// Removed indexing actions: `embed`, `ingest`, `scrape`, `crawl`,
-// `code_search`, and `vertical_scrape` are folded into `source`.
-// These variants remain on the shared `AxonRequest` for the REST
-// surface, but the MCP authz allow-list rejects them before
-// dispatch; the arm here keeps the match exhaustive and gives a
-// clear message if one is ever reached.
-AxonRequest::Embed(_)
-| AxonRequest::Ingest(_)
-| AxonRequest::Scrape(_)
-| AxonRequest::Crawl(_)
-| AxonRequest::CodeSearch(_)
-| AxonRequest::VerticalScrape(_) => { /* rejects with a clear error */ }
+fn removed_action_guidance(action: &str) -> Option<&'static str> {
+    match action {
+        "crawl" => Some("use action=source with scope=site"),
+        "scrape" => Some("use action=source with scope=page"),
+        "embed" | "ingest" => Some("use action=source"),
+        _ => None,
+    }
+}
 ```
 
-The actual rejection for a removed action happens at the MCP **authz
-allow-list** layer, before this match is even reached in the normal case —
-see `crates/axon-mcp/src/authz.rs`/`crates/axon-mcp/src/server/authz.rs`.
-Follow this same two-layer pattern (allow-list rejection + exhaustive match
-arm with a clear message) when retiring an action rather than a bare
-`unreachable!()` or silently dropping the variant.
+Follow this pattern when retiring an action rather than leaving a hidden alias
+or an unreachable dispatch arm.
 
 ## Step 4: Regenerate the tool schema
 

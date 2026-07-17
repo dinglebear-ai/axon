@@ -1,6 +1,80 @@
 use super::*;
 use serde_json::json;
 
+fn collection_spec(name: &str) -> CollectionSpec {
+    CollectionSpec {
+        collection: name.to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 1024,
+            distance: VectorDistance::Cosine,
+        },
+        payload_indexes: vec![PayloadIndexSpec {
+            field_name: "source_id".to_string(),
+            field_schema: PayloadFieldSchema::Keyword,
+            required_for_filters: true,
+        }],
+        sparse: Some(SparseVectorConfig {
+            name: "bm42".to_string(),
+            modifier: SparseVectorModifier::Idf,
+        }),
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    }
+}
+
+#[tokio::test]
+async fn require_collection_spec_uses_cached_spec_without_network() {
+    let store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");
+    let expected = collection_spec("axon-cache");
+    store.cache_collection_spec(expected.clone()).await;
+    let http = store.http().expect("http wrapper");
+
+    let actual = store
+        .require_collection_spec(&http, "axon-cache", axon_error::ErrorStage::Retrieving)
+        .await
+        .expect("cached collection spec");
+
+    assert_eq!(actual.collection, expected.collection);
+    assert_eq!(actual.dense, expected.dense);
+    assert_eq!(actual.sparse, expected.sparse);
+    assert_eq!(actual.payload_indexes, expected.payload_indexes);
+}
+
+#[tokio::test]
+async fn collection_spec_cache_is_shared_across_store_clones() {
+    let store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");
+    store
+        .cache_collection_spec(collection_spec("axon-shared"))
+        .await;
+    let cloned = store.clone();
+
+    let cached = cloned
+        .cached_collection_spec("axon-shared")
+        .await
+        .expect("clone sees shared cache");
+
+    assert_eq!(cached.collection, "axon-shared");
+    assert_eq!(cached.dense.dimensions, 1024);
+}
+
+#[tokio::test]
+async fn collection_spec_cache_invalidation_reaches_existing_store_instances() {
+    let store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");
+    store
+        .cache_collection_spec(collection_spec("axon-reset"))
+        .await;
+    assert!(store.cached_collection_spec("axon-reset").await.is_some());
+
+    QdrantVectorStore::invalidate_collection_spec_cache("http://127.0.0.1:9", "axon-reset");
+
+    assert!(
+        store.cached_collection_spec("axon-reset").await.is_none(),
+        "raw reset must invalidate caches held by already-live contexts"
+    );
+}
+
 #[test]
 fn detect_named_mode_collection_with_sparse_and_indexes() {
     let body = json!({

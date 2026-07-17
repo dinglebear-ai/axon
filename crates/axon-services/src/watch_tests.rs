@@ -2,20 +2,6 @@ use super::*;
 use axon_core::config::Config;
 use std::sync::Arc;
 use tempfile::NamedTempFile;
-use uuid::Uuid;
-
-#[allow(dead_code)]
-fn _assert_signatures() {
-    async fn _f1(cfg: &Config) {
-        let _: Result<Vec<WatchDef>, _> = list_watch_defs(cfg, 10_i64).await;
-    }
-    async fn _f2(cfg: &Config, input: &WatchDefCreate) {
-        let _: Result<WatchDef, _> = create_watch_def(cfg, input).await;
-    }
-    async fn _f3(cfg: &Config, id: Uuid) {
-        let _: Result<Vec<WatchRun>, _> = list_watch_runs(cfg, id, 10_i64).await;
-    }
-}
 
 async fn open_pool() -> (SqlitePool, NamedTempFile) {
     let temp = NamedTempFile::new().expect("tempfile");
@@ -44,8 +30,9 @@ fn watch_request(source: &str, every_seconds: u64) -> WatchRequest {
 /// `create_source_watch` writes only the canonical `SqliteWatchStore` row.
 #[tokio::test]
 async fn create_source_watch_writes_only_canonical_row() {
-    let (pool, _temp) = open_pool().await;
-    let cfg = Config::test_default();
+    let (pool, temp) = open_pool().await;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = temp.path().to_path_buf();
 
     let created = create_source_watch(
         &cfg,
@@ -68,17 +55,73 @@ async fn create_source_watch_writes_only_canonical_row() {
     .unwrap();
     assert!(fetched.is_some(), "canonical watch row must be findable");
 
-    let legacy = list_watch_defs_with_pool(&pool, 50).await.unwrap();
-    assert!(
-        legacy.is_empty(),
-        "canonical watch create must not dual-write legacy watch_defs"
+    let legacy_tables: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master \
+         WHERE type = 'table' AND name IN ('axon_watch_defs', 'axon_watch_runs')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        legacy_tables, 0,
+        "canonical watch create must not leave retired watch tables in schema"
     );
 }
 
 #[tokio::test]
-async fn source_watch_denies_local_session_scope_without_local_auth() {
+async fn create_source_watch_ensures_existing_canonical_source() {
     let (pool, _temp) = open_pool().await;
     let cfg = Config::test_default();
+
+    let created = create_source_watch(
+        &cfg,
+        Some(&pool),
+        watch_request("https://example.com/docs/", 60),
+        None,
+    )
+    .await
+    .expect("create source watch");
+    assert_eq!(created.canonical_uri, "https://example.com/docs");
+
+    let ensured = create_source_watch(
+        &cfg,
+        Some(&pool),
+        watch_request("https://example.com/docs", 120),
+        None,
+    )
+    .await
+    .expect("ensure existing source watch");
+    assert_eq!(ensured.watch_id, created.watch_id);
+    assert_eq!(ensured.source_id, created.source_id);
+    assert_eq!(ensured.canonical_uri, "https://example.com/docs");
+    assert_eq!(ensured.schedule.every_seconds, 120);
+
+    let store = open_source_watch_store(&cfg, Some(&pool)).await.unwrap();
+    let page = SourceWatchStoreTrait::list(
+        &store,
+        WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: None,
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(page.items.len(), 1);
+
+    let resolved = resolve_source_watch_id(&cfg, Some(&pool), "https://example.com/docs/")
+        .await
+        .expect("resolve noisy source through canonical watch");
+    assert_eq!(resolved, created.watch_id);
+}
+
+#[tokio::test]
+async fn source_watch_denies_local_session_scope_without_local_auth() {
+    let (pool, temp) = open_pool().await;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = temp.path().to_path_buf();
     let auth_without_local = AuthSnapshot::default();
     let session_source = "session:claude:/tmp/axon-session-watch-local";
 

@@ -6,6 +6,8 @@ use axon_graph::merge::{edge_id_for, node_id_for};
 use axon_graph::store::GraphStore;
 
 use super::{GraphBackedMemoryMirror, GraphBackedMemoryStore, MemoryGraphMirror};
+use crate::record::SystemClock;
+use crate::sqlite::SqliteMemoryStore;
 use crate::store::{FakeMemoryStore, MemoryStore};
 
 async fn store() -> Arc<SqliteGraphStore> {
@@ -56,6 +58,91 @@ fn record(id: &str, status: MemoryStatus) -> MemoryRecord {
         superseded_by: None,
         contradicts: None,
     }
+}
+
+struct BatchRecordingMirror {
+    batch_sizes: tokio::sync::Mutex<Vec<usize>>,
+    fail_batch: Option<usize>,
+}
+
+impl BatchRecordingMirror {
+    fn new(fail_batch: Option<usize>) -> Self {
+        Self {
+            batch_sizes: tokio::sync::Mutex::new(Vec::new()),
+            fail_batch,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MemoryGraphMirror for BatchRecordingMirror {
+    async fn upsert_memory_node(&self, _record: &MemoryRecord) -> crate::store::Result<()> {
+        Ok(())
+    }
+
+    async fn upsert_memory_nodes(&self, records: &[MemoryRecord]) -> crate::store::Result<()> {
+        let mut sizes = self.batch_sizes.lock().await;
+        sizes.push(records.len());
+        if self.fail_batch == Some(sizes.len()) {
+            return Err(ApiError::new(
+                "graph.fake_failure",
+                axon_error::ErrorStage::Graphing,
+                "forced graph transaction failure",
+            ));
+        }
+        Ok(())
+    }
+
+    async fn supersedes(
+        &self,
+        _replacement: &MemoryRecord,
+        _old: &MemoryRecord,
+        _reason: Option<&str>,
+    ) -> crate::store::Result<()> {
+        Ok(())
+    }
+
+    async fn contradicts(
+        &self,
+        _left: &MemoryRecord,
+        _right: &MemoryRecord,
+        _reason: Option<&str>,
+    ) -> crate::store::Result<()> {
+        Ok(())
+    }
+
+    async fn derived_from(
+        &self,
+        _compacted: &MemoryRecord,
+        _sources: &[MemoryRecord],
+    ) -> crate::store::Result<()> {
+        Ok(())
+    }
+
+    async fn link(
+        &self,
+        _record: &MemoryRecord,
+        _target: &MemoryRecord,
+        _link: &MemoryLink,
+    ) -> crate::store::Result<()> {
+        Ok(())
+    }
+
+    async fn hide_recall_edges(
+        &self,
+        _memory_id: &MemoryId,
+        _reason: &str,
+    ) -> crate::store::Result<()> {
+        Ok(())
+    }
+}
+
+fn import_record(id: &str) -> MemoryRecord {
+    record(id, MemoryStatus::Active)
+}
+
+fn sqlite_memory_store() -> Arc<dyn MemoryStore> {
+    Arc::new(SqliteMemoryStore::in_memory(Arc::new(SystemClock)).expect("memory store"))
 }
 
 #[tokio::test]
@@ -238,6 +325,42 @@ async fn decorated_remember_mirrors_a_memory_node_into_the_graph() {
 }
 
 #[tokio::test]
+async fn decorated_keyword_search_includes_graph_refs_when_requested() {
+    let graph = store().await;
+    let graph_store: Arc<dyn GraphStore> = graph.clone();
+    let mirror = Arc::new(GraphBackedMemoryMirror::new(Arc::clone(&graph_store)));
+    let inner: Arc<dyn MemoryStore> = Arc::new(FakeMemoryStore::new());
+    let store_under_test = GraphBackedMemoryStore::new(inner, mirror).with_graph_store(graph_store);
+
+    let result = store_under_test
+        .remember(remember_request("keyword recall should include graph refs"))
+        .await
+        .unwrap();
+
+    let hits = store_under_test
+        .search(MemorySearchRequest {
+            query: "keyword graph".to_string(),
+            limit: 10,
+            filters: MetadataMap::new(),
+            include_graph: true,
+            include_archived: false,
+            reinforce: false,
+            include_statuses: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(hits.results.len(), 1);
+    let graph = hits.graph.expect("graph refs");
+    assert_eq!(graph.nodes.len(), 1);
+    assert_eq!(
+        graph.nodes[0].node_id,
+        node_id_for("memory", &format!("memory:{}", result.memory_id.0))
+    );
+    assert!(graph.warnings.is_empty());
+}
+
+#[tokio::test]
 async fn decorated_supersede_writes_a_supersedes_edge() {
     let graph = store().await;
     let mirror = Arc::new(GraphBackedMemoryMirror::new(graph.clone()));
@@ -273,4 +396,67 @@ async fn decorated_supersede_writes_a_supersedes_edge() {
         .unwrap()
         .expect("supersedes edge mirrored on supersede");
     assert_eq!(edge.kind, "memory_supersedes");
+}
+
+#[tokio::test]
+async fn import_uses_configured_graph_transaction_batch_size() {
+    let mirror = Arc::new(BatchRecordingMirror::new(None));
+    let store = GraphBackedMemoryStore::new(sqlite_memory_store(), mirror.clone())
+        .with_graph_tx_batch_size(2);
+
+    let result = store
+        .import(MemoryImportRequest {
+            records: (0..5)
+                .map(|index| import_record(&format!("incoming-{index}")))
+                .collect(),
+            mode: MemoryImportMode::Merge,
+            dry_run: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(result.created, 5);
+    assert_eq!(*mirror.batch_sizes.lock().await, vec![2, 2, 1]);
+    assert!(result.warnings.is_empty());
+}
+
+#[tokio::test]
+async fn failed_graph_transaction_marks_only_its_chunk_for_recovery() {
+    let mirror = Arc::new(BatchRecordingMirror::new(Some(2)));
+    let store = GraphBackedMemoryStore::new(sqlite_memory_store(), mirror.clone())
+        .with_graph_tx_batch_size(2);
+
+    let result = store
+        .import(MemoryImportRequest {
+            records: (0..5)
+                .map(|index| import_record(&format!("incoming-{index}")))
+                .collect(),
+            mode: MemoryImportMode::Merge,
+            dry_run: false,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(*mirror.batch_sizes.lock().await, vec![2, 2, 1]);
+    let recovery_warnings = result
+        .warnings
+        .iter()
+        .filter(|warning| warning.code == "memory.graph_failed")
+        .collect::<Vec<_>>();
+    assert_eq!(recovery_warnings.len(), 2);
+    assert!(recovery_warnings.iter().all(|warning| warning.retryable));
+
+    for (index, memory_id) in result.created_ids.iter().enumerate() {
+        let stored = store
+            .get(memory_id.clone())
+            .await
+            .unwrap()
+            .expect("imported record");
+        let has_recovery_marker = stored
+            .history
+            .iter()
+            .any(|event| event.message.contains("memory.graph_failed"));
+        assert_eq!(has_recovery_marker, matches!(index, 2 | 3));
+        assert_eq!(stored.status, MemoryStatus::Review);
+    }
 }

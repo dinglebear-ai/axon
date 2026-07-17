@@ -91,18 +91,24 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "max_pages",
     "max_depth",
     "include_subdomains",
+    "respect_robots",
     "render_mode",
+    "headers",
     "discover_sitemaps",
+    "discover_llms_txt",
+    "max_llms_txt_urls",
     "max_sitemaps",
     "sitemap_since_days",
     "url_whitelist",
     "url_blacklist",
     "etag_conditional",
+    "cache_policy",
     "min_markdown_chars",
     "drop_thin_markdown",
     "warc_path",
     "automation_script",
     "verticals_enabled",
+    "vertical_cache_ttl_secs",
     "auto_dispatch_skip",
     "user_agent",
     "manifest_path",
@@ -110,6 +116,29 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "map_urls",
 ];
 const SESSION_ADAPTER_OPTION_KEYS: &[&str] = &["project_filter"];
+const CLI_TOOL_OPTION_KEYS: &[&str] = &[
+    "execution_mode",
+    "tool_action",
+    "execute",
+    "command_allowlist",
+    "tool_allowlist",
+    "env_allowlist",
+    "timeout_ms",
+    "output_cap_bytes",
+    "side_effect_class",
+];
+const MCP_TOOL_OPTION_KEYS: &[&str] = &[
+    "execution_mode",
+    "tool_action",
+    "call",
+    "mcp_allowlist",
+    "tool_allowlist",
+    "mcp_caller_command",
+    "mcp_caller_allowlist",
+    "env_allowlist",
+    "timeout_ms",
+    "output_cap_bytes",
+];
 
 fn safety_class(source_kind: SourceKind) -> SafetyClass {
     match source_kind {
@@ -143,7 +172,10 @@ impl AdapterRegistry {
     pub fn target_defaults() -> Self {
         Self::from_adapters(vec![
             AdapterDefinition::new("cli", "1", SourceKind::CliTool, SourceScope::Tool)
-                .with_safety_class(SafetyClass::ToolExecution),
+                .with_scope(SourceScope::Script)
+                .with_scope(SourceScope::Api)
+                .with_safety_class(SafetyClass::ToolExecution)
+                .with_options(CLI_TOOL_OPTION_KEYS),
             AdapterDefinition::new("crates", "1", SourceKind::Registry, SourceScope::Package)
                 .with_scope(SourceScope::Version),
             AdapterDefinition::new("docker", "1", SourceKind::Registry, SourceScope::Package)
@@ -181,8 +213,12 @@ impl AdapterRegistry {
                     "watch_policy",
                 ])
                 .with_safety_class(SafetyClass::LocalFilesystem),
+            AdapterDefinition::new("memory", "1", SourceKind::Memory, SourceScope::Api)
+                .with_safety_class(SafetyClass::AuthenticatedNetwork),
             AdapterDefinition::new("mcp", "1", SourceKind::McpTool, SourceScope::Tool)
-                .with_safety_class(SafetyClass::ToolExecution),
+                .with_scope(SourceScope::Api)
+                .with_safety_class(SafetyClass::ToolExecution)
+                .with_options(MCP_TOOL_OPTION_KEYS),
             AdapterDefinition::new("npm", "1", SourceKind::Registry, SourceScope::Package)
                 .with_scope(SourceScope::Version),
             AdapterDefinition::new("pypi", "1", SourceKind::Registry, SourceScope::Package)
@@ -197,7 +233,8 @@ impl AdapterRegistry {
                 ),
             AdapterDefinition::new("session", "1", SourceKind::Session, SourceScope::Thread)
                 .with_options(SESSION_ADAPTER_OPTION_KEYS),
-            AdapterDefinition::new("upload", "1", SourceKind::Upload, SourceScope::File),
+            AdapterDefinition::new("upload", "1", SourceKind::Upload, SourceScope::File)
+                .with_safety_class(SafetyClass::AuthenticatedNetwork),
             AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site)
                 .with_scope(SourceScope::Page)
                 .with_scope(SourceScope::Docs)

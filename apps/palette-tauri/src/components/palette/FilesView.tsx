@@ -24,7 +24,7 @@ import { invoke, isTauriRuntime } from "@/lib/invoke";
 import { strField, unwrapPayload } from "@/lib/payload";
 import { createEmptyConnectionDraft } from "@/lib/sftpModel";
 import { createSftpLifecycle } from "@/lib/useSftpLifecycle";
-import { FilesBulkBar, type BulkIngestState } from "./FilesBulkBar";
+import { type BulkIndexState, FilesBulkIndexBar } from "./FilesBulkIndexBar";
 import { FilesPaneView } from "./FilesPaneView";
 import { SftpConnectionDialog } from "./SftpConnectionDialog";
 import type { SftpTreeSectionHandle } from "./SftpTreeSection";
@@ -35,18 +35,18 @@ interface FilesViewProps {
   config: PaletteConfig | null;
 }
 
-type IngestState =
+type IndexState =
   | { kind: "idle" }
   | { kind: "running" }
   | { kind: "done"; ok: boolean; message: string };
 
-/** Above this many checked files, `bulkIngest` asks for confirmation before
+/** Above this many checked files, `bulkIndex` asks for confirmation before
  * running — a large batch that partially fails is hard to diagnose/retry, so
  * this is a speed bump, not a hard limit (see P2 #11). */
-const BULK_INGEST_CONFIRM_THRESHOLD = 200;
+const BULK_INDEX_CONFIRM_THRESHOLD = 200;
 
 /**
- * Local filesystem browser + preview/edit + ingest. Owns its own
+ * Local filesystem browser + preview/edit + source indexing. Owns its own
  * navigation/selection/edit state via `filesViewReducer` (see
  * `src/lib/filesViewState.ts`) and calls the Tauri fs bridge
  * (`files_list_dir` / `files_read_file` / `files_write_file`) directly via the
@@ -60,7 +60,7 @@ const BULK_INGEST_CONFIRM_THRESHOLD = 200;
  * file-tree column shared across both panes.
  *
  * The AI-edit propose/approve UI lives in `AiEditPanel.tsx`, the bulk
- * checkbox-select ingest bar in `FilesBulkBar.tsx`, and the SFTP
+ * checkbox-select indexing bar in `FilesBulkIndexBar.tsx`, and the SFTP
  * tree-browsing section in `SftpTreeSection.tsx` — this component composes
  * them and owns cross-cutting orchestration (pane state, load-gen guarding,
  * SFTP connect/disconnect lifecycle).
@@ -68,16 +68,16 @@ const BULK_INGEST_CONFIRM_THRESHOLD = 200;
 export function FilesView({ client, config }: FilesViewProps) {
   const [state, dispatch] = useReducer(filesViewReducer, undefined, createInitialState);
   const loadGenRef = useRef<Record<PaneId, number>>({ left: 0, right: 0 });
-  const [ingestByPane, setIngestByPane] = useState<Record<PaneId, IngestState>>({
+  const [indexByPane, setIndexByPane] = useState<Record<PaneId, IndexState>>({
     left: { kind: "idle" },
     right: { kind: "idle" },
   });
-  // Bulk-ingest progress is kept as component-local state (not a reducer
+  // Bulk-indexing progress is kept as component-local state (not a reducer
   // action) since it's a one-shot async operation's progress rather than a
   // persistent UI mode — the reducer models durable view state (panes,
   // selection, checked set), not ephemeral in-flight operation feedback.
-  const [bulkIngestState, setBulkIngestState] = useState<BulkIngestState>({ kind: "idle" });
-  const bulkIngestCancelRef = useRef(false);
+  const [bulkIndexState, setBulkIndexState] = useState<BulkIndexState>({ kind: "idle" });
+  const bulkIndexCancelRef = useRef(false);
   const sftpTreeRef = useRef<SftpTreeSectionHandle>(null);
   const splitOpen = state.panes.length === 2;
 
@@ -191,7 +191,7 @@ export function FilesView({ client, config }: FilesViewProps) {
     return (
       ACTIONS.find(
         (action): action is RemotePaletteAction =>
-          action.subcommand === "embed" && action.kind !== "local",
+          action.subcommand === "source" && action.kind !== "local",
       ) ?? null
     );
   }
@@ -201,36 +201,36 @@ export function FilesView({ client, config }: FilesViewProps) {
     [state.panes, client, config],
   );
 
-  function setIngestResult(id: PaneId, next: IngestState) {
-    setIngestByPane((prev) => ({ ...prev, [id]: next }));
+  function setIndexResult(id: PaneId, next: IndexState) {
+    setIndexByPane((prev) => ({ ...prev, [id]: next }));
   }
 
-  async function ingestSelected(id: PaneId) {
+  async function indexSelected(id: PaneId) {
     const pane = state.panes.find((p) => p.id === id);
     if (!pane?.selected || !client || !config) return;
     const embedAction = resolveEmbedAction();
     if (!embedAction) {
-      setIngestResult(id, { kind: "done", ok: false, message: "Embed action is unavailable." });
+      setIndexResult(id, { kind: "done", ok: false, message: "Embed action is unavailable." });
       return;
     }
     const listing = state.listings[id];
     const root = listing.kind === "loaded" ? listing.value.root : "";
     const absolutePath = `${root.replace(/\/+$/, "")}/${pane.selected.path}`;
-    setIngestResult(id, { kind: "running" });
+    setIndexResult(id, { kind: "running" });
     const result = await executeAction(client, embedAction, absolutePath, config);
     if (result.ok) {
-      setIngestResult(id, { kind: "done", ok: true, message: "Queued for ingest." });
+      setIndexResult(id, { kind: "done", ok: true, message: "Queued for indexing." });
     } else {
       const payload = unwrapPayload(result.payload);
       const message =
         strField(payload, "message") ??
         strField(payload, "error") ??
-        `Ingest failed (HTTP ${result.status}).`;
-      setIngestResult(id, { kind: "done", ok: false, message });
+        `Indexing failed (HTTP ${result.status}).`;
+      setIndexResult(id, { kind: "done", ok: false, message });
     }
   }
 
-  async function bulkIngest() {
+  async function bulkIndex() {
     if (!client || !config) return;
     const embedAction = resolveEmbedAction();
     if (!embedAction) return;
@@ -242,28 +242,26 @@ export function FilesView({ client, config }: FilesViewProps) {
     // huge sequential run (see P2 #11). window.confirm is a deliberate
     // minimal choice here — no new modal component for a one-off guard.
     if (
-      paths.length > BULK_INGEST_CONFIRM_THRESHOLD &&
-      !window.confirm(
-        `Ingest ${paths.length} files? This runs sequentially and may take a while.`,
-      )
+      paths.length > BULK_INDEX_CONFIRM_THRESHOLD &&
+      !window.confirm(`Index ${paths.length} files? This runs sequentially and may take a while.`)
     ) {
       return;
     }
-    bulkIngestCancelRef.current = false;
-    setBulkIngestState({ kind: "running", done: 0, total: paths.length });
+    bulkIndexCancelRef.current = false;
+    setBulkIndexState({ kind: "running", done: 0, total: paths.length });
     let succeeded = 0;
     let failed = 0;
     let done = 0;
     const failedPaths: string[] = [];
     for (const [index, path] of paths.entries()) {
-      if (bulkIngestCancelRef.current) {
-        setBulkIngestState({ kind: "cancelled", done, total: paths.length });
+      if (bulkIndexCancelRef.current) {
+        setBulkIndexState({ kind: "cancelled", done, total: paths.length });
         return;
       }
       // Show the in-flight item (1-indexed) as "done" while its request is
-      // outstanding, not just after it resolves — "Ingesting 1/2..." means
+      // outstanding, not just after it resolves — "Indexing 1/2..." means
       // "working on item 1 of 2", matching the mock's progress-label shape.
-      setBulkIngestState({ kind: "running", done: index + 1, total: paths.length });
+      setBulkIndexState({ kind: "running", done: index + 1, total: paths.length });
       const absolutePath = `${root.replace(/\/+$/, "")}/${path}`;
       // Sequential (concurrency 1) is the deliberate v1 choice — the embed
       // endpoint is confirmed synchronous server-side (see the
@@ -279,7 +277,7 @@ export function FilesView({ client, config }: FilesViewProps) {
       }
       done += 1;
     }
-    setBulkIngestState({ kind: "done", succeeded, failed, failedPaths });
+    setBulkIndexState({ kind: "done", succeeded, failed, failedPaths });
     dispatch({ type: "checked/clear" });
   }
 
@@ -328,7 +326,9 @@ export function FilesView({ client, config }: FilesViewProps) {
     ),
     right: useMemo(
       () =>
-        state.listings.right.kind === "loaded" ? sortEntries(state.listings.right.value.entries) : [],
+        state.listings.right.kind === "loaded"
+          ? sortEntries(state.listings.right.value.entries)
+          : [],
       [state.listings.right],
     ),
   };
@@ -351,7 +351,7 @@ export function FilesView({ client, config }: FilesViewProps) {
   function renderPane(pane: FilesPane) {
     const listing = state.listings[pane.id];
     const entries = sortedEntriesByPane[pane.id];
-    const ingest = ingestByPane[pane.id];
+    const indexState = indexByPane[pane.id];
     const activeSftpProfile = state.sftp.connections.find(
       (c) => c.id === state.sftp.activeConnectionId,
     );
@@ -363,7 +363,7 @@ export function FilesView({ client, config }: FilesViewProps) {
         pane={pane}
         listing={listing}
         entries={entries}
-        ingest={ingest}
+        indexState={indexState}
         isLeftPane={isLeftPane}
         splitOpen={splitOpen}
         treeWidth={state.treeWidth}
@@ -395,7 +395,7 @@ export function FilesView({ client, config }: FilesViewProps) {
         }}
         onDraftChange={(value) => dispatch({ type: "pane/setDraft", pane: pane.id, draft: value })}
         onSave={() => void saveFile(pane.id)}
-        onIngest={() => void ingestSelected(pane.id)}
+        onIndex={() => void indexSelected(pane.id)}
         onSparkleToggle={() =>
           dispatch(
             pane.sparkleOpen
@@ -415,14 +415,14 @@ export function FilesView({ client, config }: FilesViewProps) {
 
   return (
     <div className="output-body operation-view files-view">
-      <FilesBulkBar
+      <FilesBulkIndexBar
         checkedCount={state.checked.size}
-        bulkIngestState={bulkIngestState}
-        canIngest={Boolean(client && config)}
+        bulkIndexState={bulkIndexState}
+        canIndex={Boolean(client && config)}
         onClear={() => dispatch({ type: "checked/clear" })}
-        onIngestAll={() => void bulkIngest()}
+        onIndexAll={() => void bulkIndex()}
         onCancel={() => {
-          bulkIngestCancelRef.current = true;
+          bulkIndexCancelRef.current = true;
         }}
       />
       <div className="files-split-container">

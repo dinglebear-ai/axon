@@ -36,8 +36,7 @@ axon tokio-rs/tokio                          # source included by default
 axon tokio-rs/tokio --no-source              # to skip source code
 ```
 
-See [`docs/reference/actions/crawl.md`](crawl.md) for the source-cutover web
-shape and [`docs/pipeline-unification/foundation/source-pipeline.md`](../../pipeline-unification/foundation/source-pipeline.md)
-for the shared SourceRequest contract.
+See [`docs/pipeline-unification/foundation/source-pipeline.md`](../../pipeline-unification/foundation/source-pipeline.md)
+for the shared SourceRequest contract and source-cutover shape.
 
 > For implementation details and troubleshooting see [`docs/guides/ingest/github.md`](../../guides/ingest/github.md).

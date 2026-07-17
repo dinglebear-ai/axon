@@ -39,6 +39,7 @@ fn candidate(source: &str, candidate_id: &str) -> GraphCandidate {
             edge_kind: "package_has_repo".to_string(),
             from_stable_key: "pkg:axon".to_string(),
             to_stable_key: "pkg:tokio".to_string(),
+            evidence_ids: vec![format!("ev-{candidate_id}")],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {

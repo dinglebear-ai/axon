@@ -11,8 +11,8 @@ use source::{classify_source, truncate_chars};
 use crate::events::{LogLevel, ServiceEvent, emit, synthesis_delta_handler};
 use crate::search_crawl;
 use crate::types::{
-    ResearchCrawlJob, ResearchCrawlRejection, ResearchExtraction, ResearchHit, ResearchPayload,
-    ResearchResult, ResearchTiming, ResearchUsage, SearchOptions, SummarySource,
+    ResearchExtraction, ResearchHit, ResearchPayload, ResearchResult, ResearchSourceJob,
+    ResearchSourceRejection, ResearchTiming, ResearchUsage, SearchOptions, SummarySource,
 };
 use axon_core::config::Config;
 use axon_core::logging::log_warn;
@@ -108,9 +108,9 @@ pub async fn research_payload(
         offset,
         search_results: search_results_typed,
         extractions,
-        auto_crawl_status: "not_queued".to_string(),
-        crawl_jobs: Vec::new(),
-        crawl_jobs_rejected: Vec::new(),
+        source_index_status: "not_queued".to_string(),
+        source_jobs: Vec::new(),
+        source_jobs_rejected: Vec::new(),
         summary,
         summary_source,
         usage: ResearchUsage {
@@ -328,24 +328,29 @@ pub async fn research_with_context(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ResearchResult, SearchError> {
     let mut result = research(cfg, query, opts, tx).await?;
-    let crawl_output =
-        search_crawl::enqueue_research_crawls(cfg, service_context, &result.payload.search_results)
-            .await;
-    result.payload.auto_crawl_status =
-        search_crawl::crawl_status_for_output(&result.payload.search_results, &crawl_output)
-            .to_string();
-    result.payload.crawl_jobs = crawl_output
+    let source_output = search_crawl::enqueue_research_sources(
+        cfg,
+        service_context,
+        &result.payload.search_results,
+    )
+    .await;
+    result.payload.source_index_status = search_crawl::source_index_status_for_output(
+        &result.payload.search_results,
+        &source_output,
+    )
+    .to_string();
+    result.payload.source_jobs = source_output
         .jobs
         .into_iter()
-        .map(|job| ResearchCrawlJob {
+        .map(|job| ResearchSourceJob {
             url: job.url,
             job_id: job.job_id,
         })
         .collect();
-    result.payload.crawl_jobs_rejected = crawl_output
+    result.payload.source_jobs_rejected = source_output
         .rejected
         .into_iter()
-        .map(|rejection| ResearchCrawlRejection {
+        .map(|rejection| ResearchSourceRejection {
             url: rejection.url,
             position: rejection.position,
             title: rejection.title,
@@ -356,13 +361,13 @@ pub async fn research_with_context(
     Ok(result)
 }
 
-fn research_rejection_kind(kind: &search_crawl::SearchCrawlRejectionKind) -> &'static str {
+fn research_rejection_kind(kind: &search_crawl::SearchSourceRejectionKind) -> &'static str {
     match kind {
-        search_crawl::SearchCrawlRejectionKind::DuplicateUrl => "duplicate_url",
-        search_crawl::SearchCrawlRejectionKind::InvalidUrl => "invalid_url",
-        search_crawl::SearchCrawlRejectionKind::MissingUrl => "missing_url",
-        search_crawl::SearchCrawlRejectionKind::QueueRejected => "queue_rejected",
-        search_crawl::SearchCrawlRejectionKind::WaitFailed => "wait_failed",
+        search_crawl::SearchSourceRejectionKind::DuplicateUrl => "duplicate_url",
+        search_crawl::SearchSourceRejectionKind::InvalidUrl => "invalid_url",
+        search_crawl::SearchSourceRejectionKind::MissingUrl => "missing_url",
+        search_crawl::SearchSourceRejectionKind::QueueRejected => "queue_rejected",
+        search_crawl::SearchSourceRejectionKind::WaitFailed => "wait_failed",
     }
 }
 

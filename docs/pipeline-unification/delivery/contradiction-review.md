@@ -66,19 +66,11 @@ Resolution:
 `axon refresh [filter]` and `axon fresh <sub>`, matching the other three docs.
 No scope change: refresh/fresh removal was already the intended target state.
 
-This does **not** mean `watch` (current URL-diff scheduler, or its future
-source-request-backed replacement) already reproduces `refresh`'s bulk
-re-enqueue-by-origin semantics or `fresh`'s CLI-created recurring-schedule
-semantics today. `crates/axon-services/src/refresh.rs` (facet-and-re-enqueue by
-`seed_url`/`source_type`) and `crates/axon-services/src/freshness/` (SQLite
-`FreshnessDef`/`FreshnessRun` lease-based scheduler dispatching
-scrape/crawl/embed/ingest) are both real, load-bearing, and have no drop-in
-replacement in `crates/axon-jobs/src/watch.rs` today. Removing them without
-first building the target `watch <source>` / `SourceLedger`-backed freshness
-lifecycle (see `foundation/source-pipeline.md`, `surfaces/command-contract.md`
-Watch Commands section) would be a real functionality regression, not a
-same-day-safe deletion — treat the actual removal as scoped, sequenced work
-under the Phase 10/11 cutover, not a quick surface-drift fix.
+The zero-legacy cutover removes the old `fresh` / `--fresh` scheduler instead
+of preserving a parallel recurring-schedule family. Recurring acquisition is a
+source-watch concern: `watch <source>` must own re-run policy through the
+SourceRequest / SourceLedger lifecycle, and should not route through the retired
+freshness tables or replay DTOs.
 
 ### Current Ingest Coverage Was Understated
 

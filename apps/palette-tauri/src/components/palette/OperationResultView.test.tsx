@@ -6,10 +6,13 @@ import "@testing-library/jest-dom/vitest";
 import { act, render, screen } from "@testing-library/react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { ACTIONS } from "@/lib/actions";
 import { buildHelpRun } from "@/lib/actionHelp";
-import { hasStructuredOperationView, OperationResultView, sanitizeReaderMarkdown } from "./OperationResultView";
+import { ACTIONS } from "@/lib/actions";
+import {
+  hasStructuredOperationView,
+  OperationResultView,
+  sanitizeReaderMarkdown,
+} from "./OperationResultView";
 
 const mockLoadArtifactObjectUrl = vi.hoisted(() => vi.fn());
 
@@ -19,15 +22,11 @@ vi.mock("@/lib/artifactPreview", () => ({
 
 function screenshotWithArtifactHandle() {
   return {
-    url: "https://example.com",
-    path: "/home/axon/.axon/output/screenshots/example.png",
-    size_bytes: 1024,
-    artifact_handle: {
-      relative_path: "screenshots/example.png",
-      display_path: "screenshots/example.png",
-      kind: "screenshot",
-      bytes: 1024,
-    },
+    artifact_id: "art_screenshot_123",
+    width: 1280,
+    height: 720,
+    captured_at: "2026-07-16T00:00:00Z",
+    warnings: [],
   };
 }
 
@@ -54,24 +53,22 @@ describe("OperationResultView routing", () => {
       "scrape",
       "search",
       "research",
-      "crawl",
+      "source-site",
       "map",
       "sources",
       "domains",
       "retrieve",
       "doctor",
-      "embed",
+      "source",
       "extract",
-      "ingest",
       "endpoints",
       "brand",
       "diff",
       "screenshot",
-      "dedupe",
-      "crawl-status",
-      "crawl-clear",
-      "embed-list",
-      "ingest-recover",
+      "jobs-status",
+      "jobs-clear",
+      "jobs-list",
+      "jobs-recover",
     ]) {
       expect(hasStructuredOperationView(subcommand), subcommand).toBe(true);
     }
@@ -92,12 +89,24 @@ describe("OperationResultView routing", () => {
   });
 
   it("falls back to markdown text for historical help entries without payloads", () => {
-    render(<OperationResultView payload={null} subcommand="help" fallbackText="# Scrape URL\n\nRoute: `POST /v1/scrape`" />);
+    render(
+      <OperationResultView
+        payload={null}
+        subcommand="help"
+        fallbackText="# Scrape URL\n\nRoute: `POST /v1/sources`"
+      />,
+    );
     expect(screen.getByText(/# Scrape URL/)).toBeInTheDocument();
   });
 
   it("renders malformed help payloads as a visible error when no fallback text exists", () => {
-    render(<OperationResultView payload={{ target: { title: "bad" } }} subcommand="help" fallbackText="" />);
+    render(
+      <OperationResultView
+        payload={{ target: { title: "bad" } }}
+        subcommand="help"
+        fallbackText=""
+      />,
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("Help payload is malformed");
   });
 
@@ -117,7 +126,9 @@ describe("OperationResultView routing", () => {
       "```",
     ].join("\n");
 
-    expect(sanitizeReaderMarkdown(markdown)).toBe(["- Real item", "```rust", "let ok = true;", "```"].join("\n"));
+    expect(sanitizeReaderMarkdown(markdown)).toBe(
+      ["- Real item", "```rust", "let ok = true;", "```"].join("\n"),
+    );
   });
 
   it("cleans common scrape chrome without touching fenced code", () => {
@@ -152,18 +163,24 @@ describe("OperationResultView routing", () => {
   });
 
   it("renders screenshot artifact handles without relying on absolute server paths", async () => {
-    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+    render(
+      <OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />,
+    );
 
-    const img = await screen.findByRole("img", { name: /screenshot of https:\/\/example.com/i });
+    const img = await screen.findByRole("img", { name: /captured screenshot/i });
     expect(img).toHaveAttribute("src", "blob:test-shot");
-    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("screenshots/example.png");
-    expect(screen.queryByText("/home/axon/.axon/output/screenshots/example.png")).not.toBeInTheDocument();
-    expect(screen.getByText("screenshots/example.png")).toBeInTheDocument();
+    expect(mockLoadArtifactObjectUrl).toHaveBeenCalledWith("art_screenshot_123");
+    expect(
+      screen.queryByText("/home/axon/.axon/output/screenshots/example.png"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("art_screenshot_123")).toBeInTheDocument();
   });
 
   it("shows a compact artifact preview failure state", async () => {
     mockLoadArtifactObjectUrl.mockRejectedValueOnce(new Error("artifact fetch failed with 401"));
-    render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+    render(
+      <OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />,
+    );
 
     expect(await screen.findByText(/preview unavailable/i)).toBeInTheDocument();
   });
@@ -176,7 +193,9 @@ describe("OperationResultView routing", () => {
     const root = createRoot(host);
     try {
       await act(async () => {
-        root.render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+        root.render(
+          <OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />,
+        );
       });
       // Flush the mocked loadArtifactObjectUrl promise so the <img> renders.
       await act(async () => {});
@@ -206,7 +225,9 @@ describe("OperationResultView routing", () => {
         resolvePreview = resolve;
       }),
     );
-    const { unmount } = render(<OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />);
+    const { unmount } = render(
+      <OperationResultView subcommand="screenshot" payload={screenshotWithArtifactHandle()} />,
+    );
 
     unmount();
     await act(async () => {
@@ -229,15 +250,13 @@ describe("OperationResultView routing", () => {
       "sources",
       "domains",
       "doctor",
-      "crawl",
-      "embed",
+      "source-site",
+      "source",
       "extract",
-      "ingest",
       "endpoints",
       "brand",
       "diff",
       "screenshot",
-      "dedupe",
       "watch-list",
       "watch-create",
       "watch-run",
@@ -256,51 +275,80 @@ describe("OperationResultView structured rendering", () => {
     render(
       <OperationResultView
         subcommand="query"
-        payload={{ collection: "axon", results: [{ title: "hit one", url: "https://example.com/a", score: 0.91, rank: 1 }] }}
+        payload={{
+          collection: "axon",
+          results: [{ title: "hit one", url: "https://example.com/a", score: 0.91, rank: 1 }],
+        }}
       />,
     );
     expect(screen.getByText("hit one")).toBeInTheDocument();
     expect(screen.getByText("0.910")).toBeInTheDocument();
   });
 
-  it("renders web search results with queued crawl jobs", () => {
+  it("renders web search results with queued source jobs", () => {
     render(
       <OperationResultView
         subcommand="search"
         payload={{
-          results: [{ title: "Result A", url: "https://example.com/a", snippet: "snippet", rank: 1 }],
-          crawl_jobs: [{ job_id: "job-1", status: "queued", url: "https://example.com/a" }],
+          results: [
+            { title: "Result A", url: "https://example.com/a", snippet: "snippet", rank: 1 },
+          ],
+          source_jobs: [{ job_id: "job-1", status: "queued", url: "https://example.com/a" }],
         }}
       />,
     );
     expect(screen.getByText("Result A")).toBeInTheDocument();
-    expect(screen.getByText("Queued crawl jobs")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Queued source jobs" })).toBeInTheDocument();
     expect(document.querySelector(".operation-status-dot")).toBeInTheDocument();
     expect(document.querySelector(".operation-dot")).not.toBeInTheDocument();
   });
 
   it("renders discovered URLs for map", () => {
-    render(<OperationResultView subcommand="map" payload={{ urls: ["https://example.com/x"], count: 1 }} />);
+    render(
+      <OperationResultView
+        subcommand="map"
+        payload={{ urls: ["https://example.com/x"], count: 1 }}
+      />,
+    );
     expect(screen.getByText("https://example.com/x")).toBeInTheDocument();
   });
 
   it("renders retrieved document content", () => {
-    render(<OperationResultView subcommand="retrieve" payload={{ content: "Stored chunk body" }} />);
+    render(
+      <OperationResultView subcommand="retrieve" payload={{ content: "Stored chunk body" }} />,
+    );
     expect(screen.getByText("Stored chunk body")).toBeInTheDocument();
   });
 
   it("renders suggested URLs", () => {
-    render(<OperationResultView subcommand="suggest" payload={{ suggestions: [{ title: "Docs", url: "https://example.com/docs", reason: "Relevant" }] }} />);
+    render(
+      <OperationResultView
+        subcommand="suggest"
+        payload={{
+          suggestions: [{ title: "Docs", url: "https://example.com/docs", reason: "Relevant" }],
+        }}
+      />,
+    );
     expect(screen.getByText("Suggested URLs")).toBeInTheDocument();
     expect(screen.getByText("Docs")).toBeInTheDocument();
   });
 
   it("renders source and domain lists", () => {
-    render(<OperationResultView subcommand="sources" payload={{ urls: ["https://example.com/source"] }} />);
+    render(
+      <OperationResultView
+        subcommand="sources"
+        payload={{ urls: ["https://example.com/source"] }}
+      />,
+    );
     expect(screen.getByText("Indexed sources")).toBeInTheDocument();
     expect(screen.getByText("https://example.com/source")).toBeInTheDocument();
 
-    render(<OperationResultView subcommand="domains" payload={{ domains: [{ domain: "example.com", count: 2 }] }} />);
+    render(
+      <OperationResultView
+        subcommand="domains"
+        payload={{ domains: [{ domain: "example.com", count: 2 }] }}
+      />,
+    );
     expect(screen.getByText("Indexed domains")).toBeInTheDocument();
     expect(screen.getAllByText("example.com").length).toBeGreaterThan(0);
   });
@@ -317,52 +365,102 @@ describe("OperationResultView structured rendering", () => {
   });
 
   it("renders a job-start hero for async families", () => {
-    render(<OperationResultView subcommand="crawl" payload={{ execution_mode: "async", result: { job_id: "abc123def456ghi", status: "queued" } }} />);
-    expect(screen.getByText("Crawl job queued")).toBeInTheDocument();
+    render(
+      <OperationResultView
+        subcommand="source-site"
+        payload={{
+          execution_mode: "async",
+          result: { job_id: "abc123def456ghi", status: "queued" },
+        }}
+      />,
+    );
+    expect(screen.getByText("Source job queued")).toBeInTheDocument();
     // shortId truncates ids over 12 chars (canonical, with the ellipsis char).
     expect(screen.getByText("abc123def456…")).toBeInTheDocument();
   });
 
-  it("renders job-start heroes for all non-crawl async families", () => {
-    for (const subcommand of ["embed", "extract", "ingest"]) {
-      render(<OperationResultView subcommand={subcommand} payload={{ execution_mode: "async", result: { job_id: `${subcommand}-job-123`, status: "queued" } }} />);
+  it("renders job-start heroes for the remaining async families", () => {
+    for (const subcommand of ["source", "extract"]) {
+      render(
+        <OperationResultView
+          subcommand={subcommand}
+          payload={{
+            execution_mode: "async",
+            result: { job_id: `${subcommand}-job-123`, status: "queued" },
+          }}
+        />,
+      );
     }
-    expect(screen.getAllByText("Status endpoint")).toHaveLength(3);
-    expect(screen.getAllByText(/job queued/i)).toHaveLength(3);
+    expect(screen.getAllByText("Status endpoint")).toHaveLength(2);
+    expect(screen.getAllByText(/job queued/i)).toHaveLength(2);
   });
 
   it("renders a job-lifecycle list view", () => {
-    render(<OperationResultView subcommand="crawl-list" payload={{ jobs: [{ job_id: "j1", status: "running", url: "https://example.com" }] }} />);
-    expect(screen.getByText("Crawl List")).toBeInTheDocument();
+    render(
+      <OperationResultView
+        subcommand="jobs-list"
+        payload={{ jobs: [{ job_id: "j1", status: "running", url: "https://example.com" }] }}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
   });
 
   it("renders endpoint, brand, and diff detail views", () => {
-    render(<OperationResultView subcommand="endpoints" payload={{ total: 1, endpoints: ["https://example.com/api"] }} />);
+    render(
+      <OperationResultView
+        subcommand="endpoints"
+        payload={{ total: 1, endpoints: ["https://example.com/api"] }}
+      />,
+    );
     expect(screen.getByText("Endpoint discovery")).toBeInTheDocument();
     expect(screen.getAllByText("https://example.com/api").length).toBeGreaterThan(0);
 
-    render(<OperationResultView subcommand="brand" payload={{ name: "Aurora", colors: [{ hex: "#29b6f6", usage: "primary" }], fonts: ["Manrope"] }} />);
+    render(
+      <OperationResultView
+        subcommand="brand"
+        payload={{
+          name: "Aurora",
+          colors: [{ hex: "#29b6f6", usage: "primary" }],
+          fonts: ["Manrope"],
+        }}
+      />,
+    );
     expect(screen.getByText("Aurora")).toBeInTheDocument();
     expect(screen.getByText("Manrope")).toBeInTheDocument();
 
-    render(<OperationResultView subcommand="diff" payload={{ status: "changed", url_a: "https://example.com/a", url_b: "https://example.com/b", metadata_changes: [{ field: "title", old: "A", new: "B" }] }} />);
+    render(
+      <OperationResultView
+        subcommand="diff"
+        payload={{
+          status: "changed",
+          url_a: "https://example.com/a",
+          url_b: "https://example.com/b",
+          metadata_changes: [{ field: "title", old: "A", new: "B" }],
+        }}
+      />,
+    );
     expect(screen.getByText("Diff changed")).toBeInTheDocument();
     expect(screen.getByText("https://example.com/a")).toBeInTheDocument();
   });
 
   it("renders watch list and detail views", () => {
-    render(<OperationResultView subcommand="watch-list" payload={{ watches: [{ name: "Docs watch", id: "watch-1" }] }} />);
+    render(
+      <OperationResultView
+        subcommand="watch-list"
+        payload={{ watches: [{ name: "Docs watch", id: "watch-1" }] }}
+      />,
+    );
     expect(screen.getByText("Watch schedules")).toBeInTheDocument();
     expect(screen.getByText("Docs watch")).toBeInTheDocument();
 
-    render(<OperationResultView subcommand="watch-run" payload={{ name: "Docs watch", watch_id: "watch-1", artifacts: [{ id: "artifact-1" }] }} />);
+    render(
+      <OperationResultView
+        subcommand="watch-run"
+        payload={{ name: "Docs watch", watch_id: "watch-1", artifacts: [{ id: "artifact-1" }] }}
+      />,
+    );
     expect(screen.getByText("Watch ID")).toBeInTheDocument();
     expect(screen.getByText("watch-1")).toBeInTheDocument();
-  });
-
-  it("renders dedupe metrics", () => {
-    render(<OperationResultView subcommand="dedupe" payload={{ removed: 4, scanned: 100, collection: "axon" }} />);
-    expect(screen.getByText("Dedupe complete")).toBeInTheDocument();
   });
 
   it("falls back to the generic view for unknown subcommands", () => {

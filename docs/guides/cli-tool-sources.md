@@ -6,17 +6,26 @@ source pipeline.
 
 ## Source Shape
 
-Use a `cli:` source identifier for tool documentation targets. The adapter owns
-tool discovery, command metadata capture, normalization, and safety policy.
+Use a `cli:` source identifier for tool documentation targets, for example
+`cli:rg --help`. The router canonicalizes the source to `cli://<command>`, then
+the service dispatch layer runs the `cli_tool` adapter.
 
 ## Pipeline Behavior
 
-CLI tool content is acquired as source items, prepared into documents, and
-published through the same ledger, parser, graph, embedding, and vector stages
-as other source families.
+The default dispatch path is metadata-only. It records a ledger generation and
+one adapter-owned metadata document, but it does not spawn the command and it
+writes zero vector points.
+
+Execution mode is available only on `scope=api` with `execution_mode=execute`.
+The service layer re-checks `axon:execute`, requires an exact
+`command_allowlist`, denies shell expansion, applies the local secret-path
+denylist to the command and argv, clears the child environment except
+`env_allowlist`, enforces timeout/output caps, and stores only redacted output
+artifacts.
 
 ## Safety
 
-Adapters must treat local execution as privileged. Discovery should prefer
-static help, schema files, or explicit safe commands, and must honor redaction
-and local-path policy.
+Tool sources require trusted local execution or the `axon:execute` scope at the
+source routing boundary, then re-check `axon:execute` at dispatch before any
+process is spawned. Missing scope, missing allowlist, unsupported shell forms,
+or secret-like local paths fail closed before side effects.

@@ -1,14 +1,25 @@
 import { ACTIONS, type PaletteAction } from "@/lib/actions";
-import { answerParts, appendAskActivity, completeLastAssistantTurn, updateLastAssistantTurn } from "@/lib/askTranscript";
+import {
+  answerParts,
+  appendAskActivity,
+  completeLastAssistantTurn,
+  updateLastAssistantTurn,
+} from "@/lib/askTranscript";
 import type { HttpMethod, PaletteResult } from "@/lib/axonClient";
-import { hostFromUrl } from "@/lib/crawlJob";
 import type { OutputKind } from "@/lib/format";
 import type { AskTurn, RunState } from "@/lib/runState";
+import { hostLabel } from "@/lib/url";
 
 export type PaletteStreamEvent =
   | { type: "started"; requestId: string; path: string }
   | { type: "delta"; requestId: string; text: string }
-  | { type: "activity"; requestId: string; label: string; detail?: string | null; kind?: "thinking" | "tool" | "done" | string | null }
+  | {
+      type: "activity";
+      requestId: string;
+      label: string;
+      detail?: string | null;
+      kind?: "thinking" | "tool" | "done" | string | null;
+    }
   | { type: "done"; requestId: string; answer?: string | null }
   | { type: "error"; requestId: string; message: string };
 
@@ -33,7 +44,11 @@ type TerminalRun = Extract<RunState, { result: PaletteResult }>;
  * @param method - HTTP method associated with the request.
  * @returns A `PaletteResult` representing a failed client-side request.
  */
-export function errorResult(message: string, path: string, method: HttpMethod = "POST"): PaletteResult {
+export function errorResult(
+  message: string,
+  path: string,
+  method: HttpMethod = "POST",
+): PaletteResult {
   return { ok: false, status: 0, path, method, payload: { error: message } };
 }
 
@@ -73,7 +88,7 @@ export function makeErrorRun(args: {
 export function jobLabel(argument: string): string {
   const first = argument.trim().split(/\s+/)[0] ?? "";
   if (!first) return "";
-  return /^https?:\/\//i.test(first) ? hostFromUrl(first) : first;
+  return /^https?:\/\//i.test(first) ? hostLabel(first) : first;
 }
 
 /**
@@ -146,9 +161,8 @@ export function makeStreamSuccessRun(args: {
  */
 export function statusFallbackAction(action: PaletteAction, argument: string): PaletteAction {
   if (action.kind !== "job" || argument.trim()) return action;
-  const match = /^(crawl|embed|extract|ingest)-status$/.exec(action.subcommand);
-  if (!match) return action;
-  return ACTIONS.find((candidate) => candidate.subcommand === `${match[1]}-list`) ?? action;
+  if (action.subcommand !== "jobs-status") return action;
+  return ACTIONS.find((candidate) => candidate.subcommand === "jobs-list") ?? action;
 }
 
 /**
@@ -159,7 +173,11 @@ export function statusFallbackAction(action: PaletteAction, argument: string): P
  * @returns The updated run state.
  */
 export function reduceStreamEvent(current: RunState, payload: PaletteStreamEvent): RunState {
-  if (current.kind !== "streaming" || !("requestId" in payload) || current.requestId !== payload.requestId) {
+  if (
+    current.kind !== "streaming" ||
+    !("requestId" in payload) ||
+    current.requestId !== payload.requestId
+  ) {
     return current;
   }
   if (payload.type === "delta") {

@@ -11,7 +11,6 @@
 //! `QdrantVectorStore::http()`), so retries, redaction, and error shape stay
 //! identical to the rest of the crate's Qdrant transport.
 
-mod delete;
 mod domain;
 mod facet;
 mod retrieve;

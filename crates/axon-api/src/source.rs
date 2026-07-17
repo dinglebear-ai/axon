@@ -22,6 +22,7 @@ pub mod llm;
 pub mod memory;
 pub mod provider_io;
 pub mod prune;
+pub mod redaction;
 pub mod service_ids;
 pub mod stage;
 pub mod state;
@@ -47,6 +48,7 @@ pub use llm::*;
 pub use memory::*;
 pub use provider_io::*;
 pub use prune::*;
+pub use redaction::*;
 pub use service_ids::*;
 pub use stage::*;
 pub use state::*;
@@ -93,3 +95,7 @@ mod stage_fixture_tests;
 #[cfg(test)]
 #[path = "source_audit_tests.rs"]
 mod audit_tests;
+
+#[cfg(test)]
+#[path = "source_redaction_tests.rs"]
+mod redaction_tests;

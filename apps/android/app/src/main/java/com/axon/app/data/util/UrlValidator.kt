@@ -14,7 +14,7 @@ object UrlValidator {
     /**
      * Returns the lowercased host of [input] when it parses as a valid http(s)
      * URL. Used by callers that need both the validity guard AND the host (e.g.
-     * IngestViewModel's source-vs-target cross-check). Non-URL inputs (git@host:
+     * source target validation). Non-URL inputs (git@host:
      * ssh form, owner/repo shorthand, etc.) return null — callers can decide
      * whether to accept those or defer to server-side validation.
      */

@@ -30,7 +30,7 @@ pub(super) fn youtube_source_document(
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
     metadata.insert("video_id".to_string(), json!(video.video_id));
     metadata.insert("title".to_string(), json!(video.title));
-    metadata.insert("url".to_string(), json!(video_url));
+    metadata.insert("media_url".to_string(), json!(video_url));
     if !video.channel.is_empty() {
         metadata.insert("channel".to_string(), json!(video.channel));
     }

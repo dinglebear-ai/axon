@@ -189,7 +189,9 @@ fn build_ask_context_from_hits(
     hits: &[QueryServiceHit],
     retrieval_elapsed_ms: u128,
 ) -> AskContext {
-    let chunk_limit = cfg.ask_chunk_limit.max(1);
+    let chunk_limit = cfg
+        .ask_chunk_limit
+        .clamp(1, axon_api::MAX_CANONICAL_CITATIONS);
     let max_context_chars = cfg.ask_max_context_chars;
 
     let mut context = String::from(CONTEXT_PREFIX);
@@ -224,7 +226,7 @@ fn build_ask_context_from_hits(
     }
 
     let chunks_selected = selected_urls.len();
-    AskContext::from_retrieval(
+    let mut ask_ctx = AskContext::from_retrieval(
         context,
         chunks_selected,
         chunks_selected,
@@ -232,7 +234,13 @@ fn build_ask_context_from_hits(
         domains.into_iter().collect(),
         &selected_urls,
         Vec::new(),
-    )
+    );
+    ask_ctx.citations = hits
+        .iter()
+        .take(chunks_selected)
+        .map(|hit| hit.citation.clone())
+        .collect();
+    ask_ctx
 }
 
 /// Wrap a retrieved-chunk body in the XML trust boundary + axon header, matching

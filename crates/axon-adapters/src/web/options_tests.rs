@@ -108,6 +108,28 @@ fn etag_conditional_reads_validated_option() {
 }
 
 #[test]
+fn cache_policy_defaults_from_etag_and_reads_explicit_value() {
+    assert_eq!(cache_policy(&MetadataMap::new()), CachePolicy::Bypass);
+    let mut values = MetadataMap::new();
+    values.insert("etag_conditional".to_string(), json!(true));
+    assert_eq!(cache_policy(&values), CachePolicy::Revalidate);
+    values.insert("cache_policy".to_string(), json!("offline"));
+    assert_eq!(cache_policy(&values), CachePolicy::Offline);
+}
+
+#[test]
+fn headers_read_canonical_object() {
+    let mut values = MetadataMap::new();
+    values.insert(
+        "headers".to_string(),
+        json!({"Authorization": "Bearer secret", "X-Test": "ok"}),
+    );
+    let parsed = headers(&values);
+    assert_eq!(parsed.len(), 2);
+    assert!(parsed.iter().any(|header| header.name == "Authorization"));
+}
+
+#[test]
 fn automation_script_ref_defaults_to_none() {
     assert!(automation_script_ref(&MetadataMap::new()).is_none());
 }
@@ -127,7 +149,7 @@ fn automation_script_ref_wraps_validated_path() {
 #[test]
 fn build_discovery_config_applies_defaults_when_no_options_set() {
     let plan = plan_with_options(MetadataMap::new());
-    let cfg = build_discovery_config(&plan, std::env::temp_dir());
+    let cfg = build_discovery_config(&plan);
 
     assert!(!cfg.embed);
     assert_eq!(cfg.render_mode, axon_core::config::RenderMode::AutoSwitch);
@@ -141,22 +163,30 @@ fn build_discovery_config_honors_crawl_options() {
     values.insert("max_depth".to_string(), json!(3));
     values.insert("etag_conditional".to_string(), json!(true));
     values.insert("include_subdomains".to_string(), json!(true));
+    values.insert("respect_robots".to_string(), json!(true));
     values.insert("discover_sitemaps".to_string(), json!(false));
     values.insert(
         "url_whitelist".to_string(),
         json!(["^https://example\\.com/docs"]),
     );
     values.insert("url_blacklist".to_string(), json!(["/blocked"]));
+    values.insert("headers".to_string(), json!({"X-Test": "ok"}));
+    values.insert("cache_policy".to_string(), json!("revalidate"));
+    values.insert("vertical_cache_ttl_secs".to_string(), json!({"github": 60}));
     let plan = plan_with_options(values);
 
-    let cfg = build_discovery_config(&plan, std::env::temp_dir());
+    let cfg = build_discovery_config(&plan);
 
     assert_eq!(cfg.render_mode, axon_core::config::RenderMode::Chrome);
     assert_eq!(cfg.max_pages, 25);
     assert_eq!(cfg.max_depth, 3);
     assert!(cfg.etag_conditional);
     assert!(cfg.include_subdomains);
+    assert!(cfg.respect_robots);
     assert!(!cfg.discover_sitemaps);
+    assert!(cfg.etag_conditional);
+    assert_eq!(cfg.custom_headers, vec!["X-Test: ok"]);
+    assert_eq!(cfg.vertical_cache_ttl_secs.get("github"), Some(&60));
     assert_eq!(
         cfg.url_whitelist,
         vec!["^https://example\\.com/docs".to_string()]

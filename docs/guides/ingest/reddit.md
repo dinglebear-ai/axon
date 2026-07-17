@@ -4,7 +4,7 @@ Last Modified: 2026-03-09
 Version: 1.0.0
 Last Updated: 01:26:53 | 02/25/2026 EST
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/ingest.md`](../../reference/actions/ingest.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/reddit.md`](../../reference/actions/reddit.md)
 
 Ingests subreddit posts and comment threads into Qdrant via the Reddit OAuth2 API (client credentials flow — no user login required).
 
@@ -72,7 +72,7 @@ All Reddit post chunks carry structured `reddit_*` payload fields built in `src/
 
 | Limitation | Detail |
 |-----------|--------|
-| **Link posts** | Only title + URL indexed; no external page content. Use `axon crawl` for the linked URL |
+| **Link posts** | Only title + URL indexed; no external page content. Use `axon <url> --scope site` for the linked URL |
 | **Comment depth limits** | Reddit's API can truncate very deep threads before `--depth` is reached |
 | **Private / quarantined subreddits** | Client credentials flow cannot access these; fails with 403 |
 | **Score freshness** | Scores captured at index time; not updated on re-index |

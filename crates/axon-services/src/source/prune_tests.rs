@@ -243,7 +243,7 @@ impl VectorStore for RecordingVectorStore {
 }
 
 #[tokio::test]
-async fn drains_superseded_generation_debt_with_generation_fenced_delete() {
+async fn source_prune_cleanup_debt_uses_configured_collection() {
     let ledger = FakeLedgerStore::new();
     let (previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore::default();
@@ -317,7 +317,7 @@ async fn drains_superseded_generation_debt_with_generation_fenced_delete() {
 }
 
 #[tokio::test]
-async fn drain_leaves_debt_pending_when_vector_delete_fails() {
+async fn source_prune_ledger_error_fails_closed() {
     let ledger = FakeLedgerStore::new();
     let (_previous, committed) = seed_two_generations(&ledger).await;
     let vector = RecordingVectorStore {
@@ -557,12 +557,11 @@ async fn drain_full_forgets_named_memory_records_when_memory_store_wired() {
     )
     .await;
 
-    // The pre-existing VectorDelete debt from `seed_two_generations` plus the
-    // MemoryPrune debt just added both resolve. The auto-emitted GraphPrune
-    // debt for the same removed "old" item fails closed — this call passes
-    // `graph_store = None`.
-    assert_eq!(summary.resolved, 2);
-    assert_eq!(summary.failed, 1);
+    // The memory debt resolves. Graph cleanup fails closed because this call
+    // has no graph store, and dependent ledger cleanup remains pending behind
+    // that unresolved graph debt.
+    assert_eq!(summary.resolved, 1);
+    assert_eq!(summary.failed, 2);
     let record = memory.get(memory_id).await.unwrap().unwrap();
     assert_eq!(record.status, MemoryStatus::Forgotten);
 }

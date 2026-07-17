@@ -87,3 +87,60 @@ fn task_result_payload_truncates_oversized_result_json() {
         "result_json exceeded task payload size limit"
     );
 }
+
+#[test]
+fn source_task_result_preserves_structured_progress_without_leaking_sensitive_values() {
+    let mut job = job("completed");
+    job.progress_json = Some(json!({
+        "counts": {
+            "items_total": 8,
+            "items_done": 5,
+            "documents_total": 5,
+            "documents_done": 4,
+            "chunks_total": 20,
+            "chunks_done": 17,
+            "bytes_done": 4096
+        },
+        "current": {
+            "source_item_key": "/home/jmagar/private/source.md",
+            "adapter": "local",
+            "message": "processing /home/jmagar/private/source.md"
+        },
+        "warnings": [{
+            "code": "source.partial",
+            "severity": "warning",
+            "message": "TOKEN=top-secret-value",
+            "source_item_key": "/home/jmagar/private/source.md",
+            "retryable": true
+        }],
+        "errors": [{
+            "code": "source.item_failed",
+            "severity": "error",
+            "message": "failed /home/jmagar/private/source.md",
+            "source_item_key": "/home/jmagar/private/source.md",
+            "retryable": false,
+            "cause": "Authorization:Bearer secret-value"
+        }]
+    }));
+
+    let payload = task_result_payload(JobKind::Source, &job);
+    let value = serde_json::to_value(payload).unwrap();
+    let progress = &value["progress"];
+
+    assert_eq!(progress["counts"]["items_done"], 5);
+    assert_eq!(progress["counts"]["chunks_done"], 17);
+    assert_eq!(progress["current"]["adapter"], "local");
+    assert_eq!(progress["warnings"][0]["code"], "source.partial");
+    assert_eq!(progress["warnings"][0]["retryable"], true);
+    assert_eq!(progress["errors"][0]["code"], "source.item_failed");
+    assert_eq!(progress["errors"][0]["retryable"], false);
+
+    let meta = task_meta_from_job(JobKind::Source, &job).expect("source task metadata");
+    let meta = serde_json::to_value(meta).unwrap();
+    assert_eq!(meta["axon"]["progress"], *progress);
+
+    let encoded = serde_json::to_string(progress).unwrap();
+    assert!(!encoded.contains("/home/jmagar"));
+    assert!(!encoded.contains("top-secret-value"));
+    assert!(!encoded.contains("secret-value"));
+}

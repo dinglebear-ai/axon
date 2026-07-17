@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use base64::Engine as _;
 
-use super::{ArtifactBytesWriteRequest, ArtifactStore, Result, capability};
+use super::{
+    ArtifactBytesWriteRequest, ArtifactStore, Result, capability, redact_artifact_metadata,
+};
 
 #[derive(Debug, Clone)]
 pub struct FileArtifactStore {
@@ -18,6 +20,16 @@ struct FileArtifactManifest {
     content_path: String,
     content_kind: String,
     metadata: MetadataMap,
+}
+
+struct FileArtifactWrite {
+    kind: ArtifactKind,
+    content_type: String,
+    content_kind: &'static str,
+    source_id: Option<SourceId>,
+    job_id: Option<JobId>,
+    metadata: MetadataMap,
+    bytes: Vec<u8>,
 }
 
 impl FileArtifactStore {
@@ -35,27 +47,20 @@ impl FileArtifactStore {
             .join(format!("{}.json", safe_artifact_id(artifact_id)))
     }
 
-    async fn put_content_bytes(
-        &self,
-        kind: ArtifactKind,
-        content_type: String,
-        content_kind: &'static str,
-        source_id: Option<SourceId>,
-        job_id: Option<JobId>,
-        metadata: MetadataMap,
-        bytes: Vec<u8>,
-    ) -> Result<ArtifactHandle> {
-        let digest = sha256_hex(&bytes);
+    async fn put_content_bytes(&self, write: FileArtifactWrite) -> Result<ArtifactHandle> {
+        let metadata = redact_artifact_metadata(write.metadata)?;
+        let digest = sha256_hex(&write.bytes);
         let identity_digest = artifact_identity_digest_parts(
-            kind,
-            source_id.as_ref(),
-            job_id.as_ref(),
+            write.kind,
+            write.source_id.as_ref(),
+            write.job_id.as_ref(),
             &metadata,
             &digest,
-        )?;
+        )
+        .map_err(|error| *error)?;
         let artifact_id = ArtifactId::new(format!(
-            "artifact_{}_{}",
-            artifact_kind_slug(kind),
+            "art_{}_{}",
+            artifact_kind_slug(write.kind),
             &identity_digest[..16]
         ));
         let content_path = self.content_path(&artifact_id);
@@ -70,7 +75,7 @@ impl FileArtifactStore {
                 ),
             )
         })?;
-        tokio::fs::write(&content_path, &bytes)
+        tokio::fs::write(&content_path, &write.bytes)
             .await
             .map_err(|err| {
                 ApiError::new(
@@ -81,18 +86,18 @@ impl FileArtifactStore {
             })?;
         let handle = ArtifactHandle {
             artifact_id: artifact_id.clone(),
-            artifact_kind: kind,
-            uri: Some(format!("file://{}", content_path.display())),
+            artifact_kind: write.kind,
+            uri: Some(format!("artifact://{}", artifact_id.0)),
         };
         let manifest = FileArtifactManifest {
             handle: handle.clone(),
-            content_type,
+            content_type: write.content_type,
             content_path: content_path
                 .file_name()
                 .and_then(|value| value.to_str())
                 .unwrap_or_default()
                 .to_string(),
-            content_kind: content_kind.to_string(),
+            content_kind: write.content_kind.to_string(),
             metadata,
         };
         let manifest_bytes = serde_json::to_vec_pretty(&manifest).map_err(|err| {
@@ -121,29 +126,29 @@ impl FileArtifactStore {
 #[async_trait]
 impl ArtifactStore for FileArtifactStore {
     async fn put(&self, artifact: ArtifactWriteRequest) -> Result<ArtifactHandle> {
-        let bytes = content_ref_bytes(&artifact.content)?;
-        self.put_content_bytes(
-            artifact.kind,
-            artifact.content_type,
-            content_kind(&artifact.content),
-            artifact.source_id,
-            artifact.job_id,
-            artifact.metadata,
+        let bytes = content_ref_bytes(&artifact.content).map_err(|error| *error)?;
+        self.put_content_bytes(FileArtifactWrite {
+            kind: artifact.kind,
+            content_type: artifact.content_type,
+            content_kind: content_kind(&artifact.content),
+            source_id: artifact.source_id,
+            job_id: artifact.job_id,
+            metadata: artifact.metadata,
             bytes,
-        )
+        })
         .await
     }
 
     async fn put_bytes(&self, artifact: ArtifactBytesWriteRequest) -> Result<ArtifactHandle> {
-        self.put_content_bytes(
-            artifact.kind,
-            artifact.content_type,
-            "inline_bytes",
-            artifact.source_id,
-            artifact.job_id,
-            artifact.metadata,
-            artifact.bytes,
-        )
+        self.put_content_bytes(FileArtifactWrite {
+            kind: artifact.kind,
+            content_type: artifact.content_type,
+            content_kind: "inline_bytes",
+            source_id: artifact.source_id,
+            job_id: artifact.job_id,
+            metadata: artifact.metadata,
+            bytes: artifact.bytes,
+        })
         .await
     }
 
@@ -167,6 +172,21 @@ impl ArtifactStore for FileArtifactStore {
                     format!("failed to parse artifact manifest: {err}"),
                 )
             })?;
+        let expected_content_path = self
+            .content_path(&handle.artifact_id)
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        if manifest.handle.artifact_id != handle.artifact_id
+            || manifest.content_path != expected_content_path
+        {
+            return Err(ApiError::new(
+                "artifact.read_failed",
+                ErrorStage::Retrieving,
+                "artifact manifest identity or content path is invalid",
+            ));
+        }
         let content_path = self.root.join(&manifest.content_path);
         let bytes = tokio::fs::read(&content_path).await.map_err(|err| {
             ApiError::new(
@@ -238,17 +258,17 @@ async fn remove_file_if_exists(path: impl AsRef<Path>) -> Result<()> {
     }
 }
 
-fn content_ref_bytes(content: &ContentRef) -> Result<Vec<u8>> {
+fn content_ref_bytes(content: &ContentRef) -> std::result::Result<Vec<u8>, Box<ApiError>> {
     match content {
         ContentRef::InlineText { text } => Ok(text.as_bytes().to_vec()),
         ContentRef::InlineBytes { bytes_base64, .. } => base64::engine::general_purpose::STANDARD
             .decode(bytes_base64)
             .map_err(|err| {
-                ApiError::new(
+                Box::new(ApiError::new(
                     "artifact.invalid_content",
                     ErrorStage::Publishing,
                     format!("inline bytes artifact content is not valid base64: {err}"),
-                )
+                ))
             }),
         ContentRef::Artifact { artifact_id } => Ok(artifact_id.0.as_bytes().to_vec()),
         ContentRef::External { uri, integrity } => Ok(integrity
@@ -281,11 +301,11 @@ fn artifact_identity_digest_parts(
     job_id: Option<&JobId>,
     metadata: &MetadataMap,
     content_digest: &str,
-) -> Result<String> {
+) -> std::result::Result<String, Box<ApiError>> {
     let mut identity = serde_json::Map::new();
     identity.insert(
         "kind".to_string(),
-        serde_json::to_value(kind).map_err(identity_json_error)?,
+        serde_json::to_value(kind).map_err(|error| Box::new(identity_json_error(error)))?,
     );
     identity.insert(
         "content_digest".to_string(),
@@ -300,7 +320,8 @@ fn artifact_identity_digest_parts(
         serde_json::json!(job_id.map(|value| value.0.to_string())),
     );
     identity.insert("metadata".to_string(), serde_json::json!(metadata));
-    let bytes = serde_json::to_vec(&identity).map_err(identity_json_error)?;
+    let bytes =
+        serde_json::to_vec(&identity).map_err(|error| Box::new(identity_json_error(error)))?;
     Ok(sha256_hex(&bytes))
 }
 

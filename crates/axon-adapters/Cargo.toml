@@ -7,11 +7,13 @@ authors.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow = "1"
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 axon-extract = { path = "../axon-extract" }
+axon-parse = { path = "../axon-parse" }
 axon-observe = { path = "../axon-observe" }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -37,6 +39,7 @@ sha2 = "0.10"
 spider = { version = "2", default-features = false, features = [
   "basic",
   "chrome",
+  "chrome_intercept",
   "regex",
   "sitemap",
   "adblock",

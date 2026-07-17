@@ -17,6 +17,25 @@ pub fn graph_candidate(
     line: Option<u32>,
     quote: Option<String>,
 ) -> GraphCandidate {
+    graph_candidate_ranged(
+        input,
+        parser_id,
+        kind,
+        name,
+        line.map(crate::facts::line_range),
+        quote,
+    )
+}
+
+pub fn graph_candidate_ranged(
+    input: &ParseInput,
+    parser_id: &str,
+    kind: &str,
+    name: &str,
+    range: Option<SourceRange>,
+    quote: Option<String>,
+) -> GraphCandidate {
+    let line = range.as_ref().and_then(|range| range.line_start);
     let source_scope = format!(
         "source_id={}|item={}|uri={}",
         input.document.source_id.0, input.document.source_item_key.0, input.document.canonical_uri
@@ -66,6 +85,7 @@ pub fn graph_candidate(
             edge_kind: "source_indexed_as".to_string(),
             from_stable_key: file_key,
             to_stable_key: item_key,
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
@@ -75,24 +95,7 @@ pub fn graph_candidate(
             source_item_key: input.document.source_item_key.clone(),
             document_id: Some(input.document.document_id.clone()),
             chunk_id: None,
-            range: line.map(|line| SourceRange {
-                line_start: Some(line),
-                line_end: Some(line),
-                byte_start: None,
-                byte_end: None,
-                char_start: None,
-                char_end: None,
-                time_start_ms: None,
-                time_end_ms: None,
-                dom_selector: None,
-                json_pointer: None,
-                yaml_path: None,
-                xml_xpath: None,
-                csv_row: None,
-                session_turn_id: None,
-                turn_start: None,
-                turn_end: None,
-            }),
+            range,
             quote,
             confidence: 0.9,
             metadata: evidence_metadata,
@@ -140,6 +143,7 @@ pub fn candidate_edge(
     let evidence_token = stable_token(&format!(
         "{candidate_kind}:{to_stable_key}:{line:?}:{quote:?}"
     ));
+    let evidence_id = format!("ev_{evidence_token}");
 
     GraphCandidate {
         candidate_id: format!("cand_{candidate_kind}_{candidate_token}"),
@@ -176,10 +180,11 @@ pub fn candidate_edge(
             edge_kind: edge_kind.to_string(),
             from_stable_key: from_stable_key.to_string(),
             to_stable_key: to_stable_key.to_string(),
+            evidence_ids: vec![evidence_id.clone()],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
-            evidence_id: format!("ev_{evidence_token}"),
+            evidence_id,
             evidence_kind: evidence_kind.to_string(),
             source_id: input.document.source_id.clone(),
             source_item_key: input.document.source_item_key.clone(),

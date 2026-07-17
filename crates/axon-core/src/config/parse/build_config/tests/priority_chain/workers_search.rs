@@ -542,64 +542,16 @@ fn toml_search_hnsw_ef_clamps_lower_bound() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn toml_search_hnsw_ef_legacy_wins_over_default() {
+fn toml_hnsw_ef_legacy_is_rejected() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
     writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 200").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .hnsw_ef_search_legacy;
-        },
-    );
-    assert_eq!(got, 200);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_search_hnsw_ef_legacy_clamps_lower_bound() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 1").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .hnsw_ef_search_legacy;
-        },
-    );
-    assert_eq!(got, 16);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_search_hnsw_ef_legacy_clamps_upper_bound() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[providers.vector]\nhnsw-ef-legacy = 999").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_HNSW_EF_SEARCH_LEGACY"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_HNSW_EF_SEARCH_LEGACY");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .hnsw_ef_search_legacy;
-        },
-    );
-    assert_eq!(got, 256);
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        let err = into_config_via_args(&["status"]).expect_err("removed key must fail");
+        assert!(err.contains("hnsw-ef-legacy"), "unexpected error: {err}");
+        assert!(err.contains("hnsw-ef"), "missing canonical key: {err}");
+    });
 }
 
 #[allow(unsafe_code)]

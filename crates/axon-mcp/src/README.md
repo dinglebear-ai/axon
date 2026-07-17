@@ -51,10 +51,10 @@ such as `crawl`, `scrape`, `embed`, and `ingest` were removed from MCP; use
 
 ## Change Rule
 When changing tool behavior, update in the same commit:
-1. `src/mcp/schema.rs`
-2. `src/mcp/server.rs`
+1. `src/schema.rs` and the shared `axon-api` request DTO
+2. `src/server.rs` / the focused `src/server/handlers_*.rs` module
 3. `docs/reference/mcp/overview.md`
-4. `docs/reference/mcp/tool-schema.md`
+4. schema/parity tests, then regenerate `docs/reference/mcp/tool-schema.md`
 
 ## Related Docs
 - [Repository README](../../../README.md)

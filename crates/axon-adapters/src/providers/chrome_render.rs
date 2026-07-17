@@ -27,6 +27,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use axon_api::source::*;
 use axon_core::config::{Config, RenderMode as CoreRenderMode, ScrapeFormat};
+use axon_core::http::validate_url_with_dns;
 use axon_core::logging::log_warn;
 use axon_error::ErrorStage;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
@@ -159,6 +160,12 @@ pub(crate) fn classify_render_error(message: &str) -> RenderFailureClass {
 #[async_trait]
 impl RenderProvider for ChromeRenderProvider {
     async fn render(&self, request: RenderRequest) -> Result<RenderedResource> {
+        validate_url_with_dns(&request.uri).await.map_err(|err| {
+            self.error(
+                "render.invalid_uri",
+                format!("render target rejected by SSRF policy: {err}"),
+            )
+        })?;
         let mut cfg = self.build_config(&request);
         if crate::web_engine::chrome_bootstrap::chrome_runtime_requested(&cfg) {
             let bootstrap =

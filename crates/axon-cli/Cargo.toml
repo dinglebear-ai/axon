@@ -9,7 +9,6 @@ license = "MIT"
 [dependencies]
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
-axon-llm = { path = "../axon-llm" }
 axon-adapters = { path = "../axon-adapters" }
 axon-jobs = { path = "../axon-jobs" }
 axon-services = { path = "../axon-services" }

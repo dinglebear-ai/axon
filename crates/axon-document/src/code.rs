@@ -9,8 +9,12 @@
 //! sub-chunks with explicit fallback metadata rather than shipped as one
 //! giant chunk.
 
+use axon_api::source::SourceParseFacts;
+
 use crate::chunk::DocumentChunk;
 use crate::text::{atomic_text, source_range};
+
+mod parser_facts;
 
 /// Symbol chunks larger than this are split into line-window sub-chunks.
 /// ~6000 bytes is comfortably above the code profile's 1400-token hard max
@@ -41,12 +45,24 @@ pub(crate) fn code_manifest(text: &str, path: Option<&str>) -> Vec<DocumentChunk
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn code_symbols(
     text: &str,
     path: Option<&str>,
     language_hint: Option<&str>,
 ) -> Vec<DocumentChunk> {
-    let raw = if let Some(chunks) = repomix_packed_code_symbols(text) {
+    code_symbols_with_facts(text, path, language_hint, &[])
+}
+
+pub(crate) fn code_symbols_with_facts(
+    text: &str,
+    path: Option<&str>,
+    language_hint: Option<&str>,
+    parse_facts: &[SourceParseFacts],
+) -> Vec<DocumentChunk> {
+    let raw = if let Some(chunks) = parser_facts::parser_code_symbol_chunks(text, parse_facts) {
+        chunks
+    } else if let Some(chunks) = repomix_packed_code_symbols(text) {
         chunks
     } else {
         code_symbols_with_base(text, text, 0)
@@ -70,7 +86,9 @@ fn stamp_code_metadata(
     chunk = chunk.with_metadata("code_is_test", is_test.into());
     if !already_stamped {
         let (source, parse_status, extraction_status) = if chunk.symbol.is_some() {
-            ("ast_symbol_heuristic", "partial", "parsed")
+            ("heuristic_symbol", "fallback", "fallback")
+        } else if language == "unknown" {
+            ("line_window", "unsupported", "unsupported")
         } else {
             ("line_window", "fallback", "none")
         };
@@ -109,7 +127,7 @@ fn split_if_huge(chunk: DocumentChunk, source: &str) -> Vec<DocumentChunk> {
             .with_metadata("code_parse_status", "partial".into())
             .with_metadata("symbol_extraction_status", "fallback".into())
             .with_metadata("chunking_fallback", "line_window".into())
-            .with_metadata("preferred_chunking_method", "ast_symbol_heuristic".into())
+            .with_metadata("preferred_chunking_method", "tree_sitter".into())
             .with_metadata("actual_chunking_method", "line_window".into());
             if let Some(symbol) = &symbol {
                 sub = sub.with_symbol(format!("{symbol}#part{idx}"));
@@ -322,20 +340,12 @@ fn is_divider(line: &str) -> bool {
 
 fn looks_like_symbol(line: &str) -> bool {
     let trimmed = line.trim_start();
-    [
-        "fn ", "pub fn ", "def ", "class ", "struct ", "enum ", "impl ",
-    ]
-    .iter()
-    .any(|prefix| trimmed.starts_with(prefix))
+    normalized_symbol_prefix(trimmed).is_some()
 }
 
 fn symbol_name(line: &str) -> Option<String> {
     let trimmed = line.trim_start();
-    let after_keyword = [
-        "pub fn ", "fn ", "def ", "class ", "struct ", "enum ", "impl ",
-    ]
-    .iter()
-    .find_map(|prefix| trimmed.strip_prefix(prefix))?;
+    let after_keyword = normalized_symbol_prefix(trimmed)?;
     Some(
         after_keyword
             .split(|ch: char| !(ch.is_alphanumeric() || ch == '_'))
@@ -343,6 +353,94 @@ fn symbol_name(line: &str) -> Option<String> {
             .unwrap_or("symbol")
             .to_string(),
     )
+}
+
+pub(crate) fn code_symbol_kind_for_content(content: &str) -> &'static str {
+    let first = strip_rust_visibility(strip_js_ts_modifiers(
+        content.lines().next().unwrap_or_default().trim_start(),
+    ));
+    if first.starts_with("pub fn ")
+        || first.starts_with("fn ")
+        || first.starts_with("def ")
+        || first.starts_with("async function ")
+        || first.starts_with("function ")
+        || js_ts_assignment_function(first)
+    {
+        "function"
+    } else if first.starts_with("class ")
+        || first.starts_with("interface ")
+        || first.starts_with("type ")
+        || first.starts_with("struct ")
+    {
+        "type"
+    } else if first.starts_with("enum ") {
+        "enum"
+    } else if first.starts_with("impl ") {
+        "impl"
+    } else {
+        "symbol"
+    }
+}
+
+fn normalized_symbol_prefix(line: &str) -> Option<&str> {
+    let line = strip_rust_visibility(strip_js_ts_modifiers(line));
+    [
+        "pub fn ",
+        "fn ",
+        "def ",
+        "class ",
+        "struct ",
+        "enum ",
+        "impl ",
+        "async function ",
+        "function ",
+        "interface ",
+        "type ",
+    ]
+    .iter()
+    .find_map(|prefix| line.strip_prefix(prefix))
+    .or_else(|| js_ts_assignment_rest(line))
+}
+
+fn strip_rust_visibility(line: &str) -> &str {
+    line.strip_prefix("pub ")
+        .or_else(|| line.strip_prefix("pub(crate) "))
+        .or_else(|| line.strip_prefix("pub(super) "))
+        .unwrap_or(line)
+}
+
+fn strip_js_ts_modifiers(mut line: &str) -> &str {
+    loop {
+        if let Some(stripped) = line.strip_prefix("export default ") {
+            line = stripped;
+        } else if let Some(stripped) = line.strip_prefix("export ") {
+            line = stripped;
+        } else if let Some(stripped) = line.strip_prefix("declare ") {
+            line = stripped;
+        } else if let Some(stripped) = line.strip_prefix("abstract ") {
+            line = stripped;
+        } else {
+            return line;
+        }
+    }
+}
+
+fn js_ts_assignment_function(line: &str) -> bool {
+    js_ts_assignment_rest(line).is_some()
+}
+
+fn js_ts_assignment_rest(line: &str) -> Option<&str> {
+    let rest = line
+        .strip_prefix("const ")
+        .or_else(|| line.strip_prefix("let "))
+        .or_else(|| line.strip_prefix("var "))?;
+    let name_end = rest
+        .char_indices()
+        .take_while(|(_, ch)| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '$')
+        .last()
+        .map(|(idx, ch)| idx + ch.len_utf8())?;
+    let rhs = rest[name_end..].trim_start();
+    (rhs.contains("=>") || rhs.contains("function") || rhs.contains("React.FC")).then_some(rest)
 }
 
 #[cfg(test)]

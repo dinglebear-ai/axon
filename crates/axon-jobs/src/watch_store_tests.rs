@@ -44,7 +44,7 @@ async fn insert_job(pool: &SqlitePool) -> JobId {
 
 #[tokio::test]
 async fn sqlite_watch_store_creates_gets_updates_and_lists() {
-    let (store, _pool, _temp) = store().await;
+    let (store, pool, _temp) = store().await;
 
     let created = WatchStore::create(&store, watch_request()).await.unwrap();
     assert!(created.enabled);
@@ -56,6 +56,13 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
         .expect("watch present");
     assert_eq!(fetched.watch_id, created.watch_id);
     assert_eq!(fetched.canonical_uri, "file:///repo");
+
+    let by_source = store
+        .find_by_source("file:///repo")
+        .await
+        .unwrap()
+        .expect("source lookup should find watch");
+    assert_eq!(by_source.watch_id, created.watch_id);
 
     let updated = WatchStore::update(
         &store,
@@ -74,6 +81,14 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
     assert!(!updated.enabled);
     assert_eq!(updated.scope, SourceScope::Repo);
 
+    let forced_next_run_at = 1_700_000_000_000_i64;
+    sqlx::query("UPDATE axon_source_watches SET next_run_at = ? WHERE watch_id = ?")
+        .bind(forced_next_run_at)
+        .bind(&created.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
     let listed = WatchStore::list(
         &store,
         WatchListRequest {
@@ -88,6 +103,12 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
     .unwrap();
     assert_eq!(listed.items.len(), 1);
     assert_eq!(listed.items[0].watch_id, created.watch_id);
+    assert_eq!(
+        listed.items[0].next_run_at,
+        Timestamp::from(
+            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(forced_next_run_at).unwrap()
+        )
+    );
 }
 
 #[tokio::test]
@@ -110,6 +131,77 @@ async fn sqlite_watch_store_reconstructs_stored_request() {
         store.request(WatchId::new("missing")).await.unwrap(),
         None,
         "missing canonical ids should not resolve through a fallback"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_schedule_update_recomputes_next_run_at() {
+    let (store, pool, _temp) = store().await;
+    let created = WatchStore::create(&store, watch_request()).await.unwrap();
+    sqlx::query("UPDATE axon_source_watches SET next_run_at = 1 WHERE watch_id = ?")
+        .bind(&created.watch_id.0)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    WatchStore::update(
+        &store,
+        created.watch_id.clone(),
+        WatchUpdateRequest {
+            enabled: None,
+            schedule: Some(WatchSchedule {
+                every_seconds: 120,
+                cron: None,
+                timezone: None,
+            }),
+            options: None,
+            embed: None,
+            collection: None,
+            scope: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let next_run_at: i64 =
+        sqlx::query_scalar("SELECT next_run_at FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&created.watch_id.0)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    let delay_ms = next_run_at - now;
+    assert!((110_000..=120_000).contains(&delay_ms));
+}
+
+#[tokio::test]
+async fn sqlite_watch_store_create_resolved_preserves_canonical_identity() {
+    let (store, _pool, _temp) = store().await;
+    let created = store
+        .create_resolved_with_auth(
+            watch_request(),
+            SourceId::new("src_canonical_file_repo"),
+            "local://lp_repo".to_string(),
+            AdapterRef {
+                name: "local".to_string(),
+                version: "test".to_string(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(created.source_id, SourceId::new("src_canonical_file_repo"));
+    assert_eq!(created.canonical_uri, "local://lp_repo");
+    assert_eq!(created.adapter.name, "local");
+    assert_eq!(
+        store
+            .find_by_source("local://lp_repo")
+            .await
+            .unwrap()
+            .expect("canonical lookup")
+            .watch_id,
+        created.watch_id
     );
 }
 
@@ -279,4 +371,111 @@ async fn sqlite_watch_store_reports_capabilities() {
     let capability = WatchStore::capabilities(&store).await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-jobs");
     assert_eq!(capability.0.name, "sqlite-watch-store");
+}
+
+#[tokio::test]
+async fn sqlite_watch_list_uses_stable_opaque_cursor_pages() {
+    let (store, pool, _temp) = store().await;
+    for index in 0..3 {
+        let mut request = watch_request();
+        request.source = format!("file:///repo/{index}");
+        let watch = WatchStore::create(&store, request).await.unwrap();
+        sqlx::query("UPDATE axon_source_watches SET created_at = ? WHERE watch_id = ?")
+            .bind(100 + index)
+            .bind(&watch.watch_id.0)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let first = WatchStore::list(
+        &store,
+        WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: Some(2),
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.items.len(), 2);
+    assert_eq!(first.total, Some(3));
+    let cursor = first.next_cursor.expect("second page cursor");
+    assert!(!cursor.contains("watch_"));
+
+    let second = WatchStore::list(
+        &store,
+        WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: Some(2),
+            cursor: Some(cursor),
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(second.items.len(), 1);
+    assert_eq!(second.total, None);
+    assert_eq!(second.next_cursor, None);
+}
+
+#[tokio::test]
+async fn sqlite_watch_history_filters_before_cursor_pagination() {
+    let (store, pool, _temp) = store().await;
+    let watch = WatchStore::create(&store, watch_request()).await.unwrap();
+    for index in 0..4 {
+        let job_id = insert_job(&pool).await;
+        let status = if index % 2 == 0 {
+            "completed"
+        } else {
+            "failed"
+        };
+        sqlx::query("UPDATE jobs SET status = ? WHERE job_id = ?")
+            .bind(status)
+            .bind(job_id.0.to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+        WatchStore::record_run(&store, watch.watch_id.clone(), job_id)
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE axon_source_watch_runs SET created_at = ? WHERE watch_id = ? AND job_id = ?",
+        )
+        .bind(100 + index)
+        .bind(&watch.watch_id.0)
+        .bind(job_id.0.to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let first = WatchStore::history(
+        &store,
+        WatchHistoryRequest {
+            watch_id: watch.watch_id.clone(),
+            status: Some(LifecycleStatus::Completed),
+            limit: Some(1),
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(first.jobs.len(), 1);
+    let second = WatchStore::history(
+        &store,
+        WatchHistoryRequest {
+            watch_id: watch.watch_id,
+            status: Some(LifecycleStatus::Completed),
+            limit: Some(1),
+            cursor: first.next_cursor,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(second.jobs.len(), 1);
+    assert_eq!(second.next_cursor, None);
 }

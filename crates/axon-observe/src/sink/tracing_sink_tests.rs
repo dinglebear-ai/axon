@@ -33,6 +33,30 @@ async fn tracing_sink_assigns_monotonic_sequence() {
 }
 
 #[tokio::test]
+async fn redaction_failure_emits_no_trace_sequence() {
+    let sink = TracingObservabilitySink::new();
+    let job = JobId(uuid::Uuid::new_v4());
+    let mut event = crate::event::stage_started(
+        job,
+        None,
+        PipelinePhase::Authorizing,
+        "authorizing".to_string(),
+    );
+    event.error = Some(
+        axon_api::source::ApiError::new(
+            "policy.denied",
+            axon_api::source::ErrorStage::Authorizing,
+            "denied",
+        )
+        .with_context("authorization", "Bearer definitely-secret"),
+    );
+
+    let error = sink.emit(event).await.expect_err("trace must fail closed");
+    assert_eq!(error.code.0, "redaction.failed");
+    assert_eq!(sink.sequences().last(job), None);
+}
+
+#[tokio::test]
 async fn heartbeat_and_metric_and_flush_succeed() {
     let sink = TracingObservabilitySink::new();
     let job = JobId(uuid::Uuid::new_v4());

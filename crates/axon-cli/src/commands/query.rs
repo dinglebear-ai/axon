@@ -50,7 +50,7 @@ pub async fn run_query(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
             "    {}",
             muted("axon stats         # check collection size")
         );
-        println!("    {}", muted("axon embed <url>   # add content first"));
+        println!("    {}", muted("axon <url>         # add content first"));
         return Ok(());
     }
 

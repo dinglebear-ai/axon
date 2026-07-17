@@ -113,7 +113,6 @@ impl ServiceContext {
     async fn build(
         cfg: Arc<Config>,
         spawn_workers: bool,
-        spawn_freshness_scheduler: bool,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         if spawn_workers {
             axon_core::health::assert_workers_allowed_by_cutover(&cfg)
@@ -127,9 +126,6 @@ impl ServiceContext {
             jobs: Arc::clone(&jobs),
             target_local_source,
         };
-        if spawn_freshness_scheduler {
-            crate::freshness::spawn_freshness_scheduler(context.clone());
-        }
         if spawn_workers {
             spawn_queue_summary_logger(Arc::clone(&jobs), cfg.queue_summary_secs);
         }
@@ -139,16 +135,16 @@ impl ServiceContext {
     /// Construct the production target local-source runtime, when applicable.
     ///
     /// Only worker-bearing contexts (`spawn_workers`, i.e. `serve`/`mcp` and
-    /// foreground `--wait`) attach it, and only when both `qdrant_url` and
-    /// `tei_url` are configured. Missing endpoints leave it unset rather than
-    /// failing startup; a construction error (e.g. the ledger migrations) is
-    /// logged and treated as absent so the process still comes up.
+    /// foreground `--wait`) attach it. Provider construction is lazy, so
+    /// acquisition-only requests such as `map` remain operational without TEI
+    /// or Qdrant; an embedding request still fails at the provider boundary
+    /// when its configured endpoint is unavailable.
     async fn build_target_local_source(
         cfg: &Config,
         jobs: &Arc<dyn ServiceJobRuntime>,
         spawn_workers: bool,
     ) -> Option<Arc<TargetLocalSourceRuntime>> {
-        if !spawn_workers || cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
+        if !spawn_workers {
             return None;
         }
         let Some(pool) = jobs.sqlite_pool() else {
@@ -188,7 +184,7 @@ impl ServiceContext {
     /// This is the safe default for CLI commands that enqueue and exit.
     /// Use `new_with_workers()` for long-lived processes that should process jobs.
     pub async fn new(cfg: Arc<Config>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, false, false).await
+        Self::build(cfg, false).await
     }
 
     /// Create a ServiceContext with in-process workers (SQLite runtime only).
@@ -198,17 +194,16 @@ impl ServiceContext {
     pub async fn new_with_workers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, false).await
+        Self::build(cfg, true).await
     }
 
-    /// Create a long-lived ServiceContext with in-process workers and recurring
-    /// freshness scheduling enabled.
+    /// Create a long-lived ServiceContext with in-process workers.
     ///
     /// Use for `axon serve`, MCP server, and web server runtimes.
     pub async fn new_with_workers_and_schedulers(
         cfg: Arc<Config>,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        Self::build(cfg, true, true).await
+        Self::build(cfg, true).await
     }
 
     /// Factory for test helpers — inject a mock `ServiceJobRuntime`.

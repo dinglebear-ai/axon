@@ -1,27 +1,56 @@
 //! Contract tests for `map_payload` output shape and dedup semantics.
 //!
-//! These lock the expected behavior AFTER the migration that moves sitemap
-//! URL merge/dedup from CLI `map.rs` into the crawl engine. The tests
+//! These lock the expected behavior after sitemap URL merge/dedup moved from
+//! CLI `map.rs` into adapter-owned map acquisition. The tests
 //! verify two contracts:
 //!
 //! 1. URLs in the output are unique WITHOUT CLI-side dedup (engine handles it).
 //! 2. `sitemap_urls` is the raw count of URLs returned by `discover_sitemap_urls`
-//!    (before dedup), not a net-new count relative to crawler-discovered URLs.
-//!
-//! The AutoSwitch fallback is exercised implicitly by the two httpmock
-//! integration tests, which call the real `map_payload` → `map_with_sitemap`
-//! path.
+//!    before the final canonical merge.
 //!
 //! Tests use `httpmock` to provide sitemap XML and a stub robots.txt, then
-//! call `map_payload` directly. Spider's crawl over a mock server yields
-//! minimal results — the sitemap discovery path is what exercises the
-//! dedup and counting logic.
+//! call the local `map_payload` test helper. The sitemap discovery path is what
+//! exercises the dedup and counting logic.
 
-use super::map_payload;
 use axon_core::config::{Config, RenderMode};
 use axon_core::http::LoopbackGuard;
+use axon_services::context::ServiceContext;
+use axon_services::map::discover_with_context;
+use axon_services::types::MapOptions;
 use httpmock::prelude::*;
 use serial_test::serial;
+use std::sync::Arc;
+
+async fn map_payload(
+    cfg: &Config,
+    start_url: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let mut isolated_cfg = cfg.clone();
+    isolated_cfg.sqlite_path = temp.path().join("jobs.db");
+    isolated_cfg.output_dir = temp.path().join("output");
+    let context = ServiceContext::new_with_workers(Arc::new(isolated_cfg))
+        .await
+        .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
+    let result = discover_with_context(
+        &context,
+        start_url,
+        MapOptions {
+            limit: 0,
+            offset: 0,
+        },
+        None,
+    )
+    .await?;
+    if result.map_source == "unsupported" {
+        return Err(format!(
+            "map source pipeline failed: {}",
+            result.warning.as_deref().unwrap_or("no warning")
+        )
+        .into());
+    }
+    Ok(serde_json::to_value(result)?)
+}
 
 /// RAII guard: sets the global loopback bypass to `true` on creation
 /// and restores `false` on drop.
@@ -51,13 +80,13 @@ fn sitemap_xml(urls: &[&str]) -> String {
     xml
 }
 
-/// Fixture: mock server with sitemap that contains duplicate URLs (same URLs
-/// that the crawler would also discover). After migration, the engine merges
-/// crawler + sitemap results and deduplicates — the CLI must NOT re-dedup.
+/// Fixture: mock server with a sitemap and root anchors that overlap. The
+/// adapter returns one canonical sitemap-owned URL set; the CLI must not
+/// perform a second deduplication pass.
 fn setup_server_with_duplicate_sitemap(server: &MockServer) {
     let base = server.base_url();
 
-    // Simple HTML page the crawler can find
+    // Root HTML is available but must not be traversed when a sitemap parses.
     server.mock(|when, then| {
         when.method(GET).path("/");
         then.status(200)
@@ -94,7 +123,7 @@ fn setup_server_with_duplicate_sitemap(server: &MockServer) {
             .body("User-agent: *\nDisallow:\n");
     });
 
-    // Sitemap contains page-a and page-b (duplicates of crawler links) + page-c (new)
+    // Sitemap contains page-a and page-b (also root anchors) plus page-c.
     server.mock(|when, then| {
         when.method(GET).path("/sitemap.xml");
         then.status(200)
@@ -116,8 +145,8 @@ fn setup_server_with_duplicate_sitemap(server: &MockServer) {
 /// Contract: URLs in the output must be unique — no duplicates, stable sorted
 /// order. After migration, the engine handles dedup; CLI must not re-sort/dedup.
 ///
-/// This test constructs a fixture where sitemap URLs overlap with crawler-
-/// discovered URLs. The output `urls` array must contain each URL exactly once.
+/// This test constructs a fixture where sitemap URLs overlap with root anchors.
+/// The output `urls` array must contain each URL exactly once.
 #[tokio::test]
 #[serial]
 async fn map_payload_returns_unique_urls_without_cli_side_dedup() {
@@ -172,8 +201,8 @@ async fn map_payload_returns_unique_urls_without_cli_side_dedup() {
 /// `discover_sitemap_urls` before dedup, not a net-new count.
 ///
 /// The fixture sitemap contains exactly 3 URLs (page-a, page-b, page-c),
-/// two of which overlap with crawler-discovered URLs.  After dedup the
-/// `urls` array will have at most those three pages plus the root URL, but
+/// two of which overlap with root anchors. After dedup the `urls` array
+/// contains those three pages, and
 /// `sitemap_urls` must equal **3** — the raw sitemap URL count.
 ///
 /// All four fields (`mapped_urls`, `sitemap_urls`, `pages_seen`,
@@ -312,10 +341,3 @@ fn map_payload_json_has_expected_fields() {
         "sitemap_urls must be present as a number"
     );
 }
-
-// Note: AutoSwitch fallback behaviour (only falling back to Chrome when
-// `pages_seen == 0`) is exercised implicitly by the two httpmock integration
-// tests above, which call the real `map_payload` → `map_with_sitemap` path.
-// A standalone shadow test that inlines a copy of the condition was removed
-// because it tested the closure, not the engine — a change to the engine
-// condition would not have been caught by it.

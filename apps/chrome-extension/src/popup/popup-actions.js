@@ -35,7 +35,7 @@ async function executeCommand(command, tab) {
     };
   }
 
-  if (command.name === "crawl") {
+  if (command.name === "site") {
     const parsed = parseCliArgs(command.args);
     const urls = resolveCommandUrls(parsed.positionals, tab);
     const pollRun = ++crawlPollRun;
@@ -47,37 +47,25 @@ async function executeCommand(command, tab) {
     }
     return {
       output: [
-        "# Crawl",
+        "# Site source",
         "",
         `${badge("info", "queued")} ${urls.length.toLocaleString()} URL${urls.length === 1 ? "" : "s"}`,
         jobId ? `Job: \`${jobId}\`` : badge("warn", "job id unavailable"),
         "",
         ...urls.map((url) => `- ${url}`)
       ].join("\n"),
-      doneMessage: jobId ? `Queued crawl ${jobId}.` : "Crawl queued.",
+      doneMessage: jobId ? `Queued source job ${jobId}.` : "Site indexing queued.",
       crawlJobId: jobId || ""
     };
   }
 
-  if (command.name === "embed") {
+  if (command.name === "source") {
     const input = command.arg || tab?.url || "";
     if (!input) {
-      throw new Error("embed requires an input path, text, or URL.");
+      throw new Error("source requires a URL, repository, feed, session selector, file, or directory.");
     }
     const result = await startEmbedWithAxon(input);
-    return acceptedJobResult("Embed queued", result, "embed");
-  }
-
-  if (command.name === "ingest") {
-    const result = await startIngestWithAxon(command.args);
-    return acceptedJobResult("Ingest queued", result, "ingest");
-  }
-
-  if (command.name === "sessions") {
-    // `session:<provider>:<path>` selectors require a local path on the Axon
-    // host — the browser has no way to supply one, so this can't be migrated
-    // to a `/v1/sources` request the way scrape/crawl/embed/ingest were.
-    return unsupportedCliCommand(command.name);
+    return acceptedJobResult("Source queued", result, "source");
   }
 
   if (command.name === "retrieve") {
@@ -146,7 +134,7 @@ async function executeCommand(command, tab) {
 
     const jobId = command.arg || currentCrawlJobId;
     if (!jobId) {
-      return { output: "No crawl job is active.", doneMessage: "No crawl job is active." };
+      return { output: "No source job is active.", doneMessage: "No source job is active." };
     }
 
     const result = await getAxon(`/v1/jobs/${encodeURIComponent(jobId)}`);
@@ -155,8 +143,8 @@ async function executeCommand(command, tab) {
     return {
       output: formatSingleJobStatus(result, jobId),
       copyText: formatSingleJobStatus(result, jobId),
-      copiedMessage: "Copied crawl status to clipboard.",
-      doneMessage: `Crawl ${jobId}: ${status.label}.`
+      copiedMessage: "Copied source job status to clipboard.",
+      doneMessage: `Source job ${jobId}: ${status.label}.`
     };
   }
 
@@ -172,17 +160,6 @@ async function executeCommand(command, tab) {
 
   if (command.name === "watch") {
     return setWatchFromCommand(command.arg);
-  }
-
-  if (command.name === "dedupe") {
-    const result = await postAxon("/v1/dedupe", {});
-    const output = formatGenericResult("dedupe", result);
-    return {
-      output,
-      copyText: output,
-      copiedMessage: "Copied Axon dedupe result to clipboard.",
-      doneMessage: "Axon dedupe complete."
-    };
   }
 
   if (command.name === "migrate") {

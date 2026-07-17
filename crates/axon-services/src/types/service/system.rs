@@ -7,11 +7,6 @@ pub struct SourcesResult {
     pub offset: usize,
     /// Indexed URLs paired with their chunk counts.
     pub urls: Vec<(String, usize)>,
-    /// Optional per-schema-version chunk counts (populated only when the
-    /// caller opts in via `--by-schema-version`). Implicit pre-`axon_rust-lu6a`
-    /// points (no `payload_schema_version` field) are reported under the
-    /// key `1`. See `services::system::sources_with_breakdown`.
-    pub schema_version_breakdown: Option<std::collections::BTreeMap<u32, usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -93,23 +88,10 @@ pub struct StatusResult {
     #[serde(default)]
     pub degraded: bool,
     #[serde(default)]
-    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 /// `ServiceJob` now lives in `axon_api::service_job`; the `From<*Job>` conversions
 /// live in `axon_jobs::service_job_conv`. Re-exported so existing
 /// `crate::types::ServiceJob` call sites resolve unchanged.
 pub use axon_api::service_job::ServiceJob;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DedupeResult {
-    pub completed: bool,
-    pub duplicate_groups: usize,
-    pub deleted: usize,
-}
-
-/// `PurgeResult` is the transport-neutral contract for the `purge` operation. It
-/// is owned by `axon-api` (where `axon-vector` returns it from), not redefined
-/// here — re-exported so `crate::types::PurgeResult` call sites resolve
-/// unchanged. See the workspace ownership rule in the crate `CLAUDE.md`.
-pub use axon_api::purge::PurgeResult;

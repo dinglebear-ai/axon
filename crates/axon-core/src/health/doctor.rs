@@ -161,9 +161,9 @@ impl DoctorReport {
                 local_runtime: "sqlite_in_process".to_string(),
             },
             capabilities: vec![DoctorCapability {
-                tier: "tier_1_crawl_retrieve".to_string(),
+                tier: "tier_1_source_retrieve".to_string(),
                 available: true,
-                impact: vec!["crawl and retrieve are available".to_string()],
+                impact: vec!["source indexing and retrieve are available".to_string()],
                 remedies: vec![],
             }],
             recommendations: vec!["start qdrant and tei with `just services-up`".to_string()],

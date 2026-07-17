@@ -1,0 +1,16 @@
+{
+  "adapter": "memory",
+  "adapter_version": "1",
+  "canonical_uri": "memory://mem_fixture_1",
+  "confidence": 1.0,
+  "fixture_kind": "resolve.explicit",
+  "graph": { "required_fact_kinds": ["memory_document"], "optional_fact_kinds": ["memory_link", "supersedes"] },
+  "item_canonical_uri": "memory://mem_fixture_1",
+  "metadata_family": "memory",
+  "redaction_status": "clean",
+  "requested_uri": "memory://mem_fixture_1",
+  "scope": "api",
+  "source_canonical_uri": "memory://mem_fixture_1",
+  "source_id": "src-memory-fixture",
+  "source_item_key": "mem_fixture_1"
+}

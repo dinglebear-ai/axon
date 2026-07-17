@@ -27,7 +27,7 @@ use crate::collector::{ObservabilitySink, Result};
 /// pure event builder in this crate (see `crate::event::base_event`).
 pub fn to_progress_event(event: &SecurityAuditEvent) -> SourceProgressEvent {
     let job_id = event.job_id.unwrap_or_default();
-    let (severity, status) = severity_and_status(event.kind);
+    let (severity, status) = severity_and_status(event);
 
     SourceProgressEvent {
         event_id: event.event_id.clone(),
@@ -46,7 +46,7 @@ pub fn to_progress_event(event: &SecurityAuditEvent) -> SourceProgressEvent {
         // caller-facing content, but they are not safe to surface to public
         // read-only callers by default — keep them Internal.
         visibility: Visibility::Internal,
-        message: format!("{}: {}", kind_label(event.kind), event.reason),
+        message: format!("{}: {}", kind_label(event), event.reason),
         timestamp: event.timestamp.clone(),
         source_id: event.source_id.clone(),
         canonical_uri: event
@@ -76,17 +76,36 @@ pub async fn emit_security_audit(
     sink.emit(to_progress_event(event)).await
 }
 
-fn severity_and_status(kind: SecurityAuditEventKind) -> (Severity, LifecycleStatus) {
-    match kind {
-        SecurityAuditEventKind::RedactionFailure | SecurityAuditEventKind::CredentialDegraded => {
+fn severity_and_status(event: &SecurityAuditEvent) -> (Severity, LifecycleStatus) {
+    if event.kind == SecurityAuditEventKind::SsrfDenied
+        && event.ssrf.as_ref().is_some_and(|detail| {
+            detail.policy_decision == axon_api::source::SecurityPolicyDecision::Allow
+        })
+    {
+        return (Severity::Info, LifecycleStatus::Completed);
+    }
+    match event.kind {
+        SecurityAuditEventKind::RedactionFailure
+        | SecurityAuditEventKind::SecretDetectedDropped
+        | SecurityAuditEventKind::CredentialDegraded => {
             (Severity::Degraded, LifecycleStatus::CompletedDegraded)
+        }
+        SecurityAuditEventKind::DestructivePruneAction => {
+            (Severity::Info, LifecycleStatus::Completed)
         }
         _ => (Severity::Warning, LifecycleStatus::Failed),
     }
 }
 
-fn kind_label(kind: SecurityAuditEventKind) -> &'static str {
-    match kind {
+fn kind_label(event: &SecurityAuditEvent) -> &'static str {
+    if event.kind == SecurityAuditEventKind::SsrfDenied
+        && event.ssrf.as_ref().is_some_and(|detail| {
+            detail.policy_decision == axon_api::source::SecurityPolicyDecision::Allow
+        })
+    {
+        return "ssrf_allowed";
+    }
+    match event.kind {
         SecurityAuditEventKind::AuthDenied => "auth_denied",
         SecurityAuditEventKind::SsrfDenied => "ssrf_denied",
         SecurityAuditEventKind::LocalPathDenied => "local_path_denied",
@@ -117,7 +136,13 @@ fn caller_and_policy_summary(event: &SecurityAuditEvent) -> String {
     let caller = event.caller_id.as_deref().unwrap_or("unknown");
     let policy = event.policy_id.as_deref().unwrap_or("unknown");
     let version = event.policy_version.as_deref().unwrap_or("unknown");
-    format!("caller={caller} policy={policy}@{version}")
+    let decision = event.decision.as_ref().map_or_else(String::new, |detail| {
+        format!(
+            " boundary={:?} decision={:?}",
+            detail.boundary, detail.policy_decision
+        )
+    });
+    format!("caller={caller} policy={policy}@{version}{decision}")
 }
 
 fn zero_counts() -> StageCounts {

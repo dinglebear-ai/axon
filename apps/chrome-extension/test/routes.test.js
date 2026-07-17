@@ -119,6 +119,8 @@ test("removed legacy routes never appear as a live reference in any shipped exte
     /\/v1\/crawl\b/,
     /\/v1\/embed\b/,
     /\/v1\/ingest\b/,
+    /\/v1\/dedupe\b/,
+    /\/v1\/purge\b/,
     /\/v1\/map\b/,
     /\/v1\/summarize\b/,
     /\/v1\/evaluate\b/,

@@ -111,6 +111,25 @@ pub(crate) fn status_for_api_error(error: &ApiError) -> StatusCode {
             "watch.not_found" => StatusCode::NOT_FOUND,
             _ => status_from_stage(error.stage),
         },
+        "upload" => match code {
+            "upload.not_found" => StatusCode::NOT_FOUND,
+            "upload.expired" => StatusCode::GONE,
+            "upload.busy" | "upload.not_writable" | "upload.incomplete" => StatusCode::CONFLICT,
+            "upload.too_large" => StatusCode::PAYLOAD_TOO_LARGE,
+            "upload.write_failed"
+            | "upload.read_failed"
+            | "upload.delete_failed"
+            | "upload.cleanup_failed"
+            | "upload.lock_failed"
+            | "upload.invalid_record" => StatusCode::INTERNAL_SERVER_ERROR,
+            _ => StatusCode::BAD_REQUEST,
+        },
+        "artifact" => match code {
+            "artifact.not_found" => StatusCode::NOT_FOUND,
+            "artifact.invalid_id" => StatusCode::BAD_REQUEST,
+            // read_failed / list_failed / invalid_manifest are store faults.
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        },
         "provider" => match code {
             "provider.rate_limited" | "provider.cooling" => StatusCode::TOO_MANY_REQUESTS,
             _ => StatusCode::BAD_GATEWAY,

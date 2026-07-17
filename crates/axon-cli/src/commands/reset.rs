@@ -8,7 +8,12 @@ use axon_core::ui::{accent, muted, success, warning};
 use std::error::Error;
 
 pub async fn run_reset(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let result = axon_services::reset(cfg).await?;
+    let authz = if cfg.yes {
+        axon_services::reset::ResetAuthz::admin()
+    } else {
+        axon_services::reset::ResetAuthz::anonymous()
+    };
+    let result = axon_services::reset::reset_with_authz(cfg, &authz).await?;
 
     if cfg.json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
@@ -28,6 +33,7 @@ fn render_human(result: &ResetResult) {
         println!("{}  reset complete", success("✓"));
     }
     println!("{}", muted(&format!("reset_id: {}", result.reset_id)));
+    println!("{}", muted(&format!("plan_id: {}", result.plan_id)));
     println!(
         "{}",
         muted(&format!("stores: {}", result.stores.join(", ")))
@@ -58,7 +64,10 @@ fn render_human(result: &ResetResult) {
         }
         println!(
             "{}",
-            muted("run again with --yes to destroy and recreate these stores."),
+            muted(&format!(
+                "run again with --yes --plan-id {} to execute this reviewed plan.",
+                result.plan_id
+            )),
         );
     } else {
         println!(

@@ -270,35 +270,27 @@ private fun String.isHttpUrl(): Boolean =
 
 @Composable
 internal fun jobTone(kind: JobFamily?): Color = when (kind) {
-    JobFamily.Crawl -> AxonTheme.colors.accentPrimary
-    JobFamily.Embed -> AxonTheme.colors.accentPink
+    JobFamily.Source -> AxonTheme.colors.accentPrimary
     JobFamily.Extract -> AxonTheme.colors.orange
-    JobFamily.Ingest -> AxonTheme.colors.accentStrong
     null -> AxonTheme.colors.accentPrimary
 }
 
 @Composable
 internal fun toneForKindName(kind: String): Color = when (kind.lowercase()) {
-    "crawl" -> AxonTheme.colors.accentPrimary
-    "embed" -> AxonTheme.colors.accentPink
+    "source" -> AxonTheme.colors.accentPrimary
     "extract" -> AxonTheme.colors.orange
-    "ingest" -> AxonTheme.colors.accentStrong
     else -> AxonTheme.colors.accentPrimary
 }
 
 internal fun iconForKind(kind: JobFamily?): ImageVector = when (kind) {
-    JobFamily.Crawl -> Icons.Rounded.TravelExplore
-    JobFamily.Embed -> Icons.Rounded.Work
+    JobFamily.Source -> Icons.Rounded.TravelExplore
     JobFamily.Extract -> Icons.Rounded.DataObject
-    JobFamily.Ingest -> Icons.Rounded.CloudDownload
     null -> Icons.Rounded.Work
 }
 
 internal fun iconForKindName(kind: String): ImageVector = when (kind.lowercase()) {
-    "crawl" -> Icons.Rounded.TravelExplore
-    "embed" -> Icons.Rounded.Work
+    "source" -> Icons.Rounded.TravelExplore
     "extract" -> Icons.Rounded.DataObject
-    "ingest" -> Icons.Rounded.CloudDownload
     else -> Icons.Rounded.Work
 }
 

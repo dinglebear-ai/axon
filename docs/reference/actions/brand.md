@@ -33,10 +33,10 @@ axon brand [OPTIONS] [URL]...
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--max-pages <n>` | `0` (uncapped) | Maximum pages to crawl. |
-| `--max-depth <n>` | `10` | Maximum crawl depth. |
+| `--max-pages <n>` | `0` (uncapped) | Maximum pages to traverse. |
+| `--max-depth <n>` | `10` | Maximum traversal depth. |
 | `--render-mode <mode>` | `auto-switch` | Page fetch mode: `http`, `chrome`, or `auto-switch`. |
-| `--include-subdomains <bool>` | `false` | Include subdomains in crawl scope. |
+| `--include-subdomains <bool>` | `false` | Include subdomains in the web traversal scope. |
 | `--header <HEADER>` | — | Custom HTTP request header (`Key: Value`). Repeatable. |
 | `--skip-embed` | `false` | Fetch/analyze without indexing into Qdrant. |
 | `--collection <name>` | `axon` | Qdrant collection name. |

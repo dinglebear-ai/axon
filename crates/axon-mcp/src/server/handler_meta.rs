@@ -119,13 +119,13 @@ pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
         "- `ask` — RAG: retrieve context + LLM answer\n",
         "- `summarize` — scrape URL context + configured LLM summary\n",
         "- `evaluate` — compare RAG quality against a baseline with judge diagnostics\n",
-        "- `suggest` — propose new crawl targets from indexed source coverage\n",
+        "- `suggest` — propose new source targets from indexed coverage\n",
         "- `research` — SearXNG/Tavily web research with LLM synthesis and auto-indexing\n",
         "- `extract` — structured data extraction via LLM\n",
         "- `status` / `doctor` — job queue health and service diagnostics\n",
         "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
         "\n",
-        "The `extract` async operation returns a job_id. Poll the same action with `subaction:status` and the returned `job_id`.\n",
+        "The `extract` async operation returns a job_id. Poll with `action=jobs`, `subaction=get`, and the returned `job_id`.\n",
         "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/result`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows."
     ).into());
     info.capabilities = mcp_apps_server_capabilities();

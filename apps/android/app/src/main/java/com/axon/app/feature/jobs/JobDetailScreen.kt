@@ -29,7 +29,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
-private const val CRAWL_PAGE_PREVIEW_LIMIT = 200
+private const val SOURCE_PAGE_PREVIEW_LIMIT = 200
 
 @Composable
 internal fun JobDetailScreen(
@@ -41,8 +41,9 @@ internal fun JobDetailScreen(
     onBack: () -> Unit,
 ) {
     Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState()),
+        modifier =
+            modifier
+                .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(13.dp),
     ) {
         DrillHeader(
@@ -53,20 +54,22 @@ internal fun JobDetailScreen(
         JobDetailHero(job)
         JobDetailSection(
             title = "Target",
-            rows = listOfNotNull(
-                "Target" to jobDisplayTarget(job),
-                detailRow("Source", job.sourceType),
-                "Job ID" to job.id,
-            ),
+            rows =
+                listOfNotNull(
+                    "Target" to jobDisplayTarget(job),
+                    detailRow("Source", job.sourceKind),
+                    "Job ID" to job.id,
+                ),
         )
         JobDetailSection(
             title = "Timing",
-            rows = listOfNotNull(
-                detailRow("Created", job.createdAt),
-                detailRow("Started", job.startedAt),
-                detailRow("Updated", job.updatedAt),
-                detailRow("Finished", job.finishedAt),
-            ),
+            rows =
+                listOfNotNull(
+                    detailRow("Created", job.createdAt),
+                    detailRow("Started", job.startedAt),
+                    detailRow("Updated", job.updatedAt),
+                    detailRow("Finished", job.finishedAt),
+                ),
         )
         job.errorText?.takeIf { it.isNotBlank() }?.let { error ->
             JobDetailSection(title = "Error", rows = listOf("Message" to humanizeJsonFragmentText(error)))
@@ -74,8 +77,8 @@ internal fun JobDetailScreen(
         job.resultJson?.let { result ->
             JobDetailSection(title = "Result", rows = jsonPreviewRows(result))
         }
-        if (job.kind == JobFamily.Crawl) {
-            CrawlPagesSection(
+        if (job.kind == JobFamily.Source) {
+            SourcePagesSection(
                 pages = crawledPages,
                 loading = crawledPagesLoading,
                 error = crawledPagesError,
@@ -88,32 +91,34 @@ internal fun JobDetailScreen(
 }
 
 @Composable
-private fun CrawlPagesSection(
+private fun SourcePagesSection(
     pages: List<String>,
     loading: Boolean,
     error: String?,
 ) {
-    val rows = when {
-        loading -> listOf("Status" to "Loading crawled pages...")
-        error != null -> listOf("Error" to error)
-        pages.isEmpty() -> listOf("Pages" to "No page list is available for this crawl yet.")
-        else -> crawlPageRows(pages)
-    }
+    val rows =
+        when {
+            loading -> listOf("Status" to "Loading discovered pages...")
+            error != null -> listOf("Error" to error)
+            pages.isEmpty() -> listOf("Pages" to "No page list is available for this site source yet.")
+            else -> sourcePageRows(pages)
+        }
     JobDetailSection(
-        title = if (pages.isEmpty()) "Pages Crawled" else "Pages Crawled (${pages.size})",
+        title = if (pages.isEmpty()) "Discovered Pages" else "Discovered Pages (${pages.size})",
         rows = rows,
     )
 }
 
-private fun crawlPageRows(pages: List<String>): List<Pair<String, String>> {
-    val pageRows = pages
-        .take(CRAWL_PAGE_PREVIEW_LIMIT)
-        .mapIndexed { index, url -> "#${index + 1}" to url }
+private fun sourcePageRows(pages: List<String>): List<Pair<String, String>> {
+    val pageRows =
+        pages
+            .take(SOURCE_PAGE_PREVIEW_LIMIT)
+            .mapIndexed { index, url -> "#${index + 1}" to url }
 
-    if (pages.size <= CRAWL_PAGE_PREVIEW_LIMIT) return pageRows
+    if (pages.size <= SOURCE_PAGE_PREVIEW_LIMIT) return pageRows
 
     return pageRows + (
-        "More" to "Showing first $CRAWL_PAGE_PREVIEW_LIMIT of ${pages.size} crawled pages."
+        "More" to "Showing first $SOURCE_PAGE_PREVIEW_LIMIT of ${pages.size} discovered pages."
     )
 }
 
@@ -123,12 +128,13 @@ private fun JobDetailHero(job: JobUi) {
     val tone = jobTone(job.kind)
     val shape = RoundedCornerShape(8.dp)
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.control.copy(alpha = 0.08f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), shape)
-            .padding(16.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.control.copy(alpha = 0.08f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.14f), shape)
+                .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
@@ -165,17 +171,21 @@ private fun JobDetailHero(job: JobUi) {
 }
 
 @Composable
-private fun JobDetailSection(title: String, rows: List<Pair<String, String>>) {
+private fun JobDetailSection(
+    title: String,
+    rows: List<Pair<String, String>>,
+) {
     if (rows.isEmpty()) return
     val colors = AxonTheme.colors
     val shape = RoundedCornerShape(8.dp)
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(colors.control.copy(alpha = 0.05f), shape)
-            .border(1.dp, colors.borderDefault.copy(alpha = 0.10f), shape)
-            .padding(14.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.control.copy(alpha = 0.05f), shape)
+                .border(1.dp, colors.borderDefault.copy(alpha = 0.10f), shape)
+                .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         Text(
@@ -208,21 +218,24 @@ private fun jsonPreviewRows(element: JsonElement): List<Pair<String, String>> {
     val obj = element as? JsonObject
     if (obj == null) return listOf("Value" to humanizeJsonFragmentText(element.toString()))
 
-    val preferred = listOf(
-        "pages_crawled",
-        "docs_embedded",
-        "chunks_embedded",
-        "docs_failed",
-        "collection",
-        "seed_url",
-        "input",
-        "url",
-        "target",
-        "source_type",
-    )
-    val rows = preferred.mapNotNull { key ->
-        obj[key]?.let { value -> key.humanKey() to value.previewValue() }
-    }.toMutableList()
+    val preferred =
+        listOf(
+            "pages_crawled",
+            "docs_embedded",
+            "chunks_embedded",
+            "docs_failed",
+            "collection",
+            "seed_url",
+            "input",
+            "url",
+            "target",
+            "source_type",
+        )
+    val rows =
+        preferred
+            .mapNotNull { key ->
+                obj[key]?.let { value -> key.humanKey() to value.previewValue() }
+            }.toMutableList()
 
     obj.entries
         .asSequence()
@@ -233,8 +246,10 @@ private fun jsonPreviewRows(element: JsonElement): List<Pair<String, String>> {
     return rows.take(6).ifEmpty { listOf("Value" to humanizeJsonFragmentText(element.toString())) }
 }
 
-private fun detailRow(label: String, value: String?): Pair<String, String>? =
-    value?.takeIf { it.isNotBlank() }?.let { label to it }
+private fun detailRow(
+    label: String,
+    value: String?,
+): Pair<String, String>? = value?.takeIf { it.isNotBlank() }?.let { label to it }
 
 private fun String.humanKey(): String =
     split('_', '-')
@@ -244,7 +259,7 @@ private fun String.humanKey(): String =
 private fun JsonElement.previewValue(): String =
     when (this) {
         is JsonPrimitive -> contentOrNull ?: toString()
-        is JsonArray -> "${size} items"
+        is JsonArray -> "$size items"
         is JsonObject -> humanizeJsonFragmentText(toString())
         else -> toString()
     }

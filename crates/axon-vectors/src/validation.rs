@@ -109,6 +109,11 @@ fn validate_payload_lineage(
     batch_job_id: &mut Option<String>,
     stage: axon_error::ErrorStage,
 ) -> Result<()> {
+    require_payload_string(point, "vector_point_id", stage).and_then(|value| {
+        require_equal(point, "vector_point_id", value, &point.point_id.0, stage)
+    })?;
+    require_payload_string(point, "chunk_id", stage)
+        .and_then(|value| require_equal(point, "chunk_id", value, &point.chunk_id.0, stage))?;
     require_payload_string(point, "collection", stage)
         .and_then(|value| require_equal(point, "collection", value, &batch.collection, stage))?;
     require_payload_string(point, "embedding_batch_id", stage).and_then(|value| {

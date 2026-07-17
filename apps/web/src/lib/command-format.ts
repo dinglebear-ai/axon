@@ -28,13 +28,12 @@ export function extractTerminalJob(result: Record<string, unknown> | null): Reco
 
 export function extractArtifactHandle(result: Record<string, unknown> | null): ArtifactHandle | null {
   if (!result) return null;
-  const handle = asRecord(result.artifact_handle);
-  if (!handle || typeof handle.relative_path !== 'string') return null;
+  const handle = asRecord(result.artifact_handle) ?? result;
+  if (typeof handle.artifact_id !== 'string' || !handle.artifact_id.startsWith('art_')) return null;
   return {
-    relative_path: handle.relative_path,
+    artifact_id: handle.artifact_id,
     bytes: typeof handle.bytes === 'number' ? handle.bytes : undefined,
-    kind: typeof handle.kind === 'string' ? handle.kind : 'file',
-    display_path: typeof handle.display_path === 'string' ? handle.display_path : handle.relative_path,
+    artifact_kind: typeof handle.artifact_kind === 'string' ? handle.artifact_kind : 'report',
     line_count: typeof handle.line_count === 'number' ? handle.line_count : undefined
   };
 }
@@ -42,6 +41,9 @@ export function extractArtifactHandle(result: Record<string, unknown> | null): A
 export function extractArtifactHandles(result: Record<string, unknown> | null): ArtifactHandle[] {
   if (!result) return [];
   const candidates: Record<string, unknown>[] = [];
+  if (typeof result.artifact_id === 'string') {
+    candidates.push(result);
+  }
   const single = result.artifact_handle;
   if (single && typeof single === 'object' && !Array.isArray(single)) {
     candidates.push({ artifact_handle: single });
@@ -62,25 +64,18 @@ export function extractArtifactHandles(result: Record<string, unknown> | null): 
 }
 
 const RASTER_IMAGE_KINDS = new Set(['screenshot', 'image', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif', 'image/avif']);
-const RASTER_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif']);
 export const MAX_INLINE_ARTIFACT_BYTES = 8 * 1024 * 1024;
 
 export function isPreviewableRasterArtifact(handle: ArtifactHandle): boolean {
   if (typeof handle.bytes === 'number' && handle.bytes > MAX_INLINE_ARTIFACT_BYTES) return false;
-  const kind = handle.kind.toLowerCase();
+  const kind = handle.artifact_kind.toLowerCase();
   if (RASTER_IMAGE_KINDS.has(kind)) return true;
   if (kind.startsWith('image/')) return false;
-  const leaf = handle.relative_path.split('/').pop() ?? '';
-  const extension = leaf.includes('.') ? leaf.split('.').pop()?.toLowerCase() : undefined;
-  return extension ? RASTER_IMAGE_EXTENSIONS.has(extension) : false;
+  return false;
 }
 
-export function panelArtifactUrl(relativePath: string): string {
-  return `/api/panel/artifact/${relativePath.split('/').map(encodeArtifactSegment).join('/')}`;
-}
-
-function encodeArtifactSegment(segment: string): string {
-  return encodeURIComponent(segment).replaceAll('.', '%2E');
+export function panelArtifactUrl(artifactId: string): string {
+  return `/api/panel/artifacts/${encodeURIComponent(artifactId)}/content`;
 }
 
 export function arrayField(record: Record<string, unknown>, key: string): unknown[] {
@@ -230,7 +225,7 @@ export function commandResultRows(action: string, result: Record<string, unknown
 
   if (action === 'status') {
     const totals = asRecord(result.totals);
-    return ['crawl', 'extract', 'embed', 'ingest']
+    return ['source', 'extract', 'watch', 'prune']
       .map((key) => ({ label: titleLabel(key), value: stringifyScalar(totals?.[key]) }))
       .filter((row) => row.value);
   }
@@ -301,7 +296,7 @@ export function formatCommandResponse(response: PanelCommandResponse): CommandRe
 
   const handle = extractArtifactHandle(result);
   const imageArtifact = handle && isPreviewableRasterArtifact(handle) ? handle : undefined;
-  const imageUrl = imageArtifact ? panelArtifactUrl(imageArtifact.relative_path) : undefined;
+  const imageUrl = imageArtifact ? panelArtifactUrl(imageArtifact.artifact_id) : undefined;
 
   return {
     ok: true,

@@ -2,8 +2,8 @@
 
 use axon_api::{
     AdapterOptions, CapabilityBase, ChunkHint, ChunkProfile, ExecutionAffinity, HealthStatus,
-    MetadataMap, ParserHint, ProviderRequirement, ResolvedSource, RoutePlan, SafetyClass,
-    SourceKind, SourceRequest, SourceRouterCapability, ValidatedOptions,
+    MetadataMap, ProviderRequirement, ResolvedSource, RoutePlan, SafetyClass, SourceKind,
+    SourceRequest, SourceRouterCapability, ValidatedOptions,
 };
 use axon_error::{ApiError, ErrorStage};
 
@@ -78,7 +78,7 @@ impl SourceRouter {
                 values: request.options.values.clone(),
             },
             chunking_hints: chunking_hints(adapter.source_kind),
-            parser_hints: parser_hints(adapter.source_kind),
+            parser_hints: adapter.parser_hints.clone(),
             graph_fact_kinds: graph_fact_kinds(adapter.source_kind),
             watch_supported: adapter.watch_supported,
             refresh_supported: adapter.refresh_supported,
@@ -271,6 +271,7 @@ fn chunking_hints(source_kind: SourceKind) -> Vec<ChunkHint> {
         SourceKind::Registry | SourceKind::McpTool | SourceKind::CliTool | SourceKind::Upload => {
             ChunkProfile::StructuredRecords
         }
+        SourceKind::Memory => ChunkProfile::AtomicMetadata,
         _ => ChunkProfile::MarkdownSections,
     };
     vec![ChunkHint {
@@ -280,36 +281,12 @@ fn chunking_hints(source_kind: SourceKind) -> Vec<ChunkHint> {
     }]
 }
 
-fn parser_hints(source_kind: SourceKind) -> Vec<ParserHint> {
-    vec![ParserHint {
-        parser_id: source_kind_key(source_kind).to_string(),
-        reason: "route default parser".to_string(),
-        options: Default::default(),
-    }]
-}
-
-fn source_kind_key(source_kind: SourceKind) -> &'static str {
-    match source_kind {
-        SourceKind::Web => "web",
-        SourceKind::Local => "local",
-        SourceKind::Git => "git",
-        SourceKind::Registry => "registry",
-        SourceKind::Feed => "feed",
-        SourceKind::Reddit => "reddit",
-        SourceKind::Youtube => "youtube",
-        SourceKind::Session => "session",
-        SourceKind::CliTool => "cli_tool",
-        SourceKind::McpTool => "mcp_tool",
-        SourceKind::Memory => "memory",
-        SourceKind::Upload => "upload",
-    }
-}
-
 fn graph_fact_kinds(source_kind: SourceKind) -> Vec<String> {
     match source_kind {
         SourceKind::Git => vec!["repo".to_string(), "package_manifest".to_string()],
         SourceKind::Registry => vec!["package".to_string()],
         SourceKind::CliTool | SourceKind::McpTool => vec!["tool".to_string()],
+        SourceKind::Memory => vec!["memory".to_string()],
         _ => vec!["source".to_string()],
     }
 }

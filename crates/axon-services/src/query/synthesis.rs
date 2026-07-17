@@ -49,6 +49,8 @@ pub struct AskContext {
     pub retrieval_elapsed_ms: u128,
     pub context_elapsed_ms: u128,
     pub diagnostic_sources: Vec<String>,
+    /// Canonical lineage for the chunks admitted to the synthesis context.
+    pub citations: Vec<axon_api::CanonicalCitation>,
     pub top_domains: Vec<String>,
     pub authoritative_ratio: f64,
     pub configured_authority_ratio: f64,
@@ -102,6 +104,7 @@ impl AskContext {
             retrieval_elapsed_ms,
             context_elapsed_ms: 0,
             diagnostic_sources: selected_urls.to_vec(),
+            citations: Vec::new(),
             top_domains,
             authoritative_ratio: 0.0,
             configured_authority_ratio: 0.0,

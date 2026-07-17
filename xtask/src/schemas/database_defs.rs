@@ -8,7 +8,8 @@
 //! This is a pragmatic statement-level parser tuned to the SQL dialect these
 //! migration files actually use (see `crates/axon-jobs/src/migrations`,
 //! `crates/axon-ledger/src/migrations`, `crates/axon-graph/src/migrations`,
-//! and `crates/axon-memory/src/migrations`), not a general SQL grammar.
+//! `crates/axon-observe/src/migrations`, and `crates/axon-memory/src/migrations`),
+//! not a general SQL grammar.
 //! Statement-level parsing primitives live in `database_defs/parser.rs` to
 //! stay under the repo's 500-line file cap.
 use std::collections::BTreeMap;
@@ -16,6 +17,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 #[path = "database_defs/parser.rs"]
 mod parser;
@@ -34,6 +36,10 @@ pub(super) const MIGRATION_SOURCES: &[MigrationSource] = &[
     MigrationSource {
         owner_crate: "axon-jobs",
         dir: "crates/axon-jobs/src/migrations",
+    },
+    MigrationSource {
+        owner_crate: "axon-observe",
+        dir: "crates/axon-observe/src/migrations",
     },
     MigrationSource {
         owner_crate: "axon-graph",
@@ -56,6 +62,10 @@ pub(super) struct DatabaseSchema {
 struct MigrationRecord {
     file: String,
     owner_crate: &'static str,
+    namespace: &'static str,
+    version: u64,
+    name: String,
+    checksum: String,
     tables_touched: Vec<String>,
 }
 
@@ -82,6 +92,14 @@ pub(super) fn parse_all(root: &Path) -> Result<DatabaseSchema> {
             );
             let touched = apply_migration(&mut schema, source.owner_crate, &rel_name, &text);
             schema.migrations.push(MigrationRecord {
+                namespace: migration_namespace(source.owner_crate),
+                version: migration_version(&file)?,
+                name: file
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                checksum: format!("{:x}", Sha256::digest(text.as_bytes())),
                 file: rel_name,
                 owner_crate: source.owner_crate,
                 tables_touched: touched,
@@ -89,6 +107,31 @@ pub(super) fn parse_all(root: &Path) -> Result<DatabaseSchema> {
         }
     }
     Ok(schema)
+}
+
+fn migration_namespace(owner_crate: &str) -> &'static str {
+    match owner_crate {
+        "axon-ledger" => "ledger",
+        "axon-jobs" => "jobs",
+        "axon-observe" => "observe",
+        "axon-graph" => "graph",
+        "axon-memory" => "memory",
+        _ => "unknown",
+    }
+}
+
+fn migration_version(file: &Path) -> Result<u64> {
+    let name = file
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("migration filename is not UTF-8")?;
+    let prefix = name
+        .split_once('_')
+        .map(|(prefix, _)| prefix)
+        .context("migration filename has no numeric prefix")?;
+    prefix
+        .parse()
+        .with_context(|| format!("migration filename has invalid version: {name}"))
 }
 
 /// Apply one migration file's statements to the running schema snapshot,
@@ -105,8 +148,12 @@ fn apply_migration(
         let upper = normalized.to_uppercase();
 
         if upper.starts_with("CREATE TABLE") {
-            if let Some(table) = parser::parse_create_table(&normalized, owner_crate, file) {
+            if let Some(mut table) = parser::parse_create_table(&normalized, owner_crate, file) {
                 touched.push(table.name.clone());
+                if let Some(existing) = schema.tables.get(&table.name) {
+                    table.owner_crate = existing.owner_crate;
+                    table.introduced_in.clone_from(&existing.introduced_in);
+                }
                 schema.tables.insert(table.name.clone(), table);
             }
         } else if upper.starts_with("CREATE UNIQUE INDEX") || upper.starts_with("CREATE INDEX") {
@@ -166,22 +213,8 @@ fn apply_alter_table(schema: &mut DatabaseSchema, stmt: &str) -> Option<String> 
     None
 }
 
-/// Known table-name divergences worth documenting rather than silently
-/// "fixing" by renaming a live table (a separate contract decision, out of
-/// scope for this generator).
 fn divergences() -> Vec<Value> {
-    vec![
-        json!({
-            "kind": "duplicate_domain_naming",
-            "tables": ["axon_memory_nodes", "axon_memory_edges", "memory_records", "memory_links", "memory_reinforcement", "memory_reviews"],
-            "note": "Two independent 'memory' schemas coexist: the earlier agent-memory graph (axon_memory_nodes/edges, crates/axon-jobs/src/migrations/0009_create_memory_tables.sql) and the current axon-memory durable store (memory_records/memory_links/memory_reinforcement/memory_reviews, crates/axon-memory/src/migrations/0001_create_memory_tables.sql). Not renamed here; documented for the future contract decision."
-        }),
-        json!({
-            "kind": "watch_naming_overlap",
-            "tables": ["axon_watch_defs", "axon_watch_runs", "axon_source_watches", "axon_source_watch_runs"],
-            "note": "axon_watch_defs/axon_watch_runs (migration 0002) back the task_type/task_payload watch scheduler; axon_source_watches/axon_source_watch_runs (migration 0023) back the newer SourceRequest-shaped WatchStore used by `watch get|update|pause|resume|delete`. Both are live; not merged here."
-        }),
-    ]
+    Vec::new()
 }
 
 fn build_tables_field(schema: &DatabaseSchema) -> Vec<Value> {
@@ -279,6 +312,11 @@ fn build_migrations_field(schema: &DatabaseSchema) -> Vec<Value> {
             json!({
                 "file": record.file,
                 "owner_crate": record.owner_crate,
+                "runtime_namespace": record.namespace,
+                "version": record.version,
+                "name": record.name,
+                "checksum": record.checksum,
+                "schema_epoch": 1,
                 "tables_touched": live_tables_touched,
             })
         })

@@ -1,9 +1,7 @@
 package com.axon.app.feature.ask
 
-import com.axon.app.ui.ingest.IngestSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -14,11 +12,13 @@ class FollowUpQueryBuilderTest {
     }
 
     @Test fun `prior turns are rendered as Q-A pairs followed by the new question`() {
-        val out = buildFollowUpQuery(
-            prior = listOf(AskTurn("intro?", "intro answer."), AskTurn("more?", "more answer.")),
-            question = "third?"
-        )
-        val expected = """
+        val out =
+            buildFollowUpQuery(
+                prior = listOf(AskTurn("intro?", "intro answer."), AskTurn("more?", "more answer.")),
+                question = "third?",
+            )
+        val expected =
+            """
             Q: intro?
             A: intro answer.
 
@@ -26,7 +26,7 @@ class FollowUpQueryBuilderTest {
             A: more answer.
 
             third?
-        """.trimIndent()
+            """.trimIndent()
         assertEquals(expected, out)
     }
 
@@ -39,53 +39,26 @@ class FollowUpQueryBuilderTest {
     }
 
     @Test fun `operation context is included in next effective prompt with axon skill hint`() {
-        val turn = AskTurn(
-            operationContextQuestion("Crawl"),
-            operationContextAnswer(
-                opLabel = "Crawl",
-                target = "https://example.com",
-                status = "Completed",
-                endpoint = "POST /v1/crawl",
-                jobId = "job-123",
-                summary = "12 pages crawled",
-                detail = "Crawl completed from mobile.",
-            ),
-        )
+        val turn =
+            AskTurn(
+                operationContextQuestion("Index site"),
+                operationContextAnswer(
+                    opLabel = "Index site",
+                    target = "https://example.com",
+                    status = "Completed",
+                    endpoint = "POST /v1/sources",
+                    jobId = "job-123",
+                    summary = "12 pages crawled",
+                    detail = "Site indexing completed from mobile.",
+                ),
+            )
         val out = buildFollowUpQuery(prior = listOf(turn), question = "what did it find?")
 
-        assertTrue(out.contains("Q: Axon mobile operation: Crawl"))
+        assertTrue(out.contains("Q: Axon mobile operation: Index site"))
         assertTrue(out.contains("Target: https://example.com"))
         assertTrue(out.contains("Job ID: job-123"))
         assertTrue(out.contains("load the axon or axon:using-axon skill"))
         assertTrue(out.endsWith("what did it find?"))
-    }
-}
-
-class FabIngestSourceInferenceTest {
-    @Test fun `infers github from canonical host`() {
-        val inferred = inferFabIngestSource("https://github.com/owner/repo")
-        assertEquals(IngestSource.Github, inferred.getOrThrow())
-    }
-
-    @Test fun `infers github from valid subdomain`() {
-        val inferred = inferFabIngestSource("https://api.github.com/repos/owner/repo")
-        assertEquals(IngestSource.Github, inferred.getOrThrow())
-    }
-
-    @Test fun `rejects github lookalike host`() {
-        val inferred = inferFabIngestSource("https://github.com.attacker.com/owner/repo")
-        assertTrue(inferred.isFailure)
-        assertNotNull(inferred.exceptionOrNull()?.message)
-    }
-
-    @Test fun `infers github shorthand without requiring URL syntax`() {
-        val inferred = inferFabIngestSource("github/owner/repo")
-        assertEquals(IngestSource.Github, inferred.getOrThrow())
-    }
-
-    @Test fun `infers reddit shorthand`() {
-        val inferred = inferFabIngestSource("r/rust")
-        assertEquals(IngestSource.Reddit, inferred.getOrThrow())
     }
 }
 
@@ -177,7 +150,10 @@ private class AskTurnRegenStandIn {
         chatItems.add(ChatItem.AxonMsg(text = "", isStreaming = true))
     }
 
-    private fun replaceLastAxon(text: String, streaming: Boolean) {
+    private fun replaceLastAxon(
+        text: String,
+        streaming: Boolean,
+    ) {
         val idx = chatItems.indexOfLast { it is ChatItem.AxonMsg }
         if (idx >= 0) {
             chatItems[idx] = (chatItems[idx] as ChatItem.AxonMsg).copy(text = text, isStreaming = streaming)
@@ -185,7 +161,10 @@ private class AskTurnRegenStandIn {
     }
 
     /** ask() that streams then receives a Done event with the full answer. */
-    fun askComplete(query: String, answer: String) {
+    fun askComplete(
+        query: String,
+        answer: String,
+    ) {
         startAsk(query)
         replaceLastAxon(answer, streaming = true) // a delta flush
         replaceLastAxon(answer, streaming = false) // Done
@@ -194,13 +173,19 @@ private class AskTurnRegenStandIn {
     }
 
     /** ask() that streams partial text, then the user invokes stopGeneration(). */
-    fun askThenStop(query: String, partial: String) {
+    fun askThenStop(
+        query: String,
+        partial: String,
+    ) {
         startAsk(query)
         replaceLastAxon(partial, streaming = true)
         stopGeneration()
     }
 
-    private fun appendTurn(q: String, a: String) {
+    private fun appendTurn(
+        q: String,
+        a: String,
+    ) {
         val next = (turns + AskTurn(q, a.take(500))).takeLast(MAX_FOLLOW_UP_TURNS)
         turns.clear()
         turns.addAll(next)

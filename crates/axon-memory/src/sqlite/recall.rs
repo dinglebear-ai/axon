@@ -276,7 +276,7 @@ fn scope_matches_filter(record: &MemoryRecord, scope_filter: Option<&str>) -> bo
 
 /// Scope-match input to scoring: exact scope hit = 1.0, global = 0.5, else 0.25.
 /// Narrower scope matches rank higher (contract "Scope rules").
-fn scope_match_score(record: &MemoryRecord, scope_filter: Option<&str>) -> f32 {
+pub(crate) fn scope_match_score(record: &MemoryRecord, scope_filter: Option<&str>) -> f32 {
     if let Some(value) = scope_filter
         && record.scope.value == value
     {

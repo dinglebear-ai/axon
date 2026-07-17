@@ -43,6 +43,11 @@ pub async fn resolve_runtime_with_workers(
     cfg: Arc<Config>,
     spawn_workers: bool,
 ) -> Result<Arc<dyn ServiceJobRuntime>, Box<dyn Error + Send + Sync>> {
+    if spawn_workers {
+        axon_core::health::assert_workers_allowed_by_cutover(&cfg)
+            .await
+            .map_err(|error| -> Box<dyn Error + Send + Sync> { error.into() })?;
+    }
     let backend = if spawn_workers {
         let registry: Arc<JobRunnerRegistry> =
             Arc::new(job_runners::build_registry(&cfg).map_err(|error| {
@@ -60,3 +65,7 @@ pub async fn resolve_runtime_with_workers(
         cfg, backend,
     )))
 }
+
+#[cfg(test)]
+#[path = "runtime_tests.rs"]
+mod tests;

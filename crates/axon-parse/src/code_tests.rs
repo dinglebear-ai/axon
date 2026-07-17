@@ -32,19 +32,17 @@ fn input(path: &str, text: &str) -> ParseInput {
 }
 
 #[test]
-fn extracts_simple_rust_and_python_symbol_facts() {
+fn extracts_simple_rust_symbol_facts() {
     let facts = symbol_facts(&input(
         "src/lib.rs",
-        "pub struct Parser;\nfn parse_one() {}\nclass PyThing:\n    def run(self):\n        pass\n",
+        "pub struct Parser;\nfn parse_one() {}\n",
     ));
 
     let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
-    assert_eq!(names, vec!["Parser", "parse_one", "PyThing", "run"]);
+    assert_eq!(names, vec!["Parser", "parse_one"]);
     assert!(facts.iter().all(|fact| fact.fact_kind == "code_symbol"));
     assert_eq!(facts[0].value["symbol_kind"], "struct");
     assert_eq!(facts[1].value["language"], "rust");
-    assert_eq!(facts[2].value["language"], "python");
-    assert_eq!(facts[3].range.as_ref().unwrap().line_start, Some(4));
 }
 
 #[test]
@@ -82,18 +80,12 @@ fn ignores_commented_out_symbols() {
 }
 
 #[test]
-fn every_fact_is_stamped_as_a_disclosed_regex_fallback() {
+fn supported_rust_is_tree_sitter_backed() {
     let facts = symbol_facts(&input("src/lib.rs", "pub fn run() {}\n"));
 
-    assert_eq!(facts[0].parser_method, "regex_fallback");
-    assert!(
-        facts[0].confidence < 0.75,
-        "fallback facts must carry confidence < 0.75 per parsing-contract.md"
-    );
-    assert_eq!(
-        facts[0].value["symbol_extraction_status"],
-        "heuristic_fallback"
-    );
+    assert_eq!(facts[0].parser_method, "tree_sitter");
+    assert!(facts[0].confidence >= 0.9);
+    assert_eq!(facts[0].value["symbol_extraction_status"], "ast");
 }
 
 #[test]
@@ -133,14 +125,27 @@ fn nested_python_method_records_its_class_as_parent_symbol() {
 
 #[test]
 fn rust_function_span_covers_its_full_brace_body() {
-    let facts = symbol_facts(&input(
-        "src/lib.rs",
-        "pub fn run() {\n    let x = 1;\n    println!(\"{x}\");\n}\n",
-    ));
+    let source = "pub fn run() {\n    let x = 1;\n    println!(\"{x}\");\n}\n";
+    let facts = symbol_facts(&input("src/lib.rs", source));
 
     let range = facts[0].range.as_ref().expect("range");
     assert_eq!(range.line_start, Some(1));
     assert_eq!(range.line_end, Some(4));
+    assert_eq!(range.byte_start, Some(0));
+    assert_eq!(range.byte_end, Some(source.trim_end().len() as u64));
+}
+
+#[test]
+fn rust_ast_range_ignores_braces_inside_strings() {
+    let source = "fn render() {\n    let close = \"}\";\n    let value = 1;\n}\nfn next() {}\n";
+    let facts = symbol_facts(&input("src/lib.rs", source));
+
+    assert_eq!(facts.len(), 2);
+    assert_eq!(facts[0].range.as_ref().unwrap().line_end, Some(4));
+    assert_eq!(
+        facts[0].range.as_ref().unwrap().byte_end,
+        Some(source.find("\nfn next").unwrap() as u64)
+    );
 }
 
 #[test]
@@ -176,4 +181,111 @@ fn every_symbol_range_is_ordered_and_therefore_survives_sanitization() {
         assert!(range.line_start.unwrap() <= range.line_end.unwrap());
     }
     assert_eq!(facts.len(), candidates.len());
+}
+
+#[test]
+fn extracts_typescript_symbol_facts_at_heuristic_parity() {
+    let facts = symbol_facts(&input(
+        "src/component.tsx",
+        "export interface Props {\n  name: string\n}\n\
+export type Mode = 'light' | 'dark';\n\
+export enum Size { Small, Large }\n\
+export class Widget {\n  render() { return null; }\n}\n\
+export const useWidget = (name: string) => ({ name });\n",
+    ));
+
+    let names: Vec<_> = facts.iter().map(|fact| fact.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["Props", "Mode", "Size", "Widget", "render", "useWidget"]
+    );
+    assert!(
+        facts
+            .iter()
+            .all(|fact| fact.value["language"] == "typescript")
+    );
+    assert_eq!(facts[0].value["symbol_kind"], "interface");
+    assert_eq!(facts[1].value["symbol_kind"], "type");
+    assert_eq!(facts[2].value["symbol_kind"], "enum");
+    assert_eq!(facts[3].value["symbol_kind"], "class");
+    assert_eq!(facts[4].value["symbol_kind"], "method");
+    assert_eq!(facts[4].value["parent_symbol"], "Widget");
+    assert_eq!(facts[5].value["symbol_kind"], "function");
+    assert_eq!(facts[5].value["symbol_visibility"], "public");
+    assert!(facts.iter().all(|fact| fact.parser_method == "tree_sitter"));
+}
+
+#[test]
+fn extracts_javascript_function_class_and_assignment_symbols() {
+    let facts = symbol_facts(&input(
+        "src/widget.js",
+        "export default function createWidget() {\n  return {}\n}\n\
+class LocalWidget {}\n\
+const helper = function () { return 1; }\n\
+let arrow = () => 2;\n\
+var value = 3;\n",
+    ));
+
+    let pairs: Vec<_> = facts
+        .iter()
+        .map(|fact| {
+            (
+                fact.name.as_str(),
+                fact.value["symbol_kind"].as_str().unwrap(),
+                fact.value["symbol_visibility"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        pairs,
+        vec![
+            ("createWidget", "function", "public"),
+            ("LocalWidget", "class", "private"),
+            ("helper", "function", "private"),
+            ("arrow", "function", "private"),
+            ("value", "constant", "private"),
+        ]
+    );
+    assert!(
+        facts
+            .iter()
+            .all(|fact| fact.value["language"] == "javascript")
+    );
+    assert!(facts.iter().all(|fact| fact.parser_method == "tree_sitter"));
+}
+
+#[test]
+fn supported_python_is_tree_sitter_backed_with_nested_parent_ranges() {
+    let source = "class Widget:\n    def render(self):\n        return 1\n";
+    let facts = symbol_facts(&input("pkg/widget.py", source));
+
+    assert_eq!(facts.len(), 2);
+    assert!(facts.iter().all(|fact| fact.parser_method == "tree_sitter"));
+    assert_eq!(facts[1].value["parent_symbol"], "Widget");
+    let method = facts[1].range.as_ref().unwrap();
+    assert_eq!(method.line_start, Some(2));
+    assert_eq!(method.line_end, Some(3));
+    assert_eq!(method.byte_start, Some(18));
+    assert_eq!(method.byte_end, Some(source.trim_end().len() as u64));
+}
+
+#[test]
+fn malformed_supported_source_discloses_regex_fallback() {
+    let facts = symbol_facts(&input("src/lib.rs", "fn fallback() {\n"));
+
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].parser_method, "regex_fallback");
+    assert_eq!(
+        facts[0].value["symbol_extraction_status"],
+        "heuristic_fallback"
+    );
+}
+
+#[test]
+fn unsupported_language_keeps_honest_regex_fallback() {
+    let facts = symbol_facts(&input("src/main.rb", "class Widget\nend\n"));
+
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].parser_method, "regex_fallback");
+    assert!(facts[0].confidence < 0.75);
 }

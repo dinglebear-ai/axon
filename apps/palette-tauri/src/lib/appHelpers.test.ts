@@ -15,35 +15,35 @@ describe("normalizeSubmitArgument", () => {
   });
 
   it("leaves an explicit http(s) argument untouched", () => {
-    expect(normalizeSubmitArgument(action("crawl"), "http://example.com")).toBe("http://example.com");
+    expect(normalizeSubmitArgument(action("source-site"), "http://example.com")).toBe("http://example.com");
   });
 
-  it("does NOT coerce ingest shorthand into a URL (owner/repo stays verbatim)", () => {
-    expect(normalizeSubmitArgument(action("ingest"), "unraid/api")).toBe("unraid/api");
+  it("does not coerce repository shorthand into a URL", () => {
+    expect(normalizeSubmitArgument(action("source"), "unraid/api")).toBe("unraid/api");
   });
 
-  it("leaves an ingest GitHub URL untouched", () => {
-    expect(normalizeSubmitArgument(action("ingest"), "https://github.com/unraid/api")).toBe(
+  it("leaves an explicit source URL untouched", () => {
+    expect(normalizeSubmitArgument(action("source"), "https://github.com/unraid/api")).toBe(
       "https://github.com/unraid/api",
     );
   });
 
-  it("does NOT coerce non-URL ingest targets (subreddit shorthand)", () => {
-    expect(normalizeSubmitArgument(action("ingest"), "r/rust")).toBe("r/rust");
+  it("does not coerce non-URL source targets", () => {
+    expect(normalizeSubmitArgument(action("source"), "r/rust")).toBe("r/rust");
   });
 
-  it("does NOT coerce embed free-text or file/dir targets", () => {
-    expect(normalizeSubmitArgument(action("embed"), "some notes to embed")).toBe("some notes to embed");
-    expect(normalizeSubmitArgument(action("embed"), "./docs")).toBe("./docs");
+  it("does not coerce source text or file and directory targets", () => {
+    expect(normalizeSubmitArgument(action("source"), "some notes to index")).toBe("some notes to index");
+    expect(normalizeSubmitArgument(action("source"), "./docs")).toBe("./docs");
   });
 
-  it("passes a scheme-less embed argument through verbatim (bare target, not a guessed URL)", () => {
-    // embed accepts file/dir/text/URL; a bare host is ambiguous, so it is passed
+  it("passes a scheme-less source argument through verbatim", () => {
+    // source accepts file/dir/text/URL; a bare host is ambiguous, so it is passed
     // through rather than coerced into https://docs.rs/serde.
-    expect(normalizeSubmitArgument(action("embed"), "docs.rs/serde")).toBe("docs.rs/serde");
+    expect(normalizeSubmitArgument(action("source"), "docs.rs/serde")).toBe("docs.rs/serde");
   });
 
   it("trims surrounding whitespace", () => {
-    expect(normalizeSubmitArgument(action("ingest"), "  owner/repo  ")).toBe("owner/repo");
+    expect(normalizeSubmitArgument(action("source"), "  owner/repo  ")).toBe("owner/repo");
   });
 });

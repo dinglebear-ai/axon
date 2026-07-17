@@ -156,6 +156,19 @@ fn axon_mcp_crate_changes_enable_mcp_schema_and_runtime_checks() {
 }
 
 #[test]
+fn axon_api_mcp_schema_changes_enable_mcp_contract_checks() {
+    for file in [
+        "crates/axon-api/src/mcp_schema.rs",
+        "crates/axon-api/src/mcp_schema/requests.rs",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["rust"], "true");
+        assert_eq!(out["mcp"], "true", "{file} must enable MCP checks");
+        assert_eq!(out["security"], "true");
+    }
+}
+
+#[test]
 fn openapi_changes_enable_android_palette_and_rest_contracts() {
     let out = classify("pull_request", &["apps/web/openapi/axon.json"]);
     assert_eq!(out["openapi"], "true");
@@ -206,6 +219,16 @@ fn shared_assets_route_to_web_chrome_and_docker() {
     assert_eq!(out["docker"], "true");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
+}
+
+#[test]
+fn chrome_extension_changes_enable_the_chrome_gate() {
+    let out = classify(
+        "pull_request",
+        &["apps/chrome-extension/src/background/background.js"],
+    );
+    assert_eq!(out["chrome"], "true");
+    assert_eq!(out["codeql_javascript_typescript"], "true");
 }
 
 #[test]

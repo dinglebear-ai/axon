@@ -12,74 +12,75 @@ enum class FabOp(
     val placeholder: String,
 ) {
     Scrape(
-        label       = "Scrape",
-        icon        = Icons.Rounded.Article,
+        label = "Scrape",
+        icon = Icons.Rounded.Article,
         placeholder = "https://",
     ),
     Research(
-        label       = "Research",
-        icon        = Icons.Rounded.Psychology,
+        label = "Research",
+        icon = Icons.Rounded.Psychology,
         placeholder = "search query…",
     ),
     Extract(
-        label       = "Extract",
-        icon        = Icons.Rounded.DataObject,
+        label = "Extract",
+        icon = Icons.Rounded.DataObject,
         placeholder = "https://",
     ),
-    Embed(
-        label       = "Embed",
-        icon        = Icons.Rounded.DatasetLinked,
-        isAsync     = true,
+    Index(
+        label = "Index",
+        icon = Icons.Rounded.DatasetLinked,
+        isAsync = true,
         placeholder = "URL, text, or server path…",
     ),
     Query(
-        label       = "Query",
-        icon        = Icons.AutoMirrored.Rounded.ManageSearch,
+        label = "Query",
+        icon = Icons.AutoMirrored.Rounded.ManageSearch,
         placeholder = "semantic query…",
     ),
     Search(
-        label       = "Search",
-        icon        = Icons.Rounded.Public,
+        label = "Search",
+        icon = Icons.Rounded.Public,
         placeholder = "search query…",
     ),
     Map(
-        label       = "Map",
-        icon        = Icons.Rounded.AccountTree,
+        label = "Map",
+        icon = Icons.Rounded.AccountTree,
         placeholder = "https://",
     ),
     Retrieve(
-        label       = "Retrieve",
-        icon        = Icons.Rounded.Unarchive,
+        label = "Retrieve",
+        icon = Icons.Rounded.Unarchive,
         placeholder = "https://",
     ),
     Summarize(
-        label       = "Summarize",
-        icon        = Icons.Rounded.Summarize,
+        label = "Summarize",
+        icon = Icons.Rounded.Summarize,
         placeholder = "https://",
     ),
-    Crawl(
-        label       = "Crawl",
-        icon        = Icons.Rounded.TravelExplore,
-        isAsync     = true,
+    SourceSite(
+        label = "Index site",
+        icon = Icons.Rounded.TravelExplore,
+        isAsync = true,
         placeholder = "https://",
     ),
-    Ingest(
-        label       = "Ingest",
-        icon        = Icons.Rounded.CloudDownload,
-        isAsync     = true,
+    Source(
+        label = "Source",
+        icon = Icons.Rounded.CloudDownload,
+        isAsync = true,
         placeholder = "URL or github/user/repo…",
     ),
 }
 
-val FabRingOps = listOf(
-    FabOp.Scrape,
-    FabOp.Research,
-    FabOp.Extract,
-    FabOp.Query,
-    FabOp.Search,
-    FabOp.Map,
-    FabOp.Retrieve,
-    FabOp.Summarize,
-    FabOp.Crawl,
-    FabOp.Ingest,
-)
+val FabRingOps =
+    listOf(
+        FabOp.Scrape,
+        FabOp.Research,
+        FabOp.Extract,
+        FabOp.Query,
+        FabOp.Search,
+        FabOp.Map,
+        FabOp.Retrieve,
+        FabOp.Summarize,
+        FabOp.SourceSite,
+        FabOp.Source,
+    )

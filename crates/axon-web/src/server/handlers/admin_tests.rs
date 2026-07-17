@@ -90,3 +90,65 @@ fn write_only_scope_does_not_grant_prune_authz() {
     };
     assert!(!authz.is_admin);
 }
+
+#[test]
+fn reset_plan_is_always_dry_run() {
+    let cfg = Config::default();
+    let request = ResetPlanRequest {
+        dry_run: false,
+        ..Default::default()
+    };
+    let error = reset_plan_config(&cfg, &request).expect_err("execution is a separate route");
+    assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn reset_plan_can_exclude_artifacts_from_default_store_set() {
+    let cfg = Config::default();
+    let request = ResetPlanRequest {
+        include_artifacts: Some(false),
+        ..Default::default()
+    };
+    let planned = reset_plan_config(&cfg, &request).expect("valid reset plan config");
+    assert!(!planned.reset_stores.is_empty());
+    assert!(
+        !planned
+            .reset_stores
+            .iter()
+            .any(|store| store == RESET_STORE_ARTIFACTS)
+    );
+    assert!(planned.reset_dry_run);
+    assert!(!planned.yes);
+}
+
+#[test]
+fn reset_plan_rejects_collection_drift() {
+    let cfg = Config::default();
+    let request = ResetPlanRequest {
+        collection: Some("another_collection".to_string()),
+        ..Default::default()
+    };
+    let error = reset_plan_config(&cfg, &request).expect_err("plan id must bind config");
+    assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn reset_plan_never_turns_an_empty_filtered_selection_into_reset_all() {
+    let cfg = Config::default();
+    let request = ResetPlanRequest {
+        stores: vec![RESET_STORE_ARTIFACTS.to_string()],
+        include_artifacts: Some(false),
+        ..Default::default()
+    };
+    let error = reset_plan_config(&cfg, &request).expect_err("empty selection must fail");
+    assert_eq!(error.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn reset_authz_requires_admin_scope() {
+    let scopes = vec!["axon:write".to_string()];
+    let authz = ResetAuthz {
+        is_admin: axon_authz::scope_satisfies(&scopes, axon_authz::AXON_ADMIN_SCOPE),
+    };
+    assert!(!authz.is_admin);
+}

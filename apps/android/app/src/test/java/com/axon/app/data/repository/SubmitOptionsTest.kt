@@ -6,13 +6,14 @@ import org.junit.Test
 
 class SubmitOptionsTest {
     @Test
-    fun `crawl options apply explicit request fields`() {
-        val req = CrawlSubmitOptions(
-            maxPages = 1,
-            maxDepth = 0,
-            renderMode = "http",
-            includeSubdomains = false,
-        ).requestFor("https://example.com")
+    fun `site source options apply explicit request fields`() {
+        val req =
+            SiteSourceSubmitOptions(
+                maxPages = 1,
+                maxDepth = 0,
+                renderMode = "http",
+                includeSubdomains = false,
+            ).requestFor("https://example.com")
 
         assertEquals(listOf("https://example.com"), req.urls)
         assertEquals(1, req.maxPages)
@@ -22,8 +23,8 @@ class SubmitOptionsTest {
     }
 
     @Test
-    fun `empty crawl options defer to server defaults`() {
-        val req = CrawlSubmitOptions().requestFor("https://example.com")
+    fun `empty site source options defer to server defaults`() {
+        val req = SiteSourceSubmitOptions().requestFor("https://example.com")
 
         assertEquals(listOf("https://example.com"), req.urls)
         assertEquals(null, req.maxPages)
@@ -33,22 +34,24 @@ class SubmitOptionsTest {
     }
 
     @Test
-    fun `ingest options apply metadata-only source exclusion`() {
-        val req = IngestSubmitOptions(includeSource = false)
-            .requestFor(sourceType = "github", target = "github/octocat/Hello-World")
+    fun `source options apply canonical source fields`() {
+        val req =
+            SourceSubmitOptions(embed = false, collection = "docs")
+                .requestFor(target = "github/octocat/Hello-World")
 
-        assertEquals("github", req.sourceType)
-        assertEquals("github/octocat/Hello-World", req.target)
-        assertFalse(req.includeSource!!)
+        assertEquals("github/octocat/Hello-World", req.source)
+        assertEquals("docs", req.collection)
+        assertFalse(req.embed!!)
     }
 
     @Test
-    fun `empty ingest options defer to server defaults`() {
-        val req = IngestSubmitOptions()
-            .requestFor(sourceType = "github", target = "github/octocat/Hello-World")
+    fun `empty source options defer to server defaults`() {
+        val req =
+            SourceSubmitOptions()
+                .requestFor(target = "github/octocat/Hello-World")
 
-        assertEquals("github", req.sourceType)
-        assertEquals("github/octocat/Hello-World", req.target)
-        assertEquals(null, req.includeSource)
+        assertEquals("github/octocat/Hello-World", req.source)
+        assertEquals(null, req.embed)
+        assertEquals(null, req.collection)
     }
 }

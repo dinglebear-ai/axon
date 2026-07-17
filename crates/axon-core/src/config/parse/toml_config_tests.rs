@@ -63,6 +63,13 @@ fn valid_toml_parses_ask_section() {
 }
 
 #[test]
+fn valid_toml_parses_canonical_llm_backend() {
+    let cfg = load_toml_config_from_str("[providers.llm]\nbackend = \"codex-app-server\"")
+        .expect("canonical backend should parse");
+    assert_eq!(cfg.llm.backend.as_deref(), Some("codex-app-server"));
+}
+
+#[test]
 fn valid_toml_parses_tei_and_workers() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(
@@ -369,6 +376,24 @@ chrome-remote-url = "http://custom-chrome:6000"
         err.contains("services") && err.contains(".env"),
         "error should name [services] and point at .env, got: {err}"
     );
+}
+
+#[test]
+fn removed_ask_backend_is_rejected() {
+    let err = load_toml_config_from_str("[ask]\nbackend = \"headless\"")
+        .err()
+        .expect("removed [ask].backend must fail");
+    assert!(err.contains("backend"), "unexpected error: {err}");
+    assert!(err.contains("providers.llm") || err.contains("AXON_LLM_BACKEND"));
+}
+
+#[test]
+fn removed_vector_legacy_hnsw_is_rejected() {
+    let err = load_toml_config_from_str("[providers.vector]\nhnsw-ef-legacy = 64")
+        .err()
+        .expect("removed hnsw-ef-legacy must fail");
+    assert!(err.contains("hnsw-ef-legacy"), "unexpected error: {err}");
+    assert!(err.contains("hnsw-ef"), "missing canonical key: {err}");
 }
 
 #[test]

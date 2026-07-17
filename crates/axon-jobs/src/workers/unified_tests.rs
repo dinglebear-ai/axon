@@ -2,7 +2,9 @@ use super::*;
 
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
-use axon_api::source::{JobCreateRequest, JobIntent, JobPriority, JobStagePlan, MetadataMap};
+use axon_api::source::{
+    JobCancelRequest, JobCreateRequest, JobIntent, JobPriority, JobStagePlan, MetadataMap,
+};
 use tempfile::NamedTempFile;
 use tokio::sync::Notify;
 
@@ -128,6 +130,70 @@ async fn healthy_runner_still_marks_job_completed() {
     let store = SqliteUnifiedJobStore::new(pool.clone());
     let summary = store.get(job_id).await.unwrap().unwrap();
     assert_eq!(summary.status, LifecycleStatus::Completed);
+}
+
+#[tokio::test]
+async fn running_cancel_reaches_runner_and_cannot_be_overwritten_by_completion() {
+    struct CancelAwareRunner {
+        started: Arc<Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for CancelAwareRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            cancel: &CancellationToken,
+        ) -> Result<(), ApiError> {
+            self.started.notify_one();
+            cancel.cancelled().await;
+            Ok(())
+        }
+    }
+
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Memory).await;
+    let claimed = claim_next_unified_job(&pool).await.unwrap().unwrap();
+    let started = Arc::new(Notify::new());
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(
+        UnifiedJobKind::Memory,
+        Arc::new(CancelAwareRunner {
+            started: Arc::clone(&started),
+        }),
+    );
+    let registry = Arc::new(registry);
+    let worker_pool = pool.clone();
+    let handle = tokio::spawn(async move {
+        run_unified_claimed(
+            &worker_pool,
+            &claimed,
+            &CancellationToken::new(),
+            Some(&registry),
+        )
+        .await;
+    });
+    started.notified().await;
+
+    let store = SqliteUnifiedJobStore::new(pool.clone());
+    let canceled = store
+        .cancel(
+            job_id,
+            JobCancelRequest {
+                reason: Some("test cancellation".to_string()),
+                force_after_ms: None,
+                actor: Some("test".to_string()),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(canceled.status, LifecycleStatus::Canceling);
+    handle.await.unwrap();
+
+    let summary = store.get(job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Canceled);
+    assert_eq!(summary.phase, PipelinePhase::Canceled);
 }
 
 /// Runner that tracks how many instances of itself are executing

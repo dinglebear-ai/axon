@@ -96,6 +96,11 @@ pub async fn enqueue_source(
     let scope = routed.route.scope;
     let canonical_uri = routed.route.source.canonical_uri.clone();
 
+    if routed.kind == SourceInputKind::CliTool {
+        axon_adapters::cli_tool::validate_persistable_cli_invocation(&request.source)
+            .map_err(|error| ApiError::new(error.code, ErrorStage::Authorizing, error.message))?;
+    }
+
     let descriptor = store
         .create(job_create_request(&request, auth_snapshot))
         .await?;

@@ -190,6 +190,7 @@ pub struct JobStageSnapshot {
 pub struct WatchRequest {
     pub source: String,
     pub schedule: WatchSchedule,
+    #[serde(default = "default_true")]
     pub embed: bool,
     pub options: AdapterOptions,
     pub scope: Option<SourceScope>,
@@ -318,6 +319,10 @@ pub struct WatchDescriptor {
 
 fn default_visibility() -> Visibility {
     Visibility::Internal
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_job_priority() -> JobPriority {

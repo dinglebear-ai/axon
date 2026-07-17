@@ -208,11 +208,6 @@ pub(in crate::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::config) before: Option<String>,
 
-    /// Include per-payload-schema-version chunk-count breakdown on `axon sources`.
-    /// Triggers a full collection scroll; opt-in only. See bead axon_rust-lu6a.
-    #[arg(global = true, long = "by-schema-version", action = ArgAction::SetTrue)]
-    pub(in crate::config) sources_by_schema_version: bool,
-
     /// Capture full scrollable page (true) or viewport only (false, default: true)
     #[arg(global = true, long, action = ArgAction::Set, default_value_t = true)]
     pub(in crate::config) screenshot_full_page: bool,

@@ -1,13 +1,11 @@
+import { ArrowDownUp, Download, Search } from "lucide-react";
 import { memo } from "react";
-import { ArrowDownUp, Download, Search, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
 import type { SourceRow, SourceSortMode, SourcesModel } from "@/lib/sourcesModel";
 
-/** Run a palette action against a single source URL — `retrieve` (read the
- * stored chunks) or `purge` (delete from the index). Purge is guarded by the
- * destructive-action confirmation, then routes through `POST /v1/purge`. */
+/** Run a palette action against a single source URL. */
 export type SourceRowAction = (subcommand: string, argument: string) => void;
 
 interface SourcesViewProps {
@@ -121,17 +119,6 @@ function SourceRowView({ row, onRunAction }: { row: SourceRow; onRunAction?: Sou
             aria-label={`Retrieve ${row.url}`}
           >
             <Download size={13} />
-          </Button>
-          <Button
-            variant="plain"
-            size="unstyled"
-            type="button"
-            className="sources-action-danger"
-            onClick={() => onRunAction("purge", row.url)}
-            title="Purge from index"
-            aria-label={`Purge ${row.url}`}
-          >
-            <Trash2 size={13} />
           </Button>
         </span>
       ) : null}

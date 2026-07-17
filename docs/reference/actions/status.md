@@ -15,7 +15,7 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Show local job state across crawl, extract, embed, and ingest queues.
+Show local job state across source, extract, watch, and prune queues.
 
 ## Synopsis
 
@@ -39,24 +39,24 @@ All global flags apply. Key flags for this command:
 
 Human output prints grouped sections and status breakdowns for:
 
-- Crawls
+- Sources
 - Extracts
-- Embeds
-- Ingests
+- Watches
+- Prunes
 
 JSON output shape:
 
 ```json
 {
-  "local_crawl_jobs": [...],
-  "local_extract_jobs": [...],
-  "local_embed_jobs": [...],
-  "local_ingest_jobs": [...],
+  "source_jobs": [...],
+  "extract_jobs": [...],
+  "watch_jobs": [...],
+  "prune_jobs": [...],
   "totals": {
-    "crawl": 0,
+    "source": 0,
     "extract": 0,
-    "embed": 0,
-    "ingest": 0
+    "watch": 0,
+    "prune": 0
   }
 }
 ```
@@ -82,5 +82,5 @@ axon status --json
 - `status` loads up to 20 recent jobs per queue family.
 - Generic CLI client-to-server forwarding was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon status` through HTTP; call the `/v1/status` REST route or MCP HTTP endpoint directly when using `axon serve` as a remote service.
 - By default, watchdog-reclaimed failures are hidden. `--reclaimed` flips to reclaimed-only mode.
-- `--active` and `--recent` apply to all job families.
+- `--active` and `--recent` apply across canonical job kinds in the unified store.
 - This command is read-only and does not enqueue or mutate jobs.

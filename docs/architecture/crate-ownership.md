@@ -45,7 +45,7 @@ axon-mcp · axon-web · axon-cli (+ palette)    ← transports: thin shims over 
 
 | Kind of operation | Lives in | Why |
 |---|---|---|
-| **Contract DTO** (`*Result`) | `axon-api` | Transports already depend on it; no transport→domain-crate fan-out. (Precedent: `ServiceJob`, `IngestSource`, job DTOs already live here.) |
+| **Contract DTO** (`*Result`) | `axon-api` | Transports already depend on it; no transport→domain-crate fan-out. (Precedent: `ServiceJob` and job DTOs already live here.) |
 | **Single-domain logic** (no job runtime, one domain) — purge, dedupe, stats, query, classify | the **domain crate** (`axon-vector`, `axon-ingest`, …) as a typed `pub` entry | The crate that owns the data owns its API. |
 | **Job-lifecycle ops** (need `ctx.jobs`) | `axon-services` | Domain crates are *below* `axon-jobs`; they physically can't depend on the runtime. |
 | **Cross-domain orchestration** — scrape→embed, `ask` (retrieve+rank+LLM), the ingest pipeline | `axon-services` | Genuinely composes ≥2 domain crates. |
@@ -68,12 +68,13 @@ axon-mcp · axon-web · axon-cli (+ palette)    ← transports: thin shims over 
 | Layer | Holds |
 |---|---|
 | `axon-api::purge::PurgeResult` | the contract DTO |
-| `axon-vector::purge` | the delete logic (`pub use ops::qdrant::qdrant_delete_by_url`) |
-| `axon-services::system::purge` | a 3-line facade: calls `axon_vector::purge`, adapts the error to `Box<dyn Error>` |
-| CLI / MCP / REST / palette | thin shims calling `services::system::purge` |
+| `axon-prune::purge` | the plan/execute boundary plus the Qdrant delete target |
+| `axon-services::prune::purge` | transport-neutral entrypoint that threads caller-derived prune authz |
+| CLI / MCP / REST / palette | thin shims calling `services::prune` |
 
-`dedupe` should follow the same shape (its `DedupeResult` is a candidate to move
-to `axon-api`; logic stays in `axon-vector`).
+`dedupe` follows the same shape: candidate planning and destructive vector
+deletes live in `axon-prune`, while transports call the `axon-services::prune`
+entrypoint.
 
 ## Migration policy — no forced churn
 

@@ -10,6 +10,7 @@ import {
   Boxes,
   Braces,
   Camera,
+  Compass,
   Database,
   FileDown,
   FolderGit2,
@@ -17,61 +18,20 @@ import {
   GitBranch,
   GitCompare,
   Globe,
-  Compass,
   HelpCircle,
   Layers,
+  type LucideIcon,
   Map as MapIcon,
-  PackageOpen,
   SearchCheck,
   Sparkles,
   Stethoscope,
   TerminalSquare,
-  Trash2,
   Workflow,
-  type LucideIcon,
 } from "lucide-react";
-
-import type { PaletteSubcommand, JobFamily, JobOperation } from "./actions";
 import {
-  type ActionRouteTemplate,
-  type BodyBuilder,
-  type RequestContext,
-  askBody,
-  brandBody,
-  chatBody,
-  crawlBody,
-  dedupeBody,
-  purgeBody,
-  diffBody,
-  embedBody,
-  endpointsBody,
-  evaluateBody,
-  extractBody,
-  first,
-  getRoute,
-  githubBrowseBody,
-  ingestBody,
-  mapBody,
-  noBody,
-  postRoute,
-  queryBody,
-  researchBody,
-  retrieveBody,
-  scrapeBody,
-  screenshotBody,
-  searchBody,
-  suggestBody,
-  summarizeBody,
-  uuid,
-  watchCreateBody,
-} from "./actionRequest";
-import {
-  type RecordFormatter,
   formatAnswer,
   formatBrand,
   formatCompact,
-  formatDedupe,
-  formatPurge,
   formatDiff,
   formatDomains,
   formatEndpoints,
@@ -90,9 +50,41 @@ import {
   formatWatchList,
   formatWatchRun,
   jobStartFormatter,
+  type RecordFormatter,
   recordFormatter,
 } from "./actionFormat";
 import { buildLifecycleRegistry } from "./actionLifecycle";
+import {
+  type ActionRouteTemplate,
+  askBody,
+  type BodyBuilder,
+  brandBody,
+  chatBody,
+  diffBody,
+  endpointsBody,
+  evaluateBody,
+  extractBody,
+  first,
+  getRoute,
+  githubBrowseBody,
+  mapBody,
+  noBody,
+  postRoute,
+  queryBody,
+  type RequestContext,
+  researchBody,
+  retrieveBody,
+  scrapeBody,
+  screenshotBody,
+  searchBody,
+  sourceBody,
+  sourceSiteBody,
+  suggestBody,
+  summarizeBody,
+  uuid,
+  watchCreateBody,
+} from "./actionRequest";
+import type { JobSubcommand, PaletteSubcommand } from "./actions";
 
 export type OutputKind = "markdown" | "code";
 
@@ -116,16 +108,14 @@ export type StructuredViewKey =
   | "sources"
   | "domains"
   | "doctor"
-  | "crawl"
-  | "embed"
+  | "source-site"
+  | "source"
   | "extract"
-  | "ingest"
   | "github"
   | "endpoints"
   | "brand"
   | "diff"
   | "screenshot"
-  | "dedupe"
   | "watch-list"
   | "watch-create"
   | "watch-run"
@@ -165,13 +155,15 @@ function behavior(input: ActionBehaviorInput): ActionBehavior {
 }
 
 /** Helper to declare a record-formatting entry; binds the formatter guard. */
-function entry(input: Omit<ActionBehaviorInput, "formatText"> & { formatText: RecordFormatter }): ActionBehavior {
+function entry(
+  input: Omit<ActionBehaviorInput, "formatText"> & { formatText: RecordFormatter },
+): ActionBehavior {
   return behavior({ ...input, formatText: recordFormatter(input.formatText) });
 }
 
 // Non-lifecycle subcommands. Job-lifecycle entries are generated below so the
-// `Record` stays exhaustive without 24 hand-written rows.
-type StaticSubcommand = Exclude<PaletteSubcommand, `${JobFamily}-${JobOperation}`>;
+// `Record` stays exhaustive without hand-written rows.
+type StaticSubcommand = Exclude<PaletteSubcommand, JobSubcommand>;
 
 const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
   help: behavior({
@@ -210,16 +202,16 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     actionIcon: FileDown,
     structuredView: "scrape",
   }),
-  crawl: entry({
+  "source-site": entry({
     // Verb route removed server-side; routes through the unified source
-    // pipeline (see the comment on `crawlBody` in actionRequest.ts).
+    // pipeline (see the comment on `sourceSiteBody` in actionRequest.ts).
     route: postRoute("/v1/sources"),
-    buildBody: crawlBody,
+    buildBody: sourceSiteBody,
     outputKind: code,
-    formatText: jobStartFormatter("crawl"),
+    formatText: jobStartFormatter("source"),
     actionIcon: Workflow,
     outputIcon: GitBranch,
-    structuredView: "crawl",
+    structuredView: "source-site",
   }),
   map: entry({
     route: postRoute("/v1/map"),
@@ -302,15 +294,15 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     actionIcon: Globe,
     structuredView: "research",
   }),
-  embed: entry({
+  source: entry({
     // Verb route removed server-side; routes through the unified source
     // pipeline (see the comment on `embedBody` in actionRequest.ts).
     route: postRoute("/v1/sources"),
-    buildBody: embedBody,
+    buildBody: sourceBody,
     outputKind: code,
-    formatText: jobStartFormatter("embed"),
+    formatText: jobStartFormatter("source"),
     actionIcon: Layers,
-    structuredView: "embed",
+    structuredView: "source",
   }),
   extract: entry({
     route: postRoute("/v1/extract"),
@@ -319,16 +311,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: jobStartFormatter("extract"),
     actionIcon: Braces,
     structuredView: "extract",
-  }),
-  ingest: entry({
-    // Verb route removed server-side; routes through the unified source
-    // pipeline (see the comment on `ingestBody` in actionRequest.ts).
-    route: postRoute("/v1/sources"),
-    buildBody: ingestBody,
-    outputKind: code,
-    formatText: jobStartFormatter("ingest"),
-    actionIcon: PackageOpen,
-    structuredView: "ingest",
   }),
   // `github` is NOT an Axon REST call — the route is a `palette://` marker so
   // it's inert if it were ever accidentally sent to `axon_http_request`
@@ -415,22 +397,6 @@ const STATIC_REGISTRY: Record<StaticSubcommand, ActionBehavior> = {
     formatText: formatScreenshot,
     actionIcon: Camera,
     structuredView: "screenshot",
-  }),
-  dedupe: entry({
-    route: postRoute("/v1/dedupe"),
-    buildBody: dedupeBody,
-    outputKind: code,
-    formatText: formatDedupe,
-    actionIcon: HelpCircle,
-    structuredView: "dedupe",
-  }),
-  purge: entry({
-    route: postRoute("/v1/purge"),
-    buildBody: purgeBody,
-    outputKind: code,
-    formatText: formatPurge,
-    actionIcon: Trash2,
-    structuredView: null,
   }),
   "watch-list": entry({
     route: getRoute("/v1/watches"),

@@ -1,13 +1,9 @@
 //! RSS/Atom/JSON feed source adapter.
 //!
-//! Like the `git` adapter, this operates on an already-materialized prepared
-//! feed document — a `feed_path` option pointing at a local file containing
-//! the raw feed bytes, prepared by the caller (the services bridge performs
-//! the network fetch). Keeping the network out of the adapter makes it
-//! unit-testable with fixture feed documents and matches how the `git`
-//! adapter reads a prepared clone and the `web` adapter reads a prepared
-//! crawl.
+//! [`FeedSourceAdapter::materialize`] owns the SSRF-guarded, bounded fetch and
+//! stamps the prepared feed path on the routed plan before discovery.
 
+mod acquire;
 mod metadata;
 mod parse;
 mod target;
@@ -24,6 +20,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+pub use self::acquire::fetch_feed_to_file;
 use self::metadata::feed_source_document;
 use self::parse::{FeedEntry, extract_entries, parse_feed_bytes};
 pub use self::target::{feed_path, html_to_text};
@@ -38,6 +35,28 @@ pub struct FeedSourceAdapter;
 impl FeedSourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        mut plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let (temporary, path) = acquire::fetch_feed_to_temporary_file(&plan.request.source)
+            .await
+            .map_err(|err| {
+                crate::acquisition::materialization_error(
+                    "adapter.feed.fetch_failed",
+                    err.to_string(),
+                )
+            })?;
+        plan.route
+            .validated_options
+            .values
+            .insert("feed_path".to_string(), json!(path.to_string_lossy()));
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
+        ))
     }
 }
 

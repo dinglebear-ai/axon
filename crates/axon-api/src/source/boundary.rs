@@ -80,6 +80,18 @@ pub enum UploadPurpose {
     Evaluation,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadStatusKind {
+    Pending,
+    Received,
+    Completed,
+    Aborted,
+    Expired,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UploadCreateRequest {
@@ -99,10 +111,92 @@ pub struct UploadCreateRequest {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct UploadResult {
-    pub artifact: ArtifactRef,
-    pub status: LifecycleStatus,
+pub struct UploadCreateResult {
+    pub upload_id: UploadId,
+    pub put_url: String,
+    pub expires_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadStatus {
+    pub upload_id: UploadId,
+    pub status: UploadStatusKind,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    pub bytes_received: u64,
+    pub purpose: UploadPurpose,
+    pub created_at: Timestamp,
+    pub expires_at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_id: Option<ArtifactId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention_until: Option<Timestamp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadContentRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_ref: Option<ContentRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct UploadCompleteRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "MetadataMap::is_empty")]
+    pub source_options: MetadataMap,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadCompleteResult {
+    pub upload_id: UploadId,
+    pub artifact_id: ArtifactId,
+    pub source_ref: String,
     pub warnings: Vec<SourceWarning>,
+}
+
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct UploadAbortRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct UploadAbortResult {
+    pub upload_id: UploadId,
+    pub deleted: bool,
+}
+
+#[derive(
+    Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(deny_unknown_fields)]
+pub struct UploadListRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<UploadStatusKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

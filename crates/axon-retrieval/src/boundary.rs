@@ -23,7 +23,7 @@ use axon_api::mcp_schema::AskRequest;
 use axon_api::source::{ApiError, CapabilityBase, HealthStatus, MetadataMap, RetrievalCapability};
 
 use crate::ask_context::AskContext;
-use crate::memory::MEMORY_VECTOR_NAMESPACE;
+use crate::memory::MEMORY_SOURCE_KIND;
 use crate::query::{QueryRequest, QueryResult, RetrievalRequest, RetrievalResult};
 
 pub const MODULE_NAME: &str = "boundary";
@@ -56,11 +56,6 @@ where
     E: axon_embedding::provider::EmbeddingProvider + 'static,
 {
     async fn query(&self, request: QueryRequest) -> Result<QueryResult> {
-        let excluded_namespaces = if request.namespace_filters.is_empty() {
-            vec![MEMORY_VECTOR_NAMESPACE.to_string()]
-        } else {
-            Vec::new()
-        };
         let retrieval_request = RetrievalRequest {
             query: request.query,
             collection: request.collection,
@@ -68,7 +63,7 @@ where
             source_id: None,
             generation: None,
             namespace_filters: request.namespace_filters,
-            excluded_namespaces,
+            excluded_source_kinds: vec![MEMORY_SOURCE_KIND.to_string()],
             byte_budget: DEFAULT_BYTE_BUDGET,
             token_budget: DEFAULT_TOKEN_BUDGET,
         };
@@ -100,7 +95,7 @@ where
             source_id: None,
             generation: None,
             namespace_filters: Vec::new(),
-            excluded_namespaces: vec![MEMORY_VECTOR_NAMESPACE.to_string()],
+            excluded_source_kinds: vec![MEMORY_SOURCE_KIND.to_string()],
             byte_budget,
             token_budget: DEFAULT_TOKEN_BUDGET,
         };

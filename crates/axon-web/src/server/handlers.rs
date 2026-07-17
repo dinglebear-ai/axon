@@ -44,6 +44,8 @@ pub mod source_watch;
 pub mod sources;
 #[path = "handlers/sources_resource.rs"]
 pub(crate) mod sources_resource;
+#[path = "handlers/uploads.rs"]
+pub mod uploads;
 
 pub use ask::v1_ask;
 pub use ask_stream::v1_ask_stream;

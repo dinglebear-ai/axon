@@ -297,14 +297,6 @@ fn apply_custom_headers(cfg: &Config, website: &mut Website) {
     }
 }
 
-pub(super) async fn configure_website(
-    cfg: &Config,
-    start_url: &str,
-    mode: RenderMode,
-) -> Result<Website, Box<dyn Error>> {
-    configure_website_with_crawl_id(cfg, start_url, mode, None).await
-}
-
 /// Configure a spider `Website` with an optional `crawl_id` for the control
 /// feature. When set, `spider::utils::shutdown("{crawl_id}{url}")` can signal
 /// an immediate graceful stop from inside the same process.

@@ -3,18 +3,26 @@ use super::artifacts::{InlineHint, artifact_root, client_context_name, respond_w
 use super::common::{
     CURRENT_PRUNE_AUTHZ, MCP_TOOL_SCHEMA_URI, invalid_params, logged_internal_error,
 };
+use super::system_requests::{
+    CollectionsMcpRequest, CollectionsSubaction, ResetMcpRequest, ResetSubaction,
+};
 use crate::schema::{AxonToolResponse, DoctorRequest, HelpRequest, PruneMcpRequest, StatusRequest};
 use axon_api::source::prune::{PruneRequest as ApiPruneRequest, PruneSelector};
 use axon_api::source::{SourceGenerationId, SourceId};
-use axon_services::prune::{PruneAuthz, prune};
+use axon_services::prune::{self, PruneAuthz};
+use axon_services::service_traits::{CollectionService, CollectionServiceImpl};
 use axon_services::system;
 use rmcp::ErrorData;
 use serde_json::Value;
 
 const PRUNE_COLLECTION_PREFIX: &str = "collection:";
 
+#[path = "handlers_system/artifacts.rs"]
+mod artifact_actions;
 #[path = "handlers_system/screenshot.rs"]
 mod screenshot;
+#[path = "handlers_system/uploads.rs"]
+mod uploads;
 
 #[cfg(test)]
 #[path = "handlers_system_tests.rs"]
@@ -43,16 +51,6 @@ impl AxonMcpServer {
         req: PruneMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.as_deref().unwrap_or("plan");
-
-        // `dedupe`/`purge` are the target-state replacements for the removed
-        // legacy `dedupe`/`purge` MCP actions (U2-24/C6-18/C6-19) — they call
-        // the same `axon-services` facades the old actions did, just routed
-        // through `prune`'s subaction dispatch and its `axon:admin` gate.
-        // They bypass `PruneSelector`/`ApiPruneRequest` entirely since neither
-        // maps onto the source/generation/collection prune-selector grammar.
-        if subaction == "dedupe" || subaction == "purge" {
-            return self.handle_prune_dedupe_or_purge(subaction, &req).await;
-        }
 
         let selector = prune_selector_from_request(&req)?;
 
@@ -97,7 +95,7 @@ impl AxonMcpServer {
             .try_with(Clone::clone)
             .unwrap_or_default();
 
-        let (plan, result) = prune(&ctx, &api_request, &authz)
+        let (plan, result) = prune::prune(&ctx, &api_request, &authz)
             .await
             .map_err(|e| invalid_params(e.to_string()))?;
 
@@ -117,52 +115,127 @@ impl AxonMcpServer {
         .await
     }
 
-    /// `prune subaction=dedupe|purge` — thin wrappers over the same
-    /// `axon-services::system::{dedupe,purge}` facades the REST
-    /// `/v1/prune/dedupe` and `/v1/prune/purge` routes call.
-    ///
-    /// `purge` here only supports an exact-target delete (`prefix=false`,
-    /// `dry_run=!confirm`) — `PruneMcpRequest` has no `prefix`/`dry_run`
-    /// fields today (unlike REST's `PurgeRequest`), so prefix-scoped purge
-    /// over MCP is a follow-up pending an `axon-api` schema addition.
-    async fn handle_prune_dedupe_or_purge(
+    pub(super) async fn handle_reset(
         &self,
-        subaction: &str,
-        req: &PruneMcpRequest,
+        req: ResetMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
-        let mut cfg = (*self.cfg).clone();
-        if let Some(collection) = req.collection.as_deref() {
-            let collection = collection.trim();
-            if collection.is_empty() {
-                return Err(invalid_params("collection must be non-empty when provided"));
-            }
-            cfg.collection = collection.to_string();
+        if req.include_config.unwrap_or(false) {
+            return Err(invalid_params(
+                "reset does not support deleting configuration",
+            ));
         }
-
-        let payload = if subaction == "dedupe" {
-            let result = system::dedupe(&cfg, None)
-                .await
-                .map_err(|e| logged_internal_error("prune.dedupe", e.as_ref()))?;
-            serde_json::json!({ "subaction": "dedupe", "result": result })
-        } else {
-            let target = req
-                .target
-                .as_deref()
-                .map(str::trim)
-                .filter(|t| !t.is_empty())
-                .ok_or_else(|| invalid_params("purge requires a target"))?;
-            let dry_run = !req.confirm.unwrap_or(false);
-            let result = system::purge(&cfg, target, false, dry_run)
-                .await
-                .map_err(|e| logged_internal_error("prune.purge", e.as_ref()))?;
-            serde_json::json!({ "subaction": "purge", "result": result })
+        let subaction = req.subaction.unwrap_or_default();
+        let mut cfg = (*self.cfg).clone();
+        cfg.reset_stores = req.stores.unwrap_or_default();
+        if let Some(collection) = req.collection {
+            cfg.collection = super::common::validate_mcp_collection(&collection)?;
+        }
+        if req.include_artifacts == Some(false) {
+            if cfg.reset_stores.is_empty() {
+                cfg.reset_stores = axon_api::reset::RESET_ALL_STORES
+                    .iter()
+                    .filter(|store| **store != axon_api::reset::RESET_STORE_ARTIFACTS)
+                    .map(|store| (*store).to_string())
+                    .collect();
+            }
+            cfg.reset_stores.retain(|store| store != "artifacts");
+        }
+        let result = match subaction {
+            ResetSubaction::Plan => {
+                cfg.reset_dry_run = true;
+                axon_services::reset::reset(&cfg).await
+            }
+            ResetSubaction::Exec => {
+                if !req.confirm.unwrap_or(false) {
+                    return Err(invalid_params("reset exec requires confirm=true"));
+                }
+                let plan_id = req
+                    .plan_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| invalid_params("reset exec requires plan_id"))?;
+                cfg.reset_dry_run = false;
+                cfg.yes = true;
+                cfg.reset_plan_id = Some(plan_id.to_string());
+                let authz = super::common::CURRENT_RESET_AUTHZ
+                    .try_with(Clone::clone)
+                    .unwrap_or_default();
+                axon_services::reset::reset_with_authz(&cfg, &authz).await
+            }
+        }
+        .map_err(|e| invalid_params(e.to_string()))?;
+        let label = match subaction {
+            ResetSubaction::Plan => "plan",
+            ResetSubaction::Exec => "exec",
         };
-
         respond_with_mode(
-            "prune",
-            subaction,
+            "reset",
+            label,
             req.response_mode,
-            "prune",
+            "reset",
+            serde_json::to_value(result).unwrap_or(Value::Null),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    pub(super) async fn handle_collections(
+        &self,
+        req: CollectionsMcpRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let subaction = req.subaction.unwrap_or_default();
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("collections.context", e.as_ref()))?;
+        let service = CollectionServiceImpl::new(ctx);
+        let mut collections = service
+            .list()
+            .await
+            .map_err(|e| logged_internal_error("collections.list", e.as_ref()))?;
+        if let Some(prefix) = req.prefix.as_deref() {
+            collections.retain(|item| item.collection.starts_with(prefix));
+        }
+        let payload = match subaction {
+            CollectionsSubaction::List => {
+                let offset = req
+                    .cursor
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<usize>()
+                    .map_err(|_| invalid_params("collections cursor must be a numeric offset"))?;
+                let limit = req.limit.unwrap_or(100).clamp(1, 500) as usize;
+                let page = collections
+                    .into_iter()
+                    .skip(offset)
+                    .take(limit)
+                    .collect::<Vec<_>>();
+                serde_json::json!({"collections": page, "limit": limit, "next_cursor": if page.len() == limit { Some((offset + limit).to_string()) } else { None }})
+            }
+            CollectionsSubaction::Get => {
+                let name = req
+                    .collection
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .ok_or_else(|| invalid_params("collections get requires collection"))?;
+                let collection = collections
+                    .into_iter()
+                    .find(|item| item.collection == name)
+                    .ok_or_else(|| invalid_params(format!("collection '{name}' not found")))?;
+                serde_json::to_value(collection).unwrap_or(Value::Null)
+            }
+        };
+        let label = match subaction {
+            CollectionsSubaction::List => "list",
+            CollectionsSubaction::Get => "get",
+        };
+        respond_with_mode(
+            "collections",
+            label,
+            req.response_mode,
+            "collections",
             payload,
             InlineHint::Default,
         )
@@ -286,21 +359,26 @@ fn help_payload() -> Value {
             "suggest": ["suggest"],
             "screenshot": ["screenshot"],
             "endpoints": ["endpoints"],
-            "extract": ["start", "status", "cancel", "list", "cleanup", "clear", "recover"],
-            "jobs": ["list", "get", "status", "events", "stream", "artifacts", "cancel", "retry", "recover", "cleanup", "clear"],
+            "extract": ["start"],
+            "artifacts": ["list", "get", "content"],
+            "chat": ["chat"],
+            "jobs": ["list", "get", "status", "events", "stream", "cancel", "retry", "recover", "cleanup", "clear"],
             "memory": ["remember", "list", "search", "show", "link", "supersede", "context", "reinforce", "contradict", "pin", "archive", "forget", "review", "compact", "import", "export"],
             "query": ["query"],
             "retrieve": ["retrieve"],
             "search": ["search"],
             "map": ["map"],
-            "prune": ["plan", "exec", "dedupe", "purge"],
+            "prune": ["plan", "exec"],
+            "collections": ["list", "get"],
+            "uploads": ["list", "create", "get", "put_content", "complete", "abort"],
+            "reset": ["plan", "exec"],
             "doctor": ["doctor"],
             "resolve": ["resolve"],
             "capabilities": ["capabilities"],
             "providers": ["list", "get"],
             "diff": ["diff"],
             "brand": ["brand"],
-            "watch": ["list", "get", "update", "pause", "resume", "delete"],
+            "watch": ["create", "list", "get", "status", "exec", "history", "update", "pause", "resume", "delete"],
             "graph": ["kinds", "resolve", "query", "node", "edge", "source"]
         },
         "resources": [

@@ -69,6 +69,26 @@ fn sse_json(event: &StreamEvent) -> Event {
 }
 
 fn source_progress_from_job_event(event: JobEvent) -> SourceProgressEvent {
+    if let Some(mut progress) = event
+        .details
+        .get("source_progress_event")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<SourceProgressEvent>(value).ok())
+    {
+        progress.event_id = event.event_id;
+        progress.sequence = event.sequence;
+        progress.job_id = event.job_id;
+        progress.attempt = event.attempt;
+        progress.stage_id = event.stage_id.or(progress.stage_id);
+        progress.phase = event.phase;
+        progress.status = event.status;
+        progress.severity = event.severity;
+        progress.visibility = event.visibility;
+        progress.message = event.message;
+        progress.timestamp = event.timestamp;
+        return progress;
+    }
+
     SourceProgressEvent {
         event_id: event.event_id,
         sequence: event.sequence,
@@ -194,4 +214,86 @@ pub(crate) async fn unified_job_stream(
         }
     });
     Sse::new(AbortOnDropJobStream { rx, handle }).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axon_api::source::{
+        ApiError, ErrorStage, JobId, MetadataMap, PipelinePhase, ProgressCurrent, Severity,
+        SourceItemKey, Timestamp, Visibility,
+    };
+
+    #[test]
+    fn source_progress_from_job_event_preserves_stored_counts_current_and_error() {
+        let job_id = JobId::new(Uuid::from_u128(42));
+        let mut stored = SourceProgressEvent::minimal(
+            job_id,
+            7,
+            PipelinePhase::Embedding,
+            LifecycleStatus::Running,
+            Severity::Info,
+            "stored message",
+        );
+        stored.counts = StageCounts {
+            items_total: Some(5),
+            items_done: 3,
+            documents_total: Some(4),
+            documents_done: 2,
+            chunks_total: Some(9),
+            chunks_done: 8,
+            bytes_total: Some(100),
+            bytes_done: 64,
+        };
+        stored.current = Some(ProgressCurrent {
+            source_item_key: Some(SourceItemKey::from("item-3")),
+            document_id: None,
+            chunk_id: None,
+            adapter: Some("web".to_string()),
+            provider: None,
+            message: Some("current item".to_string()),
+        });
+        stored.error = Some(ApiError::new(
+            "provider.cooling",
+            ErrorStage::Embedding,
+            "cooling down",
+        ));
+
+        let mut details = MetadataMap::new();
+        details.insert(
+            "source_progress_event".to_string(),
+            serde_json::to_value(stored).expect("progress json"),
+        );
+
+        let event = JobEvent {
+            event_id: "row-event".to_string(),
+            sequence: 11,
+            job_id,
+            attempt: 2,
+            stage_id: None,
+            phase: PipelinePhase::Embedding,
+            status: LifecycleStatus::Running,
+            severity: Severity::Info,
+            visibility: Visibility::Public,
+            message: "row message".to_string(),
+            timestamp: Timestamp("2026-07-15T00:00:00Z".to_string()),
+            details,
+        };
+
+        let progress = source_progress_from_job_event(event);
+        assert_eq!(progress.sequence, 11);
+        assert_eq!(progress.counts.items_total, Some(5));
+        assert_eq!(progress.counts.chunks_done, 8);
+        assert_eq!(
+            progress
+                .current
+                .as_ref()
+                .and_then(|current| current.message.as_deref()),
+            Some("current item")
+        );
+        assert_eq!(
+            progress.error.as_ref().map(|error| error.code.0.as_str()),
+            Some("provider.cooling")
+        );
+    }
 }

@@ -43,18 +43,21 @@
       "edge_kind": "session_has_turn",
       "from_stable_key": "session:claude:2026-07-09",
       "to_stable_key": "session-turn:claude:2026-07-09:1",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     },
     {
       "edge_kind": "turn_invoked_tool",
       "from_stable_key": "session-turn:claude:2026-07-09:1",
       "to_stable_key": "tool-call:claude:2026-07-09:1:bash",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     },
     {
       "edge_kind": "turn_invoked_skill",
       "from_stable_key": "session-turn:claude:2026-07-09:1",
       "to_stable_key": "skill:axon:using-axon",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     }
   ],

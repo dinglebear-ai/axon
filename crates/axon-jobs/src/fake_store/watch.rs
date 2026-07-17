@@ -5,6 +5,10 @@ use super::helpers::descriptor;
 use super::{FakeJobWatchStore, capability, missing_job, missing_watch};
 use crate::boundary::{Result, WatchStore};
 use crate::limits::clamp_page_limit;
+use crate::unified::pagination::{
+    WatchCursor, WatchHistoryCursor, decode_watch_cursor, decode_watch_history_cursor,
+    encode_watch_cursor, encode_watch_history_cursor,
+};
 
 #[async_trait]
 impl WatchStore for FakeJobWatchStore {
@@ -53,13 +57,14 @@ impl WatchStore for FakeJobWatchStore {
     }
 
     async fn list(&self, request: WatchListRequest) -> Result<Page<WatchSummary>> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "watch.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "fake watch store does not implement cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_watch_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("watch.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         let state = self.state.lock().await;
         let mut items = state
             .watches
@@ -89,13 +94,24 @@ impl WatchStore for FakeJobWatchStore {
                     .unwrap_or(false)
             });
         }
-        let total = items.len() as u64;
+        items.sort_by(|left, right| right.watch_id.0.cmp(&left.watch_id.0));
+        if let Some(cursor) = cursor.as_ref() {
+            items.retain(|watch| watch.watch_id.0 < cursor.watch_id);
+        }
+        let total = cursor.is_none().then_some(items.len() as u64);
         let limit = clamp_page_limit(request.limit);
+        let has_more = items.len() > limit as usize;
         items.truncate(limit as usize);
+        let next_cursor = items.last().filter(|_| has_more).map(|watch| {
+            encode_watch_cursor(&WatchCursor {
+                created_at: 0,
+                watch_id: watch.watch_id.0.clone(),
+            })
+        });
         Ok(Page {
-            total: Some(total),
+            total,
             limit,
-            next_cursor: None,
+            next_cursor,
             items,
         })
     }
@@ -125,11 +141,19 @@ impl WatchStore for FakeJobWatchStore {
     }
 
     async fn history(&self, request: WatchHistoryRequest) -> Result<WatchHistoryResult> {
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_watch_history_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("watch.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         let state = self.state.lock().await;
         if !state.watches.contains_key(&request.watch_id) {
             return Err(missing_watch(&request.watch_id));
         }
-        let runs = state
+        let all_runs = state
             .watch_runs
             .get(&request.watch_id)
             .into_iter()
@@ -137,12 +161,43 @@ impl WatchStore for FakeJobWatchStore {
             .rev()
             .filter_map(|job_id| state.jobs.get(job_id))
             .map(descriptor)
-            .take(clamp_page_limit(request.limit) as usize)
-            .collect();
+            .filter(|job| request.status.is_none_or(|status| job.status == status))
+            .collect::<Vec<_>>();
+        let offset = match cursor.as_ref().and_then(|cursor| cursor.job_id.as_deref()) {
+            Some(job_id) => all_runs
+                .iter()
+                .position(|job| job.job_id.0.to_string() == job_id)
+                .map(|position| position + 1)
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "watch.cursor_invalid",
+                        ErrorStage::Retrieving,
+                        "watch history cursor no longer identifies a run",
+                    )
+                })?,
+            None => 0,
+        };
+        let limit = clamp_page_limit(request.limit) as usize;
+        let mut runs = all_runs
+            .into_iter()
+            .skip(offset)
+            .take(limit + 1)
+            .collect::<Vec<_>>();
+        let has_more = runs.len() > limit;
+        if has_more {
+            runs.truncate(limit);
+        }
+        let next_cursor = has_more.then(|| {
+            encode_watch_history_cursor(&WatchHistoryCursor {
+                created_at: 0,
+                run_id: 0,
+                job_id: runs.last().map(|job| job.job_id.0.to_string()),
+            })
+        });
         Ok(WatchHistoryResult {
             watch_id: request.watch_id,
             jobs: runs,
-            next_cursor: None,
+            next_cursor,
         })
     }
 

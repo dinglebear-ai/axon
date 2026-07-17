@@ -90,7 +90,8 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     # Version-bearing root docs only. version-sync (which recompiles xtask, ~5min)
     # keys off this rather than the broad `docs` signal, so prose-only doc changes
     # (e.g. docs/sessions/* logs) skip the release-version gate instead of dragging
-    # in the full check. ci-gate treats a skipped version-sync as success.
+    # in the full check. ci-gate permits that skip only when version_files and
+    # every runtime component category are false.
     version_files = any_match(paths, lambda p: p in {"README.md", "CHANGELOG.md"})
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
     web = any_match(paths, lambda p: starts(p, "apps/web/", "assets/")) or openapi
@@ -99,7 +100,14 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     chrome = any_match(paths, lambda p: starts(p, "apps/chrome-extension/", "assets/"))
     mcp = any_match(
         paths,
-        lambda p: starts(p, "src/mcp/", "crates/axon-mcp/src/", "docs/reference/mcp/")
+        lambda p: starts(
+            p,
+            "src/mcp/",
+            "crates/axon-mcp/",
+            "crates/axon-api/src/mcp_schema/",
+            "docs/reference/mcp/",
+        )
+        or p == "crates/axon-api/src/mcp_schema.rs"
         or p in MCP_CI_HELPER_SCRIPTS
         or p == "tests/workflow_shapes.rs",
     )

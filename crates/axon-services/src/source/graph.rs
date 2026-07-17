@@ -259,6 +259,7 @@ fn build_candidate(
     manifest: &SourceManifest,
 ) -> GraphCandidate {
     let source_id = counts.source_id.clone();
+    let source_item_key = SourceItemKey::new(canonical_uri);
     let container_key = container_stable_key(&source_id, canonical_uri);
     let container = GraphNodeCandidate {
         node_kind: container_node_kind(kind).to_string(),
@@ -274,6 +275,7 @@ fn build_candidate(
 
     for item in &manifest.items {
         let doc_key = document_stable_key(item);
+        let item_evidence = containment_evidence(&source_id, &source_item_key, item);
         nodes.push(GraphNodeCandidate {
             node_kind: document_node_kind(item).to_string(),
             stable_key: doc_key.clone(),
@@ -284,16 +286,17 @@ fn build_candidate(
             edge_kind: edge_kind.to_string(),
             from_stable_key: container_key.clone(),
             to_stable_key: doc_key,
+            evidence_ids: vec![item_evidence.evidence_id.clone()],
             properties: MetadataMap::new(),
         });
-        evidence.push(containment_evidence(&source_id, item));
+        evidence.push(item_evidence);
     }
 
     GraphCandidate {
         candidate_id: format!("source-baseline:{}:{}", source_id.0, counts.generation.0),
         job_id: counts.job_id.clone(),
         source_id: source_id.clone(),
-        source_item_key: SourceItemKey::new(canonical_uri),
+        source_item_key,
         item_canonical_uri: canonical_uri.to_string(),
         document_id: None,
         kind: "source_baseline".to_string(),
@@ -314,18 +317,27 @@ fn build_candidate(
 /// One `text_mention` evidence record per containment edge. The manifest is the
 /// direct observation that the item belongs to this source, so it justifies the
 /// containment claim (edges are never "just true").
-fn containment_evidence(source_id: &SourceId, item: &ManifestItem) -> GraphEvidence {
+fn containment_evidence(
+    source_id: &SourceId,
+    candidate_source_item_key: &SourceItemKey,
+    item: &ManifestItem,
+) -> GraphEvidence {
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "contained_source_item_key".to_string(),
+        serde_json::json!(item.source_item_key.0),
+    );
     GraphEvidence {
         evidence_id: format!("contains:{}", item.source_item_key.0),
         evidence_kind: "text_mention".to_string(),
         source_id: source_id.clone(),
-        source_item_key: item.source_item_key.clone(),
+        source_item_key: candidate_source_item_key.clone(),
         document_id: None,
         chunk_id: None,
         range: None,
         quote: None,
         confidence: BASELINE_CONFIDENCE,
-        metadata: MetadataMap::new(),
+        metadata,
     }
 }
 
@@ -337,6 +349,9 @@ fn container_stable_key(source_id: &SourceId, canonical_uri: &str) -> String {
 
 /// Stable key for a document node — the item's own stable source key.
 fn document_stable_key(item: &ManifestItem) -> String {
+    if item.item_kind == ItemKind::MemoryRecord {
+        return format!("memory:{}", item.source_item_key.0);
+    }
     item.source_item_key.0.clone()
 }
 
@@ -352,6 +367,9 @@ fn container_node_kind(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Youtube => "youtube_channel",
         SourceInputKind::Session => "session",
         SourceInputKind::Registry => "package",
+        SourceInputKind::CliTool | SourceInputKind::McpTool => "artifact",
+        SourceInputKind::Memory => "source",
+        SourceInputKind::Upload => "derived_source",
         SourceInputKind::Unsupported => "source",
     }
 }
@@ -386,6 +404,8 @@ fn containment_edge_kind(kind: SourceInputKind) -> &'static str {
         SourceInputKind::Youtube => "youtube_channel_has_video",
         SourceInputKind::Session => "session_has_turn",
         SourceInputKind::Registry => "package_has_version",
+        SourceInputKind::CliTool | SourceInputKind::McpTool => "source_produced_artifact",
+        SourceInputKind::Memory | SourceInputKind::Upload => "source_indexed_as",
         SourceInputKind::Unsupported => "source_produced_artifact",
     }
 }

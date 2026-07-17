@@ -10,7 +10,7 @@ layer and the services facade can depend on it without a cycle. Full contract
 · behavior spec:
 [../../../docs/pipeline-unification/foundation/api-contract.md](../../../docs/pipeline-unification/foundation/api-contract.md).
 
-## Status — live crate, Phase 1 landed
+## Status — live transport contract
 The full transport-neutral DTO/enum spine is real and tested, not a marker:
 `source.rs` (`SourceIntent`, `SourceRefreshPolicy`, source request/result
 shapes), `mcp_schema.rs` (MCP wire DTOs, generated tool schema), `result.rs`,
@@ -21,16 +21,15 @@ side effects.
 ## Module map
 | File | Owns |
 |---|---|
-| `source.rs` | **live spike** — `SourceIntent`, `SourceRefreshPolicy`, transport-neutral source DTOs |
+| `source.rs` + `source/` | `SourceIntent`, `SourceRefreshPolicy`, source/job/watch/artifact/graph/memory DTOs and opaque IDs |
 | `result.rs` | ask/query/evaluate result contracts (former `services::types::service::query`) |
 | `explain.rs` | ask-explain trace types (former `core::ask_explain`) |
 | `contract.rs` | shared contract types + `contract_tests.rs` |
 | `diff.rs` | diff DTOs |
-| `ingest.rs` | ingest request/result DTOs |
 | `job_dto.rs` / `job_status.rs` / `job_progress.rs` | `JobRequest`, `JobStatus`, `JobEvent`, `JobProgress`, `JobHeartbeat` |
 | `service_job.rs` | `ServiceJob` — the job-runtime handoff shape |
 | `mcp_schema.rs` | MCP wire-contract input/output schema source of truth |
-| `purge.rs` | purge/delete-url DTOs |
+| `reset.rs` | reset plan/execute DTOs and canonical store selectors |
 
 ## Boundary — keep OUT of this crate
 - provider clients, stores, routing behavior, parsing, chunking, embedding, orchestration.

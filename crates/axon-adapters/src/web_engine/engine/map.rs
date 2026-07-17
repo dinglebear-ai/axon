@@ -1,12 +1,11 @@
 mod strategy;
 
-pub use strategy::append_html_anchor_backfill;
-pub use strategy::map_with_sitemap;
+pub use strategy::discover_site_urls;
 
 use std::collections::HashSet;
 use std::error::Error;
 
-use spider::url::Url;
+use url::Url;
 
 use axon_core::http::{http_client, normalize_url, validate_url};
 

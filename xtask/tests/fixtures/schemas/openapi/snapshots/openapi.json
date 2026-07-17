@@ -684,26 +684,6 @@
     {
       "method": "POST",
       "mutates": true,
-      "operation_id": "memory",
-      "path": "/v1/memory",
-      "request_dto": "MemoryRequest",
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "MemoryResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
       "operation_id": "remember_memory",
       "path": "/v1/memories",
       "request_dto": "MemoryRequest",
@@ -1023,7 +1003,7 @@
     {
       "method": "GET",
       "mutates": false,
-      "operation_id": "artifacts",
+      "operation_id": "list_artifacts",
       "path": "/v1/artifacts",
       "request_dto": null,
       "requires_auth_scope": "read",
@@ -1036,7 +1016,163 @@
         "500",
         "502"
       ],
-      "result_dto": "ArtifactQueryResponse",
+      "result_dto": "Page<ArtifactSummary>",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "get_artifact",
+      "path": "/v1/artifacts/{artifact_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "ArtifactDetail",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "artifact_content",
+      "path": "/v1/artifacts/{artifact_id}/content",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "ArtifactContentDescriptor",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "list_uploads",
+      "path": "/v1/uploads",
+      "request_dto": "UploadListRequest",
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "Page<UploadStatus>",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "create_upload",
+      "path": "/v1/uploads",
+      "request_dto": "UploadCreateRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "UploadCreateResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "get_upload",
+      "path": "/v1/uploads/{upload_id}",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "UploadStatus",
+      "streaming": false
+    },
+    {
+      "method": "PUT",
+      "mutates": true,
+      "operation_id": "put_upload_content",
+      "path": "/v1/uploads/{upload_id}/content",
+      "request_dto": null,
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "UploadStatus",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "complete_upload",
+      "path": "/v1/uploads/{upload_id}/complete",
+      "request_dto": "UploadCompleteRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "UploadCompleteResult",
+      "streaming": false
+    },
+    {
+      "method": "DELETE",
+      "mutates": true,
+      "operation_id": "abort_upload",
+      "path": "/v1/uploads/{upload_id}",
+      "request_dto": "UploadAbortRequest",
+      "requires_auth_scope": "write",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "UploadAbortResult",
       "streaming": false
     },
     {
@@ -1235,25 +1371,6 @@
       "streaming": false
     },
     {
-      "method": "GET",
-      "mutates": false,
-      "operation_id": "extract_list",
-      "path": "/v1/extract",
-      "request_dto": null,
-      "requires_auth_scope": "read",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobListResponse",
-      "streaming": false
-    },
-    {
       "method": "POST",
       "mutates": true,
       "operation_id": "extract",
@@ -1271,145 +1388,6 @@
         "502"
       ],
       "result_dto": "JobDescriptor",
-      "streaming": false
-    },
-    {
-      "method": "DELETE",
-      "mutates": true,
-      "operation_id": "extract_clear",
-      "path": "/v1/extract",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCleanupResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "extract_cleanup",
-      "path": "/v1/extract/cleanup",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCleanupResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "extract_recover",
-      "path": "/v1/extract/recover",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobRecoveryResponse",
-      "streaming": false
-    },
-    {
-      "method": "GET",
-      "mutates": false,
-      "operation_id": "extract_status",
-      "path": "/v1/extract/{id}",
-      "request_dto": null,
-      "requires_auth_scope": "read",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobStatusResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "extract_cancel",
-      "path": "/v1/extract/{id}/cancel",
-      "request_dto": null,
-      "requires_auth_scope": "write",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "JobCancelResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "dedupe",
-      "path": "/v1/prune/dedupe",
-      "request_dto": "DedupeRequest",
-      "requires_auth_scope": "admin",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "DedupeResponse",
-      "streaming": false
-    },
-    {
-      "method": "POST",
-      "mutates": true,
-      "operation_id": "purge",
-      "path": "/v1/prune/purge",
-      "request_dto": "PurgeRequest",
-      "requires_auth_scope": "admin",
-      "responses": [
-        "200",
-        "400",
-        "401",
-        "403",
-        "404",
-        "422",
-        "500",
-        "502"
-      ],
-      "result_dto": "PurgeResult",
       "streaming": false
     },
     {
@@ -1450,6 +1428,46 @@
         "502"
       ],
       "result_dto": "PruneResult",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "plan_reset",
+      "path": "/v1/reset/plan",
+      "request_dto": "ResetPlanRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ResetPlan",
+      "streaming": false
+    },
+    {
+      "method": "POST",
+      "mutates": true,
+      "operation_id": "execute_reset",
+      "path": "/v1/reset/exec",
+      "request_dto": "ResetExecRequest",
+      "requires_auth_scope": "admin",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "422",
+        "500",
+        "502"
+      ],
+      "result_dto": "ResetResult",
       "streaming": false
     },
     {
@@ -1508,6 +1526,44 @@
         "502"
       ],
       "result_dto": "WatchResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_status",
+      "path": "/v1/watches/{watch_id}/status",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchStatusResult",
+      "streaming": false
+    },
+    {
+      "method": "GET",
+      "mutates": false,
+      "operation_id": "watches_history",
+      "path": "/v1/watches/{watch_id}/history",
+      "request_dto": null,
+      "requires_auth_scope": "read",
+      "responses": [
+        "200",
+        "400",
+        "401",
+        "403",
+        "404",
+        "500",
+        "502"
+      ],
+      "result_dto": "WatchHistoryResult",
       "streaming": false
     },
     {
@@ -1758,7 +1814,7 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:e0b929b027f8a1311417c3d29400f373e167c4f913b5a1ff13c2f965bd5a9fbc",
+        "checksum": "sha256:27cb2ee8ec9a6f0920842885b028266fdf5c551172a8e5da60cb2dd016807e73",
         "kind": "rust_module",
         "path": "crates/axon-web/src/schema_registry.rs"
       },

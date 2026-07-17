@@ -240,6 +240,14 @@ fn shared_field_schema(field: &str) -> Value {
         "chunk_index" => {
             json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
         }
+        "redacted_field_count" | "dropped_field_count" | "detector_count" => {
+            json!({ "type": "integer", "minimum": 0 })
+        }
+        "detector_names" => json!({
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+        }),
         "chunk_locator" => json!({ "$ref": "#/$defs/ChunkLocator" }),
         "source_range" => json!({ "$ref": "#/$defs/SourceRange" }),
         "visibility" => json!({
@@ -402,6 +410,9 @@ fn required_example_value(field: &str, family: &str) -> Value {
         "source_range" => source_range_example(),
         "visibility" => json!("internal"),
         "redaction_status" => json!("clean"),
+        "redaction_version" => json!(axon_core::redact::REDACTION_VERSION),
+        "redacted_field_count" | "dropped_field_count" | "detector_count" => json!(0),
+        "detector_names" => json!([]),
         "job_id" => json!(format!("job-{family}")),
         "document_status" => json!("prepared"),
         "embedding_model" => json!("text-embedding-test"),

@@ -1,12 +1,15 @@
 # Runtime Jobs
-Last Modified: 2026-07-15
+Last Modified: 2026-07-16
 
 Axon jobs are durable records in the unified job store.
 
 ## Policy
 
-The final runtime uses one durable job model. Legacy source-family job tables
-and legacy family `JobKind` variants are removal targets.
+The runtime uses one durable job model. Source acquisition, extraction,
+watch-triggered runs, memory work, pruning, reset, and other operations differ
+by canonical job kind while sharing lifecycle, attempt, stage, event,
+heartbeat, artifact, reservation, and recovery tables. Legacy source-family
+job tables and `JobKind::{Crawl, Embed, Ingest}` variants are absent.
 
 ## Job Records
 

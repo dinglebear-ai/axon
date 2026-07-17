@@ -16,13 +16,10 @@ pub struct RetrievalRequest {
     pub source_id: Option<SourceId>,
     pub generation: Option<SourceGenerationId>,
     pub namespace_filters: Vec<String>,
-    /// Namespaces to drop from results when `namespace_filters` is empty
-    /// (unrestricted search). A caller that sets an explicit positive
-    /// `namespace_filters` already governs which namespaces can appear, so
-    /// this default exclusion only matters for the common unrestricted case
-    /// — e.g. plain `query`/`ask` excluding `memory` by default so memory
-    /// records don't leak into normal retrieval without intent.
-    pub excluded_namespaces: Vec<String>,
+    /// Source kinds to drop from results. Plain `query`/`ask` exclude memory
+    /// by default so memory records only appear through an intentional memory
+    /// retrieval path, regardless of vector namespace filters.
+    pub excluded_source_kinds: Vec<String>,
     pub byte_budget: u64,
     pub token_budget: u32,
 }

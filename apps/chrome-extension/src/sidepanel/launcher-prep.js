@@ -47,13 +47,22 @@
     search(r) {
       const p = payloadOf(r);
       const results = arr(p.results).length ? p.results : arr(r.results);
-      const jobs = p.auto_crawl_status || (arr(p.crawl_jobs).length ? { enqueued: p.crawl_jobs.length, skipped: 0 } : null);
-      return { results: results.map((x) => ({ title: x.title || x.url || x.href || "Result", url: x.url || x.href || "", snippet: x.snippet || x.content || x.text || "", score: x.score })), auto_crawl_status: jobs };
+      const sourceJobs = arr(p.source_jobs);
+      const sourceJobsRejected = arr(p.source_jobs_rejected);
+      const sourceIndex = p.source_index_status || sourceJobs.length || sourceJobsRejected.length
+        ? { status: p.source_index_status || "queued", enqueued: sourceJobs.length, rejected: sourceJobsRejected.length }
+        : null;
+      return { results: results.map((x) => ({ title: x.title || x.url || x.href || "Result", url: x.url || x.href || "", snippet: x.snippet || x.content || x.text || "", score: x.score })), source_index_status: sourceIndex };
     },
     research(r) {
       const p = payloadOf(r);
       const results = arr(p.search_results).length ? p.search_results : arr(p.results).length ? p.results : arr(r.results);
-      return { summary: p.summary || p.answer || p.synthesis || "", results: results.map((x) => ({ title: x.title || x.url || "Result", url: x.url || x.href || "", snippet: x.snippet || x.content || "", score: x.score })) };
+      const sourceJobs = arr(p.source_jobs);
+      const sourceJobsRejected = arr(p.source_jobs_rejected);
+      const sourceIndex = p.source_index_status || sourceJobs.length || sourceJobsRejected.length
+        ? { status: p.source_index_status || "queued", enqueued: sourceJobs.length, rejected: sourceJobsRejected.length }
+        : null;
+      return { summary: p.summary || p.answer || p.synthesis || "", results: results.map((x) => ({ title: x.title || x.url || "Result", url: x.url || x.href || "", snippet: x.snippet || x.content || "", score: x.score })), source_index_status: sourceIndex };
     },
     sources(r) {
       const p = payloadOf(r);

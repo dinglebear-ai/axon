@@ -47,7 +47,9 @@ pub(crate) static ENV_LOCK: Mutex<()> = Mutex::new(());
 pub(crate) fn env_guard() -> std::sync::MutexGuard<'static, ()> {
     static ISOLATED_CONFIG: std::sync::OnceLock<tempfile::NamedTempFile> =
         std::sync::OnceLock::new();
-    let guard = ENV_LOCK.lock().unwrap();
+    let guard = ENV_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let path = ISOLATED_CONFIG.get_or_init(|| {
         TempfileBuilder::new()
             .suffix(".toml")
@@ -536,28 +538,6 @@ fn migrated_worker_tuning_reads_from_toml_and_watchdog_env_still_wins() {
             assert_eq!(cfg.watchdog_stale_timeout_secs, 70);
             assert_eq!(cfg.watchdog_confirm_secs, 20);
             assert_eq!(cfg.watchdog_sweep_secs, 25);
-        },
-    );
-}
-
-#[allow(unsafe_code)]
-#[test]
-fn freshness_max_due_per_tick_accepts_configured_values_above_default() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[jobs.freshness]\nmax-due-per-tick = 12\n").unwrap();
-
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_FRESHNESS_MAX_DUE_PER_TICK"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_FRESHNESS_MAX_DUE_PER_TICK");
-            let toml_cfg = into_config_via_args(&["status"]).unwrap();
-            assert_eq!(toml_cfg.freshness_max_due_per_tick, 12);
-
-            env::set_var("AXON_FRESHNESS_MAX_DUE_PER_TICK", "20");
-            let env_cfg = into_config_via_args(&["status"]).unwrap();
-            assert_eq!(env_cfg.freshness_max_due_per_tick, 20);
         },
     );
 }

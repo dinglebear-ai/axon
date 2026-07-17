@@ -33,6 +33,23 @@ fn provider() -> ChromeRenderProvider {
     ChromeRenderProvider::new(ChromeRenderConfig::default())
 }
 
+#[tokio::test]
+async fn render_rejects_private_and_local_schemes_before_browser_bootstrap() {
+    for uri in [
+        "http://127.0.0.1/admin",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.1/private",
+        "http://[fd00::1]/private",
+        "file:///etc/passwd",
+    ] {
+        let err = provider()
+            .render(request(uri.to_string(), RenderMode::Chrome))
+            .await
+            .expect_err("blocked render target must fail before Chrome starts");
+        assert_eq!(err.code.to_string(), "render.invalid_uri", "target: {uri}");
+    }
+}
+
 #[test]
 fn map_render_mode_round_trips_all_variants() {
     for mode in [RenderMode::Http, RenderMode::Chrome, RenderMode::AutoSwitch] {
