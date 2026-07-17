@@ -210,7 +210,8 @@ Exit criteria:
 
 - [x] implement prune plans and receipts - plans carry a `plan_id` and
   execution folds per-step results into receipts; public selector execution
-  covers source/generation/collection deletes (vector + ledger), while
+  covers source/generation/collection vector deletes (generation-fenced via
+  the ledger), while
   artifact/graph/memory/job-retention/cache selectors remain plan-only on the
   public surface and attach an explicit `prune.selector_unsupported` warning
   instead of reading as clean no-ops (the cleanup-debt drain executes vector,

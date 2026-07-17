@@ -3,6 +3,7 @@ use super::super::artifacts::{InlineHint, respond_with_mode};
 use super::super::common::{invalid_params, logged_internal_error};
 use super::super::system_requests::{UploadsMcpRequest, UploadsSubaction};
 use crate::schema::AxonToolResponse;
+use axon_api::source::ApiError;
 use axon_api::source::{
     ContentRef, MetadataMap, UploadAbortRequest, UploadCompleteRequest, UploadCreateRequest,
     UploadId, UploadListRequest,
@@ -10,6 +11,26 @@ use axon_api::source::{
 use base64::Engine as _;
 use rmcp::ErrorData;
 use serde_json::Value;
+
+/// Map a service upload error onto the MCP error taxonomy. Caller-state
+/// errors (bad id, wrong size/type, lifecycle misuse, contention) stay
+/// invalid-params; store IO/record failures are logged server-side and
+/// returned as redacted internal errors so filesystem details never reach
+/// the client.
+fn upload_service_error(context: &'static str, error: ApiError) -> ErrorData {
+    match error.code.0.as_str() {
+        "upload.not_found"
+        | "upload.too_large"
+        | "upload.size_mismatch"
+        | "upload.content_type_mismatch"
+        | "upload.incomplete"
+        | "upload.not_completed"
+        | "upload.not_writable"
+        | "upload.expired"
+        | "upload.busy" => invalid_params(error.message),
+        _ => logged_internal_error(context, &error),
+    }
+}
 
 impl AxonMcpServer {
     pub(in crate::server) async fn handle_uploads(
@@ -32,7 +53,7 @@ impl AxonMcpServer {
                     },
                 )
                 .await
-                .map_err(|error| invalid_params(error.to_string()))?,
+                .map_err(|error| upload_service_error("uploads.list", error))?,
             ),
             UploadsSubaction::Create => serde_json::to_value(
                 axon_services::uploads::create_upload(
@@ -53,12 +74,12 @@ impl AxonMcpServer {
                     },
                 )
                 .await
-                .map_err(|error| invalid_params(error.to_string()))?,
+                .map_err(|error| upload_service_error("uploads.create", error))?,
             ),
             UploadsSubaction::Get => serde_json::to_value(
                 axon_services::uploads::get_upload(&ctx, required_upload_id(req.upload_id)?)
                     .await
-                    .map_err(|error| invalid_params(error.to_string()))?,
+                    .map_err(|error| upload_service_error("uploads.get", error))?,
             ),
             UploadsSubaction::PutContent => {
                 let bytes = upload_content_bytes(&ctx, req.content, req.content_ref).await?;
@@ -71,7 +92,7 @@ impl AxonMcpServer {
                         req.sha256,
                     )
                     .await
-                    .map_err(|error| invalid_params(error.to_string()))?,
+                    .map_err(|error| upload_service_error("uploads.put_content", error))?,
                 )
             }
             UploadsSubaction::Complete => serde_json::to_value(
@@ -84,7 +105,7 @@ impl AxonMcpServer {
                     },
                 )
                 .await
-                .map_err(|error| invalid_params(error.to_string()))?,
+                .map_err(|error| upload_service_error("uploads.complete", error))?,
             ),
             UploadsSubaction::Abort => serde_json::to_value(
                 axon_services::uploads::abort_upload(
@@ -93,7 +114,7 @@ impl AxonMcpServer {
                     UploadAbortRequest { reason: req.reason },
                 )
                 .await
-                .map_err(|error| invalid_params(error.to_string()))?,
+                .map_err(|error| upload_service_error("uploads.abort", error))?,
             ),
         }
         .unwrap_or(Value::Null);
@@ -133,7 +154,7 @@ async fn upload_content_bytes(
         (None, Some(ContentRef::Artifact { artifact_id })) => {
             let artifact = axon_services::uploads::resolve_upload_artifact(ctx, &artifact_id.0)
                 .await
-                .map_err(|error| invalid_params(error.to_string()))?
+                .map_err(|error| upload_service_error("uploads.content_ref", error))?
                 .ok_or_else(|| invalid_params("uploads content_ref artifact not found"))?;
             artifact
                 .content
