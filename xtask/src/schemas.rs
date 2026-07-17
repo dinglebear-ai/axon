@@ -4,6 +4,7 @@ mod cross_check;
 mod families;
 pub mod registry;
 mod removed;
+mod removed_registry;
 mod report;
 mod schema_json;
 mod source_input;

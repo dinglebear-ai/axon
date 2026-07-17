@@ -1,41 +1,21 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
-import { actionOptionId } from "@/components/palette/ActionList";
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { PaletteShell } from "@/components/palette/PaletteShell";
 import {
   actionConfirmationArmed,
-  actionConfirmationMessage,
   actionNeedsConfirmation,
   confirmationFor,
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
-import { buildHelpRun, helpAction } from "@/lib/actionHelp";
-import {
-  ACTIONS,
-  actionMatches,
-  type PaletteAction,
-  type RemotePaletteAction,
-} from "@/lib/actions";
+import { ACTIONS, actionMatches, type PaletteAction } from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
-import { createAxonClient, executeAction } from "@/lib/axonClient";
+import { createAxonClient } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke, isTauriRuntime } from "@/lib/invoke";
-import {
-  loadPaletteHistory,
-  normalizeChatSuggestions,
-  persistPaletteHistory,
-} from "@/lib/paletteHistoryStorage";
-import {
-  argumentFor,
-  focusInput,
-  looksLikeUrl,
-  parseCommand,
-  sortActionsByRelevance,
-  sortActionsForDisplay,
-  validationMessage,
-} from "@/lib/paletteView";
+import { loadPaletteHistory, persistPaletteHistory } from "@/lib/paletteHistoryStorage";
+import { argumentFor, focusInput, validationMessage } from "@/lib/paletteView";
 import {
   browserInitialTarget,
   INITIAL_VIEW,
@@ -46,10 +26,9 @@ import {
   modeOf,
   viewReducer,
 } from "@/lib/paletteViewState";
-import { strField, unwrapPayload } from "@/lib/payload";
-import type { ChatSuggestion, RunState } from "@/lib/runState";
+import type { RunState } from "@/lib/runState";
 import { hostLabel } from "@/lib/url";
-import { capHistory, useActionRunner } from "@/lib/useActionRunner";
+import { useActionRunner } from "@/lib/useActionRunner";
 import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
 import { useChatToolRunner } from "@/lib/useChatToolRunner";
 import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
@@ -57,9 +36,13 @@ import { useJobPoll } from "@/lib/useJobPoll";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
 import { useOpenJob } from "@/lib/useOpenJob";
 import { usePaletteConfig } from "@/lib/usePaletteConfig";
+import { usePaletteHelp } from "@/lib/usePaletteHelp";
+import { usePaletteInputKeyDown } from "@/lib/usePaletteInputKeyDown";
 import { usePaletteLifecycle } from "@/lib/usePaletteLifecycle";
 import { usePalettePins } from "@/lib/usePalettePins";
+import { usePaletteSelection } from "@/lib/usePaletteSelection";
 import { useSourcesNavigation } from "@/lib/useSourcesNavigation";
+import { useSuggestMessage } from "@/lib/useSuggestMessage";
 import { useWindowChrome } from "@/lib/useWindowChrome";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
@@ -114,80 +97,39 @@ export default function App() {
     copyOutput: (text) => void copyOutput(text),
   });
 
-  const parsed = useMemo(() => parseCommand(query), [query]);
-  const hasQuery = query.trim().length > 0;
-  const filtered = useMemo(() => {
-    if (parsed.invoked) return [parsed.invoked];
-    if (looksLikeUrl(parsed.search)) {
-      return sortActionsForDisplay(ACTIONS).slice(0, 12);
-    }
-    const matches = ACTIONS.filter((action) => actionMatches(action, parsed.search));
-    if (parsed.search.trim().length > 0 && matches.length === 0) {
-      const ask = ACTIONS.find((action) => action.subcommand === "ask");
-      return ask ? [ask] : [];
-    }
-    return sortActionsByRelevance(matches, parsed.search).slice(0, 12);
-  }, [parsed.invoked, parsed.search]);
-  const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
-  const prevSelectionKeyRef = useRef(selectionKey);
-  let selectedIndex = selected;
-  if (prevSelectionKeyRef.current !== selectionKey) {
-    prevSelectionKeyRef.current = selectionKey;
-    selectedIndex = 0;
-    if (selected !== 0) setSelected(0);
-  }
-  selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
-  const suggestedAction = filtered[selectedIndex];
-  const slashInvokedAction = query.trimStart().startsWith("/") ? parsed.invoked : undefined;
-  const active = slashInvokedAction ?? modeAction ?? suggestedAction;
-  const askSessions = useMemo(
-    () =>
-      history.filter(
-        (item) => item.action.subcommand === "ask" && item.text && (item.prompt || item.target),
-      ),
-    [history],
-  );
-  const askFallback =
-    active?.subcommand === "ask" &&
-    !modeAction &&
-    !parsed.invoked &&
-    parsed.search.trim().length > 0 &&
-    !actionMatches(active, parsed.search);
-  const activeArgument = active
-    ? askFallback
-      ? parsed.search
-      : argumentFor(active, slashInvokedAction ? null : modeAction, parsed, query)
-    : "";
-  const validation = active ? validationMessage(active, activeArgument) : "No matching action";
-  const confirmationArmed =
-    active && !validation
-      ? actionConfirmationArmed(pendingConfirmation, active, activeArgument)
-      : false;
-  const guardMessage =
-    active && !validation && actionNeedsConfirmation(active)
-      ? actionConfirmationMessage(active, Boolean(confirmationArmed))
-      : "";
-  const canRunLocalAction = active?.kind === "local";
-  const jobMinimized = run.kind === "asyncJob" && run.minimized;
-  const jobExpanded = run.kind === "asyncJob" && !run.minimized;
-  const showOutput = run.kind !== "idle" && !jobMinimized;
-  const enteringArgument =
-    Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen && !browserOpen;
-  const showContent =
-    settingsOpen ||
-    historyOpen ||
-    browserOpen ||
-    showOutput ||
-    (!enteringArgument && (hasQuery || browseOpen));
-  const compact = !showContent;
-  const showResultsLayout = showOutput || settingsOpen || historyOpen || browserOpen;
-  const hideCommandBar =
-    browserOpen || (showOutput && (active?.subcommand === "ask" || active?.subcommand === "chat"));
-  const showActionPanel =
-    !showResultsLayout && !settingsOpen && !historyOpen && !browserOpen && !enteringArgument;
-  const listboxOpen = showContent && showActionPanel;
-  const activeDescendantId =
-    listboxOpen && suggestedAction ? actionOptionId(suggestedAction) : undefined;
+  const {
+    active,
+    activeDescendantId,
+    askFallback,
+    askSessions,
+    canRunLocalAction,
+    compact,
+    filtered,
+    guardMessage,
+    hasQuery,
+    hideCommandBar,
+    jobExpanded,
+    jobMinimized,
+    listboxOpen,
+    parsed,
+    showActionPanel,
+    showContent,
+    showOutput,
+    showResultsLayout,
+    validation,
+  } = usePaletteSelection({
+    browseOpen,
+    browserOpen,
+    history,
+    historyOpen,
+    modeAction,
+    pendingConfirmation,
+    query,
+    run,
+    selected,
+    setSelected,
+    settingsOpen,
+  });
 
   const settingsFocusRef = useFocusReturn<HTMLDivElement>(settingsOpen);
   const historyFocusRef = useFocusReturn<HTMLDivElement>(historyOpen && !settingsOpen);
@@ -344,62 +286,20 @@ export default function App() {
     focusInput(true);
   }
 
-  function showHelpFor(action?: PaletteAction, unknownTarget?: string) {
-    const cleanUnknownTarget = !action && unknownTarget?.trim() ? unknownTarget.trim() : undefined;
-    const helpRun = buildHelpRun(action, cleanUnknownTarget);
-    const localHelpAction = helpAction();
-    const historyItem: HistoryItem = {
-      action: localHelpAction,
-      target: action?.subcommand ?? cleanUnknownTarget ?? "catalog",
-      status: helpRun.result.status,
-      title: helpRun.title,
-      subtitle: helpRun.subtitle,
-      text: helpRun.text,
-      outputKind: "markdown",
-      result: helpRun.result,
-      when: "just now",
-    };
-    dispatchView({ type: "showHelp", action: localHelpAction });
-    setQuery(action?.subcommand ?? cleanUnknownTarget ?? "");
-    setRun(helpRun);
-    setHistory((items) => capHistory([historyItem, ...items]));
-  }
-
-  function onInputKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      if (modeAction?.subcommand === "ask" && askSessions.length > 0) {
-        setAskSessionsOpen(true);
-        return;
-      }
-      // Arrow-down is the keyboard affordance to browse all actions without
-      // typing (focus alone no longer expands the palette).
-      if (!modeAction) dispatchView({ type: "openBrowse" });
-      setSelected((idx) => Math.min(idx + 1, Math.max(filtered.length - 1, 0)));
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setSelected((idx) => Math.max(idx - 1, 0));
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      if (!active) return;
-      if (
-        !modeAction &&
-        !parsed.invoked &&
-        active.argMode !== "none" &&
-        !looksLikeUrl(parsed.search)
-      ) {
-        enterActionMode(active);
-      } else {
-        requestSubmit(active, askFallback ? parsed.search : undefined);
-      }
-    } else if (event.key === "Tab") {
-      event.preventDefault();
-      if (!active) return;
-      // No-input actions run immediately rather than entering an empty arg mode.
-      if (active.argMode === "none") requestSubmit(active);
-      else enterActionMode(active);
-    }
-  }
+  const showHelpFor = usePaletteHelp({ dispatchView, setHistory, setQuery, setRun });
+  const onInputKeyDown = usePaletteInputKeyDown({
+    active,
+    askFallback,
+    askSessionsLength: askSessions.length,
+    dispatchView,
+    enterActionMode,
+    filteredLength: filtered.length,
+    modeAction,
+    parsed,
+    requestSubmit,
+    setAskSessionsOpen,
+    setSelected,
+  });
 
   const outputKind =
     "outputKind" in run ? run.outputKind : active ? outputKindFor(active.subcommand) : "code";
@@ -468,28 +368,7 @@ export default function App() {
     setRun,
     onFallbackRunAction: onRunAction,
   });
-  const onSuggestMessage = useCallback(
-    async (message: string): Promise<ChatSuggestion[]> => {
-      if (!client || !config) throw new Error("Axon is not connected.");
-      const queryAction = ACTIONS.find(
-        (action): action is RemotePaletteAction =>
-          action.subcommand === "query" && action.kind !== "local",
-      );
-      if (!queryAction) throw new Error("Query action is unavailable.");
-      const result = await executeAction(client, queryAction, message, config);
-      if (!result.ok) {
-        const payload = unwrapPayload(result.payload);
-        throw new Error(
-          strField(payload, "message") ??
-            strField(payload, "error") ??
-            strField(payload, "detail") ??
-            `Query failed with HTTP ${result.status}`,
-        );
-      }
-      return normalizeChatSuggestions(result.payload);
-    },
-    [client, config],
-  );
+  const onSuggestMessage = useSuggestMessage(client, config);
   const onHistory = useCallback(() => {
     setRun({ kind: "idle" });
     dispatchView({ type: "openHistory" });
