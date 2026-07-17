@@ -428,3 +428,118 @@ async fn dispatch_mcp_tool_call_captures_artifact() {
         Some(counts.generation.clone())
     );
 }
+
+/// Deserialize the structured `SourceProgressEvent` payloads a job recorded.
+async fn structured_events(
+    jobs: &FakeJobWatchStore,
+    job_id: axon_api::source::JobId,
+) -> Vec<axon_api::source::SourceProgressEvent> {
+    jobs.recorded_events(job_id)
+        .await
+        .into_iter()
+        .filter_map(|event| {
+            event
+                .details
+                .get("source_progress_event")
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn non_web_pipeline_emits_structured_phase_completions() {
+    use axon_api::source::{LifecycleStatus, PipelinePhase};
+
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let (runtime, jobs) = test_runtime_with_jobs(vectors, ledger);
+    let request = SourceRequest::new("cli:rg --help").without_embedding();
+    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let policy = super::tool_auth::ToolExecutionPolicy::test_cli("rg");
+
+    let counts = run_cli_tool(&runtime, "cli:rg --help", None, &routed.route, &policy)
+        .await
+        .expect("cli tool metadata dispatch should succeed");
+
+    let events = structured_events(&jobs, counts.job_id).await;
+    let completed = |phase: PipelinePhase| {
+        events
+            .iter()
+            .find(|event| event.phase == phase && event.status == LifecycleStatus::Completed)
+            .unwrap_or_else(|| panic!("missing completed event for {phase:?}"))
+    };
+    let discovered = completed(PipelinePhase::Discovering);
+    assert_eq!(discovered.counts.items_total, Some(1));
+    assert_eq!(discovered.source_id, Some(counts.source_id.clone()));
+    assert!(discovered.canonical_uri.is_some());
+    completed(PipelinePhase::Diffing);
+    completed(PipelinePhase::Fetching);
+    completed(PipelinePhase::Normalizing);
+    let published = completed(PipelinePhase::Publishing);
+    assert_eq!(published.generation, Some(counts.generation.clone()));
+    assert_eq!(published.counts.documents_done, counts.documents_prepared);
+    assert!(
+        events
+            .iter()
+            .all(|event| event.status != LifecycleStatus::Failed),
+        "successful non-web run must not record failed events"
+    );
+}
+
+#[tokio::test]
+async fn non_web_pipeline_failure_emits_one_structured_terminal_failure() {
+    use axon_api::source::{LifecycleStatus, PipelinePhase};
+    use axon_vectors::store::FakeVectorMode;
+
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors =
+        Arc::new(FakeVectorStore::new("fake-vector").with_mode(FakeVectorMode::PartialFailure));
+    let (runtime, jobs) = test_runtime_with_jobs(vectors, ledger);
+    let request = SourceRequest::new("cli:rg --help");
+    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let execution = SourceExecutionContext::inline(request, None);
+    let policy = super::tool_auth::ToolExecutionPolicy::test_cli("rg");
+
+    let error = dispatch_cli_tool(
+        &runtime,
+        "cli:rg --help",
+        "axon-test",
+        "test-owner",
+        None,
+        true,
+        &routed.route,
+        &execution,
+        &policy,
+    )
+    .await
+    .expect_err("partial vector failure must fail the pipeline");
+    assert!(!error.to_string().is_empty());
+
+    let page = axon_jobs::boundary::JobStore::list(
+        jobs.as_ref(),
+        axon_api::source::JobListRequest {
+            status: None,
+            kind: None,
+            source_id: None,
+            watch_id: None,
+            limit: Some(10),
+            cursor: None,
+        },
+    )
+    .await
+    .expect("list jobs");
+    assert_eq!(page.items.len(), 1, "pipeline created one durable job");
+    let job_id = page.items[0].job_id;
+    let events = structured_events(&jobs, job_id).await;
+    let failed = events
+        .iter()
+        .filter(|event| event.status == LifecycleStatus::Failed)
+        .collect::<Vec<_>>();
+    assert_eq!(failed.len(), 1, "exactly one terminal failure event");
+    assert_eq!(failed[0].phase, PipelinePhase::Complete);
+    assert_eq!(
+        failed[0].error.as_ref().map(|error| error.code.0.as_str()),
+        Some("source.index_failed")
+    );
+}

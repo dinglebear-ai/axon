@@ -39,7 +39,16 @@ pub async fn write_json_artifact(
                 .and_then(|job| job.get("id"))
                 .and_then(|value| value.as_str())
         })
-        .and_then(|value| Uuid::parse_str(value).ok())
+        .and_then(|value| match Uuid::parse_str(value) {
+            Ok(id) => Some(id),
+            Err(_) => {
+                // A non-UUID job id would silently unlink this response
+                // artifact from `artifacts list --job-id`; make that drift
+                // diagnosable.
+                tracing::debug!(job_id = %value, "response artifact payload job_id is not a UUID; dropping job linkage");
+                None
+            }
+        })
         .map(JobId::new);
     let url = payload
         .get("url")

@@ -3,12 +3,23 @@ use super::super::artifacts::{InlineHint, respond_with_mode};
 use super::super::common::{invalid_params, logged_internal_error};
 use super::super::system_requests::{ArtifactsMcpRequest, ArtifactsSubaction};
 use crate::schema::AxonToolResponse;
-use axon_api::source::{ArtifactId, ArtifactListRequest, JobId, SourceId};
+use axon_api::source::{ApiError, ArtifactId, ArtifactListRequest, JobId, SourceId};
 use base64::Engine;
 use rmcp::ErrorData;
 use uuid::Uuid;
 
 const MAX_INLINE_CONTENT_BYTES: u64 = 1024 * 1024;
+
+/// Map a service artifact error onto the MCP error taxonomy. Identity errors
+/// the caller can fix stay invalid-params; store/read failures (whose messages
+/// may embed server filesystem paths) are logged server-side and returned as
+/// redacted internal errors instead.
+fn artifact_service_error(context: &'static str, error: ApiError) -> ErrorData {
+    match error.code.0.as_str() {
+        "artifact.not_found" | "artifact.invalid_id" => invalid_params(error.message),
+        _ => logged_internal_error(context, &error),
+    }
+}
 
 impl AxonMcpServer {
     pub(in crate::server) async fn handle_artifacts(
@@ -40,7 +51,7 @@ impl AxonMcpServer {
                     },
                 )
                 .await
-                .map_err(|error| invalid_params(error.message))?,
+                .map_err(|error| artifact_service_error("artifacts.list", error))?,
             )
             .map_err(|error| logged_internal_error("artifacts.list", &error))?,
             ArtifactsSubaction::Get => serde_json::to_value(
@@ -49,7 +60,7 @@ impl AxonMcpServer {
                     ArtifactId::new(required_id(&req)?),
                 )
                 .await
-                .map_err(|error| invalid_params(error.message))?,
+                .map_err(|error| artifact_service_error("artifacts.get", error))?,
             )
             .map_err(|error| logged_internal_error("artifacts.get", &error))?,
             ArtifactsSubaction::Content => {
@@ -58,7 +69,7 @@ impl AxonMcpServer {
                     ArtifactId::new(required_id(&req)?),
                 )
                 .await
-                .map_err(|error| invalid_params(error.message))?;
+                .map_err(|error| artifact_service_error("artifacts.content", error))?;
                 if content.size_bytes > MAX_INLINE_CONTENT_BYTES {
                     return Err(invalid_params(format!(
                         "artifact content is {} bytes; MCP inline content is capped at {} bytes; use /v1/artifacts/{}/content",
@@ -109,3 +120,7 @@ fn required_id(req: &ArtifactsMcpRequest) -> Result<String, ErrorData> {
         .map(ToString::to_string)
         .ok_or_else(|| invalid_params("artifacts get/content requires artifact_id"))
 }
+
+#[cfg(test)]
+#[path = "artifacts_tests.rs"]
+mod tests;

@@ -124,6 +124,12 @@ pub(crate) fn status_for_api_error(error: &ApiError) -> StatusCode {
             | "upload.invalid_record" => StatusCode::INTERNAL_SERVER_ERROR,
             _ => StatusCode::BAD_REQUEST,
         },
+        "artifact" => match code {
+            "artifact.not_found" => StatusCode::NOT_FOUND,
+            "artifact.invalid_id" => StatusCode::BAD_REQUEST,
+            // read_failed / list_failed / invalid_manifest are store faults.
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        },
         "provider" => match code {
             "provider.rate_limited" | "provider.cooling" => StatusCode::TOO_MANY_REQUESTS,
             _ => StatusCode::BAD_GATEWAY,

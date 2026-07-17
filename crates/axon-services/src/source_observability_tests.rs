@@ -85,12 +85,12 @@ async fn page_source_emits_ordered_phase_events() {
         .await
         .expect("event phases");
 
-    // Whether document preparation degrades here is feature-dependent (a
-    // default-features build registers no web parser and emits a structured
-    // `CompletedDegraded` warning event at the Publishing phase; an
-    // all-features build parses cleanly and emits none), so the ordered spine
-    // is asserted with warning events filtered out, and any warning events
-    // that do occur must sit at the Publishing phase.
+    // The spine assertion filters out `CompletedDegraded` warning events so it
+    // doesn't couple to whether preparation warns for this fixture: warnings
+    // depend on the acquisition path's content kind (an HTML-fetched page has
+    // no registered parser and degrades; a rendered-markdown page parses
+    // cleanly). Any warning events that do occur must sit at the Publishing
+    // phase.
     for (phase, status) in phases
         .iter()
         .filter(|(_, status)| *status == LifecycleStatus::CompletedDegraded)

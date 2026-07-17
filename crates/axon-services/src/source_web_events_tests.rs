@@ -1,7 +1,7 @@
 //! Structured `SourceProgressEvent` projection tests for the web source
 //! pipeline: phase completions carry source identity, generation, and stage
-//! counts; terminal failures carry a structured error; and each run emits
-//! exactly one terminal-phase event.
+//! counts; terminal failures carry a structured error; and a failing run
+//! emits exactly one terminal failure event.
 //!
 //! See the module doc on `web_source_tests.rs` for why these use
 //! `SourceScope::Page` + `FakeAdapterProviders`.
@@ -86,6 +86,73 @@ async fn web_refresh_emits_structured_phase_completions() {
             .iter()
             .all(|event| event.status != LifecycleStatus::Failed),
         "successful run must not record failed events"
+    );
+}
+
+#[tokio::test]
+async fn map_scope_emits_structured_publishing_completion() {
+    let (store, job_id) = store_with_job().await;
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let map_input = WebSourceIndexInput {
+        scope: SourceScope::Map,
+        map_urls: vec![
+            "https://example.com/docs/intro".to_string(),
+            "https://example.com/docs/api".to_string(),
+        ],
+        ..input(store.clone(), job_id)
+    };
+
+    let output = index_web_source(map_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+
+    let events = progress_events(&store, job_id).await;
+    let published = completed_event(&events, PipelinePhase::Publishing);
+    assert_eq!(published.generation, Some(output.generation.clone()));
+    assert_eq!(published.counts.items_total, Some(2));
+    assert_eq!(published.counts.documents_done, 0);
+    assert_eq!(published.counts.chunks_done, 0);
+    assert_eq!(
+        events.last().map(|event| (event.phase, event.status)),
+        Some((PipelinePhase::Publishing, LifecycleStatus::Completed)),
+        "map runs must end on the structured publishing completion"
+    );
+}
+
+#[tokio::test]
+async fn embed_false_emits_structured_publishing_completion_with_documents() {
+    let (store, job_id) = store_with_job().await;
+    let ledger = FakeLedgerStore::new();
+    let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
+    let vectors = FakeVectorStore::new("fake-vector");
+    let no_embed_input = WebSourceIndexInput {
+        embed: false,
+        ..input(store.clone(), job_id)
+    };
+
+    let output = index_web_source(no_embed_input, &ledger, &embedder, &vectors)
+        .await
+        .unwrap();
+    assert!(output.documents_prepared >= 1);
+    assert_eq!(output.vector_points_written, 0);
+
+    let events = progress_events(&store, job_id).await;
+    let published = completed_event(&events, PipelinePhase::Publishing);
+    assert_eq!(published.generation, Some(output.generation.clone()));
+    assert_eq!(published.counts.documents_done, output.documents_prepared);
+    assert_eq!(published.counts.chunks_done, output.chunks_prepared);
+    assert_eq!(
+        events.last().map(|event| (event.phase, event.status)),
+        Some((PipelinePhase::Publishing, LifecycleStatus::Completed)),
+        "embed=false runs must end on the structured publishing completion"
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| event.status != LifecycleStatus::Failed),
+        "successful embed=false run must not record failed events"
     );
 }
 
