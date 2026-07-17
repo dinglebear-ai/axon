@@ -763,6 +763,9 @@ jobs:
             config
             config.example.toml
             docker-compose.prod.yaml
+            # check-release-versions verifies each component's
+            # release_workflow file exists on disk.
+            .github/workflows
             migrations
             vendor
             README.md
