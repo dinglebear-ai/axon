@@ -56,6 +56,86 @@ fn create_request() -> JobCreateRequest {
     }
 }
 
+/// A source job created with no `source_id` can be stamped with one via a
+/// status update ONLY after that source row exists. `jobs.source_id` FKs to
+/// `sources(source_id)` with `PRAGMA foreign_keys = ON`, so stamping an
+/// unknown source_id fails with a FOREIGN KEY error — NOT an invalid
+/// transition. This is the store-level invariant behind the live git-index
+/// bug: the generic non-web pipeline stamped `jobs.source_id` in its first
+/// Running update before upserting the source, and the resulting FK failure
+/// left the job Queued so the terminal handler's Queued -> Failed masked the
+/// real cause. The fix upserts the source first; this test pins why order
+/// matters.
+#[tokio::test]
+async fn status_update_stamping_unknown_source_id_fails_foreign_key_not_transition() {
+    let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
+    // Deliberately do NOT seed the source row.
+    let store = SqliteUnifiedJobStore::new(pool.clone());
+    let mut request = create_request();
+    request.source_id = None;
+    request.idempotency_key = None;
+    let job = store.create(request).await.expect("create job");
+
+    let error = store
+        .update_status(JobStatusUpdate {
+            source_id: Some(SourceId::new("src_missing")),
+            job_id: job.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Leasing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: Some("acquiring source lease".to_string()),
+            error: None,
+        })
+        .await
+        .expect_err("stamping an unknown source_id must fail the foreign key");
+    let rendered = error.to_string().to_lowercase();
+    assert!(
+        rendered.contains("foreign key"),
+        "expected a foreign-key error, got: {error}"
+    );
+    // The transition itself is legal; the failure is purely the missing FK
+    // target, and the job stays Queued.
+    let summary = store
+        .get(job.job_id)
+        .await
+        .expect("get job")
+        .expect("job exists");
+    assert_eq!(summary.status, LifecycleStatus::Queued);
+
+    // Once the source row exists, the same update succeeds and the job runs.
+    seed_source_row(&pool, "src_missing").await;
+    store
+        .update_status(JobStatusUpdate {
+            source_id: Some(SourceId::new("src_missing")),
+            job_id: job.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Leasing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: Some("acquiring source lease".to_string()),
+            error: None,
+        })
+        .await
+        .expect("stamping a known source_id succeeds");
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Running);
+}
+
+async fn seed_source_row(pool: &sqlx::SqlitePool, source_id: &str) {
+    sqlx::query(
+        "INSERT OR IGNORE INTO sources (
+            source_id, committed_generation, summary_json, created_at, updated_at
+        ) VALUES (?, NULL, '{}', '1970-01-01T00:00:00Z', '1970-01-01T00:00:00Z')",
+    )
+    .bind(source_id)
+    .execute(pool)
+    .await
+    .expect("seed source row");
+}
+
 #[tokio::test]
 async fn migration_creates_canonical_job_tables() {
     let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");

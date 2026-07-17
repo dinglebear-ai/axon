@@ -103,8 +103,8 @@ async fn get_json(
     }
 }
 
-fn article_detail_api_url(article_id: u64) -> String {
-    format!("https://dev.to/api/articles/{article_id}")
+fn article_by_path_api_url(username: &str, slug: &str) -> String {
+    format!("https://dev.to/api/articles/{username}/{slug}")
 }
 
 fn select_article_body(data: &serde_json::Value) -> &str {
@@ -131,44 +131,23 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
     }
 
     let (username, slug) = (segs[0], segs[1]);
-    // Try the article by path API (returns array filtered by username+slug)
-    let api_url = format!("https://dev.to/api/articles?username={username}&per_page=100");
+    // Resolve the article directly by path. dev.to's
+    // `GET /api/articles/{username}/{slug}` returns the full article — including
+    // `body_markdown` — in a single call, and 404s cleanly when the path does
+    // not resolve. The former approach listed the author's 100 most-recent
+    // articles and matched the slug locally, which silently missed older
+    // articles from prolific authors (the target fell outside that window and
+    // degraded to a generic HTML fetch). The by-path endpoint has no such
+    // recency horizon.
+    let api_url = article_by_path_api_url(username, slug);
 
     let client = http_client().map_err(|_| VerticalError::VerticalTargetUnavailable {
         vertical: INFO.name,
         status: 0,
     })?;
 
-    let articles = get_json(client, &api_url, ctx).await?;
-
-    // Find the article matching our slug
-    let article = articles
-        .as_array()
-        .and_then(|arr| {
-            arr.iter()
-                .find(|a| a["slug"].as_str().map(|s| s == slug).unwrap_or(false))
-        })
-        .cloned();
-
-    let data = match article {
-        Some(a) => a,
-        None => {
-            return Err(VerticalError::VerticalTargetNotFound {
-                vertical: INFO.name,
-                url: url.to_string(),
-            });
-        }
-    };
-    let article_id = data["id"]
-        .as_u64()
-        .ok_or(VerticalError::VerticalTargetUnavailable {
-            vertical: INFO.name,
-            status: 0,
-        })?;
-    let detail_api_url = article_detail_api_url(article_id);
-    let data = get_json(client, &detail_api_url, ctx).await?;
+    let data = get_json(client, &api_url, ctx).await?;
     tracing::debug!(
-        article_id,
         body_markdown_len = data["body_markdown"].as_str().map(str::len).unwrap_or(0),
         description_len = data["description"].as_str().map(str::len).unwrap_or(0),
         "dev_to.detail_fetched"
@@ -182,8 +161,9 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
 
-    // The author listing endpoint only includes `description`; the per-article
-    // endpoint includes the full `body_markdown`.
+    // The by-path endpoint returns the full article, so `body_markdown` is
+    // present; `select_article_body` keeps a defensive fall back to
+    // `description` for any partial/legacy response shape.
     let body = select_article_body(&data);
 
     let published_at = data["published_at"].as_str().unwrap_or("");
@@ -206,7 +186,7 @@ pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, Ver
         markdown: md,
         title,
         extractor_name: INFO.name,
-        extractor_version: 3,
+        extractor_version: 4,
         structured: Some(data),
         follow_crawl_urls: vec![],
         extra: Some(extra),

@@ -92,6 +92,27 @@ where
 {
     let source_id = input.plan.route.source.source_id.clone();
     let previous = runtime.ledger.get_source(source_id.clone()).await?;
+    // Upsert the source row BEFORE the first job-status update. `jobs.source_id`
+    // has a foreign key to `sources(source_id)`, and `record_running_phase`
+    // stamps `jobs.source_id`; if the source row does not exist yet the update
+    // fails with a FOREIGN KEY constraint, the job stays Queued, and the
+    // terminal handler's Queued -> Failed then masks the real cause with a
+    // spurious `job.invalid_transition`. Seen live on every generic non-web
+    // family (git/feed/youtube/reddit/session/registry); the web/local paths
+    // already upsert the source first.
+    let running_counts = previous
+        .as_ref()
+        .map(preserved_source_counts)
+        .unwrap_or_else(empty_source_counts);
+    runtime
+        .ledger
+        .upsert_source(metadata::source_summary(
+            input,
+            LifecycleStatus::Running,
+            running_counts,
+            previous.as_ref(),
+        ))
+        .await?;
     record_running_phase(
         runtime,
         input,
@@ -111,18 +132,6 @@ where
         })
         .await?
         .ok_or_else(|| anyhow::anyhow!("source refresh already running for {}", source_id.0))?;
-    runtime
-        .ledger
-        .upsert_source(metadata::source_summary(
-            input,
-            LifecycleStatus::Running,
-            previous
-                .as_ref()
-                .map(preserved_source_counts)
-                .unwrap_or_else(empty_source_counts),
-            previous.as_ref(),
-        ))
-        .await?;
     let result = match materialize(input.plan.clone()).await {
         Ok(materialized) => {
             input.plan = materialized.plan.clone();
@@ -441,7 +450,13 @@ fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {
         priority: input.execution.priority,
         idempotency_key: input.execution.idempotency_key.clone(),
         stage_plan: input.plan.stage_plan.clone(),
-        request: serde_json::to_value(&input.plan.request).ok(),
+        // Wrap as `{"source_request": <..>}` — the shape the source worker
+        // (`run_source_request_with_context`) requires. Writing a raw
+        // SourceRequest here diverges from `enqueue_source`, so if a worker
+        // ever claimed one of these generic non-web jobs (recovery/retry of
+        // an interrupted git/feed/youtube/reddit/session/registry index) it
+        // failed with "source job request is missing `source_request`".
+        request: Some(serde_json::json!({ "source_request": input.plan.request })),
         auth_snapshot: input
             .auth_snapshot
             .cloned()

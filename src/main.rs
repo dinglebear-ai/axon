@@ -131,10 +131,29 @@ fn main() -> std::process::ExitCode {
             // path. `main() -> Result<...>`'s default `Termination` impl would
             // otherwise print the raw `Debug` of `err` (which can embed a URL,
             // connection string, or file path) straight to stderr.
+            //
+            // Walk the source chain explicitly: a `Box<dyn Error>` wrapping an
+            // `anyhow` context chain only Displays its outermost context
+            // ("local source indexing failed"), which hides the actionable
+            // cause the pipeline recorded. Bounded depth defends against a
+            // pathological self-referential `source()`.
             use axon_core::redact::Redactor;
+            const MAX_CHAIN_DEPTH: usize = 16;
+            let mut chain = err.to_string();
+            let mut source = err.source();
+            let mut depth = 0;
+            while let Some(cause) = source {
+                if depth >= MAX_CHAIN_DEPTH {
+                    chain.push_str(" … (source chain truncated)");
+                    break;
+                }
+                chain.push_str(&format!(": {cause}"));
+                source = cause.source();
+                depth += 1;
+            }
             let redactor = axon_core::redact::DefaultRedactor::new();
             let message = redactor.redact_text(
-                &err.to_string(),
+                &chain,
                 &axon_core::redact::RedactionContext::transport_response(),
             );
             eprintln!("Error: {message}");

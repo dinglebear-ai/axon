@@ -245,17 +245,42 @@ async fn registry_adapter_reports_error_for_empty_versions_dump() {
 }
 
 #[tokio::test]
-async fn registry_adapter_rejects_mismatched_route_adapter() {
+async fn registry_adapter_rejects_non_registry_source_kind() {
     let adapter = RegistrySourceAdapter::new();
     let dump_path = write_dump(valid_dump_json());
     let mut plan = source_plan(dump_path, SourceScope::Package);
-    plan.route.adapter.name = "web".to_string();
+    // A route whose source kind is not Registry (validation is keyed off the
+    // kind, since one implementation serves every registry-family name).
+    plan.route.source.source_kind = SourceKind::Web;
 
     let err = adapter
         .discover(&plan)
         .await
-        .expect_err("mismatched adapter route should be rejected");
+        .expect_err("non-registry source kind should be rejected");
 
     assert_eq!(err.code.0, "adapter.registry.mismatch");
     assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+/// Regression: the resolver routes package targets to registry-family adapters
+/// named `crates`/`npm`/`pypi`/`docker` (all `SourceKind::Registry`), while
+/// `RegistrySourceAdapter` is the single implementation behind them. Keying
+/// validation off the literal name `"registry"` rejected every real package
+/// target with `adapter.registry.mismatch` (seen live indexing `crates:anyhow`).
+#[tokio::test]
+async fn registry_adapter_accepts_registry_family_adapter_names() {
+    let adapter = RegistrySourceAdapter::new();
+    for family in ["crates", "npm", "pypi", "docker"] {
+        let dump_path = write_dump(valid_dump_json());
+        let mut plan = source_plan(dump_path, SourceScope::Package);
+        plan.route.adapter.name = family.to_string();
+        plan.route.source.adapter.name = family.to_string();
+        let manifest = adapter.discover(&plan).await.unwrap_or_else(|error| {
+            panic!("registry family adapter `{family}` must be accepted: {error}")
+        });
+        assert!(
+            !manifest.items.is_empty(),
+            "registry family adapter `{family}` should discover items"
+        );
+    }
 }

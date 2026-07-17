@@ -67,6 +67,54 @@ fn idempotency_changes_with_authoritative_record_content() {
 }
 
 #[tokio::test]
+async fn recovery_accepts_a_failed_inline_job_via_idempotency_dedup() {
+    use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
+
+    let store = FakeJobWatchStore::new();
+    let record = record(MemoryStatus::Active);
+
+    // Simulate the *inline* canonical-publication attempt: it creates a durable
+    // `Source` job under the memory recovery idempotency key, then lands
+    // terminal-`Failed` — exactly what happens when embedding fails because TEI
+    // is down. This is the row the recovery enqueue below will idempotently
+    // rediscover.
+    let seeded = crate::source::enqueue::enqueue_source(
+        source_request(&record, "remember"),
+        &store,
+        Some(AuthSnapshot::trusted_system(SYNC_POLICY_VERSION)),
+    )
+    .await
+    .expect("seed inline publication job");
+    let job_id = seeded.job.expect("seeded job descriptor").job_id;
+    for status in [LifecycleStatus::Running, LifecycleStatus::Failed] {
+        store
+            .update_status(JobStatusUpdate {
+                job_id,
+                source_id: None,
+                status,
+                phase: PipelinePhase::Embedding,
+                stage_id: None,
+                counts: None,
+                current: None,
+                message: None,
+                error: None,
+            })
+            .await
+            .expect("drive seeded job to Failed");
+    }
+
+    // The recovery enqueue reuses the same idempotency key, so it idempotently
+    // returns the already-`Failed` inline row (`job = Some`, `status = Failed`).
+    // A durable recovery marker exists and job recovery will retry it once the
+    // data plane returns, so this MUST be accepted — regressing here reproduces
+    // the mcp-smoke `url_memory_remember` failure where memory remember raised
+    // "canonical publication is pending" with TEI down.
+    enqueue_memory_records(&store, std::slice::from_ref(&record), "remember")
+        .await
+        .expect("a Failed inline job is still a valid durable recovery marker");
+}
+
+#[tokio::test]
 async fn unavailable_enqueue_leaves_a_same_status_recovery_marker() {
     use axon_memory::store::{FakeMemoryStore, MemoryStore};
 

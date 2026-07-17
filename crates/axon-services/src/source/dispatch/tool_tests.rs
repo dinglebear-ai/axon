@@ -332,6 +332,14 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
         .await
         .expect("durable request lookup")
         .expect("durable source request");
+    // The generic non-web job must persist its request under `source_request`
+    // so a worker recovering/retrying it can parse it (matching
+    // `enqueue_source`); a raw SourceRequest here fails the source runner with
+    // "source job request is missing `source_request`".
+    assert!(
+        durable_request.get("source_request").is_some(),
+        "durable request must be wrapped as {{\"source_request\": ..}}, got: {durable_request}"
+    );
     let durable_request = serde_json::to_string(&durable_request).unwrap();
     assert!(!durable_request.contains("Authorization"));
     assert!(!durable_request.contains("sk-lane4"));

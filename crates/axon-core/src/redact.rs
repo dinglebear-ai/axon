@@ -54,7 +54,7 @@ static STRUCTURED_RE: LazyLock<Regex> = LazyLock::new(|| {
         | \bsk-[A-Za-z0-9][A-Za-z0-9_\-]*      # OpenAI-style key (token-anchored, any length)
         | \bgh[pousr]_[A-Za-z0-9]+             # GitHub token ghp_/gho_/ghu_/ghs_/ghr_ (any length, no tail leak)
         | \batk_[A-Za-z0-9_\-]+                # atk_-prefixed token
-        | (?i:authorization)[:=]\S*            # Authorization header/assignment value
+        | (?i:authorization)[:=][\ \t]*(?:(?i:bearer|basic|token)[\ \t]+)?\S*  # Authorization value, with or without scheme word/spacing (horizontal space only so a bare header never swallows the next line)
         | \S*(?i:API_KEY|TOKEN|SECRET)[:=]\S*  # any non-ws run with API_KEY/TOKEN/SECRET followed by = or : (case-insensitive)
         ",
     )

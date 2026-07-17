@@ -192,3 +192,39 @@ async fn discover_rejects_unsupported_scope() {
     assert!(err.code.to_string().contains("scope"));
     fs::remove_dir_all(&repo).ok();
 }
+
+/// Regression: the resolver routes forge URLs to git-family adapters named
+/// `github`/`gitea`/`gitlab` (all `SourceKind::Git`), while `GitSourceAdapter`
+/// is the single implementation behind them. Validation must accept those
+/// routes — keying off the literal name `"git"` rejected every real GitHub
+/// URL with `adapter.git.mismatch` (seen live).
+#[tokio::test]
+async fn discover_accepts_forge_family_adapter_names() {
+    let repo = fixture_repo();
+    for forge in ["github", "gitea", "gitlab"] {
+        let mut plan = git_plan(&repo, SourceScope::Repo, true);
+        plan.route.adapter.name = forge.to_string();
+        plan.route.source.adapter.name = forge.to_string();
+        let manifest = GitSourceAdapter::new()
+            .discover(&plan)
+            .await
+            .unwrap_or_else(|error| panic!("forge adapter `{forge}` must be accepted: {error}"));
+        assert!(
+            !manifest.items.is_empty(),
+            "forge adapter `{forge}` should discover repo files"
+        );
+    }
+    fs::remove_dir_all(&repo).ok();
+}
+
+/// A route whose source kind is not `Git` (e.g. an accidental `Web` route
+/// reaching the git adapter) is still rejected.
+#[tokio::test]
+async fn discover_rejects_non_git_source_kind() {
+    let repo = fixture_repo();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    plan.route.source.source_kind = SourceKind::Web;
+    let err = GitSourceAdapter::new().discover(&plan).await.unwrap_err();
+    assert_eq!(err.code.to_string(), "adapter.git.mismatch");
+    fs::remove_dir_all(&repo).ok();
+}

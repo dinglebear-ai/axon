@@ -261,11 +261,16 @@ fn build_candidate(
     let source_id = counts.source_id.clone();
     let source_item_key = SourceItemKey::new(canonical_uri);
     let container_key = container_stable_key(&source_id, canonical_uri);
+    // Carry the real canonical URI as a node property: without it,
+    // `canonical_uri_for` falls back to the composite stable key, the
+    // canonical_uri alias stores that composite, and `graph resolve <uri>` /
+    // `graph query <uri>` can never match a plain URI (seen live on the
+    // reset 7.0 stores).
     let container = GraphNodeCandidate {
         node_kind: container_node_kind(kind).to_string(),
         stable_key: container_key.clone(),
         label: canonical_uri.to_string(),
-        properties: MetadataMap::new(),
+        properties: uri_properties(canonical_uri),
     };
 
     let mut nodes = vec![container];
@@ -280,7 +285,7 @@ fn build_candidate(
             node_kind: document_node_kind(item).to_string(),
             stable_key: doc_key.clone(),
             label: item.canonical_uri.clone(),
-            properties: MetadataMap::new(),
+            properties: uri_properties(&item.canonical_uri),
         });
         edges.push(GraphEdgeCandidate {
             edge_kind: edge_kind.to_string(),
@@ -343,6 +348,18 @@ fn containment_evidence(
 
 /// Stable key for the container node — the source's canonical URI, namespaced by
 /// source id so distinct sources never collide on a shared URI shape.
+/// Node properties carrying the plain canonical URI so graph merge stores it
+/// (and its alias) as the node's canonical identity instead of falling back
+/// to the composite stable key.
+fn uri_properties(canonical_uri: &str) -> MetadataMap {
+    let mut properties = MetadataMap::new();
+    properties.insert(
+        "canonical_uri".to_string(),
+        serde_json::json!(canonical_uri),
+    );
+    properties
+}
+
 fn container_stable_key(source_id: &SourceId, canonical_uri: &str) -> String {
     format!("source:{}:{}", source_id.0, canonical_uri)
 }

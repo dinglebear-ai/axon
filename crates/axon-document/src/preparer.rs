@@ -39,12 +39,34 @@ impl DocumentPreparer {
         // function doc comment for the full rationale.
         project_structured_payload_metadata(&mut request.document);
         let metadata_parse = take_metadata_artifacts(&mut request.document.metadata);
+        // Pass 1 of 2: pre-chunk redaction. `axon-vectors` runs the second
+        // (final, authoritative) pass at vector-payload build time; scrubbing
+        // here as well keeps secrets out of the chunk boundaries, chunk
+        // hashes, and any parse facts/graph candidates derived from the text,
+        // not just the eventual payload.
+        //
+        // Redaction MUST precede the self-parse below: parse facts and graph
+        // candidates carry line numbers and quotes, and range/quote validation
+        // later slices the redacted text. A redaction pass that rewrites the
+        // content between parsing and validation would shift or alter lines
+        // and fail preparation with "quote outside source range" (seen live
+        // with fenced `Authorization: Bearer …` examples in docs).
+        let content = redact_pre_chunk(
+            content_text(&request.document),
+            &request.document.source_item_key,
+        );
         // Activate axon-parse on the acquisition path: when the caller did not
         // pre-supply parse facts, parse the document here so parser-driven chunk
         // routing and graph candidates actually flow. Callers that already carry
         // facts (or explicitly forced a profile) keep their supplied artifacts.
+        // The self-parse sees the same post-redaction text that chunking and
+        // range validation use.
         let parse = if request.parse_facts.is_empty() && metadata_parse.facts.is_empty() {
-            parse_document(&request.document)
+            let mut parse_doc = request.document.clone();
+            parse_doc.content = ContentRef::InlineText {
+                text: content.text.clone(),
+            };
+            parse_document(&parse_doc)
         } else {
             DocumentParse::default()
         };
@@ -61,15 +83,6 @@ impl DocumentPreparer {
                 .map(Ok)
                 .unwrap_or_else(|| self.router.route(&request.document))?,
         };
-        // Pass 1 of 2: pre-chunk redaction. `axon-vectors` runs the second
-        // (final, authoritative) pass at vector-payload build time; scrubbing
-        // here as well keeps secrets out of the chunk boundaries, chunk
-        // hashes, and any parse facts/graph candidates derived from the raw
-        // text, not just the eventual payload.
-        let content = redact_pre_chunk(
-            content_text(&request.document),
-            &request.document.source_item_key,
-        );
         let bounds = bounds_for_text(&content.text);
         let effective_profile = content.force_profile.unwrap_or(profile);
         // Concrete method distinct from the profile name: routes through the
@@ -265,10 +278,15 @@ fn redact_pre_chunk(
     content: PreparedContentText,
     source_item_key: &SourceItemKey,
 ) -> PreparedContentText {
-    use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
-
-    let redacted =
-        DefaultRedactor.redact_text(&content.text, &RedactionContext::vector_payload(None));
+    // Span-level scrub: replace each secret-shaped run with the redaction
+    // placeholder while keeping the rest of the document intact. The
+    // tombstone-style `Redactor::redact_text` is for short free-text
+    // surfaces (log lines, transport messages) and replaces the ENTIRE
+    // input when any secret is present — applied to a whole document it
+    // turned one fenced `Authorization: Bearer …` example into a
+    // single-line "[REDACTED]" body, destroying the document and every
+    // parse fact derived from it.
+    let redacted = axon_core::redact::redact_secrets(&content.text);
     if redacted == content.text {
         return content;
     }

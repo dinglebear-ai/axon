@@ -27,10 +27,12 @@ fn test_build_extra_fields() {
 }
 
 #[test]
-fn test_article_detail_api_url_uses_numeric_id() {
+fn test_article_by_path_api_url_resolves_directly() {
+    // Direct by-path resolution — no recency window, so old articles from
+    // prolific authors resolve just like recent ones.
     assert_eq!(
-        article_detail_api_url(3348526),
-        "https://dev.to/api/articles/3348526"
+        article_by_path_api_url("devteam", "announcing-the-2024-writing-challenge-5e9c"),
+        "https://dev.to/api/articles/devteam/announcing-the-2024-writing-challenge-5e9c"
     );
 }
 
