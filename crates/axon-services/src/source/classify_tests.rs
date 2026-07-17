@@ -276,3 +276,53 @@ async fn classify_source_input_detects_registry_target() {
         SourceInputKind::Registry
     );
 }
+
+#[tokio::test]
+async fn classify_source_input_detects_tool_sources() {
+    assert_eq!(
+        classify_source_input("cli:rg --help").await,
+        SourceInputKind::CliTool
+    );
+    assert_eq!(
+        classify_source_input("mcp:labby/search").await,
+        SourceInputKind::McpTool
+    );
+}
+
+#[test]
+fn tool_sources_require_tool_execution_safety() {
+    assert_eq!(
+        safety_class_for(SourceInputKind::CliTool),
+        axon_api::source::SafetyClass::ToolExecution
+    );
+    assert_eq!(
+        safety_class_for(SourceInputKind::McpTool),
+        axon_api::source::SafetyClass::ToolExecution
+    );
+}
+
+#[tokio::test]
+async fn classify_source_input_detects_memory_and_upload_sources() {
+    assert_eq!(
+        classify_source_input("memory://mem_abc").await,
+        SourceInputKind::Memory
+    );
+    assert_eq!(
+        classify_source_input("upload:upl_abc").await,
+        SourceInputKind::Upload
+    );
+    assert_eq!(
+        classify_source_input("artifact://art_abc").await,
+        SourceInputKind::Upload
+    );
+}
+
+#[test]
+fn memory_and_upload_sources_require_authenticated_write_safety() {
+    for kind in [SourceInputKind::Memory, SourceInputKind::Upload] {
+        assert_eq!(
+            safety_class_for(kind),
+            axon_api::source::SafetyClass::AuthenticatedNetwork
+        );
+    }
+}

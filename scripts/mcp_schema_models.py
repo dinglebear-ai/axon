@@ -126,9 +126,7 @@ VARIANT_TO_ACTION: dict[str, str] = {
     "Screenshot": "screenshot",
     "Diff": "diff",
     "Brand": "brand",
-    "Purge": "purge",
     "Prune": "prune",
-    "ElicitDemo": "elicit_demo",
 }
 
 # Overrides where the request struct name doesn't follow the `f"{Variant}Request"`
@@ -148,9 +146,7 @@ STRUCT_TO_ACTION: dict[str, str] = {
 # compatibility) but are DENIED on the MCP surface: MCP_ACTION_SPECS omits them
 # and crates/axon-mcp/src/server.rs rejects them with invalid_params before
 # dispatch (issue #298 WS-G). They must not be documented as MCP tool actions.
-MCP_DENIED_ACTIONS: frozenset[str] = frozenset(
-    {"sources", "domains", "stats", "elicit_demo"}
-)
+MCP_DENIED_ACTIONS: frozenset[str] = frozenset({"sources", "domains", "stats"})
 
 # Lifecycle families get special documentation treatment.
 LIFECYCLE_FAMILIES: set[str] = {"extract"}

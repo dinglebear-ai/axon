@@ -170,7 +170,7 @@ fn render_pipeline_row(report: &serde_json::Value, name: &str) {
 
 fn render_pipelines_section(report: &serde_json::Value) {
     println!("{}", primary("Pipelines"));
-    for name in ["crawl", "extract", "embed", "ingest"] {
+    for name in ["source", "extract", "watch", "prune"] {
         render_pipeline_row(report, name);
     }
     // Extra warning line for extract when infra is up but LLM is missing.
@@ -192,7 +192,7 @@ fn render_stale_jobs_section(report: &serde_json::Value) {
         println!("{}", primary("Job Backlog"));
         if stale > 0 {
             println!(
-                "  {} {} job(s) stuck in running >15 min — consider `axon crawl recover`",
+                "  {} {} job(s) stuck in running >15 min — consider `axon jobs recover`",
                 symbol_for_status("failed"),
                 stale,
             );

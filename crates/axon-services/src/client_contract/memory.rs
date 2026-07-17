@@ -123,6 +123,7 @@ impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
             file: req.file,
             status: req.status,
             confidence: req.confidence,
+            salience: None,
             limit: req.limit,
             depth: req.depth,
             token_budget: req.token_budget,
@@ -133,9 +134,7 @@ impl From<RestMemoryRequest> for axon_api::mcp_schema::MemoryRequest {
             memory_ids: req.memory_ids,
             strategy: req.strategy,
             archive_sources: req.archive_sources,
-            // The legacy `/v1/memory` passthrough never carried import/export
-            // fields; those subactions are only reachable via the dedicated
-            // `/v1/memories/import` and `/v1/memories/export` routes.
+            // Import/export use their dedicated typed request contracts.
             records: None,
             import_mode: None,
             dry_run: None,

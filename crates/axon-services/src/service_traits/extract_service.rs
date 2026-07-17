@@ -158,9 +158,9 @@ impl ExtractService for FakeExtractService {
                 offset: request.offset.unwrap_or(0),
                 search_results: Vec::new(),
                 extractions: Vec::new(),
-                auto_crawl_status: "skipped".to_string(),
-                crawl_jobs: Vec::new(),
-                crawl_jobs_rejected: Vec::new(),
+                source_index_status: "skipped".to_string(),
+                source_jobs: Vec::new(),
+                source_jobs_rejected: Vec::new(),
                 summary: Some("fake research summary".to_string()),
                 summary_source: crate::types::SummarySource::None,
                 usage: crate::types::ResearchUsage {

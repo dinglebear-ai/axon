@@ -1,10 +1,12 @@
 # Memory Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-16
 
 ## Contract
 
-Memory is a first-class durable knowledge subsystem. It is not a source adapter
-and not a generic note table.
+Memory is a first-class durable knowledge subsystem, not a generic note table.
+SQLite lifecycle storage is authoritative. A narrow `memory://mem_*` source
+adapter projects authoritative records into the unified publication pipeline;
+it does not replace or own memory lifecycle mutations.
 
 `axon-memory` owns memory lifecycle, scoring, decay, review, compaction,
 reinforcement, supersession, contradiction handling, and durable memory
@@ -16,8 +18,11 @@ Memory uses shared pipeline components where appropriate:
 ```text
 MemoryRequest
   -> MemoryService
-  -> MemoryStore
-  -> SourceDocument(memory://...)
+  -> MemoryStore (authoritative SQLite commit)
+  -> SourceRequest(memory://...)
+  -> memory source adapter
+  -> source ledger generation
+  -> SourceDocument
   -> DocumentPreparer
   -> EmbeddingProvider
   -> VectorStore
@@ -25,26 +30,46 @@ MemoryRequest
   -> MemoryResult
 ```
 
-Memory must not masquerade as a source adapter. Source ingestion indexes
-external material; memory stores durable assertions, preferences, decisions,
-tasks, incidents, procedures, and working context.
+Memory lifecycle remains distinct from external acquisition. The source adapter
+is only the canonical projection boundary used after lifecycle changes, so
+memory receives the same preparation, embedding, publication, graph, cleanup,
+observability, and recovery guarantees as every other indexed source.
+
+## Mutation Publication and Recovery
+
+- `remember`, `update`, `supersede`, `forget`, and `compact` commit SQLite first.
+- Every affected record is then refreshed through its stable `memory://mem_*`
+  identity. Terminal records produce an empty authorized manifest so the ledger
+  removes their prior publication instead of writing a second tombstone vector.
+- A worker-bearing process may run the source pipeline synchronously. An
+  enqueue-only process persists a `JobKind::Source` row carrying the complete
+  `SourceRequest`; that job is the durable recovery marker.
+- Inline publication failures fall back to the same durable source job. If the
+  job row itself cannot be persisted, the record receives a same-status
+  `memory.source_sync_pending` history event and the mutation call reports that
+  publication is pending. The SQLite mutation is never rolled back or hidden.
+- `VectorBackedMemoryStore` is recall-only. It must never embed, upsert, delete,
+  or graph-mirror lifecycle mutations directly, and no generation-0 memory
+  vectors exist.
+- Memory semantic recall filters canonical published payloads by
+  `source_kind=memory`; it does not use a private vector namespace.
 
 ## Ownership Boundary
 
 | Area | `axon-memory` Owns | Other Boundary Owns |
 |---|---|---|
 | memory records | type, status, body, scope, score, decay, history | SQLite physical storage through `MemoryStore` |
-| semantic recall | memory query policy, ranking blend, reinforcement signals | embeddings and vector search through providers |
-| graph links | memory-to-source/entity/decision relationships | graph persistence through `GraphStore` |
+| semantic recall | memory query policy, ranking blend, reinforcement signals | canonical source publication plus vector search through providers |
+| graph links | memory-to-source/entity/decision relationships | adapter graph candidates and graph persistence through the source pipeline |
 | context assembly | token budget, exclusions, ordering, redaction | LLM prompt use by `AskService`/other callers |
 | review lifecycle | review queues, contradictions, decay prompts | UI rendering by CLI/REST/MCP/app surfaces |
 | compaction | distillation rules and source-memory status changes | LLM provider when synthesis is needed |
 
 Memory must not own:
 
-- source acquisition
-- adapter routing
-- source generations
+- external source acquisition
+- general adapter routing
+- source-generation persistence
 - Qdrant collection schema outside memory payload fields
 - graph persistence internals
 - app-specific UI state

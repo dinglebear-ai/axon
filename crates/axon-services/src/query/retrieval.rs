@@ -93,7 +93,7 @@ pub async fn query_via_retrieval_with_cfg(
         .hits
         .into_iter()
         .skip(opts.offset)
-        .take(opts.limit.max(1))
+        .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
         .enumerate()
         .map(|(idx, hit)| QueryHit {
             rank: (opts.offset + idx + 1) as u64,
@@ -102,6 +102,7 @@ pub async fn query_via_retrieval_with_cfg(
             source: display_source(&hit.canonical_uri),
             url: hit.canonical_uri,
             snippet: hit.text,
+            citation: hit.citation,
             chunk_index: None,
             file_path: None,
             symbol: None,

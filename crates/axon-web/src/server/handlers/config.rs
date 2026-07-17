@@ -7,9 +7,10 @@ use super::super::types::{
 };
 use super::super::utils::authorized;
 use axon_api::mcp_schema::{
-    AxonRequest, CrawlRequest, CrawlSubaction, ExtractRequest, ExtractSubaction, ResponseMode,
-    ScrapeRequest, ScreenshotRequest, StatusRequest,
+    AxonRequest, ExtractRequest, ExtractSubaction, ResponseMode, ScreenshotRequest, SourceRequest,
+    StatusRequest,
 };
+use axon_api::source::{ArtifactId, SourceScope};
 use axon_core::config::Config;
 use axon_services::{action_api, config as config_service, query as query_service, setup, system};
 use axum::{
@@ -304,34 +305,30 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
     match verb.as_str() {
         "status" => Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Status(
             StatusRequest {
-                subaction: None,
                 response_mode: Some(ResponseMode::Inline),
             },
         )))),
         "scrape" => {
             let url = required_arg(rest, "scrape requires a URL")?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Scrape(
-                ScrapeRequest {
-                    url: Some(normalize_url(url)),
-                    render_mode: None,
-                    format: None,
-                    embed: None,
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Source(
+                SourceRequest {
+                    source: Some(normalize_url(url)),
+                    scope: Some(SourceScope::Page),
+                    collection: None,
                     response_mode: Some(ResponseMode::Inline),
-                    root_selector: None,
-                    exclude_selector: None,
-                    cursor: None,
-                    token_budget: None,
+                    detached: None,
                 },
             ))))
         }
         "crawl" => {
             let url = required_arg(rest, "crawl requires a URL")?;
-            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Crawl(
-                CrawlRequest {
-                    subaction: Some(CrawlSubaction::Start),
-                    urls: Some(vec![normalize_url(url)]),
+            Ok(ParsedPanelCommand::Action(Box::new(AxonRequest::Source(
+                SourceRequest {
+                    source: Some(normalize_url(url)),
+                    scope: Some(SourceScope::Site),
+                    collection: None,
                     response_mode: Some(ResponseMode::Inline),
-                    ..Default::default()
+                    detached: None,
                 },
             ))))
         }
@@ -348,7 +345,6 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     subaction: Some(ExtractSubaction::Start),
                     urls: Some(vec![normalize_url(url)]),
                     prompt: Some(prompt.to_string()),
-                    response_mode: Some(ResponseMode::Inline),
                     ..Default::default()
                 },
             ))))
@@ -360,7 +356,6 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     url: Some(normalize_url(url)),
                     full_page: Some(true),
                     viewport: None,
-                    output: None,
                     response_mode: Some(ResponseMode::Inline),
                 },
             ))))
@@ -401,12 +396,7 @@ fn sanitize_status_payload(mut value: serde_json::Value) -> serde_json::Value {
     let Some(object) = value.as_object_mut() else {
         return value;
     };
-    for key in [
-        "local_crawl_jobs",
-        "local_extract_jobs",
-        "local_embed_jobs",
-        "local_ingest_jobs",
-    ] {
+    for key in ["source_jobs", "extract_jobs", "watch_jobs", "prune_jobs"] {
         let Some(jobs) = object
             .get_mut(key)
             .and_then(serde_json::Value::as_array_mut)
@@ -422,23 +412,17 @@ fn sanitize_status_payload(mut value: serde_json::Value) -> serde_json::Value {
     value
 }
 
-/// Serve an artifact file from the configured output directory.
-///
-/// Requires a valid panel session, then delegates to
-/// [`super::artifacts::serve_artifact_from_path`], which validates `rel_path`
-/// (rejecting absolute paths, `..` traversal, symlinks, and escapes of
-/// `cfg.output_dir`) before streaming the file. The output root is the same one
-/// used when constructing the artifact handle paths the panel links to.
+/// Serve artifact content by opaque identifier to an authenticated panel.
 pub async fn panel_artifact(
-    State((state, cfg)): State<(AppState, Arc<Config>)>,
+    State((state, _cfg)): State<(AppState, Arc<Config>)>,
     headers: HeaderMap,
-    Path(rel_path): Path<String>,
+    Path(artifact_id): Path<ArtifactId>,
 ) -> impl IntoResponse {
     if !authorized(&state, &headers) {
         return HttpError::new(StatusCode::UNAUTHORIZED, "unauthorized", "unauthorized")
             .into_response();
     }
-    match super::artifacts::serve_artifact_from_path(&cfg, rel_path).await {
+    match super::artifacts::serve_panel_artifact(&state.service_context, artifact_id).await {
         Ok(response) => response,
         Err(err) => err.into_response(),
     }

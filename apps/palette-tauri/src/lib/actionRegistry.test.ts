@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTION_REGISTRY, actionBehavior, maybeActionBehavior, type StructuredViewKey } from "./actionRegistry";
+import {
+  ACTION_REGISTRY,
+  actionBehavior,
+  maybeActionBehavior,
+  type StructuredViewKey,
+} from "./actionRegistry";
 import { ACTIONS, type PaletteSubcommand } from "./actions";
-import { outputKindFor } from "./format";
 import { actionRouteTemplate } from "./axonClient";
+import { outputKindFor } from "./format";
 
 // The full set of subcommands the palette can dispatch: every ACTIONS entry,
-// which already includes the 24 generated job-lifecycle members.
+// which already includes the generated unified job-lifecycle members.
 const ALL_SUBCOMMANDS = ACTIONS.map((a) => a.subcommand);
 
 describe("ACTION_REGISTRY exhaustiveness", () => {
@@ -16,11 +21,11 @@ describe("ACTION_REGISTRY exhaustiveness", () => {
     }
   });
 
-  it("covers all 24 job-lifecycle members", () => {
+  it("covers all unified job-lifecycle members", () => {
     const lifecycle = ALL_SUBCOMMANDS.filter((s) =>
-      /^(crawl|embed|extract|ingest)-(list|status|cancel|cleanup|clear|recover)$/.test(s),
+      /^jobs-(list|status|cancel|cleanup|clear|recover)$/.test(s),
     );
-    expect(lifecycle).toHaveLength(24);
+    expect(lifecycle).toHaveLength(6);
     for (const subcommand of lifecycle) {
       expect(ACTION_REGISTRY[subcommand].structuredView, subcommand).toBe("job-lifecycle");
     }
@@ -53,16 +58,14 @@ describe("ACTION_REGISTRY exhaustiveness", () => {
       sources: true,
       domains: true,
       doctor: true,
-      crawl: true,
-      embed: true,
+      "source-site": true,
+      source: true,
       extract: true,
-      ingest: true,
       github: true,
       endpoints: true,
       brand: true,
       diff: true,
       screenshot: true,
-      dedupe: true,
       "watch-list": true,
       "watch-create": true,
       "watch-run": true,
@@ -111,17 +114,40 @@ describe("registry-derived shims preserve behavior", () => {
   });
 
   it("exposes the documented job-lifecycle route templates", () => {
-    expect(ACTION_REGISTRY["crawl-status"].route).toEqual({ method: "GET", path: "/v1/crawl/{id}" });
-    expect(ACTION_REGISTRY["embed-cancel"].route).toEqual({ method: "POST", path: "/v1/embed/{id}/cancel" });
-    expect(ACTION_REGISTRY["ingest-clear"].route).toEqual({ method: "DELETE", path: "/v1/ingest" });
-    expect(ACTION_REGISTRY["extract-recover"].route).toEqual({ method: "POST", path: "/v1/extract/recover" });
-    expect(ACTION_REGISTRY["watch-run"].route).toEqual({ method: "POST", path: "/v1/watches/{id}/exec" });
+    expect(ACTION_REGISTRY["jobs-status"].route).toEqual({ method: "GET", path: "/v1/jobs/{id}" });
+    expect(ACTION_REGISTRY["jobs-cancel"].route).toEqual({
+      method: "POST",
+      path: "/v1/jobs/{id}/cancel",
+    });
+    expect(ACTION_REGISTRY["jobs-clear"].route).toEqual({ method: "DELETE", path: "/v1/jobs" });
+    expect(ACTION_REGISTRY["jobs-recover"].route).toEqual({
+      method: "POST",
+      path: "/v1/jobs/recover",
+    });
+    expect(ACTION_REGISTRY["watch-run"].route).toEqual({
+      method: "POST",
+      path: "/v1/watches/{id}/exec",
+    });
+  });
+
+  it("does not expose removed family job routes", () => {
+    const legacyPrefixes = new Set(["crawl", "embed", "ingest", "extract"]);
+    const staleLifecycleKeys = Object.keys(ACTION_REGISTRY).filter((key) => {
+      const [prefix, operation] = key.split("-");
+      return (
+        legacyPrefixes.has(prefix ?? "") &&
+        ["list", "status", "cancel", "cleanup", "clear", "recover"].includes(operation ?? "")
+      );
+    });
+    expect(staleLifecycleKeys).toEqual([]);
   });
 });
 
 describe("actionBehavior boundaries", () => {
   it("throws on unknown subcommands instead of silently inventing generic behavior", () => {
-    expect(() => actionBehavior("not-a-real-subcommand")).toThrow("Unknown palette action: not-a-real-subcommand");
+    expect(() => actionBehavior("not-a-real-subcommand")).toThrow(
+      "Unknown palette action: not-a-real-subcommand",
+    );
     expect(maybeActionBehavior("not-a-real-subcommand")).toBeNull();
   });
 });

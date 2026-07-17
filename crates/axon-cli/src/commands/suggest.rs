@@ -21,7 +21,7 @@ pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
     } else if result.suggestions.is_empty() {
         println!("{}", muted("No suggestions found."));
     } else {
-        println!("{}", primary("Suggested sources to crawl"));
+        println!("{}", primary("Suggested sources to index"));
         print_aurora_table(
             &["URL", "Reason"],
             result

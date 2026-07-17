@@ -102,8 +102,7 @@ jobs:
     name: mcp-transport-modes
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -143,9 +142,7 @@ jobs:
     name: aurora-primitive-inventory
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): all Android/Palette-adjacent CI is disabled during the
-    # pipeline-unification refactor.
-    if: ${{ false && (needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true') }}
+    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -161,9 +158,7 @@ jobs:
     name: android
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): Android validation is expensive; run it manually during
-    # pipeline-unification stabilization.
-    if: ${{ false && needs.changes.outputs.android == 'true' }}
+    if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -241,9 +236,7 @@ jobs:
     name: android-openapi-client
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): Android OpenAPI client validation is disabled during the
-    # large pipeline-unification refactor.
-    if: ${{ false && (needs.changes.outputs.android == 'true' || needs.changes.outputs.openapi == 'true') }}
+    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.openapi == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -282,8 +275,7 @@ jobs:
     name: no-mod-rs
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -330,8 +322,7 @@ jobs:
     name: sqlite-migrations
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -430,9 +421,7 @@ jobs:
     name: palette-tauri
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): Palette/Tauri validation is expensive; re-enable before
-    # desktop release stabilization.
-    if: ${{ false && needs.changes.outputs.palette == 'true' }}
+    if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -521,9 +510,7 @@ jobs:
     # 25m08s — a timeout despite all real steps passing). Give it headroom.
     timeout-minutes: 40
     needs: [changes]
-    # TEMP(refactor): disable Windows xtask checks during the pipeline-unification
-    # refactor. Re-enable before the release stabilization pass.
-    if: ${{ false && needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -587,9 +574,7 @@ jobs:
     # this cross-compiled binary.
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable Windows binary builds during the pipeline-unification
-    # refactor. Re-enable before the release stabilization pass.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
@@ -651,8 +636,7 @@ jobs:
     name: shell-completions-smoke
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -689,9 +673,7 @@ jobs:
     name: web-panel
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable web-panel tests during the large
-    # pipeline-unification refactor.
-    if: ${{ false && needs.changes.outputs.web == 'true' }}
+    if: ${{ needs.changes.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -708,6 +690,22 @@ jobs:
         run: npm --prefix apps/web test
       - name: Typecheck web panel
         run: npm --prefix apps/web run lint
+
+  chrome-extension:
+    name: chrome-extension
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: ${{ needs.changes.outputs.chrome == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/chrome-extension
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Test Chrome extension
+        run: npm test --prefix apps/chrome-extension
 
   mcp-schema-doc-sync:
     name: mcp-schema-doc-sync
@@ -728,36 +726,21 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            Cargo.toml
-            Cargo.lock
-            src
-            crates
-            xtask
-            plugins
-            docs
-            .github
-            scripts
-            config
-            vendor
-            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
       - name: Enforce generated pipeline schema artifacts are in sync
         run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- schemas generate --check
+      - name: Enforce generated reference documentation is in sync
+        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- docs generate --check
+      - name: Validate documentation contracts and links
+        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- docs check
 
   version-sync:
     name: version-sync
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable version-bump enforcement while pipeline-unification
-    # lands. Release-please is the only supported version-bump path now
-    # (see CLAUDE.md "Release Pipeline") -- it bumps versions in its own
-    # generated release PR after CI succeeds on main, not per feature PR, so
-    # this per-PR gate is redundant with (and fights) that flow.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -774,7 +757,19 @@ jobs:
             apps/chrome-extension
             apps/palette-tauri
             apps/web/openapi/axon.json
+            plugins/axon/references/rag-synthesize/SKILL.md
+            # check-version-sync asserts this manifest carries no version key.
+            plugins/axon/.claude-plugin
+            # axon-services include_str!s these at compile time; a sparse
+            # checkout without them cannot build xtask's dependency graph.
+            config
+            config.example.toml
+            docker-compose.prod.yaml
+            # check-release-versions verifies each component's
+            # release_workflow file exists on disk.
+            .github/workflows
             migrations
+            vendor
             README.md
             CHANGELOG.md
             .release-please-manifest.json
@@ -788,8 +783,7 @@ jobs:
     name: rest-api-parity
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -846,8 +840,7 @@ jobs:
     name: mcp-oauth-smoke
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     env:
       # TEI_URL must be set to pass startup validation even though TEI is not
       # actually running — this test exercises only the auth layer (/mcp 401).
@@ -1067,8 +1060,7 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): disable >1m PR checks while pipeline-unification lands.
-    if: ${{ false && needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1115,9 +1107,7 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): full workspace nextest is intentionally disabled while the
-    # pipeline-unification refactor is in flight. Keep targeted checks local/PR-specific.
-    if: ${{ false && needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
       # Match the 8 MiB runtime thread stack from main.rs — deep scrape/extract
       # async chains overflow the 2 MiB rustc-test-harness default
@@ -1158,9 +1148,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
-      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+      - uses: taiki-e/install-action@v2
         with:
-          install_args: cargo:cargo-nextest
+          tool: cargo-nextest@0.9.140
       - uses: Swatinem/rust-cache@v2
         with:
           # Shared with `clippy` (same toolchain + features, no RUSTFLAGS);
@@ -1277,7 +1267,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$base" "$head" || true)
           echo "Changed files:"; echo "$changed"
-          if echo "$changed" | grep -qE '^(src/vector/|src/core/llm/|tests/rag_live_integration\.rs)'; then
+          if echo "$changed" | grep -qE '^(crates/axon-(embedding|llm|retrieval|vectors)/|crates/axon-services/src/source/|tests/rag_live_integration\.rs)'; then
             echo "RAG-critical paths changed — will run live RAG test."
             echo "rag=true" >> "$GITHUB_OUTPUT"
           else
@@ -1292,9 +1282,7 @@ jobs:
     name: live-rag-pr
     runs-on: ubuntu-latest
     needs: [rag-changes]
-    # TEMP(refactor): live Qdrant/TEI PR smoke is disabled during the large
-    # pipeline-unification refactor.
-    if: ${{ false && github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
+    if: ${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
     timeout-minutes: 30
     services:
       qdrant:
@@ -1372,7 +1360,9 @@ jobs:
           AXON_DATA_DIR: .cache/axon-ci
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
-        run: cargo test --locked --test rag_live_integration -- --ignored
+        run: |
+          mkdir -p "$AXON_DATA_DIR" "$AXON_LOG_DIR"
+          cargo test --locked --test rag_live_integration -- --ignored
 
       - name: Teardown TEI
         if: always()
@@ -1382,9 +1372,7 @@ jobs:
     name: security
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): cargo audit/deny can exceed the fast PR budget during
-    # pipeline-unification. Re-enable for stabilization/release.
-    if: ${{ false && needs.changes.outputs.security == 'true' }}
+    if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1407,9 +1395,9 @@ jobs:
           toolchain: 1.94.0
       - uses: Swatinem/rust-cache@v2
 
-      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+      - uses: taiki-e/install-action@v2
         with:
-          install_args: cargo:cargo-audit@0.22.1 aqua:EmbarkStudios/cargo-deny@0.19.0
+          tool: cargo-audit@0.22.1,cargo-deny@0.19.0
 
       - name: cargo audit
         run: |
@@ -1427,9 +1415,7 @@ jobs:
     name: mcp-smoke
     runs-on: ubuntu-latest
     needs: [changes, release]
-    # TEMP(refactor): release-binary MCP smoke is disabled during the large
-    # pipeline-unification refactor.
-    if: ${{ false && needs.release.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') }}
+    if: ${{ needs.release.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -1458,6 +1444,13 @@ jobs:
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
         with:
           install_args: node npm:mcporter@0.7.3
+      - name: Pin mcporter for mise shims
+        # `mise install` fetches the tools but leaves no version pinned for
+        # the shims, so every `mcporter` invocation dies with "No version is
+        # set for shim: mcporter". Pin globally, exactly as that error asks.
+        run: |
+          mise use -g node npm:mcporter@0.7.3
+          mcporter --version
 
       - name: Restore Hugging Face model cache
         uses: actions/cache@v5
@@ -1565,7 +1558,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
-        run: ./target/release/axon embed "docs/reference/mcp/overview.md" --wait true --json
+        run: ./target/release/axon source "docs/reference/mcp/overview.md" --wait true --json
 
       - name: Start axon MCP HTTP server
         env:
@@ -1612,8 +1605,7 @@ jobs:
     name: release
     runs-on: ubuntu-latest
     needs: [changes]
-    # TEMP(refactor): release build is disabled during pipeline-unification PRs.
-    if: ${{ false && needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -1648,8 +1640,7 @@ jobs:
     name: release-smoke
     runs-on: ubuntu-latest
     needs: [changes, release]
-    # TEMP(refactor): release smoke is disabled while release build is disabled.
-    if: ${{ false && needs.release.result == 'success' }}
+    if: ${{ needs.release.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v5
         with:
@@ -1679,6 +1670,7 @@ jobs:
       - windows-build
       - shell-completions-smoke
       - web-panel
+      - chrome-extension
       - mcp-schema-doc-sync
       - schema-contract-sync
       - version-sync
@@ -1700,42 +1692,54 @@ jobs:
       - name: verify required jobs passed or were intentionally skipped
         run: |
           set -euo pipefail
-          require_success_or_skipped() {
+          require_success() {
             local name="$1"
             local result="$2"
             case "$result" in
-              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              success) printf '%s=%s\n' "$name" "$result" ;;
               *) echo "::error::$name concluded $result" >&2; exit 1 ;;
             esac
           }
-          require_success_or_skipped changes "${{ needs.changes.result }}"
-          require_success_or_skipped mcp-transport-modes "${{ needs.mcp-transport-modes.result }}"
-          require_success_or_skipped aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}"
-          require_success_or_skipped android "${{ needs.android.result }}"
-          require_success_or_skipped android-openapi-client "${{ needs.android-openapi-client.result }}"
-          require_success_or_skipped no-mod-rs "${{ needs.no-mod-rs.result }}"
-          require_success_or_skipped sqlite-migrations "${{ needs.sqlite-migrations.result }}"
-          require_success_or_skipped toml-fmt "${{ needs.toml-fmt.result }}"
-          require_success_or_skipped lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}"
-          require_success_or_skipped palette-tauri "${{ needs.palette-tauri.result }}"
-          require_success_or_skipped windows-check "${{ needs.windows-check.result }}"
-          require_success_or_skipped windows-build "${{ needs.windows-build.result }}"
-          require_success_or_skipped shell-completions-smoke "${{ needs.shell-completions-smoke.result }}"
-          require_success_or_skipped web-panel "${{ needs.web-panel.result }}"
-          require_success_or_skipped mcp-schema-doc-sync "${{ needs.mcp-schema-doc-sync.result }}"
-          require_success_or_skipped schema-contract-sync "${{ needs.schema-contract-sync.result }}"
-          require_success_or_skipped version-sync "${{ needs.version-sync.result }}"
-          require_success_or_skipped rest-api-parity "${{ needs.rest-api-parity.result }}"
-          require_success_or_skipped mcp-oauth-smoke "${{ needs.mcp-oauth-smoke.result }}"
-          require_success_or_skipped advisory-lock-policy "${{ needs.advisory-lock-policy.result }}"
-          require_success_or_skipped ban-skip-validation "${{ needs.ban-skip-validation.result }}"
-          require_success_or_skipped monolith "${{ needs.monolith.result }}"
-          require_success_or_skipped fmt "${{ needs.fmt.result }}"
-          require_success_or_skipped clippy "${{ needs.clippy.result }}"
-          require_success_or_skipped test "${{ needs.test.result }}"
-          require_success_or_skipped security "${{ needs.security.result }}"
-          require_success_or_skipped mcp-smoke "${{ needs.mcp-smoke.result }}"
-          require_success_or_skipped rag-changes "${{ needs.rag-changes.result }}"
-          require_success_or_skipped live-rag-pr "${{ needs.live-rag-pr.result }}"
-          require_success_or_skipped release "${{ needs.release.result }}"
-          require_success_or_skipped release-smoke "${{ needs.release-smoke.result }}"
+          require_success_or_intentional_skip() {
+            local name="$1"
+            local result="$2"
+            local should_run="$3"
+            case "$result:$should_run" in
+              success:*) printf '%s=%s\n' "$name" "$result" ;;
+              skipped:false) printf '%s=%s\n' "$name" "$result" ;;
+              skipped:true) echo "::error::$name was skipped even though its required condition is true" >&2; exit 1 ;;
+              *) echo "::error::$name concluded $result" >&2; exit 1 ;;
+            esac
+          }
+          require_success changes "${{ needs.changes.result }}"
+          require_success_or_intentional_skip mcp-transport-modes "${{ needs.mcp-transport-modes.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}"
+          require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}"
+          require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
+          require_success_or_intentional_skip android-openapi-client "${{ needs.android-openapi-client.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.openapi == 'true' }}"
+          require_success_or_intentional_skip no-mod-rs "${{ needs.no-mod-rs.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip sqlite-migrations "${{ needs.sqlite-migrations.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' }}"
+          require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"
+          require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
+          require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
+          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' }}"
+          require_success_or_intentional_skip shell-completions-smoke "${{ needs.shell-completions-smoke.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web }}"
+          require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
+          require_success_or_intentional_skip mcp-schema-doc-sync "${{ needs.mcp-schema-doc-sync.result }}" "${{ needs.changes.outputs.mcp }}"
+          require_success_or_intentional_skip schema-contract-sync "${{ needs.schema-contract-sync.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' }}"
+          require_success_or_intentional_skip version-sync "${{ needs.version-sync.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}"
+          require_success_or_intentional_skip rest-api-parity "${{ needs.rest-api-parity.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}"
+          require_success_or_intentional_skip mcp-oauth-smoke "${{ needs.mcp-oauth-smoke.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}"
+          require_success_or_intentional_skip advisory-lock-policy "${{ needs.advisory-lock-policy.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip ban-skip-validation "${{ needs.ban-skip-validation.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip monolith "${{ needs.monolith.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip fmt "${{ needs.fmt.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
+          require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
+          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.changes.outputs.release == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
+          require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
+          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
+          require_success_or_intentional_skip release "${{ needs.release.result }}" "${{ needs.changes.outputs.release }}"
+          require_success_or_intentional_skip release-smoke "${{ needs.release-smoke.result }}" "${{ needs.changes.outputs.release }}"

@@ -4,28 +4,11 @@
 //! repo's monolith line cap. Spliced back into `rest_route_registry()`'s
 //! output in original position by the parent module.
 //!
-//! `/v1/prune/dedupe` and `/v1/prune/purge` are the replacement admin-scoped
-//! homes for the removed `/v1/dedupe` and `/v1/purge` live REST write routes
-//! (U2-06/U2-09) — destructive cleanup now lives exclusively under the prune
-//! surface alongside `/v1/prune/plan` and `/v1/prune/exec`.
+//! Cleanup is plan-first: only `/v1/prune/plan` and `/v1/prune/exec` are public.
 
 use super::{RestRouteSpec, job_admin, read, write};
 
 pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
-    job_admin(
-        "POST",
-        "/v1/prune/dedupe",
-        "dedupe",
-        Some("DedupeRequest"),
-        "DedupeResponse",
-    ),
-    job_admin(
-        "POST",
-        "/v1/prune/purge",
-        "purge",
-        Some("PurgeRequest"),
-        "PurgeResult",
-    ),
     job_admin(
         "POST",
         "/v1/prune/plan",
@@ -39,6 +22,20 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         "prune_exec",
         Some("PruneExecRequest"),
         "PruneResult",
+    ),
+    job_admin(
+        "POST",
+        "/v1/reset/plan",
+        "plan_reset",
+        Some("ResetPlanRequest"),
+        "ResetPlan",
+    ),
+    job_admin(
+        "POST",
+        "/v1/reset/exec",
+        "execute_reset",
+        Some("ResetExecRequest"),
+        "ResetResult",
     ),
     // `POST /v1/watch/{id}/run` was removed per the REST contract's
     // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
@@ -61,6 +58,18 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         "/v1/watches/{watch_id}",
         "watches_get",
         "WatchResult",
+    ),
+    read(
+        "GET",
+        "/v1/watches/{watch_id}/status",
+        "watches_status",
+        "WatchStatusResult",
+    ),
+    read(
+        "GET",
+        "/v1/watches/{watch_id}/history",
+        "watches_history",
+        "WatchHistoryResult",
     ),
     write(
         "PATCH",

@@ -95,7 +95,7 @@
   <div id="dashboard">
     <div class="dashboard-header">
       <div class="dashboard-title">
-        <span class="logo">&#9650;</span> Axon Job Queue
+        <span class="logo">&#9650;</span> Axon Unified Jobs
       </div>
       <div class="last-updated" id="last-updated"></div>
     </div>
@@ -203,6 +203,8 @@ const { App } = globalThis.ExtApps;
     return Math.floor(diff/86400) + 'd ago';
   }
   function jobLabel(job) {
+    if (job.source) return job.source;
+    if (job.canonical_uri) return job.canonical_uri;
     if (job.url) return job.url;
     if (job.source_type && job.target) return job.source_type + ': ' + job.target;
     if (job.target) return job.target;
@@ -212,10 +214,10 @@ const { App } = globalThis.ExtApps;
   }
 
   const SECTIONS = [
-    { key: 'local_crawl_jobs',   label: 'Crawl',   icon: '\uD83D\uDD77\uFE0F' },
-    { key: 'local_extract_jobs', label: 'Extract', icon: '\uD83D\uDD0D' },
-    { key: 'local_embed_jobs',   label: 'Embed',   icon: '\uD83D\uDCE6' },
-    { key: 'local_ingest_jobs',  label: 'Ingest',  icon: '\uD83D\uDCE5' },
+    { key: 'source_jobs',  label: 'Source',  icon: '\uD83D\uDCE6' },
+    { key: 'extract_jobs', label: 'Extract', icon: '\uD83D\uDD0D' },
+    { key: 'watch_jobs',   label: 'Watch',   icon: '\u23F1\uFE0F' },
+    { key: 'prune_jobs',   label: 'Prune',   icon: '\uD83E\uDDF9' },
   ];
 
   function renderCard(job) {

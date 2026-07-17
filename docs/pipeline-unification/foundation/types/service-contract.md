@@ -112,7 +112,7 @@ pub trait DocumentService: Send + Sync {
 pub trait PruneService: Send + Sync {
     async fn plan(&self, request: PruneRequest) -> Result<PrunePlan>;
     async fn execute(&self, request: PruneExecuteRequest) -> Result<PruneResult>;
-    async fn dedupe(&self, request: DedupeRequest) -> Result<DedupeResult>;
+    async fn dedupe(&self, request: PruneDedupeRequest) -> Result<PruneDedupeResult>;
     async fn cleanup_debt(&self, request: CleanupDebtRequest) -> Result<CleanupDebtResult>;
 }
 

@@ -1,5 +1,4 @@
 use axon_api::source::*;
-use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor, redact_metadata};
 use sqlx::Row;
 use sqlx::Sqlite;
 use sqlx::query::Query;
@@ -227,121 +226,6 @@ impl SqliteUnifiedJobStore {
         Ok(())
     }
 
-    pub(crate) async fn append_job_event(&self, mut event: SourceProgressEvent) -> Result<()> {
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
-        ensure_job(&mut tx, event.job_id).await?;
-        let auto_sequence = event.sequence == 0;
-        let sequence = if auto_sequence {
-            sqlx::query_scalar::<_, i64>(
-                "UPDATE jobs
-                 SET last_event_sequence = last_event_sequence + 1
-                 WHERE job_id = ?
-                 RETURNING last_event_sequence",
-            )
-            .bind(event.job_id.0.to_string())
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(sql_error)? as u64
-        } else {
-            let last_sequence = sqlx::query_scalar::<_, i64>(
-                "SELECT last_event_sequence FROM jobs WHERE job_id = ?",
-            )
-            .bind(event.job_id.0.to_string())
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(sql_error)? as u64;
-            let expected = last_sequence + 1;
-            if event.sequence != expected {
-                if let Some(dedupe_key) = event.dedupe_key.as_deref() {
-                    let duplicate_sequence = sqlx::query_scalar::<_, i64>(
-                        "SELECT sequence FROM job_events WHERE job_id = ? AND dedupe_key = ?",
-                    )
-                    .bind(event.job_id.0.to_string())
-                    .bind(dedupe_key)
-                    .fetch_optional(&mut *tx)
-                    .await
-                    .map_err(sql_error)?;
-                    if duplicate_sequence == Some(event.sequence as i64) {
-                        tx.commit().await.map_err(sql_error)?;
-                        return Ok(());
-                    }
-                }
-                return Err(ApiError::new(
-                    "job_event.sequence_invalid",
-                    ErrorStage::Publishing,
-                    format!(
-                        "expected event sequence {} for job {}, got {}",
-                        expected, event.job_id.0, event.sequence
-                    ),
-                ));
-            }
-            event.sequence
-        };
-        event.sequence = sequence;
-        let duplicate_dedupe = if let Some(dedupe_key) = event.dedupe_key.as_deref() {
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM job_events WHERE job_id = ? AND dedupe_key = ?",
-            )
-            .bind(event.job_id.0.to_string())
-            .bind(dedupe_key)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(sql_error)?
-                > 0
-        } else {
-            false
-        };
-        // Fail-closed redaction boundary: `message` (its own column) and
-        // `details_json` (the full serialized event, including any
-        // `error.message`/adapter-supplied fields) both cross into a row
-        // that is later returned verbatim over REST/MCP/CLI. Neither is
-        // trusted content — scrub before the write, not after.
-        let redactor = DefaultRedactor::new();
-        let redaction_context = RedactionContext::job_event();
-        let redacted_message = redactor.redact_text(&event.message, &redaction_context);
-        let (mut details, _redaction_report) =
-            redact_metadata(event_details(&event), &redaction_context, &redactor);
-        let dedupe_key = if duplicate_dedupe {
-            details.insert("dedupe_duplicate".to_string(), serde_json::json!(true));
-            None
-        } else {
-            event.dedupe_key.as_deref()
-        };
-        let result = sqlx::query(
-            "INSERT INTO job_events (
-                event_id, job_id, sequence, attempt, stage_id, phase, status, severity,
-                visibility, message, timestamp, dedupe_key, details_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(event.event_id)
-        .bind(event.job_id.0.to_string())
-        .bind(event.sequence as i64)
-        .bind(event.attempt as i64)
-        .bind(event.stage_id.map(|id| id.0.to_string()))
-        .bind(enum_name(event.phase)?)
-        .bind(enum_name(event.status)?)
-        .bind(enum_name(event.severity)?)
-        .bind(enum_name(event.visibility)?)
-        .bind(redacted_message)
-        .bind(event.timestamp.0)
-        .bind(dedupe_key)
-        .bind(to_json(&details)?)
-        .execute(&mut *tx)
-        .await;
-        if let Err(error) = result {
-            return Err(sql_error(error));
-        }
-        if !auto_sequence {
-            sqlx::query("UPDATE jobs SET last_event_sequence = ? WHERE job_id = ?")
-                .bind(event.sequence as i64)
-                .bind(event.job_id.0.to_string())
-                .execute(&mut *tx)
-                .await
-                .map_err(sql_error)?;
-        }
-        tx.commit().await.map_err(sql_error)
-    }
-
     pub(crate) async fn list_jobs(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
         let mut sql = "SELECT * FROM jobs WHERE 1 = 1".to_string();
         let bindings = append_job_filters(&mut sql, &request)?;
@@ -371,7 +255,7 @@ impl SqliteUnifiedJobStore {
         };
         let limit = clamp_page_limit(request.limit);
         sql.push_str(" ORDER BY updated_at DESC, job_id DESC LIMIT ");
-        sql.push_str(&limit.to_string());
+        sql.push_str(&(limit + 1).to_string());
         let mut query = bind_job_filters(sqlx::query(&sql), &bindings);
         if let Some(cursor) = cursor.as_ref() {
             query = query
@@ -380,22 +264,23 @@ impl SqliteUnifiedJobStore {
                 .bind(cursor.job_id.as_str());
         }
         let rows = query.fetch_all(&self.pool).await.map_err(sql_error)?;
-        let items = rows
+        let mut items = rows
             .into_iter()
             .map(row_to_summary)
             .collect::<Result<Vec<_>>>()?;
+        let has_more = items.len() > limit as usize;
+        if has_more {
+            items.truncate(limit as usize);
+        }
         Ok(Page {
             limit,
             total,
-            next_cursor: items
-                .last()
-                .filter(|_| items.len() == limit as usize)
-                .map(|job| {
-                    encode_job_cursor(&JobCursor {
-                        updated_at: job.updated_at.0.clone(),
-                        job_id: job.job_id.0.to_string(),
-                    })
-                }),
+            next_cursor: items.last().filter(|_| has_more).map(|job| {
+                encode_job_cursor(&JobCursor {
+                    updated_at: job.updated_at.0.clone(),
+                    job_id: job.job_id.0.to_string(),
+                })
+            }),
             items,
         })
     }
@@ -419,27 +304,28 @@ impl SqliteUnifiedJobStore {
         append_event_filters(&mut sql, &request)?;
         let limit = clamp_page_limit(request.limit);
         sql.push_str(" ORDER BY sequence ASC LIMIT ");
-        sql.push_str(&limit.to_string());
+        sql.push_str(&(limit + 1).to_string());
         let rows = sqlx::query(&sql)
             .bind(request.job_id.0.to_string())
             .fetch_all(&self.pool)
             .await
             .map_err(sql_error)?;
-        let events = rows
+        let mut events = rows
             .into_iter()
             .map(row_to_event)
             .collect::<Result<Vec<_>>>()?;
+        let has_more = events.len() > limit as usize;
+        if has_more {
+            events.truncate(limit as usize);
+        }
         Ok(JobEventPage {
             last_sequence: events.last().map(|event| event.sequence).unwrap_or(0),
             limit,
-            next_cursor: events
-                .last()
-                .filter(|_| events.len() == limit as usize)
-                .map(|event| {
-                    encode_event_cursor(&EventCursor {
-                        sequence: event.sequence,
-                    })
-                }),
+            next_cursor: events.last().filter(|_| has_more).map(|event| {
+                encode_event_cursor(&EventCursor {
+                    sequence: event.sequence,
+                })
+            }),
             events,
         })
     }

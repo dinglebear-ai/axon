@@ -3,6 +3,13 @@ use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
+    Artifacts,
+    Uploads,
+    Collections,
+    Graph,
+    Providers,
+    Capabilities,
+    Chat,
     Watch,
     Monitor,
     Map,
@@ -26,8 +33,6 @@ pub enum CommandKind {
     Stats,
     Status,
     Jobs,
-    Refresh,
-    Fresh,
     Memory,
     Sessions,
     Source,
@@ -52,6 +57,13 @@ pub enum CommandKind {
 impl CommandKind {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Artifacts => "artifacts",
+            Self::Uploads => "uploads",
+            Self::Collections => "collections",
+            Self::Graph => "graph",
+            Self::Providers => "providers",
+            Self::Capabilities => "capabilities",
+            Self::Chat => "chat",
             Self::Watch => "watch",
             Self::Monitor => "monitor",
             Self::Map => "map",
@@ -75,8 +87,6 @@ impl CommandKind {
             Self::Stats => "stats",
             Self::Status => "status",
             Self::Jobs => "jobs",
-            Self::Refresh => "refresh",
-            Self::Fresh => "fresh",
             Self::Memory => "memory",
             Self::Sessions => "sessions",
             Self::Source => "source",
@@ -198,29 +208,6 @@ impl fmt::Display for RedditTime {
             Self::Month => "month",
             Self::Year => "year",
             Self::All => "all",
-        })
-    }
-}
-
-/// Fallback strategy when `axon map` finds no sitemap documents.
-///
-/// `Structure` (default): fetch the root page and extract anchor hrefs (bounded, fast).
-/// `Crawl`: run a full Spider.rs crawl (slow, legacy behaviour — explicit opt-in only).
-#[derive(
-    Debug, Clone, Copy, Default, ValueEnum, serde::Serialize, serde::Deserialize, PartialEq, Eq,
-)]
-#[serde(rename_all = "kebab-case")]
-pub enum MapFallback {
-    #[default]
-    Structure,
-    Crawl,
-}
-
-impl fmt::Display for MapFallback {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Structure => "structure",
-            Self::Crawl => "crawl",
         })
     }
 }

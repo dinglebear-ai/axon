@@ -10,21 +10,15 @@
 //! and graph evidence describe the server/tool/call/result, not the helper).
 //! Instead, callers that need to actually invoke the tool pass an
 //! [`McpToolCaller`] implementation; without one, `Execute` mode still
-//! enforces the allowlist but degrades to schema-only content (never
-//! silently "succeeds" with fabricated output).
+//! enforces the allowlist and fails closed (never silently "succeeds" with
+//! fabricated output).
 //!
 //! [`McpToolSourceAdapter`] wires the above contract into the real
-//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. Like the
-//! `cli_tool` adapter, it always resolves through
-//! [`McpExecutionMode::MetadataOnly`] today: real (`Execute`-mode) tool calls
-//! additionally need the caller's granted scopes, a configured
-//! `(server, tool)` allowlist, and an injected [`McpToolCaller`], and none of
-//! those are threaded through `SourcePlan`/`RoutePlan` yet. Wiring real
-//! execution — including where an `McpToolCaller` implementation would
-//! attach to the adapter — is a follow-up once that threading is designed;
-//! until then, resolving metadata-only unconditionally is the fail-closed,
-//! never-fabricate-output choice consistent with this module's security
-//! contract.
+//! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. `discover`
+//! stays schema-only; `acquire` selects [`McpExecutionMode::Execute`] only
+//! when the service layer stamps an execution-auth marker and supplies the
+//! server-owned target allowlist, caller command, timeout, and output-cap
+//! snapshot in private metadata.
 
 mod adapter;
 mod metadata;
@@ -32,6 +26,8 @@ mod redact;
 
 use redact::redact_mcp_output;
 
+use crate::cli_tool::CliToolSource;
+use crate::cli_tool::exec::execute_command;
 pub use adapter::McpToolSourceAdapter;
 
 pub const MODULE_NAME: &str = "mcp_tool";
@@ -123,8 +119,45 @@ pub struct McpToolTarget {
 /// the tool (this crate never does so itself — see module docs). Returns
 /// the raw, unredacted tool response as text; `resolve_and_acquire` applies
 /// redaction before it is ever returned.
-pub trait McpToolCaller {
-    fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError>;
+#[async_trait::async_trait]
+pub trait McpToolCaller: Send + Sync {
+    async fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandMcpToolCaller {
+    pub command: String,
+    pub env_allowlist: Vec<String>,
+    pub timeout_ms: u64,
+    pub output_cap_bytes: usize,
+}
+
+#[async_trait::async_trait]
+impl McpToolCaller for CommandMcpToolCaller {
+    async fn call(&self, target: &McpToolTarget) -> Result<String, McpToolError> {
+        let source = CliToolSource {
+            command: self.command.clone(),
+            argv: vec![target.server.clone(), target.tool.clone()],
+            env_allowlist: self.env_allowlist.clone(),
+            side_effect_class: "mcp_call".to_string(),
+            timeout_ms: self.timeout_ms,
+            output_cap_bytes: self.output_cap_bytes,
+            audit_metadata: vec![("execution_mode".to_string(), "mcp_call".to_string())],
+        };
+        let outcome = execute_command(&source).await.map_err(|err| McpToolError {
+            code: err.code,
+            message: err.message,
+        })?;
+        let mut output = outcome.stdout;
+        if !outcome.stderr.is_empty() {
+            if !output.is_empty() {
+                output.push('\n');
+            }
+            output.push_str("[stderr] ");
+            output.push_str(&outcome.stderr);
+        }
+        Ok(output)
+    }
 }
 
 /// Resolves an `mcp://server/tool` source and, in metadata-only mode,
@@ -133,7 +166,7 @@ pub trait McpToolCaller {
 /// verbatim in `allowlist` (checked by [`validate_execute_allowed`]) before
 /// `caller` (if supplied) is invoked; the raw response is always redacted
 /// before it lands in `documents`/the vector payload.
-pub fn resolve_and_acquire(
+pub async fn resolve_and_acquire(
     uri: &str,
     mode: McpExecutionMode,
     has_execute_scope: bool,
@@ -184,19 +217,13 @@ pub fn resolve_and_acquire(
     validate_execute_allowed(&target, has_execute_scope, allowlist)?;
 
     let Some(caller) = caller else {
-        // Authorized (allowlist passed) but no caller injected: still
-        // schema-only content — never silently "succeeds" with fabricated
-        // output.
-        return Ok(McpToolAcquireResult {
-            documents: vec![schema_doc],
-            tool_facts: tool_facts(0),
-            graph_nodes,
-            tool_call_count: 0,
-            redaction_status: RedactionStatus::Clean,
+        return Err(McpToolError {
+            code: "mcp.caller_missing",
+            message: "MCP tool call execution requires an injected caller".to_string(),
         });
     };
 
-    let raw_payload = caller.call(&target)?;
+    let raw_payload = caller.call(&target).await?;
     let (redacted_payload, was_redacted) = redact_mcp_output(&raw_payload);
 
     Ok(McpToolAcquireResult {
@@ -248,8 +275,11 @@ fn validate_execute_allowed(
     Ok(())
 }
 
-fn parse_mcp_target(uri: &str) -> Result<McpToolTarget, McpToolError> {
-    let Some(rest) = uri.strip_prefix("mcp://") else {
+pub fn parse_mcp_target(uri: &str) -> Result<McpToolTarget, McpToolError> {
+    let Some(rest) = uri
+        .strip_prefix("mcp://")
+        .or_else(|| uri.strip_prefix("mcp:"))
+    else {
         return Err(McpToolError {
             code: "mcp.uri_invalid",
             message: "MCP source must use mcp://server/tool".to_string(),
@@ -257,7 +287,10 @@ fn parse_mcp_target(uri: &str) -> Result<McpToolTarget, McpToolError> {
     };
     let mut parts = rest.splitn(2, '/');
     let server = parts.next().filter(|part| !part.is_empty());
-    let tool = parts.next().filter(|part| !part.is_empty());
+    let tool = parts
+        .next()
+        .map(|part| part.strip_prefix("tools/").unwrap_or(part))
+        .filter(|part| !part.is_empty());
     match (server, tool) {
         (Some(server), Some(tool)) => Ok(McpToolTarget {
             server: server.to_string(),

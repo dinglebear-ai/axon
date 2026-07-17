@@ -91,8 +91,7 @@ Implemented today:
 - Jobs have SQLite rows with lifecycle status and `progress_json`.
 - Current statuses include `pending`, `running`, `completed`, `failed`, and
   `canceled`.
-- Generic progress exists for some family jobs such as embed, extract, and
-  ingest; legacy crawl rows are migration-only.
+- Generic progress is emitted by the canonical job runtime and source stages.
 - Code-search reindexing has its own progress events such as started, batch
   finished, cleanup started, commit started, and finished.
 - Heartbeat/worker freshness is implemented today by refreshing job row

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use axon_jobs::status::JobStatus;
+use axon_api::job_status::JobStatus;
 use axon_services::types::ServiceJob;
 
 use super::responses::JobStatusResponse;

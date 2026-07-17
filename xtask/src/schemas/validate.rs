@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use jsonschema::validator_for;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::SchemaFamily;
 use super::artifact_index::ArtifactIndex;
@@ -44,9 +44,9 @@ pub fn validate_family(
 
     let schema = primary_json_schema(index)
         .with_context(|| format!("{} has no generated JSON schema artifact", family.as_str()))?;
-    let validator = validator_for(schema)?;
-    let fixtures_validated = validate_valid_fixtures(&validator, &fixture_root.join("valid"))?
-        + validate_invalid_fixtures(&validator, &fixture_root.join("invalid"))?;
+    let fixtures_validated = validate_valid_fixtures(schema, &fixture_root.join("valid"))?
+        + validate_invalid_fixtures(schema, &fixture_root.join("invalid"))?
+        + validate_owner_fixtures(root, family, schema)?;
     if fixtures_validated < 2 {
         bail!(
             "{} must have at least one valid fixture and one invalid fixture",
@@ -78,10 +78,12 @@ fn primary_json_schema(index: &ArtifactIndex) -> Option<&Value> {
     index.iter().find_map(|artifact| artifact.json.as_ref())
 }
 
-fn validate_valid_fixtures(validator: &jsonschema::Validator, path: &Path) -> Result<usize> {
+fn validate_valid_fixtures(schema: &Value, path: &Path) -> Result<usize> {
     let mut count = 0;
     for fixture in json_files(path)? {
         let value = read_json(&fixture)?;
+        let fixture_schema = schema_for_fixture(schema, &fixture);
+        let validator = validator_for(&fixture_schema)?;
         if let Err(error) = validator.validate(&value) {
             bail!(
                 "valid fixture {} failed schema validation: {error}",
@@ -93,10 +95,12 @@ fn validate_valid_fixtures(validator: &jsonschema::Validator, path: &Path) -> Re
     Ok(count)
 }
 
-fn validate_invalid_fixtures(validator: &jsonschema::Validator, path: &Path) -> Result<usize> {
+fn validate_invalid_fixtures(schema: &Value, path: &Path) -> Result<usize> {
     let mut count = 0;
     for fixture in json_files(path)? {
         let value = read_json(&fixture)?;
+        let fixture_schema = schema_for_fixture(schema, &fixture);
+        let validator = validator_for(&fixture_schema)?;
         if validator.validate(&value).is_ok() {
             bail!(
                 "invalid fixture {} unexpectedly passed schema validation",
@@ -106,6 +110,80 @@ fn validate_invalid_fixtures(validator: &jsonschema::Validator, path: &Path) -> 
         count += 1;
     }
     Ok(count)
+}
+
+fn validate_owner_fixtures(root: &Path, family: SchemaFamily, schema: &Value) -> Result<usize> {
+    let Some(path) = owner_fixture_root(root, family) else {
+        return Ok(0);
+    };
+    if !path.is_dir() {
+        bail!(
+            "{} is missing owner schema fixture root {}",
+            family.as_str(),
+            path.display()
+        );
+    }
+
+    let mut count = 0;
+    for fixture in json_files(&path)? {
+        let value = read_json(&fixture)?;
+        let fixture_schema = schema_for_fixture(schema, &fixture);
+        let validator = validator_for(&fixture_schema)?;
+        let invalid = fixture
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.contains(".invalid."));
+        let accepted = validator.validate(&value).is_ok();
+        if invalid == accepted {
+            bail!(
+                "{} fixture {} unexpectedly {} schema validation",
+                if invalid { "invalid" } else { "valid" },
+                fixture.display(),
+                if accepted { "passed" } else { "failed" }
+            );
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn owner_fixture_root(root: &Path, family: SchemaFamily) -> Option<std::path::PathBuf> {
+    match family {
+        SchemaFamily::Api => Some(root.join("crates/axon-api/tests/fixtures/schema")),
+        _ => None,
+    }
+}
+
+fn schema_for_fixture(schema: &Value, fixture: &Path) -> Value {
+    let Some(file_name) = fixture.file_name().and_then(|name| name.to_str()) else {
+        return schema.clone();
+    };
+    let Some(prefix) = file_name.split('.').next() else {
+        return schema.clone();
+    };
+    let definition = prefix
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default()
+        })
+        .collect::<String>();
+    let Some(definitions) = schema.get("$defs") else {
+        return schema.clone();
+    };
+    if definitions.get(&definition).is_none() {
+        return schema.clone();
+    }
+
+    json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": format!("#/$defs/{definition}"),
+        "$defs": definitions,
+    })
 }
 
 fn validate_snapshots(index: &ArtifactIndex, path: &Path) -> Result<usize> {

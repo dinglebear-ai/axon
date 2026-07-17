@@ -8,14 +8,3 @@ pub struct RestSessionsIngestOptions {
     pub gemini: Option<bool>,
     pub project: Option<String>,
 }
-
-impl From<RestSessionsIngestOptions> for axon_api::mcp_schema::SessionsIngestOptions {
-    fn from(value: RestSessionsIngestOptions) -> Self {
-        Self {
-            claude: value.claude,
-            codex: value.codex,
-            gemini: value.gemini,
-            project: value.project,
-        }
-    }
-}

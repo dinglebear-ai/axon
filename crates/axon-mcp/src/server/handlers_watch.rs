@@ -2,19 +2,16 @@
 //! WS-B), mirroring the REST `/v1/watches` routes
 //! (`docs/pipeline-unification/surfaces/rest-contract.md` Watch Routes).
 //!
-//! This is a distinct storage model from the legacy `WatchSubaction::List`/
-//! `Get`/`Exec`/`History` task_type/task_payload watches — see
-//! `crates/axon-jobs/src/watch_store.rs` module docs. `create`, `list`,
-//! `get`, `update`, `pause`, `resume`, and `delete` are wired here; `exec`
-//! and `history` remain unimplemented over MCP (available through the HTTP
-//! API per the existing `AxonRequest::Watch` rejection message).
+//! All MCP watch subactions route through the canonical source-watch store.
 
 use super::AxonMcpServer;
 use super::artifacts::{InlineHint, respond_with_mode};
-use super::common::{invalid_params, logged_internal_error};
-use crate::schema::{AxonToolResponse, WatchRequest, WatchSubaction};
+use super::common::{CURRENT_CALLER_AUTH_SNAPSHOT, invalid_params, logged_internal_error};
+use super::system_requests::WatchMcpRequest;
+use crate::schema::{AxonToolResponse, WatchSubaction};
 use axon_api::source::{
-    AdapterOptions, WatchId, WatchListRequest, WatchSchedule, WatchUpdateRequest,
+    WatchExecRequest, WatchHistoryRequest, WatchId, WatchListRequest, WatchSchedule,
+    WatchUpdateRequest,
 };
 use axon_services::watch::{self as watch_svc, SourceWatchStoreTrait};
 use rmcp::ErrorData;
@@ -22,20 +19,20 @@ use rmcp::ErrorData;
 impl AxonMcpServer {
     pub(super) async fn handle_watch(
         &self,
-        req: WatchRequest,
+        req: WatchMcpRequest,
     ) -> Result<AxonToolResponse, ErrorData> {
         let subaction = req.subaction.unwrap_or(WatchSubaction::List);
         match subaction {
             WatchSubaction::Create => self.watch_create(req).await,
             WatchSubaction::List => self.watch_list(req).await,
             WatchSubaction::Get => self.watch_get(req).await,
+            WatchSubaction::Status => self.watch_status(req).await,
             WatchSubaction::Update => self.watch_update(req).await,
             WatchSubaction::Pause => self.watch_set_enabled(req, false).await,
             WatchSubaction::Resume => self.watch_set_enabled(req, true).await,
             WatchSubaction::Delete => self.watch_delete(req).await,
-            WatchSubaction::Exec | WatchSubaction::History => Err(invalid_params(
-                "watch subaction 'exec'/'history' is available through the HTTP API, not MCP",
-            )),
+            WatchSubaction::Exec => self.watch_exec(req).await,
+            WatchSubaction::History => self.watch_history(req).await,
         }
     }
 
@@ -50,7 +47,7 @@ impl AxonMcpServer {
             .map_err(|e| logged_internal_error("watch.open_store", e.as_ref()))
     }
 
-    async fn watch_create(&self, req: WatchRequest) -> Result<AxonToolResponse, ErrorData> {
+    async fn watch_create(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
         let source = req
             .source
             .clone()
@@ -70,14 +67,15 @@ impl AxonMcpServer {
                 cron: None,
                 timezone: None,
             },
-            embed: req.embed.unwrap_or(false),
-            options: AdapterOptions::default(),
-            scope: None,
+            embed: req.embed.unwrap_or(true),
+            options: req.options.clone().unwrap_or_default(),
+            scope: req.scope,
             collection: req.collection.clone(),
             enabled: req.enabled,
         };
+        let caller = current_caller_snapshot();
         let created =
-            watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request, None)
+            watch_svc::create_source_watch(self.cfg.as_ref(), pool.as_deref(), request, caller)
                 .await
                 .map_err(|e| invalid_params(e.to_string()))?;
         respond_with_mode(
@@ -91,15 +89,9 @@ impl AxonMcpServer {
         .await
     }
 
-    async fn watch_list(&self, req: WatchRequest) -> Result<AxonToolResponse, ErrorData> {
+    async fn watch_list(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
         let store = self.open_store().await?;
-        let list_request = WatchListRequest {
-            enabled: req.enabled,
-            source_id: None,
-            adapter: None,
-            limit: req.limit.map(|limit| limit.max(0) as u32),
-            cursor: None,
-        };
+        let list_request = watch_list_request(&req);
         let page = SourceWatchStoreTrait::list(&store, list_request)
             .await
             .map_err(|e| invalid_params(e.to_string()))?;
@@ -114,14 +106,30 @@ impl AxonMcpServer {
         .await
     }
 
-    fn require_id(req: &WatchRequest) -> Result<WatchId, ErrorData> {
+    fn require_id(req: &WatchMcpRequest) -> Result<WatchId, ErrorData> {
         req.id
             .clone()
             .map(WatchId::new)
             .ok_or_else(|| invalid_params("watch subaction requires 'id'"))
     }
 
-    async fn watch_get(&self, req: WatchRequest) -> Result<AxonToolResponse, ErrorData> {
+    async fn resolve_watch_id(&self, req: &WatchMcpRequest) -> Result<WatchId, ErrorData> {
+        let raw = req
+            .id
+            .as_deref()
+            .or(req.source.as_deref())
+            .ok_or_else(|| invalid_params("watch subaction requires 'id' or 'source'"))?;
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("watch.context", e.as_ref()))?;
+        let pool = ctx.jobs.sqlite_pool();
+        watch_svc::resolve_source_watch_id(self.cfg.as_ref(), pool.as_deref(), raw)
+            .await
+            .map_err(|e| invalid_params(e.to_string()))
+    }
+
+    async fn watch_get(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
         let watch_id = Self::require_id(&req)?;
         let store = self.open_store().await?;
         let found = SourceWatchStoreTrait::get(&store, watch_id.clone())
@@ -139,7 +147,38 @@ impl AxonMcpServer {
         .await
     }
 
-    async fn watch_update(&self, req: WatchRequest) -> Result<AxonToolResponse, ErrorData> {
+    async fn watch_status(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
+        let watch_id = self.resolve_watch_id(&req).await?;
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("watch.context", e.as_ref()))?;
+        let store = self.open_store().await?;
+        let found = SourceWatchStoreTrait::get(&store, watch_id.clone())
+            .await
+            .map_err(|e| invalid_params(e.to_string()))?
+            .ok_or_else(|| invalid_params(format!("watch {} not found", watch_id.0)))?;
+        let latest_job_summary = match found.latest_job.as_ref() {
+            Some(job) => axon_services::jobs::unified_job_status(&ctx, job.job_id)
+                .await
+                .map_err(|e| logged_internal_error("watch.status", e.as_ref()))?,
+            None => None,
+        };
+        respond_with_mode(
+            "watch",
+            "status",
+            req.response_mode,
+            "watch-status",
+            serde_json::json!({
+                "watch": found,
+                "latest_job_summary": latest_job_summary,
+            }),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    async fn watch_update(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
         let watch_id = Self::require_id(&req)?;
         let store = self.open_store().await?;
         let update = WatchUpdateRequest {
@@ -149,10 +188,10 @@ impl AxonMcpServer {
                 cron: None,
                 timezone: None,
             }),
-            options: None,
-            embed: None,
+            options: req.options.clone(),
+            embed: req.embed,
             collection: req.collection.clone(),
-            scope: None,
+            scope: req.scope,
         };
         let updated = SourceWatchStoreTrait::update(&store, watch_id, update)
             .await
@@ -170,7 +209,7 @@ impl AxonMcpServer {
 
     async fn watch_set_enabled(
         &self,
-        req: WatchRequest,
+        req: WatchMcpRequest,
         enabled: bool,
     ) -> Result<AxonToolResponse, ErrorData> {
         let watch_id = Self::require_id(&req)?;
@@ -198,7 +237,7 @@ impl AxonMcpServer {
         .await
     }
 
-    async fn watch_delete(&self, req: WatchRequest) -> Result<AxonToolResponse, ErrorData> {
+    async fn watch_delete(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
         let watch_id = Self::require_id(&req)?;
         let store = self.open_store().await?;
         let deleted = store
@@ -218,4 +257,93 @@ impl AxonMcpServer {
         )
         .await
     }
+
+    async fn watch_exec(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
+        let watch_id = self.resolve_watch_id(&req).await?;
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("watch.context", e.as_ref()))?;
+        let pool = ctx.jobs.sqlite_pool();
+        let descriptor = watch_svc::exec_source_watch(
+            &ctx,
+            pool.as_deref(),
+            watch_id,
+            watch_exec_request(&req),
+            current_caller_snapshot(),
+        )
+        .await
+        .map_err(|e| logged_internal_error("watch.exec", e.as_ref()))?;
+        respond_with_mode(
+            "watch",
+            "exec",
+            req.response_mode,
+            "watch-exec",
+            serde_json::json!(descriptor),
+            InlineHint::Default,
+        )
+        .await
+    }
+
+    async fn watch_history(&self, req: WatchMcpRequest) -> Result<AxonToolResponse, ErrorData> {
+        let watch_id = self.resolve_watch_id(&req).await?;
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| logged_internal_error("watch.context", e.as_ref()))?;
+        let pool = ctx.jobs.sqlite_pool();
+        let history = watch_svc::history_source_watch(
+            self.cfg.as_ref(),
+            pool.as_deref(),
+            watch_history_request(&req, watch_id),
+        )
+        .await
+        .map_err(|e| invalid_params(e.to_string()))?;
+        respond_with_mode(
+            "watch",
+            "history",
+            req.response_mode,
+            "watch-history",
+            serde_json::json!(history),
+            InlineHint::Default,
+        )
+        .await
+    }
 }
+
+fn current_caller_snapshot() -> Option<axon_api::source::AuthSnapshot> {
+    CURRENT_CALLER_AUTH_SNAPSHOT
+        .try_with(Clone::clone)
+        .unwrap_or_default()
+}
+
+fn watch_exec_request(req: &WatchMcpRequest) -> WatchExecRequest {
+    WatchExecRequest {
+        reason: req.reason.clone(),
+        refresh: req.refresh,
+        wait: req.wait,
+    }
+}
+
+fn watch_list_request(req: &WatchMcpRequest) -> WatchListRequest {
+    WatchListRequest {
+        enabled: req.enabled,
+        source_id: None,
+        adapter: None,
+        limit: req.limit.map(|limit| limit.max(0) as u32),
+        cursor: req.cursor.clone(),
+    }
+}
+
+fn watch_history_request(req: &WatchMcpRequest, watch_id: WatchId) -> WatchHistoryRequest {
+    WatchHistoryRequest {
+        watch_id,
+        limit: req.limit.map(|limit| limit.max(0) as u32),
+        cursor: req.cursor.clone(),
+        status: req.status,
+    }
+}
+
+#[cfg(test)]
+#[path = "handlers_watch_tests.rs"]
+mod tests;

@@ -12,36 +12,35 @@ use std::error::Error;
 
 use crate::search::SearchError;
 
-/// Typed result returned by [`search_and_crawl`].
+/// Typed result returned by [`search_and_index_sources`].
 ///
 /// Contains search results plus the outcome of auto-enqueueing
-/// one bounded Source job per result URL. Field names retain `crawl` for
-/// compatibility with existing CLI/MCP/REST payloads.
-pub struct SearchAndCrawlResult {
+/// one bounded Source job per result URL.
+pub struct SearchAndSourceIndexResult {
     pub results: Vec<Value>,
-    pub crawl_jobs: Vec<SearchCrawlJob>,
-    pub crawl_rejected: Vec<SearchCrawlRejection>,
-    pub auto_crawl_status: &'static str,
+    pub source_jobs: Vec<SearchSourceJob>,
+    pub source_jobs_rejected: Vec<SearchSourceRejection>,
+    pub source_index_status: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
-pub struct SearchCrawlJob {
+pub struct SearchSourceJob {
     pub url: String,
     pub job_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
-pub struct SearchCrawlRejection {
+pub struct SearchSourceRejection {
     pub url: Option<String>,
     pub position: Option<i64>,
     pub title: Option<String>,
-    pub kind: SearchCrawlRejectionKind,
+    pub kind: SearchSourceRejectionKind,
     pub reason: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SearchCrawlRejectionKind {
+pub enum SearchSourceRejectionKind {
     DuplicateUrl,
     InvalidUrl,
     MissingUrl,
@@ -55,29 +54,29 @@ pub enum SearchCrawlRejectionKind {
 /// Callers receive a typed result and decide their own UX (error on zero jobs,
 /// include in JSON response, etc.) — this function never errors on partial
 /// auto-index failures.
-pub async fn search_and_crawl(
+pub async fn search_and_index_sources(
     cfg: &Config,
     service_context: &ServiceContext,
     query: &str,
     opts: SearchOptions,
-) -> Result<SearchAndCrawlResult, SearchError> {
+) -> Result<SearchAndSourceIndexResult, SearchError> {
     let results = search_batch(cfg, &[query], opts, None).await?.results;
-    let crawl_output = enqueue_search_crawls(cfg, service_context, &results).await;
-    let auto_crawl_status = crawl_status(&results, &crawl_output);
-    Ok(SearchAndCrawlResult {
+    let source_output = enqueue_search_sources(cfg, service_context, &results).await;
+    let source_index_status = source_index_status(&results, &source_output);
+    Ok(SearchAndSourceIndexResult {
         results,
-        crawl_jobs: crawl_output.jobs,
-        crawl_rejected: crawl_output.rejected,
-        auto_crawl_status,
+        source_jobs: source_output.jobs,
+        source_jobs_rejected: source_output.rejected,
+        source_index_status,
     })
 }
 
 // ── internals ────────────────────────────────────────────────────────────────
 
 #[derive(Default)]
-pub(crate) struct CrawlOutput {
-    pub(crate) jobs: Vec<SearchCrawlJob>,
-    pub(crate) rejected: Vec<SearchCrawlRejection>,
+pub(crate) struct SourceIndexOutput {
+    pub(crate) jobs: Vec<SearchSourceJob>,
+    pub(crate) rejected: Vec<SearchSourceRejection>,
 }
 
 fn auto_index_config(cfg: &Config) -> Config {
@@ -96,29 +95,29 @@ fn auto_index_config(cfg: &Config) -> Config {
     c
 }
 
-async fn enqueue_search_crawls(
+async fn enqueue_search_sources(
     cfg: &Config,
     service_context: &ServiceContext,
     results: &[Value],
-) -> CrawlOutput {
-    enqueue_search_crawls_with_reason(cfg, service_context, results, "search").await
+) -> SourceIndexOutput {
+    enqueue_search_sources_with_reason(cfg, service_context, results, "search").await
 }
 
-async fn enqueue_search_crawls_with_reason(
+async fn enqueue_search_sources_with_reason(
     cfg: &Config,
     service_context: &ServiceContext,
     results: &[Value],
     reason: &str,
-) -> CrawlOutput {
+) -> SourceIndexOutput {
     let auto_index_cfg = auto_index_config(cfg);
-    let mut output = CrawlOutput::default();
+    let mut output = SourceIndexOutput::default();
     let mut seen = HashSet::new();
 
     for result in results {
         let Some(url) = result["url"].as_str().filter(|u| !u.is_empty()) else {
             output.rejected.push(result_rejection(
                 result,
-                SearchCrawlRejectionKind::MissingUrl,
+                SearchSourceRejectionKind::MissingUrl,
                 "search result missing url",
             ));
             continue;
@@ -129,7 +128,7 @@ async fn enqueue_search_crawls_with_reason(
                 Some(&normalized),
                 None,
                 None,
-                SearchCrawlRejectionKind::DuplicateUrl,
+                SearchSourceRejectionKind::DuplicateUrl,
                 "duplicate search result URL",
             ));
             continue;
@@ -141,17 +140,17 @@ async fn enqueue_search_crawls_with_reason(
     }
 
     if cfg.wait && !output.jobs.is_empty() {
-        wait_for_queued_crawls(service_context, &mut output).await;
+        wait_for_queued_source_jobs(service_context, &mut output).await;
     }
 
     output
 }
 
-pub(crate) async fn enqueue_research_crawls(
+pub(crate) async fn enqueue_research_sources(
     cfg: &Config,
     service_context: &ServiceContext,
     hits: &[ResearchHit],
-) -> CrawlOutput {
+) -> SourceIndexOutput {
     let results: Vec<Value> = hits
         .iter()
         .map(|hit| {
@@ -163,7 +162,7 @@ pub(crate) async fn enqueue_research_crawls(
             })
         })
         .collect();
-    enqueue_search_crawls_with_reason(cfg, service_context, &results, "research").await
+    enqueue_search_sources_with_reason(cfg, service_context, &results, "research").await
 }
 
 async fn enqueue_one(
@@ -171,13 +170,13 @@ async fn enqueue_one(
     service_context: &ServiceContext,
     url: &str,
     reason: &str,
-) -> Result<SearchCrawlJob, SearchCrawlRejection> {
+) -> Result<SearchSourceJob, SearchSourceRejection> {
     if let Err(e) = validate_url_with_dns(url).await {
         return Err(rejection(
             Some(url),
             None,
             None,
-            SearchCrawlRejectionKind::InvalidUrl,
+            SearchSourceRejectionKind::InvalidUrl,
             e.to_string(),
         ));
     }
@@ -195,7 +194,7 @@ async fn enqueue_one(
     )
     .await
     {
-        Ok(job) => Ok(SearchCrawlJob {
+        Ok(job) => Ok(SearchSourceJob {
             url: url_owned,
             job_id: job.id.0.to_string(),
         }),
@@ -206,21 +205,24 @@ async fn enqueue_one(
                 Some(url),
                 None,
                 None,
-                SearchCrawlRejectionKind::QueueRejected,
+                SearchSourceRejectionKind::QueueRejected,
                 reason,
             ))
         }
     }
 }
 
-async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut CrawlOutput) {
+async fn wait_for_queued_source_jobs(
+    service_context: &ServiceContext,
+    output: &mut SourceIndexOutput,
+) {
     for job in &output.jobs {
         let Ok(job_id) = uuid::Uuid::parse_str(&job.job_id) else {
             output.rejected.push(rejection(
                 Some(&job.url),
                 None,
                 None,
-                SearchCrawlRejectionKind::WaitFailed,
+                SearchSourceRejectionKind::WaitFailed,
                 format!("source auto-index returned invalid job id: {}", job.job_id),
             ));
             continue;
@@ -246,7 +248,7 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
                     Some(&job.url),
                     None,
                     None,
-                    SearchCrawlRejectionKind::WaitFailed,
+                    SearchSourceRejectionKind::WaitFailed,
                     reason,
                 ));
             }
@@ -255,7 +257,7 @@ async fn wait_for_queued_crawls(service_context: &ServiceContext, output: &mut C
                 Some(&job.url),
                 None,
                 None,
-                SearchCrawlRejectionKind::WaitFailed,
+                SearchSourceRejectionKind::WaitFailed,
                 e.to_string(),
             )),
         }
@@ -301,10 +303,10 @@ fn rejection(
     url: Option<&str>,
     position: Option<i64>,
     title: Option<&str>,
-    kind: SearchCrawlRejectionKind,
+    kind: SearchSourceRejectionKind,
     reason: impl Into<String>,
-) -> SearchCrawlRejection {
-    SearchCrawlRejection {
+) -> SearchSourceRejection {
+    SearchSourceRejection {
         url: url.map(str::to_string),
         position,
         title: title.map(str::to_string),
@@ -315,9 +317,9 @@ fn rejection(
 
 fn result_rejection(
     result: &Value,
-    kind: SearchCrawlRejectionKind,
+    kind: SearchSourceRejectionKind,
     reason: impl Into<String>,
-) -> SearchCrawlRejection {
+) -> SearchSourceRejection {
     rejection(
         result["url"].as_str(),
         result["position"].as_i64(),
@@ -327,7 +329,7 @@ fn result_rejection(
     )
 }
 
-fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
+fn source_index_status(results: &[Value], output: &SourceIndexOutput) -> &'static str {
     if results.is_empty() {
         "no_results"
     } else if output.jobs.is_empty() {
@@ -335,12 +337,12 @@ fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
     } else if output
         .rejected
         .iter()
-        .any(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+        .any(|r| matches!(r.kind, SearchSourceRejectionKind::WaitFailed))
     {
         let wait_failures = output
             .rejected
             .iter()
-            .filter(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+            .filter(|r| matches!(r.kind, SearchSourceRejectionKind::WaitFailed))
             .count();
         if wait_failures >= output.jobs.len() {
             "wait_failed"
@@ -354,7 +356,10 @@ fn crawl_status(results: &[Value], output: &CrawlOutput) -> &'static str {
     }
 }
 
-pub(crate) fn crawl_status_for_output<T>(results: &[T], output: &CrawlOutput) -> &'static str {
+pub(crate) fn source_index_status_for_output<T>(
+    results: &[T],
+    output: &SourceIndexOutput,
+) -> &'static str {
     if results.is_empty() {
         return "no_results";
     }
@@ -364,7 +369,7 @@ pub(crate) fn crawl_status_for_output<T>(results: &[T], output: &CrawlOutput) ->
     let wait_failures = output
         .rejected
         .iter()
-        .filter(|r| matches!(r.kind, SearchCrawlRejectionKind::WaitFailed))
+        .filter(|r| matches!(r.kind, SearchSourceRejectionKind::WaitFailed))
         .count();
     if wait_failures == output.jobs.len() {
         "wait_failed"

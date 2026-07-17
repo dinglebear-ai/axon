@@ -9,19 +9,18 @@ import type { ArtifactHandle, CommandResultView, SourceListEntry } from './panel
 import type { SourceResult } from '../api/axon-client';
 
 const artifact: ArtifactHandle = {
-  relative_path: 'screenshots/shot.png',
+  artifact_id: 'art_screenshot_123',
   bytes: 32,
-  kind: 'screenshot',
-  display_path: 'screenshots/shot.png'
+  artifact_kind: 'screenshot'
 };
 
 function commandResult(overrides: Partial<CommandResultView> = {}): CommandResultView {
   return {
     ok: true,
     title: 'Screenshot captured',
-    subtitle: 'screenshots/shot.png',
+    subtitle: 'art_screenshot_123',
     rows: [],
-    imageUrl: '/api/panel/artifact/screenshots/shot%2Epng',
+    imageUrl: '/api/panel/artifacts/art_screenshot_123/content',
     imageArtifact: artifact,
     artifacts: [artifact],
     ...overrides
@@ -61,10 +60,10 @@ describe('panel artifact rendering', () => {
       root.render(<CommandResultCard result={commandResult()} panelToken="panel-token" />);
     });
 
-    expect(fetch).toHaveBeenCalledWith('/api/panel/artifact/screenshots/shot%2Epng', {
+    expect(fetch).toHaveBeenCalledWith('/api/panel/artifacts/art_screenshot_123/content', {
       headers: { 'x-axon-panel-token': 'panel-token' }
     });
-    expect(host.querySelector('.artifact-name')?.textContent).toBe('shot.png');
+    expect(host.querySelector('.artifact-name')?.textContent).toBe('art_screenshot_123');
     expect(host.querySelector('img')?.getAttribute('src')).toBe('blob:artifact');
   });
 
@@ -80,7 +79,7 @@ describe('panel artifact rendering', () => {
     });
 
     expect(host.textContent).toContain('Preview unavailable: artifact is application/json, not a previewable image');
-    expect(host.querySelector('.artifact-name')?.textContent).toBe('shot.png');
+    expect(host.querySelector('.artifact-name')?.textContent).toBe('art_screenshot_123');
   });
 
   it('rejects oversized previews via blob size when content-length is absent', async () => {
@@ -135,8 +134,8 @@ describe('panel artifact rendering', () => {
       button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
 
-    expect(host.textContent).toContain('Could not open shot.png: artifact fetch failed with 404');
-    expect(fetch).toHaveBeenCalledWith('/api/panel/artifact/screenshots/shot%2Epng', {
+    expect(host.textContent).toContain('Could not open art_screenshot_123: artifact fetch failed with 404');
+    expect(fetch).toHaveBeenCalledWith('/api/panel/artifacts/art_screenshot_123/content', {
       headers: { 'x-axon-panel-token': 'panel-token' }
     });
   });

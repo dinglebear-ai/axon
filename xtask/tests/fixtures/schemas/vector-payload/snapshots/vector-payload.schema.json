@@ -784,7 +784,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -859,6 +859,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -895,6 +900,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -1020,26 +1045,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -1277,7 +1282,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -1352,6 +1357,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -1388,6 +1398,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -1513,26 +1543,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -1740,7 +1750,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -1815,6 +1825,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -1851,6 +1866,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -1976,26 +2011,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -2273,6 +2288,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -2309,6 +2329,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -2434,26 +2474,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -2726,7 +2746,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -2882,26 +2902,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -3174,7 +3174,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -3249,6 +3249,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -3285,6 +3290,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -3395,26 +3420,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -3687,7 +3692,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -3762,6 +3767,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -3798,6 +3808,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -3898,26 +3928,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -4190,7 +4200,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -4265,6 +4275,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -4301,6 +4316,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -4411,26 +4446,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -4703,7 +4718,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -4778,6 +4793,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -4814,6 +4834,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -5166,7 +5206,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -5241,6 +5281,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -5277,6 +5322,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -5402,26 +5467,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -5674,7 +5719,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -5749,6 +5794,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -5785,6 +5835,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -5910,26 +5980,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -6182,7 +6232,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -6257,6 +6307,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -6293,6 +6348,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -6418,26 +6493,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -6690,7 +6745,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -6765,6 +6820,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -6801,6 +6861,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -6926,26 +7006,6 @@
             {
               "required": [
                 "memory_salience"
-              ]
-            },
-            {
-              "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
               ]
             },
             {
@@ -7208,7 +7268,7 @@
             },
             {
               "required": [
-                "url"
+                "media_url"
               ]
             },
             {
@@ -7283,6 +7343,11 @@
             },
             {
               "required": [
+                "web_status"
+              ]
+            },
+            {
+              "required": [
                 "web_depth"
               ]
             },
@@ -7319,6 +7384,26 @@
             {
               "required": [
                 "web_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "web_render_mode"
+              ]
+            },
+            {
+              "required": [
+                "web_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_reuse_required"
               ]
             },
             {
@@ -7448,26 +7533,6 @@
             },
             {
               "required": [
-                "redaction_version"
-              ]
-            },
-            {
-              "required": [
-                "redacted_field_count"
-              ]
-            },
-            {
-              "required": [
-                "dropped_field_count"
-              ]
-            },
-            {
-              "required": [
-                "detector_names"
-              ]
-            },
-            {
-              "required": [
                 "local_checkout"
               ]
             },
@@ -7583,6 +7648,10 @@
       "minLength": 1,
       "type": "string"
     },
+    "chunk_title": {
+      "minLength": 1,
+      "type": "string"
+    },
     "chunking_fallback": {
       "minLength": 1,
       "type": "string"
@@ -7652,8 +7721,21 @@
       "minLength": 1,
       "type": "string"
     },
-    "detector_names": {
+    "content_title": {
+      "minLength": 1,
       "type": "string"
+    },
+    "detector_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "detector_names": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true
     },
     "docker_image": {
       "type": "string"
@@ -7678,7 +7760,8 @@
       "x-qdrant-index": "keyword"
     },
     "dropped_field_count": {
-      "type": "string"
+      "minimum": 0,
+      "type": "integer"
     },
     "embedded_at": {
       "format": "date-time",
@@ -7798,6 +7881,9 @@
       "minLength": 1,
       "type": "string"
     },
+    "media_url": {
+      "type": "string"
+    },
     "memory_confidence": {
       "type": "string"
     },
@@ -7837,6 +7923,18 @@
     "package_version": {
       "type": "string"
     },
+    "parser_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "parser_method": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "parser_version": {
+      "minLength": 1,
+      "type": "string"
+    },
     "payload_contract_version": {
       "const": "2026-07-01",
       "type": "string",
@@ -7847,7 +7945,8 @@
       "type": "string"
     },
     "redacted_field_count": {
-      "type": "string"
+      "minimum": 0,
+      "type": "integer"
     },
     "redaction_status": {
       "enum": [
@@ -7860,6 +7959,7 @@
       "x-qdrant-index": "keyword"
     },
     "redaction_version": {
+      "minLength": 1,
       "type": "string"
     },
     "reddit_author": {
@@ -8017,9 +8117,6 @@
       "minLength": 1,
       "type": "string"
     },
-    "url": {
-      "type": "string"
-    },
     "vector_namespace": {
       "minLength": 1,
       "type": "string",
@@ -8050,6 +8147,9 @@
     "web_domain": {
       "type": "string"
     },
+    "web_etag": {
+      "type": "string"
+    },
     "web_fetch_method": {
       "type": "string"
     },
@@ -8062,7 +8162,19 @@
     "web_path": {
       "type": "string"
     },
+    "web_prior_etag": {
+      "type": "string"
+    },
+    "web_render_mode": {
+      "type": "string"
+    },
+    "web_reuse_required": {
+      "type": "string"
+    },
     "web_seed_url": {
+      "type": "string"
+    },
+    "web_status": {
       "type": "string"
     },
     "web_status_code": {
@@ -8123,6 +8235,7 @@
     "chunk_id",
     "chunk_index",
     "content_kind",
+    "chunk_content_kind",
     "content_hash",
     "chunk_hash",
     "chunk_text",
@@ -8130,6 +8243,11 @@
     "source_range",
     "visibility",
     "redaction_status",
+    "redaction_version",
+    "redacted_field_count",
+    "dropped_field_count",
+    "detector_count",
+    "detector_names",
     "job_id",
     "document_status",
     "embedding_model",
@@ -8164,6 +8282,7 @@
     "contract_version": "2026-07-01",
     "examples": [
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-code-0",
         "chunk_index": 0,
@@ -8207,8 +8326,11 @@
         "committed_generation": null,
         "content_hash": "sha256:codehash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-code",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8223,7 +8345,9 @@
         "job_id": "job-code",
         "manifest": true,
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "code",
@@ -8256,6 +8380,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-feed-0",
         "chunk_index": 0,
@@ -8293,8 +8418,11 @@
         "committed_generation": null,
         "content_hash": "sha256:feedhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-feed",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8309,7 +8437,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-feed",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "feed",
@@ -8342,6 +8472,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-social-0",
         "chunk_index": 0,
@@ -8379,8 +8510,11 @@
         "committed_generation": null,
         "content_hash": "sha256:socialhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-social",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8389,7 +8523,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-social",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "reddit_author": "reddit_author",
         "reddit_created_utc": "reddit_created_utc",
         "reddit_distinguished": "reddit_distinguished",
@@ -8436,6 +8572,7 @@
       {
         "channel": "channel",
         "channel_url": "channel_url",
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-media-0",
         "chunk_index": 0,
@@ -8473,8 +8610,11 @@
         "committed_generation": null,
         "content_hash": "sha256:mediahash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-media",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8482,8 +8622,11 @@
         "embedding_provider": "tei",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-media",
+        "media_url": "media_url",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "segment_kind": "segment_kind",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
@@ -8512,7 +8655,6 @@
         },
         "source_scope": "source_scope",
         "title": "title",
-        "url": "url",
         "vector_namespace": "vector_namespace",
         "vector_point_id": "vector_point_id",
         "video_id": "video_id",
@@ -8527,6 +8669,7 @@
         "yt_view_count": "yt_view_count"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-web-0",
         "chunk_index": 0,
@@ -8564,8 +8707,11 @@
         "committed_generation": null,
         "content_hash": "sha256:webhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-web",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8577,7 +8723,9 @@
         "job_id": "job-web",
         "normalization_version": "normalization_version",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "web",
@@ -8610,11 +8758,16 @@
         "visibility": "internal",
         "web_depth": 1,
         "web_domain": "example.com",
+        "web_etag": "web_etag",
         "web_fetch_method": "web_fetch_method",
         "web_normalized_url": "web_normalized_url",
         "web_origin": "web_origin",
         "web_path": "web_path",
+        "web_prior_etag": "web_prior_etag",
+        "web_render_mode": "web_render_mode",
+        "web_reuse_required": "web_reuse_required",
         "web_seed_url": "web_seed_url",
+        "web_status": "web_status",
         "web_status_code": 200,
         "web_structured_blob": "web_structured_blob",
         "web_structured_kind": "web_structured_kind",
@@ -8622,6 +8775,7 @@
         "web_url": "web_url"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-package-0",
         "chunk_index": 0,
@@ -8659,8 +8813,11 @@
         "committed_generation": null,
         "content_hash": "sha256:packagehash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-package",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8672,7 +8829,9 @@
         "package_name": "axon",
         "package_version": "6.2.1",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "package",
@@ -8704,6 +8863,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-session-0",
         "chunk_index": 0,
@@ -8741,8 +8901,11 @@
         "committed_generation": null,
         "content_hash": "sha256:sessionhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-session",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8751,7 +8914,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-session",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "session_id": "session-session",
         "session_provider": "codex",
         "session_skill_name": "test-driven-development",
@@ -8788,6 +8953,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-graph-0",
         "chunk_index": 0,
@@ -8825,8 +8991,11 @@
         "committed_generation": null,
         "content_hash": "sha256:graphhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-graph",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8843,7 +9012,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-graph",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "graph",
@@ -8875,6 +9046,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-memory-0",
         "chunk_index": 0,
@@ -8912,10 +9084,11 @@
         "committed_generation": null,
         "content_hash": "sha256:memoryhash",
         "content_kind": "content_kind",
-        "detector_names": "detector_names",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-memory",
         "document_status": "prepared",
-        "dropped_field_count": "dropped_field_count",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -8933,9 +9106,9 @@
         "memory_status": "active",
         "memory_type": "memory_type",
         "payload_contract_version": "2026-07-01",
-        "redacted_field_count": "redacted_field_count",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
-        "redaction_version": "redaction_version",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "memory",
@@ -8967,6 +9140,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-local-0",
         "chunk_index": 0,
@@ -9004,8 +9178,11 @@
         "committed_generation": null,
         "content_hash": "sha256:localhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-local",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9018,7 +9195,9 @@
         "local_git_remote": "local_git_remote",
         "local_path_key": "local_path_key",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "local",
@@ -9050,6 +9229,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-tool-0",
         "chunk_index": 0,
@@ -9087,8 +9267,11 @@
         "committed_generation": null,
         "content_hash": "sha256:toolhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-tool",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9097,7 +9280,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-tool",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "tool",
@@ -9133,6 +9318,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-docker-0",
         "chunk_index": 0,
@@ -9170,12 +9356,15 @@
         "committed_generation": null,
         "content_hash": "sha256:dockerhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "docker_image": "docker_image",
         "docker_port": "docker_port",
         "docker_service": "docker_service",
         "docker_volume": "docker_volume",
         "document_id": "doc-docker",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9184,7 +9373,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-docker",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "docker",
@@ -9216,6 +9407,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-env-0",
         "chunk_index": 0,
@@ -9253,8 +9445,11 @@
         "committed_generation": null,
         "content_hash": "sha256:envhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-env",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9265,7 +9460,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-env",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "env",
@@ -9297,6 +9494,7 @@
         "visibility": "internal"
       },
       {
+        "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-upload-0",
         "chunk_index": 0,
@@ -9334,8 +9532,11 @@
         "committed_generation": null,
         "content_hash": "sha256:uploadhash",
         "content_kind": "content_kind",
+        "detector_count": 0,
+        "detector_names": [],
         "document_id": "doc-upload",
         "document_status": "prepared",
+        "dropped_field_count": 0,
         "embedded_at": "2026-06-30T00:00:00Z",
         "embedding_dimensions": 768,
         "embedding_model": "text-embedding-test",
@@ -9344,7 +9545,9 @@
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-upload",
         "payload_contract_version": "2026-07-01",
+        "redacted_field_count": 0,
         "redaction_status": "clean",
+        "redaction_version": "2026-07-16",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "upload",
@@ -9551,12 +9754,12 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:d47866fd9fba39af85e0475cc23f3a7488fd6bb44edd232468c8ff934acde471",
+        "checksum": "sha256:9f5f191b130145fb3c23435c2a468fe634623ae98f24fb66be8448aa391ccdf6",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:d245b4d5b15916f926d3cbbcef48cf7fb841541aecf99f923ec5aea8b32e6ac5",
+        "checksum": "sha256:e6313e43941f06b361ec034e7d42868fdfae4609f2bd881e826015a045eeddb5",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -9571,7 +9774,7 @@
         "path": "crates/axon-vectors/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:87b71c14b12694f5d440a5fdf5d9db185a50e55c61a61629bf3bed8a9cb07454",
+        "checksum": "sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
@@ -9581,7 +9784,7 @@
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },
       {
-        "checksum": "sha256:5b4c02a619aec03ffc65990b37d64a3b65dc43feb8f5909df8ba2ba52908f0c8",
+        "checksum": "sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
@@ -9644,7 +9847,7 @@
         "fields": [
           "video_id",
           "title",
-          "url",
+          "media_url",
           "channel",
           "channel_url",
           "yt_uploader_id",
@@ -9664,6 +9867,7 @@
           "web_title",
           "web_domain",
           "web_status_code",
+          "web_status",
           "web_depth",
           "normalization_version",
           "web_url",
@@ -9672,6 +9876,10 @@
           "web_path",
           "web_normalized_url",
           "web_fetch_method",
+          "web_render_mode",
+          "web_etag",
+          "web_prior_etag",
+          "web_reuse_required",
           "extractor_name",
           "extractor_version",
           "structured_payload_omitted",
@@ -9716,11 +9924,7 @@
           "memory_scope_kind",
           "memory_scope_value",
           "memory_confidence",
-          "memory_salience",
-          "redaction_version",
-          "redacted_field_count",
-          "dropped_field_count",
-          "detector_names"
+          "memory_salience"
         ],
         "source_family": "memory"
       },

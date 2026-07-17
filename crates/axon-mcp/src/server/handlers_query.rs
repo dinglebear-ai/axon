@@ -16,7 +16,7 @@ use crate::schema::{
 use axon_core::config::ConfigOverrides;
 use axon_services::{
     endpoints as endpoints_svc, map as map_svc, query as query_svc, search as search_svc,
-    search_crawl as search_crawl_svc, summarize as summarize_svc,
+    search_crawl as search_source_index_svc, summarize as summarize_svc,
 };
 use rmcp::ErrorData;
 
@@ -64,7 +64,11 @@ impl AxonMcpServer {
         validate_mcp_url(&url)?;
         let response_mode = req.response_mode;
         let map_opts = to_map_options(req.limit, req.offset);
-        let result = map_svc::discover(self.cfg.as_ref(), &url, map_opts, None)
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| internal_error(format!("service context init failed: {e}")))?;
+        let result = map_svc::discover_with_context(ctx.as_ref(), &url, map_opts, None)
             .await
             .map_err(|e| logged_internal_error(&format!("map '{url}'"), e.as_ref()))?;
         respond_with_mode(
@@ -168,10 +172,14 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| logged_internal_error("search.context", e.as_ref()))?;
-        let result =
-            search_crawl_svc::search_and_crawl(self.cfg.as_ref(), &service_context, &query, opts)
-                .await
-                .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
+        let result = search_source_index_svc::search_and_index_sources(
+            self.cfg.as_ref(),
+            &service_context,
+            &query,
+            opts,
+        )
+        .await
+        .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "search",
@@ -183,9 +191,9 @@ impl AxonMcpServer {
                 "limit": limit,
                 "offset": offset,
                 "results": result.results,
-                "auto_crawl_status": result.auto_crawl_status,
-                "crawl_jobs": result.crawl_jobs,
-                "crawl_jobs_rejected": result.crawl_rejected,
+                "source_index_status": result.source_index_status,
+                "source_jobs": result.source_jobs,
+                "source_jobs_rejected": result.source_jobs_rejected,
             }),
             InlineHint::Default,
         )

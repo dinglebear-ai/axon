@@ -1,12 +1,9 @@
 //! YouTube source adapter (videos, playlists, channels + transcripts).
 //!
-//! Like the `git` adapter, this operates on already-materialized input — a
-//! `youtube_dump_path` option pointing at a prepared JSON dump of video
-//! metadata and transcripts, produced by the caller (the services bridge
-//! performs the `yt-dlp` fetch). Keeping the subprocess/network out of the
-//! adapter makes it unit-testable with fixture dumps and matches how the
-//! `git` adapter reads a prepared clone via `repo_root`.
+//! [`YoutubeSourceAdapter::materialize`] owns target validation, the bounded
+//! `yt-dlp` subprocess, and prepared-dump creation before discovery.
 
+mod acquire;
 pub mod dump;
 mod metadata;
 mod target;
@@ -22,6 +19,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+pub use self::acquire::fetch_youtube_dump;
 use self::dump::{YoutubeVideoDump, read_youtube_dump};
 use self::metadata::{youtube_manifest_metadata, youtube_source_document};
 pub use self::target::{
@@ -38,6 +36,28 @@ pub struct YoutubeSourceAdapter;
 impl YoutubeSourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        mut plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let (temporary, path) = acquire::fetch_youtube_dump_to_temporary_file(&plan.request.source)
+            .await
+            .map_err(|err| {
+                crate::acquisition::materialization_error(
+                    "adapter.youtube.fetch_failed",
+                    err.to_string(),
+                )
+            })?;
+        plan.route.validated_options.values.insert(
+            "youtube_dump_path".to_string(),
+            json!(path.to_string_lossy()),
+        );
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
+        ))
     }
 }
 

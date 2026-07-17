@@ -269,14 +269,6 @@ pub(crate) const ADVANCED_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
-        "AXON_MCP_EMBED_ALLOWED_ROOTS",
-        TrustedOperatorBootstrap,
-        HostOnly,
-        None,
-        Advanced,
-        false,
-    ),
-    spec(
         "AXON_HTTP_HOST",
         TrustedOperatorBootstrap,
         HostOnly,

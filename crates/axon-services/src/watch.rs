@@ -1,23 +1,15 @@
 use std::error::Error;
 
 use sqlx::SqlitePool;
-use uuid::Uuid;
 
 use axon_core::config::Config;
 use axon_jobs::boundary::JobStore;
-use axon_jobs::watch;
 
 use crate::context::ServiceContext;
 
-pub use axon_jobs::watch::{
-    WatchDef, WatchDefCreate, WatchDefCreateRequest, WatchRun, WatchRunArtifact,
-};
-
 // Source-request-backed watch store (WS-B / audit C4-04, issue #298). This is
 // a thin facade over `axon_jobs::watch_store::SqliteWatchStore` — the real
-// `WatchStore` implementation — kept deliberately separate from the
-// task_type/task_payload facade above (see `watch_store.rs` module docs for
-// why the two models are not unified in this slice).
+// `WatchStore` implementation.
 pub use axon_api::source::{
     AdapterOptions, AuthSnapshot, ExecutionMode, JobDescriptor, JobKind, SourceIntent,
     SourceRefreshPolicy, SourceRequest, SourceScope, SourceWatchPolicy, WatchExecRequest,
@@ -48,13 +40,47 @@ pub async fn create_source_watch(
     mut request: WatchRequest,
     auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<WatchResult, Box<dyn Error>> {
-    let effective_scope = authorize_watch_request(&request, auth_snapshot.as_ref())?;
-    request.scope = Some(effective_scope);
+    request.source = request.source.trim().to_string();
+    let routed = authorize_watch_request(&request, auth_snapshot.as_ref())?;
+    request.scope = Some(routed.route.scope);
     let store = open_source_watch_store(cfg, pool).await?;
+    let mut existing = store
+        .find_by_source(&routed.route.source.canonical_uri)
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    if existing.is_none() {
+        existing = store
+            .find_by_source(&request.source)
+            .await
+            .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    }
+    if let Some(existing) = existing {
+        let updated = SourceWatchStoreTrait::update(
+            &store,
+            existing.watch_id,
+            WatchUpdateRequest {
+                enabled: Some(request.enabled.unwrap_or(true)),
+                schedule: Some(request.schedule),
+                options: Some(request.options),
+                embed: Some(request.embed),
+                collection: request.collection,
+                scope: Some(routed.route.scope),
+            },
+        )
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+        return Ok(updated);
+    }
     let stored_auth =
         Some(auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("source-watch-create")));
     store
-        .create_with_auth(request, stored_auth)
+        .create_resolved_with_auth(
+            request,
+            routed.route.source.source_id,
+            routed.route.source.canonical_uri,
+            routed.route.adapter,
+            stored_auth,
+        )
         .await
         .map_err(|err| Box::new(err) as Box<dyn Error>)
 }
@@ -106,6 +132,38 @@ pub async fn exec_source_watch(
     Ok(descriptor)
 }
 
+pub async fn resolve_source_watch_id(
+    cfg: &Config,
+    pool: Option<&SqlitePool>,
+    id_or_source: &str,
+) -> Result<WatchId, Box<dyn Error>> {
+    let store = open_source_watch_store(cfg, pool).await?;
+    let watch_id = WatchId::new(id_or_source.trim());
+    if SourceWatchStoreTrait::get(&store, watch_id.clone())
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?
+        .is_some()
+    {
+        return Ok(watch_id);
+    }
+    let mut found = store
+        .find_by_source(id_or_source)
+        .await
+        .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    if found.is_none()
+        && let Some(canonical_uri) = source_canonical_uri(id_or_source)
+    {
+        found = store
+            .find_by_source(&canonical_uri)
+            .await
+            .map_err(|err| Box::new(err) as Box<dyn Error>)?;
+    }
+    let Some(found) = found else {
+        return Err(format!("watch {id_or_source} not found").into());
+    };
+    Ok(found.watch_id)
+}
+
 async fn enqueue_watch_source(
     request: SourceRequest,
     store: &dyn JobStore,
@@ -119,7 +177,7 @@ async fn enqueue_watch_source(
 fn authorize_watch_request(
     watch: &WatchRequest,
     auth_snapshot: Option<&AuthSnapshot>,
-) -> Result<SourceScope, Box<dyn Error>> {
+) -> Result<crate::source::routing::RoutedSource, Box<dyn Error>> {
     let source_request = source_request_for_watch_create(watch);
     let routed = crate::source::routing::resolve_source_route(&source_request)
         .map_err(|err| Box::new(err) as Box<dyn Error>)?;
@@ -136,7 +194,18 @@ fn authorize_watch_request(
     if routed.kind == crate::source::classify::SourceInputKind::Unsupported {
         return Err("watch source kind is unsupported".into());
     }
-    Ok(routed.route.scope)
+    Ok(routed)
+}
+
+fn source_canonical_uri(source: &str) -> Option<String> {
+    let source = source.trim();
+    if source.is_empty() {
+        return None;
+    }
+    let request = SourceRequest::new(source.to_string());
+    crate::source::routing::resolve_source_route(&request)
+        .ok()
+        .map(|routed| routed.route.source.canonical_uri)
 }
 
 fn source_request_for_watch_create(watch: &WatchRequest) -> SourceRequest {
@@ -180,108 +249,6 @@ pub async fn history_source_watch(
     SourceWatchStoreTrait::history(&store, request)
         .await
         .map_err(|err| Box::new(err) as Box<dyn Error>)
-}
-
-pub async fn list_watch_defs(cfg: &Config, limit: i64) -> Result<Vec<WatchDef>, Box<dyn Error>> {
-    watch::list_watch_defs(cfg, limit).await
-}
-
-pub async fn list_watch_defs_with_pool(
-    pool: &SqlitePool,
-    limit: i64,
-) -> Result<Vec<WatchDef>, Box<dyn Error>> {
-    watch::list_watch_defs_with_pool(pool, limit).await
-}
-
-pub async fn create_watch_def(
-    cfg: &Config,
-    input: &WatchDefCreate,
-) -> Result<WatchDef, Box<dyn Error>> {
-    watch::create_watch_def(cfg, input).await
-}
-
-pub async fn create_watch_def_with_pool(
-    pool: &SqlitePool,
-    input: &WatchDefCreate,
-) -> Result<WatchDef, Box<dyn Error>> {
-    watch::create_watch_def_with_pool(pool, input).await
-}
-
-pub async fn list_watch_runs(
-    cfg: &Config,
-    watch_id: Uuid,
-    limit: i64,
-) -> Result<Vec<WatchRun>, Box<dyn Error>> {
-    watch::list_watch_runs(cfg, watch_id, limit).await
-}
-
-pub async fn list_watch_runs_with_pool(
-    pool: &SqlitePool,
-    watch_id: Uuid,
-    limit: i64,
-) -> Result<Vec<WatchRun>, Box<dyn Error>> {
-    watch::list_watch_runs_with_pool(pool, watch_id, limit).await
-}
-
-pub async fn list_watch_run_artifacts(
-    cfg: &Config,
-    run_id: Uuid,
-    limit: i64,
-) -> Result<Vec<WatchRunArtifact>, Box<dyn Error>> {
-    watch::list_watch_run_artifacts(cfg, run_id, limit).await
-}
-
-pub async fn list_watch_run_artifacts_with_pool(
-    pool: &SqlitePool,
-    run_id: Uuid,
-    limit: i64,
-) -> Result<Vec<WatchRunArtifact>, Box<dyn Error>> {
-    watch::list_watch_run_artifacts_with_pool(pool, run_id, limit).await
-}
-
-pub async fn create_watch_run(
-    cfg: &Config,
-    watch_id: Uuid,
-    dispatched_job_id: Option<Uuid>,
-) -> Result<WatchRun, Box<dyn Error>> {
-    watch::create_watch_run(cfg, watch_id, dispatched_job_id).await
-}
-
-pub async fn get_watch_def(
-    cfg: &Config,
-    watch_id: Uuid,
-) -> Result<Option<WatchDef>, Box<dyn Error>> {
-    watch::get_watch_def(cfg, watch_id).await
-}
-
-pub async fn get_watch_def_with_pool(
-    pool: &SqlitePool,
-    watch_id: Uuid,
-) -> Result<Option<WatchDef>, Box<dyn Error>> {
-    watch::get_watch_def_with_pool(pool, watch_id).await
-}
-
-pub async fn finish_watch_run(
-    cfg: &Config,
-    watch_id: Uuid,
-    run_id: Uuid,
-    status: &str,
-    result_json: Option<&serde_json::Value>,
-    error_text: Option<&str>,
-) -> Result<bool, Box<dyn Error>> {
-    watch::finish_watch_run(cfg, watch_id, run_id, status, result_json, error_text).await
-}
-
-pub async fn run_watch_now(cfg: &Config, watch: &WatchDef) -> Result<WatchRun, Box<dyn Error>> {
-    watch::run_watch_now(cfg, watch).await
-}
-
-pub async fn run_watch_now_with_pool(
-    cfg: &Config,
-    pool: &SqlitePool,
-    watch: &WatchDef,
-) -> Result<WatchRun, Box<dyn Error>> {
-    watch::run_watch_now_with_pool(cfg, pool, watch).await
 }
 
 #[cfg(test)]

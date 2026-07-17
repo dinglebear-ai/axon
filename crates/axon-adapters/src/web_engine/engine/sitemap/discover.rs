@@ -14,6 +14,8 @@ use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 
+use crate::web_engine::engine::MAX_TRACKED_DISCOVERED_URLS;
+
 /// Result of sitemap discovery including URLs and diagnostic stats.
 #[derive(Debug, Clone, Default)]
 pub struct SitemapDiscovery {
@@ -41,7 +43,39 @@ struct SitemapBatchOutput<'a> {
     seen_sitemaps: &'a HashSet<String>,
     queue: &'a mut VecDeque<String>,
     out: &'a mut HashSet<String>,
+    sitemap_fetch_limit: usize,
+    url_limit: usize,
     failed_fetches: usize,
+}
+
+pub(crate) fn sitemap_url_limit(cfg: &Config) -> usize {
+    // Zero means caller-uncapped, not server-unbounded.
+    if cfg.max_pages == 0 {
+        MAX_TRACKED_DISCOVERED_URLS
+    } else {
+        (cfg.max_pages as usize).min(MAX_TRACKED_DISCOVERED_URLS)
+    }
+}
+
+pub(crate) fn sitemap_fetch_limit(cfg: &Config) -> usize {
+    // Keep malicious indexes from turning max_sitemaps=0 into unlimited I/O.
+    if cfg.max_sitemaps == 0 {
+        MAX_TRACKED_DISCOVERED_URLS
+    } else {
+        cfg.max_sitemaps.min(MAX_TRACKED_DISCOVERED_URLS)
+    }
+}
+
+pub(crate) fn insert_discovered_url(
+    out: &mut HashSet<String>,
+    url: String,
+    url_limit: usize,
+) -> bool {
+    if out.len() >= url_limit {
+        return false;
+    }
+    out.insert(url);
+    out.len() < url_limit
 }
 
 /// Seed the queue with default sitemap paths. Uses `join_origin_path` so IPv6 authorities
@@ -120,8 +154,9 @@ async fn process_sitemap_batch(
                     scope.start_host,
                     scope.start_path,
                     scope.scoped_to_root,
-                ) {
-                    output.out.insert(canonical_loc);
+                ) && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+                {
+                    break;
                 }
             }
         } else {
@@ -133,10 +168,16 @@ async fn process_sitemap_batch(
                     scope.start_path,
                     scope.scoped_to_root,
                 ) {
-                    if is_index && !output.seen_sitemaps.contains(&canonical_loc) {
+                    if is_index
+                        && !output.seen_sitemaps.contains(&canonical_loc)
+                        && output.seen_sitemaps.len() + output.queue.len()
+                            < output.sitemap_fetch_limit
+                    {
                         output.queue.push_back(canonical_loc);
-                    } else if !is_index {
-                        output.out.insert(canonical_loc);
+                    } else if !is_index
+                        && !insert_discovered_url(output.out, canonical_loc, output.url_limit)
+                    {
+                        break;
                     }
                 }
             }
@@ -152,6 +193,7 @@ async fn enqueue_robots_sitemaps(
     parsed: &Url,
     cfg: &Config,
     queue: &mut VecDeque<String>,
+    sitemap_fetch_limit: usize,
 ) -> usize {
     let Ok(robots_url) = join_origin_path(parsed, "/robots.txt") else {
         return 0;
@@ -169,7 +211,11 @@ async fn enqueue_robots_sitemaps(
     };
     let declared = extract_robots_sitemaps(&robots_txt);
     let count = declared.len();
-    queue.extend(declared);
+    queue.extend(
+        declared
+            .into_iter()
+            .take(sitemap_fetch_limit.saturating_sub(queue.len())),
+    );
     count
 }
 
@@ -194,12 +240,15 @@ pub async fn discover_sitemap_urls(
         .to_string();
 
     let mut queue = sitemap_seed_queue(&parsed);
+    let sitemap_fetch_limit = sitemap_fetch_limit(cfg);
+    queue.truncate(sitemap_fetch_limit);
     let seeded_default_sitemaps = queue.len();
 
     let client = build_client(request_timeout_secs(cfg), None).map_err(|e| {
         format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
     })?;
-    let robots_declared_sitemaps = enqueue_robots_sitemaps(&client, &parsed, cfg, &mut queue).await;
+    let robots_declared_sitemaps =
+        enqueue_robots_sitemaps(&client, &parsed, cfg, &mut queue, sitemap_fetch_limit).await;
 
     let mut seen_sitemaps = HashSet::new();
     let mut out = HashSet::new();
@@ -220,18 +269,14 @@ pub async fn discover_sitemap_urls(
         .backfill_concurrency_limit
         .unwrap_or(cfg.batch_concurrency)
         .clamp(1, 1024);
-    // Treat 0 as unlimited (consistent with --max-pages and --sitemap-since-days).
-    let max_sitemaps = if cfg.max_sitemaps == 0 {
-        usize::MAX
-    } else {
-        cfg.max_sitemaps
-    };
+    let url_limit = sitemap_url_limit(cfg);
+    let mut sitemap_fetches = 0usize;
     let mut parsed_sitemaps = 0usize;
     let mut failed_fetches = 0usize;
 
-    while !queue.is_empty() && parsed_sitemaps < max_sitemaps {
+    while !queue.is_empty() && sitemap_fetches < sitemap_fetch_limit && out.len() < url_limit {
         let mut batch = Vec::new();
-        while batch.len() < worker_limit && parsed_sitemaps + batch.len() < max_sitemaps {
+        while batch.len() < worker_limit && sitemap_fetches + batch.len() < sitemap_fetch_limit {
             let Some(url) = queue.pop_front() else {
                 break;
             };
@@ -242,11 +287,15 @@ pub async fn discover_sitemap_urls(
         if batch.is_empty() {
             break;
         }
+        // Count attempts before I/O so failed sitemap requests consume budget too.
+        sitemap_fetches += batch.len();
 
         let mut output = SitemapBatchOutput {
             seen_sitemaps: &seen_sitemaps,
             queue: &mut queue,
             out: &mut out,
+            sitemap_fetch_limit,
+            url_limit,
             failed_fetches: 0,
         };
         parsed_sitemaps += process_sitemap_batch(cfg, &client, batch, &scope, &mut output).await;

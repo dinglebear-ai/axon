@@ -4,8 +4,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 import { ActionList } from "@/components/palette/ActionList";
 import { AuthNotice } from "@/components/palette/AuthNotice";
 import { BrowserView } from "@/components/palette/BrowserView";
-import { CrawlJobView } from "@/components/palette/CrawlJobView";
-import { HistoryPanel, type HistoryItem } from "@/components/palette/HistoryPanel";
+import { type HistoryItem, HistoryPanel } from "@/components/palette/HistoryPanel";
 import { JobProgressView } from "@/components/palette/JobProgressView";
 import { OutputPanel } from "@/components/palette/OutputPanel";
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
@@ -32,8 +31,6 @@ interface PaletteShellProps {
   browserOpen: boolean;
   onCloseBrowser: () => void;
   cancelAsyncJob: () => Promise<void>;
-  cancelJob: () => Promise<void>;
-  canceling: boolean;
   client: Client | null;
   commandRunning: boolean;
   compact: boolean;
@@ -46,7 +43,6 @@ interface PaletteShellProps {
   endpointTone: string;
   enterActionMode: (action: PaletteAction) => void;
   expandAsyncJob: () => void;
-  expandJob: () => void;
   filtered: PaletteAction[];
   guardMessage: string;
   hasQuery: boolean;
@@ -63,7 +59,6 @@ interface PaletteShellProps {
   listboxOpen: boolean;
   liveRefresh: LiveRefreshState;
   modeAction: PaletteAction | null;
-  nowMs: number;
   onBack: () => void;
   onCollapse: () => void;
   onCopy: (text: string) => void;
@@ -111,10 +106,7 @@ interface PaletteShellProps {
   submitDisabled: boolean;
   switchActionMode: (action: PaletteAction) => void;
   validation: string;
-  viewPartialJob: () => Promise<void>;
   showHelpFor: (action?: PaletteAction, unknownTarget?: string) => void;
-  minimizeJob: () => void;
-  closeJob: () => void;
   minimizeAsyncJob: () => void;
   closeAsyncJob: () => void;
   setSourcesFilter: Dispatch<SetStateAction<string>>;
@@ -130,12 +122,16 @@ export function PaletteShell(props: PaletteShellProps) {
     if (
       props.parsed.invoked ||
       action.argMode === "none" ||
-      (action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)) ||
+      (action.subcommand === "ask" &&
+        props.parsed.search.trim().length > 0 &&
+        !actionMatches(action, props.parsed.search)) ||
       (acceptsDirectUrl(action) && looksLikeUrl(props.parsed.search))
     ) {
       props.requestSubmit(
         action,
-        action.subcommand === "ask" && props.parsed.search.trim().length > 0 && !actionMatches(action, props.parsed.search)
+        action.subcommand === "ask" &&
+          props.parsed.search.trim().length > 0 &&
+          !actionMatches(action, props.parsed.search)
           ? props.parsed.search
           : undefined,
       );
@@ -215,26 +211,16 @@ export function PaletteShell(props: PaletteShellProps) {
 }
 
 function JobTray(props: PaletteShellProps) {
-  if (props.jobMinimized && props.run.kind === "job") {
-    const pct = Math.round(props.run.snapshot.percent);
-    const totalPages = props.run.snapshot.fetched + props.run.snapshot.queued;
-    return (
-      <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandJob} title="Expand crawl job">
-        <Workflow size={14} strokeWidth={1.9} />
-        <span>Crawling {props.run.snapshot.host}</span>
-        <span className="idle-tray-bar">
-          <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, pct)}%` }} />
-        </span>
-        <span className="idle-tray-pages">{totalPages.toLocaleString("en-US")} pages</span>
-        <strong>{pct}%</strong>
-        <ChevronRight size={15} />
-      </Button>
-    );
-  }
-
   if (props.jobMinimized && props.run.kind === "asyncJob") {
     return (
-      <Button variant="plain" size="unstyled" className="idle-tray" type="button" onClick={props.expandAsyncJob} title="Expand job">
+      <Button
+        variant="plain"
+        size="unstyled"
+        className="idle-tray"
+        type="button"
+        onClick={props.expandAsyncJob}
+        title="Expand job"
+      >
         <Workflow size={14} strokeWidth={1.9} />
         <span>
           {jobFamilyVerb(props.run.family)} {props.run.snapshot.label}
@@ -242,7 +228,11 @@ function JobTray(props: PaletteShellProps) {
         {props.run.snapshot.percent != null && (
           <>
             <span className="idle-tray-bar">
-              <span style={{ width: `${Math.max(MIN_PROGRESS_PCT, Math.round(props.run.snapshot.percent))}%` }} />
+              <span
+                style={{
+                  width: `${Math.max(MIN_PROGRESS_PCT, Math.round(props.run.snapshot.percent))}%`,
+                }}
+              />
             </span>
             <strong>{Math.round(props.run.snapshot.percent)}%</strong>
           </>
@@ -283,7 +273,15 @@ function MainContent(props: PaletteShellProps) {
     );
   }
   return (
-    <main className={props.showResultsLayout ? (props.showActionPanel ? "palette-grid" : "palette-grid palette-grid-output-only") : "palette-suggestions"}>
+    <main
+      className={
+        props.showResultsLayout
+          ? props.showActionPanel
+            ? "palette-grid"
+            : "palette-grid palette-grid-output-only"
+          : "palette-suggestions"
+      }
+    >
       {props.showActionPanel && (
         <ActionList
           filtered={props.filtered}
@@ -327,21 +325,6 @@ function MainContent(props: PaletteShellProps) {
 
 function JobRegion(props: PaletteShellProps) {
   if (!props.showResultsLayout || props.historyOpen) return null;
-  if (props.run.kind === "job") {
-    return (
-      <div ref={props.outputFocusRef} style={{ display: "contents" }}>
-        <CrawlJobView
-          snapshot={props.run.snapshot}
-          nowMs={props.nowMs}
-          canceling={props.canceling}
-          onCancel={() => void props.cancelJob()}
-          onViewPartial={() => void props.viewPartialJob()}
-          onMinimize={props.minimizeJob}
-          onClose={props.closeJob}
-        />
-      </div>
-    );
-  }
   if (props.run.kind === "asyncJob") {
     return (
       <div ref={props.outputFocusRef} style={{ display: "contents" }}>
@@ -360,7 +343,7 @@ function JobRegion(props: PaletteShellProps) {
 }
 
 function OutputRegion(props: PaletteShellProps) {
-  if (!props.showResultsLayout || props.historyOpen || props.run.kind === "job" || props.run.kind === "asyncJob") {
+  if (!props.showResultsLayout || props.historyOpen || props.run.kind === "asyncJob") {
     return null;
   }
   return (

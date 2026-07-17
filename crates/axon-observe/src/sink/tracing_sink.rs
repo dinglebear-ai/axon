@@ -9,6 +9,7 @@ use axon_api::source::{JobHeartbeat, SourceProgressEvent};
 
 use crate::collector::{ObservabilitySink, Result};
 use crate::metric::MetricSample;
+use crate::redaction::redact_event;
 use crate::sequence::SequenceRegistry;
 use crate::span::SpanFieldSet;
 
@@ -39,6 +40,8 @@ impl TracingObservabilitySink {
 #[async_trait]
 impl ObservabilitySink for TracingObservabilitySink {
     async fn emit(&self, mut event: SourceProgressEvent) -> Result<()> {
+        let write = redact_event(event).map_err(|error| *error)?;
+        event = write.payload;
         event.sequence = self.sequences.next(event.job_id);
         // Bounded identifier/count/severity fields come from the shared
         // `SpanFieldSet` convention (see `crate::span`) instead of being
@@ -53,11 +56,21 @@ impl ObservabilitySink for TracingObservabilitySink {
             severity = fields.severity.map(|s| enum_str(&s)).unwrap_or_default(),
             visibility = enum_str(&event.visibility),
             source_id = fields.source_id.map(|id| id.0).unwrap_or_default(),
+            source_item_key = fields.source_item_key.map(|id| id.0).unwrap_or_default(),
+            source_generation = fields.generation.map(|id| id.0).unwrap_or_default(),
+            canonical_uri = fields.canonical_uri.unwrap_or_default(),
+            document_id = fields.document_id.map(|id| id.0).unwrap_or_default(),
+            chunk_id = fields.chunk_id.map(|id| id.0).unwrap_or_default(),
             adapter = fields.adapter.unwrap_or_default(),
             provider_id = fields.provider_id.map(|id| id.0).unwrap_or_default(),
             error_code = fields.error_code.unwrap_or_default(),
             event_id = %event.event_id,
             message = %event.message,
+            redaction_status = ?write.redaction.redaction_status,
+            redaction_version = %write.redaction.redaction_version,
+            redacted_field_count = write.redaction.redacted_field_count,
+            dropped_field_count = write.redaction.dropped_field_count,
+            detector_count = write.redaction.detector_count,
             "observe.event"
         );
         Ok(())

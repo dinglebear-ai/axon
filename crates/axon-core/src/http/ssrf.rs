@@ -280,7 +280,7 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
                 .into_iter()
                 .partition(|addr| check_ip(addr.ip()).is_ok());
 
-            if allowed.is_empty() {
+            if !blocked.is_empty() || allowed.is_empty() {
                 // This is the connect-time SSRF enforcement point for every
                 // fetch made through the shared reqwest client (see the
                 // module doc on `validate_url`). Record the denial per the
@@ -292,7 +292,7 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
                 );
                 let err: DnsError = Box::new(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
-                    format!("SSRF: all resolved IPs for '{host}' are in blocked ranges"),
+                    format!("SSRF: DNS response for '{host}' contains blocked IP ranges"),
                 ));
                 return Err(err);
             }

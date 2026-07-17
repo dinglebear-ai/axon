@@ -1,0 +1,23 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "expected_error_code": "auth.scope_required",
+  "fixture_kind": "auth.missing-scope",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "redaction_status": "clean",
+  "required_scope": "axon:write",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

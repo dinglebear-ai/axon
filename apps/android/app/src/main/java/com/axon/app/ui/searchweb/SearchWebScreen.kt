@@ -52,8 +52,8 @@ import tv.tootie.aurora.components.AuroraStatusTone
 /**
  * Search mode screen: live web search via Tavily, results auto-indexed server-side.
  *
- * R16 — when the server reports it skipped enqueueing some result-driven crawls
- * (`crawlJobsSkipped > 0`) AND we still have results to show, surface a Warn
+ * R16 — when the server rejects enqueueing some result-driven source jobs
+ * (`sourceJobsRejected > 0`) AND we still have results to show, surface a Warn
  * callout so the user knows indexing is degraded (queue cap likely hit).
  */
 @Composable
@@ -97,12 +97,12 @@ fun SearchWebScreen(vm: SearchWebViewModel = viewModel()) {
                 ) {
                     AuroraStatusIndicator(
                         tone = AuroraStatusTone.Queued,
-                        label = "${result.crawlJobsEnqueued} crawl jobs enqueued",
+                        label = "${result.sourceJobsEnqueued} source jobs enqueued",
                     )
-                    // R16 — auto-crawl backpressure callout.
-                    if (result.crawlJobsSkipped > 0 && result.results.isNotEmpty()) {
+                    // R16 — source auto-index backpressure callout.
+                    if (result.sourceJobsRejected > 0 && result.results.isNotEmpty()) {
                         AuroraCallout(
-                            title = "Auto-crawl queue full",
+                            title = "Auto-index queue full",
                             message = "Some results were not enqueued for indexing — try again later.",
                             variant = AuroraCalloutVariant.Warn,
                             modifier = Modifier.fillMaxWidth(),

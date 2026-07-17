@@ -151,20 +151,6 @@ async function startEmbedWithAxon(input) {
   return postAxon("/v1/sources", { source: input });
 }
 
-async function startIngestWithAxon(args) {
-  const parsed = parseCliArgs(args);
-  const target = parsed.positionals.join(" ").trim();
-  if (!target) {
-    throw new Error("ingest requires a target.");
-  }
-  // IngestRequest.source_type is adapter-selected server-side — there is no
-  // client-settable override, so a `--type`/`--sourceType` flag is dropped
-  // rather than sent as a dead option key (matches launcher.js's ingest case).
-  const values = {};
-  values.include_source = String(parsed.flags.includeSource !== false);
-  return postAxon("/v1/sources", { source: target, options: { values } });
-}
-
 async function cancelCrawlWithAxon(jobId) {
   const result = await postAxon(`/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {});
   // JobCancelResult (crates/axon-api/src/source/job.rs) has no `canceled`
@@ -367,7 +353,7 @@ async function pollCrawlStatus(jobId, pollRun) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setCrawlStatus(`Status unavailable`, jobId, "warn");
-      setStatus(`Crawl status unavailable: ${message}`);
+      setStatus(`Source job status unavailable: ${message}`);
       return;
     }
   }
@@ -393,7 +379,7 @@ function crawlStatus(result) {
 
 function crawlDetail(result, status, pages, errors) {
   return [
-    `# Crawl`,
+    `# Source job`,
     "",
     `${badge(toneForStatus(status), status)}${pages ? ` ${pages.toLocaleString()} pages` : ""}`,
     errors ? `${badge("error", `${errors} errors`)}` : "",

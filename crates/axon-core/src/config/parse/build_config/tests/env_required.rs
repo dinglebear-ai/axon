@@ -96,13 +96,13 @@ fn into_config_reads_openai_compat_env_settings() {
             "AXON_LLM_BACKEND",
             "AXON_OPENAI_BASE_URL",
             "AXON_OPENAI_API_KEY",
-            "AXON_OPENAI_MODEL",
+            "AXON_SYNTHESIS_OPENAI_MODEL",
         ],
         || unsafe {
             env::set_var("AXON_LLM_BACKEND", "openai-compat");
             env::set_var("AXON_OPENAI_BASE_URL", "http://127.0.0.1:8080/v1");
             env::set_var("AXON_OPENAI_API_KEY", "local-key");
-            env::set_var("AXON_OPENAI_MODEL", "gemma-4-e4b");
+            env::set_var("AXON_SYNTHESIS_OPENAI_MODEL", "gemma-4-e4b");
             let cfg = into_config_via_args(&["status"]).expect("status config");
             let backend = crate::llm::LlmBackendConfig::from_config(&cfg);
             assert_eq!(backend.kind, crate::llm::LlmBackendKind::OpenAiCompat);
@@ -163,7 +163,6 @@ fn into_config_reads_split_synthesis_and_chat_models() {
         &[
             "AXON_LLM_BACKEND",
             "AXON_SYNTHESIS_OPENAI_MODEL",
-            "AXON_OPENAI_MODEL",
             "AXON_CHAT_OPENAI_MODEL",
             "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
             "AXON_HEADLESS_GEMINI_MODEL",
@@ -171,7 +170,6 @@ fn into_config_reads_split_synthesis_and_chat_models() {
         ],
         || unsafe {
             env::set_var("AXON_LLM_BACKEND", "openai-compat");
-            env::set_var("AXON_OPENAI_MODEL", "legacy-synthesis");
             env::set_var("AXON_SYNTHESIS_OPENAI_MODEL", "explicit-synthesis");
             env::set_var("AXON_CHAT_OPENAI_MODEL", "direct-chat");
             env::set_var("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL", "gemini-synthesis");
@@ -189,6 +187,47 @@ fn into_config_reads_split_synthesis_and_chat_models() {
 
 #[allow(unsafe_code)]
 #[test]
+fn into_config_rejects_removed_env_aliases_with_guidance() {
+    let _guard = env_guard();
+    for (removed, replacement) in [
+        ("AXON_OPENAI_MODEL", "AXON_SYNTHESIS_OPENAI_MODEL"),
+        (
+            "AXON_MCP_EMBED_ALLOWED_ROOTS",
+            "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
+        ),
+        ("AXON_HNSW_EF_SEARCH_LEGACY", "AXON_HNSW_EF_SEARCH"),
+    ] {
+        with_env_saved(&[removed], || unsafe {
+            env::set_var(removed, "removed-value");
+            let err = into_config_via_args(&["status"]).expect_err("removed env must fail");
+            assert!(err.contains(removed), "missing removed key in: {err}");
+            assert!(err.contains(replacement), "missing replacement in: {err}");
+        });
+    }
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_reads_canonical_source_local_roots() {
+    let _guard = env_guard();
+    with_env_saved(&["AXON_SOURCE_LOCAL_ALLOWED_ROOTS"], || unsafe {
+        env::set_var(
+            "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
+            "/srv/axon/sources, /home/axon/projects",
+        );
+        let cfg = into_config_via_args(&["status"]).expect("status config");
+        assert_eq!(
+            cfg.mcp_embed_allowed_roots,
+            vec![
+                std::path::PathBuf::from("/srv/axon/sources"),
+                std::path::PathBuf::from("/home/axon/projects"),
+            ]
+        );
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn into_config_rejects_unknown_llm_backend() {
     let _guard = env_guard();
     with_env_saved(&["AXON_LLM_BACKEND"], || unsafe {
@@ -196,6 +235,20 @@ fn into_config_rejects_unknown_llm_backend() {
         let err = into_config_via_args(&["status"]).unwrap_err();
         assert!(err.contains("AXON_LLM_BACKEND"));
         assert!(err.contains("openai-compat"));
+    });
+}
+
+#[allow(unsafe_code)]
+#[test]
+fn into_config_reads_canonical_llm_backend_from_toml() {
+    let _guard = env_guard();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    write!(f, "[providers.llm]\nbackend = \"openai-compat\"\n").unwrap();
+    with_env_saved(&["AXON_CONFIG_PATH", "AXON_LLM_BACKEND"], || unsafe {
+        env::set_var("AXON_CONFIG_PATH", f.path());
+        env::remove_var("AXON_LLM_BACKEND");
+        let cfg = into_config_via_args(&["status"]).expect("status config");
+        assert_eq!(cfg.llm_backend, crate::llm::LlmBackendKind::OpenAiCompat);
     });
 }
 

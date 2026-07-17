@@ -9,9 +9,9 @@ import {
   isHistoryOpen,
   isSettingsOpen,
   modeOf,
-  viewReducer,
   type View,
   type ViewIntent,
+  viewReducer,
 } from "@/lib/paletteViewState";
 
 function action(subcommand: string): PaletteAction {
@@ -114,7 +114,7 @@ describe("viewReducer — single transitions", () => {
       { type: "showHelp", action: scrape },
       launcher(scrape, false),
     ],
-    // Crawl-job driven
+    // Source-job driven
     ["minimizeJob clears mode", launcher(scrape, true), { type: "minimizeJob" }, launcher()],
     [
       "expandJob keeps mode",

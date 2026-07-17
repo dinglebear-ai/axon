@@ -62,6 +62,7 @@ fn dependency_candidate(source_id: &str, candidate_id: &str, parser_id: &str) ->
             edge_kind: "repo_declares_dependency".to_string(),
             from_stable_key: format!("repo:{source_id}"),
             to_stable_key: "pkg:tokio".to_string(),
+            evidence_ids: vec![format!("ev:{candidate_id}")],
             properties: MetadataMap::new(),
         }],
         evidence: vec![GraphEvidence {
@@ -267,7 +268,7 @@ async fn write_baseline_graph_persists_nonempty_graph() {
     // 1 container + 2 documents.
     assert_eq!(summary.nodes_upserted, 3);
     assert_eq!(summary.edges_upserted, 2);
-    assert!(summary.evidence_records >= 2);
+    assert_eq!(summary.evidence_records, 2);
 
     // The rows are genuinely in the durable graph tables.
     let node_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_nodes")

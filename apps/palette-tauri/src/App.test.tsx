@@ -239,10 +239,10 @@ describe("App command palette accessibility + keyboard nav", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Switch from/ }));
     vi.mocked(invoke).mockClear();
-    fireEvent.click(await screen.findByRole("button", { name: /Dedupe/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Clear jobs/ }));
 
     expect(
-      await screen.findByRole("button", { name: /Switch from Dedupe collection/ }),
+      await screen.findByRole("button", { name: /Switch from Clear jobs/ }),
     ).toBeInTheDocument();
     expect(vi.mocked(invoke)).not.toHaveBeenCalledWith("axon_http_request", expect.anything());
   });
@@ -255,16 +255,16 @@ describe("App command palette accessibility + keyboard nav", () => {
         return {
           ok: true,
           status: 200,
-          method: "POST",
-          path: "/v1/dedupe",
-          payload: { collection: "axon", scanned: 10, removed: 0 },
+          method: "DELETE",
+          path: "/v1/jobs",
+          payload: { cleared: 10 },
         };
       }
       return undefined;
     });
     const user = userEvent.setup();
     const input = await renderApp();
-    await user.type(input, "dedupe");
+    await user.type(input, "jobs-clear");
     await user.keyboard("{Enter}");
 
     expect(await screen.findByText(/confirmation armed/i)).toBeInTheDocument();
@@ -276,7 +276,7 @@ describe("App command palette accessibility + keyboard nav", () => {
       expect(vi.mocked(invoke)).toHaveBeenCalledWith(
         "axon_http_request",
         expect.objectContaining({
-          request: expect.objectContaining({ path: "/v1/dedupe", method: "POST" }),
+          request: expect.objectContaining({ path: "/v1/jobs", method: "DELETE" }),
         }),
       ),
     );

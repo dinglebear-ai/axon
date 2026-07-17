@@ -119,7 +119,7 @@ fn representative_help_hides_graph_flags() {
     for args in [
         &["--help"][..],
         &["setup", "--help"],
-        &["crawl", "--help"],
+        &["source", "--help"],
         &["serve", "--help"],
         &["mcp", "--help"],
     ] {
@@ -161,7 +161,7 @@ fn removed_tuning_flags_are_rejected_by_clap() {
 #[test]
 fn help_does_not_print_current_env_values() {
     let stdout = run_help_with_env(
-        &["crawl", "--help"],
+        &["--help"],
         &[
             ("AXON_COLLECTION", "secret_collection_for_help_test"),
             ("AXON_HTTP_TOKEN", "secret-help-token-9999"),
@@ -179,6 +179,16 @@ fn help_does_not_print_current_env_values() {
     assert!(
         !stdout.contains("secret-chrome"),
         "help output leaked AXON_CHROME_REMOTE_URL value:\n{stdout}"
+    );
+}
+
+#[test]
+fn removed_crawl_help_points_to_the_unified_source_surface() {
+    let stderr = run_error(&["crawl", "--help"]);
+    assert!(
+        stderr.contains("`axon crawl` has been removed from the unified source surface")
+            && stderr.contains("axon <url> --scope site"),
+        "removed crawl help should direct users to the unified source surface:\n{stderr}"
     );
 }
 
@@ -209,7 +219,9 @@ fn legacy_session_watch_surfaces_are_removed() {
     ] {
         let stderr = run_error(args);
         assert!(
-            stderr.contains("unrecognized subcommand") || stderr.contains("invalid value"),
+            stderr.contains("unrecognized subcommand")
+                || stderr.contains("invalid value")
+                || stderr.contains("unexpected argument"),
             "legacy session watch surface should be rejected for args={args:?}:\n{stderr}"
         );
     }

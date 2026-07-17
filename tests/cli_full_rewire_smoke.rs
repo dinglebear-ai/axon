@@ -13,16 +13,37 @@ use axon_services::query::{
     map_suggest_payload,
 };
 use axon_services::types::{
-    AskResult, EvaluateResult, IngestResult, MapResult, Pagination, QueryResult, ResearchResult,
-    RetrieveOptions, RetrieveResult, ScrapeResult, ScreenshotResult, SearchOptions, SearchResult,
-    SuggestResult,
+    AskResult, EvaluateResult, MapResult, Pagination, QueryResult, ResearchResult, RetrieveOptions,
+    RetrieveResult, ScrapeResult, ScreenshotResult, SearchOptions, SearchResult, SuggestResult,
 };
+
+fn citation(uri: &str, chunk_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "source_id": "source-test",
+        "source_item_key": uri,
+        "generation": "1",
+        "document_id": format!("document-{chunk_id}"),
+        "chunk_id": chunk_id,
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "canonical_uri": uri,
+        "source_range": { "line_start": 1, "line_end": 2 },
+        "redaction": {
+            "redaction_status": "clean",
+            "redaction_version": "test-v1",
+            "visibility": "public",
+            "redacted_field_count": 0,
+            "dropped_field_count": 0,
+            "detector_count": 0,
+            "detector_names": []
+        }
+    })
+}
 
 #[test]
 fn smoke_map_query_results_is_importable_and_works() {
     let items = vec![
-        serde_json::json!({"rank": 1, "score": 0.9, "rerank_score": 0.8, "url": "https://docs.example.com", "source": "docs", "snippet": "first", "chunk_index": null}),
-        serde_json::json!({"rank": 2, "score": 0.7, "rerank_score": 0.6, "url": "https://api.example.com", "source": "api", "snippet": "second", "chunk_index": 3}),
+        serde_json::json!({"rank": 1, "score": 0.9, "rerank_score": 0.8, "url": "https://docs.example.com", "source": "docs", "snippet": "first", "citation": citation("https://docs.example.com", "chunk-a"), "chunk_index": null}),
+        serde_json::json!({"rank": 2, "score": 0.7, "rerank_score": 0.6, "url": "https://api.example.com", "source": "api", "snippet": "second", "citation": citation("https://api.example.com", "chunk-b"), "chunk_index": 3}),
     ];
     let result: QueryResult = map_query_results(items).expect("valid query results");
     assert_eq!(result.results.len(), 2);
@@ -55,6 +76,7 @@ fn smoke_map_ask_payload_wraps_value() {
     let payload = serde_json::json!({
         "query": "what is RAG?",
         "answer": "Retrieval-Augmented Generation",
+        "citations": [],
         "timing_ms": {"retrieval": 1, "context_build": 2, "llm": 4, "total": 10}
     });
     let result: AskResult = map_ask_payload(payload.clone()).expect("valid ask payload");
@@ -69,6 +91,7 @@ fn smoke_map_evaluate_payload_wraps_value() {
         "rag_answer": "yes with sources",
         "baseline_answer": "maybe",
         "analysis_answer": "rag is more grounded",
+        "citations": [],
         "source_urls": [],
         "crawl_suggestions": [],
         "crawl_enqueue_outcomes": [],
@@ -172,9 +195,9 @@ fn smoke_map_research_payload_wraps_value() {
         offset: 0,
         search_results: vec![],
         extractions: vec![],
-        auto_crawl_status: "not_queued".to_string(),
-        crawl_jobs: vec![],
-        crawl_jobs_rejected: vec![],
+        source_index_status: "not_queued".to_string(),
+        source_jobs: vec![],
+        source_jobs_rejected: vec![],
         summary: Some("Rust uses async/await".to_string()),
         summary_source: SummarySource::Llm,
         usage: ResearchUsage::default(),
@@ -183,55 +206,6 @@ fn smoke_map_research_payload_wraps_value() {
     let result: ResearchResult = map_research_payload(payload.clone());
     assert_eq!(result.payload.query, "rust async patterns");
     assert_eq!(result.payload, payload);
-}
-
-// ── services::crawl ───────────────────────────────────────────────────────────
-
-use axon_services::crawl::{map_crawl_job_result, map_crawl_start_result};
-use axon_services::types::CrawlStartResult;
-
-#[test]
-fn smoke_map_crawl_start_result_wraps_job_ids() {
-    use std::path::Path;
-    let jobs = vec![
-        ("https://example.com".to_string(), "uuid-1".to_string()),
-        ("https://other.com".to_string(), "uuid-2".to_string()),
-    ];
-    let result: CrawlStartResult = map_crawl_start_result(Path::new("/tmp/output"), &jobs);
-    assert_eq!(result.job_ids.len(), 2);
-    assert_eq!(result.job_ids[0], "uuid-1");
-}
-
-#[test]
-fn smoke_map_crawl_start_result_empty() {
-    use std::path::Path;
-    let result: CrawlStartResult = map_crawl_start_result(Path::new("/tmp/output"), &[]);
-    assert!(result.job_ids.is_empty());
-}
-
-#[test]
-fn smoke_map_crawl_job_result_wraps_payload() {
-    let payload = serde_json::json!({"id": "uuid-1", "status": "completed"});
-    let result = map_crawl_job_result(payload.clone());
-    assert_eq!(result.payload["status"], "completed");
-}
-
-// ── services::embed ───────────────────────────────────────────────────────────
-
-use axon_services::embed::{map_embed_job_result, map_embed_start_result};
-use axon_services::types::EmbedStartResult;
-
-#[test]
-fn smoke_map_embed_start_result_wraps_job_id() {
-    let result: EmbedStartResult = map_embed_start_result("embed-uuid-1".to_string());
-    assert_eq!(result.job_id, "embed-uuid-1");
-}
-
-#[test]
-fn smoke_map_embed_job_result_wraps_payload() {
-    let payload = serde_json::json!({"id": "embed-uuid-1", "status": "pending"});
-    let result = map_embed_job_result(payload);
-    assert_eq!(result.payload["status"], "pending");
 }
 
 // ── services::extract ─────────────────────────────────────────────────────────
@@ -252,70 +226,19 @@ fn smoke_map_extract_job_result_wraps_payload() {
     assert_eq!(result.payload["status"], "running");
 }
 
-// ── services::ingest ──────────────────────────────────────────────────────────
-
-use axon_services::ingest::map_ingest_result;
-
 #[test]
-fn smoke_map_ingest_result_wraps_github_payload() {
-    let payload = serde_json::json!({
-        "source": "github",
-        "repo": "rust-lang/rust",
-        "chunks": 1024
-    });
-    let result: IngestResult = map_ingest_result(payload.clone());
-    assert_eq!(result.payload["source"], "github");
-    assert_eq!(result.payload["chunks"], 1024);
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_reddit_payload() {
-    let payload = serde_json::json!({
-        "source": "reddit",
-        "target": "rust",
-        "chunks": 42
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "reddit");
-    assert_eq!(result.payload["target"], "rust");
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_youtube_payload() {
-    let payload = serde_json::json!({
-        "source": "youtube",
-        "url": "https://youtube.com/watch?v=test",
-        "chunks": 8
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "youtube");
-}
-
-#[test]
-fn smoke_map_ingest_result_wraps_sessions_payload() {
-    let payload = serde_json::json!({
-        "source": "sessions",
-        "chunks": 100
-    });
-    let result: IngestResult = map_ingest_result(payload);
-    assert_eq!(result.payload["source"], "sessions");
-    assert_eq!(result.payload["chunks"], 100);
-}
-
-// ── services::screenshot ──────────────────────────────────────────────────────
-
-use axon_services::screenshot::map_screenshot_result;
-
-#[test]
-fn smoke_map_screenshot_result_returns_typed_fields() {
-    let payload = serde_json::json!({
-        "url": "https://example.com",
-        "path": "/output/screenshots/example.png",
-        "size_bytes": 204800
-    });
-    let result: ScreenshotResult = map_screenshot_result(&payload).unwrap();
-    assert_eq!(result.size_bytes, 204800);
-    assert_eq!(result.url, "https://example.com");
+fn smoke_screenshot_result_uses_opaque_artifact_identity() {
+    let result = ScreenshotResult {
+        artifact_id: axon_api::source::ArtifactId::new("art_screenshot_smoke"),
+        width: 1280,
+        height: 720,
+        captured_at: axon_api::source::Timestamp("2026-07-16T00:00:00Z".to_string()),
+        warnings: Vec::new(),
+    };
+    let payload = serde_json::to_value(result).expect("serialize screenshot result");
+    assert_eq!(payload["artifact_id"], "art_screenshot_smoke");
+    assert_eq!(payload["width"], 1280);
+    assert!(payload.get("path").is_none());
 }
 
 // ── services::types — Pagination and options types are constructible ──────────

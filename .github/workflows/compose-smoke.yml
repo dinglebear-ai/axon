@@ -131,11 +131,11 @@ jobs:
       - name: verify compose smoke jobs passed or were intentionally skipped
         run: |
           set -euo pipefail
-          require_success_or_skipped() {
+          require_success() {
             local name="$1"
             local result="$2"
             case "$result" in
-              success|skipped) printf '%s=%s\n' "$name" "$result" ;;
+              success) printf '%s=%s\n' "$name" "$result" ;;
               *) echo "::error::$name concluded $result" >&2; exit 1 ;;
             esac
           }
@@ -150,6 +150,6 @@ jobs:
               *) echo "::error::$name concluded $result" >&2; exit 1 ;;
             esac
           }
-          require_success_or_skipped changes "${{ needs.changes.result }}"
+          require_success changes "${{ needs.changes.result }}"
           require_success_or_intentional_skip compose-config "${{ needs.compose-config.result }}" "${{ needs.changes.outputs.compose }}"
           require_success_or_intentional_skip image-build-smoke "${{ needs.image-build-smoke.result }}" "${{ needs.changes.outputs.docker }}"

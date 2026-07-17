@@ -26,7 +26,7 @@ use super::rag::required_text;
 /// `axon:read`, matching `docs/pipeline-unification/surfaces/tool-contract.md`'s
 /// Auth and Visibility table and axon-mcp's `required_scope_for`), but
 /// neither has a non-mutating default form today: [`search`] always calls
-/// `services::search_crawl::search_and_crawl`, and [`research`] /
+/// `services::search_crawl::search_and_index_sources`, and [`research`] /
 /// `research_stream` always call `services::search::research_with_context` —
 /// both unconditionally enqueue one bounded Source job per result URL, with no
 /// request-level opt-out on `SearchRequest`/`ResearchRequest`. Enforced
@@ -108,15 +108,20 @@ pub(crate) async fn summarize(
     tag = "exploration"
 )]
 pub(crate) async fn map(
-    State((_state, cfg)): State<WebState>,
+    State((state, _cfg)): State<WebState>,
     Json(req): Json<MapRequest>,
 ) -> Result<Json<services::types::MapResult>, HttpError> {
     let url = required_text(&req.url, "url")?;
     let url = normalize_url(url);
-    services::map::discover(&cfg, &url, map_options(req.limit, req.offset), None)
-        .await
-        .map(Json)
-        .map_err(HttpError::from_box)
+    services::map::discover_with_context(
+        state.service_context.as_ref(),
+        &url,
+        map_options(req.limit, req.offset),
+        None,
+    )
+    .await
+    .map(Json)
+    .map_err(HttpError::from_box)
 }
 
 #[utoipa::path(
@@ -279,7 +284,7 @@ pub(crate) async fn search(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     require_mutates_if_write_scope(auth.as_ref())?;
     let query = required_text(&req.query, "query")?;
-    let result = services::search_crawl::search_and_crawl(
+    let result = services::search_crawl::search_and_index_sources(
         &cfg,
         &state.service_context,
         query,
@@ -289,10 +294,9 @@ pub(crate) async fn search(
     .map_err(HttpError::from_box_send_sync)?;
     Ok(Json(json!({
         "results": result.results,
-        "crawl_jobs": result.crawl_jobs,
-        "crawl_jobs_rejected": result.crawl_rejected,
-        "crawl_rejected": result.crawl_rejected,
-        "auto_crawl_status": result.auto_crawl_status,
+        "source_jobs": result.source_jobs,
+        "source_jobs_rejected": result.source_jobs_rejected,
+        "source_index_status": result.source_index_status,
     })))
 }
 

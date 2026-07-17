@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use axon_api::source::*;
+use axon_core::http::LoopbackGuard;
+use httpmock::prelude::*;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -69,6 +71,94 @@ async fn web_map_scope_discovers_candidates_without_fetching_bodies() {
         manifest.items[0].metadata["web_seed_url"],
         plan.route.source.canonical_uri
     );
+}
+
+#[tokio::test]
+async fn web_map_scope_discovers_urls_without_caller_supplied_map_urls() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start();
+    let root = server.mock(|when, then| {
+        when.method("HEAD").path("/docs");
+        then.status(200);
+    });
+    let sitemap = server.mock(|when, then| {
+        when.method(GET).path("/sitemap.xml");
+        then.status(200)
+            .header("content-type", "application/xml")
+            .body(format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{}/docs/intro</loc></url>
+  <url><loc>{}/docs/api</loc></url>
+</urlset>"#,
+                server.base_url(),
+                server.base_url()
+            ));
+    });
+    let adapter = adapter(FakeAdapterProviders::new());
+    let plan = web_plan(&server.url("/docs"), SourceScope::Map);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+
+    root.assert();
+    sitemap.assert();
+    let urls = manifest
+        .items
+        .iter()
+        .map(|item| item.canonical_uri.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        urls,
+        vec![server.url("/docs/api"), server.url("/docs/intro")]
+    );
+    assert_eq!(manifest.metadata["map_source"], "sitemap");
+    assert_eq!(manifest.metadata["sitemap_urls"], 2);
+    assert_eq!(acquisition.fetched_items.len(), 0);
+}
+
+#[tokio::test]
+async fn web_site_scope_hands_in_memory_manifest_candidates_to_acquisition() {
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start();
+    let root = server.mock(|when, then| {
+        when.method("HEAD").path("/docs");
+        then.status(200);
+    });
+    let sitemap = server.mock(|when, then| {
+        when.method(GET).path("/sitemap.xml");
+        then.status(200)
+            .header("content-type", "application/xml")
+            .body(format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{}/docs/intro</loc></url>
+  <url><loc>{}/docs/api</loc></url>
+</urlset>"#,
+                server.base_url(),
+                server.base_url()
+            ));
+    });
+    let providers = FakeAdapterProviders::new();
+    let adapter = adapter(providers.clone());
+    let mut plan = web_plan(&server.url("/docs"), SourceScope::Site);
+    plan.route
+        .validated_options
+        .values
+        .insert("render_mode".to_string(), json!("http"));
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+
+    root.assert();
+    sitemap.assert();
+    assert_eq!(manifest.items.len(), 3);
+    assert!(manifest.items.iter().all(|item| item.version.is_some()));
+    assert_eq!(manifest.metadata["map_source"], "sitemap");
+    assert_eq!(acquisition.fetched_items.len(), 3);
+    assert_eq!(providers.calls().await, vec!["fetch", "fetch", "fetch"]);
 }
 
 #[tokio::test]
@@ -284,7 +374,7 @@ async fn web_url_errors_redact_userinfo_and_query_values() {
     assert!(rendered.contains("REDACTED"));
 }
 
-fn web_plan(source: &str, scope: SourceScope) -> SourcePlan {
+pub(crate) fn web_plan(source: &str, scope: SourceScope) -> SourcePlan {
     SourcePlan {
         job_id: JobId::new(Uuid::from_u128(29812)),
         request: SourceRequest::new(source),

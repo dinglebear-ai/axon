@@ -2,6 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
+> **Reconciliation note (2026-07-16):** This dated plan's memory stance
+> ("memory is not a source adapter", `is_source_adapter=false`, "keeping
+> memory outside the source adapter registry") was superseded after delivery
+> by the narrow-adapter decision: the live tree registers a `memory` adapter
+> that projects exactly one `memory://mem_<id>` record per request through the
+> shared source pipeline, while `axon-memory` keeps lifecycle and persistence.
+> Read those statements as historical planning context, not the live
+> contract — the authoritative description is `sources/adapter-scopes.md`.
+
 **Goal:** Finish Phase 9 by putting local, git, web, feed, YouTube, Reddit, sessions, registry/package, CLI tool/script, MCP tool/call, and shared memory-document integration behind the unified source-family matrix, adapter fixture contract, generated capability docs, and new-source onboarding checklist.
 
 **Architecture:** Implement a source-family matrix first, then enforce resolver, adapter, parser, graph, metadata, vector payload, source-job, degraded, auth, and provider-failure fixtures for every Phase 9 source family. Memory is not a source adapter, but memory documents that share preparation, payload, graph, and retrieval rules must be represented as an integration row so their shared-pipeline obligations are testable. Exhaustive real-provider variants can be release hardening, but the minimal contract fixture pack and SSRF/local/tool-exec/redaction fixtures are non-deferrable for every public source family.

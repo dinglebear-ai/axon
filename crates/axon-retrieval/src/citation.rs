@@ -1,6 +1,9 @@
 //! Citation helpers for the retrieval boundary fake.
 
-use axon_api::source::{ChunkId, DocumentId, SourceId, SourceRange, VectorSearchMatch};
+use axon_api::source::{
+    ChunkId, DocumentId, JobId, RedactionMetadata, RedactionStatus, SourceGenerationId, SourceId,
+    SourceItemKey, SourceRange, VectorSearchMatch, Visibility,
+};
 use axon_error::{ApiError, ErrorStage};
 use serde_json::Value;
 
@@ -9,29 +12,17 @@ pub const MODULE_NAME: &str = "citation";
 #[derive(Debug, Clone, PartialEq)]
 pub struct Citation {
     pub source_id: SourceId,
+    pub source_item_key: SourceItemKey,
+    pub generation: SourceGenerationId,
     pub document_id: DocumentId,
     pub chunk_id: ChunkId,
+    pub job_id: JobId,
     pub canonical_uri: String,
     pub range: SourceRange,
+    pub redaction: RedactionMetadata,
 }
 
 impl Citation {
-    pub(crate) fn new(
-        source_id: SourceId,
-        document_id: DocumentId,
-        chunk_id: ChunkId,
-        canonical_uri: String,
-        range: SourceRange,
-    ) -> Self {
-        Self {
-            source_id,
-            document_id,
-            chunk_id,
-            canonical_uri,
-            range,
-        }
-    }
-
     pub(crate) fn from_vector_match(item: &VectorSearchMatch) -> Result<Self, ApiError> {
         let chunk_id = item.chunk_id.clone().ok_or_else(|| {
             ApiError::new(
@@ -54,6 +45,13 @@ impl Citation {
                 format!("vector match {} is missing source_id", item.point_id.0),
             )
         })?;
+        let source_item_key = item
+            .source_item_key
+            .clone()
+            .ok_or_else(|| missing_metadata(item, "source_item_key"))?;
+        let generation = required_generation(item)?;
+        let job_id = required_job_id(item)?;
+        let redaction = required_redaction(item)?;
         let canonical_uri = item
             .payload
             .get("chunk_locator")
@@ -82,12 +80,90 @@ impl Citation {
 
         Ok(Self {
             source_id,
+            source_item_key,
+            generation,
             document_id,
             chunk_id,
+            job_id,
             canonical_uri,
             range,
+            redaction,
         })
     }
+}
+
+fn required_generation(item: &VectorSearchMatch) -> Result<SourceGenerationId, ApiError> {
+    item.payload
+        .get("source_generation")
+        .and_then(Value::as_i64)
+        .filter(|generation| *generation >= 0)
+        .map(|generation| SourceGenerationId::new(generation.to_string()))
+        .ok_or_else(|| missing_metadata(item, "source_generation"))
+}
+
+fn required_job_id(item: &VectorSearchMatch) -> Result<JobId, ApiError> {
+    item.payload
+        .get("job_id")
+        .and_then(Value::as_str)
+        .and_then(|job_id| uuid::Uuid::parse_str(job_id).ok())
+        .map(JobId::new)
+        .ok_or_else(|| missing_metadata(item, "job_id"))
+}
+
+fn required_redaction(item: &VectorSearchMatch) -> Result<RedactionMetadata, ApiError> {
+    let status = item
+        .payload
+        .get("redaction_status")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<RedactionStatus>(value).ok())
+        .ok_or_else(|| missing_metadata(item, "redaction_status"))?;
+    let visibility = item
+        .payload
+        .get("visibility")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<Visibility>(value).ok())
+        .ok_or_else(|| missing_metadata(item, "visibility"))?;
+    let version = required_string(item, "redaction_version")?;
+    Ok(RedactionMetadata {
+        redaction_status: status,
+        redaction_version: version,
+        visibility,
+        redacted_field_count: required_u32(item, "redacted_field_count")?,
+        dropped_field_count: required_u32(item, "dropped_field_count")?,
+        detector_count: required_u32(item, "detector_count")?,
+        detector_names: item
+            .payload
+            .get("detector_names")
+            .map(|value| serde_json::from_value(value.clone()))
+            .transpose()
+            .map_err(|_| missing_metadata(item, "detector_names"))?
+            .ok_or_else(|| missing_metadata(item, "detector_names"))?,
+    })
+}
+
+fn required_string(item: &VectorSearchMatch, field: &str) -> Result<String, ApiError> {
+    item.payload
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| missing_metadata(item, field))
+}
+
+fn required_u32(item: &VectorSearchMatch, field: &str) -> Result<u32, ApiError> {
+    item.payload
+        .get(field)
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| missing_metadata(item, field))
+}
+
+fn missing_metadata(item: &VectorSearchMatch, field: &str) -> ApiError {
+    ApiError::new(
+        format!("retrieval.missing_{field}"),
+        ErrorStage::Retrieving,
+        format!("vector match {} is missing valid {field}", item.point_id.0),
+    )
 }
 
 fn payload_range(item: &VectorSearchMatch) -> Result<SourceRange, ApiError> {

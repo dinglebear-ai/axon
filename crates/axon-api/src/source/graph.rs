@@ -67,6 +67,7 @@ pub struct GraphEdgeCandidate {
     pub edge_kind: String,
     pub from_stable_key: String,
     pub to_stable_key: String,
+    pub evidence_ids: Vec<String>,
     pub properties: MetadataMap,
 }
 

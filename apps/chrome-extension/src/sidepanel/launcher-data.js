@@ -8,7 +8,7 @@
 /* action families shown as sections in browse */
 const CATEGORIES = [
   { id: "read",     label: "Fetch & Read" },
-  { id: "jobs",     label: "Crawl & Ingest" },
+  { id: "jobs",     label: "Sources" },
   { id: "discover", label: "Search & Discover" },
   { id: "reason",   label: "Reason" },
   { id: "system",   label: "System & Diagnostics" },
@@ -28,10 +28,9 @@ const OPERATIONS = [
   { id: "brand",      name: "Brand",      tone: "cyan",   icon: "palette",  category: "read",     arg: "url",     argLabel: "URL",            argHint: "https://stripe.com",                   short: "Extract brand palette + type" },
   { id: "endpoints",  name: "Endpoints",  tone: "cyan",   icon: "plug",     category: "read",     arg: "url",     argLabel: "URL",            argHint: "https://app.example.com",              short: "Discover API endpoints" },
 
-  /* ── Crawl & Ingest (orange · async lifecycle) ── */
-  { id: "crawl",      name: "Crawl",      tone: "orange", icon: "crawl",    category: "jobs",     async: true, arg: "url",    argLabel: "start URL",   argHint: "https://docs.rs",                short: "Queue a recursive site crawl" },
-  { id: "embed",      name: "Embed",      tone: "orange", icon: "layers",   category: "jobs",     async: true, arg: "input",  argLabel: "text or path", argHint: "./notes/*.md",                  short: "Embed text / files → vectors" },
-  { id: "ingest",     name: "Ingest",     tone: "orange", icon: "box",      category: "jobs",     async: true, arg: "target", argLabel: "source",      argHint: "github.com/jmagar/axon",         short: "Ingest a repo / feed / sessions" },
+  /* ── Sources (orange · async lifecycle) ── */
+  { id: "site",       name: "Index site", tone: "orange", icon: "site",     category: "jobs",     async: true, arg: "url",    argLabel: "start URL",   argHint: "https://docs.rs",                short: "Index a site through the source pipeline" },
+  { id: "source",     name: "Index source", tone: "orange", icon: "layers", category: "jobs",     async: true, arg: "input",  argLabel: "source",      argHint: "github.com/jmagar/axon",         short: "Index any supported source" },
 
   /* ── Search & Discover ── */
   { id: "search",     name: "Search",     tone: "cyan",   icon: "search",   category: "discover", arg: "query", argLabel: "query",          argHint: "rust async runtime comparison",     short: "Web search (Tavily / SearXNG)" },

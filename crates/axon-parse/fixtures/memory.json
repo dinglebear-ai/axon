@@ -1,0 +1,6 @@
+{
+  "parser_family": "memory",
+  "content_kind": "markdown",
+  "input": "A canonical memory record.",
+  "expected_chunks": 1
+}

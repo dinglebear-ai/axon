@@ -347,7 +347,7 @@ textarea {
   justify-content: flex-start;
 }
 
-/* When the crawl tray is attached, the command bar becomes the TOP of one
+/* When the job tray is attached, the command bar becomes the TOP of one
    cohesive panel: square its bottom, drop its own border + drop-shadow there,
    and let the tray carry the panel's outer shadow. */
 .palette-shell-compact:has(.idle-tray) .command-bar {
@@ -666,9 +666,9 @@ textarea {
   color: var(--aurora-text-muted);
 }
 
-/* Breathing pulse on the orange "live crawl" dots while a crawl is active.
+/* Breathing pulse on the live-job indicators while a job is active.
    Reduced-motion users get it flattened by the aurora-page-shell override. */
-@keyframes crawl-pulse {
+@keyframes job-pulse {
   0%,
   100% {
     box-shadow: 0 0 4px var(--aurora-warn);
@@ -686,7 +686,7 @@ textarea {
   border-radius: 999px;
   background: var(--aurora-warn);
   box-shadow: 0 0 6px var(--aurora-warn);
-  animation: crawl-pulse 1.6s ease-in-out infinite;
+  animation: job-pulse 1.6s ease-in-out infinite;
 }
 
 .idle-tray > span:nth-of-type(2) {
@@ -2283,7 +2283,7 @@ textarea {
   border-radius: 999px;
   background: var(--aurora-success);
   box-shadow: 0 0 6px var(--aurora-success);
-  animation: crawl-pulse 1.6s ease-in-out infinite;
+  animation: job-pulse 1.6s ease-in-out infinite;
 }
 
 .running-progress {
@@ -5860,13 +5860,13 @@ textarea {
   flex: 0 0 auto;
 }
 
-.files-ingest-status {
+.files-index-status {
   padding: 6px 12px;
   font-size: 11.5px;
   color: var(--aurora-success);
   border-bottom: 1px solid var(--aurora-border);
 }
-.files-ingest-status-error {
+.files-index-status-error {
   color: var(--aurora-error);
 }
 

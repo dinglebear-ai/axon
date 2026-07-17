@@ -1,6 +1,5 @@
 use super::*;
 use axon_services::context::ServiceContext;
-use chrono::Utc;
 use std::sync::Arc;
 
 async fn test_service_context(cfg: &Config) -> ServiceContext {
@@ -10,25 +9,10 @@ async fn test_service_context(cfg: &Config) -> ServiceContext {
 }
 
 #[test]
-fn parse_uuid_requires_id() {
-    let err = parse_uuid(None, "history").expect_err("missing id should error");
-    assert!(err.to_string().contains("watch history requires <id>"));
-}
-
-#[test]
-fn parse_uuid_rejects_invalid_uuid() {
-    let raw = "not-a-uuid".to_string();
-    let err = parse_uuid(Some(&raw), "exec").expect_err("invalid uuid should error");
-    assert!(err.to_string().contains("invalid character") || err.to_string().contains("UUID"));
-}
-
-#[test]
 fn parse_watch_runtime_args_rejects_unknown_argument() {
     let err = parse_watch_runtime_args(&[
         "create".to_string(),
-        "demo".to_string(),
-        "--task-type".to_string(),
-        "watch".to_string(),
+        "https://example.com/demo".to_string(),
         "--every-seconds".to_string(),
         "30".to_string(),
         "--bogus".to_string(),
@@ -37,10 +21,20 @@ fn parse_watch_runtime_args_rejects_unknown_argument() {
     assert!(err.to_string().contains("--bogus"));
 }
 
+#[test]
+fn parse_watch_runtime_args_rejects_removed_artifacts_subcommand() {
+    let err = parse_watch_runtime_args(&[
+        "artifacts".to_string(),
+        "00000000-0000-0000-0000-000000000000".to_string(),
+    ])
+    .expect_err("removed artifacts command should error");
+    assert!(err.to_string().contains("artifacts"));
+}
+
 #[tokio::test]
 async fn handle_watch_create_requires_every_seconds() {
     let cfg = Config::test_default();
-    let err = handle_watch_create(&cfg, None, "demo".to_string(), "watch".to_string(), 0, None)
+    let err = handle_watch_create(&cfg, None, "https://example.com/demo".to_string(), 0, None)
         .await
         .expect_err("out-of-bounds interval should error");
     // CLI now shares validate_every_seconds with the HTTP create paths, so the
@@ -48,57 +42,14 @@ async fn handle_watch_create_requires_every_seconds() {
     assert!(err.to_string().contains("every_seconds must be between"));
 }
 
-#[tokio::test]
-async fn handle_watch_create_rejects_invalid_task_payload_json() {
-    let cfg = Config::test_default();
-    let err = handle_watch_create(
-        &cfg,
-        None,
-        "demo".to_string(),
-        "watch".to_string(),
-        30,
-        Some("{oops".to_string()),
-    )
-    .await
-    .expect_err("invalid json should error");
-    assert!(err.to_string().contains("--task-payload is not valid JSON"));
-}
-
 #[test]
-fn watch_create_source_rejects_lossy_legacy_payload_fields() {
-    let err = watch_create_source(
-        "docs",
-        &serde_json::json!({
-            "urls": ["https://example.com/docs"],
-            "ignore_patterns": ["^Last updated:"],
-            "max_depth": 2,
-        }),
-    )
-    .expect_err("extra legacy fields should be rejected");
-
-    assert!(err.to_string().contains("ignore_patterns"));
-    assert!(err.to_string().contains("max_depth"));
-}
-
-#[test]
-fn watch_create_source_rejects_multi_url_payload() {
-    let err = watch_create_source(
-        "docs",
-        &serde_json::json!({
-            "urls": ["https://example.com/one", "https://example.com/two"],
-        }),
-    )
-    .expect_err("multi-url payload should be rejected");
-
-    assert!(err.to_string().contains("exactly one"));
-}
-
-#[test]
-fn watch_create_source_uses_name_when_payload_empty() {
-    let source = watch_create_source("https://example.com/from-name", &serde_json::json!({}))
-        .expect("empty payload should use name/source argument");
-
+fn source_from_arg_trims_and_rejects_empty_sources() {
+    let source = source_from_arg("  https://example.com/from-name  ")
+        .expect("non-empty source should parse");
     assert_eq!(source, "https://example.com/from-name");
+
+    let err = source_from_arg("  ").expect_err("empty source should error");
+    assert!(err.to_string().contains("requires a source"));
 }
 
 #[tokio::test]
@@ -110,10 +61,9 @@ async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<
     handle_watch_create(
         &cfg,
         None,
-        "demo".to_string(),
-        "watch".to_string(),
+        "https://example.com/canonical-create".to_string(),
         3600,
-        Some(r#"{"urls": ["https://example.com/canonical-create"]}"#.to_string()),
+        Some("cli-watch-tests".to_string()),
     )
     .await?;
 
@@ -135,7 +85,13 @@ async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<
         .expect("canonical watch present");
     assert_eq!(found.canonical_uri, "https://example.com/canonical-create");
     assert_eq!(found.schedule.every_seconds, 3600);
+    assert_eq!(found.watch_id, page.items[0].watch_id);
     assert!(found.enabled);
+    let stored = store
+        .request(found.watch_id.clone())
+        .await?
+        .expect("stored source watch request");
+    assert!(stored.embed, "source watches should embed by default");
     let human = watch_create_human_output(&found);
     assert!(human.contains(&found.watch_id.0));
     assert!(!human.contains("legacy"));
@@ -144,50 +100,66 @@ async fn handle_watch_create_writes_only_source_watch_store() -> Result<(), Box<
     assert!(json.get("legacy_watch").is_none());
     assert!(json.get("source_watch").is_none());
 
-    let legacy = watch_svc::list_watch_defs(&cfg, 10).await?;
-    assert!(
-        legacy.is_empty(),
-        "watch create must not create watch_defs rows"
+    let pool = axon_jobs::store::open_config_pool(&cfg).await?;
+    let legacy_tables: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master \
+         WHERE type = 'table' AND name IN ('axon_watch_defs', 'axon_watch_runs')",
+    )
+    .fetch_one(&pool)
+    .await?;
+    assert_eq!(
+        legacy_tables, 0,
+        "watch create must not leave retired watch tables in schema"
     );
     Ok(())
 }
 
 #[tokio::test]
-async fn legacy_watch_id_does_not_resolve_to_source_watch() -> Result<(), Box<dyn Error>> {
+async fn run_watch_source_shorthand_creates_canonical_watch() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
+    cfg.positional = vec![
+        "create".to_string(),
+        "https://example.com/shorthand/".to_string(),
+        "--every-seconds".to_string(),
+        "1800".to_string(),
+    ];
 
-    handle_watch_create(
-        &cfg,
-        None,
-        "legacy-alias".to_string(),
-        "watch".to_string(),
-        3600,
-        Some(r#"{"urls": ["https://example.com/legacy-alias"]}"#.to_string()),
-    )
-    .await?;
+    let service_context = test_service_context(&cfg).await;
+    run_watch(&cfg, &service_context).await?;
 
-    let legacy = watch_svc::create_watch_def(
-        &cfg,
-        &watch_svc::WatchDefCreate {
-            name: "legacy-alias-row".to_string(),
-            task_type: "watch".to_string(),
-            task_payload: serde_json::json!({
-                "urls": ["https://example.com/legacy-alias"],
-            }),
-            every_seconds: 3600,
-            enabled: true,
-            next_run_at: Utc::now(),
+    let store = watch_svc::open_source_watch_store(&cfg, None).await?;
+    let found = store
+        .find_by_source("https://example.com/shorthand")
+        .await?
+        .expect("source shorthand watch present");
+    assert_eq!(found.canonical_uri, "https://example.com/shorthand");
+    assert_eq!(found.schedule.every_seconds, 1800);
+
+    cfg.positional = vec![
+        "create".to_string(),
+        "https://example.com/shorthand".to_string(),
+        "--every-seconds".to_string(),
+        "3600".to_string(),
+    ];
+    run_watch(&cfg, &service_context).await?;
+    let page = watch_svc::SourceWatchStoreTrait::list(
+        &store,
+        watch_svc::WatchListRequest {
+            enabled: None,
+            source_id: None,
+            adapter: None,
+            limit: None,
+            cursor: None,
         },
     )
     .await?;
-    let legacy_id = legacy.id.to_string();
-
-    let err = handle_watch_get(&cfg, None, &legacy_id)
-        .await
-        .expect_err("legacy UUIDs must not resolve through source watches");
-    assert!(err.to_string().contains("not found"));
+    assert_eq!(page.items.len(), 1);
+    let ensured = watch_svc::SourceWatchStoreTrait::get(&store, found.watch_id)
+        .await?
+        .expect("ensured source watch present");
+    assert_eq!(ensured.schedule.every_seconds, 3600);
     Ok(())
 }
 
@@ -209,48 +181,6 @@ async fn run_watch_lists_with_sqlite_backend() -> Result<(), Box<dyn Error>> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::default_minimal();
     cfg.sqlite_path = tmp.path().join("jobs.db");
-    let service_context = test_service_context(&cfg).await;
-    run_watch(&cfg, &service_context).await?;
-    Ok(())
-}
-
-#[tokio::test]
-async fn run_watch_artifacts_lists_with_sqlite_backend() -> Result<(), Box<dyn Error>> {
-    let tmp = tempfile::tempdir()?;
-    let mut cfg = Config::default_minimal();
-    cfg.sqlite_path = tmp.path().join("jobs.db");
-    cfg.json_output = true;
-
-    let pool = axon_jobs::store::open_sqlite_pool(&cfg.sqlite_path.to_string_lossy()).await?;
-    let watch = axon_jobs::watch::create_watch_def_with_pool(
-        &pool,
-        &axon_jobs::watch::WatchDefCreate {
-            name: "cli-artifacts".to_string(),
-            task_type: "watch".to_string(),
-            task_payload: serde_json::json!({"urls": ["https://example.com"], "summarize": false}),
-            every_seconds: 60,
-            enabled: true,
-            next_run_at: Utc::now(),
-        },
-    )
-    .await?;
-    let run = axon_jobs::watch::create_watch_run_with_pool(&pool, watch.id, None).await?;
-    sqlx::query(
-        "INSERT INTO axon_watch_run_artifacts (watch_run_id, kind, path, payload, created_at) \
-         VALUES (?, 'url-change', NULL, ?, ?)",
-    )
-    .bind(run.id.to_string())
-    .bind(serde_json::json!({"summary": "Changed."}).to_string())
-    .bind(axon_jobs::store::now_ms())
-    .execute(&pool)
-    .await?;
-
-    cfg.positional = vec![
-        "artifacts".to_string(),
-        run.id.to_string(),
-        "--limit".to_string(),
-        "10".to_string(),
-    ];
     let service_context = test_service_context(&cfg).await;
     run_watch(&cfg, &service_context).await?;
     Ok(())
@@ -359,7 +289,7 @@ async fn handle_watch_exec_records_canonical_history() -> Result<(), Box<dyn Err
     let created = watch_svc::SourceWatchStoreTrait::create(&store, source_watch_request()).await?;
     let id = created.watch_id.0.clone();
 
-    handle_watch_exec(&cfg, &service_context, None, &id).await?;
+    handle_watch_exec(&cfg, &service_context, None, "https://example.com/docs").await?;
 
     let history = watch_svc::history_source_watch(
         &cfg,
@@ -375,6 +305,9 @@ async fn handle_watch_exec_records_canonical_history() -> Result<(), Box<dyn Err
     assert_eq!(history.watch_id.0, id);
     assert_eq!(history.jobs.len(), 1);
     assert_eq!(history.jobs[0].kind, axon_api::source::JobKind::Source);
+
+    handle_watch_status(&cfg, &service_context, None, "https://example.com/docs").await?;
+    handle_watch_history(&cfg, None, "https://example.com/docs", 10).await?;
     Ok(())
 }
 
@@ -391,6 +324,7 @@ async fn run_watch_dispatches_get_update_pause_resume_delete() -> Result<(), Box
 
     for args in [
         vec!["get".to_string(), id.clone()],
+        vec!["status".to_string(), id.clone()],
         vec![
             "update".to_string(),
             id.clone(),

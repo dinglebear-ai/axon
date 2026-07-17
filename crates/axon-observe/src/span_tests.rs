@@ -1,6 +1,7 @@
 use super::*;
 use axon_api::source::{
-    AdapterRef, ApiError, JobId, LifecycleStatus, ProgressCurrent, SourceId, Timestamp, Visibility,
+    AdapterRef, ApiError, ChunkId, DocumentId, JobId, LifecycleStatus, ProgressCurrent,
+    SourceGenerationId, SourceId, SourceItemKey, Timestamp, Visibility,
 };
 use axon_error::{ErrorSeverity, ErrorStage, ErrorVisibility};
 
@@ -23,19 +24,19 @@ fn base_event(job_id: JobId) -> SourceProgressEvent {
         message: "embedding chunk".to_string(),
         timestamp: now,
         source_id: Some(SourceId::from("src_1")),
-        canonical_uri: None,
+        canonical_uri: Some("https://example.com/docs/page".to_string()),
         adapter: Some(AdapterRef {
             name: "github".to_string(),
             version: "1.0.0".to_string(),
         }),
         scope: Some(SourceScope::Repo),
-        generation: None,
+        generation: Some(SourceGenerationId::from("7")),
         counts: crate::event::zero_counts(),
         timing: None,
         current: Some(ProgressCurrent {
-            source_item_key: None,
-            document_id: None,
-            chunk_id: None,
+            source_item_key: Some(SourceItemKey::from("docs/page")),
+            document_id: Some(DocumentId::from("doc_1")),
+            chunk_id: Some(ChunkId::from("chunk_1")),
             adapter: None,
             provider: Some(ProviderId::from("tei")),
             message: None,
@@ -56,6 +57,17 @@ fn from_event_carries_bounded_identifier_fields() {
 
     assert_eq!(fields.job_id, Some(job_id));
     assert_eq!(fields.source_id, Some(SourceId::from("src_1")));
+    assert_eq!(
+        fields.source_item_key,
+        Some(SourceItemKey::from("docs/page"))
+    );
+    assert_eq!(fields.generation, Some(SourceGenerationId::from("7")));
+    assert_eq!(
+        fields.canonical_uri.as_deref(),
+        Some("https://example.com/docs/page")
+    );
+    assert_eq!(fields.document_id, Some(DocumentId::from("doc_1")));
+    assert_eq!(fields.chunk_id, Some(ChunkId::from("chunk_1")));
     assert_eq!(fields.adapter.as_deref(), Some("github"));
     assert_eq!(fields.scope, Some(SourceScope::Repo));
     assert_eq!(fields.phase, Some(PipelinePhase::Embedding));

@@ -41,6 +41,7 @@ pub(crate) fn assemble_ask_result(
     AskResult {
         query: query.to_string(),
         answer: answer.to_string(),
+        citations: ctx.citations.clone(),
         citation_validation: Some(AskCitationValidation {
             valid: validation.valid,
             issues: validation.issues,
@@ -82,6 +83,7 @@ pub(crate) fn assemble_explain_result(
     AskResult {
         query: query.to_string(),
         answer: String::new(),
+        citations: ctx.citations.clone(),
         citation_validation: None,
         session: None,
         warnings: ctx.warnings.clone(),

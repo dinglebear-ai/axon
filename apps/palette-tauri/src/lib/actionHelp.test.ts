@@ -21,7 +21,7 @@ describe("action help", () => {
   it("finds targets by subcommand and alias", () => {
     expect(findHelpTarget("scrape")?.subcommand).toBe("scrape");
     expect(findHelpTarget("fetch")?.subcommand).toBe("scrape");
-    expect(findHelpTarget("crawl")?.subcommand).toBe("crawl");
+    expect(findHelpTarget("site")?.subcommand).toBe("source-site");
     expect(findHelpTarget("missing")).toBeUndefined();
   });
 

@@ -123,13 +123,19 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))
+        .route("/v1/artifacts", get(handlers::artifacts::list_artifacts))
+        .route("/v1/uploads", get(handlers::uploads::list_uploads))
         .route(
-            "/v1/artifacts",
-            get(handlers::artifacts::serve_artifact_query),
+            "/v1/uploads/{upload_id}",
+            get(handlers::uploads::get_upload),
         )
         .route(
-            "/v1/artifacts/{*path}",
-            get(handlers::artifacts::serve_artifact_path),
+            "/v1/artifacts/{artifact_id}",
+            get(handlers::artifacts::get_artifact),
+        )
+        .route(
+            "/v1/artifacts/{artifact_id}/content",
+            get(handlers::artifacts::artifact_content),
         )
         .nest(
             "/v1/jobs",
@@ -165,6 +171,14 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
             "/v1/watches/{watch_id}",
             get(handlers::source_watch::get_watch),
         )
+        .route(
+            "/v1/watches/{watch_id}/history",
+            get(handlers::source_watch::history_watch),
+        )
+        .route(
+            "/v1/watches/{watch_id}/status",
+            get(handlers::source_watch::status_watch),
+        )
         .route("/v1/graph/kinds", get(handlers::graph::kinds))
         .route("/v1/graph/resolve", post(handlers::graph::resolve))
         .route("/v1/graph/query", post(handlers::graph::query))
@@ -191,7 +205,15 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
         .route("/v1/diff", post(handlers::exploration::diff))
         .route("/v1/screenshot", post(handlers::exploration::screenshot))
         .route("/v1/sources", post(handlers::sources::index_source))
-        .route("/v1/memory", post(handlers::memory::memory))
+        .route("/v1/uploads", post(handlers::uploads::create_upload))
+        .route(
+            "/v1/uploads/{upload_id}",
+            delete(handlers::uploads::abort_upload),
+        )
+        .route(
+            "/v1/uploads/{upload_id}/complete",
+            post(handlers::uploads::complete_upload),
+        )
         .route("/v1/memories", post(handlers::memory::remember_memory))
         .route(
             "/v1/memories/review",
@@ -237,10 +259,7 @@ fn write_routes(_cfg: Arc<Config>, service_context: &Arc<ServiceContext>) -> Rou
             "/v1/jobs",
             handlers::jobs::unified_jobs_write_router(Arc::clone(service_context)),
         )
-        .nest(
-            "/v1/extract",
-            handlers::async_jobs::extract_router(Arc::clone(service_context)),
-        )
+        .route("/v1/extract", post(handlers::async_jobs::start_extract))
         .route("/v1/watches", post(handlers::source_watch::create_watch))
         .route(
             "/v1/watches/{watch_id}",
@@ -274,14 +293,18 @@ fn admin_routes(service_context: &Arc<ServiceContext>) -> Router<ServeState> {
         )
         .route("/v1/prune/plan", post(handlers::admin::prune_plan))
         .route("/v1/prune/exec", post(handlers::admin::prune_exec))
-        .route("/v1/prune/dedupe", post(handlers::admin::dedupe))
-        .route("/v1/prune/purge", post(handlers::admin::purge))
+        .route("/v1/reset/plan", post(handlers::admin::reset_plan))
+        .route("/v1/reset/exec", post(handlers::admin::reset_exec))
 }
 
 /// Write-scoped routes whose payloads exceed the standard REST body cap
 /// (prepared session exports ship megabytes of transcript JSON).
 fn large_write_routes(_service_context: &Arc<ServiceContext>) -> Router<ServeState> {
     Router::new()
+        .route(
+            "/v1/uploads/{upload_id}/content",
+            put(handlers::uploads::put_upload_content),
+        )
         .route(
             "/v1/mobile/sessions/{id}",
             put(handlers::mobile_sessions::upsert_mobile_session)
@@ -339,7 +362,10 @@ fn panel_routes() -> Router<ServeState> {
             post(super::super::panel_first_run::first_run_ask),
         )
         .route("/api/panel/setup/targets", get(handlers::setup_targets))
-        .route("/api/panel/artifact/{*path}", get(handlers::panel_artifact))
+        .route(
+            "/api/panel/artifacts/{artifact_id}/content",
+            get(handlers::panel_artifact),
+        )
 }
 
 #[utoipa::path(
@@ -380,8 +406,7 @@ where
         .route("/v1/chat", post(handlers::v1_chat))
         .route("/v1/chat/stream", post(handlers::v1_chat_stream))
         .layer(DefaultBodyLimit::max(ASK_BODY_LIMIT))
-        // `ask`/`ask/stream` read the runtime through this Extension (issue #298
-        // retrieval cutover); `chat` handlers ignore it and use `cfg` only.
+        // RAG and direct-chat handlers share the same service context.
         .layer(Extension(service_context))
         .layer(Extension(cfg))
 }

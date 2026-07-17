@@ -1,12 +1,9 @@
 //! Reddit source adapter (subreddits / threads).
 //!
-//! Like the `git` and `local` adapters, this operates on already-materialized
-//! content — a `reddit_dump_path` option pointing at a prepared JSON dump of
-//! post (and flattened comment) data, produced by the caller (the services
-//! bridge performs the Reddit OAuth API calls and comment-tree traversal).
-//! Keeping the network out of the adapter makes it unit-testable with fixture
-//! dumps and matches how the `git`/`web` adapters read prepared inputs.
+//! [`RedditSourceAdapter::materialize`] owns credential resolution, OAuth,
+//! bounded API acquisition, and prepared-dump creation before discovery.
 
+mod acquire;
 pub mod dump;
 mod metadata;
 mod target;
@@ -23,6 +20,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+pub use self::acquire::fetch_reddit_dump;
 use self::dump::{RedditDumpItem, parse_dump};
 use self::metadata::reddit_source_document;
 pub use self::target::{RedditTarget, parse_reddit_target};
@@ -37,6 +35,28 @@ pub struct RedditSourceAdapter;
 impl RedditSourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        mut plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let (temporary, path) = acquire::fetch_reddit_dump_to_temporary_file(&plan.request.source)
+            .await
+            .map_err(|err| {
+                crate::acquisition::materialization_error(
+                    "adapter.reddit.fetch_failed",
+                    err.to_string(),
+                )
+            })?;
+        plan.route.validated_options.values.insert(
+            "reddit_dump_path".to_string(),
+            json!(path.to_string_lossy()),
+        );
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
+        ))
     }
 }
 

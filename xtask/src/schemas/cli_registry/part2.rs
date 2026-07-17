@@ -40,7 +40,7 @@ fn commands_sources_stats_jobs() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["status"],
-            "Show async job queue status and recent activity",
+            "Show unified jobs, watches, cleanup, totals, and service status",
             None,
             false,
             false,
@@ -185,81 +185,14 @@ fn commands_memory() -> Vec<CliRegistryCommand> {
 }
 
 fn commands_sessions() -> Vec<CliRegistryCommand> {
-    vec![
-        // sessions
-        c(
-            &["sessions"],
-            "Index AI session exports (Claude, Codex, Gemini) into Qdrant",
-            None,
-            true,
-            true,
-            "write",
-        ),
-        c(
-            &["sessions", "status"],
-            "Show a sessions ingest job's status",
-            None,
-            false,
-            false,
-            "read",
-        ),
-        c(
-            &["sessions", "cancel"],
-            "Cancel a running sessions ingest job",
-            None,
-            true,
-            false,
-            "write",
-        ),
-        c(
-            &["sessions", "errors"],
-            "Show a sessions ingest job's errors",
-            None,
-            false,
-            false,
-            "read",
-        ),
-        c(
-            &["sessions", "list"],
-            "List sessions ingest jobs",
-            None,
-            false,
-            false,
-            "read",
-        ),
-        c(
-            &["sessions", "cleanup"],
-            "Remove old terminal sessions ingest jobs",
-            None,
-            true,
-            false,
-            "write",
-        ),
-        c(
-            &["sessions", "clear"],
-            "Clear all sessions ingest job rows",
-            None,
-            true,
-            false,
-            "write",
-        ),
-        c(
-            &["sessions", "worker"],
-            "Run a sessions ingest worker inline",
-            None,
-            true,
-            true,
-            "admin",
-        ),
-        c(
-            &["sessions", "recover"],
-            "Reclaim stale/interrupted sessions ingest jobs",
-            None,
-            true,
-            false,
-            "admin",
-        ),
-    ]
+    vec![c(
+        &["sessions"],
+        "Index AI session exports (Claude, Codex, Gemini) into Qdrant",
+        None,
+        true,
+        true,
+        "write",
+    )]
 }
 
 fn commands_source_serve_prune() -> Vec<CliRegistryCommand> {
@@ -310,8 +243,16 @@ fn commands_source_serve_prune() -> Vec<CliRegistryCommand> {
         ),
         // reset
         c(
-            &["reset"],
-            "Destructive clean-slate reset of local stores (dry-run by default)",
+            &["reset", "plan"],
+            "Create a reviewable clean-slate reset plan without deleting data",
+            None,
+            false,
+            false,
+            "admin",
+        ),
+        c(
+            &["reset", "exec"],
+            "Execute a reviewed clean-slate reset plan",
             None,
             true,
             false,
@@ -345,7 +286,7 @@ fn commands_source_serve_prune() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["smoke"],
-            "Run crawl/ask smoke checks against the running stack",
+            "Run source/ask smoke checks against the running stack",
             None,
             true,
             false,

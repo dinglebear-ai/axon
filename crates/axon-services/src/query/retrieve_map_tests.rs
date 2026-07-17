@@ -9,6 +9,19 @@ fn point(id: &str, chunk_index: i64, text: &str) -> QdrantScrolledPoint {
     }
 }
 
+fn target_payload_point(id: &str, chunk_index: i64, text: &str) -> QdrantScrolledPoint {
+    QdrantScrolledPoint {
+        id: serde_json::json!(id),
+        payload: serde_json::json!({
+            "chunk_index": chunk_index,
+            "chunk_text": text,
+            "item_canonical_uri": "https://example.com/docs/page",
+            "source_canonical_uri": "https://example.com/docs",
+            "source_item_key": "https://example.com/docs/page#chunk-0"
+        }),
+    }
+}
+
 #[test]
 fn map_retrieved_document_returns_none_for_empty_points() {
     let doc = RetrievedDocument {
@@ -76,4 +89,31 @@ fn map_retrieved_document_no_warning_when_not_truncated() {
     let resolved = map_retrieved_document("https://example.com/docs", doc).expect("points present");
     assert!(resolved.warnings.is_empty());
     assert!(!resolved.source_truncated);
+}
+
+#[test]
+fn retrieve_works_without_legacy_url_payload() {
+    let doc = RetrievedDocument {
+        result: QdrantRetrieveByUrlResult {
+            requested_url: "https://example.com/docs/page".to_string(),
+            matched_url: Some("https://example.com/docs/page".to_string()),
+            points: vec![target_payload_point("p1", 0, "target-only payload")],
+            max_points: 500,
+            truncated: false,
+            variant_errors: Vec::new(),
+        },
+        content: "target-only payload".to_string(),
+    };
+
+    let resolved =
+        map_retrieved_document("https://example.com/docs/page", doc).expect("points present");
+
+    assert_eq!(resolved.backend, DocumentBackend::Qdrant);
+    assert_eq!(resolved.content, "target-only payload");
+    assert_eq!(resolved.chunk_count, 1);
+    assert_eq!(
+        resolved.matched_url.as_deref(),
+        Some("https://example.com/docs/page")
+    );
+    assert!(resolved.warnings.is_empty());
 }

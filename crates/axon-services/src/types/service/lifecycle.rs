@@ -1,53 +1,5 @@
-use crate::types::client_server::ArtifactHandle;
-// ── Lifecycle: crawl / embed / extract ───────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CrawlStartJob {
-    pub job_id: String,
-    pub url: String,
-    pub output_dir: String,
-    pub predicted_paths: Vec<String>,
-    pub predicted_artifact_handles: Vec<ArtifactHandle>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct CrawlStartResult {
-    pub job_ids: Vec<String>,
-    pub output_dir: Option<String>,
-    pub predicted_paths: Vec<String>,
-    pub predicted_artifact_handles: Vec<ArtifactHandle>,
-    pub jobs: Vec<CrawlStartJob>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CrawlJobResult {
-    pub payload: serde_json::Value,
-    pub output_files: Option<Vec<String>>,
-    pub output_file_handles: Vec<ArtifactHandle>,
-}
-
-/// Result of a synchronous (--wait true) crawl, including all phases
-/// (HTTP crawl, Chrome fallback, sitemap backfill, embed, audit diff).
-#[derive(Debug, Clone, PartialEq)]
-pub struct CrawlSyncResult {
-    pub pages_seen: u32,
-    pub markdown_files: u32,
-    pub thin_pages: u32,
-    pub error_pages: u32,
-    pub waf_blocked_pages: u32,
-    pub waf_diagnostics: Option<axon_api::source::waf_diagnostics::WafDiagnostics>,
-    pub elapsed_ms: u128,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct EmbedStartResult {
-    pub job_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EmbedJobResult {
-    pub payload: serde_json::Value,
-}
+use axon_api::source::{ArtifactId, SourceWarning, Timestamp};
+// Lifecycle: extract.
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExtractStartResult {
@@ -71,27 +23,15 @@ pub struct MigrateResult {
     pub pages_processed: u64,
 }
 
-// ── Ingest / screenshot ──────────────────────────────────────────────────────
+// ── Screenshot ───────────────────────────────────────────────────────────────
 
-pub use axon_api::job_dto::IngestResult;
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct IngestStartResult {
-    pub job_id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct IngestJobResult {
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ScreenshotResult {
-    pub url: String,
-    pub path: String,
-    pub size_bytes: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artifact_handle: Option<ArtifactHandle>,
+    pub artifact_id: ArtifactId,
+    pub width: u32,
+    pub height: u32,
+    pub captured_at: Timestamp,
+    pub warnings: Vec<SourceWarning>,
 }
 
 // ── Job list pagination ──────────────────────────────────────────────────

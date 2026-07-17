@@ -90,6 +90,7 @@ string_id!(ChunkId);
 string_id!(VectorPointId);
 string_id!(ProviderId);
 string_id!(ArtifactId);
+string_id!(UploadId);
 string_id!(CleanupDebtId);
 string_id!(LeaseId);
 string_id!(WatchId);

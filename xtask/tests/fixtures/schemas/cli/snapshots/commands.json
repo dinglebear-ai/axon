@@ -14,7 +14,7 @@
         "create"
       ],
       "requires_auth_scope": "write",
-      "summary": "Create a recurring watch definition"
+      "summary": "Create a recurring source watch"
     },
     {
       "async": false,
@@ -27,7 +27,7 @@
         "list"
       ],
       "requires_auth_scope": "read",
-      "summary": "List watch definitions"
+      "summary": "List source watches"
     },
     {
       "async": false,
@@ -40,7 +40,20 @@
         "get"
       ],
       "requires_auth_scope": "read",
-      "summary": "Show one watch definition"
+      "summary": "Show one source watch"
+    },
+    {
+      "async": false,
+      "group": "watch",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "watch status",
+      "path": [
+        "watch",
+        "status"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show source watch status"
     },
     {
       "async": false,
@@ -53,7 +66,7 @@
         "update"
       ],
       "requires_auth_scope": "write",
-      "summary": "Update a watch definition's schedule"
+      "summary": "Update a source watch"
     },
     {
       "async": true,
@@ -66,7 +79,7 @@
         "exec"
       ],
       "requires_auth_scope": "write",
-      "summary": "Run a watch definition immediately"
+      "summary": "Run a source watch immediately"
     },
     {
       "async": false,
@@ -79,7 +92,7 @@
         "pause"
       ],
       "requires_auth_scope": "write",
-      "summary": "Pause a watch definition"
+      "summary": "Pause a source watch"
     },
     {
       "async": false,
@@ -92,7 +105,7 @@
         "resume"
       ],
       "requires_auth_scope": "write",
-      "summary": "Resume a paused watch definition"
+      "summary": "Resume a paused source watch"
     },
     {
       "async": false,
@@ -105,7 +118,7 @@
         "delete"
       ],
       "requires_auth_scope": "write",
-      "summary": "Delete a watch definition"
+      "summary": "Delete a source watch"
     },
     {
       "async": false,
@@ -122,19 +135,6 @@
     },
     {
       "async": false,
-      "group": "watch",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "watch artifacts",
-      "path": [
-        "watch",
-        "artifacts"
-      ],
-      "requires_auth_scope": "read",
-      "summary": "Show artifacts produced by a watch run"
-    },
-    {
-      "async": false,
       "group": "monitor",
       "maps_to_dto": null,
       "mutates": false,
@@ -144,7 +144,7 @@
         "jobs"
       ],
       "requires_auth_scope": "read",
-      "summary": "Stream crawl/extract/embed/ingest lifecycle events"
+      "summary": "Stream source and extract lifecycle events"
     },
     {
       "async": false,
@@ -320,7 +320,7 @@
         "scrape"
       ],
       "requires_auth_scope": "write",
-      "summary": "Fetch, normalize, and embed exactly one web page through SourceRequest"
+      "summary": "Fetch, normalize, and index exactly one web page through SourceRequest"
     },
     {
       "async": false,
@@ -465,7 +465,7 @@
         "suggest"
       ],
       "requires_auth_scope": "read",
-      "summary": "Suggest new documentation URLs to crawl"
+      "summary": "Suggest new documentation URLs to index"
     },
     {
       "async": false,
@@ -513,7 +513,7 @@
         "status"
       ],
       "requires_auth_scope": "read",
-      "summary": "Show async job queue status and recent activity"
+      "summary": "Show unified jobs, watches, cleanup, totals, and service status"
     },
     {
       "async": false,
@@ -736,110 +736,6 @@
       "summary": "Index AI session exports (Claude, Codex, Gemini) into Qdrant"
     },
     {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "sessions status",
-      "path": [
-        "sessions",
-        "status"
-      ],
-      "requires_auth_scope": "read",
-      "summary": "Show a sessions ingest job's status"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions cancel",
-      "path": [
-        "sessions",
-        "cancel"
-      ],
-      "requires_auth_scope": "write",
-      "summary": "Cancel a running sessions ingest job"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "sessions errors",
-      "path": [
-        "sessions",
-        "errors"
-      ],
-      "requires_auth_scope": "read",
-      "summary": "Show a sessions ingest job's errors"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": false,
-      "name": "sessions list",
-      "path": [
-        "sessions",
-        "list"
-      ],
-      "requires_auth_scope": "read",
-      "summary": "List sessions ingest jobs"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions cleanup",
-      "path": [
-        "sessions",
-        "cleanup"
-      ],
-      "requires_auth_scope": "write",
-      "summary": "Remove old terminal sessions ingest jobs"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions clear",
-      "path": [
-        "sessions",
-        "clear"
-      ],
-      "requires_auth_scope": "write",
-      "summary": "Clear all sessions ingest job rows"
-    },
-    {
-      "async": true,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions worker",
-      "path": [
-        "sessions",
-        "worker"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Run a sessions ingest worker inline"
-    },
-    {
-      "async": false,
-      "group": "sessions",
-      "maps_to_dto": null,
-      "mutates": true,
-      "name": "sessions recover",
-      "path": [
-        "sessions",
-        "recover"
-      ],
-      "requires_auth_scope": "admin",
-      "summary": "Reclaim stale/interrupted sessions ingest jobs"
-    },
-    {
       "async": true,
       "group": "source",
       "maps_to_dto": null,
@@ -904,13 +800,27 @@
       "async": false,
       "group": "reset",
       "maps_to_dto": null,
-      "mutates": true,
-      "name": "reset",
+      "mutates": false,
+      "name": "reset plan",
       "path": [
-        "reset"
+        "reset",
+        "plan"
       ],
       "requires_auth_scope": "admin",
-      "summary": "Destructive clean-slate reset of local stores (dry-run by default)"
+      "summary": "Create a reviewable clean-slate reset plan without deleting data"
+    },
+    {
+      "async": false,
+      "group": "reset",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "reset exec",
+      "path": [
+        "reset",
+        "exec"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Execute a reviewed clean-slate reset plan"
     },
     {
       "async": false,
@@ -960,7 +870,7 @@
         "smoke"
       ],
       "requires_auth_scope": "admin",
-      "summary": "Run crawl/ask smoke checks against the running stack"
+      "summary": "Run source/ask smoke checks against the running stack"
     },
     {
       "async": false,
@@ -1218,6 +1128,264 @@
       ],
       "requires_auth_scope": "read",
       "summary": "Resolve, launch, and optionally install the axon-palette desktop binary"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": "ArtifactListRequest",
+      "mutates": false,
+      "name": "artifacts list",
+      "path": [
+        "artifacts",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List artifacts by kind, source, or job"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "artifacts get",
+      "path": [
+        "artifacts",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one artifact record by opaque artifact id"
+    },
+    {
+      "async": false,
+      "group": "artifacts",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "artifacts content",
+      "path": [
+        "artifacts",
+        "content"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Read or download artifact content by opaque artifact id"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadListRequest",
+      "mutates": false,
+      "name": "uploads list",
+      "path": [
+        "uploads",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List staged uploads"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "uploads get",
+      "path": [
+        "uploads",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one staged upload"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadCreateRequest",
+      "mutates": true,
+      "name": "uploads create",
+      "path": [
+        "uploads",
+        "create"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Stage a local file as a durable upload"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadCompleteRequest",
+      "mutates": true,
+      "name": "uploads complete",
+      "path": [
+        "uploads",
+        "complete"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Finalize a staged upload into a durable source reference"
+    },
+    {
+      "async": false,
+      "group": "uploads",
+      "maps_to_dto": "UploadAbortRequest",
+      "mutates": true,
+      "name": "uploads abort",
+      "path": [
+        "uploads",
+        "abort"
+      ],
+      "requires_auth_scope": "write",
+      "summary": "Abort and discard a staged upload"
+    },
+    {
+      "async": false,
+      "group": "collections",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "collections list",
+      "path": [
+        "collections",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List configured vector collections"
+    },
+    {
+      "async": false,
+      "group": "collections",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "collections get",
+      "path": [
+        "collections",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one vector collection with optional schema and indexes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph kinds",
+      "path": [
+        "graph",
+        "kinds"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List SourceGraph node and edge kinds"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph resolve",
+      "path": [
+        "graph",
+        "resolve"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Resolve an identifier to SourceGraph nodes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph query",
+      "path": [
+        "graph",
+        "query"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Query SourceGraph nodes"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph node",
+      "path": [
+        "graph",
+        "node"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one SourceGraph node with optional edges and evidence"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph edge",
+      "path": [
+        "graph",
+        "edge"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one SourceGraph edge with optional evidence"
+    },
+    {
+      "async": false,
+      "group": "graph",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "graph source",
+      "path": [
+        "graph",
+        "source"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Walk the SourceGraph neighborhood of a source"
+    },
+    {
+      "async": false,
+      "group": "providers",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "providers list",
+      "path": [
+        "providers",
+        "list"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "List providers by kind or status"
+    },
+    {
+      "async": false,
+      "group": "providers",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "providers get",
+      "path": [
+        "providers",
+        "get"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Show one provider with optional health and limits"
+    },
+    {
+      "async": false,
+      "group": "capabilities",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "capabilities",
+      "path": [
+        "capabilities"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Print machine-readable runtime capabilities"
+    },
+    {
+      "async": false,
+      "group": "chat",
+      "maps_to_dto": null,
+      "mutates": false,
+      "name": "chat",
+      "path": [
+        "chat"
+      ],
+      "requires_auth_scope": "read",
+      "summary": "Send a direct prompt to the configured LLM"
     }
   ],
   "properties": {
@@ -1249,12 +1417,12 @@
     "removed": [],
     "source_inputs": [
       {
-        "checksum": "sha256:0095e14b0004c6a45b1d4d37b3756f6b7ea94527afe780571b7168fc16f2acdb",
+        "checksum": "sha256:0e551ddbd987f079d50a73b15521bfd7f5166d13f7f2a5c39e762eb026942168",
         "kind": "rust_module",
         "path": "crates/axon-cli/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:756702bd08fbee655602e08333cee6173bcdca71bb96f3c8cf08adfc251c9c59",
+        "checksum": "sha256:269b2a966c87b9d8bba32dcd492be6171a647de027d7402fdb95cdc83d2fde43",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli.rs"
       },
@@ -1262,6 +1430,11 @@
         "checksum": "sha256:ee3bae44b57a96696213245d225b14d09ac95415d4ca8da10403f7949fabd2e6",
         "kind": "rust_module",
         "path": "crates/axon-core/src/config/cli/config_args.rs"
+      },
+      {
+        "checksum": "sha256:73badd087b225420442a48784f2d8f8a039e5c17176d02875baef134146164b4",
+        "kind": "rust_module",
+        "path": "crates/axon-core/src/config/cli/resources_args.rs"
       },
       {
         "checksum": "sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7",
@@ -1274,17 +1447,17 @@
         "path": "docs/pipeline-unification/schemas/cli-schema.md"
       },
       {
-        "checksum": "sha256:332a55ba1a35f8a45a100130c5495a636dad058f02978b8fd27bfcd3c27db739",
+        "checksum": "sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry.rs"
       },
       {
-        "checksum": "sha256:870e09e77af6d08c9509e076f8c5b3725d35f7a9481ae0f5071a7c03f92dcaa0",
+        "checksum": "sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part1.rs"
       },
       {
-        "checksum": "sha256:437a4e8cd9eeab8626eb5750683352d79ead14e03e356b4aef21a6e0af0b58f5",
+        "checksum": "sha256:f02fc12d30fb18e2b3fd2ca52a8fc35d798c8300255e2924c09124dc131456e0",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part2.rs"
       },
@@ -1292,6 +1465,11 @@
         "checksum": "sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088",
         "kind": "rust_module",
         "path": "xtask/src/schemas/cli_registry/part3.rs"
+      },
+      {
+        "checksum": "sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/cli_registry/part4.rs"
       }
     ],
     "status": "RegistryBacked"

@@ -350,7 +350,7 @@ fn default_scope_for_kind(source_kind: SourceKind) -> SourceScope {
         SourceKind::Youtube => SourceScope::Video,
         SourceKind::Session => SourceScope::Thread,
         SourceKind::CliTool | SourceKind::McpTool => SourceScope::Tool,
-        SourceKind::Memory => SourceScope::Thread,
+        SourceKind::Memory => SourceScope::Api,
         SourceKind::Upload => SourceScope::File,
     }
 }

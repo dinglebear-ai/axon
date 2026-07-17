@@ -1,4 +1,5 @@
 use super::audit::*;
+use super::auth::AuthScope;
 use super::ids::{JobId, SourceId};
 
 #[test]
@@ -99,4 +100,48 @@ fn security_audit_event_without_ssrf_detail_omits_field() {
         json.get("ssrf").is_none(),
         "ssrf detail must be omitted for non-SSRF event kinds"
     );
+}
+
+#[test]
+fn authorization_local_and_tool_decisions_have_typed_audit_detail() {
+    let cases = [
+        (
+            SecurityAuditEventKind::AuthDenied,
+            SecurityDecisionBoundary::Authorization,
+            AuthScope::Write,
+        ),
+        (
+            SecurityAuditEventKind::LocalPathDenied,
+            SecurityDecisionBoundary::LocalPath,
+            AuthScope::Local,
+        ),
+        (
+            SecurityAuditEventKind::ToolExecutionDenied,
+            SecurityDecisionBoundary::CliToolExecution,
+            AuthScope::Execute,
+        ),
+        (
+            SecurityAuditEventKind::ToolExecutionDenied,
+            SecurityDecisionBoundary::McpToolExecution,
+            AuthScope::Execute,
+        ),
+    ];
+
+    for (kind, boundary, scope) in cases {
+        let event = SecurityAuditEvent::new(kind, "policy denied")
+            .with_caller_id("caller-hash")
+            .with_policy("default-deny", "1")
+            .with_decision_detail(SecurityDecisionAuditDetail {
+                boundary,
+                policy_decision: SecurityPolicyDecision::Deny,
+                required_scope: Some(scope),
+                target: Some("redacted-target".to_string()),
+            });
+        let value = serde_json::to_value(&event).expect("serialize audit event");
+        let round_trip: SecurityAuditEvent =
+            serde_json::from_value(value).expect("deserialize audit event");
+
+        assert_eq!(round_trip.decision.unwrap().boundary, boundary);
+        assert_eq!(round_trip.caller_id.as_deref(), Some("caller-hash"));
+    }
 }

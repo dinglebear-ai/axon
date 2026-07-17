@@ -45,11 +45,10 @@ write path — see `crates/axon-vectors/src/payload.rs`,
   Fields" below) — is emitted universally, not left as an adapter-specific
   extra. This is a shipped guarantee, not a plan: a payload missing any
   required field is rejected before it reaches Qdrant.
-- The old core fields `url`, `domain`, `source_type` (still accepted as a
-  legacy passthrough), `content_type`, `seed_url`, `scraped_at`,
-  `payload_schema_version`, `title`, and `extractor_name` belonged to the
-  pre-unification payload shape and are, with the exception of `source_type`,
-  no longer part of the current contract — see
+- The old core fields `url`, `domain`, `source_type`, `content_type`,
+  `seed_url`, `scraped_at`, `payload_schema_version`, `title`, and
+  `extractor_name` belonged to the pre-unification payload shape and are no
+  longer part of the current contract — see
   `docs/reference/qdrant-payload-schema.md`'s legacy-schema section.
 - Local code payloads add fields such as `local_checkout`, `local_path_key`,
   `local_git_remote`, and `local_git_commit` (the `local` source family; see
@@ -260,8 +259,8 @@ payloads may copy a subset, but the ledger remains authoritative.
 
 | Field | Type | Required | Visibility | Description |
 |---|---|---:|---|---|
-| `source_generation` | integer | when mutable | public | Generation being written or published. |
-| `committed_generation` | integer | when mutable | public | Latest generation safe for search. |
+| `source_generation` | integer | yes | public | Generation being written or published. |
+| `committed_generation` | integer or null | yes | public | Latest generation safe for search; null before publish. |
 | `previous_generation` | integer | no | public | Generation used for diffing. |
 | `generation_status` | string | when mutable | public | Shared `LifecycleStatus`: `pending`, `running`, `completed`, `completed_degraded`, `failed`, `canceled`, etc. |
 | `generation_publish_state` | string | when mutable | public | Publish-specific state: `planning`, `writing`, `publishing`, `committed`, `cleanup_pending`, `cleaning`, `cleaned`. |
@@ -399,15 +398,15 @@ rejects a payload missing any of them.
 | `payload_contract_version` | string | yes | no | Payload contract version (dated string, e.g. `2026-07-01`). |
 | `collection` | string | yes | no | Vector collection name. |
 | `vector_point_id` | string | yes | no | Store-level point id. |
-| `vector_namespace` | string | yes | yes | `documents`, `memory`, `graph`, `artifacts`, etc. |
-| `source_family` | string | yes | yes | Payload-field-allowlist classification axis (13 values). See "Source Family Classification" above; distinct from `source_kind`. |
+| `vector_namespace` | string | yes | yes | Vector slot, currently `dense` for source and memory documents. Memory isolation is carried by `source_kind=memory`. |
+| `source_family` | string | yes | yes | Payload-field-allowlist classification axis (14 values). See "Source Family Classification" above; distinct from `source_kind`. |
 | `source_id` | string | yes | yes | Source filter. |
 | `source_kind` | string | yes | yes | Source kind filter. |
 | `source_adapter` | string | yes | yes | Adapter filter/debug. |
 | `source_scope` | string | yes | yes | Scope filter. |
 | `source_canonical_uri` | string | yes | yes | Canonical URI of the source identity (collapses onto `item_canonical_uri` for single-item sources). |
-| `source_generation` | integer | when mutable | yes | Generation filter. |
-| `committed_generation` | integer | when mutable | yes | Committed snapshot filter/correlation. |
+| `source_generation` | integer | yes | yes | Generation filter. |
+| `committed_generation` | integer or null | yes | yes | Committed snapshot filter/correlation; null before publish. |
 | `source_item_key` | string | yes | yes | Item filter and cleanup key. |
 | `item_canonical_uri` | string | yes | yes | Exact item/document URI lookup. |
 | `document_id` | string | yes | yes | Document filter. |
@@ -750,7 +749,7 @@ than silently aliasing them. **Whether/when to actually promote `reddit_*` to
 
 **Promotion-rule exception, shipped today.** The `transcript_*` names above are
 the target/promoted shape. The shipped `media` payload source family instead
-allowlists `video_id`, `title`, `url`, `channel`, `channel_url`,
+allowlists `video_id`, `title`, `media_url`, `channel`, `channel_url`,
 `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`,
 `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, and
 `segment_kind` (`crates/axon-adapters/src/youtube/metadata.rs` stamps them;
@@ -837,8 +836,9 @@ source.
 
 ### Memory Fields
 
-Memory is not a source adapter, but memory records can use the same embedding,
-graph, status, and payload rules.
+Memory is a canonical source adapter. Its records use `source_kind=memory`, the
+shared document preparation and `dense` vector path, and the same graph,
+status, payload, and publication rules as every other source.
 
 | Field | Type | Required | Description |
 |---|---|---:|---|

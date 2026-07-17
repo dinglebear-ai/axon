@@ -11,6 +11,7 @@ async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 chrono = { version = "0.4", features = ["serde"] }
 axon-core = { path = "../axon-core" }
+axon-document = { path = "../axon-document" }
 axon-embedding = { path = "../axon-embedding" }
 axon-error = { path = "../axon-error" }
 axon-graph = { path = "../axon-graph" }

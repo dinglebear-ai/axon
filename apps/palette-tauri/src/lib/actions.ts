@@ -1,17 +1,16 @@
 export type ArgMode = "none" | "optionalSingle" | "single" | "split";
 type RemoteActionKind = "operation" | "job" | "admin" | "discovery";
 type ActionTone = "info" | "success" | "warn" | "neutral" | "rose" | "orange";
-export const JOB_FAMILIES = ["crawl", "embed", "extract", "ingest"] as const;
-export type JobFamily = (typeof JOB_FAMILIES)[number];
 export const JOB_OPERATIONS = ["list", "status", "cancel", "cleanup", "clear", "recover"] as const;
 export type JobOperation = (typeof JOB_OPERATIONS)[number];
+export type JobSubcommand = `jobs-${JobOperation}`;
 
 export type PaletteSubcommand =
   | "help"
   | "browser"
   | "files"
   | "scrape"
-  | "crawl"
+  | "source-site"
   | "map"
   | "summarize"
   | "ask"
@@ -22,9 +21,8 @@ export type PaletteSubcommand =
   | "evaluate"
   | "search"
   | "research"
-  | "embed"
+  | "source"
   | "extract"
-  | "ingest"
   | "status"
   | "sources"
   | "domains"
@@ -34,14 +32,12 @@ export type PaletteSubcommand =
   | "brand"
   | "diff"
   | "screenshot"
-  | "dedupe"
-  | "purge"
   | "watch-list"
   | "watch-create"
   | "watch-run"
   | "github"
   | "terminal"
-  | `${JobFamily}-${JobOperation}`;
+  | JobSubcommand;
 
 interface PaletteActionBase {
   label: string;
@@ -91,7 +87,7 @@ const STATIC_ACTIONS = [
     kind: "local",
     argMode: "none",
     aliases: ["files", "browse-files", "filesystem", "explorer"],
-    description: "Browse the local filesystem, preview or edit a file, and ingest it into the collection.",
+    description: "Browse the local filesystem, preview or edit a file, and index it into the collection.",
     example: "files",
     tone: "orange",
   },
@@ -106,13 +102,13 @@ const STATIC_ACTIONS = [
     tone: "info",
   },
   {
-    label: "Crawl URL",
-    subcommand: "crawl",
+    label: "Index site",
+    subcommand: "source-site",
     kind: "operation",
     argMode: "split",
-    aliases: ["crawl", "site", "docs"],
-    description: "Queue a recursive crawl from seed URLs. Runs async — returns a job you can tail, cancel, or recover.",
-    example: "crawl https://docs.anthropic.com",
+    aliases: ["site", "index-site", "docs"],
+    description: "Index a site through the unified source pipeline. Returns a job you can inspect or cancel.",
+    example: "source-site https://docs.anthropic.com",
     tone: "warn",
   },
   {
@@ -201,7 +197,7 @@ const STATIC_ACTIONS = [
     kind: "operation",
     argMode: "single",
     aliases: ["search", "web"],
-    description: "Search the web and enqueue crawls for useful results.",
+    description: "Search the web and index useful results.",
     example: "search tauri v2 openapi client",
     tone: "info",
   },
@@ -216,13 +212,13 @@ const STATIC_ACTIONS = [
     tone: "rose",
   },
   {
-    label: "Embed input",
-    subcommand: "embed",
+    label: "Index source",
+    subcommand: "source",
     kind: "operation",
     argMode: "single",
-    aliases: ["embed", "index", "vectorize"],
-    description: "Embed a URL, file, directory, or text input into the collection.",
-    example: "embed https://docs.rs/serde",
+    aliases: ["source", "index", "add-source"],
+    description: "Index a URL, repository, feed, session selector, file, or directory through the unified source pipeline.",
+    example: "source https://docs.rs/serde",
     tone: "orange",
   },
   {
@@ -233,16 +229,6 @@ const STATIC_ACTIONS = [
     aliases: ["extract", "structured", "parse"],
     description: "Queue structured extraction for one or more URLs.",
     example: "extract https://example.com/pricing",
-    tone: "orange",
-  },
-  {
-    label: "Ingest target",
-    subcommand: "ingest",
-    kind: "operation",
-    argMode: "split",
-    aliases: ["ingest", "import", "repo", "youtube", "reddit"],
-    description: "Ingest GitHub, Reddit, or YouTube targets into the collection.",
-    example: "ingest https://github.com/zed-industries/zed",
     tone: "orange",
   },
   {
@@ -351,26 +337,6 @@ const STATIC_ACTIONS = [
     tone: "info",
   },
   {
-    label: "Dedupe collection",
-    subcommand: "dedupe",
-    kind: "admin",
-    argMode: "none",
-    aliases: ["dedupe", "deduplicate", "clean-vectors"],
-    description: "Remove near-duplicate chunks from the collection selected in palette settings.",
-    example: "dedupe",
-    tone: "warn",
-  },
-  {
-    label: "Purge URL",
-    subcommand: "purge",
-    kind: "admin",
-    argMode: "split",
-    aliases: ["purge", "delete-url", "forget"],
-    description: "Delete all indexed points for a URL from the collection. Destructive.",
-    example: "purge https://docs.rs/serde",
-    tone: "warn",
-  },
-  {
     label: "List watches",
     subcommand: "watch-list",
     kind: "admin",
@@ -404,78 +370,77 @@ const STATIC_ACTIONS = [
   { label: "Terminal", subcommand: "terminal", kind: "local", argMode: "none", aliases: ["terminal", "shell", "sh", "console", "cmd"], description: "Run real shell commands in a persistent session with your actual working directory. Desktop app only.", example: "terminal", tone: "neutral", autoRunOnSwitch: true },
 ] as const satisfies readonly PaletteAction[];
 
-type StaticSubcommand = Exclude<PaletteSubcommand, `${JobFamily}-${JobOperation}`>;
+type StaticSubcommand = Exclude<PaletteSubcommand, JobSubcommand>;
 type ListedStaticSubcommand = (typeof STATIC_ACTIONS)[number]["subcommand"];
 const _allStaticActionsListed: Exclude<StaticSubcommand, ListedStaticSubcommand> extends never ? true : never = true;
 void _allStaticActionsListed;
 
 export const ACTIONS: PaletteAction[] = [
   ...STATIC_ACTIONS,
-  ...JOB_FAMILIES.flatMap(jobLifecycleActions),
+  ...jobLifecycleActions(),
 ];
 
-function jobLifecycleActions(family: JobFamily): PaletteAction[] {
-  const label = family[0].toUpperCase() + family.slice(1);
+function jobLifecycleActions(): PaletteAction[] {
   return [
     {
-      label: `List ${family} jobs`,
-      subcommand: `${family}-list`,
+      label: "List jobs",
+      subcommand: "jobs-list",
       kind: "job",
       argMode: "none",
-      aliases: [`${family}-list`, `${family}-jobs`, `${family}s`],
-      description: `List recent ${family} jobs.`,
-      example: `${family}-list`,
+      aliases: ["jobs-list", "job-list", "queue-list"],
+      description: "List recent jobs across the unified job store.",
+      example: "jobs-list",
       tone: "neutral",
       autoRunOnSwitch: true,
     },
     {
-      label: `${label} job status`,
-      subcommand: `${family}-status`,
+      label: "Job status",
+      subcommand: "jobs-status",
       kind: "job",
       argMode: "single",
-      aliases: [`${family}-status`, `${family}-get`],
-      description: `Fetch one ${family} job by UUID.`,
-      example: `${family}-status 00000000-0000-4000-8000-000000000000`,
+      aliases: ["jobs-status", "job-status", "job-get"],
+      description: "Fetch one job by UUID.",
+      example: "jobs-status 00000000-0000-4000-8000-000000000000",
       tone: "info",
     },
     {
-      label: `Cancel ${family} job`,
-      subcommand: `${family}-cancel`,
+      label: "Cancel job",
+      subcommand: "jobs-cancel",
       kind: "job",
       argMode: "single",
-      aliases: [`${family}-cancel`, `cancel-${family}`],
-      description: `Cancel one pending or running ${family} job by UUID.`,
-      example: `${family}-cancel 00000000-0000-4000-8000-000000000000`,
+      aliases: ["jobs-cancel", "job-cancel", "cancel-job"],
+      description: "Cancel one pending or running job by UUID.",
+      example: "jobs-cancel 00000000-0000-4000-8000-000000000000",
       tone: "orange",
     },
     {
-      label: `Cleanup ${family} jobs`,
-      subcommand: `${family}-cleanup`,
+      label: "Cleanup jobs",
+      subcommand: "jobs-cleanup",
       kind: "job",
       argMode: "none",
-      aliases: [`${family}-cleanup`, `cleanup-${family}`],
-      description: `Clean completed ${family} job records.`,
-      example: `${family}-cleanup`,
+      aliases: ["jobs-cleanup", "job-cleanup", "cleanup-jobs"],
+      description: "Clean completed job records.",
+      example: "jobs-cleanup",
       tone: "orange",
     },
     {
-      label: `Clear ${family} jobs`,
-      subcommand: `${family}-clear`,
+      label: "Clear jobs",
+      subcommand: "jobs-clear",
       kind: "job",
       argMode: "none",
-      aliases: [`${family}-clear`, `clear-${family}`],
-      description: `Delete ${family} job records for a clean queue view.`,
-      example: `${family}-clear`,
+      aliases: ["jobs-clear", "job-clear", "clear-jobs"],
+      description: "Delete job records for a clean queue view.",
+      example: "jobs-clear",
       tone: "warn",
     },
     {
-      label: `Recover ${family} jobs`,
-      subcommand: `${family}-recover`,
+      label: "Recover jobs",
+      subcommand: "jobs-recover",
       kind: "job",
       argMode: "none",
-      aliases: [`${family}-recover`, `recover-${family}`],
-      description: `Recover stale ${family} jobs after an interrupted worker run.`,
-      example: `${family}-recover`,
+      aliases: ["jobs-recover", "job-recover", "recover-jobs"],
+      description: "Recover stale jobs after an interrupted worker run.",
+      example: "jobs-recover",
       tone: "success",
     },
   ];

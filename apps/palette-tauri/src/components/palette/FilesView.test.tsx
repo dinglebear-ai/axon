@@ -2,7 +2,7 @@
 //
 // Behavioral tests for FilesView: the browser-dev fallback message when
 // `isTauriRuntime` is false, directory listing + navigation + file preview
-// against a mocked Tauri fs bridge, and the real ingest wiring — proving it
+// against a mocked Tauri fs bridge, and the source indexing wiring — proving it
 // dispatches through `axon_http_request` with the same shape the `embed`
 // action would build (POST /v1/sources with the file's absolute path).
 
@@ -130,8 +130,8 @@ describe("FilesView — directory listing", () => {
   });
 });
 
-describe("FilesView — real ingest wiring", () => {
-  it("ingests the selected file via the real embed request shape", async () => {
+describe("FilesView — source indexing wiring", () => {
+  it("indexes the selected file via the real embed request shape", async () => {
     invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
       if (command === "files_read_file") return Promise.resolve(readmeContents);
@@ -154,13 +154,11 @@ describe("FilesView — real ingest wiring", () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
     fireEvent.click(screen.getByText("README.md"));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /ingest/i })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /index/i })).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /ingest/i }));
+    fireEvent.click(screen.getByRole("button", { name: /index/i }));
 
-    await waitFor(() => expect(screen.getByText(/Queued for ingest/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Queued for indexing/i)).toBeInTheDocument());
     expect(invokeMock).toHaveBeenCalledWith(
       "axon_http_request",
       expect.objectContaining({
@@ -169,7 +167,7 @@ describe("FilesView — real ingest wiring", () => {
     );
   });
 
-  it("does not offer ingest for a non-ingestable (binary) file", async () => {
+  it("does not offer indexing for a non-indexable (binary) file", async () => {
     invokeMock.mockImplementation((command: string, args?: Record<string, unknown>) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
       if (command === "files_read_file" && args?.path === "photo.png") {
@@ -183,10 +181,10 @@ describe("FilesView — real ingest wiring", () => {
     fireEvent.click(screen.getByText("photo.png"));
 
     await waitFor(() => expect(screen.getByText(/not valid UTF-8/)).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /ingest/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /index/i })).not.toBeInTheDocument();
   });
 
-  it("shows a failure message when the ingest request fails", async () => {
+  it("shows a failure message when the indexing request fails", async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
       if (command === "files_read_file") return Promise.resolve(readmeContents);
@@ -205,11 +203,9 @@ describe("FilesView — real ingest wiring", () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
     fireEvent.click(screen.getByText("README.md"));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /ingest/i })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole("button", { name: /index/i })).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /ingest/i }));
+    fireEvent.click(screen.getByRole("button", { name: /index/i }));
 
     await waitFor(() => expect(screen.getByText(/TEI unreachable/)).toBeInTheDocument());
   });
@@ -332,7 +328,7 @@ describe("FilesView — split view", () => {
   });
 });
 
-describe("FilesView — bulk selection and ingest", () => {
+describe("FilesView — bulk selection and indexing", () => {
   beforeEach(() => {
     invokeMock.mockImplementation((command: string) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
@@ -350,10 +346,10 @@ describe("FilesView — bulk selection and ingest", () => {
     });
   });
 
-  it("shows a checkbox on each file row with the generic bulk-ingest label", async () => {
+  it("shows a checkbox on each file row with the generic bulk-indexing label", async () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     expect(checkboxes.length).toBeGreaterThan(0);
   });
 
@@ -363,29 +359,31 @@ describe("FilesView — bulk selection and ingest", () => {
     expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
   });
 
-  it("shows 'N selected' and 'Ingest all' after checking files", async () => {
+  it("shows 'N selected' and 'Index all' after checking files", async () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     await userEvent.click(checkboxes[0]);
     await userEvent.click(checkboxes[1]);
     expect(screen.getByText("2 selected")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /ingest all/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /index all/i })).toBeInTheDocument();
   });
 
-  it("queues one sequential ingest call per checked file when 'Ingest all' is clicked", async () => {
+  it("queues one sequential indexing call per checked file when 'Index all' is clicked", async () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     await userEvent.click(checkboxes[0]);
     await userEvent.click(checkboxes[1]);
-    await userEvent.click(screen.getByRole("button", { name: /ingest all/i }));
+    await userEvent.click(screen.getByRole("button", { name: /index all/i }));
     await waitFor(() =>
-      expect(invokeMock.mock.calls.filter((call) => call[0] === "axon_http_request")).toHaveLength(2),
+      expect(invokeMock.mock.calls.filter((call) => call[0] === "axon_http_request")).toHaveLength(
+        2,
+      ),
     );
   });
 
-  it("shows a per-item progress line while ingesting", async () => {
+  it("shows a per-item progress line while indexing", async () => {
     const resolvers: Array<() => void> = [];
     invokeMock.mockImplementation((command: string) => {
       if (command === "files_list_dir") return Promise.resolve(rootListing);
@@ -402,11 +400,11 @@ describe("FilesView — bulk selection and ingest", () => {
 
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     await userEvent.click(checkboxes[0]);
     await userEvent.click(checkboxes[1]);
-    await userEvent.click(screen.getByRole("button", { name: /ingest all/i }));
-    await waitFor(() => expect(screen.getByText(/ingesting 1\/2/i)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /index all/i }));
+    await waitFor(() => expect(screen.getByText(/indexing 1\/2/i)).toBeInTheDocument());
     resolvers[0]?.();
   });
 
@@ -427,23 +425,25 @@ describe("FilesView — bulk selection and ingest", () => {
 
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     await userEvent.click(checkboxes[0]);
     await userEvent.click(checkboxes[1]);
-    await userEvent.click(screen.getByRole("button", { name: /ingest all/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /index all/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument(),
+    );
     await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
     resolvers[0]?.();
     await waitFor(() => expect(screen.getByText(/cancelled after 1\/2/i)).toBeInTheDocument());
     expect(resolvers).toHaveLength(1);
   });
 
-  it("clears the checked set after a successful bulk ingest", async () => {
+  it("clears the checked set after a successful bulk indexing", async () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
-    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk ingest" });
+    const checkboxes = screen.getAllByRole("checkbox", { name: "Select for bulk indexing" });
     await userEvent.click(checkboxes[0]);
-    await userEvent.click(screen.getByRole("button", { name: /ingest all/i }));
+    await userEvent.click(screen.getByRole("button", { name: /index all/i }));
     await waitFor(() => expect(screen.queryByText(/selected/i)).not.toBeInTheDocument());
   });
 });
@@ -461,7 +461,9 @@ describe("FilesView — AI-assisted edit proposal", () => {
     render(<FilesView client={client} config={config} />);
     await waitFor(() => expect(screen.getByText("README.md")).toBeInTheDocument());
     fireEvent.click(screen.getByText("README.md"));
-    await waitFor(() => expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument(),
+    );
     expect(screen.getByRole("button", { name: /edit with the model/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
@@ -504,7 +506,10 @@ describe("FilesView — AI-assisted edit proposal", () => {
       expect(screen.getByRole("button", { name: /edit with the model/i })).toBeInTheDocument(),
     );
     await userEvent.click(screen.getByRole("button", { name: /edit with the model/i }));
-    await userEvent.type(screen.getByPlaceholderText(/describe the edit/i), "rewrite the intro{Enter}");
+    await userEvent.type(
+      screen.getByPlaceholderText(/describe the edit/i),
+      "rewrite the intro{Enter}",
+    );
     expect(await screen.findByText(/proposed edit/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /deny/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /approve/i })).toBeInTheDocument();
@@ -640,7 +645,9 @@ describe("FilesView — SFTP entries gate manual and AI-assisted edit", () => {
     };
     const sftpListing = {
       path: "",
-      entries: [{ name: "remote.md", path: "remote.md", isDir: false, size: 40, modifiedUnix: null }],
+      entries: [
+        { name: "remote.md", path: "remote.md", isDir: false, size: 40, modifiedUnix: null },
+      ],
     };
     const sftpFile = { path: "remote.md", content: "# remote" };
 
@@ -661,7 +668,9 @@ describe("FilesView — SFTP entries gate manual and AI-assisted edit", () => {
 
     // Local file: both Edit and Edit-with-the-model are present.
     fireEvent.click(screen.getByText("README.md"));
-    await waitFor(() => expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument(),
+    );
     expect(screen.getByRole("button", { name: /edit with the model/i })).toBeInTheDocument();
 
     // Connect an SFTP profile via the toolbar control + dialog.
@@ -669,7 +678,10 @@ describe("FilesView — SFTP entries gate manual and AI-assisted edit", () => {
     await userEvent.type(screen.getByLabelText(/^label$/i), connectedProfile.label);
     await userEvent.type(screen.getByLabelText(/^host$/i), connectedProfile.host);
     await userEvent.type(screen.getByLabelText(/^username$/i), connectedProfile.username);
-    await userEvent.type(screen.getByLabelText(/private key path/i), connectedProfile.privateKeyPath);
+    await userEvent.type(
+      screen.getByLabelText(/private key path/i),
+      connectedProfile.privateKeyPath,
+    );
     await userEvent.click(screen.getByRole("button", { name: /^connect$/i }));
 
     await waitFor(() => expect(screen.getByText("remote.md")).toBeInTheDocument());
@@ -685,7 +697,9 @@ describe("FilesView — SFTP open race (P2 #6 regression)", () => {
   it("keeps a local file's content when it's opened before a slower SFTP read resolves", async () => {
     const sftpListing = {
       path: "",
-      entries: [{ name: "remote.md", path: "remote.md", isDir: false, size: 40, modifiedUnix: null }],
+      entries: [
+        { name: "remote.md", path: "remote.md", isDir: false, size: 40, modifiedUnix: null },
+      ],
     };
     // The SFTP read never resolves during this test — it stands in for "a
     // slow remote read still in flight when the user opens a different local

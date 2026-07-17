@@ -1,8 +1,5 @@
 use crate::schema::{AxonToolResponse, ResponseMode, ScreenshotRequest};
 use crate::server::AxonMcpServer;
-use crate::server::artifacts::{
-    artifact_handle_for_path, ensure_artifact_root, resolve_artifact_output_path,
-};
 use crate::server::common::{invalid_params, logged_internal_error, validate_mcp_url};
 use axon_core::config::ConfigOverrides;
 use rmcp::ErrorData;
@@ -61,74 +58,40 @@ impl AxonMcpServer {
         )?;
         let full_page = req.full_page.unwrap_or(self.cfg.screenshot_full_page);
 
-        let artifact_root = ensure_artifact_root().await?;
-        let output_path = if let Some(output) = req.output {
-            resolve_artifact_output_path(&output).await?
-        } else {
-            let screenshots_dir = artifact_root.join("screenshots");
-            tokio::fs::create_dir_all(&screenshots_dir)
-                .await
-                .map_err(|e| logged_internal_error("screenshot dir", &e))?;
-            screenshots_dir.join(format!(
-                "{}.png",
-                chrono::Utc::now().format("%Y%m%d-%H%M%S-%3f")
-            ))
-        };
-
-        let mut cfg = self.cfg.apply_overrides(&ConfigOverrides {
+        let cfg = self.cfg.apply_overrides(&ConfigOverrides {
             viewport_width: Some(width),
             viewport_height: Some(height),
             screenshot_full_page: Some(full_page),
-            output_path: Some(Some(output_path.clone())),
+            output_path: Some(None),
             ..ConfigOverrides::default()
         });
-        cfg.output_dir = artifact_root;
 
         let shot = axon_services::screenshot::screenshot_capture(&cfg, &url)
             .await
             .map_err(|e| logged_internal_error("screenshot", e.as_ref()))?;
-        let artifact_handle = artifact_handle_for_path(
-            "screenshot",
-            &output_path,
-            shot.size_bytes,
-            None,
-            None,
-            Some(shot.url.clone()),
-        )
-        .await?;
-
-        let relative_path = artifact_handle.relative_path().to_string();
-        let display_path = artifact_handle.display_path().to_string();
-        let payload = serde_json::json!({
-            "url": shot.url,
-            "path": relative_path,
-            "relative_path": relative_path,
-            "display_path": display_path,
-            "artifact_handle": artifact_handle,
-            "size_bytes": shot.size_bytes,
-            "full_page": full_page,
-            "viewport": format!("{}x{}", width, height),
+        let artifact_id = shot.artifact_id.0.clone();
+        let artifact_handle = serde_json::json!({
+            "artifact_id": artifact_id,
+            "artifact_kind": "screenshot",
         });
-        // Screenshot already materializes the primary artifact as a PNG on disk.
-        // Returning the small metadata envelope inline avoids a second JSON
-        // artifact round-trip and prevents MCP stdio crashes in this path.
+        let artifact = serde_json::json!({
+            "artifact_id": artifact_id,
+            "artifact_kind": "screenshot",
+            "content_type": "image/png",
+            "content_url": format!("/v1/artifacts/{artifact_id}/content"),
+        });
+        let payload = serde_json::to_value(&shot)
+            .map_err(|error| logged_internal_error("screenshot response", &error))?;
         let response = match req.response_mode.unwrap_or(ResponseMode::Path) {
             ResponseMode::Path => serde_json::json!({
                 "response_mode": "path",
-                "data": payload.clone(),
-                "artifact_handle": payload["artifact_handle"].clone(),
-                "artifact": {
-                    "artifact_handle": payload["artifact_handle"].clone(),
-                    "path": payload["artifact_handle"]["relative_path"].clone(),
-                    "relative_path": payload["artifact_handle"]["relative_path"].clone(),
-                    "display_path": payload["artifact_handle"]["display_path"].clone(),
-                    "bytes": payload["size_bytes"].clone(),
-                    "mime_type": "image/png",
-                },
+                "data": payload,
+                "artifact_handle": artifact_handle,
+                "artifact": artifact,
                 "shape": {
                     "type": "screenshot",
-                    "viewport": payload["viewport"].clone(),
-                    "full_page": payload["full_page"].clone(),
+                    "viewport": format!("{}x{}", width, height),
+                    "full_page": full_page,
                 },
             }),
             ResponseMode::Inline | ResponseMode::AutoInline => serde_json::json!({
@@ -137,18 +100,12 @@ impl AxonMcpServer {
             }),
             ResponseMode::Both => serde_json::json!({
                 "response_mode": "both",
-                "data": payload.clone(),
-                "artifact_handle": payload["artifact_handle"].clone(),
-                "artifact": {
-                    "artifact_handle": payload["artifact_handle"].clone(),
-                    "path": payload["artifact_handle"]["relative_path"].clone(),
-                    "relative_path": payload["artifact_handle"]["relative_path"].clone(),
-                    "display_path": payload["artifact_handle"]["display_path"].clone(),
-                    "bytes": payload["size_bytes"].clone(),
-                    "mime_type": "image/png",
-                },
+                "data": payload,
+                "artifact_handle": artifact_handle,
+                "artifact": artifact,
             }),
         };
-        Ok(AxonToolResponse::ok("screenshot", "screenshot", response))
+        Ok(AxonToolResponse::ok("screenshot", "screenshot", response)
+            .with_artifact(artifact_handle))
     }
 }

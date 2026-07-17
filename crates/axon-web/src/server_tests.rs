@@ -148,6 +148,8 @@ async fn all_v1_rest_routes_reject_missing_auth_when_auth_is_configured() {
 
 fn route_to_test_path(path: &str) -> String {
     path.replace("{id}", &Uuid::nil().to_string())
+        .replace("{artifact_id}", "art_report_missing")
+        .replace("{upload_id}", "upl_missing")
         .replace("{memory_id}", "mem_test")
         .replace("{watch_id}", "watch_test")
         .replace("{path}", "missing.txt")
@@ -201,8 +203,7 @@ fn openapi_document_matches_openapi_route_inventory() {
 fn routing_registers_no_v1_route_outside_inventory() {
     // Intentionally mounted but absent from the REST/OpenAPI inventory:
     //   /v1/actions, /v1/migrate — removed-surface stubs that only return 404.
-    //   /v1/artifacts/{*path}    — wildcard file serving, not an OpenAPI op.
-    const ALLOWED_UNLISTED: &[&str] = &["/v1/actions", "/v1/migrate", "/v1/artifacts/{*path}"];
+    const ALLOWED_UNLISTED: &[&str] = &["/v1/actions", "/v1/migrate"];
 
     let source = include_str!("server/routing.rs");
     let inventory: std::collections::BTreeSet<&str> =
@@ -230,9 +231,8 @@ fn routing_registers_no_v1_route_outside_inventory() {
 
     // Self-test floor: the scanner MUST see the multi-line registrations, not
     // silently regress to seeing nothing (which would turn this whole test into a
-    // no-op — the exact failure mode it exists to prevent). Both of these are
-    // registered multi-line in routing.rs today (`.nest("/v1/extract", …)` and
-    // `.route("/v1/research/stream", …)`).
+    // no-op — the exact failure mode it exists to prevent). Both of these
+    // routes exercise the scanner's multi-line route parsing.
     for must_see in ["/v1/extract", "/v1/research/stream"] {
         assert!(
             registered.contains(must_see),
@@ -300,6 +300,28 @@ async fn v1_migrate_is_not_mounted_after_rest_cutover() {
 
 #[tokio::test]
 #[serial]
+async fn scoped_prune_routes_are_not_mounted_after_cutover() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    for path in ["/v1/prune/dedupe", "/v1/prune/purge"] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header("authorization", "Bearer secret")
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .expect("removed prune route request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn openapi_docs_are_public_and_list_rest_routes() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
@@ -348,20 +370,46 @@ async fn openapi_docs_are_public_and_list_rest_routes() {
         "/v1/ask/stream",
         "/v1/sources",
         "/v1/extract",
-        "/v1/extract/{id}",
         "/v1/watches",
         "/v1/watches/{watch_id}/exec",
-        "/v1/memory",
+        "/v1/prune/plan",
+        "/v1/prune/exec",
+        "/v1/reset/plan",
+        "/v1/reset/exec",
         "/v1/memories",
         "/v1/memories/{memory_id}",
         "/v1/memories/import",
         "/v1/memories/export",
         "/v1/mobile/sessions",
         "/v1/mobile/sessions/{id}",
+        "/v1/artifacts",
+        "/v1/artifacts/{artifact_id}",
+        "/v1/artifacts/{artifact_id}/content",
+        "/v1/uploads",
+        "/v1/uploads/{upload_id}",
+        "/v1/uploads/{upload_id}/content",
+        "/v1/uploads/{upload_id}/complete",
     ] {
         assert!(
             paths.contains_key(path),
             "OpenAPI spec should include {path}"
+        );
+    }
+    for removed in ["/v1/prune/dedupe", "/v1/prune/purge", "/v1/memory"] {
+        assert!(
+            !paths.contains_key(removed),
+            "OpenAPI spec must not include removed route {removed}"
+        );
+    }
+    for removed in [
+        "/v1/extract/{id}",
+        "/v1/extract/{id}/cancel",
+        "/v1/extract/cleanup",
+        "/v1/extract/recover",
+    ] {
+        assert!(
+            !paths.contains_key(removed),
+            "OpenAPI spec must not include removed extract lifecycle route {removed}"
         );
     }
 
@@ -501,7 +549,6 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let client = reqwest::Client::new();
     let job_id = Uuid::nil();
     let watch_exec = format!("/v1/watches/{job_id}/exec");
-    let extract_cancel = format!("/v1/extract/{job_id}/cancel");
     let mobile_session = "/v1/mobile/sessions/test_session";
     let memory_link = "/v1/memories/mem_test/link";
     let memory_supersede = "/v1/memories/mem_test/supersede";
@@ -514,17 +561,12 @@ async fn loopback_dev_blocks_destructive_rest_routes_without_auth() {
     let routes = [
         ("POST", "/v1/prune/plan"),
         ("POST", "/v1/prune/exec"),
-        ("POST", "/v1/prune/dedupe"),
-        ("POST", "/v1/prune/purge"),
+        ("POST", "/v1/reset/plan"),
+        ("POST", "/v1/reset/exec"),
         ("POST", "/v1/sources"),
         ("POST", "/v1/watches"),
         ("POST", watch_exec.as_str()),
         ("POST", "/v1/extract"),
-        ("POST", extract_cancel.as_str()),
-        ("POST", "/v1/extract/cleanup"),
-        ("DELETE", "/v1/extract"),
-        ("POST", "/v1/extract/recover"),
-        ("POST", "/v1/memory"),
         ("POST", "/v1/memories"),
         // `/v1/memories/search` and `/v1/memories/context` moved to
         // `axon:read` (U2-20/C6-20, query-shaped surfaces) and are covered by
@@ -613,7 +655,7 @@ async fn loopback_dev_allows_non_destructive_write_routes_without_auth() {
 
 #[tokio::test]
 #[serial]
-async fn v1_memory_route_dispatches_validation_errors_without_live_qdrant() {
+async fn removed_v1_memory_route_returns_not_found() {
     let _env = EnvGuard::set(Some("secret"));
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
@@ -626,18 +668,8 @@ async fn v1_memory_route_dispatches_validation_errors_without_live_qdrant() {
         .await
         .expect("memory request");
     let status = response.status();
-    let body: serde_json::Value = response.json().await.expect("memory error body");
-
     stop(shutdown, handle).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
-    assert_eq!(body["ok"], false);
-    assert_eq!(body["error"]["code"], "route.validation.invalid_field");
-    assert!(
-        body["error"]["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("query is required")),
-        "{body}"
-    );
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

@@ -1,0 +1,14 @@
+{
+  "adapter": "memory",
+  "adapter_version": "1",
+  "content": "A canonical memory record prepared through the source pipeline.",
+  "content_kind": "markdown",
+  "fixture_kind": "source-document.minimal",
+  "graph": { "required_fact_kinds": ["memory_document"], "optional_fact_kinds": ["memory_link", "supersedes"] },
+  "item_canonical_uri": "memory://mem_fixture_1",
+  "metadata_family": "memory",
+  "redaction_status": "clean",
+  "source_canonical_uri": "memory://mem_fixture_1",
+  "source_id": "src-memory-fixture",
+  "source_item_key": "mem_fixture_1"
+}

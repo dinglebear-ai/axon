@@ -17,13 +17,48 @@ use super::AxonMcpServer;
 use super::artifacts::{InlineHint, respond_with_mode};
 use super::common::{invalid_params, logged_internal_error};
 use super::server_authz::MCP_ACTION_SPECS;
-use crate::schema::{AxonToolResponse, CapabilitiesRequest, ProvidersRequest, ResolveRequest};
+use crate::schema::{
+    AxonToolResponse, CapabilitiesRequest, ChatRequest, ProvidersRequest, ResolveRequest,
+};
 use axon_api::source::SourceRequest as RouteSourceRequest;
+use axon_services::service_traits::{AskService, AskServiceImpl};
 use axon_services::system;
 use rmcp::ErrorData;
 use serde_json::Value;
 
 impl AxonMcpServer {
+    pub(super) async fn handle_chat(
+        &self,
+        req: ChatRequest,
+    ) -> Result<AxonToolResponse, ErrorData> {
+        let message = req
+            .message
+            .as_deref()
+            .map(str::trim)
+            .filter(|message| !message.is_empty())
+            .ok_or_else(|| invalid_params("chat requires a non-empty message"))?;
+        let context = self
+            .base_service_context()
+            .await
+            .map_err(|error| logged_internal_error("chat.context", error.as_ref()))?;
+        let result = AskServiceImpl::new(context)
+            .chat(axon_services::service_traits::ask_service::ChatRequest {
+                session_id: req.session_id,
+                message: message.to_string(),
+            })
+            .await
+            .map_err(|error| logged_internal_error("chat.complete", error.as_ref()))?;
+        respond_with_mode(
+            "chat",
+            "chat",
+            req.response_mode,
+            "chat",
+            serde_json::json!(result),
+            InlineHint::Default,
+        )
+        .await
+    }
+
     pub(super) async fn handle_resolve(
         &self,
         req: ResolveRequest,

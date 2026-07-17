@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-07-17
+
+### Changed
+
+- Complete the issue #298 pipeline unification: one `SourceRequest` pipeline
+  owns acquisition, preparation, embedding, publication, graph, and cleanup
+  for every source family, with the unified SQLite job model and canonical
+  CLI/REST/MCP surfaces.
+- **Breaking:** artifact-bearing responses return opaque artifact IDs instead
+  of server filesystem paths across CLI, REST, MCP, web, and Palette.
+- **Breaking:** web source options use the canonical `headers` object plus
+  `respect_robots`, `cache_policy`, and per-extractor
+  `vertical_cache_ttl_secs` keys.
+- Source progress events carry structured source identity, generation, stage
+  counts, current item, warnings, and errors on both web and non-web paths.
+
+### Added
+
+- CLI resource commands: `artifacts`, `uploads`, `collections`, `graph`,
+  `providers`, `capabilities`, and `chat`, with MCP action parity.
+
 ## [6.2.2] - 2026-07-05
 
 ### Changed

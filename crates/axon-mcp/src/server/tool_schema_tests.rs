@@ -21,11 +21,9 @@ fn axon_tool_description() -> String {
 
 /// Extract the comma-separated action list out of the description's
 /// `"Actions: a, b, c."` sentence. Deliberately narrow (rather than a
-/// whole-description substring search) because the description's prose also
-/// legitimately *mentions* historical/removed action names when explaining
-/// what `source` replaces (e.g. "replaces the former embed/ingest/scrape/
-/// crawl/code_search/vertical_scrape actions") — a whole-string check would
-/// false-positive on that explanatory clause.
+/// whole-description substring search) because the description also contains
+/// non-action prose and transport notes; action absence is asserted directly
+/// against the published enum below.
 fn axon_tool_actions_sentence(description: &str) -> std::collections::BTreeSet<&str> {
     let after_prefix = description
         .split_once("Actions: ")
@@ -46,7 +44,7 @@ fn axon_tool_actions_sentence(description: &str) -> std::collections::BTreeSet<&
 /// no more, no less — or a caller reading only the description (not the
 /// schema) will try actions that 400/403, or miss real ones entirely. Guards
 /// against the drift found in the #298 alignment audit, where the
-/// description advertised `domains`/`sources`/`stats`/`elicit_demo` (all
+/// description advertised `domains`/`sources`/`stats` (all
 /// explicitly rejected by `server.rs`'s dispatch match) while omitting real
 /// actions like `jobs`, `resolve`, `capabilities`, `providers`, `prune`,
 /// `watch`, and `graph`.
@@ -92,6 +90,8 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
         "ingest",
         "code_search",
         "vertical_scrape",
+        "dedupe",
+        "purge",
     ] {
         assert!(
             !action_enum
@@ -112,6 +112,29 @@ fn axon_tool_input_schema_publishes_action_enum_from_tools_list() {
     // `list`/`get`/`update`/`pause`/`resume`/`delete` over the source-request-
     // backed watch store. See `handlers_watch.rs`.
     assert!(actual.contains(&"watch"));
+    assert!(actual.contains(&"reset"));
+    assert!(actual.contains(&"collections"));
+    assert!(actual.contains(&"uploads"));
+    assert!(actual.contains(&"chat"));
+    assert!(actual.contains(&"artifacts"));
+}
+
+#[test]
+fn mcp_schema_exposes_only_canonical_prune_and_admin_subactions() {
+    let schema = axon_input_schema();
+    assert_eq!(
+        schema.pointer("/x-axon-subactions/prune").unwrap(),
+        &serde_json::json!(["plan", "exec"])
+    );
+    assert!(schema.pointer("/x-axon-subactions/reset").is_some());
+    assert!(schema.pointer("/x-axon-subactions/collections").is_some());
+    assert_eq!(
+        schema.pointer("/x-axon-subactions/uploads").unwrap(),
+        &serde_json::json!(["abort", "complete", "create", "get", "list", "put_content"])
+    );
+    let rendered = serde_json::to_string(&schema).unwrap();
+    assert!(!rendered.contains("collection-prune convenience"));
+    assert!(!rendered.contains("targeted purge"));
 }
 
 #[test]
@@ -175,23 +198,70 @@ fn mcp_schema_documents_jobs_subactions() {
 
 #[test]
 fn mcp_schema_omits_removed_indexing_surface() {
-    // The whole serialized schema — action enum, oneOf branches, subaction
-    // metadata, lifted-field annotations — must be free of the removed action
-    // tokens. This mirrors the surface-removal-contract drift guard.
+    // Removed names must be absent from action-bearing surfaces. Field names are
+    // intentionally checked separately: `source.embed` is still a valid option,
+    // even though the old top-level `embed` action is gone.
     let schema = axon_input_schema();
-    let serialized = serde_json::to_string(&schema).expect("serialize schema");
-    for removed in ["\"code_search\"", "\"vertical_scrape\""] {
+    let removed_actions = [
+        "crawl",
+        "scrape",
+        "embed",
+        "ingest",
+        "code_search",
+        "vertical_scrape",
+        "dedupe",
+        "purge",
+    ];
+
+    let action_enum = schema
+        .pointer("/properties/action/enum")
+        .and_then(serde_json::Value::as_array)
+        .expect("tools/list inputSchema publishes properties.action.enum");
+    for removed in removed_actions {
         assert!(
-            !serialized.contains(removed),
-            "serialized MCP schema must not mention removed action {removed}"
+            !action_enum
+                .iter()
+                .any(|value| value.as_str() == Some(removed)),
+            "action enum must not list removed action {removed}"
         );
     }
-    // `x-axon-subactions` must no longer list crawl/embed/ingest/vertical_scrape.
+
+    let branches = schema
+        .pointer("/oneOf")
+        .and_then(serde_json::Value::as_array)
+        .expect("schema oneOf branches are present");
+    for branch in branches {
+        let action = branch.pointer("/properties/action/const");
+        for removed in removed_actions {
+            assert_ne!(
+                action.and_then(serde_json::Value::as_str),
+                Some(removed),
+                "oneOf branch must not advertise removed action {removed}"
+            );
+        }
+    }
+
+    let metadata = schema
+        .pointer("/x-axon-action-metadata")
+        .and_then(serde_json::Value::as_array)
+        .expect("action metadata is present");
+    for entry in metadata {
+        let name = entry.pointer("/name").and_then(serde_json::Value::as_str);
+        for removed in removed_actions {
+            assert_ne!(
+                name,
+                Some(removed),
+                "action metadata must not advertise removed action {removed}"
+            );
+        }
+    }
+
+    // `x-axon-subactions` must no longer list removed action families.
     let subactions = schema
         .pointer("/x-axon-subactions")
         .and_then(serde_json::Value::as_object)
         .expect("subaction metadata present");
-    for removed in ["crawl", "embed", "ingest", "vertical_scrape"] {
+    for removed in removed_actions {
         assert!(
             !subactions.contains_key(removed),
             "subaction metadata must not list removed family {removed}"
@@ -363,8 +433,6 @@ fn axon_tool_input_schema_documents_subaction_families() {
 
     for (family, expected) in [
         ("extract", "start"),
-        ("extract", "status"),
-        ("extract", "recover"),
         ("memory", "remember"),
         ("memory", "list"),
         ("memory", "search"),
@@ -382,4 +450,14 @@ fn axon_tool_input_schema_documents_subaction_families() {
             "{family} subactions should include {expected}"
         );
     }
+
+    let extract = subactions
+        .get("extract")
+        .and_then(serde_json::Value::as_array)
+        .expect("extract subactions should be listed");
+    assert_eq!(
+        extract,
+        &vec![serde_json::json!("start")],
+        "MCP extract must submit only; lifecycle is under action=jobs"
+    );
 }

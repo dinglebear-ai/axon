@@ -575,6 +575,7 @@ impl PruneTarget for LedgerPruneTarget<'_> {
                 if memory_ids.is_empty() {
                     return Ok(StepExecution::skipped("no memory identity on step"));
                 }
+                let mut records = Vec::with_capacity(memory_ids.len());
                 for memory_id in memory_ids {
                     let request = MemoryForgetRequest {
                         memory_id: memory_id.clone(),
@@ -585,7 +586,25 @@ impl PruneTarget for LedgerPruneTarget<'_> {
                         .forget(request)
                         .await
                         .map_err(|err| err.message.clone())?;
+                    let record = memory_store
+                        .get(memory_id.clone())
+                        .await
+                        .map_err(|err| err.message.clone())?
+                        .ok_or_else(|| {
+                            format!("memory {} missing after cleanup-debt forget", memory_id.0)
+                        })?;
+                    records.push(record);
                 }
+                let job_store = self.job_store.ok_or_else(|| {
+                    "no JobStore wired for canonical memory cleanup publication".to_string()
+                })?;
+                crate::memory::sync::enqueue_memory_records(
+                    job_store,
+                    &records,
+                    "cleanup_debt_forget",
+                )
+                .await
+                .map_err(|error| error.to_string())?;
                 Ok(StepExecution::deleted(memory_ids.len() as u64))
             }
             PruneTargetKind::JobRetention => self.apply_job_retention().await,

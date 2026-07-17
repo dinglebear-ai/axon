@@ -176,7 +176,7 @@ class GeneratedAxonApiTest {
                           {
                             "kind": "tool",
                             "text": "ran",
-                            "payload": {"name":"crawl","ok":true},
+                            "payload": {"name":"source","ok":true},
                             "timestamp": 30
                           }
                         ]
@@ -192,7 +192,7 @@ class GeneratedAxonApiTest {
         assertTrue(result.isSuccess)
         val item = result.getOrThrow().items.single()
         assertEquals("tool", item.kind)
-        assertEquals("crawl", item.payload["name"]?.toString()?.trim('"'))
+        assertEquals("source", item.payload["name"]?.toString()?.trim('"'))
         assertEquals("true", item.payload["ok"]?.toString())
         val request = server.takeRequest()
         assertEquals("/v1/mobile/sessions/session-1", request.path)

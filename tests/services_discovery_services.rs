@@ -90,7 +90,7 @@ fn maps_map_payload_preserves_urls_array() {
         "pages_seen": 2u32,
         "thin_pages": 0u32,
         "elapsed_ms": 200u64,
-        "map_source": "crawl",
+        "map_source": "bounded-structure",
         "warning": null,
         "urls": ["https://example.com/one", "https://example.com/two"],
     });
@@ -197,9 +197,9 @@ fn sample_research_payload() -> axon_services::types::ResearchPayload {
         offset: 0,
         search_results: vec![],
         extractions: vec![],
-        auto_crawl_status: "not_queued".to_string(),
-        crawl_jobs: vec![],
-        crawl_jobs_rejected: vec![],
+        source_index_status: "not_queued".to_string(),
+        source_jobs: vec![],
+        source_jobs_rejected: vec![],
         summary: Some("A comprehensive summary.".to_string()),
         summary_source: SummarySource::Llm,
         usage: ResearchUsage {

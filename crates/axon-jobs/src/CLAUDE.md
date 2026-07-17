@@ -9,24 +9,22 @@ tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/job-contract.md](../../../docs/pipeline-unification/runtime/job-contract.md).
 
-## Status — live crate, unification at Phase 8
-Today the runtime carries **per-family** job models (`crawl`/`embed`/`extract`/
-`ingest` payload + dispatch modules), and works. At **Phase 8** these collapse
-into **one unified source job model** — `job_kind`/`job_intent`, attempts, stages,
-events, heartbeats, and reservations — so async and watch work are observable
-through the same job shape. Jobs schedule and run **injected** workers; they must
-not reimplement domain services.
+## Status — unified runtime
+The crate stores every durable operation in one job model with canonical
+`JobKind`, attempts, stages, events, heartbeats, artifacts, reservations, and
+recovery state. Source watches schedule canonical Source jobs and retain their
+job IDs in watch-run history. Jobs run injected workers; this crate does not
+reimplement domain services.
 
 ## Module map
-Current groups from `crates/axon-jobs/src/` (target modules in parens):
+Current groups from `crates/axon-jobs/src/`:
 | Area | Owns |
 |---|---|
-| `backend.rs` · `store/` · `runtime.rs` | `JobBackend`/`JobStore` + `SqliteJobStore` + `JobRuntime` |
-| `crawl.rs` · `embed.rs` · `extract.rs` · `ingest/` | **per-family payloads → collapse into one `job.rs`/`attempt.rs`** |
-| `ops/` · `query.rs` · `cancel.rs` · `status.rs` | enqueue/lifecycle, query, cancellation, status |
-| `workers/` | in-process worker lanes + watch scheduler (`worker.rs`/`reservation.rs`/`recovery.rs`) |
-| `watch/` · `freshness/` | recurring watch triggers + freshness schedules (`scheduler.rs`/`watch.rs`) |
-| `config_snapshot/` · `tx.rs` · `migrations/` · `service_job_conv.rs` | job config snapshots, txns, forward-only schema, `ServiceJob` conversion |
+| `boundary.rs` · `unified.rs` · `store.rs` · `runtime.rs` | `JobStore` contract, unified SQLite operations, pool ownership, and runtime composition |
+| `state_machine.rs` · `status.rs` · `limits.rs` | lifecycle transitions, canonical status, and admission limits |
+| `workers.rs` · `workers/` | in-process worker lanes, provider reservations, recovery, and watch scheduling |
+| `watch_store.rs` · `workers/watch_scheduler.rs` | source-watch store + scheduler (`axon_source_watches` / `axon_source_watch_runs`) |
+| `config_snapshot.rs` · `config_snapshot_store.rs` · `migrations/` | job config snapshots and forward-only unified schema |
 
 ## Boundary — keep OUT of this crate
 - Domain logic for source acquisition, parsing, embedding, vector writes, retrieval, LLM synthesis, or pruning — call injected boundaries/traits.

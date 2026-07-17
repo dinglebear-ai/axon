@@ -21,18 +21,16 @@ const EXPECTED_ENV_KEYS = [
   "TEI_URL",
   "AXON_CHROME_REMOTE_URL",
   "AXON_COLLECTION",
-  // MCP Server & Auth
-  "AXON_MCP_HTTP_HOST",
-  "AXON_MCP_HTTP_PORT",
-  "AXON_MCP_HTTP_TOKEN",
-  "AXON_MCP_AUTH_MODE",
-  "AXON_MCP_PUBLIC_URL",
-  "AXON_MCP_GOOGLE_CLIENT_ID",
-  "AXON_MCP_GOOGLE_CLIENT_SECRET",
-  "AXON_MCP_AUTH_ADMIN_EMAIL",
-  "AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS",
-  "AXON_MCP_ALLOWED_ORIGINS",
-  // Ingest Credentials
+  // Unified server auth
+  "AXON_HTTP_TOKEN",
+  "AXON_AUTH_MODE",
+  "AXON_PUBLIC_URL",
+  "AXON_GOOGLE_CLIENT_ID",
+  "AXON_GOOGLE_CLIENT_SECRET",
+  "AXON_AUTH_ADMIN_EMAIL",
+  "AXON_ALLOWED_REDIRECT_URIS",
+  "AXON_ALLOWED_ORIGINS",
+  // Source Credentials
   "TAVILY_API_KEY",
   "AXON_SEARXNG_URL",
   "GITHUB_TOKEN",
@@ -44,13 +42,15 @@ const EXPECTED_ENV_KEYS = [
   // LLM Runtime
   "AXON_LLM_BACKEND",
   "AXON_OPENAI_BASE_URL",
-  "AXON_OPENAI_MODEL",
+  "AXON_SYNTHESIS_OPENAI_MODEL",
+  "AXON_CHAT_OPENAI_MODEL",
   "AXON_OPENAI_API_KEY",
   "GEMINI_API_KEY",
   "GEMINI_HOME",
   "AXON_HEADLESS_GEMINI_HOME",
   "AXON_HEADLESS_GEMINI_CMD",
-  "AXON_HEADLESS_GEMINI_MODEL",
+  "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+  "AXON_CHAT_HEADLESS_GEMINI_MODEL",
   // HTTP Behavior
   "AXON_USER_AGENT",
   "AXON_CHROME_USER_AGENT",
@@ -59,7 +59,7 @@ const EXPECTED_ENV_KEYS = [
   "AXON_LOG_MAX_BYTES",
   // Docker / Compose
   "AXON_IMAGE",
-  "AXON_MCP_HTTP_PUBLISH",
+  "AXON_HTTP_PUBLISH",
   "TEI_EMBEDDING_MODEL",
   "TEI_HTTP_PORT",
   "TEI_SERVER_MAX_CLIENT_BATCH_SIZE",
@@ -72,17 +72,19 @@ const EXPECTED_ENV_KEYS = [
 // section to config.example.toml means adding a new group in configModel.ts
 // and a new entry here.
 const EXPECTED_CONFIG_SECTIONS = [
-  "search",
+  "providers-vector",
+  "retrieval",
   "ask",
   "ask-cache",
   "ask-adaptive",
-  "tei",
-  "workers",
-  "chrome",
-  "scrape",
-  "verticals",
-  "antibot",
-  "payload",
+  "providers-embedding",
+  "pipeline",
+  "providers-render",
+  "providers-fetch",
+  "crawl",
+  "crawl-verticals",
+  "crawl-antibot",
+  "providers-vector-payload",
 ] as const;
 
 describe("configModel key snapshot (M2)", () => {
@@ -94,8 +96,13 @@ describe("configModel key snapshot (M2)", () => {
     const missing = [...expectedSet].filter((k) => !actualSet.has(k));
     const extra = [...actualSet].filter((k) => !expectedSet.has(k));
 
-    expect(missing, `keys in snapshot but missing from ENV_GROUPS: ${missing.join(", ")}`).toHaveLength(0);
-    expect(extra, `keys in ENV_GROUPS but missing from snapshot: ${extra.join(", ")}`).toHaveLength(0);
+    expect(
+      missing,
+      `keys in snapshot but missing from ENV_GROUPS: ${missing.join(", ")}`,
+    ).toHaveLength(0);
+    expect(extra, `keys in ENV_GROUPS but missing from snapshot: ${extra.join(", ")}`).toHaveLength(
+      0,
+    );
   });
 
   it("CONFIG_GROUPS contains exactly the expected sections", () => {
@@ -106,7 +113,13 @@ describe("configModel key snapshot (M2)", () => {
     const missing = [...expectedSet].filter((k) => !actualSet.has(k));
     const extra = [...actualSet].filter((k) => !expectedSet.has(k));
 
-    expect(missing, `sections in snapshot but missing from CONFIG_GROUPS: ${missing.join(", ")}`).toHaveLength(0);
-    expect(extra, `sections in CONFIG_GROUPS but missing from snapshot: ${extra.join(", ")}`).toHaveLength(0);
+    expect(
+      missing,
+      `sections in snapshot but missing from CONFIG_GROUPS: ${missing.join(", ")}`,
+    ).toHaveLength(0);
+    expect(
+      extra,
+      `sections in CONFIG_GROUPS but missing from snapshot: ${extra.join(", ")}`,
+    ).toHaveLength(0);
   });
 });

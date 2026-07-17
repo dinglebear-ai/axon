@@ -1,26 +1,24 @@
-//! Real process execution for the CLI tool adapter's `Execute` mode.
-//!
-//! No shell is ever involved: `std::process::Command::new(&source.command)`
-//! with an explicit argv array (no `sh -c`, no string interpolation). The
-//! child's environment is fully cleared and repopulated only from
-//! `source.env_allowlist`. Output is capped per-stream, and the process is
-//! killed if it runs past `source.timeout_ms`.
+//! Bounded async process execution for CLI tool `Execute` mode.
 
-use std::io::Read;
-use std::process::{ChildStderr, ChildStdout, Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Stdio;
+use std::time::Duration;
+
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::process::Command;
 
 use super::CliToolError;
 use crate::cli_tool::CliToolSource;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ExecutionOutcome {
-    pub(super) stdout: String,
-    pub(super) stderr: String,
-    pub(super) exit_code: Option<i32>,
+pub(crate) struct ExecutionOutcome {
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) exit_code: Option<i32>,
 }
 
-pub(super) fn execute_command(source: &CliToolSource) -> Result<ExecutionOutcome, CliToolError> {
+pub(crate) async fn execute_command(
+    source: &CliToolSource,
+) -> Result<ExecutionOutcome, CliToolError> {
     let mut command = Command::new(&source.command);
     command.args(&source.argv);
     command.env_clear();
@@ -32,45 +30,40 @@ pub(super) fn execute_command(source: &CliToolSource) -> Result<ExecutionOutcome
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
     let mut child = command.spawn().map_err(|err| CliToolError {
         code: "tool.spawn_failed",
-        message: format!("failed to spawn `{}`: {err}", source.command),
+        message: format!("failed to spawn configured tool command: {err}"),
     })?;
-
-    let cap = source.output_cap_bytes as u64;
-    let stdout_handle = spawn_stdout_reader(child.stdout.take(), cap);
-    let stderr_handle = spawn_stderr_reader(child.stderr.take(), cap);
+    let stdout = child.stdout.take().ok_or_else(|| pipe_failed("stdout"))?;
+    let stderr = child.stderr.take().ok_or_else(|| pipe_failed("stderr"))?;
+    let cap = source.output_cap_bytes;
+    let stdout_reader = tokio::spawn(read_capped(stdout, cap));
+    let stderr_reader = tokio::spawn(read_capped(stderr, cap));
 
     let timeout = Duration::from_millis(source.timeout_ms.max(1));
-    let start = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let status = child.wait().map_err(|err| wait_failed(source, err))?;
-                    let _ = stdout_handle.join();
-                    let _ = stderr_handle.join();
-                    return Err(CliToolError {
-                        code: "tool.timeout",
-                        message: format!(
-                            "command `{}` timed out after {}ms (exit status: {status})",
-                            source.command, source.timeout_ms
-                        ),
-                    });
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            Err(err) => return Err(wait_failed(source, err)),
+    let status = match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(err)) => return Err(wait_failed(err)),
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            let _ = stdout_reader.await;
+            let _ = stderr_reader.await;
+            return Err(CliToolError {
+                code: "tool.timeout",
+                message: format!(
+                    "configured tool command timed out after {}ms",
+                    source.timeout_ms
+                ),
+            });
         }
     };
 
-    let stdout = stdout_handle.join().unwrap_or_default();
-    let stderr = stderr_handle.join().unwrap_or_default();
-
+    let stdout = join_reader("stdout", stdout_reader).await?;
+    let stderr = join_reader("stderr", stderr_reader).await?;
     Ok(ExecutionOutcome {
         stdout: String::from_utf8_lossy(&stdout).into_owned(),
         stderr: String::from_utf8_lossy(&stderr).into_owned(),
@@ -78,29 +71,51 @@ pub(super) fn execute_command(source: &CliToolSource) -> Result<ExecutionOutcome
     })
 }
 
-fn wait_failed(source: &CliToolSource, err: std::io::Error) -> CliToolError {
+async fn join_reader(
+    stream: &'static str,
+    reader: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
+) -> Result<Vec<u8>, CliToolError> {
+    reader
+        .await
+        .map_err(|err| CliToolError {
+            code: "tool.output_join_failed",
+            message: format!("failed to join configured tool {stream} reader: {err}"),
+        })?
+        .map_err(|err| CliToolError {
+            code: "tool.output_read_failed",
+            message: format!("failed to read configured tool {stream}: {err}"),
+        })
+}
+
+async fn read_capped<R>(mut pipe: R, cap: usize) -> std::io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut captured = Vec::with_capacity(cap.min(8 * 1024));
+    let mut buffer = [0_u8; 8 * 1024];
+    loop {
+        let read = pipe.read(&mut buffer).await?;
+        if read == 0 {
+            break;
+        }
+        let remaining = cap.saturating_sub(captured.len());
+        captured.extend_from_slice(&buffer[..read.min(remaining)]);
+    }
+    Ok(captured)
+}
+
+fn pipe_failed(stream: &'static str) -> CliToolError {
+    CliToolError {
+        code: "tool.pipe_failed",
+        message: format!("failed to capture configured tool {stream}"),
+    }
+}
+
+fn wait_failed(err: std::io::Error) -> CliToolError {
     CliToolError {
         code: "tool.wait_failed",
-        message: format!("failed to wait on `{}`: {err}", source.command),
+        message: format!("failed to wait on configured tool command: {err}"),
     }
-}
-
-fn spawn_stdout_reader(pipe: Option<ChildStdout>, cap: u64) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || read_capped(pipe, cap))
-}
-
-fn spawn_stderr_reader(pipe: Option<ChildStderr>, cap: u64) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || read_capped(pipe, cap))
-}
-
-fn read_capped<R: Read>(pipe: Option<R>, cap: u64) -> Vec<u8> {
-    let mut buffer = Vec::new();
-    if let Some(pipe) = pipe {
-        // Best-effort: a read error just yields whatever was captured so
-        // far, rather than losing the whole document.
-        let _ = pipe.take(cap).read_to_end(&mut buffer);
-    }
-    buffer
 }
 
 #[cfg(test)]

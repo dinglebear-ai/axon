@@ -1,7 +1,7 @@
 # src/extract — Vertical Extractor Framework
 Last Modified: 2026-06-19
 
-Per-site/per-API "vertical" extractors that produce richer, more structured docs than the generic HTML→markdown crawl path. Ships 18 extractors across a match-chain dispatcher. Replaces the legacy webclaw mod.rs dispatcher.
+Per-site/per-API "vertical" extractors that produce richer, more structured docs than generic HTML-to-markdown web acquisition. Ships 18 extractors across a match-chain dispatcher. Replaces the legacy webclaw dispatcher.
 
 ## Module Layout
 
@@ -59,7 +59,7 @@ pub struct ScrapedDoc {
 }
 ```
 
-`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 8`, see `crates/axon-vector/src/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on next crawl.
+`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 8`, see `crates/axon-vectors/src/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on the next source refresh.
 
 ## auto_dispatch Flag
 

@@ -215,7 +215,7 @@ function ConnectionPanel({
         <Field label="Server" hint="RMCP endpoint">
           <TextInput value={draftConfig.serverUrl} onChange={(value) => updateConfig("serverUrl", value)} mono />
         </Field>
-        <Field label="Bearer token" hint="AXON_MCP_HTTP_TOKEN">
+        <Field label="Bearer token" hint="AXON_HTTP_TOKEN">
           <SecretInput value={draftConfig.token ?? ""} onChange={(value) => updateConfig("token", value || null)} />
         </Field>
         <Field label="Collection" hint="vector store">

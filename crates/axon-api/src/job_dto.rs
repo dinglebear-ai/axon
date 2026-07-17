@@ -1,8 +1,8 @@
-//! Transport-neutral scrape / ingest / extract result DTOs shared by the
+//! Transport-neutral scrape / extract result DTOs shared by the
 //! services layer and the jobs layer (runners + watch change-detector).
 
-use crate::contract::ArtifactHandle;
 use crate::result::DocumentBackend;
+use crate::source::ArtifactHandle;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScrapeResult {
@@ -47,11 +47,6 @@ pub struct ScrapeResult {
 
 fn is_false(value: &bool) -> bool {
     !*value
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct IngestResult {
-    pub payload: serde_json::Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]

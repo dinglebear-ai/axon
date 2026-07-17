@@ -127,6 +127,7 @@ Required adapter fixture families:
 |---|---|
 | web | page, docs subtree, sitemap, robots denied, thin page, redirect |
 | local | file, directory, ignored files, binary, symlink policy |
+| uploads | staged file, provenance, missing upload, local-path policy |
 | git/github | repo, branch, commit, PR, issue, private auth missing |
 | registries | crates, npm, PyPI, Docker image metadata |
 | feeds | RSS, Atom, JSON feed, broken entry |

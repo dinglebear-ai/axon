@@ -16,7 +16,7 @@ function action(subcommand: string) {
 
 describe("action safety guards", () => {
   it("marks destructive/stateful commands that must not run from an accidental first Enter", () => {
-    for (const subcommand of ["dedupe", "crawl-clear", "crawl-cleanup", "crawl-cancel", "watch-create", "watch-run"]) {
+    for (const subcommand of ["jobs-clear", "jobs-cleanup", "jobs-cancel", "watch-create", "watch-run"]) {
       expect(actionNeedsConfirmation(action(subcommand)), subcommand).toBe(true);
       expect(actionGuard(action(subcommand))?.label, subcommand).toMatch(/confirm|review/i);
     }
@@ -30,19 +30,19 @@ describe("action safety guards", () => {
   });
 
   it("arms confirmation for the exact action and argument only", () => {
-    const dedupe = action("dedupe");
+    const jobsClear = action("jobs-clear");
     const watchRun = action("watch-run");
     const pending = { subcommand: "watch-run", argument: "00000000-0000-4000-8000-000000000000" };
 
     expect(actionConfirmationArmed(pending, watchRun, "00000000-0000-4000-8000-000000000000")).toBe(true);
     expect(actionConfirmationArmed(pending, watchRun, "11111111-1111-4111-8111-111111111111")).toBe(false);
-    expect(actionConfirmationArmed(pending, dedupe, "")).toBe(false);
+    expect(actionConfirmationArmed(pending, jobsClear, "")).toBe(false);
   });
 
   it("uses different copy for the review step and the armed step", () => {
-    const dedupe = action("dedupe");
+    const jobsClear = action("jobs-clear");
 
-    expect(actionConfirmationMessage(dedupe, false)).toMatch(/review/i);
-    expect(actionConfirmationMessage(dedupe, true)).toMatch(/press enter again/i);
+    expect(actionConfirmationMessage(jobsClear, false)).toMatch(/review/i);
+    expect(actionConfirmationMessage(jobsClear, true)).toMatch(/press enter again/i);
   });
 });

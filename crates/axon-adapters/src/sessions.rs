@@ -1,10 +1,8 @@
 //! AI session transcript source adapter (Claude / Codex / Gemini exports).
 //!
-//! Like the `git` and `local` adapters, this operates on an already-materialized
-//! filesystem tree — a `sessions_root` option pointing at a directory of prepared
-//! session export files (or a single file), supplied by the caller. Keeping the
-//! live agent scanning out of the adapter makes it unit-testable with fixture
-//! files and matches how `git` reads a prepared clone root.
+//! The adapter owns provider-root selection and validation. Materialization
+//! resolves the session selector against approved agent roots and stamps the
+//! validated file or directory on the routed plan before discovery.
 //!
 //! Format detection is by file extension: `claude` and `codex` sessions are
 //! JSONL (one JSON object per line); `gemini` sessions are a single JSON
@@ -15,6 +13,7 @@
 mod decode;
 mod metadata;
 mod project_filter;
+mod selection;
 mod target;
 
 use std::fs;
@@ -35,6 +34,10 @@ use self::decode::DecodedSession;
 pub use self::decode::redact_session_text;
 use self::metadata::session_source_document;
 use self::project_filter::matches_project_filter;
+pub use self::selection::{
+    SessionProvider, SessionRoots, ValidatedSessionPath, has_supported_session_extension,
+    validate_event_path_missing_ok, validate_session_file_path, validate_session_source_path,
+};
 pub use self::target::{SessionTarget, parse_session_target};
 
 pub const MODULE_NAME: &str = "sessions";
@@ -47,6 +50,48 @@ pub struct SessionSourceAdapter;
 impl SessionSourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        let roots = SessionRoots::from_home_env().map_err(|err| {
+            crate::acquisition::materialization_error(
+                "adapter.session.roots_unavailable",
+                err.to_string(),
+            )
+        })?;
+        self.materialize_with_roots(plan, &roots).await
+    }
+
+    pub async fn materialize_with_roots(
+        &self,
+        mut plan: SourcePlan,
+        roots: &SessionRoots,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let target = session_target(&plan)?;
+        let provider = SessionProvider::parse(&target.provider).map_err(|err| {
+            crate::acquisition::materialization_error(
+                "adapter.session.provider_invalid",
+                err.to_string(),
+            )
+        })?;
+        let path = validate_session_source_path(roots, provider, Path::new(&target.session_id))
+            .map_err(|err| {
+                crate::acquisition::materialization_error(
+                    "adapter.session.selection_denied",
+                    err.to_string(),
+                )
+            })?;
+        plan.route
+            .validated_options
+            .values
+            .insert("sessions_root".to_string(), json!(path.to_string_lossy()));
+        Ok(crate::acquisition::MaterializedSource::persistent(
+            plan, path,
+        ))
     }
 }
 
@@ -139,7 +184,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let base_uri = format!("session://{}/{}", target.provider, target.session_id);
     let mut items = Vec::new();
     for file in files {
-        if !has_supported_session_extension(&target, &file) {
+        if !target_has_supported_session_extension(&target, &file) {
             continue;
         }
         let key = relative_key(&root, &file)?;
@@ -330,7 +375,7 @@ fn should_descend_entry(entry: &DirEntry) -> bool {
 }
 
 /// Supported session export extensions: `.jsonl` for Claude/Codex, `.json` for Gemini.
-fn has_supported_session_extension(target: &SessionTarget, path: &Path) -> bool {
+fn target_has_supported_session_extension(target: &SessionTarget, path: &Path) -> bool {
     matches!(
         (
             target.provider.as_str(),

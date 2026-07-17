@@ -141,13 +141,13 @@ pub struct ResearchExtraction {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ResearchCrawlJob {
+pub struct ResearchSourceJob {
     pub url: String,
     pub job_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct ResearchCrawlRejection {
+pub struct ResearchSourceRejection {
     pub url: Option<String>,
     pub position: Option<i64>,
     pub title: Option<String>,
@@ -174,9 +174,9 @@ pub struct ResearchPayload {
     pub offset: usize,
     pub search_results: Vec<ResearchHit>,
     pub extractions: Vec<ResearchExtraction>,
-    pub auto_crawl_status: String,
-    pub crawl_jobs: Vec<ResearchCrawlJob>,
-    pub crawl_jobs_rejected: Vec<ResearchCrawlRejection>,
+    pub source_index_status: String,
+    pub source_jobs: Vec<ResearchSourceJob>,
+    pub source_jobs_rejected: Vec<ResearchSourceRejection>,
     pub summary: Option<String>,
     pub summary_source: SummarySource,
     pub usage: ResearchUsage,

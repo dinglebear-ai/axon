@@ -19,10 +19,10 @@ Environment variables specific to the Axon MCP server. The MCP server inherits a
 | `AXON_MCP_ARTIFACT_DIR` | no | `$AXON_DATA_DIR/artifacts` (default `~/.axon/artifacts`) | Directory for response artifacts | no |
 | `AXON_INLINE_BYTES_THRESHOLD` | no | `8192` | Auto-inline payload size threshold (bytes); set to 0 to disable | no |
 | `AXON_TASK_RESULT_WAIT_TIMEOUT_SECS` | no | `300` | Max seconds an MCP `tasks/result` request waits for terminal task state | no |
-| `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots for MCP embed (unset = local file embedding disabled) | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | `10485760` | Max bytes per local file embedding request via MCP | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | no | `16` | Max directory traversal depth for local directory embedding requests | no |
-| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | no | `10000` | Max filesystem entries visited for local directory embedding requests | no |
+| `AXON_MCP_EMBED_ALLOWED_ROOTS` | no | -- | Comma-separated local filesystem roots allowed for MCP source indexing (unset = local filesystem source indexing disabled over MCP) | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_BYTES` | no | `10485760` | Max bytes per local file accepted by MCP source indexing | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_DEPTH` | no | `16` | Max directory traversal depth for MCP local-directory source indexing | no |
+| `AXON_MCP_EMBED_MAX_LOCAL_ENTRIES` | no | `10000` | Max filesystem entries visited for MCP local-directory source indexing | no |
 
 ## Local execution (no CLI server mode)
 
@@ -62,8 +62,8 @@ hosting command creates a worker-enabled service context.
 
 | Operation | Available |
 |-----------|-----------|
-| scrape, query, ask, search | Yes |
-| crawl (sync), embed, ingest | Yes |
+| source, scrape, query, ask, search | Yes |
+| extract | Yes |
 | watch scheduler | Yes for wired subcommands (`create`, `list`, `exec`, `history`) |
 
 ## Precedence

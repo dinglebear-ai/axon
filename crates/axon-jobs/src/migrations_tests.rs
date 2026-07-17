@@ -31,6 +31,42 @@ fn namespaces_are_unique() {
     }
 }
 
+#[tokio::test]
+async fn pre_cutover_version_one_store_is_rejected_without_mutation() {
+    let pool = SqlitePool::connect(":memory:")
+        .await
+        .expect("open fixture pool");
+    sqlx::raw_sql(include_str!("migrations/fixtures/legacy_jobs_v1.sql"))
+        .execute(&pool)
+        .await
+        .expect("create legacy fixture");
+
+    let error = apply_all_migrations(&pool)
+        .await
+        .expect_err("legacy version-one store must fail closed");
+    let message = error.to_string();
+    assert!(message.contains("startup.incompatible_store"), "{message}");
+    assert!(message.contains("axon reset"), "{message}");
+
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read unchanged table inventory");
+    assert_eq!(tables, ["axon_applied_migrations", "jobs"]);
+    let receipt_columns: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('axon_applied_migrations') ORDER BY cid",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read unchanged receipt columns");
+    assert_eq!(
+        receipt_columns,
+        ["namespace", "version", "name", "applied_at"]
+    );
+}
+
 /// A fresh on-disk DB migrates cleanly: all sets apply, the contract `sources`
 /// table exists (SOLE-created by the ledger set), the jobs `jobs` table exists
 /// and its FK to `sources` resolves, and the observe/graph/memory tables exist.
@@ -148,130 +184,72 @@ async fn repeated_run_is_noop() {
     assert_eq!(before, after, "no duplicate applied-migration rows");
 }
 
-/// Migration 0021 rebuilds `jobs` to widen its `kind` CHECK constraint
-/// (adding `embed`/`crawl`/`ingest`). Prove the rebuild — run for real,
-/// in isolation, on a pool seeded with data that pre-dates it — preserves
-/// existing rows in `jobs` AND in a child table that FKs
-/// `jobs(job_id) ON DELETE CASCADE`. This is the exact failure mode a plain
-/// `DROP TABLE jobs` under `foreign_keys = ON` would produce: the child row
-/// would be silently CASCADE-deleted the moment the old table is dropped,
-/// which is why `run_jobs_table_rebuild_migration` disables enforcement for
-/// the rebuild instead of using the generic `pool.begin()` transaction path.
 #[tokio::test]
-async fn jobs_table_rebuild_preserves_existing_rows_and_child_fk_rows() {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let path = dir.path().join("migrate.db");
-    // Bypass `open_sqlite_pool` (which would run every migration, including
-    // 0021) so this test can apply only migrations 1..=20, seed data on that
-    // pre-rebuild schema, and then run migration 21 in isolation.
-    let pool = axon_core::sqlite::open_pool_unlocked(path.to_str().unwrap())
+async fn canonical_store_with_tampered_checksum_is_rejected() {
+    let pool = open_sqlite_pool(":memory:")
         .await
-        .expect("open raw pool");
-
-    // `jobs.source_id` FKs `sources(source_id)`, owned by the ledger set —
-    // apply it first, matching the composed runner's dependency order.
-    let ledger_set = axon_ledger::migration::migration_set();
-    for migration in ledger_set.migrations {
-        run_migration(&pool, ledger_set.namespace, migration)
-            .await
-            .unwrap_or_else(|e| panic!("ledger migration {} failed: {e}", migration.name));
-    }
-
-    let (through_20, rest) = JOBS_MIGRATIONS.split_at(20);
-    // Only migration 21 (the jobs-table rebuild) is under test here; slice
-    // off any migrations after it (e.g. 0022's additive `ALTER TABLE`) so
-    // this test stays valid regardless of how many migrations follow.
-    let migration_21 = &rest[..1];
-    assert_eq!(migration_21[0].version, 21);
-
-    for migration in through_20 {
-        run_migration(&pool, JOBS_NAMESPACE, migration)
-            .await
-            .unwrap_or_else(|e| panic!("pre-0021 migration {} failed: {e}", migration.name));
-    }
-
-    // Seed a `jobs` row and a `job_events` row that FKs it, using a kind that
-    // was already valid pre-migration-21 (so the seed itself doesn't depend
-    // on the fix under test).
+        .expect("create canonical store");
     sqlx::query(
-        "INSERT INTO jobs (job_id, kind, status, phase, priority, created_at, updated_at) \
-         VALUES ('job-preserve-1', 'extract', 'queued', 'queued', 'normal', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        "UPDATE axon_applied_migrations SET checksum = 'tampered' \
+         WHERE namespace = 'jobs' AND version = 1",
     )
     .execute(&pool)
     .await
-    .expect("seed jobs row");
+    .expect("tamper receipt");
 
-    sqlx::query(
-        "INSERT INTO job_events (event_id, job_id, attempt, sequence, phase, status, severity, visibility, message, timestamp) \
-         VALUES ('evt-preserve-1', 'job-preserve-1', 1, 1, 'queued', 'queued', 'info', 'public', 'seeded', '2026-01-01T00:00:00Z')",
-    )
-    .execute(&pool)
-    .await
-    .expect("seed child job_events row referencing job-preserve-1");
-
-    // Now run the rebuild migration for real, on the seeded pre-0021 schema.
-    run_migration(&pool, JOBS_NAMESPACE, &migration_21[0])
+    let error = apply_all_migrations(&pool)
         .await
-        .expect("migration 0021 (jobs table rebuild) should succeed");
-
-    let job_kind: String =
-        sqlx::query_scalar("SELECT kind FROM jobs WHERE job_id = 'job-preserve-1'")
-            .fetch_one(&pool)
-            .await
-            .expect("seeded jobs row must survive the rebuild");
-    assert_eq!(job_kind, "extract");
-
-    let event_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM job_events WHERE job_id = 'job-preserve-1'")
-            .fetch_one(&pool)
-            .await
-            .expect("seeded job_events row must survive the rebuild");
-    assert_eq!(
-        event_count, 1,
-        "child row referencing jobs(job_id) must not be cascade-deleted by the rebuild"
+        .expect_err("tampered checksum must fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("names, versions, checksums, or epochs"),
+        "{error}"
     );
+}
 
-    // The widened CHECK constraint accepts the new family kinds.
-    for kind in ["embed", "crawl", "ingest"] {
-        let job_id = format!("job-widened-{kind}");
-        sqlx::query(
-            "INSERT INTO jobs (job_id, kind, status, phase, priority, created_at, updated_at) \
-             VALUES (?, ?, 'queued', 'queued', 'normal', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
-        )
-        .bind(&job_id)
-        .bind(kind)
+#[tokio::test]
+async fn canonical_store_with_extra_table_is_rejected() {
+    let pool = open_sqlite_pool(":memory:")
+        .await
+        .expect("create canonical store");
+    sqlx::query("CREATE TABLE legacy_extra (id TEXT PRIMARY KEY)")
         .execute(&pool)
         .await
-        .unwrap_or_else(|e| panic!("widened kind '{kind}' should now be accepted: {e}"));
-    }
+        .expect("add legacy table");
 
-    // Foreign-key integrity holds across the whole database after the rebuild,
-    // and enforcement is genuinely restored (not left disabled).
-    let violations = sqlx::query("PRAGMA foreign_key_check;")
-        .fetch_all(&pool)
+    let error = apply_all_migrations(&pool)
         .await
-        .expect("foreign_key_check");
-    assert!(
-        violations.is_empty(),
-        "no foreign-key violations should remain after the jobs table rebuild"
-    );
-    let fk_enabled: i64 = sqlx::query_scalar("PRAGMA foreign_keys;")
-        .fetch_one(&pool)
-        .await
-        .expect("read foreign_keys pragma");
-    assert_eq!(
-        fk_enabled, 1,
-        "foreign_keys enforcement must be restored after the rebuild, not left disabled"
-    );
+        .expect_err("table drift must fail closed");
+    assert!(error.to_string().contains("table inventory"), "{error}");
+}
 
-    let orphan_insert = sqlx::query(
-        "INSERT INTO job_events (event_id, job_id, attempt, sequence, phase, status, severity, visibility, message, timestamp) \
-         VALUES ('evt-orphan', 'no-such-job', 1, 1, 'queued', 'queued', 'info', 'public', 'orphan', '2026-01-01T00:00:00Z')",
+#[tokio::test]
+async fn migration_failure_rolls_back_schema_and_receipts_atomically() {
+    static BROKEN: &[SqlMigration] = &[SqlMigration {
+        version: 1,
+        name: "0001_broken",
+        sql: "CREATE TABLE partial_write (id TEXT); INVALID SQL",
+    }];
+    let pool = SqlitePool::connect(":memory:").await.expect("open pool");
+    let mut tx = pool.begin().await.expect("begin");
+    ensure_applied_table(&mut tx)
+        .await
+        .expect("create receipt table");
+    let error = apply_set(&mut tx, MigrationSet::new("broken", BROKEN))
+        .await
+        .expect_err("broken migration must fail");
+    assert!(error.to_string().contains("migration broken/0001_broken"));
+    tx.rollback().await.expect("rollback");
+
+    let table_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
     )
-    .execute(&pool)
-    .await;
-    assert!(
-        orphan_insert.is_err(),
-        "foreign_keys enforcement must actually reject an orphaned child row post-rebuild"
+    .fetch_one(&pool)
+    .await
+    .expect("count tables");
+    assert_eq!(
+        table_count, 0,
+        "failed migration must leave no schema writes"
     );
 }

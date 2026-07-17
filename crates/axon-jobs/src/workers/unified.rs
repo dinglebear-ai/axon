@@ -339,14 +339,21 @@ pub(crate) async fn run_unified_claimed(
         terminal::mark_canceled(pool, &store, claimed).await;
         return;
     }
-
+    let job_cancel = super::cancel_registry::register(claimed.job_id, claimed.attempt, shutdown);
     if let Err(error) = terminal::heartbeat(&store, claimed, PipelinePhase::Planning).await {
         tracing::warn!(job_id = %claimed.job_id.0, error = %error.message, "unified worker heartbeat failed");
+        if cancellation_requested(pool, claimed).await {
+            job_cancel.cancel();
+            super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
+            terminal::mark_canceled(pool, &store, claimed).await;
+            return;
+        }
     }
 
     if let Some(required) = required_scope_for_kind(claimed.kind)
         && let Err(error) = require_job_scope(&claimed.auth_snapshot, required)
     {
+        super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
         terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         return;
     }
@@ -365,6 +372,7 @@ pub(crate) async fn run_unified_claimed(
                 claimed.kind, claimed.job_id.0
             ),
         );
+        super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
         terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         return;
     };
@@ -380,9 +388,15 @@ pub(crate) async fn run_unified_claimed(
     // `claimed`, `store`, and `shutdown` are only read, never mutated, across
     // the unwind boundary — any partial state inside the runner's own future
     // is discarded along with the future itself.
-    let run_result = std::panic::AssertUnwindSafe(runner.run(claimed, &store, shutdown))
+    let run_result = std::panic::AssertUnwindSafe(runner.run(claimed, &store, &job_cancel))
         .catch_unwind()
         .await;
+
+    super::cancel_registry::unregister(claimed.job_id, claimed.attempt);
+    if job_cancel.is_cancelled() {
+        terminal::mark_canceled(pool, &store, claimed).await;
+        return;
+    }
 
     match run_result {
         Ok(Ok(())) => {
@@ -421,6 +435,17 @@ pub(crate) async fn run_unified_claimed(
             terminal::fail_unified_claimed(pool, &store, claimed, error).await;
         }
     }
+}
+
+async fn cancellation_requested(pool: &SqlitePool, claimed: &UnifiedClaimedJob) -> bool {
+    sqlx::query_scalar::<_, String>("SELECT status FROM jobs WHERE job_id = ? AND attempt = ?")
+        .bind(claimed.job_id.0.to_string())
+        .bind(claimed.attempt as i64)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|status| status == "canceling" || status == "canceled")
 }
 
 /// Best-effort extraction of a human-readable message from a caught panic

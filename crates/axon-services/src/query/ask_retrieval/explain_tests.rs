@@ -11,6 +11,7 @@ fn hit(uri: &str, id: &str, score: f64, text: &str) -> QueryServiceHit {
         chunk_id: id.to_string(),
         score,
         text: text.to_string(),
+        citation: super::super::tests::citation(uri),
     }
 }
 
@@ -27,6 +28,7 @@ fn selected_candidates_are_kept_and_ranked() {
     assert_eq!(trace.mode, AskExplainMode::ExplainOnly);
     assert!(trace.llm_skipped);
     assert_eq!(trace.candidates.len(), 3);
+    assert_eq!(trace.citations.len(), 2);
 
     let selected: Vec<_> = trace.candidates.iter().take(2).collect();
     for (idx, candidate) in selected.iter().enumerate() {

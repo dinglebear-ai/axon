@@ -172,7 +172,7 @@ function bodyFor(action: RemotePaletteAction, arg: string, config: PaletteConfig
 }
 
 /**
- * Route template (method + templated path, e.g. `/v1/crawl/{id}`) for a
+ * Route template (method + templated path, e.g. `/v1/jobs/{id}`) for a
  * subcommand — used by `actionMeta` for display. Delegates to the registry.
  */
 export function actionRouteTemplate(subcommand: string): ActionRouteTemplate {

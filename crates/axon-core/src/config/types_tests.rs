@@ -1,4 +1,3 @@
-use super::freshness::FreshDuration;
 use super::*;
 use std::env;
 use std::io::Write as _;
@@ -55,24 +54,6 @@ fn test_command_kind_completions_as_str() {
 #[test]
 fn test_command_kind_update_as_str() {
     assert_eq!(CommandKind::Update.as_str(), "update");
-}
-
-#[test]
-fn fresh_duration_accepts_whole_days() {
-    assert_eq!(FreshDuration::parse("1d").unwrap().days, 1);
-    assert_eq!(
-        FreshDuration::parse("7d").unwrap().seconds,
-        7 * 24 * 60 * 60
-    );
-    assert_eq!(FreshDuration::parse("366d").unwrap().days, 366);
-}
-
-#[test]
-fn fresh_duration_rejects_invalid_values() {
-    for raw in ["", "0d", "367d", "1h", "24h", "0.5d", "1D", "day", "7"] {
-        let err = FreshDuration::parse(raw).unwrap_err();
-        assert!(err.contains("--fresh expects a whole-day duration from 1d to 366d"));
-    }
 }
 
 #[test]

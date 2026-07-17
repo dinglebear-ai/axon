@@ -55,22 +55,24 @@ fun JobsScreen(
     val overviewRows = jobOverviewRows(jobsByKind, watches)
     val hasAnyJobs = jobsByKind.values.any { it.isNotEmpty() } || watches.isNotEmpty()
     val reveal = rememberRevealState()
-    val selectedJob = selectedJobRef?.let { ref ->
-        jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
-    }
-    val selectedCrawlManifestPath = remember(selectedJob?.id, selectedJob?.resultJson) {
-        crawlManifestArtifactPath(selectedJob?.resultJson)
-    }
+    val selectedJob =
+        selectedJobRef?.let { ref ->
+            jobsByKind[ref.kind].orEmpty().firstOrNull { it.id == ref.id }
+        }
+    val selectedCrawlManifestPath =
+        remember(selectedJob?.id, selectedJob?.resultJson) {
+            crawlManifestArtifactPath(selectedJob?.resultJson)
+        }
 
     LaunchedEffect(selectedJob?.id, selectedCrawlManifestPath) {
         val job = selectedJob
         crawledPages = emptyList()
         crawledPagesError = null
-        crawledPagesLoading = job?.kind == JobFamily.Crawl
-        if (job?.kind == JobFamily.Crawl) {
+        crawledPagesLoading = job?.kind == JobFamily.Source
+        if (job?.kind == JobFamily.Source) {
             vm.crawledPagesFor(job).fold(
                 onSuccess = { pages -> crawledPages = pages },
-                onFailure = { error -> crawledPagesError = error.message ?: "Unable to load crawl manifest" },
+                onFailure = { error -> crawledPagesError = error.message ?: "Unable to load site page manifest" },
             )
             crawledPagesLoading = false
         }
@@ -97,18 +99,20 @@ fun JobsScreen(
                 crawledPages = crawledPages,
                 crawledPagesLoading = crawledPagesLoading,
                 crawledPagesError = crawledPagesError,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 520.dp)
-                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 onBack = { selectedJobRef = null },
             )
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 520.dp)
-                    .padding(start = 6.dp, top = 10.dp, end = 6.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 520.dp)
+                        .padding(start = 6.dp, top = 10.dp, end = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 when (val selected = drill) {
@@ -117,12 +121,16 @@ fun JobsScreen(
                             CommandConsoleHeader(
                                 eyebrow = "operations",
                                 title = "Job Command Deck",
-                                description = "Track crawl, ingest, embed, extract, and watch activity without losing scan density.",
+                                description = "Track source, extract, and watch activity without losing scan density.",
                                 icon = Icons.Rounded.TaskAlt,
                                 tone = AxonTheme.colors.accentPrimary,
                             ) {
                                 MetricPill("active", active.size.toString())
-                                MetricPill("families", overviewRows.count { it.runningCount > 0 || it.failedCount > 0 }.toString(), tone = AxonTheme.colors.accentPink)
+                                MetricPill(
+                                    "families",
+                                    overviewRows.count { it.runningCount > 0 || it.failedCount > 0 }.toString(),
+                                    tone = AxonTheme.colors.accentPink,
+                                )
                                 MetricPill("watches", watches.size.toString(), tone = AxonTheme.colors.orange)
                             }
                         }
@@ -137,7 +145,7 @@ fun JobsScreen(
                             item {
                                 RecoveryActionCard(
                                     title = "No jobs yet",
-                                    message = "Start from Ask or the action launcher, then return here to watch crawl, ingest, embed, and extract work progress.",
+                                    message = "Start from Ask or the action launcher, then return here to watch source and extract work progress.",
                                     primaryLabel = "Create a job",
                                     onPrimary = onOpenAsk,
                                     secondaryLabel = "Refresh",
@@ -149,13 +157,15 @@ fun JobsScreen(
                         itemsIndexed(overviewRows, key = { _, row -> row.key }) { index, row ->
                             JobOverviewRow(
                                 row = row,
-                                modifier = Modifier
-                                    .animateItem()
-                                    .revealOnce(reveal, row.key, index),
+                                modifier =
+                                    Modifier
+                                        .animateItem()
+                                        .revealOnce(reveal, row.key, index),
                                 onClick = { drill = row.drill },
                             )
                         }
                     }
+
                     is JobDrill.Kind -> {
                         val jobs = jobsByKind[selected.kind].orEmpty()
                         val visibleJobs = jobs.take(25)
@@ -167,14 +177,20 @@ fun JobsScreen(
                             )
                         }
                         if (jobs.isEmpty()) {
-                            item { EmptyJobsCard("No ${selected.kind.label().lowercase()} jobs", "New ${selected.kind.label().lowercase()} submissions appear here.") }
+                            item {
+                                EmptyJobsCard(
+                                    "No ${selected.kind.label().lowercase()} jobs",
+                                    "New ${selected.kind.label().lowercase()} submissions appear here.",
+                                )
+                            }
                         } else {
                             itemsIndexed(visibleJobs, key = { _, job -> "${selected.kind}-${job.id}" }) { index, job ->
                                 HierarchyJobRow(
                                     job = job,
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .revealOnce(reveal, "${selected.kind}-${job.id}", index),
+                                    modifier =
+                                        Modifier
+                                            .animateItem()
+                                            .revealOnce(reveal, "${selected.kind}-${job.id}", index),
                                     onClick = { selectedJobRef = JobRef(selected.kind, job.id) },
                                 )
                             }
@@ -185,6 +201,7 @@ fun JobsScreen(
                             }
                         }
                     }
+
                     JobDrill.Watches -> {
                         item {
                             DrillHeader(
@@ -199,9 +216,10 @@ fun JobsScreen(
                             itemsIndexed(watches, key = { _, watch -> watch.id }) { index, watch ->
                                 HierarchyWatchRow(
                                     watch = watch,
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .revealOnce(reveal, watch.id, index),
+                                    modifier =
+                                        Modifier
+                                            .animateItem()
+                                            .revealOnce(reveal, watch.id, index),
                                 )
                             }
                         }
@@ -212,4 +230,7 @@ fun JobsScreen(
     }
 }
 
-internal data class JobRef(val kind: JobFamily, val id: String)
+internal data class JobRef(
+    val kind: JobFamily,
+    val id: String,
+)

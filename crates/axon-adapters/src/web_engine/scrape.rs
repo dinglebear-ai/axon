@@ -4,9 +4,10 @@ use axon_core::content::{
 };
 use axon_core::http::{
     axon_ua, build_ssrf_guarded_client_builder, normalize_url, ssrf_blacklist_compact_strings,
-    validate_url,
+    validate_url, validate_url_with_dns,
 };
 use axon_core::logging::{log_info, log_warn};
+use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::error::Error;
@@ -73,6 +74,7 @@ pub fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn 
         website.with_danger_accept_invalid_certs(true);
     }
     if matches!(cfg.render_mode, RenderMode::Chrome) {
+        website.with_chrome_intercept(chrome_intercept_config(cfg));
         website.with_dismiss_dialogs(true);
         website.configuration.disable_log = true;
         if cfg.bypass_csp {
@@ -81,6 +83,20 @@ pub fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn 
     }
 
     Ok(website)
+}
+
+fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
+    let mut intercept = RequestInterceptConfiguration::new(true);
+    intercept.set_blacklist_patterns(Some(
+        ssrf_blacklist_compact_strings()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+    ));
+    if cfg.chrome_remote_local_policy {
+        intercept.set_remote_local_policy(true);
+    }
+    intercept
 }
 
 /// Restore Chrome web-automation support for a single-page scrape/render
@@ -240,9 +256,13 @@ pub(crate) async fn direct_fetch_requested_page(
         match client.get(requested_url).send().await {
             Ok(resp) => {
                 let status_code = resp.status().as_u16();
+                let final_url = resp.url().to_string();
+                validate_url_with_dns(&final_url)
+                    .await
+                    .map_err(|e| format!("redirect target blocked for {requested_url}: {e}"))?;
                 let html = resp.text().await?;
                 return Ok(ScrapedPage {
-                    url: requested_url.to_string(),
+                    url: final_url,
                     html,
                     status_code,
                 });
@@ -392,13 +412,19 @@ pub fn select_output(
 /// No CLI output or formatting — just fetches, validates, and returns data.
 pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value, Box<dyn Error>> {
     let normalized = normalize_url(url);
-    validate_url(&normalized).map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
+    validate_url_with_dns(&normalized)
+        .await
+        .map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
 
     let mut website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
         .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
+    validate_url_with_dns(&page.url)
+        .await
+        .map_err(|e| format!("render redirect target blocked for {}: {e}", page.url))?;
+    let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
     if !(200..300).contains(&status_code) {
@@ -407,7 +433,7 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
 
     let sel_cfg = build_selector_config(cfg);
     Ok(build_scrape_json(
-        &normalized,
+        &final_url,
         &html,
         status_code,
         sel_cfg.as_ref(),
@@ -461,7 +487,9 @@ pub async fn scrape_to_result(
     url: &str,
 ) -> Result<axon_api::job_dto::ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
-    validate_url(&normalized).map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
+    validate_url_with_dns(&normalized)
+        .await
+        .map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
 
     let mut website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
@@ -469,6 +497,10 @@ pub async fn scrape_to_result(
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
         .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
+    validate_url_with_dns(&page.url)
+        .await
+        .map_err(|e| format!("render redirect target blocked for {}: {e}", page.url))?;
+    let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
     if !(200..300).contains(&status_code) {
@@ -476,14 +508,8 @@ pub async fn scrape_to_result(
     }
 
     let sel_cfg = build_selector_config(cfg);
-    let payload = build_scrape_json(&normalized, &html, status_code, sel_cfg.as_ref());
-    let output = select_output(
-        cfg.format,
-        &normalized,
-        &html,
-        status_code,
-        sel_cfg.as_ref(),
-    )?;
+    let payload = build_scrape_json(&final_url, &html, status_code, sel_cfg.as_ref());
+    let output = select_output(cfg.format, &final_url, &html, status_code, sel_cfg.as_ref())?;
     let mut result = map_scrape_payload(payload)?;
     result.output = output;
     Ok(result)

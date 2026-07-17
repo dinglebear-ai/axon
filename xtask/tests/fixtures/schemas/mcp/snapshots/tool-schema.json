@@ -15,6 +15,9 @@
         "search",
         "map",
         "prune",
+        "collections",
+        "reset",
+        "uploads",
         "ask",
         "evaluate",
         "suggest",
@@ -342,6 +345,81 @@
               },
               "subaction": {
                 "$ref": "#/$defs/PruneSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "collections"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/CollectionsMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/CollectionsSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "reset"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ResetMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/ResetSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "uploads"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/UploadsMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/UploadsSubaction"
               }
             },
             "required": [
@@ -1003,12 +1081,6 @@
               "type": "null"
             }
           ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "CapabilitiesRequest",
@@ -1020,6 +1092,65 @@
         "inline",
         "both",
         "auto_inline"
+      ],
+      "type": "string"
+    },
+    "CollectionsMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "list",
+          "enum": [
+            "list",
+            "get"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CollectionsSubaction": {
+      "enum": [
+        "list",
+        "get"
       ],
       "type": "string"
     },
@@ -1093,12 +1224,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -1290,29 +1415,8 @@
             "null"
           ]
         },
-        "job_id": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "limit": {
-          "format": "int64",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
         "max_pages": {
           "format": "uint32",
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "offset": {
-          "format": "uint",
           "minimum": 0,
           "type": [
             "integer",
@@ -1329,16 +1433,6 @@
           "anyOf": [
             {
               "$ref": "#/$defs/ExtractRequest_McpRenderMode"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "response_mode": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ExtractRequest_ResponseMode"
             },
             {
               "type": "null"
@@ -1370,13 +1464,7 @@
     },
     "ExtractRequest_ExtractSubaction": {
       "enum": [
-        "start",
-        "status",
-        "cancel",
-        "list",
-        "cleanup",
-        "clear",
-        "recover"
+        "start"
       ],
       "type": "string"
     },
@@ -1388,24 +1476,9 @@
       ],
       "type": "string"
     },
-    "ExtractRequest_ResponseMode": {
-      "enum": [
-        "path",
-        "inline",
-        "both",
-        "auto_inline"
-      ],
-      "type": "string"
-    },
     "ExtractSubaction": {
       "enum": [
-        "start",
-        "status",
-        "cancel",
-        "list",
-        "cleanup",
-        "clear",
-        "recover"
+        "start"
       ],
       "type": "string"
     },
@@ -1472,13 +1545,6 @@
         },
         "include_edges": {
           "description": "`node`: include incident edges in the response. Defaults to `false`.",
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "include_evidence": {
-          "description": "`node`: include edge evidence in the response. Edges already carry\nevidence when loaded; this flag is accepted for contract parity and\ncurrently has no additional effect beyond `include_edges`.",
           "type": [
             "boolean",
             "null"
@@ -1581,12 +1647,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -2158,6 +2218,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "salience": {
+          "description": "Replacement salience for `update`.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
           ]
         },
         "source_id": {
@@ -2876,7 +2944,7 @@
     "PruneMcpRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`action=prune` — the target-state replacement for the legacy\n`dedupe`/`purge` MCP actions\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare\nsource id or `collection:<name>` for a whole-collection prune, mirroring\nthe CLI's `axon prune plan|exec <target>` selector grammar.",
+      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare source\nid or `collection:<name>`.",
       "properties": {
         "collection": {
           "type": [
@@ -2885,7 +2953,7 @@
           ]
         },
         "confirm": {
-          "description": "Required `Some(true)` for `subaction=exec` to proceed — mirrors the\nCLI's `--confirm` gate and [`super::PurgeRequest::dry_run`]'s\n`Option<bool>` idiom (a missing/`false` value is treated identically\nby the handler; `Option` here is purely to match the doc-generator's\nrequired/optional-field heuristic, not a wire-shape requirement).\nIgnored for `subaction=plan`.",
+          "description": "Required `Some(true)` for `subaction=exec` to proceed — mirrors the\nCLI's `--confirm` gate. A missing/`false` value is treated identically\nby the handler; `Option` here is purely to match the doc-generator's\nrequired/optional-field heuristic, not a wire-shape requirement.\nIgnored for `subaction=plan`.",
           "type": [
             "boolean",
             "null"
@@ -2909,14 +2977,14 @@
           ]
         },
         "subaction": {
-          "description": "`plan` (dry-run) or `exec` (destructive). Defaults to `plan` when\nomitted so a bare `prune` call never mutates state.",
+          "description": "`plan` or `exec`. Defaults to `plan` when omitted so a bare `prune`\ncall never mutates state.",
           "type": [
             "string",
             "null"
           ]
         },
         "target": {
-          "description": "Prune target: a bare source id, or `collection:<name>` for a\nwhole-collection prune. **Handler-required despite the `Option`** —\nmirrors `PurgeRequest::target`'s \"clean validation error, not a serde\nrejection\" convention.",
+          "description": "Prune target: a bare source id, or `collection:<name>` for a\nwhole-collection prune. **Handler-required despite the `Option`** —\nkeeps validation errors structured instead of relying on serde's\nmissing-field rejection.",
           "type": [
             "string",
             "null"
@@ -3087,6 +3155,85 @@
       ],
       "type": "string"
     },
+    "ResetMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "collection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confirm": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_artifacts": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "include_config": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "plan_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stores": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "plan",
+          "enum": [
+            "plan",
+            "exec"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ResetSubaction": {
+      "enum": [
+        "plan",
+        "exec"
+      ],
+      "type": "string"
+    },
     "ResolveRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -3220,12 +3367,6 @@
             "null"
           ]
         },
-        "output": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "response_mode": {
           "anyOf": [
             {
@@ -3332,7 +3473,7 @@
     "SourceRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "Request parameters for the unified `source` action.\n\n`source` is the single indexing entrypoint that replaces the removed\n`embed` / `ingest` / `scrape` / `crawl` / `code_search` / `vertical_scrape`\nMCP actions. The handler maps this onto [`crate::source::SourceRequest`] and\ncalls `axon_services::index_source`, which classifies the input (local path,\ngit URL, feed URL, youtube/reddit target, web URL, session selector, or\nregistry target), acquires it, and indexes it through the unified pipeline.",
+      "description": "Request parameters for the unified `source` action.\n\n`source` is the single indexing entrypoint. The handler maps this onto\n[`crate::source::SourceRequest`] and calls `axon_services::index_source`,\nwhich classifies the input (local path, git URL, feed URL, youtube/reddit\ntarget, web URL, session selector, or registry target), acquires it, and\nindexes it through the unified pipeline.",
       "properties": {
         "collection": {
           "description": "Qdrant collection to index into. Defaults to the server's configured collection.",
@@ -3371,7 +3512,7 @@
           "description": "Optional acquisition scope override (e.g. `page`, `site`, `repo`).\nWhen omitted, the classified family's default scope is used."
         },
         "source": {
-          "description": "Source input string: a local path, git repository URL, feed URL,\nyoutube target, reddit target, web URL, session selector\n(`session:<claude|codex|gemini>:<path>`), or registry target\n(`pkg:<npm|pypi|crates>/<package>`). Accepts the `input` alias.",
+          "description": "Source input string: a local path, git repository URL, feed URL,\nyoutube target, reddit target, web URL, session selector\n(`session:<claude|codex|gemini>:<path>`), or registry target\n(`pkg:<npm|pypi|crates>/<package>`).",
           "type": [
             "string",
             "null"
@@ -3434,12 +3575,6 @@
             {
               "type": "null"
             }
-          ]
-        },
-        "subaction": {
-          "type": [
-            "string",
-            "null"
           ]
         }
       },
@@ -3579,19 +3714,161 @@
       ],
       "type": "string"
     },
+    "UploadsMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_ref": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "content_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filename": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "purpose": {
+          "enum": [
+            "source_artifact",
+            "import",
+            "evaluation",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_options": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "received",
+            "completed",
+            "aborted",
+            "expired",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "list",
+          "enum": [
+            "list",
+            "create",
+            "get",
+            "put_content",
+            "complete",
+            "abort"
+          ],
+          "type": "string"
+        },
+        "upload_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "UploadsSubaction": {
+      "enum": [
+        "list",
+        "create",
+        "get",
+        "put_content",
+        "complete",
+        "abort"
+      ],
+      "type": "string"
+    },
     "WatchRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
         "collection": {
-          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`). Unused by the legacy\ncreate/list/get/exec/history subactions above.",
+          "description": "Target collection for the source-request-backed watch store\n(`subaction=update`/`subaction=create`).",
           "type": [
             "string",
             "null"
           ]
         },
         "embed": {
-          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `false` when omitted.",
+          "description": "Whether the source-request-backed watch (`subaction=create`) should\nembed content on each run. Defaults to `true` when omitted.",
           "type": [
             "boolean",
             "null"
@@ -3611,6 +3888,7 @@
           ]
         },
         "id": {
+          "description": "Watch id for get/status/update/pause/resume/delete/exec/history.\n`status`, `exec`, and `history` also accept `source` when the caller does\nnot know the id.",
           "type": [
             "string",
             "null"
@@ -3620,12 +3898,6 @@
           "format": "int64",
           "type": [
             "integer",
-            "null"
-          ]
-        },
-        "name": {
-          "type": [
-            "string",
             "null"
           ]
         },
@@ -3655,13 +3927,6 @@
               "type": "null"
             }
           ]
-        },
-        "task_payload": true,
-        "task_type": {
-          "type": [
-            "string",
-            "null"
-          ]
         }
       },
       "title": "WatchRequest",
@@ -3683,6 +3948,7 @@
             "create",
             "list",
             "get",
+            "status",
             "exec",
             "history"
           ],
@@ -3715,6 +3981,7 @@
         "create",
         "list",
         "get",
+        "status",
         "exec",
         "history",
         "update",
@@ -3740,90 +4007,74 @@
         "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       },
       {
-        "action": "watches",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
         "action": "artifacts",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "uploads",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "collections",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "reset",
         "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       }
     ],
     "generated_by": "cargo xtask schemas mcp",
-    "live_action_count": 26,
+    "live_action_count": 29,
     "owner_crates": [
       "axon-mcp",
       "axon-api"
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:3eacee7dde24fa4745784bcbf0ac868b0f966907b210a863ea0bc34558ad1779",
+        "checksum": "sha256:901e8f74737618b4aa1ae2fee254dae508a41f2dceecf281e7fac233b3183dff",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
       {
-        "checksum": "sha256:385d395e928a7ed96ccc4903ac2e56f835193b58d3c67c0c7179180ce4ae9f70",
+        "checksum": "sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
       {
-        "checksum": "sha256:c556baa7a90233cb34eb4bd93e06b7421ffd7498ddf5294b5380efd599b35fb4",
+        "checksum": "sha256:eae4ecdacb0babcea192182e53b98ab5018695e276bb4c1098ad9c2be21a09fb",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
       {
-        "checksum": "sha256:fe0bc74dd850407fd249d86e24541f64518e403aa4a6a87130764e7336834548",
+        "checksum": "sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs"
       },
       {
-        "checksum": "sha256:0eaaaaaf9782d9165b519401a91bbf784485088ae34a618dd512755606706118",
+        "checksum": "sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
       },
       {
-        "checksum": "sha256:5d651565b3ff61875b4dfb9e5f1a6c5aa17cb92b78f4f20f69ccd3d9d0ec4990",
+        "checksum": "sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
       {
-        "checksum": "sha256:145a07007148573c36e39c7fe46c8486a25813f82a50288b2f336815a8404cbf",
+        "checksum": "sha256:df13036a5056567904ea8a9de7fe5ce08aab9a79e068e8cb865a3d57c00b6396",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
       {
-        "checksum": "sha256:fc7de3b93f7f0f31cc5149efd9b8b3729f887f79d1f74ba6a9bdde245d8e5eee",
+        "checksum": "sha256:f525fb9c6b14755f9cc86b02f5604f242dbbd5a80ceb6e6918332c57e6bf976b",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:21ccae6b108e6f5fa0c00197e5695fa4e7f3ef46a98aadcdc5a626f1e151fe36",
+        "checksum": "sha256:d0ade1dd329d53586de36f3c0cb6818503e7aafa85a855cac072a6aea5ac8dc2",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:d6ce9011c6b8933a6d6893eb0f096d8bd906dd25fb387490718deae588ff3573",
+        "checksum": "sha256:9845c9784b913e04592ab162887347bd7aa181af98faec6e9a24a6f94638c74e",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
       {
-        "checksum": "sha256:ddf4ea40a0bd96ef59dc6bb3df6eeaa761c807e8f8c648068c47fcf42a06f3fc",
+        "checksum": "sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
       },
       {
-        "checksum": "sha256:25a3b6108fc7378ec6f5709a1e5ad605ba85b13d071d434c626cc16f37afdcf0",
+        "checksum": "sha256:24ffebffa5397aa3212bad129dc631c32c50fa870613174c6d2c14efd4011043",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

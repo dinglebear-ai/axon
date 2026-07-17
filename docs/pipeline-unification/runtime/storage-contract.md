@@ -111,12 +111,9 @@ Artifact metadata includes:
 
 ## Cleanup Debt
 
-Target state: all destructive cleanup flows through cleanup debt.
-
-Current implementation: cleanup is still split across direct Qdrant purge,
-dedupe, job cleanup/clear/recover, and code-index generation cleanup debt. The
-clean-break implementation should migrate those direct paths into this common
-debt model.
+All destructive source cleanup flows through reviewed prune plans and cleanup
+debt. Job lifecycle retention remains a jobs-runtime operation rather than a
+source-data deletion path.
 
 Debt kinds:
 

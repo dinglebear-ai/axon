@@ -59,30 +59,34 @@ pub(crate) async fn memory_store(ctx: &ServiceContext) -> Result<Arc<dyn MemoryS
     let path = ctx.cfg().sqlite_path.to_string_lossy().to_string();
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let sqlite: Arc<dyn MemoryStore> = Arc::new(
-        SqliteMemoryStore::open(&path, clock)
+        SqliteMemoryStore::open_migrated(&path, clock)
             .map_err(|e| anyhow::anyhow!("open memory store at {path}: {}", e.message))?
             .with_compaction_synthesizer(Arc::new(LlmCompactionSynthesizer {
                 cfg: Arc::clone(&ctx.cfg),
             })),
     );
-    let graph = SqliteGraphStore::connect(&path)
-        .await
-        .map_err(|e| anyhow::anyhow!("open memory graph mirror at {path}: {}", e.message))?;
-    let mirror = Arc::new(GraphBackedMemoryMirror::new(Arc::new(graph)));
-    let sqlite: Arc<dyn MemoryStore> = Arc::new(GraphBackedMemoryStore::new(sqlite, mirror));
+    let pool = ctx
+        .jobs
+        .sqlite_pool()
+        .ok_or_else(|| anyhow::anyhow!("shared SQLite pool is unavailable"))?;
+    let graph = SqliteGraphStore::from_pool((*pool).clone());
+    let graph: Arc<dyn axon_graph::store::GraphStore> = Arc::new(graph);
     let Some(runtime) = ctx.target_local_source_runtime() else {
         return Ok(sqlite);
     };
-    Ok(Arc::new(VectorBackedMemoryStore::new(
-        sqlite,
-        Arc::clone(&runtime.embedding_provider),
-        Arc::clone(&runtime.vector_store),
-        MemoryVectorConfig {
-            collection: ctx.cfg().collection.clone(),
-            embedding_provider_id: runtime.embedding_provider_id.clone(),
-            embedding_model: runtime.embedding_model.clone(),
-            embedding_dimensions: runtime.embedding_dimensions,
-            batch_limits: MemoryBatchLimits::default(),
-        },
-    )))
+    Ok(Arc::new(
+        VectorBackedMemoryStore::new(
+            sqlite,
+            Arc::clone(&runtime.embedding_provider),
+            Arc::clone(&runtime.vector_store),
+            MemoryVectorConfig {
+                collection: ctx.cfg().collection.clone(),
+                embedding_provider_id: runtime.embedding_provider_id.clone(),
+                embedding_model: runtime.embedding_model.clone(),
+                embedding_dimensions: runtime.embedding_dimensions,
+                batch_limits: MemoryBatchLimits::default(),
+            },
+        )
+        .with_graph_store(graph),
+    ))
 }

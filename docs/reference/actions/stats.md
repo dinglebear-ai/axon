@@ -61,8 +61,8 @@ axon stats --collection docs-local
 
 Human output prints five sections:
 - `Vector Stats` (collection status, vector counts, docs estimate, average chunks per doc, sampled average chunk/doc token estimates, dimension/distance, segments, payload schema)
-- `Pipeline Stats` (crawl/embed duration metrics, totals, longest/most-chunks jobs)
-- `Freshness` (last indexed age, crawl counts over last 24h and 7d)
+- `Pipeline Stats` (source pipeline duration metrics, totals, longest/most-chunks jobs)
+- `Freshness` (last indexed age and source indexing counts over last 24h and 7d)
 - `Growth (last 7 days)` (per-day chunk counts as a bar chart; omitted if no data)
 - `Command Counts` (per-command invocation counts)
 

@@ -55,19 +55,6 @@ pub async fn list_jobs(
         .map_err(downgrade)
 }
 
-pub async fn list_ingest_jobs(
-    service_context: &ServiceContext,
-    source_filter: Option<&str>,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<ServiceJob>, Box<dyn Error>> {
-    service_context
-        .jobs
-        .list_ingest_jobs(source_filter, limit, offset)
-        .await
-        .map_err(downgrade)
-}
-
 pub async fn job_status(
     service_context: &ServiceContext,
     kind: JobKind,

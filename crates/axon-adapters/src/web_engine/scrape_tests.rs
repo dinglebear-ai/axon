@@ -350,6 +350,27 @@ fn test_ssrf_guard_allows_public_url() {
     assert!(validate_url("https://example.com/docs").is_ok());
 }
 
+#[test]
+fn single_page_chrome_render_uses_ssrf_request_interception() {
+    let cfg = Config {
+        render_mode: RenderMode::Chrome,
+        ..Config::default()
+    };
+    let website = build_scrape_website(&cfg, "https://example.com/").expect("website config");
+    let intercept = &website.configuration.chrome_intercept;
+    assert!(intercept.enabled);
+    let blacklist = intercept
+        .blacklist_patterns
+        .as_ref()
+        .expect("Chrome intercept must carry SSRF patterns");
+    for expected in ["127\\.", "169\\.254\\.", "192\\.168\\.", "\\[::1\\]"] {
+        assert!(
+            blacklist.iter().any(|pattern| pattern.contains(expected)),
+            "missing Chrome SSRF pattern {expected}: {blacklist:?}"
+        );
+    }
+}
+
 // Config-to-Spider mapping helpers
 
 #[test]

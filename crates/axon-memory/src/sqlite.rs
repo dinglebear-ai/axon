@@ -48,6 +48,12 @@ impl SqliteMemoryStore {
         Self::from_connection(conn, clock)
     }
 
+    /// Open a store whose schema is owned by the composed runtime migration.
+    pub fn open_migrated(path: &str, clock: Arc<dyn Clock>) -> Result<Self> {
+        let conn = Connection::open(path).map_err(|e| store_error(format!("open: {e}")))?;
+        Ok(Self::from_migrated_connection(conn, clock))
+    }
+
     /// Create an in-memory store (for tests).
     pub fn in_memory(clock: Arc<dyn Clock>) -> Result<Self> {
         let conn = Connection::open_in_memory().map_err(|e| store_error(format!("open: {e}")))?;
@@ -56,12 +62,16 @@ impl SqliteMemoryStore {
 
     fn from_connection(conn: Connection, clock: Arc<dyn Clock>) -> Result<Self> {
         ensure_schema(&conn).map_err(|e| store_error(format!("migrate: {e}")))?;
-        Ok(Self {
+        Ok(Self::from_migrated_connection(conn, clock))
+    }
+
+    fn from_migrated_connection(conn: Connection, clock: Arc<dyn Clock>) -> Self {
+        Self {
             conn: Arc::new(Mutex::new(conn)),
             clock,
             sink: Arc::new(TracingObservabilitySink::new()),
             synthesizer: None,
-        })
+        }
     }
 
     /// Inject an observability sink (default: [`TracingObservabilitySink`]).

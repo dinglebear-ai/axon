@@ -37,12 +37,14 @@
       "edge_kind": "repo_declares_service",
       "from_stable_key": "repo:local/x",
       "to_stable_key": "service:local/x:qdrant",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     },
     {
       "edge_kind": "service_uses_image",
       "from_stable_key": "service:local/x:qdrant",
       "to_stable_key": "docker:qdrant/qdrant:v1.13.1",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     }
   ],

@@ -1,9 +1,7 @@
 // Generic async-job progress model for the palette's live job view.
 //
-// `crawl` has its own richer model (`crawlJob.ts`) because it surfaces a live
-// page frontier, depth, and indexing handoff. Other async jobs use the unified
-// backend families: source jobs for source acquisition/indexing, and extract
-// jobs for structured extraction.
+// Source jobs cover page, site, repository, feed, session, and local inputs;
+// extract jobs cover structured extraction.
 //
 // Everything here is derived from REAL data polled from `axon serve`; the
 // derivation (phase, percent, metrics) is pure and unit-tested. The view layer
@@ -12,7 +10,7 @@
 import type { components } from "./axon-api";
 
 export type AsyncJobFamily = components["schemas"]["JobFamily"];
-export type AsyncJobSubcommand = "embed" | "extract" | "ingest";
+export type AsyncJobSubcommand = "source" | "source-site" | "extract";
 
 export type JobPhase = "pending" | "running" | "done" | "failed" | "canceled";
 
@@ -60,7 +58,7 @@ const FAMILY_VERB: Record<AsyncJobFamily, string> = {
   extract: "Extracting",
 };
 
-/** Present-tense gerund for a running job of this family ("Ingesting"). */
+/** Present-tense gerund for a running job of this family. */
 export function jobFamilyVerb(family: AsyncJobFamily): string {
   return FAMILY_VERB[family];
 }
@@ -191,9 +189,8 @@ export function pendingJobSnapshot(family: AsyncJobFamily, label: string): JobSn
 // --- Unified job-API adapter (bead axon_rust-ruzox.9) ----------------------
 //
 // The per-family status routes `summarizeJob` above was written for
-// (`GET /v1/{family}/{id}` → `{ job, progress }`) were removed for embed and
-// ingest (only `/v1/extract/{id}` still exists) in favor of the unified
-// `GET /v1/jobs/{id}` route, which returns a flat `JobSummary`
+// (`GET /v1/{family}/{id}` → `{ job, progress }`) were removed in favor of the
+// unified `GET /v1/jobs/{id}` route, which returns a flat `JobSummary`
 // (`{ job_id, kind, status, phase, counts?, last_error?, ... }`) — not the old
 // envelope. `summarizeUnifiedJob` adapts that flatter shape for the polling
 // hooks. `JobSummary` does not carry per-family `result_json` counters (the

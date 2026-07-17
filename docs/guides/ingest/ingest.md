@@ -1,13 +1,17 @@
 # Ingest System
 Last Modified: 2026-03-10
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/ingest.md`](../../reference/actions/ingest.md)
+> CLI reference (flags, subcommands, examples): [`docs/reference/actions/sources.md`](../../reference/actions/sources.md)
 
-The `axon ingest` command ingests external sources — GitHub repositories, GitLab projects, Gitea/Forgejo repositories, generic HTTPS Git repositories, RSS/Atom/JSON feeds, Reddit subreddits/threads, YouTube videos/playlists/channels, and AI session exports — into Qdrant. Source type is auto-detected from the target argument where possible.
+The unified source command ingests external sources — GitHub repositories,
+GitLab projects, Gitea/Forgejo repositories, generic HTTPS Git repositories,
+RSS/Atom/JSON feeds, Reddit subreddits/threads, YouTube videos/playlists/
+channels, and AI session exports — into Qdrant. Source type is auto-detected
+from the target argument where possible.
 
-> Current runtime guide. The #298 clean-break target moves source ingestion to
-> the unified source pipeline under `axon <source>`; these `ingest` details are
-> not compatibility promises after that cutover.
+Use `axon <source>` or `axon source <source>` for all source-family ingestion.
+The legacy `axon ingest <source>` entrypoint was removed in the #298 clean
+break.
 
 ## Ingest Docs Index
 
@@ -16,18 +20,19 @@ The `axon ingest` command ingests external sources — GitHub repositories, GitL
 | [`docs/guides/ingest/ingest.md`](ingest.md) | Shared ingest job schema, dependencies, and environment variables. |
 | [`docs/guides/ingest/github.md`](github.md) | GitHub repository ingestion. |
 | [`docs/guides/ingest/gitlab.md`](gitlab.md) | GitLab project ingestion. |
-| Gitea/Forgejo, generic Git, RSS/Atom/JSON feeds | See `docs/reference/actions/ingest.md` for target forms and shared flags. |
+| Gitea/Forgejo, generic Git, RSS/Atom/JSON feeds | See `docs/reference/actions/sources.md` for target forms and shared flags. |
 | [`docs/guides/ingest/reddit.md`](reddit.md) | Reddit subreddit and thread ingestion. |
 | [`docs/guides/ingest/youtube.md`](youtube.md) | YouTube video, playlist, and channel ingestion. |
 | [`docs/guides/ingest/sessions.md`](sessions.md) | AI session export ingestion. |
 
-Command-only operational notes live in `docs/reference/actions/*.md`; do not add one-sentence `docs/guides/ingest/` stubs for non-ingest commands.
+Command-only operational notes live in `docs/reference/actions/*.md`; do not
+add one-sentence `docs/guides/ingest/` stubs for non-source commands.
 
 ## Storage Schema
 
-Ingest jobs are persisted in the SQLite `axon_ingest_jobs` table. The table is
-created by migrations under `crates/axon-jobs/src/migrations/` and used through
-the SQLite job runtime.
+Source jobs are persisted in the unified SQLite jobs table. Source-family
+metadata is stored in the source ledger tables created by migrations under
+`crates/axon-jobs/src/migrations/` and used through the SQLite job runtime.
 
 | Column | Type | Description |
 |--------|------|-------------|

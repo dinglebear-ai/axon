@@ -47,6 +47,9 @@ mod source_web_304_reuse_tests;
 #[cfg(test)]
 #[path = "source_web_artifacts_tests.rs"]
 mod source_web_artifacts_tests;
+#[cfg(test)]
+#[path = "source_web_events_tests.rs"]
+mod source_web_events_tests;
 
 /// Real-acquisition (issue #298 Wave 1b) input for `WebSourceAdapter`: no more
 /// `manifest_path`/`markdown_root` disk handoff from a `crawl_for_source`
@@ -164,7 +167,38 @@ async fn index_web_source_with_lease(
         input.job_id,
         input.scope,
     )
+    .with_source(run.source_id.clone(), run.canonical_uri.clone())
     .with_attempt(input.attempt);
+    let result = run_web_pipeline(
+        input,
+        ledger,
+        embedding_provider,
+        vector_store,
+        previous_source,
+        run,
+        lease,
+        &events,
+    )
+    .await;
+    if let Err(error) = &result {
+        crate::source::progress::pipeline_failed(&events, error).await;
+    }
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_web_pipeline(
+    input: &WebSourceIndexInput,
+    ledger: &dyn LedgerStore,
+    embedding_provider: &dyn EmbeddingProvider,
+    vector_store: &dyn VectorStore,
+    previous_source: Option<SourceSummary>,
+    run: WebAdapterRun,
+    lease: &LeaseGuard,
+    events: &crate::source::events::SourceEventEmitter,
+) -> anyhow::Result<WebSourceIndexOutput> {
+    use crate::source::progress;
+
     let adapter = WebSourceAdapter::new(
         Arc::clone(&input.fetch_provider),
         Arc::clone(&input.render_provider),
@@ -173,19 +207,24 @@ async fn index_web_source_with_lease(
         .running(PipelinePhase::Discovering, "discovering web source items")
         .await;
     let mut manifest = adapter.discover(&run.plan).await?;
+    progress::discovered(events, &manifest).await;
     events
         .running(PipelinePhase::Diffing, "diffing web source manifest")
         .await;
     let diff = ledger.diff_manifest(manifest.clone()).await?;
+    progress::diffed(events, &diff).await;
     if let Some(output) =
         unchanged_refresh_output(input, ledger, previous_source, &run, &manifest, &diff).await?
     {
-        events
-            .running(
-                PipelinePhase::Publishing,
-                "publishing unchanged web source generation",
-            )
-            .await;
+        progress::published(
+            events,
+            &output.generation,
+            manifest.items.len() as u64,
+            &output.warnings,
+            0,
+            0,
+        )
+        .await;
         return Ok(output);
     }
     let diff = overlay_previous_web_etags(ledger, &diff).await?;
@@ -197,13 +236,13 @@ async fn index_web_source_with_lease(
     manifest.generation = generation.generation.clone();
     let diff = retarget_diff_generation(diff, &generation.generation);
     ledger.put_manifest(manifest.clone()).await?;
+    let manifest_items = manifest.items.len() as u64;
     // `scope = Map` is discover-only. `embed=false` is not discover-only: the
     // source contract requires acquire/normalize/prepare/graph to still run
     // while skipping only collection creation, embedding, and vector upsert.
-    if input.scope == SourceScope::Map {
-        return publish_map_generation(input, ledger, run, generation, manifest, diff).await;
-    }
-    if !input.embed {
+    let output = if input.scope == SourceScope::Map {
+        publish_map_generation(input, ledger, run, generation, manifest, diff).await?
+    } else if !input.embed {
         events
             .running(
                 PipelinePhase::Normalizing,
@@ -213,7 +252,7 @@ async fn index_web_source_with_lease(
         events
             .running(PipelinePhase::Preparing, "preparing web source documents")
             .await;
-        return publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
+        publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
             input,
             ledger,
             run,
@@ -222,42 +261,52 @@ async fn index_web_source_with_lease(
             manifest,
             diff,
         })
-        .await;
-    }
-
-    events
-        .running(
-            PipelinePhase::Normalizing,
-            "normalizing web source documents",
-        )
-        .await;
-    events
-        .running(PipelinePhase::Preparing, "preparing web source documents")
-        .await;
-    events
-        .running(PipelinePhase::Embedding, "embedding web source chunks")
-        .await;
-    events
-        .running(PipelinePhase::Upserting, "upserting web source vectors")
-        .await;
-    events
-        .running(
-            PipelinePhase::Publishing,
-            "publishing web source generation",
-        )
-        .await;
-    publish_vector_generation(VectorGenerationRequest {
-        input,
-        ledger,
-        embedding_provider,
-        vector_store,
-        run,
-        lease,
-        generation,
-        manifest,
-        diff,
-    })
-    .await
+        .await?
+    } else {
+        events
+            .running(
+                PipelinePhase::Normalizing,
+                "normalizing web source documents",
+            )
+            .await;
+        events
+            .running(PipelinePhase::Preparing, "preparing web source documents")
+            .await;
+        events
+            .running(PipelinePhase::Embedding, "embedding web source chunks")
+            .await;
+        events
+            .running(PipelinePhase::Upserting, "upserting web source vectors")
+            .await;
+        events
+            .running(
+                PipelinePhase::Publishing,
+                "publishing web source generation",
+            )
+            .await;
+        publish_vector_generation(VectorGenerationRequest {
+            input,
+            ledger,
+            embedding_provider,
+            vector_store,
+            run,
+            lease,
+            generation,
+            manifest,
+            diff,
+        })
+        .await?
+    };
+    progress::published(
+        events,
+        &output.generation,
+        manifest_items,
+        &output.warnings,
+        output.documents_prepared,
+        output.chunks_prepared,
+    )
+    .await;
+    Ok(output)
 }
 
 fn retarget_diff_generation(

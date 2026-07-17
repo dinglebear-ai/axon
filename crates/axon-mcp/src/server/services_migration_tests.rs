@@ -69,40 +69,6 @@ async fn source_start_missing_input_returns_invalid_params() {
     );
 }
 
-/// Verify the refresh.start response shape includes both `job_ids` (array) and
-/// `job_id` (last element) for multi-URL enqueue, using the actual `AxonToolResponse::ok`
-/// builder that the handler uses rather than a locally-constructed JSON value.
-#[test]
-fn refresh_start_response_includes_all_job_ids() {
-    use crate::schema::AxonToolResponse;
-
-    let job_ids = vec![uuid::Uuid::new_v4(), uuid::Uuid::new_v4()];
-    let last = *job_ids.last().unwrap();
-
-    // Build the response the same way the real handler does.
-    let response = AxonToolResponse::ok(
-        "refresh",
-        "start",
-        serde_json::json!({
-            "job_ids": job_ids,
-            "job_id": last,
-        }),
-    );
-
-    assert!(response.ok, "response must be ok=true");
-    assert_eq!(response.action, "refresh");
-    assert_eq!(response.subaction, "start");
-
-    let ids: Vec<uuid::Uuid> = serde_json::from_value(response.data["job_ids"].clone()).unwrap();
-    assert_eq!(ids.len(), 2, "job_ids must contain all enqueued IDs");
-
-    let single: uuid::Uuid = serde_json::from_value(response.data["job_id"].clone()).unwrap();
-    assert_eq!(
-        single, last,
-        "job_id must equal the last element of job_ids"
-    );
-}
-
 #[test]
 fn mcp_apps_ui_metadata_is_on_dedicated_dashboard_tool_only() {
     let tools = super::AxonMcpServer::tool_router().list_all();

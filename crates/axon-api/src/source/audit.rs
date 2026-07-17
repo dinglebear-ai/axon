@@ -8,6 +8,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::auth::AuthScope;
 use super::ids::{JobId, SourceId, Timestamp};
 
 /// The security-relevant event kinds enumerated by the "Audit Events"
@@ -48,6 +49,30 @@ pub enum SecurityAuditEventKind {
 pub enum SecurityPolicyDecision {
     Allow,
     Deny,
+}
+
+/// Policy boundary that produced a non-SSRF security decision.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum SecurityDecisionBoundary {
+    Authorization,
+    LocalPath,
+    CliToolExecution,
+    McpToolExecution,
+}
+
+/// Typed, redaction-safe detail for authorization, local, and tool decisions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SecurityDecisionAuditDetail {
+    pub boundary: SecurityDecisionBoundary,
+    pub policy_decision: SecurityPolicyDecision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_scope: Option<AuthScope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 /// Coarse classification of a resolved IP address, per the SSRF policy's
@@ -108,6 +133,11 @@ pub struct SecurityAuditEvent {
     /// Redacted human-readable reason. Must never contain secret values,
     /// raw header contents, or unredacted local paths.
     pub reason: String,
+    /// Populated for authorization, local-path, and CLI/MCP tool policy
+    /// decisions. Targets must already be redacted identifiers, never raw
+    /// paths, argv, environment values, or tool output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision: Option<SecurityDecisionAuditDetail>,
     /// Populated when `kind == SsrfDenied` (or an SSRF allow-exception is
     /// recorded); `None` for all other event kinds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -129,12 +159,23 @@ impl SecurityAuditEvent {
             policy_id: None,
             policy_version: None,
             reason: reason.into(),
+            decision: None,
             ssrf: None,
         }
     }
 
     pub fn with_ssrf_detail(mut self, detail: SsrfAuditDetail) -> Self {
         self.ssrf = Some(detail);
+        self
+    }
+
+    pub fn with_decision_detail(mut self, detail: SecurityDecisionAuditDetail) -> Self {
+        self.decision = Some(detail);
+        self
+    }
+
+    pub fn with_caller_id(mut self, caller_id: impl Into<String>) -> Self {
+        self.caller_id = Some(caller_id.into());
         self
     }
 

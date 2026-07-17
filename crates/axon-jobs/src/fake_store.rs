@@ -9,6 +9,10 @@ use uuid::Uuid;
 use crate::boundary::{JobDeleteResult, JobStore, Result};
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
+use crate::unified::pagination::{
+    EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
+    encode_job_cursor,
+};
 use crate::unified_codec::reject_non_public_visibility;
 
 #[path = "fake_store/helpers.rs"]
@@ -41,6 +45,17 @@ struct FakeJobWatchState {
 impl FakeJobWatchStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Test-only inspection seam that bypasses public event visibility rules.
+    pub async fn recorded_events(&self, job_id: JobId) -> Vec<JobEvent> {
+        self.state
+            .lock()
+            .await
+            .events
+            .get(&job_id)
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -218,13 +233,14 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "fake job store does not implement cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_job_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         let mut items = self
             .state
             .lock()
@@ -245,25 +261,47 @@ impl JobStore for FakeJobWatchStore {
         if let Some(watch_id) = request.watch_id {
             items.retain(|job| job.watch_id.as_ref() == Some(&watch_id));
         }
-        let total = items.len() as u64;
+        items.sort_by(|left, right| {
+            right
+                .updated_at
+                .0
+                .cmp(&left.updated_at.0)
+                .then_with(|| right.job_id.0.cmp(&left.job_id.0))
+        });
+        if let Some(cursor) = cursor.as_ref() {
+            items.retain(|job| {
+                job.updated_at.0 < cursor.updated_at
+                    || (job.updated_at.0 == cursor.updated_at
+                        && job.job_id.0.to_string() < cursor.job_id)
+            });
+        }
+        let total = cursor.is_none().then_some(items.len() as u64);
         let limit = clamp_page_limit(request.limit);
+        let has_more = items.len() > limit as usize;
         items.truncate(limit as usize);
+        let next_cursor = items.last().filter(|_| has_more).map(|job| {
+            encode_job_cursor(&JobCursor {
+                updated_at: job.updated_at.0.clone(),
+                job_id: job.job_id.0.to_string(),
+            })
+        });
         Ok(Page {
-            total: Some(total),
+            total,
             limit,
-            next_cursor: None,
+            next_cursor,
             items,
         })
     }
 
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
-        if request.cursor.is_some() {
-            return Err(ApiError::new(
-                "job_event.cursor_unsupported",
-                ErrorStage::Retrieving,
-                "fake job store does not implement event cursor pagination",
-            ));
-        }
+        let cursor = request
+            .cursor
+            .as_deref()
+            .map(decode_event_cursor)
+            .transpose()
+            .map_err(|message| {
+                ApiError::new("job_event.cursor_invalid", ErrorStage::Retrieving, message)
+            })?;
         reject_non_public_visibility(request.visibility)?;
         let mut items = self
             .state
@@ -280,15 +318,25 @@ impl JobStore for FakeJobWatchStore {
             items.retain(|event| event.severity == severity);
         }
         apply_visibility_filter(&mut items, request.visibility);
-        if let Some(since_sequence) = request.since_sequence {
-            items.retain(|event| event.sequence > since_sequence);
+        if let Some(after_sequence) = cursor
+            .map(|cursor| cursor.sequence)
+            .or(request.after_sequence)
+            .or(request.since_sequence)
+        {
+            items.retain(|event| event.sequence > after_sequence);
         }
         let limit = clamp_page_limit(request.limit);
+        let has_more = items.len() > limit as usize;
         items.truncate(limit as usize);
+        let next_cursor = items.last().filter(|_| has_more).map(|event| {
+            encode_event_cursor(&EventCursor {
+                sequence: event.sequence,
+            })
+        });
         Ok(JobEventPage {
             last_sequence: items.last().map(|event| event.sequence).unwrap_or(0),
             limit,
-            next_cursor: None,
+            next_cursor,
             events: items,
         })
     }
@@ -359,73 +407,8 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn recover(&self, request: JobRecoveryRequest) -> Result<JobRecoveryResult> {
-        if request.older_than_seconds.is_none() && !request.allow_without_cutoff {
-            return Err(ApiError::new(
-                "job_recovery.cutoff_required",
-                ErrorStage::Planning,
-                "recovery requires older_than_seconds unless allow_without_cutoff is explicit",
-            ));
-        }
         let mut state = self.state.lock().await;
-        let now = state.timestamp();
-        let mut scanned = 0;
-        let mut failed = 0;
-        for job in state.jobs.values_mut() {
-            if request.kind.is_some_and(|kind| kind != job.kind)
-                || !matches!(
-                    job.status,
-                    LifecycleStatus::Running | LifecycleStatus::Waiting
-                )
-                || !is_stale(job, &now, request.older_than_seconds)
-            {
-                continue;
-            }
-            scanned += 1;
-            if !request.dry_run {
-                job.status = LifecycleStatus::Failed;
-                job.phase = PipelinePhase::Complete;
-                job.updated_at = now.clone();
-                job.finished_at = Some(now.clone());
-                if let Some(heartbeat) = job.heartbeat.as_mut() {
-                    heartbeat.status = LifecycleStatus::Failed;
-                    heartbeat.phase = PipelinePhase::Complete;
-                    heartbeat.heartbeat_at = now.clone();
-                }
-                failed += 1;
-            }
-        }
-        if !request.dry_run {
-            for job_id in state
-                .jobs
-                .iter()
-                .filter_map(|(job_id, job)| {
-                    (job.status == LifecycleStatus::Failed && job.updated_at == now)
-                        .then_some(*job_id)
-                })
-                .collect::<Vec<_>>()
-            {
-                if let Some(stages) = state.stages.get_mut(&job_id) {
-                    for stage in stages {
-                        if matches!(
-                            stage.status,
-                            LifecycleStatus::Running | LifecycleStatus::Waiting
-                        ) {
-                            stage.status = LifecycleStatus::Failed;
-                            stage.completed_at = Some(now.clone());
-                            stage.error = Some(recovery_api_error());
-                        }
-                    }
-                }
-            }
-        }
-        Ok(JobRecoveryResult {
-            recovered: 0,
-            job_ids: Vec::new(),
-            warnings: Vec::new(),
-            jobs_scanned: scanned,
-            jobs_requeued: 0,
-            jobs_failed: failed,
-        })
+        recover_locked(&mut state, request)
     }
 
     async fn cleanup(&self, request: JobCleanupRequest) -> Result<JobCleanupResult> {

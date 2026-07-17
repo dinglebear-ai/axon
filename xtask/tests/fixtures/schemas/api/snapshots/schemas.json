@@ -4569,6 +4569,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -4584,6 +4590,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -10291,6 +10298,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -10306,6 +10319,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -11788,6 +11802,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -11803,6 +11823,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -13390,686 +13411,23 @@
         "confirm": {
           "type": "boolean"
         },
-        "plan": {
-          "$ref": "#/$defs/PruneExecuteRequest_PrunePlan"
+        "plan_id": {
+          "$ref": "#/$defs/PruneExecuteRequest_JobId"
         },
         "reason": {
           "type": "string"
         }
       },
       "required": [
-        "plan",
+        "plan_id",
         "confirm",
         "reason"
       ],
       "title": "PruneExecuteRequest",
       "type": "object"
     },
-    "PruneExecuteRequest_ArtifactId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_ChunkId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_CleanupDebtId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_DocumentId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_GraphEdgeId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_GraphNodeId": {
-      "type": "string"
-    },
     "PruneExecuteRequest_JobId": {
       "format": "uuid",
-      "type": "string"
-    },
-    "PruneExecuteRequest_MemoryId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_PruneEstimate": {
-      "additionalProperties": false,
-      "description": "Estimated impact counts for a plan (what *would* be deleted).",
-      "properties": {
-        "artifacts": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "cache_entries": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "graph_edges": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "graph_nodes": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "jobs": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "ledger_generations": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "memory_records": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "vector_points": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "vector_points",
-        "artifacts",
-        "graph_nodes",
-        "graph_edges",
-        "memory_records",
-        "ledger_generations",
-        "jobs",
-        "cache_entries"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PrunePlan": {
-      "additionalProperties": false,
-      "description": "A resolved, reviewable plan describing exactly what a prune would delete.\n\nA plan is produced by dry-run resolution and never mutates state. It must be\nserializable to JSON for review (safety rule: \"prune plans must be\nreviewable as JSON\").",
-      "properties": {
-        "destructive": {
-          "type": "boolean"
-        },
-        "estimated": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneEstimate"
-        },
-        "job_id": {
-          "$ref": "#/$defs/PruneExecuteRequest_JobId"
-        },
-        "requires_admin": {
-          "type": "boolean"
-        },
-        "selector": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneSelector"
-        },
-        "steps": {
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_PruneStep"
-          },
-          "type": "array"
-        },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_SourceWarning"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "job_id",
-        "selector",
-        "destructive",
-        "requires_admin",
-        "estimated",
-        "steps",
-        "warnings"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PruneSelector": {
-      "description": "The scope of a prune. Each variant resolves to a concrete plan by the\n`axon-prune` planner. Variants mirror the pruning contract exactly.",
-      "oneOf": [
-        {
-          "description": "Prune an entire source (all generations).",
-          "properties": {
-            "kind": {
-              "const": "source",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "source_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune one generation of a source (generation-fenced).",
-          "properties": {
-            "generation": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            "kind": {
-              "const": "generation",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "source_id",
-            "generation"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Execute a recorded cleanup-debt entry.",
-          "properties": {
-            "debt_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_CleanupDebtId"
-            },
-            "kind": {
-              "const": "cleanup_debt",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "debt_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a whole vector collection.",
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "collection",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune a single artifact by id (never by arbitrary path).",
-          "properties": {
-            "artifact_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_ArtifactId"
-            },
-            "kind": {
-              "const": "artifact",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "artifact_id"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune graph nodes/edges (orphan cleanup).",
-          "properties": {
-            "edge_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "graph",
-              "type": "string"
-            },
-            "node_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_GraphNodeId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Prune (forget) memory records.",
-          "properties": {
-            "kind": {
-              "const": "memory",
-              "type": "string"
-            },
-            "memory_id": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Job-retention cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "job_retention",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "Cache cleanup older than N days.",
-          "properties": {
-            "kind": {
-              "const": "cache",
-              "type": "string"
-            },
-            "older_than_days": {
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "required": [
-            "kind",
-            "older_than_days"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "PruneExecuteRequest_PruneStep": {
-      "additionalProperties": false,
-      "description": "One ordered step in a prune plan. Steps follow the cleanup-debt execution\norder (vector → artifact → graph → memory → ledger → job/cache).",
-      "properties": {
-        "description": {
-          "type": "string"
-        },
-        "estimated_deletes": {
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "generation": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "graph_edge_ids": {
-          "description": "Identity for a [`PruneTargetKind::Graph`] edge-delete step, matching\n`GraphStore::delete_edges`. Additive.",
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_GraphEdgeId"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "graph_stable_keys": {
-          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "memory_ids": {
-          "description": "Identity for a [`PruneTargetKind::Memory`] forget step, matching\n`MemoryStore::forget`. Additive.",
-          "items": {
-            "$ref": "#/$defs/PruneExecuteRequest_MemoryId"
-          },
-          "type": [
-            "array",
-            "null"
-          ]
-        },
-        "source_id": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "target": {
-          "$ref": "#/$defs/PruneExecuteRequest_PruneTargetKind"
-        },
-        "vector_selector": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_VectorDeleteSelector"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "target",
-        "description",
-        "estimated_deletes"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_PruneTargetKind": {
-      "description": "The store boundary a prune step targets, in cleanup-debt execution order.",
-      "enum": [
-        "vector",
-        "artifact",
-        "graph",
-        "memory",
-        "ledger",
-        "job_retention",
-        "cache"
-      ],
-      "type": "string"
-    },
-    "PruneExecuteRequest_Severity": {
-      "enum": [
-        "debug",
-        "info",
-        "warning",
-        "degraded",
-        "failed",
-        "fatal"
-      ],
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceGenerationId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceId": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceItemKey": {
-      "type": "string"
-    },
-    "PruneExecuteRequest_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/PruneExecuteRequest_Severity"
-        },
-        "source_item_key": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceItemKey"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
-      "type": "object"
-    },
-    "PruneExecuteRequest_VectorDeleteSelector": {
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "generation": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "source",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "source_id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "generation": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-            },
-            "kind": {
-              "const": "generation",
-              "type": "string"
-            },
-            "source_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_SourceId"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "source_id",
-            "generation"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "Delete every point in `collection`, keeping the (now-empty) collection\nitself. Distinct from `axon reset`, which also wipes SQLite/job state.",
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "collection",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "document_id": {
-              "$ref": "#/$defs/PruneExecuteRequest_DocumentId"
-            },
-            "generation": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/PruneExecuteRequest_SourceGenerationId"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "kind": {
-              "const": "document",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "document_id"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "chunk_ids": {
-              "items": {
-                "$ref": "#/$defs/PruneExecuteRequest_ChunkId"
-              },
-              "type": "array"
-            },
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "chunks",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "chunk_ids"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "points",
-              "type": "string"
-            },
-            "point_ids": {
-              "items": {
-                "$ref": "#/$defs/PruneExecuteRequest_VectorPointId"
-              },
-              "type": "array"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "point_ids"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "canonical_uri": {
-              "type": "string"
-            },
-            "collection": {
-              "type": "string"
-            },
-            "kind": {
-              "const": "canonical_uri",
-              "type": "string"
-            },
-            "match_prefix": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "canonical_uri",
-            "match_prefix"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "collection": {
-              "type": "string"
-            },
-            "filter": true,
-            "kind": {
-              "const": "filter",
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "collection",
-            "filter"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "PruneExecuteRequest_VectorPointId": {
       "type": "string"
     },
     "PrunePlan": {
@@ -16579,6 +15937,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -16594,6 +15958,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -18882,6 +18247,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -18897,6 +18268,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -20666,6 +20038,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -20681,6 +20059,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -21535,6 +20914,12 @@
         "edge_kind": {
           "type": "string"
         },
+        "evidence_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "from_stable_key": {
           "type": "string"
         },
@@ -21550,6 +20935,7 @@
         "edge_kind",
         "from_stable_key",
         "to_stable_key",
+        "evidence_ids",
         "properties"
       ],
       "type": "object"
@@ -26400,6 +25786,257 @@
       "title": "TraceContext",
       "type": "object"
     },
+    "UploadAbortRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "UploadAbortRequest",
+      "type": "object"
+    },
+    "UploadAbortResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "deleted": {
+          "type": "boolean"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadAbortResult_UploadId"
+        }
+      },
+      "required": [
+        "upload_id",
+        "deleted"
+      ],
+      "title": "UploadAbortResult",
+      "type": "object"
+    },
+    "UploadAbortResult_UploadId": {
+      "type": "string"
+    },
+    "UploadCompleteRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_options": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "title": "UploadCompleteRequest",
+      "type": "object"
+    },
+    "UploadCompleteResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/UploadCompleteResult_ArtifactId"
+        },
+        "source_ref": {
+          "type": "string"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadCompleteResult_UploadId"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/UploadCompleteResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "upload_id",
+        "artifact_id",
+        "source_ref",
+        "warnings"
+      ],
+      "title": "UploadCompleteResult",
+      "type": "object"
+    },
+    "UploadCompleteResult_ArtifactId": {
+      "type": "string"
+    },
+    "UploadCompleteResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "UploadCompleteResult_SourceItemKey": {
+      "type": "string"
+    },
+    "UploadCompleteResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/UploadCompleteResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadCompleteResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "UploadCompleteResult_UploadId": {
+      "type": "string"
+    },
+    "UploadContentRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "content_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadContentRequest_ContentRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "UploadContentRequest",
+      "type": "object"
+    },
+    "UploadContentRequest_ArtifactId": {
+      "type": "string"
+    },
+    "UploadContentRequest_ContentRef": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "inline_text",
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "bytes_base64": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "inline_bytes",
+              "type": "string"
+            },
+            "mime_type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "bytes_base64",
+            "mime_type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_id": {
+              "$ref": "#/$defs/UploadContentRequest_ArtifactId"
+            },
+            "kind": {
+              "const": "artifact",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "integrity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "external",
+              "type": "string"
+            },
+            "uri": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "uri"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "UploadCreateRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -26465,134 +26102,53 @@
       ],
       "type": "string"
     },
-    "UploadResult": {
+    "UploadCreateResult": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "artifact": {
-          "$ref": "#/$defs/UploadResult_ArtifactRef"
+        "expires_at": {
+          "type": "string"
         },
-        "status": {
-          "$ref": "#/$defs/UploadResult_LifecycleStatus"
+        "put_url": {
+          "type": "string"
         },
-        "warnings": {
-          "items": {
-            "$ref": "#/$defs/UploadResult_SourceWarning"
-          },
-          "type": "array"
+        "upload_id": {
+          "$ref": "#/$defs/UploadCreateResult_UploadId"
         }
       },
       "required": [
-        "artifact",
-        "status",
-        "warnings"
+        "upload_id",
+        "put_url",
+        "expires_at"
       ],
-      "title": "UploadResult",
+      "title": "UploadCreateResult",
       "type": "object"
     },
-    "UploadResult_ArtifactId": {
+    "UploadCreateResult_UploadId": {
       "type": "string"
     },
-    "UploadResult_ArtifactKind": {
-      "enum": [
-        "raw_content",
-        "normalized_content",
-        "manifest",
-        "report",
-        "screenshot",
-        "warc",
-        "provider_trace"
-      ],
-      "type": "string"
-    },
-    "UploadResult_ArtifactRef": {
+    "UploadListRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "artifact_id": {
-          "$ref": "#/$defs/UploadResult_ArtifactId"
-        },
-        "artifact_kind": {
-          "$ref": "#/$defs/UploadResult_ArtifactKind"
-        },
-        "content_hash": {
+        "cursor": {
           "type": [
             "string",
             "null"
           ]
         },
-        "created_at": {
-          "type": "string"
-        },
-        "size_bytes": {
-          "format": "uint64",
+        "limit": {
+          "format": "uint32",
           "minimum": 0,
           "type": [
             "integer",
             "null"
           ]
         },
-        "uri": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "artifact_id",
-        "artifact_kind",
-        "uri",
-        "created_at"
-      ],
-      "type": "object"
-    },
-    "UploadResult_LifecycleStatus": {
-      "enum": [
-        "queued",
-        "pending",
-        "running",
-        "waiting",
-        "blocked",
-        "canceling",
-        "completed",
-        "completed_degraded",
-        "failed",
-        "canceled",
-        "expired",
-        "skipped"
-      ],
-      "type": "string"
-    },
-    "UploadResult_Severity": {
-      "enum": [
-        "debug",
-        "info",
-        "warning",
-        "degraded",
-        "failed",
-        "fatal"
-      ],
-      "type": "string"
-    },
-    "UploadResult_SourceItemKey": {
-      "type": "string"
-    },
-    "UploadResult_SourceWarning": {
-      "additionalProperties": false,
-      "properties": {
-        "code": {
-          "type": "string"
-        },
-        "message": {
-          "type": "string"
-        },
-        "retryable": {
-          "type": "boolean"
-        },
-        "severity": {
-          "$ref": "#/$defs/UploadResult_Severity"
-        },
-        "source_item_key": {
+        "status": {
           "anyOf": [
             {
-              "$ref": "#/$defs/UploadResult_SourceItemKey"
+              "$ref": "#/$defs/UploadListRequest_UploadStatusKind"
             },
             {
               "type": "null"
@@ -26600,13 +26156,120 @@
           ]
         }
       },
-      "required": [
-        "code",
-        "severity",
-        "message",
-        "retryable"
-      ],
+      "title": "UploadListRequest",
       "type": "object"
+    },
+    "UploadListRequest_UploadStatusKind": {
+      "enum": [
+        "pending",
+        "received",
+        "completed",
+        "aborted",
+        "expired"
+      ],
+      "type": "string"
+    },
+    "UploadStatus": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UploadStatus_ArtifactId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bytes_received": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "content_type": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "purpose": {
+          "$ref": "#/$defs/UploadStatus_UploadPurpose"
+        },
+        "retention_until": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/UploadStatus_UploadStatusKind"
+        },
+        "upload_id": {
+          "$ref": "#/$defs/UploadStatus_UploadId"
+        }
+      },
+      "required": [
+        "upload_id",
+        "status",
+        "filename",
+        "content_type",
+        "size_bytes",
+        "bytes_received",
+        "purpose",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "UploadStatus",
+      "type": "object"
+    },
+    "UploadStatus_ArtifactId": {
+      "type": "string"
+    },
+    "UploadStatus_UploadId": {
+      "type": "string"
+    },
+    "UploadStatus_UploadPurpose": {
+      "enum": [
+        "source_artifact",
+        "import",
+        "evaluation"
+      ],
+      "type": "string"
+    },
+    "UploadStatus_UploadStatusKind": {
+      "enum": [
+        "pending",
+        "received",
+        "completed",
+        "aborted",
+        "expired"
+      ],
+      "type": "string"
     },
     "VectorConfig": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -28003,6 +27666,7 @@
           ]
         },
         "embed": {
+          "default": true,
           "type": "boolean"
         },
         "enabled": {
@@ -28034,7 +27698,6 @@
       "required": [
         "source",
         "schedule",
-        "embed",
         "options"
       ],
       "title": "WatchRequest",
@@ -29017,12 +28680,12 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:25dcb9da7171df751c6432f104ffacea01fb1e93ddb501678fb2ea789556f2bf",
+        "checksum": "sha256:672c3884bb3d0635676b0a0593a753398259c10b602f83f5a489eb8278f86632",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:77a351a637bf567407f3de3e1d81db74c28e78607d454c2393e85c2c2e11c37e",
+        "checksum": "sha256:fcfda23e0f4a826a24b966ee331351cc2979d65bb824331fb4467624b7906bb8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
       },
@@ -29047,12 +28710,12 @@
         "path": "crates/axon-api/src/source/enums.rs"
       },
       {
-        "checksum": "sha256:ca3c484a987057b7cc4c7fb9cce1b2ceb773384307f9fbd7b09cfd3ece9d0511",
+        "checksum": "sha256:9996d283cf15c1b9e069e474d048f5e4e9745f01ecfac6189ef2935aa3bc0d28",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:f865aad3328639ecacbe5410bc9a036dda64660a2e4cd9934046bfd77cfb7d17",
+        "checksum": "sha256:f3897a8fd1c41a2af742b8dccfc6889618376629da5bfa92a5389c1b38c064ec",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },
@@ -29062,7 +28725,7 @@
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:56144e4dad813daf957b7be1dbe84f634bbbf95264f9f38243db2186e39b3271",
+        "checksum": "sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
@@ -29082,7 +28745,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:b0fc49f1e31316fa1623b0f50fbbd5ca48d19e1dc85735e1544f61508cf65ee7",
+        "checksum": "sha256:8cfb0b8738a7384cff7c77d9fbc8754fba72d710f479336a79f4c3bc633ac0f0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -29097,7 +28760,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:196448dc0d13dc97ddc95745e72583ea2f3e2c8ef38918a57af7efddb67f93ea",
+        "checksum": "sha256:e891b0f9215e7c4fb1b5fd44a1793b20475aca9105e519c7d9c9f42137d7cd30",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
@@ -29107,22 +28770,22 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:699caa681d276fb828407867ac82386c82d92b5739a7c4cb69d4dfc51eae7f57",
+        "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e",
         "kind": "rust_module",
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:cb69b0f38315d87d98c676d520addb8980368d35025860c316402a1be58a37d7",
+        "checksum": "sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:7a2c17290d5d20fd92fdf3d5dd0e12f4dba5a0ccc6637c41d6fcf77d7580b33a",
+        "checksum": "sha256:dc589f2eacd4e9bb59318a1155946651aeaec8607184e74b45295ccd8a6f79f3",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:5dbf927545ddce3d543efaf93118da81c9c86fd33a3ed9a058cf77c8580c3f47",
+        "checksum": "sha256:4cafeb82adf22f4ccdabb5e11cb0d94dae551a13e52e27b4e4871f4acecaa782",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
       }

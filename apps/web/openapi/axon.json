@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "6.2.2"
+    "version": "7.0.0"
   },
   "paths": {
     "/healthz": {
@@ -65,15 +65,51 @@
         "tags": [
           "artifacts"
         ],
-        "summary": "Serve an artifact file from the configured output directory.",
-        "description": "The `path` query parameter is validated structurally and via canonicalization\nbefore serving the file. Returns:\n- `400` for structurally unsafe paths (absolute, `..`, etc.)\n- `403` when the resolved path escapes the output root or is a symlink\n- `404` when the file does not exist or is not a regular file",
-        "operationId": "serve_artifact_query",
+        "operationId": "list_artifacts",
         "parameters": [
           {
-            "name": "path",
+            "name": "source_id",
             "in": "query",
-            "description": "Slash-preserving relative path within the output directory, e.g. `jobs/abc/output.md`",
-            "required": true,
+            "description": "Filter by source identifier",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "job_id",
+            "in": "query",
+            "description": "Filter by job identifier",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Filter by artifact kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, capped at 200",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque artifact keyset cursor",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -81,10 +117,17 @@
         ],
         "responses": {
           "200": {
-            "description": "File bytes with inferred content-type"
+            "description": "Paged artifact metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ArtifactSummary"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Structurally unsafe path",
+            "description": "Invalid artifact filter or cursor",
             "content": {
               "application/json": {
                 "schema": {
@@ -104,7 +147,151 @@
             }
           },
           "403": {
-            "description": "Path escapes the output root",
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/artifacts/{artifact_id}": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "operationId": "get_artifact",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "description": "Opaque artifact identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Artifact not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/artifacts/{artifact_id}/content": {
+      "get": {
+        "tags": [
+          "artifacts"
+        ],
+        "operationId": "artifact_content",
+        "parameters": [
+          {
+            "name": "artifact_id",
+            "in": "path",
+            "description": "Opaque artifact identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "description": "Force download disposition even for browser-safe image content.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Artifact bytes"
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
             "content": {
               "application/json": {
                 "schema": {
@@ -1142,77 +1329,6 @@
       }
     },
     "/v1/extract": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "list_extract_jobs",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract jobs",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
       "post": {
         "tags": [
           "jobs"
@@ -1271,305 +1387,6 @@
           },
           "502": {
             "description": "Upstream extract service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      },
-      "delete": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "clear_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract clear result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/cleanup": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cleanup_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract cleanup result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/recover": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "recover_extract_jobs",
-        "responses": {
-          "200": {
-            "description": "Extract recovery result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/{id}": {
-      "get": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "extract_job_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Extract job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Job not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/extract/{id}/cancel": {
-      "post": {
-        "tags": [
-          "jobs"
-        ],
-        "operationId": "cancel_extract_job",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Extract job ID",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Extract cancellation result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
             "content": {
               "application/json": {
                 "schema": {
@@ -4439,89 +4256,6 @@
         ]
       }
     },
-    "/v1/memory": {
-      "post": {
-        "tags": [
-          "memory"
-        ],
-        "operationId": "memory",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RestMemoryRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Persistent memory result (deprecated — use /v1/memories)",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid memory request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector or embedding service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:read"
-            ]
-          },
-          {
-            "oauth2": [
-              "axon:write"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/mobile/sessions": {
       "get": {
         "tags": [
@@ -4982,100 +4716,6 @@
         ]
       }
     },
-    "/v1/prune/dedupe": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "dedupe",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DedupeRequest"
-                  }
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Dedupe result",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid dedupe request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Caller lacks axon:admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported request body content type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:admin"
-            ]
-          }
-        ]
-      }
-    },
     "/v1/prune/exec": {
       "post": {
         "tags": [
@@ -5205,86 +4845,6 @@
           },
           "403": {
             "description": "Authenticated token lacks Axon access",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "Upstream vector service unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          },
-          {
-            "oauth2": [
-              "axon:admin"
-            ]
-          }
-        ]
-      }
-    },
-    "/v1/prune/purge": {
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "purge",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PurgeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Purge result (counts of points/URLs matched or deleted)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PurgeResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid purge request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Missing or invalid authentication",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Caller lacks axon:admin",
             "content": {
               "application/json": {
                 "schema": {
@@ -5554,6 +5114,156 @@
           {
             "oauth2": [
               "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/reset/exec": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "execute_reset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reset execution receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing confirmation or invalid plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller lacks axon:admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Reviewed reset plan no longer matches inventory or configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/reset/plan": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "plan_reset",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reviewable reset plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResetPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid reset plan request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Caller lacks axon:admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:admin"
             ]
           }
         ]
@@ -6554,6 +6264,495 @@
         ]
       }
     },
+    "/v1/uploads": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "list_uploads",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/UploadStatusKind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_UploadStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "create_upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadCreateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/uploads/{upload_id}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "get_upload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "abort_upload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadAbortRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadAbortResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/uploads/{upload_id}/complete": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "complete_upload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadCompleteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/uploads/{upload_id}/content": {
+      "put": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "put_upload_content",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/watches": {
       "get": {
         "tags": [
@@ -7099,6 +7298,129 @@
         ]
       }
     },
+    "/v1/watches/{watch_id}/history": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "watches_history",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/LifecycleStatus"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watch execution history",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch history lookup failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
     "/v1/watches/{watch_id}/pause": {
       "post": {
         "tags": [
@@ -7241,6 +7563,90 @@
           },
           "502": {
             "description": "Watch storage unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "oauth2": [
+              "axon:read"
+            ]
+          },
+          {
+            "oauth2": [
+              "axon:write"
+            ]
+          }
+        ]
+      }
+    },
+    "/v1/watches/{watch_id}/status": {
+      "get": {
+        "tags": [
+          "watch"
+        ],
+        "operationId": "watches_status",
+        "parameters": [
+          {
+            "name": "watch_id",
+            "in": "path",
+            "description": "Watch ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Watch status with latest source job summary",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated token lacks Axon access",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Watch not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Watch status unavailable",
             "content": {
               "application/json": {
                 "schema": {
@@ -7425,50 +7831,64 @@
           }
         }
       },
-      "ArtifactHandle": {
+      "ArtifactContentDescriptor": {
         "type": "object",
         "required": [
-          "kind",
-          "relative_path",
-          "display_path",
+          "artifact_id",
+          "content_type",
+          "disposition",
           "bytes"
         ],
         "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
+          },
           "bytes": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           },
-          "display_path": {
+          "content_type": {
             "type": "string"
           },
-          "job_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "kind": {
+          "disposition": {
             "type": "string"
-          },
-          "line_count": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64",
-            "minimum": 0
-          },
-          "relative_path": {
-            "type": "string"
-          },
-          "url": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
+      },
+      "ArtifactDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ArtifactSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "retention",
+              "producer_refs",
+              "content_url",
+              "metadata"
+            ],
+            "properties": {
+              "content_url": {
+                "type": "string"
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/MetadataMap"
+              },
+              "producer_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "retention": {}
+            }
+          }
+        ]
       },
       "ArtifactId": {
         "type": "string"
@@ -7484,6 +7904,56 @@
           "warc",
           "provider_trace"
         ]
+      },
+      "ArtifactListRequest": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "job_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArtifactKind"
+              }
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "ArtifactMode": {
         "type": "string",
@@ -7530,6 +8000,63 @@
           }
         },
         "additionalProperties": false
+      },
+      "ArtifactSummary": {
+        "type": "object",
+        "required": [
+          "artifact_id",
+          "kind",
+          "created_at",
+          "size_bytes"
+        ],
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
+          },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "job_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JobId"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          }
+        }
       },
       "AuthorityEvidence": {
         "type": "object",
@@ -7665,6 +8192,51 @@
             "type": "string"
           }
         }
+      },
+      "CanonicalCitation": {
+        "type": "object",
+        "description": "Canonical retrieval lineage for one cited chunk.",
+        "required": [
+          "source_id",
+          "source_item_key",
+          "generation",
+          "document_id",
+          "chunk_id",
+          "job_id",
+          "canonical_uri",
+          "source_range",
+          "redaction"
+        ],
+        "properties": {
+          "canonical_uri": {
+            "type": "string"
+          },
+          "chunk_id": {
+            "$ref": "#/components/schemas/ChunkId"
+          },
+          "document_id": {
+            "$ref": "#/components/schemas/DocumentId"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/SourceGenerationId"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/JobId"
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/RedactionMetadata"
+          },
+          "source_id": {
+            "$ref": "#/components/schemas/SourceId"
+          },
+          "source_item_key": {
+            "$ref": "#/components/schemas/SourceItemKey"
+          },
+          "source_range": {
+            "$ref": "#/components/schemas/SourceRange"
+          }
+        },
+        "additionalProperties": false
       },
       "ChunkHint": {
         "type": "object",
@@ -7842,18 +8414,6 @@
               {
                 "$ref": "#/components/schemas/SecretRef"
               }
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "DedupeRequest": {
-        "type": "object",
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
             ]
           }
         },
@@ -9659,29 +10219,6 @@
         },
         "additionalProperties": false
       },
-      "JobStatusResponse": {
-        "type": "object",
-        "description": "Typed job-status envelope so the `{ job, progress }` wire shape is a\nregistered OpenAPI schema (and thus reflected into the generated palette/\nandroid clients) instead of an opaque `serde_json::Value`.",
-        "required": [
-          "job"
-        ],
-        "properties": {
-          "job": {
-            "description": "Raw job record in the wire-compat shape (`status`, `result_json`,\ntimestamps, ...). Still `Value` because the job payloads are\nheterogeneous; `progress` is the typed, cross-family projection of it."
-          },
-          "progress": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/JobProgress",
-                "description": "Server-derived, transport-neutral progress for canonical async jobs."
-              }
-            ]
-          }
-        }
-      },
       "JobSummary": {
         "type": "object",
         "required": [
@@ -10580,6 +11117,207 @@
         },
         "additionalProperties": false
       },
+      "Page_ArtifactSummary": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "artifact_id",
+                "kind",
+                "created_at",
+                "size_bytes"
+              ],
+              "properties": {
+                "artifact_id": {
+                  "$ref": "#/components/schemas/ArtifactId"
+                },
+                "content_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "job_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/JobId"
+                    }
+                  ]
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/ArtifactKind"
+                },
+                "label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "source_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SourceId"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "Page_UploadStatus": {
+        "type": "object",
+        "required": [
+          "items",
+          "limit"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "upload_id",
+                "status",
+                "filename",
+                "content_type",
+                "size_bytes",
+                "bytes_received",
+                "purpose",
+                "created_at",
+                "expires_at"
+              ],
+              "properties": {
+                "artifact_id": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactId"
+                    }
+                  ]
+                },
+                "bytes_received": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "content_type": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "expires_at": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "filename": {
+                  "type": "string"
+                },
+                "purpose": {
+                  "$ref": "#/components/schemas/UploadPurpose"
+                },
+                "retention_until": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  ]
+                },
+                "sha256": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64",
+                  "minimum": 0
+                },
+                "source_ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "$ref": "#/components/schemas/UploadStatusKind"
+                },
+                "upload_id": {
+                  "$ref": "#/components/schemas/UploadId"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "PanelCollectionsResponse": {
         "type": "object",
         "required": [
@@ -10849,19 +11587,16 @@
         "type": "object",
         "description": "Body for `POST /v1/prune/exec` — destructive; requires `axon:admin` (see\n[`super::super::routing::admin_routes`]) and `confirm: true`.",
         "required": [
-          "target"
+          "prune_plan_id"
         ],
         "properties": {
           "confirm": {
             "type": "boolean"
           },
-          "generation": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "prune_plan_id": {
+            "type": "string"
           },
-          "target": {
+          "reason": {
             "type": "string"
           }
         },
@@ -11314,89 +12049,6 @@
           "cache"
         ]
       },
-      "PurgeRequest": {
-        "type": "object",
-        "properties": {
-          "collection": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "dry_run": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Preview only — count matches without deleting. **Defaults to `true`** for\nagent safety: a bare `purge` previews; set `dry_run=false` to delete."
-          },
-          "prefix": {
-            "type": "boolean",
-            "description": "Match `target` as a prefix over a whole docs subtree / origin."
-          },
-          "response_mode": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ResponseMode"
-              }
-            ]
-          },
-          "target": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "URL (or seed-URL/origin when `prefix` is set) to delete from the index.\n**Handler-required despite the `Option`:** the type is `Option<String>`\nonly so a missing field deserializes to a clean \"target is required\"\nerror instead of a serde rejection; `handle_purge` returns an error when\nit is `None`. It is not an optional argument."
-          }
-        },
-        "additionalProperties": false
-      },
-      "PurgeResult": {
-        "type": "object",
-        "description": "Result of a purge: counts of points/URLs matched (and deleted, unless this\nwas a `dry_run` preview).",
-        "required": [
-          "target",
-          "prefix",
-          "dry_run",
-          "matched_points",
-          "deleted_points",
-          "matched_url_count",
-          "sample_urls"
-        ],
-        "properties": {
-          "deleted_points": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "dry_run": {
-            "type": "boolean",
-            "description": "When true, nothing was deleted — counts reflect what *would* be removed."
-          },
-          "matched_points": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "matched_url_count": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "prefix": {
-            "type": "boolean"
-          },
-          "sample_urls": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "target": {
-            "type": "string"
-          }
-        }
-      },
       "QueryHit": {
         "type": "object",
         "required": [
@@ -11405,7 +12057,8 @@
           "rerank_score",
           "url",
           "source",
-          "snippet"
+          "snippet",
+          "citation"
         ],
         "properties": {
           "chunk_index": {
@@ -11420,6 +12073,9 @@
               "string",
               "null"
             ]
+          },
+          "citation": {
+            "$ref": "#/components/schemas/CanonicalCitation"
           },
           "content_kind": {
             "type": [
@@ -11546,6 +12202,61 @@
           }
         }
       },
+      "RedactionMetadata": {
+        "type": "object",
+        "description": "Bounded redaction provenance carried beside a public write.",
+        "required": [
+          "redaction_status",
+          "redaction_version",
+          "visibility",
+          "redacted_field_count",
+          "dropped_field_count",
+          "detector_count",
+          "detector_names"
+        ],
+        "properties": {
+          "detector_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "detector_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dropped_field_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "redacted_field_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "redaction_status": {
+            "$ref": "#/components/schemas/RedactionStatus"
+          },
+          "redaction_version": {
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RedactionStatus": {
+        "type": "string",
+        "description": "Outcome recorded for every public payload write.",
+        "enum": [
+          "clean",
+          "redacted",
+          "failed"
+        ]
+      },
       "RenderMode": {
         "type": "string",
         "enum": [
@@ -11553,6 +12264,397 @@
           "chrome",
           "auto-switch"
         ]
+      },
+      "ResetChunkReceipt": {
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "store",
+          "status",
+          "item_count",
+          "checkpoint"
+        ],
+        "properties": {
+          "checkpoint": {
+            "type": "string"
+          },
+          "chunk_id": {
+            "type": "string"
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "status": {
+            "type": "string"
+          },
+          "store": {
+            "type": "string"
+          }
+        }
+      },
+      "ResetCreated": {
+        "type": "object",
+        "description": "Counts of what a reset recreated at the current fresh schema.",
+        "required": [
+          "sqlite_schema_version",
+          "qdrant_collections"
+        ],
+        "properties": {
+          "qdrant_collections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Qdrant collections created fresh (named dense + bm42 sparse)."
+          },
+          "sqlite_schema_version": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Highest applied SQLite migration version after re-migration (0 when the\njobs store was not part of this reset)."
+          }
+        }
+      },
+      "ResetDeleted": {
+        "type": "object",
+        "description": "Counts of what a reset deleted (or would delete, when `dry_run`).",
+        "required": [
+          "sqlite_tables",
+          "qdrant_collections",
+          "artifact_files"
+        ],
+        "properties": {
+          "artifact_files": {
+            "type": "integer",
+            "description": "Artifact files removed under the artifact root.",
+            "minimum": 0
+          },
+          "qdrant_collections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Qdrant collections dropped/recreated (usually just the configured one)."
+          },
+          "sqlite_tables": {
+            "type": "integer",
+            "description": "SQLite tables present before reset (all live in the single unified DB).",
+            "minimum": 0
+          }
+        }
+      },
+      "ResetEstimate": {
+        "type": "object",
+        "required": [
+          "sqlite_rows",
+          "sqlite_tables",
+          "qdrant_points",
+          "qdrant_collections",
+          "artifact_files"
+        ],
+        "properties": {
+          "artifact_files": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "qdrant_collections": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "qdrant_points": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sqlite_rows": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sqlite_tables": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ResetExecRequest": {
+        "type": "object",
+        "required": [
+          "reset_plan_id"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reset_plan_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResetExecutionState": {
+        "type": "string",
+        "enum": [
+          "Planned",
+          "Executing",
+          "Completed",
+          "CompletedDegraded",
+          "Blocked",
+          "Failed"
+        ]
+      },
+      "ResetPlan": {
+        "type": "object",
+        "required": [
+          "plan_id",
+          "reset_id",
+          "stores",
+          "estimates",
+          "inventory_checksum",
+          "config_snapshot_id",
+          "auth_snapshot_id",
+          "confirmation_text",
+          "expires_at_utc",
+          "blockers"
+        ],
+        "properties": {
+          "auth_snapshot_id": {
+            "type": "string"
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_snapshot_id": {
+            "type": "string"
+          },
+          "confirmation_text": {
+            "type": "string"
+          },
+          "estimates": {
+            "$ref": "#/components/schemas/ResetEstimate"
+          },
+          "expires_at_utc": {
+            "type": "string"
+          },
+          "inventory_checksum": {
+            "type": "string"
+          },
+          "plan_id": {
+            "type": "string"
+          },
+          "receipt_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reset_id": {
+            "type": "string"
+          },
+          "stores": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ResetPlanRequest": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dry_run": {
+            "type": "boolean"
+          },
+          "include_artifacts": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "include_config": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "stores": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResetResult": {
+        "type": "object",
+        "description": "Result of `axon reset`. Mirrors the cutover-contract reset result shape.",
+        "required": [
+          "plan_id",
+          "reset_id",
+          "stores",
+          "dry_run",
+          "plan",
+          "reset_plan",
+          "estimates",
+          "execution_state",
+          "inventory_checksum",
+          "config_snapshot_id",
+          "auth_snapshot_id",
+          "confirmation_text",
+          "plan_expires_at_utc",
+          "blockers",
+          "chunks",
+          "audit_events",
+          "deleted",
+          "created",
+          "warnings"
+        ],
+        "properties": {
+          "audit_events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "auth_snapshot_id": {
+            "type": "string"
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResetChunkReceipt"
+            }
+          },
+          "config_snapshot_id": {
+            "type": "string"
+          },
+          "confirmation_text": {
+            "type": "string"
+          },
+          "created": {
+            "$ref": "#/components/schemas/ResetCreated",
+            "description": "What was recreated at fresh schema (all zero/empty when `dry_run`)."
+          },
+          "deleted": {
+            "$ref": "#/components/schemas/ResetDeleted",
+            "description": "What was deleted (all zero/empty when `dry_run`)."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "description": "True when nothing was mutated — counts and plan reflect what *would*\nhappen. This is the default."
+          },
+          "estimates": {
+            "$ref": "#/components/schemas/ResetEstimate"
+          },
+          "execution_state": {
+            "$ref": "#/components/schemas/ResetExecutionState"
+          },
+          "inventory_checksum": {
+            "type": "string"
+          },
+          "plan": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResetStorePlan"
+            },
+            "description": "Per-store inventory + intended action."
+          },
+          "plan_expires_at_utc": {
+            "type": "string"
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "Stable reusable plan id (`reset_plan_...`) bound to selected stores,\nestimates, auth/config snapshots, inventory checksum, and TTL."
+          },
+          "receipt_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filesystem path of the durable receipt, or the exact path execution\nwill write during a dry-run plan."
+          },
+          "reset_id": {
+            "type": "string",
+            "description": "Stable id for this reset invocation (`reset_...`)."
+          },
+          "reset_plan": {
+            "$ref": "#/components/schemas/ResetPlan"
+          },
+          "stores": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Stores selected for this reset, in canonical order."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal warnings (unreachable service, partial delete, etc.)."
+          }
+        }
+      },
+      "ResetStorePlan": {
+        "type": "object",
+        "description": "Per-store inventory row rendered in the dry-run plan and receipt. This is the\n\"exact stores, paths, collections, row counts, artifact counts\" the cutover\ncontract requires the dry-run to print.",
+        "required": [
+          "store",
+          "location",
+          "non_empty",
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "One-line human-readable note (e.g. \"would drop + recreate collection\")."
+          },
+          "item_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Rows/points/files this store currently holds (best-effort; `None` when\nthe backing service was unreachable during planning).",
+            "minimum": 0
+          },
+          "location": {
+            "type": "string",
+            "description": "Concrete backing location: a SQLite path, a Qdrant collection, or an\nartifact directory."
+          },
+          "non_empty": {
+            "type": "boolean",
+            "description": "True when the store currently holds data that a reset would destroy."
+          },
+          "store": {
+            "type": "string",
+            "description": "Logical store name (`jobs`/`ledger`/`graph`/`memory`/`vectors`/`artifacts`)."
+          }
+        }
       },
       "ResolvedSource": {
         "type": "object",
@@ -11618,10 +12720,13 @@
       "ResponseMode": {
         "type": "string",
         "enum": [
-          "path",
+          "auto",
+          "summary",
+          "full",
           "inline",
-          "both",
-          "auto_inline"
+          "artifact",
+          "path",
+          "job_only"
         ]
       },
       "RestAskRequest": {
@@ -12675,31 +13780,34 @@
       "ScreenshotResult": {
         "type": "object",
         "required": [
-          "url",
-          "path",
-          "size_bytes"
+          "artifact_id",
+          "width",
+          "height",
+          "captured_at",
+          "warnings"
         ],
         "properties": {
-          "artifact_handle": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ArtifactHandle"
-              }
-            ]
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
           },
-          "path": {
-            "type": "string"
+          "captured_at": {
+            "$ref": "#/components/schemas/Timestamp"
           },
-          "size_bytes": {
+          "height": {
             "type": "integer",
-            "format": "int64",
+            "format": "int32",
             "minimum": 0
           },
-          "url": {
-            "type": "string"
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -13843,6 +14951,278 @@
         },
         "additionalProperties": false
       },
+      "UploadAbortRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadAbortResult": {
+        "type": "object",
+        "required": [
+          "upload_id",
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "upload_id": {
+            "$ref": "#/components/schemas/UploadId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadCompleteRequest": {
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_options": {
+            "$ref": "#/components/schemas/MetadataMap"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadCompleteResult": {
+        "type": "object",
+        "required": [
+          "upload_id",
+          "artifact_id",
+          "source_ref",
+          "warnings"
+        ],
+        "properties": {
+          "artifact_id": {
+            "$ref": "#/components/schemas/ArtifactId"
+          },
+          "source_ref": {
+            "type": "string"
+          },
+          "upload_id": {
+            "$ref": "#/components/schemas/UploadId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceWarning"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadCreateRequest": {
+        "type": "object",
+        "required": [
+          "filename",
+          "content_type",
+          "size_bytes",
+          "purpose"
+        ],
+        "properties": {
+          "content_type": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/UploadPurpose"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "source_hint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceId"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadCreateResult": {
+        "type": "object",
+        "required": [
+          "upload_id",
+          "put_url",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "put_url": {
+            "type": "string"
+          },
+          "upload_id": {
+            "$ref": "#/components/schemas/UploadId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadId": {
+        "type": "string"
+      },
+      "UploadListRequest": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/UploadStatusKind"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadPurpose": {
+        "type": "string",
+        "enum": [
+          "source_artifact",
+          "import",
+          "evaluation"
+        ]
+      },
+      "UploadStatus": {
+        "type": "object",
+        "required": [
+          "upload_id",
+          "status",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "bytes_received",
+          "purpose",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "artifact_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ArtifactId"
+              }
+            ]
+          },
+          "bytes_received": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "expires_at": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/UploadPurpose"
+          },
+          "retention_until": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              }
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "source_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/UploadStatusKind"
+          },
+          "upload_id": {
+            "$ref": "#/components/schemas/UploadId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UploadStatusKind": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "received",
+          "completed",
+          "aborted",
+          "expired"
+        ]
+      },
       "UpsertMobileSessionRequest": {
         "type": "object",
         "required": [
@@ -14127,7 +15507,6 @@
         "required": [
           "source",
           "schedule",
-          "embed",
           "options"
         ],
         "properties": {

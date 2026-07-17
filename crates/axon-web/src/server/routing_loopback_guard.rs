@@ -40,8 +40,8 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
             || path == "/v1/jobs/cleanup"
             || path == "/v1/prune/plan"
             || path == "/v1/prune/exec"
-            || path == "/v1/prune/dedupe"
-            || path == "/v1/prune/purge"
+            || path == "/v1/reset/plan"
+            || path == "/v1/reset/exec"
             || path.starts_with("/v1/watches/")
             || path.starts_with("/v1/jobs/"))
     {
@@ -53,33 +53,34 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if (*method == Method::DELETE || *method == Method::PATCH) && path.starts_with("/v1/watches/") {
         return true;
     }
-    if *method == Method::POST && path == "/v1/memory" {
-        return true;
-    }
     if is_memory_write(method, path) {
         return true;
     }
     if is_mobile_session_write(method, path) {
         return true;
     }
-
-    let prefix = "/v1/extract";
-    if path == prefix {
-        return *method == Method::POST || *method == Method::DELETE;
-    }
-    if let Some(remainder) = path
-        .strip_prefix(prefix)
-        .and_then(|rest| rest.strip_prefix('/'))
-        && *method == Method::POST
-        && (remainder == "cleanup" || remainder == "recover" || remainder.ends_with("/cancel"))
-    {
+    if is_upload_write(method, path) {
         return true;
+    }
+
+    if path == "/v1/extract" {
+        return *method == Method::POST;
     }
     false
 }
 
-/// All mutating per-verb `/v1/memories*` routes — the same loopback-dev
-/// destructive-route treatment the old `POST /v1/memory` passthrough got.
+fn is_upload_write(method: &Method, path: &str) -> bool {
+    (*method == Method::POST && path == "/v1/uploads")
+        || ((*method == Method::PUT
+            || *method == Method::POST
+            || *method == Method::PATCH
+            || *method == Method::DELETE)
+            && path
+                .strip_prefix("/v1/uploads/")
+                .is_some_and(|remainder| !remainder.is_empty()))
+}
+
+/// All mutating per-verb `/v1/memories*` routes.
 /// `GET /v1/memories/{memory_id}` (show) is intentionally excluded — it's a
 /// pure read, registered in `read_routes`.
 fn is_memory_write(method: &Method, path: &str) -> bool {
@@ -116,3 +117,7 @@ fn is_mobile_session_write(method: &Method, path: &str) -> bool {
             .strip_prefix("/v1/mobile/sessions/")
             .is_some_and(|id| !id.is_empty())
 }
+
+#[cfg(test)]
+#[path = "routing_loopback_guard_tests.rs"]
+mod tests;

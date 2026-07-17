@@ -732,3 +732,67 @@ async fn vector_only_target_does_not_fence_a_noncurrent_generation() {
         "the stale-generation point should have been deleted"
     );
 }
+
+fn stored_prune_plan(plan: PrunePlan) -> plan_store::StoredPrunePlan {
+    plan_store::StoredPrunePlan {
+        inventory_checksum: plan_store::checksum(&plan),
+        plan,
+        reason: "recovery test".to_string(),
+        expires_at_utc: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+fn prune_receipt(plan: &PrunePlan, status: LifecycleStatus) -> plan_store::StoredPruneReceipt {
+    plan_store::StoredPruneReceipt {
+        plan_id: plan.job_id.0.to_string(),
+        status: LifecycleStatus::Running,
+        steps: vec![axon_api::source::prune::PruneStepResult {
+            target: PruneTargetKind::Vector,
+            status,
+            deleted: 0,
+            skipped_reason: None,
+            source_id: None,
+            generation: None,
+        }],
+        cleanup_debt_remaining: 0,
+        audit_events: vec!["prune.execute".to_string()],
+    }
+}
+
+#[test]
+fn prune_resume_validates_completed_postconditions_instead_of_original_inventory() {
+    let original = plan_with_vector_step(true);
+    let stored = stored_prune_plan(original.clone());
+    let mut empty_after_delete = original.clone();
+    empty_after_delete.estimated = PruneEstimate::default();
+    empty_after_delete.steps.clear();
+    let receipt = prune_receipt(&original, LifecycleStatus::Completed);
+
+    saved_execution::verify_resumable_plan(&stored, &empty_after_delete, Some(&receipt))
+        .expect("completed chunk should resume from its postcondition");
+
+    let error = saved_execution::verify_resumable_plan(&stored, &original, Some(&receipt))
+        .expect_err("repopulated completed scope must be rejected");
+    assert!(error.to_string().contains("completed_chunk_changed"));
+}
+
+#[test]
+fn prune_resume_accepts_bounded_remainder_after_failed_chunk() {
+    let mut original = plan_with_vector_step(true);
+    original.estimated.vector_points = 10;
+    original.steps[0].estimated_deletes = 10;
+    let stored = stored_prune_plan(original.clone());
+    let mut current = original.clone();
+    current.estimated.vector_points = 4;
+    current.steps[0].estimated_deletes = 4;
+    let receipt = prune_receipt(&original, LifecycleStatus::Failed);
+
+    saved_execution::verify_resumable_plan(&stored, &current, Some(&receipt))
+        .expect("failed chunk may resume a smaller remainder of the same scope");
+
+    current.estimated.vector_points = 11;
+    current.steps[0].estimated_deletes = 11;
+    let error = saved_execution::verify_resumable_plan(&stored, &current, Some(&receipt))
+        .expect_err("failed chunk may not expand beyond reviewed impact");
+    assert!(error.to_string().contains("scope expanded"));
+}

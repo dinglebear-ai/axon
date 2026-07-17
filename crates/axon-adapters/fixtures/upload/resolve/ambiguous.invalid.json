@@ -1,0 +1,23 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "expected_error_code": "source.resolve_ambiguous",
+  "fixture_kind": "resolve.ambiguous",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "redaction_status": "clean",
+  "requested_uri": "example",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

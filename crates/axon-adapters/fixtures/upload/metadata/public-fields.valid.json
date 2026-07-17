@@ -1,0 +1,25 @@
+{
+  "adapter": "upload",
+  "adapter_version": "1",
+  "fixture_kind": "metadata.public-fields",
+  "graph": {
+    "optional_fact_kinds": [
+      "symbol",
+      "dependency"
+    ],
+    "required_fact_kinds": [
+      "document",
+      "filesystem_path"
+    ]
+  },
+  "item_canonical_uri": "upload:staged-example-1#item-1",
+  "metadata_family": "upload",
+  "public_metadata": {
+    "metadata_kind": "upload",
+    "source_family": "upload"
+  },
+  "redaction_status": "clean",
+  "source_canonical_uri": "upload:staged-example-1",
+  "source_id": "src-upload",
+  "source_item_key": "upload-item-1"
+}

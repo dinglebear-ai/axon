@@ -64,13 +64,13 @@ Implemented today:
   Removed command names fail before service dispatch with replacement guidance.
 - The target grammar's implicit-`<source>`-as-first-positional shape is not yet
   literal (there is still a real `source` subcommand under the hood).
-- Current subcommands (from `axon --help`) are: `scrape`, `map`, `endpoints`, `search`,
-  `research`, `extract`, `screenshot`, `diff`, `brand`, `query`, `retrieve`,
-  `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`, `sources`,
-  `domains`, `stats`, `migrate`, `status`, `source`,
-  `sessions`, `watch`, `monitor`, `sync`, `refresh`, `fresh`, `debug`,
-  `doctor`, `mcp`, `serve`, `setup`, `preflight`, `smoke`, `compose`,
-  `completions`, `config`, `update`, `palette`, `jobs`, and `reset`.
+- Current subcommands (from `axon --help`) are: `scrape`, `map`, `endpoints`,
+  `search`, `research`, `extract`, `screenshot`, `diff`, `brand`, `query`,
+  `retrieve`, `ask`, `evaluate`, `train`, `summarize`, `suggest`, `memory`,
+  `sources`, `domains`, `stats`, `migrate`, `status`, `source`, `sessions`,
+  `watch`, `monitor`, `sync`, `debug`, `doctor`, `mcp`, `serve`, `setup`,
+  `preflight`, `smoke`, `compose`, `completions`, `config`, `update`,
+  `palette`, `jobs`, and `reset`.
   `dedupe` and `purge` are **not** live subcommands anywhere in the CLI (0
   grep hits in `crates/axon-cli/src/`) — the live prune surface today is
   `axon prune plan|exec` (`crates/axon-cli/src/commands/prune.rs`); the
@@ -92,8 +92,8 @@ Remaining gap vs. this contract:
 - CLI JSON output is not yet rendered from one shared `axon-api` envelope
   across all commands — it remains command-specific.
 - Job, watch, artifact, prune, graph, provider, and collection operations are
-  partially grouped (`jobs`, `watch`, `sync`, `fresh`, `config`) but not all
-  under one canonical grouped-command taxonomy this contract describes.
+  partially grouped (`jobs`, `watch`, `sync`, `config`) but not all under one
+  canonical grouped-command taxonomy this contract describes.
 
 ## Top-Level Grammar
 
@@ -914,7 +914,7 @@ Visibility rules:
 | `axon extract <source>` | `action=extract` | `POST /v1/extract` | `ExtractRequest` |
 | `axon memory <sub>` | `action=memory` | `/v1/memories/*` | `Memory*` |
 | `axon jobs <sub>` | `action=jobs` | `/v1/jobs/*` | `Job*` |
-| `axon watch <sub>` | `action=watches` | `/v1/watches/*` | `Watch*` |
+| `axon watch <sub>` | `action=watch` | `/v1/watches/*` | `Watch*` |
 | `axon artifacts <sub>` | `action=artifacts` | `/v1/artifacts/*` | `Artifact*` |
 | `axon uploads <sub>` | `action=uploads` | `/v1/uploads/*` | `Upload*` |
 | `axon prune <sub>` | `action=prune` | `/v1/prune/*` | `Prune*` |

@@ -91,6 +91,11 @@ pub(crate) fn build_explain_trace(
             sparse_query_status: None,
         },
         candidates,
+        citations: hits
+            .iter()
+            .take(chunks_selected)
+            .map(|hit| hit.citation.clone())
+            .collect(),
         context: explain_context(hits, chunks_selected, context, cfg.ask_max_context_chars),
         candidate_trace_limit: CANDIDATE_TRACE_LIMIT,
         candidate_trace_truncated: truncated,

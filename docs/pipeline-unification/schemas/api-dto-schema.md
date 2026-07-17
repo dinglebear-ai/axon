@@ -238,7 +238,7 @@ The generated bundle must include at minimum:
 | Retrieval | `QueryRequest`, `QueryResult`, `RetrievalRequest`, `RetrievalResult`, `AskRequest`, `AskResult`, `ChatRequest`, `ChatResult`, `EvaluationRequest`, `EvaluationResult`, `SuggestRequest`, `SuggestResult` |
 | Discovery/Synthesis | `SearchRequest`, `SearchResult`, `ResearchRequest`, `ResearchResult`, `SummarizeRequest`, `SummarizeResult`, `EndpointDiscoveryRequest`, `EndpointDiscoveryResult`, `BrandRequest`, `BrandResult`, `DiffRequest`, `DiffResult`, `ScreenshotRequest`, `ScreenshotResult`, `ExtractRequest`, `ExtractResult` |
 | Runtime | `JobSummary`, `JobEventPage`, `WatchRequest`, `WatchResult`, `WatchDescriptor`, `SourceProgressEvent`, `TraceContext` |
-| Operations | `ArtifactRef`, `ArtifactListRequest`, `ArtifactResult`, `UploadCreateRequest`, `UploadResult`, `PruneRequest`, `PruneExecuteRequest`, `PrunePlan`, `PruneResult`, `DedupeRequest`, `DedupeResult`, `PurgeRequest`, `PurgeResult`, `CollectionListRequest`, `CollectionResult`, `ProviderCapability`, `HealthReport` |
+| Operations | `ArtifactRef`, `ArtifactListRequest`, `ArtifactResult`, `UploadCreateRequest`, `UploadResult`, `PruneRequest`, `PruneExecuteRequest`, `PrunePlan`, `PruneResult`, `PruneDedupeRequest`, `PruneDedupeResult`, `PrunePurgeRequest`, `PrunePurgeResult`, `CollectionListRequest`, `CollectionResult`, `ProviderCapability`, `HealthReport` |
 | Errors | `ApiError`, `SourceError`, `SourceWarning` |
 
 ## Required Envelope Definitions
@@ -300,6 +300,11 @@ crates/axon-api/tests/fixtures/schema/source_progress_event.valid.json
 crates/axon-api/tests/fixtures/schema/success_envelope.valid.json
 crates/axon-api/tests/fixtures/schema/extension_too_large.invalid.json
 ```
+
+`SourceRequest` additionally has one definition-validated example per canonical
+`SourceKind`, named `source_request.<source_kind>.valid.json`. Memory's example
+proves the shared DTO/enum projection only; memory remains an integration and
+is not registered as a source adapter.
 
 Every externally exposed DTO has at least one valid fixture. High-risk DTOs
 have invalid fixtures for unknown field, wrong enum casing, missing required id,

@@ -1,6 +1,6 @@
 use super::enums::{
-    CommandKind, EvaluateResponsesMode, MapFallback, McpTransport, PerformanceProfile, RedditSort,
-    RedditTime, RenderMode, ScrapeFormat,
+    CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort, RedditTime,
+    RenderMode, ScrapeFormat,
 };
 use crate::llm::LlmBackendKind;
 use std::path::PathBuf;
@@ -34,12 +34,6 @@ pub struct Config {
 
     /// Maximum number of results returned by `query`/`search` commands. Flag: `--limit`.
     pub search_limit: usize,
-
-    /// Optional CLI intent to create or update a recurring freshness schedule.
-    pub freshness: Option<super::freshness::FreshnessRequest>,
-
-    /// Parsed `axon fresh <subcommand>` action.
-    pub fresh_action: Option<super::freshness::FreshAction>,
 
     /// Maximum chunks fetched by `retrieve` before reconstructing the document.
     /// Flag: `retrieve --max-points` (`retrieve --limit` alias). Default: None
@@ -126,9 +120,6 @@ pub struct Config {
     /// Only backfill sitemap URLs with `<lastmod>` within the last N days (0 = no filter). TOML: `scrape.sitemap-since-days`.
     pub sitemap_since_days: u32,
 
-    /// Fallback strategy for `map` when no sitemap documents are found. Flag: `--map-fallback`.
-    pub map_fallback: MapFallback,
-
     /// Fetch and scan first-party JavaScript bundles during endpoint discovery.
     pub endpoints_include_bundles: bool,
 
@@ -200,8 +191,8 @@ pub struct Config {
     /// Automatically embed scraped content into Qdrant after fetching. Disabled by `--skip-embed`.
     pub embed: bool,
 
-    /// Local filesystem roots allowed for server-side embed requests.
-    /// Env: `AXON_MCP_EMBED_ALLOWED_ROOTS` (comma-separated).
+    /// Local filesystem roots allowed for source requests from server transports.
+    /// Env: `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` (comma-separated).
     pub mcp_embed_allowed_roots: Vec<PathBuf>,
 
     /// Max bytes for one local file embedded through server surfaces.
@@ -412,7 +403,7 @@ pub struct Config {
     /// Optional API key for OpenAI-compatible endpoints. Env: `AXON_OPENAI_API_KEY`.
     pub openai_api_key: String,
 
-    /// Model name for OpenAI-compatible synthesis completions. Env: `AXON_SYNTHESIS_OPENAI_MODEL` or legacy `AXON_OPENAI_MODEL`.
+    /// Model name for OpenAI-compatible synthesis completions. Env: `AXON_SYNTHESIS_OPENAI_MODEL`.
     pub openai_model: String,
 
     /// Model name for OpenAI-compatible direct chat. Env: `AXON_CHAT_OPENAI_MODEL`.
@@ -773,26 +764,6 @@ pub struct Config {
     /// Env: `AXON_QUEUE_SUMMARY_SECS`. TOML: `workers.queue-summary-secs`. 0 disables logging. Clamped 0–3600. Default: 30.
     pub queue_summary_secs: u64,
 
-    /// Freshness scheduler tick interval in seconds.
-    /// Env: `AXON_FRESHNESS_TICK_SECS`. TOML: `freshness.tick-secs`. Clamped 1–3600. Default: 60.
-    pub freshness_tick_secs: u64,
-
-    /// Freshness run lease TTL in seconds.
-    /// Env: `AXON_FRESHNESS_LEASE_SECS`. TOML: `freshness.lease-secs`. Clamped 1–86400. Default: 1800.
-    pub freshness_lease_secs: u64,
-
-    /// Due freshness schedules claimed per tick.
-    /// Env: `AXON_FRESHNESS_MAX_DUE_PER_TICK`. TOML: `freshness.max-due-per-tick`. Clamped 1–4. Default: 4.
-    pub freshness_max_due_per_tick: i64,
-
-    /// Maximum concurrent freshness dispatches.
-    /// Env: `AXON_FRESHNESS_MAX_CONCURRENT_RUNS`. TOML: `freshness.max-concurrent-runs`. Clamped 1–16. Default: 2.
-    pub freshness_max_concurrent_runs: usize,
-
-    /// Run-history retention window in days.
-    /// Env: `AXON_FRESHNESS_RUN_RETENTION_DAYS`. TOML: `freshness.run-retention-days`. Clamped 1–3660. Default: 90.
-    pub freshness_run_retention_days: i64,
-
     /// Buffered Qdrant points before flush.
     /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 1024.
     pub qdrant_point_buffer: usize,
@@ -817,8 +788,8 @@ pub struct Config {
     /// Env: `AXON_HNSW_EF_SEARCH`. TOML: `search.hnsw-ef`. Clamped 32–512. Default: 128.
     pub hnsw_ef_search: usize,
 
-    /// HNSW `ef` for legacy unnamed-mode collection searches.
-    /// Env: `AXON_HNSW_EF_SEARCH_LEGACY`. TOML: `search.hnsw-ef-legacy`. Clamped 16–256. Default: 64.
+    /// Internal compatibility value used by an older diagnostic projection.
+    /// It always mirrors `hnsw_ef_search`; no separate public setting exists.
     pub hnsw_ef_search_legacy: usize,
 
     /// Run the command on a recurring schedule every N seconds (`None` = one-shot). Flag: `--cron-every-seconds`.
@@ -1000,15 +971,10 @@ pub struct Config {
     /// `seed_url`. Set to the crawl start URL (crawl path) or the ingest target
     /// (ingest path) by the job runners before embedding, so each chunk records
     /// the origin that started its acquisition — distinct from the chunk's own
-    /// page `url`. `None` for direct `embed`/`scrape`, where the embed pipeline
-    /// falls back to the doc's own URL. Consumed by `axon refresh` to re-enqueue
-    /// origins. Not parsed from CLI/env — runtime-only state.
+    /// page `url`. `None` for direct foreground source projections, where the
+    /// embed pipeline falls back to the doc's own URL. Consumed by source refresh
+    /// logic to re-enqueue origins. Not parsed from CLI/env — runtime-only state.
     pub seed_url: Option<String>,
-
-    /// Include a per-schema-version chunk-count breakdown in `axon sources` output.
-    /// O(N) scroll over the collection; opt-in only. Default: false.
-    /// Flag: `--by-schema-version`. See bead `axon_rust-lu6a`.
-    pub sources_by_schema_version: bool,
 
     /// Optional exact domain/host filter for `axon sources --domain`.
     pub sources_domain: Option<String>,

@@ -35,22 +35,19 @@ const COMMANDS = [
   { name: "ask", meta: "Ask Axon RAG", kind: "chat" },
   { name: "remember", meta: "Save selection/page to Axon memory", kind: "write" },
   { name: "scrape", meta: "Scrape URL(s)", kind: "write" },
-  { name: "crawl", meta: "Start a crawl job", kind: "job" },
-  { name: "search", meta: "Web search and auto-crawl", kind: "write" },
+  { name: "site", meta: "Index a site", kind: "job" },
+  { name: "search", meta: "Web search and auto-index", kind: "write" },
   { name: "research", meta: "Research synthesis", kind: "write" },
-  { name: "embed", meta: "Start embed job", kind: "job" },
+  { name: "source", meta: "Index any supported source", kind: "job" },
   { name: "query", meta: "Search indexed sources", kind: "read" },
   { name: "retrieve", meta: "Retrieve indexed chunks", kind: "read" },
-  { name: "ingest", meta: "Start ingest job", kind: "job" },
-  { name: "sessions", meta: "Ingest AI sessions", kind: "job" },
   { name: "sources", meta: "List indexed sources", kind: "read" },
   { name: "domains", meta: "List indexed domains", kind: "read" },
   { name: "stats", meta: "Show vector stats", kind: "read" },
   { name: "doctor", meta: "Diagnose services", kind: "read" },
   { name: "debug", meta: "CLI-only debug workflow", kind: "local" },
   { name: "screenshot", meta: "CLI-only screenshot capture", kind: "local" },
-  { name: "status", meta: "Show current crawl job status" },
-  { name: "dedupe", meta: "Deduplicate collection", kind: "write" },
+  { name: "status", meta: "Show current source job status" },
   { name: "migrate", meta: "Migrate collection", kind: "write" },
   { name: "setup", meta: "CLI-only setup workflow", kind: "local" },
   { name: "mcp", meta: "CLI-only MCP server", kind: "local" },
@@ -67,7 +64,7 @@ const COMMAND_ALIASES = {
   a: "ask",
   rem: "remember",
   s: "scrape",
-  c: "crawl",
+  i: "site",
   r: "retrieve",
   q: "query",
   d: "doctor",
@@ -139,7 +136,7 @@ async function init() {
   });
   const restoredOutput = await restoreOutputLog();
   if (!restoredOutput) {
-    appendChatMessage("assistant", "Ask anything, or type an Axon command like `scrape this`, `crawl https://example.com`, `query rust embeddings`, or `doctor`.");
+    appendChatMessage("assistant", "Ask anything, or type an Axon command like `scrape this`, `site https://example.com`, `source owner/repo`, `query rust embeddings`, or `doctor`.");
   }
   refreshTargetContext();
   refreshAutomationStatus();
@@ -200,13 +197,13 @@ async function cancelCurrentCrawl() {
   const jobId = currentCrawlJobId;
   const pollRun = ++crawlPollRun;
   setCrawlStatus("Canceling", jobId, "warn");
-  setStatus(`Canceling crawl ${jobId}...`);
+  setStatus(`Canceling source job ${jobId}...`);
 
   try {
     const result = await cancelCrawlWithAxon(jobId);
     const canceled = result.canceled ?? result.payload?.canceled ?? false;
     setCrawlStatus(canceled ? "Canceled" : "Not cancellable", jobId, canceled ? "warn" : "neutral");
-    setStatus(canceled ? `Canceled crawl ${jobId}.` : `No cancellable crawl found for ${jobId}.`);
+    setStatus(canceled ? `Canceled source job ${jobId}.` : `No cancellable source job found for ${jobId}.`);
 
     if (!canceled) {
       pollCrawlStatus(jobId, pollRun);

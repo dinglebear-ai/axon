@@ -1,9 +1,11 @@
-use super::{build_map_request, discover, parse_map_result, unsupported_map_result};
+use super::{
+    build_map_request, parse_map_result, source_result_map_failure, unsupported_map_result,
+};
 use crate::source::classify::SourceInputKind;
+use crate::source::result_map::{adapter_ref, degraded_no_data_plane};
 use crate::source::routing::resolve_source_route;
 use crate::types::MapOptions;
-use axon_api::source::{SourceIntent, SourceScope};
-use axon_core::config::Config;
+use axon_api::source::{SourceIntent, SourceKind, SourceScope};
 use serde_json::json;
 
 // ── parse_map_result ──────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ fn parse_map_result_empty_urls_array() {
         "pages_seen": 0u32,
         "thin_pages": 0u32,
         "elapsed_ms": 0u64,
-        "map_source": "crawl",
+        "map_source": "bounded-structure",
         "warning": null,
         "urls": []
     });
@@ -147,7 +149,7 @@ fn parse_map_result_round_trips_via_serde() {
         pages_seen: 1,
         thin_pages: 0,
         elapsed_ms: 300,
-        map_source: "crawl".to_string(),
+        map_source: "bounded-structure".to_string(),
         warning: Some("low coverage".to_string()),
         urls: vec![
             "https://example.com/a".to_string(),
@@ -157,30 +159,6 @@ fn parse_map_result_round_trips_via_serde() {
     let v = serde_json::to_value(&original).unwrap();
     let parsed = parse_map_result(v).unwrap();
     assert_eq!(original, parsed);
-}
-
-#[tokio::test]
-async fn discover_rejects_private_ip_before_mapping() {
-    let err = discover(
-        &Config::default(),
-        "http://127.0.0.1/admin",
-        MapOptions {
-            limit: 0,
-            offset: 0,
-        },
-        None,
-    )
-    .await
-    .expect_err("private URL should be rejected");
-
-    assert!(
-        err.to_string().contains("invalid map url"),
-        "error should identify map URL validation, got: {err}"
-    );
-    assert!(
-        err.to_string().contains("blocked"),
-        "error should preserve SSRF blocker reason, got: {err}"
-    );
 }
 
 // ── source-pipeline routing (source-pipeline.md SourceRequest.intent=map) ──
@@ -193,6 +171,10 @@ fn build_map_request_sets_map_intent_no_embed_map_scope() {
     assert_eq!(request.intent, SourceIntent::Map);
     assert!(!request.embed, "map must never write vectors");
     assert_eq!(request.scope, Some(SourceScope::Map));
+    assert_eq!(
+        request.adapter, None,
+        "the resolver must select the adapter"
+    );
 }
 
 #[test]
@@ -232,13 +214,39 @@ fn unsupported_map_result_is_degraded_with_zero_urls_and_no_vectors() {
     assert!(result.warning.is_some());
 }
 
+#[test]
+fn failed_source_result_becomes_degraded_map_result_without_manifest_projection() {
+    let source_result = degraded_no_data_plane(
+        "https://example.com/docs",
+        SourceKind::Web,
+        adapter_ref("web"),
+        SourceScope::Map,
+    );
+
+    let result = source_result_map_failure("https://example.com/docs", &source_result);
+
+    assert_eq!(result.url, "https://example.com/docs");
+    assert_eq!(result.map_source, "unsupported");
+    assert_eq!(result.returned_url_count, 0);
+    assert_eq!(result.total, 0);
+    assert!(result.urls.is_empty());
+    assert!(
+        result
+            .warning
+            .as_deref()
+            .is_some_and(|warning| warning.contains("data plane")),
+        "warning should preserve source pipeline failure reason: {:?}",
+        result.warning
+    );
+}
+
 #[tokio::test]
 async fn discover_degrades_non_web_git_source_to_unsupported_result_without_crawling() {
     // Exercises the same branch `discover` takes internally, without paying
     // for the outer live-DNS `validate_url_with_dns` gate that a github.com
     // hostname would otherwise require network access for in this sandbox:
     // route the request directly and confirm the router-rejection path feeds
-    // `unsupported_map_result` rather than ever reaching `map_with_sitemap`.
+    // `unsupported_map_result` rather than ever reaching web URL discovery.
     let url = "https://github.com/jmagar/axon";
     let request = build_map_request(url);
     let err = resolve_source_route(&request).expect_err("git adapter has no map scope");

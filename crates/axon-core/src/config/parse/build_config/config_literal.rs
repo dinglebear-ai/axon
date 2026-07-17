@@ -39,7 +39,7 @@ pub(super) struct LiteralInputs<'a> {
 /// Top-level builder. Mirrors the original literal precisely; field population
 /// is delegated to `populate_*` helpers (each <120 lines per monolith policy).
 pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
-    warn_services_section_if_present(inputs.toml);
+    reject_removed_env_keys()?;
 
     // Resolve fallible inputs first so `?` short-circuits before we mutate `cfg`.
     let tei_url = resolve_tei_url(inputs.global, inputs.toml)?;
@@ -72,8 +72,6 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.url_glob = g.url_glob.clone();
     cfg.query = g.query.clone();
     cfg.search_limit = g.limit;
-    cfg.freshness = inputs.dispatched.freshness.clone();
-    cfg.fresh_action = inputs.dispatched.fresh_action.clone();
     cfg.retrieve_max_points = inputs.dispatched.retrieve_max_points;
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
@@ -107,7 +105,6 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.drop_thin_markdown = scrape.drop_thin_markdown.unwrap_or(true);
     cfg.discover_sitemaps = scrape.discover_sitemaps.unwrap_or(true);
     cfg.sitemap_since_days = scrape.sitemap_since_days.unwrap_or(0);
-    cfg.map_fallback = inputs.dispatched.map_fallback;
     cfg.endpoints_include_bundles = inputs.dispatched.endpoints_include_bundles;
     cfg.endpoints_first_party_only = inputs.dispatched.endpoints_first_party_only;
     cfg.endpoints_unique_only = inputs.dispatched.endpoints_unique_only;
@@ -130,11 +127,6 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
 fn populate_chrome_and_filtering(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.chrome_remote_url = env::var("AXON_CHROME_REMOTE_URL")
         .ok()
-        .or_else(|| {
-            inputs.toml.services.chrome_remote_url.clone().inspect(|_| {
-                warn_legacy_service_url("chrome-remote-url", "AXON_CHROME_REMOTE_URL");
-            })
-        })
         .map(normalize_local_service_url);
     cfg.chrome_proxy = env::var("AXON_CHROME_PROXY").ok();
     cfg.chrome_user_agent = env::var("AXON_CHROME_USER_AGENT")
@@ -157,7 +149,7 @@ fn populate_perf_and_credentials(
     let g = inputs.global;
     cfg.collection = inputs.collection.clone();
     cfg.embed = !g.skip_embed && !inputs.dispatched.scrape_no_embed;
-    cfg.mcp_embed_allowed_roots = env::var("AXON_MCP_EMBED_ALLOWED_ROOTS")
+    cfg.mcp_embed_allowed_roots = env::var("AXON_SOURCE_LOCAL_ALLOWED_ROOTS")
         .ok()
         .map(|raw| {
             raw.split(',')
@@ -236,8 +228,11 @@ fn populate_services_and_ask_basics(
 ) -> Result<(), String> {
     cfg.tei_url = tei_url;
     cfg.qdrant_url = qdrant_url;
-    cfg.llm_backend =
-        crate::llm::LlmBackendKind::parse(&non_empty_env("AXON_LLM_BACKEND").unwrap_or_default())?;
+    cfg.llm_backend = crate::llm::LlmBackendKind::parse(
+        &non_empty_env("AXON_LLM_BACKEND")
+            .or_else(|| non_empty_toml(inputs.toml.llm.backend.as_deref()))
+            .unwrap_or_default(),
+    )?;
     cfg.headless_gemini_model = non_empty_env("AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL")
         .or_else(|| non_empty_env("AXON_HEADLESS_GEMINI_MODEL"))
         .or_else(|| non_empty_toml(inputs.toml.llm.synthesis_gemini_model.as_deref()))
@@ -269,7 +264,6 @@ fn populate_services_and_ask_basics(
     cfg.openai_base_url = non_empty_env("AXON_OPENAI_BASE_URL").unwrap_or_default();
     cfg.openai_api_key = non_empty_env("AXON_OPENAI_API_KEY").unwrap_or_default();
     cfg.openai_model = non_empty_env("AXON_SYNTHESIS_OPENAI_MODEL")
-        .or_else(|| non_empty_env("AXON_OPENAI_MODEL"))
         .or_else(|| non_empty_toml(inputs.toml.llm.synthesis_openai_model.as_deref()))
         .unwrap_or_default();
     cfg.openai_chat_model = non_empty_env("AXON_CHAT_OPENAI_MODEL")
@@ -456,7 +450,6 @@ fn populate_misc(
     cfg.search_time_range = g.search_time_range.clone();
     cfg.since = g.since.clone();
     cfg.before = g.before.clone();
-    cfg.sources_by_schema_version = g.sources_by_schema_version;
     cfg.sources_domain = inputs.dispatched.sources_domain.clone();
     cfg.sources_domain_all = inputs.dispatched.sources_domain_all;
     cfg.domains_domain = inputs.dispatched.domains_domain.clone();
@@ -521,78 +514,59 @@ fn resolve_crawl_memory_abort_percent(inputs: &LiteralInputs<'_>) -> Option<f64>
     (percent.is_finite() && percent > 0.0).then_some(percent.clamp(1.0, 100.0))
 }
 
-fn resolve_tei_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
+fn resolve_tei_url(global: &GlobalArgs, _toml: &TomlConfig) -> Result<String, String> {
     Ok(normalize_local_service_url(
         global
             .tei_url
             .clone()
             .or_else(|| env::var("TEI_URL").ok())
-            .or_else(|| {
-                toml.services.tei_url.clone().inspect(|_| {
-                    warn_legacy_service_url("tei-url", "TEI_URL");
-                })
-            })
             .ok_or_else(|| {
-                "TEI_URL environment variable is required (or pass --tei-url). \
-                 Move legacy [services].tei-url to TEI_URL in .env."
-                    .to_string()
+                "TEI_URL environment variable is required (or pass --tei-url).".to_string()
             })?,
     ))
 }
 
-pub(super) fn resolve_qdrant_url(global: &GlobalArgs, toml: &TomlConfig) -> Result<String, String> {
+pub(super) fn resolve_qdrant_url(
+    global: &GlobalArgs,
+    _toml: &TomlConfig,
+) -> Result<String, String> {
     Ok(normalize_local_service_url(
         global
             .qdrant_url
             .clone()
             .or_else(|| env::var("QDRANT_URL").ok())
-            .or_else(|| {
-                toml.services.qdrant_url.clone().inspect(|_| {
-                    warn_legacy_service_url("qdrant-url", "QDRANT_URL");
-                })
-            })
             .ok_or_else(|| {
-                "QDRANT_URL environment variable is required (or pass --qdrant-url). \
-                 Move legacy [services].qdrant-url to QDRANT_URL in .env."
-                    .to_string()
+                "QDRANT_URL environment variable is required (or pass --qdrant-url).".to_string()
             })?,
     ))
 }
 
-/// Emit a one-time process warning for each `[services]` URL field present in
-/// config.toml. Guarded by a `OnceLock` so repeated Config builds (tests, sub-
-/// commands) only emit each message once per process.
-fn warn_services_section_if_present(toml: &TomlConfig) {
-    use std::sync::OnceLock;
-    static WARNED: OnceLock<()> = OnceLock::new();
-    // Skip if any field is absent — only warn when the stale [services] block exists.
-    let any_set = toml.services.qdrant_url.is_some()
-        || toml.services.tei_url.is_some()
-        || toml.services.chrome_remote_url.is_some();
-    if !any_set {
-        return;
+fn reject_removed_env_keys() -> Result<(), String> {
+    const REMOVED: &[(&str, &str)] = &[
+        (
+            "AXON_OPENAI_MODEL",
+            "use AXON_SYNTHESIS_OPENAI_MODEL instead",
+        ),
+        (
+            "AXON_MCP_EMBED_ALLOWED_ROOTS",
+            "use AXON_SOURCE_LOCAL_ALLOWED_ROOTS instead",
+        ),
+        (
+            "AXON_HNSW_EF_SEARCH_LEGACY",
+            "remove it; all supported collections use AXON_HNSW_EF_SEARCH or providers.vector.hnsw-ef",
+        ),
+    ];
+    let violations: Vec<String> = REMOVED
+        .iter()
+        .filter(|(key, _)| env::var_os(key).is_some())
+        .map(|(key, guidance)| format!("{key}: {guidance}"))
+        .collect();
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "removed environment variable(s) are set:\n{}\nRename or remove them in the live environment before restarting Axon; `axon setup config rewrite --dry-run` can preview the cleanup.",
+            violations.join("\n")
+        ))
     }
-    WARNED.get_or_init(|| {
-        if toml.services.qdrant_url.is_some() {
-            log_warn(
-                "[services] qdrant-url in config.toml is ignored; set QDRANT_URL in ~/.axon/.env instead",
-            );
-        }
-        if toml.services.tei_url.is_some() {
-            log_warn(
-                "[services] tei-url in config.toml is ignored; set TEI_URL in ~/.axon/.env instead",
-            );
-        }
-        if toml.services.chrome_remote_url.is_some() {
-            log_warn(
-                "[services] chrome-remote-url in config.toml is ignored; set AXON_CHROME_REMOTE_URL in ~/.axon/.env instead",
-            );
-        }
-    });
-}
-
-fn warn_legacy_service_url(toml_key: &str, env_key: &str) {
-    log_warn(&format!(
-        "[services].{toml_key} is deprecated and will be ignored in a future release; move it to {env_key} in .env"
-    ));
 }

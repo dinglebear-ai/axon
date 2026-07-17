@@ -15,7 +15,7 @@ Parity notes: This action page is missing from docs/reference/api-parity.md.
 <!-- END GENERATED ACTION SURFACES -->
 
 
-Suggest new documentation URLs to crawl. The command inspects already indexed URLs/domains, prompts an LLM for complementary crawl targets, then filters out already-indexed matches.
+Suggest new documentation URLs to index. The command inspects already indexed URLs/domains, prompts an LLM for complementary source targets, then filters out already-indexed matches.
 
 ## Synopsis
 
@@ -88,7 +88,7 @@ https://example.com/docs<TAB>Reason from model
 
 ## Notes
 
-- `suggest` requires existing indexed content. If collection is empty, it errors with `No indexed URLs found in Qdrant collection; run crawl/scrape first`.
+- `suggest` requires existing indexed content. If collection is empty, index a source first, for example with `axon <url> --scope docs` or `axon scrape <url>`.
 - Only absolute `http/https` suggestions are accepted.
 - Already-indexed URL variants are filtered out before final output.
 - Suggestion reasons are preserved through the vector suggestion parser, service layer, CLI JSON output, and MCP-facing service contract.

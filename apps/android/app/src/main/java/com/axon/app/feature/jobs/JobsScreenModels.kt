@@ -60,18 +60,14 @@ internal fun jobOverviewRows(
             progress = aggregateProgress,
             icon = iconForKind(kind),
             tone = when (kind) {
-                JobFamily.Crawl -> colors.accentPrimary
-                JobFamily.Embed -> colors.accentPink
+                JobFamily.Source -> colors.accentPrimary
                 JobFamily.Extract -> colors.orange
-                JobFamily.Ingest -> colors.accentStrong
             },
             drill = JobDrill.Kind(kind),
         )
     }
     return listOf(
-        row(JobFamily.Crawl),
-        row(JobFamily.Embed),
-        row(JobFamily.Ingest),
+        row(JobFamily.Source),
         row(JobFamily.Extract),
         JobOverviewRowModel(
             key = "watches",

@@ -6,7 +6,7 @@
 
 use axon_core::config::Config;
 use axon_core::ui::{accent, muted, primary};
-use axon_llm::LlmBackendKind;
+use axon_core::llm::LlmBackendKind;
 use axon_services::config as svc;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};

@@ -26,7 +26,7 @@ const ICON_PATHS = {
   command: '<path d="M15 6a3 3 0 1 1 3 3h-3V6Z"/><path d="M9 6a3 3 0 1 0-3 3h3V6Z"/><path d="M9 18a3 3 0 1 1-3-3h3v3Z"/><path d="M15 18a3 3 0 1 0 3-3h-3v3Z"/>',
   // operations
   scrape: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M5 3h9l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/>',
-  crawl: '<circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8.3 6h7.4"/>',
+  site: '<circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8 7.2 10.8 16M16 7.2 13.2 16M8.3 6h7.4"/>',
   map: '<path d="M4 5h16"/><path d="M4 5v14"/><path d="M8 10h12"/><path d="M8 10v9"/><path d="M12 15h8"/><circle cx="4" cy="5" r="1.4" fill="currentColor"/><circle cx="8" cy="10" r="1.4" fill="currentColor"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>',
   summarize: '<path d="M4 6h16"/><path d="M4 11h11"/><path d="M4 16h16"/><path d="M4 21h8"/>',
   ask: '<path d="M9.5 9a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.1 1-1.1 1.8v.5"/><circle cx="12" cy="17" r="0.6" fill="currentColor"/><circle cx="12" cy="12" r="9"/>',

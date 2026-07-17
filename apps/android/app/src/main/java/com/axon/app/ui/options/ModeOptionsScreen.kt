@@ -7,13 +7,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import com.axon.app.ui.operations.OperationMode
 import com.axon.app.ui.options.forms.AskOptionsForm
-import com.axon.app.ui.options.forms.CrawlOptionsForm
-import com.axon.app.ui.options.forms.IngestOptionsForm
 import com.axon.app.ui.options.forms.MapOptionsForm
 import com.axon.app.ui.options.forms.QueryOptionsForm
 import com.axon.app.ui.options.forms.ResearchOptionsForm
 import com.axon.app.ui.options.forms.ScrapeOptionsForm
 import com.axon.app.ui.options.forms.SearchWebOptionsForm
+import com.axon.app.ui.options.forms.SiteSourceOptionsForm
+import com.axon.app.ui.options.forms.SourceOptionsForm
 import com.axon.app.ui.options.forms.SummarizeOptionsForm
 
 /**
@@ -34,14 +34,14 @@ fun ModeOptionsScreen(mode: OperationMode) {
     }
 
     when (mode) {
-        OperationMode.Ask       -> AskOptionsForm()
-        OperationMode.Query     -> QueryOptionsForm()
+        OperationMode.Ask -> AskOptionsForm()
+        OperationMode.Query -> QueryOptionsForm()
         OperationMode.Summarize -> SummarizeOptionsForm()
-        OperationMode.Research  -> ResearchOptionsForm()
-        OperationMode.Scrape    -> ScrapeOptionsForm()
-        OperationMode.Crawl     -> CrawlOptionsForm()
-        OperationMode.Search    -> SearchWebOptionsForm()
-        OperationMode.Map       -> MapOptionsForm()
-        OperationMode.Ingest    -> IngestOptionsForm()
+        OperationMode.Research -> ResearchOptionsForm()
+        OperationMode.Scrape -> ScrapeOptionsForm()
+        OperationMode.SourceSite -> SiteSourceOptionsForm()
+        OperationMode.Search -> SearchWebOptionsForm()
+        OperationMode.Map -> MapOptionsForm()
+        OperationMode.Source -> SourceOptionsForm()
     }
 }

@@ -26,8 +26,7 @@ internal fun recentActivityRows(
         )
     }
 
-internal fun jobFamilyFromRecentKind(kind: String): JobFamily? =
-    JobFamily.entries.firstOrNull { it.name.equals(kind, ignoreCase = true) }
+internal fun jobFamilyFromRecentKind(kind: String): JobFamily? = JobFamily.entries.firstOrNull { it.name.equals(kind, ignoreCase = true) }
 
 private fun RecentJob.toSubmittedFallbackJob(kind: JobFamily): JobUi =
     JobUi(
@@ -35,7 +34,7 @@ private fun RecentJob.toSubmittedFallbackJob(kind: JobFamily): JobUi =
         id = jobId,
         status = "local-only",
         url = target,
-        sourceType = null,
+        sourceKind = null,
         target = target,
         errorText = "Latest server status unavailable",
         resultJson = null,

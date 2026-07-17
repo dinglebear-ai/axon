@@ -16,6 +16,23 @@ fn mcp_tool_plan(source: &str, scope: SourceScope) -> SourcePlan {
     )
 }
 
+fn authorize_call(plan: &mut SourcePlan, caller: Option<&str>) {
+    plan.request.metadata.insert(
+        "tool_execute_authorized".to_string(),
+        serde_json::json!(true),
+    );
+    plan.request.metadata.insert(
+        "tool_execution_policy".to_string(),
+        serde_json::json!({
+            "mcp_allowlist": ["labby/search"],
+            "mcp_caller_command": caller,
+            "env_allowlist": [],
+            "timeout_ms": 5_000,
+            "output_cap_bytes": 65_536,
+        }),
+    );
+}
+
 #[tokio::test]
 async fn mcp_tool_adapter_declares_tool_api_scopes() {
     let adapter = McpToolSourceAdapter::new();
@@ -92,6 +109,77 @@ async fn mcp_tool_adapter_api_scope_still_resolves_metadata_only() {
     assert_eq!(
         staged.data[0].metadata.0.get("tool_action"),
         Some(&serde_json::json!("metadata"))
+    );
+}
+
+#[tokio::test]
+async fn mcp_tool_adapter_call_scope_invokes_command_caller_once() {
+    let adapter = McpToolSourceAdapter::new();
+    let mut plan = mcp_tool_plan("mcp://labby/search", SourceScope::Api);
+    plan.request
+        .options
+        .values
+        .insert("execution_mode".to_string(), serde_json::json!("call"));
+    authorize_call(&mut plan, Some("/bin/echo"));
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    assert_eq!(acquisition.fetched_items[0].metadata["tool_action"], "call");
+    match &acquisition.fetched_items[0].content_ref {
+        ContentRef::InlineText { text } => {
+            assert!(text.contains("labby"));
+            assert!(text.contains("search"));
+        }
+        other => panic!("expected inline text content, got {other:?}"),
+    }
+
+    let staged = adapter.normalize(&plan, acquisition).await.unwrap();
+    assert_eq!(
+        staged.data[0].metadata.0.get("tool_action"),
+        Some(&serde_json::json!("call"))
+    );
+}
+
+#[tokio::test]
+async fn mcp_tool_adapter_call_requires_caller() {
+    let adapter = McpToolSourceAdapter::new();
+    let mut plan = mcp_tool_plan("mcp://labby/search", SourceScope::Api);
+    plan.request
+        .options
+        .values
+        .insert("execution_mode".to_string(), serde_json::json!("call"));
+    authorize_call(&mut plan, None);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let err = adapter.acquire(&plan, &diff).await.unwrap_err();
+    assert_eq!(err.code.0, "mcp.caller_missing");
+}
+
+#[tokio::test]
+async fn mcp_tool_adapter_accepts_router_shorthand() {
+    let adapter = McpToolSourceAdapter::new();
+    let plan = mcp_tool_plan("mcp:labby/search", SourceScope::Tool);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+
+    assert_eq!(
+        manifest.items[0].source_item_key,
+        SourceItemKey::from("labby/search")
+    );
+}
+
+#[tokio::test]
+async fn mcp_tool_adapter_accepts_router_canonical_tools_uri() {
+    let adapter = McpToolSourceAdapter::new();
+    let plan = mcp_tool_plan("mcp://labby/tools/search", SourceScope::Tool);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+
+    assert_eq!(
+        manifest.items[0].source_item_key,
+        SourceItemKey::from("labby/search")
     );
 }
 

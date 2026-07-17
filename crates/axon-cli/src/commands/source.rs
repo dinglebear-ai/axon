@@ -9,8 +9,8 @@
 //! MCP, and REST share one entrypoint.
 
 use axon_api::source::{
-    ContentRef, LifecycleStatus, ResponseMode, SourceIntent, SourceLimits, SourceRequest,
-    SourceResult, SourceScope,
+    ArtifactKind, ArtifactMode, ContentRef, LifecycleStatus, ResponseMode, SourceIntent,
+    SourceLimits, SourceRequest, SourceResult, SourceScope,
 };
 use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
@@ -39,6 +39,7 @@ pub(crate) async fn run_source_request(
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
 
     render_source_result(cfg, &result);
+    write_scrape_output_if_requested(cfg, service_context, &result).await?;
 
     // A degraded/failed result (unsupported input, no data plane, …) carries a
     // warning but no error — surface it as a nonzero exit for CLI callers.
@@ -83,6 +84,9 @@ pub(crate) fn build_source_request(
             max_depth: Some(0),
             ..SourceLimits::default()
         };
+        if cfg.output_path.is_some() {
+            request.output.artifact_mode = ArtifactMode::Always;
+        }
     } else if let Some(scope) = cfg.source_scope.as_deref() {
         request.scope = Some(parse_scope(scope)?);
     }
@@ -179,4 +183,57 @@ fn render_inline_source_content(result: &SourceResult) -> bool {
         }
         _ => false,
     }
+}
+
+async fn write_scrape_output_if_requested(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    result: &SourceResult,
+) -> Result<(), Box<dyn Error>> {
+    if cfg.command != CommandKind::Scrape {
+        return Ok(());
+    }
+    let Some(path) = cfg.output_path.as_ref() else {
+        return Ok(());
+    };
+
+    if let Some(ContentRef::InlineText { text }) = result
+        .inline
+        .as_ref()
+        .and_then(|inline| inline.content.as_ref())
+    {
+        axon_core::artifacts::atomic_write_explicit(path, text.as_bytes())
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+        return Ok(());
+    }
+
+    let artifact = result
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_kind == ArtifactKind::NormalizedContent)
+        .ok_or_else(|| "scrape completed without cleaned content to write".to_string())?;
+    let content =
+        axon_services::artifacts::artifact_content(service_context, artifact.artifact_id.clone())
+            .await
+            .map_err(|err| -> Box<dyn Error> {
+                format!(
+                    "failed to read scrape cleaned content artifact {}: {err}",
+                    artifact.artifact_id.0
+                )
+                .into()
+            })?;
+    let bytes = tokio::fs::read(&content.path)
+        .await
+        .map_err(|err| -> Box<dyn Error> {
+            format!(
+                "failed to read scrape cleaned content artifact {}: {err}",
+                artifact.artifact_id.0
+            )
+            .into()
+        })?;
+    axon_core::artifacts::atomic_write_explicit(path, &bytes)
+        .await
+        .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
+    Ok(())
 }

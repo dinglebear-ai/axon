@@ -23,7 +23,6 @@ class AppSmokeTest {
 
         compose.onNodeWithContentDescription("Jobs").performClick()
         compose.onNodeWithText("Jobs").assertIsDisplayed()
-        compose.onNodeWithText("Crawls").assertIsDisplayed()
 
         compose.onNodeWithContentDescription("Mgmt").performClick()
         compose.onNodeWithText("Config").assertIsDisplayed()

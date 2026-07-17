@@ -139,10 +139,10 @@ export function fileKind(name: string): FileKind {
   return "text";
 }
 
-/** Whether a file kind is worth offering an "Ingest" action for. Archives and
+/** Whether a file kind is worth offering an "Index" action for. Archives and
  * known-binary extensions are excluded — embedding a zip/image as text markdown
  * is not useful and the read path would reject non-UTF-8 content anyway. */
-export function isIngestable(name: string): boolean {
+export function isIndexable(name: string): boolean {
   const kind = fileKind(name);
   return kind !== "archive" && kind !== "binary";
 }

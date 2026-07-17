@@ -1,8 +1,6 @@
 use crate::config_snapshot::{
     apply_config_snapshot, apply_config_snapshot_for_container, config_snapshot_json,
-    decode_ingest_job_config, ingest_config_json,
 };
-use crate::ingest::IngestSource;
 use axon_core::config::Config;
 use axon_core::config::RenderMode;
 use std::path::PathBuf;
@@ -383,64 +381,4 @@ fn config_snapshot_rejects_invalid_llm_backend_values() {
         err.to_string().contains("invalid llm_backend"),
         "expected invalid backend error, got: {err}"
     );
-}
-
-#[test]
-fn ingest_config_snapshot_rejects_invalid_llm_backend_values() {
-    let worker = Config::test_default();
-    let config_json = r#"{
-        "version": 2,
-        "source": {
-            "source_type": "github",
-            "repo": "owner/repo",
-            "include_source": true
-        },
-        "config": {
-            "llm_backend": "openai-compatible"
-        }
-    }"#;
-
-    let err = decode_ingest_job_config(&worker, config_json).expect_err("invalid backend fails");
-
-    assert!(
-        err.to_string().contains("invalid llm_backend"),
-        "expected invalid backend error, got: {err}"
-    );
-}
-
-#[test]
-fn ingest_job_config_preserves_source_and_supports_legacy_rows() {
-    let mut submitted = Config::test_default();
-    submitted.collection = "submitted_collection".to_string();
-    let source = IngestSource::Github {
-        repo: "owner/repo".to_string(),
-        include_source: false,
-    };
-
-    let mut worker = Config::test_default();
-    worker.collection = "worker_collection".to_string();
-
-    let config_json = ingest_config_json(&submitted, &source).expect("encode ingest config");
-    let (decoded_source, effective) =
-        decode_ingest_job_config(&worker, &config_json).expect("decode ingest config");
-    assert!(matches!(
-        decoded_source,
-        IngestSource::Github {
-            ref repo,
-            include_source: false,
-        } if repo == "owner/repo"
-    ));
-    assert_eq!(effective.collection, "submitted_collection");
-
-    let legacy_json = serde_json::to_string(&source).expect("encode legacy source");
-    let (legacy_source, legacy_effective) =
-        decode_ingest_job_config(&worker, &legacy_json).expect("decode legacy ingest config");
-    assert!(matches!(
-        legacy_source,
-        IngestSource::Github {
-            ref repo,
-            include_source: false,
-        } if repo == "owner/repo"
-    ));
-    assert_eq!(legacy_effective.collection, "worker_collection");
 }

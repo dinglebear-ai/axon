@@ -39,9 +39,9 @@ class SearchWebViewModelTest {
             results = listOf(
                 SearchWebHitUi(title = "Tokio", url = "https://tokio.rs", snippet = "async runtime", score = 0.9),
             ),
-            crawlJobsEnqueued = 1,
-            crawlJobsSkipped = 0,
-            crawlJobs = emptyList(),
+            sourceJobsEnqueued = 1,
+            sourceJobsRejected = 0,
+            sourceJobs = emptyList(),
         )
         val vm = TestSearchWebViewModel(stub = Result.success(payload))
         vm.uiState.test {
@@ -51,7 +51,7 @@ class SearchWebViewModelTest {
             val ready = awaitItem() as Resource.Ready<SearchWebResultUi>
             assertEquals("rust async", ready.value.query)
             assertEquals(1, ready.value.results.size)
-            assertEquals(1, ready.value.crawlJobsEnqueued)
+            assertEquals(1, ready.value.sourceJobsEnqueued)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -59,7 +59,7 @@ class SearchWebViewModelTest {
     @Test fun `empty results still resolves as Ready with zero hits`() = runTest(dispatcher) {
         val payload = SearchWebResultUi(
             query = "no-hits", results = emptyList(),
-            crawlJobsEnqueued = 0, crawlJobsSkipped = 0, crawlJobs = emptyList(),
+            sourceJobsEnqueued = 0, sourceJobsRejected = 0, sourceJobs = emptyList(),
         )
         val vm = TestSearchWebViewModel(stub = Result.success(payload))
         vm.uiState.test {

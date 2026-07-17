@@ -26,6 +26,7 @@ use axon_vectors::store::FakeVectorStore;
 
 use crate::test_support::committed_generation_payload;
 
+use super::run::resolve_web_run;
 use super::{WebSourceIndexInput, index_web_source};
 
 fn job_id() -> JobId {
@@ -219,6 +220,45 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
     assert_eq!(generation.document_counts.published, 0);
     assert_eq!(embedder.calls().await.len(), 0);
     assert!(vectors.calls().await.is_empty());
+}
+
+#[test]
+fn map_scope_without_prefetched_urls_uses_adapter_discovery() {
+    let providers = Arc::new(FakeAdapterProviders::new());
+    let map_input = WebSourceIndexInput {
+        source: "https://example.com/docs".to_string(),
+        scope: SourceScope::Map,
+        map_urls: Vec::new(),
+        crawl_options: MetadataMap::new(),
+        output: OutputPolicy::default(),
+        collection: "axon-web-test".to_string(),
+        owner_id: "test-owner".to_string(),
+        job_id: job_id(),
+        auth_snapshot: None,
+        embedding_provider_id: ProviderId::new("fake-embedding"),
+        vector_provider_id: ProviderId::new("fake-vector"),
+        embedding_model: "fake-embedding".to_string(),
+        embedding_dimensions: 8,
+        attempt: 1,
+        embed: false,
+        fetch_provider: providers.clone(),
+        render_provider: providers,
+        artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+        event_store: None,
+    };
+
+    let run = resolve_web_run(&map_input).expect("map run");
+
+    assert_eq!(run.scope, SourceScope::Map);
+    assert!(
+        !run.plan
+            .route
+            .validated_options
+            .values
+            .contains_key("map_urls"),
+        "empty map_urls must not suppress adapter-owned web map discovery"
+    );
 }
 
 #[tokio::test]

@@ -85,6 +85,7 @@ fn resolve_edge_requires_both_endpoints_present() {
         edge_kind: "repo_has_docs".to_string(),
         from_stable_key: "r".to_string(),
         to_stable_key: "d".to_string(),
+        evidence_ids: vec!["ev".to_string()],
         properties: MetadataMap::new(),
     };
     let ev = vec![evidence("github_homepage", 0.9)];
@@ -96,6 +97,7 @@ fn resolve_edge_requires_both_endpoints_present() {
         edge_kind: "repo_has_docs".to_string(),
         from_stable_key: "r".to_string(),
         to_stable_key: "missing".to_string(),
+        evidence_ids: vec!["ev".to_string()],
         properties: MetadataMap::new(),
     };
     assert!(resolve_edge(&dangling, &nodes, &ev, 0.5).is_none());

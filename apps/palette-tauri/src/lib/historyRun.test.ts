@@ -73,14 +73,14 @@ describe("runStateFromHistory", () => {
       target: "https://example.invalid",
       status: 502,
       title: "Scrape URL failed",
-      subtitle: "POST /v1/scrape | HTTP 502",
+      subtitle: "POST /v1/sources | HTTP 502",
       text: "bad gateway",
       outputKind: "code",
       result: {
         ok: false,
         status: 502,
         method: "POST",
-        path: "/v1/scrape",
+        path: "/v1/sources",
         payload: { error: "bad gateway" },
       },
       when: "earlier",
@@ -91,10 +91,10 @@ describe("runStateFromHistory", () => {
     expect(replay).toMatchObject({
       kind: "error",
       title: "Scrape URL failed",
-      subtitle: "POST /v1/scrape | HTTP 502",
+      subtitle: "POST /v1/sources | HTTP 502",
       result: {
         status: 502,
-        path: "/v1/scrape",
+        path: "/v1/sources",
         payload: { error: "bad gateway" },
       },
     });

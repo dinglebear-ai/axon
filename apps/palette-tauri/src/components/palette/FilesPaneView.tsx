@@ -1,26 +1,36 @@
-import { ChevronRight, Columns2, Loader2, Plug, PlugZap, RefreshCw, Save, Sparkles, Upload } from "lucide-react";
+import {
+  ChevronRight,
+  Columns2,
+  Loader2,
+  Plug,
+  PlugZap,
+  RefreshCw,
+  Save,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import type { Ref } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
 import {
   breadcrumbSegments,
+  type DirListing,
   type FileContents,
   type FileEntry,
   type FilesPane,
   formatBytes,
   formatModified,
   isChecked,
-  isIngestable,
+  isIndexable,
   isMarkdownLike,
   type LoadState,
-  type DirListing,
 } from "@/lib/filesModel";
 import type { SftpConnectionProfile, SftpEntry } from "@/lib/sftpModel";
 import { AiEditPanel } from "./AiEditPanel";
 import { EntryIcon } from "./EntryIcon";
 import { SftpTreeSection, type SftpTreeSectionHandle } from "./SftpTreeSection";
 
-type IngestState =
+type IndexState =
   | { kind: "idle" }
   | { kind: "running" }
   | { kind: "done"; ok: boolean; message: string };
@@ -36,7 +46,7 @@ export function FilesPaneView({
   pane,
   listing,
   entries,
-  ingest,
+  indexState,
   isLeftPane,
   splitOpen,
   treeWidth,
@@ -59,7 +69,7 @@ export function FilesPaneView({
   onCancelEdit,
   onDraftChange,
   onSave,
-  onIngest,
+  onIndex,
   onSparkleToggle,
   onSparkleQueryChange,
   onSparkleSubmit,
@@ -69,7 +79,7 @@ export function FilesPaneView({
   pane: FilesPane;
   listing: LoadState<DirListing>;
   entries: FileEntry[];
-  ingest: IngestState;
+  indexState: IndexState;
   isLeftPane: boolean;
   splitOpen: boolean;
   treeWidth: number;
@@ -92,7 +102,7 @@ export function FilesPaneView({
   onCancelEdit: () => void;
   onDraftChange: (value: string) => void;
   onSave: () => void;
-  onIngest: () => void;
+  onIndex: () => void;
   onSparkleToggle: () => void;
   onSparkleQueryChange: (value: string) => void;
   onSparkleSubmit: () => void;
@@ -197,7 +207,7 @@ export function FilesPaneView({
                   <input
                     type="checkbox"
                     className="files-row-checkbox"
-                    aria-label="Select for bulk ingest"
+                    aria-label="Select for bulk indexing"
                     checked={isChecked(checked, entry.path)}
                     onClick={(event) => event.stopPropagation()}
                     onChange={() => onToggleChecked(entry.path)}
@@ -236,14 +246,14 @@ export function FilesPaneView({
               editing={pane.editing}
               draft={pane.draft}
               saving={pane.saving}
-              ingest={ingest}
-              canIngest={Boolean(client && config) && isIngestable(pane.selected.name)}
+              indexState={indexState}
+              canIndex={Boolean(client && config) && isIndexable(pane.selected.name)}
               canEdit={pane.selected.origin !== "sftp"}
               onEdit={() => onSetEditing(true)}
               onCancelEdit={onCancelEdit}
               onDraftChange={onDraftChange}
               onSave={onSave}
-              onIngest={onIngest}
+              onIndex={onIndex}
               sparkleOpen={pane.sparkleOpen}
               sparkleQuery={pane.sparkleQuery}
               proposal={pane.proposal}
@@ -269,14 +279,14 @@ function FilePreview({
   editing,
   draft,
   saving,
-  ingest,
-  canIngest,
+  indexState,
+  canIndex,
   canEdit,
   onEdit,
   onCancelEdit,
   onDraftChange,
   onSave,
-  onIngest,
+  onIndex,
   sparkleOpen,
   sparkleQuery,
   proposal,
@@ -294,8 +304,8 @@ function FilePreview({
   editing: boolean;
   draft: string;
   saving: boolean;
-  ingest: IngestState;
-  canIngest: boolean;
+  indexState: IndexState;
+  canIndex: boolean;
   /** SFTP is v1 read-only browsing: both the manual Edit button and the
    * "Edit with the model" sparkle button are hard-disabled (not rendered)
    * for any file whose pane resolves to an SFTP-origin entry. */
@@ -304,7 +314,7 @@ function FilePreview({
   onCancelEdit: () => void;
   onDraftChange: (value: string) => void;
   onSave: () => void;
-  onIngest: () => void;
+  onIndex: () => void;
   sparkleOpen: boolean;
   sparkleQuery: string;
   proposal: FilesPane["proposal"];
@@ -354,25 +364,25 @@ function FilePreview({
                   <Sparkles size={14} />
                 </Button>
               )}
-              {canIngest && (
+              {canIndex && (
                 <Button
                   variant="aurora"
                   size="sm"
                   type="button"
-                  onClick={onIngest}
-                  disabled={ingest.kind === "running"}
+                  onClick={onIndex}
+                  disabled={indexState.kind === "running"}
                 >
                   <Upload size={13} />
-                  {ingest.kind === "running" ? "Ingesting..." : "Ingest"}
+                  {indexState.kind === "running" ? "Indexing..." : "Index"}
                 </Button>
               )}
             </>
           )}
         </div>
       </div>
-      {ingest.kind === "done" && (
-        <div className={`files-ingest-status${ingest.ok ? "" : " files-ingest-status-error"}`}>
-          {ingest.message}
+      {indexState.kind === "done" && (
+        <div className={`files-index-status${indexState.ok ? "" : " files-index-status-error"}`}>
+          {indexState.message}
         </div>
       )}
       {editing ? (

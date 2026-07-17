@@ -55,6 +55,8 @@
 
 # Service endpoint URLs are intentionally not configured here.
 # Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL in ~/.axon/.env.
+# Local source requests from server transports are fail-closed unless their
+# resolved path is under AXON_SOURCE_LOCAL_ALLOWED_ROOTS (comma-separated).
 
 [sources.code-search]
 # Foreground freshness TTL before checking whether a Git checkout changed.
@@ -142,20 +144,6 @@
 # Env: AXON_MAX_JOB_ATTEMPTS
 # max-job-attempts = 5
 
-[jobs.freshness]
-# CLI-only `--fresh <Nd>` schedules on scrape/crawl/embed/ingest, run from
-# long-lived `axon serve` / `axon mcp` processes.
-# Env: AXON_FRESHNESS_TICK_SECS
-# tick-secs = 60
-# Env: AXON_FRESHNESS_LEASE_SECS
-# lease-secs = 1800
-# Env: AXON_FRESHNESS_MAX_DUE_PER_TICK
-# max-due-per-tick = 4
-# Env: AXON_FRESHNESS_MAX_CONCURRENT_RUNS
-# max-concurrent-runs = 2
-# Env: AXON_FRESHNESS_RUN_RETENTION_DAYS
-# run-retention-days = 90
-
 [providers.embedding]
 # This section is critical for avoiding embedding-pipeline bottlenecks.
 # Env: TEI_MAX_CLIENT_BATCH_SIZE
@@ -229,9 +217,6 @@
 # HNSW ef for named-mode (dense+sparse) collections (clamped 32–512).
 # Env: AXON_HNSW_EF_SEARCH
 # hnsw-ef = 128
-# HNSW ef for legacy unnamed-mode collections (clamped 16–256).
-# Env: AXON_HNSW_EF_SEARCH_LEGACY
-# hnsw-ef-legacy = 64
 # Maximum bytes stored in Qdrant `structured_blob` payload per chunk.
 # Env: AXON_STRUCTURED_DATA_MAX_BYTES. Default: 65536. Clamped 1024–16777216.
 # structured-data-max-bytes = 65536
@@ -259,8 +244,10 @@
 # quantization-always-ram = true
 
 [providers.llm]
+# Completion backend. AXON_LLM_BACKEND overrides this value.
+# backend = "gemini-headless"
 # Non-secret model names. Env vars still win.
-# Env: AXON_SYNTHESIS_OPENAI_MODEL or AXON_OPENAI_MODEL
+# Env: AXON_SYNTHESIS_OPENAI_MODEL
 # synthesis-openai-model = ""
 # Env: AXON_CHAT_OPENAI_MODEL
 # chat-openai-model = ""

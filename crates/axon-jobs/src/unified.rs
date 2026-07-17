@@ -11,6 +11,8 @@ use crate::boundary::{JobDeleteResult, JobStore, Result};
 mod control;
 #[path = "unified/control_helpers.rs"]
 mod control_helpers;
+#[path = "unified/event_ops.rs"]
+mod event_ops;
 #[path = "unified/heartbeat.rs"]
 mod heartbeat;
 #[path = "unified/observe.rs"]
@@ -18,7 +20,7 @@ mod observe;
 #[path = "unified/ops.rs"]
 mod ops;
 #[path = "unified/pagination.rs"]
-mod pagination;
+pub(crate) mod pagination;
 #[path = "unified/request_read.rs"]
 mod request_read;
 #[path = "unified/retention.rs"]

@@ -1,4 +1,3 @@
-use crate::commands::ingest_common;
 use crate::commands::source::{render_source_result, source_result_json};
 use axon_api::source::{LifecycleStatus, ResponseMode, SourceIntent, SourceRequest, SourceScope};
 use axon_core::config::Config;
@@ -12,10 +11,6 @@ pub async fn run_sessions(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    if ingest_common::maybe_handle_ingest_subcommand(cfg, service_context, "sessions").await? {
-        return Ok(());
-    }
-
     run_session_sources(cfg, service_context).await
 }
 

@@ -24,7 +24,7 @@
 //!
 //! ## The parent `Source` job is already terminal when these children attach
 //!
-//! Every per-family bridge (`git_source_job.rs`, `web_source_job.rs`, ...)
+//! Every source pipeline execution
 //! records its own `Source` job's terminal status (`Completed`/`Failed`)
 //! *before* [`index_source_with_auth`](super::index_source_with_auth) reaches
 //! the graph write and cleanup-debt drain — acquisition, embedding, and
@@ -49,7 +49,7 @@
 //!
 //! Reordering acquisition to defer the parent's terminal status until after
 //! graph/prune would require threading a "don't finalize yet" signal through
-//! all eight per-family bridges' internal progress sinks (each one calls its
+//! the source pipelines' internal progress sinks (each one calls its
 //! own multi-phase `record_phase`/equivalent deep inside its own pipeline,
 //! independently of `index_source_with_auth`), and would delay job-visible
 //! completion of the source index for what is otherwise pure post-publish
@@ -72,8 +72,7 @@ use super::prune::DebtDrainSummary;
 /// (degraded/system-triggered paths that never reach this call site with a
 /// real caller identity in practice, but the fallback must still fail
 /// closed). Carries **no** elevated scopes -- mirrors the
-/// `watch_auth_snapshot()` precedent in
-/// `axon_jobs::watch::job_tracking` -- instead of defaulting to
+/// the source-watch scheduler's no-elevation rule -- instead of defaulting to
 /// `AuthSnapshot::trusted_system`'s Read+Write+Admin grant, which would let
 /// an unauthenticated/no-scope caller's child job silently gain admin.
 fn no_scope_child_auth_snapshot() -> AuthSnapshot {

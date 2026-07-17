@@ -17,7 +17,7 @@ import { strField, unwrapPayload } from "./payload";
 // `chat` action (POST /v1/chat — "Direct LLM chat answer", no RAG
 // retrieval) rather than a new Rust-side LLM proxy command: `chat` already
 // routes through the same `executeAction`/`axon_http_request` path as
-// ingest, and the alternative (`/v1/ask`) is a RAG-search endpoint that
+// source indexing, and the alternative (`/v1/ask`) is a RAG-search endpoint that
 // would treat the file content as a search query instead of context to
 // transform — the wrong tool for "rewrite this file per this instruction."
 function resolveChatAction(): RemotePaletteAction | null {

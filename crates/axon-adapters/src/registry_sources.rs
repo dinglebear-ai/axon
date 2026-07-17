@@ -1,11 +1,9 @@
 //! Registry/package source adapter — npm/PyPI/crates.io-style package pages.
 //!
-//! Pure and unit-testable: reads a prepared registry metadata dump (local
-//! JSON, see [`dump::RegistryDump`]) from the `registry_dump_path` adapter
-//! option. It never calls a live registry API directly — fetching that dump
-//! from npm/PyPI/crates.io is the bridge's job, mirroring how `web`/`local`
-//! separate acquisition planning from the pure adapter logic.
+//! [`RegistrySourceAdapter::materialize`] owns target parsing, bounded registry
+//! API acquisition, and prepared-dump creation before discovery.
 
+mod acquire;
 pub mod dump;
 mod metadata;
 mod options;
@@ -18,6 +16,7 @@ use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
 use crate::manifest::item_identity;
 
+pub use self::acquire::{fetch_registry_dump, is_registry_target, parse_registry_target};
 use self::dump::{RegistryDump, RegistryDumpVersion};
 use self::metadata::{package_markdown, package_metadata, registry_document_id};
 use self::options::{RegistryOptions, validate_options};
@@ -32,6 +31,31 @@ pub struct RegistrySourceAdapter;
 impl RegistrySourceAdapter {
     pub fn new() -> Self {
         Self
+    }
+
+    pub async fn materialize(
+        &self,
+        mut plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_adapter(&plan)?;
+        let (registry, package) = parse_registry_target(&plan.request.source).map_err(|err| {
+            crate::acquisition::materialization_error("adapter.registry.target_invalid", err)
+        })?;
+        let (temporary, path) = acquire::fetch_registry_dump_to_temporary_file(&registry, &package)
+            .await
+            .map_err(|err| {
+                crate::acquisition::materialization_error(
+                    "adapter.registry.fetch_failed",
+                    err.to_string(),
+                )
+            })?;
+        plan.route.validated_options.values.insert(
+            "registry_dump_path".to_string(),
+            serde_json::json!(path.to_string_lossy()),
+        );
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
+        ))
     }
 }
 

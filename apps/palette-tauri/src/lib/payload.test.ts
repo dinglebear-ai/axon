@@ -51,7 +51,7 @@ describe("titleCase", () => {
   });
 
   it("treats / and - as word boundaries", () => {
-    expect(titleCase("crawl-list")).toBe("Crawl-List");
+    expect(titleCase("jobs-list")).toBe("Jobs-List");
     expect(titleCase("a/b")).toBe("A/B");
   });
 

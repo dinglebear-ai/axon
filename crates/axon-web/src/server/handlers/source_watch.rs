@@ -5,15 +5,16 @@
 //! `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]
 //! (`axon_source_watches`/`axon_source_watch_runs`, migration `0023`), matching
 //! `axon_api::source::{WatchRequest, WatchResult}`. `/v1/watches` covers
-//! create/list/get/update/pause/resume/delete/exec.
+//! create/list/get/status/update/pause/resume/delete/exec/history.
 //!
 //! `POST /v1/watches/{watch_id}/exec` (issue #298 REST contract) is the
 //! canonical replacement for the removed `POST /v1/watch/{id}/run`; it enqueues
 //! a source job and records that job in canonical watch history.
 
 use axon_api::source::{
-    AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility, WatchExecRequest, WatchId,
-    WatchListRequest, WatchRequest, WatchUpdateRequest,
+    AuthMode, AuthSnapshot, CallerContext, LifecycleStatus, TransportKind, Visibility,
+    WatchExecRequest, WatchHistoryRequest, WatchId, WatchListRequest, WatchRequest,
+    WatchUpdateRequest,
 };
 use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
@@ -48,6 +49,13 @@ pub(crate) struct WatchListQuery {
     adapter: Option<String>,
     limit: Option<u32>,
     cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, utoipa::IntoParams)]
+pub(crate) struct WatchHistoryQuery {
+    limit: Option<u32>,
+    cursor: Option<String>,
+    status: Option<LifecycleStatus>,
 }
 
 #[utoipa::path(
@@ -136,6 +144,46 @@ pub(crate) async fn get_watch(
 }
 
 #[utoipa::path(
+    get,
+    path = "/v1/watches/{watch_id}/status",
+    operation_id = "watches_status",
+    params(("watch_id" = String, Path, description = "Watch ID")),
+    responses(
+        (status = 200, description = "Watch status with latest source job summary", body = serde_json::Value),
+        (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Watch status unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
+pub(crate) async fn status_watch(
+    State((state, cfg)): State<WebState>,
+    Path(watch_id): Path<String>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let watch_id_typed = WatchId::new(watch_id.clone());
+    let store = open_store(&state, &cfg).await?;
+    let watch = watch_svc::SourceWatchStoreTrait::get(&store, watch_id_typed.clone())
+        .await
+        .map_err(HttpError::from_api_error)?
+        .ok_or_else(|| {
+            HttpError::new(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                format!("watch {watch_id} not found"),
+            )
+        })?;
+    let latest_job_summary = match watch.latest_job.as_ref() {
+        Some(job) => axon_services::jobs::unified_job_status(&state.service_context, job.job_id)
+            .await
+            .map_err(HttpError::from_box_send_sync)?,
+        None => None,
+    };
+    Ok(Json(json!({
+        "watch": watch,
+        "latest_job_summary": latest_job_summary,
+    })))
+}
+
+#[utoipa::path(
     post,
     path = "/v1/watches/{watch_id}/exec",
     operation_id = "watches_exec",
@@ -184,6 +232,57 @@ pub(crate) async fn exec_watch(
     .await
     .map_err(HttpError::from_box)?;
     Ok(Json(json!(descriptor)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/watches/{watch_id}/history",
+    operation_id = "watches_history",
+    params(("watch_id" = String, Path, description = "Watch ID"), WatchHistoryQuery),
+    responses(
+        (status = 200, description = "Watch execution history", body = serde_json::Value),
+        (status = 404, description = "Watch not found", body = crate::server::error::ErrorBody),
+        (status = 502, description = "Watch history lookup failed", body = crate::server::error::ErrorBody)
+    ),
+    tag = "watch"
+)]
+pub(crate) async fn history_watch(
+    State((state, cfg)): State<WebState>,
+    Path(watch_id): Path<String>,
+    Query(query): Query<WatchHistoryQuery>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    let watch_id_typed = WatchId::new(watch_id.clone());
+    let store = open_store(&state, &cfg).await?;
+    if watch_svc::SourceWatchStoreTrait::get(&store, watch_id_typed.clone())
+        .await
+        .map_err(HttpError::from_api_error)?
+        .is_none()
+    {
+        return Err(HttpError::new(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            format!("watch {watch_id} not found"),
+        ));
+    }
+
+    let pool = state.service_context.jobs.sqlite_pool();
+    let history = watch_svc::history_source_watch(
+        &cfg,
+        pool.as_deref(),
+        watch_history_request(watch_id_typed, query),
+    )
+    .await
+    .map_err(HttpError::from_box)?;
+    Ok(Json(json!(history)))
+}
+
+fn watch_history_request(watch_id: WatchId, query: WatchHistoryQuery) -> WatchHistoryRequest {
+    WatchHistoryRequest {
+        watch_id,
+        limit: query.limit,
+        cursor: query.cursor,
+        status: query.status,
+    }
 }
 
 fn auth_snapshot_from_context(auth: &AuthContext) -> AuthSnapshot {
@@ -331,3 +430,7 @@ pub(crate) async fn delete_watch(
     }
     Ok(Json(json!({ "watch_id": watch_id, "deleted": true })))
 }
+
+#[cfg(test)]
+#[path = "source_watch_tests.rs"]
+mod tests;

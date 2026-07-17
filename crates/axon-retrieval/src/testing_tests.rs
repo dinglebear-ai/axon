@@ -3,8 +3,9 @@ use std::sync::Arc;
 use axon_api::mcp_schema::AskRequest;
 use axon_api::source::{
     CapabilityBase, ChunkId, DocumentId, HealthStatus, MetadataMap, PublishGenerationRequest,
-    PublishGenerationResult, PublishPlan, RetrievalCapability, SourceGenerationId, SourceId,
-    SourceRange, StageCounts, StageResultHeader, Timestamp, Visibility,
+    PublishGenerationResult, PublishPlan, RedactionMetadata, RedactionStatus, RetrievalCapability,
+    SourceGenerationId, SourceId, SourceItemKey, SourceRange, StageCounts, StageResultHeader,
+    Timestamp, Visibility,
 };
 
 use crate::boundary::RetrievalEngine as BoundaryRetrievalEngine;
@@ -41,13 +42,25 @@ fn empty_range() -> SourceRange {
 fn sample_citation() -> Citation {
     Citation {
         source_id: SourceId::new("src-docs"),
+        source_item_key: SourceItemKey::new("chunk-a"),
+        generation: SourceGenerationId::new("1"),
         document_id: DocumentId::new("doc-chunk-a"),
         chunk_id: ChunkId::new("chunk-a"),
+        job_id: axon_api::source::JobId::new(uuid::Uuid::from_u128(1)),
         canonical_uri: "https://example.com/chunk-a".to_string(),
         range: SourceRange {
             line_start: Some(1),
             line_end: Some(3),
             ..empty_range()
+        },
+        redaction: RedactionMetadata {
+            redaction_status: RedactionStatus::Clean,
+            redaction_version: "2026-07-16".to_string(),
+            visibility: Visibility::Public,
+            redacted_field_count: 0,
+            dropped_field_count: 0,
+            detector_count: 0,
+            detector_names: Vec::new(),
         },
     }
 }
@@ -72,7 +85,7 @@ fn sample_result() -> RetrievalResult {
             generation: None,
             allowed_visibility: vec![Visibility::Public],
             namespace_filters: Vec::new(),
-            excluded_namespaces: Vec::new(),
+            excluded_source_kinds: Vec::new(),
             byte_budget: 4096,
             token_budget: 512,
         },
@@ -90,7 +103,7 @@ fn sample_request() -> RetrievalRequest {
         source_id: None,
         generation: None,
         namespace_filters: Vec::new(),
-        excluded_namespaces: Vec::new(),
+        excluded_source_kinds: Vec::new(),
         byte_budget: 4096,
         token_budget: 512,
     }

@@ -60,15 +60,3 @@ fn test_require_chrome_ok_when_set() {
     };
     assert!(require_chrome(&cfg).is_ok());
 }
-
-// --- format_screenshot_json ---
-
-#[test]
-fn test_json_output_format() {
-    let json = format_screenshot_json("https://example.com", "/tmp/out.png", 12345);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json).expect("output should be valid JSON");
-    assert_eq!(parsed["url"], "https://example.com");
-    assert_eq!(parsed["path"], "/tmp/out.png");
-    assert_eq!(parsed["size_bytes"], 12345);
-}

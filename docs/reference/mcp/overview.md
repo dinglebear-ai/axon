@@ -1,5 +1,5 @@
 # Axon MCP Server Guide
-Last Modified: 2026-07-14
+Last Modified: 2026-07-16
 
 `axon mcp` exposes Axon through one MCP tool named `axon`.
 
@@ -72,13 +72,15 @@ Grouped actions use `subaction`, for example:
 
 | Mode | Behavior |
 |---|---|
-| `path` | Write result to an artifact and return metadata. |
+| `artifact` | Persist the result and return metadata containing an opaque `artifact_id`. |
 | `inline` | Return content inline when allowed by size and visibility policy. |
-| `both` | Write an artifact and include inline content. |
+| `both` | Return an opaque artifact reference and include inline content. |
 | `auto_inline` | Inline small payloads; use artifact metadata for larger payloads. |
 
 `retrieve` is inline-first for document reading. Source indexing and heavier
-operations default to artifact/path-style responses.
+operations default to artifact-backed responses. MCP responses never expose a
+server filesystem path; follow the returned `artifact_id` through the artifact
+resource surface.
 
 ## Smoke Examples
 

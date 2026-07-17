@@ -2,35 +2,13 @@ use axon_core::config::Config;
 use axon_core::logging::log_done;
 use axon_core::ui::{Spinner, primary, print_option, print_phase};
 use axon_services::context::ServiceContext;
-use axon_services::map::discover as map_discover;
 use axon_services::types::MapOptions;
 use std::error::Error;
-
-/// Return the map result as a raw JSON value.
-///
-/// Exists for backward-compat with migration tests that assert JSON field
-/// shapes. Internally calls the typed service and serializes via serde.
-pub async fn map_payload(
-    cfg: &Config,
-    start_url: &str,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let result = map_discover(
-        cfg,
-        start_url,
-        MapOptions {
-            limit: 0,
-            offset: 0,
-        },
-        None,
-    )
-    .await?;
-    Ok(serde_json::to_value(&result)?)
-}
 
 pub async fn run_map(
     cfg: &Config,
     start_url: &str,
-    _service_context: &ServiceContext,
+    service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     if !cfg.json_output {
         print_phase("◐", "Mapping", start_url);
@@ -46,8 +24,8 @@ pub async fn run_map(
         Some(Spinner::new("mapping in progress"))
     };
 
-    let result = map_discover(
-        cfg,
+    let result = axon_services::map::discover_with_context(
+        service_context,
         start_url,
         MapOptions {
             limit: 0,

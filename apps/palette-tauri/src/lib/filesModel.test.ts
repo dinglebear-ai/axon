@@ -13,7 +13,7 @@ import {
   formatBytes,
   formatModified,
   isChecked,
-  isIngestable,
+  isIndexable,
   isMarkdownLike,
   joinSegments,
   parentPath,
@@ -109,13 +109,13 @@ describe("extensionOf / fileKind", () => {
   });
 });
 
-describe("isIngestable / isMarkdownLike", () => {
-  it("excludes archives and known binaries from ingest", () => {
-    expect(isIngestable("archive.zip")).toBe(false);
-    expect(isIngestable("photo.png")).toBe(false);
-    expect(isIngestable("main.rs")).toBe(true);
-    expect(isIngestable("README.md")).toBe(true);
-    expect(isIngestable("notes.txt")).toBe(true);
+describe("isIndexable / isMarkdownLike", () => {
+  it("excludes archives and known binaries from indexing", () => {
+    expect(isIndexable("archive.zip")).toBe(false);
+    expect(isIndexable("photo.png")).toBe(false);
+    expect(isIndexable("main.rs")).toBe(true);
+    expect(isIndexable("README.md")).toBe(true);
+    expect(isIndexable("notes.txt")).toBe(true);
   });
 
   it("flags only doc-like extensions as markdown-renderable", () => {

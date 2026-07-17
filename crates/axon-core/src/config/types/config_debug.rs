@@ -19,7 +19,6 @@ impl fmt::Debug for Config {
             .field("retrieve_max_points", &self.retrieve_max_points)
             .field("train_best_rank", &self.train_best_rank)
             .field("train_notes", &self.train_notes)
-            .field("freshness", &self.freshness)
             .field("max_pages", &self.max_pages)
             .field("max_depth", &self.max_depth)
             .field("include_subdomains", &self.include_subdomains)
@@ -47,7 +46,6 @@ impl fmt::Debug for Config {
             .field("drop_thin_markdown", &self.drop_thin_markdown)
             .field("discover_sitemaps", &self.discover_sitemaps)
             .field("sitemap_since_days", &self.sitemap_since_days)
-            .field("map_fallback", &self.map_fallback)
             .field("endpoints_include_bundles", &self.endpoints_include_bundles)
             .field(
                 "endpoints_first_party_only",
@@ -244,20 +242,6 @@ impl fmt::Debug for Config {
             .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
             .field("queue_summary_secs", &self.queue_summary_secs)
-            .field("freshness_tick_secs", &self.freshness_tick_secs)
-            .field("freshness_lease_secs", &self.freshness_lease_secs)
-            .field(
-                "freshness_max_due_per_tick",
-                &self.freshness_max_due_per_tick,
-            )
-            .field(
-                "freshness_max_concurrent_runs",
-                &self.freshness_max_concurrent_runs,
-            )
-            .field(
-                "freshness_run_retention_days",
-                &self.freshness_run_retention_days,
-            )
             .field("qdrant_point_buffer", &self.qdrant_point_buffer)
             .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
             .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)

@@ -430,7 +430,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:c27557d30d13b7322aa6fe75e6fc1c761e4e421829245dbb25172983e063b993",
+        "checksum": "sha256:acd46422e9d9e129b9612dfd7b87319d6d4af1de6be9c24472cb0e7a8e7acb4d",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/configuration/config-contract.md"
       },

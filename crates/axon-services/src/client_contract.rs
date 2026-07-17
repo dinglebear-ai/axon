@@ -110,7 +110,7 @@ impl From<RestExtractMode> for ClientExtractMode {
 //   DTO if `chat` gains MCP/CLI parity, otherwise leave as REST-only.
 //
 // Rule (1) dead-route compat DTOs (`RestCrawlRequest`, `RestScrapeRequest`,
-// `RestEmbedRequest`, `RestIngestRequest`, `RestIngestSourceType`) were
+// `RestEmbedRequest`) were
 // deleted in a prior pass of this cleanup; they never appeared in
 // `docs/reference/api/schemas.json` (regen was not required for that step).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]

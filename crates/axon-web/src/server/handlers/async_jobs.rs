@@ -1,17 +1,14 @@
-use axon_api::source::JobKind;
 use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
 use axon_authz::VisibilityPolicy;
 use axon_core::config::Config;
 use axon_services as services;
 use axon_services::client_contract::{RestExtractMode, RestExtractRequest as ExtractStartRequest};
-use axon_services::context::ServiceContext;
 use axon_services::transport::{ExtractTransportOverrides, apply_extract_overrides};
 use axum::{
-    Extension, Json, Router,
+    Extension, Json,
     extract::State,
     http::{StatusCode, header},
     response::IntoResponse,
-    routing::post,
 };
 use lab_auth::AuthContext;
 use serde::Serialize;
@@ -19,24 +16,12 @@ use std::sync::Arc;
 
 use super::super::error::HttpError;
 use super::super::state::AppState;
-use super::jobs::job_lifecycle_router;
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub(crate) struct AcceptedJob {
     job_id: String,
     status: &'static str,
     status_url: String,
-}
-
-type WebState = (AppState, Arc<Config>);
-
-pub(crate) fn extract_router(service_context: Arc<ServiceContext>) -> Router<WebState> {
-    Router::new()
-        .route("/", post(start_extract))
-        .merge(job_lifecycle_router::<WebState>(
-            service_context,
-            JobKind::Extract,
-        ))
 }
 
 /// Validate URLs for SSRF before enqueue — rejects private-IP targets with
@@ -123,11 +108,11 @@ pub(crate) async fn start_extract(
     )
     .await
     .map_err(HttpError::from_box)?;
-    accepted_job("/v1/extract", outcome.result.job_id)
+    accepted_job(outcome.result.job_id)
 }
 
-fn accepted_job(base: &str, job_id: String) -> Result<impl IntoResponse, HttpError> {
-    let status_url = format!("{base}/{job_id}");
+fn accepted_job(job_id: String) -> Result<impl IntoResponse, HttpError> {
+    let status_url = format!("/v1/jobs/{job_id}");
     Ok((
         StatusCode::ACCEPTED,
         [(header::LOCATION, status_url.clone())],

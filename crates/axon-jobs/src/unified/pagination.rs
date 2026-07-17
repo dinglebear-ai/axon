@@ -12,6 +12,20 @@ pub struct EventCursor {
     pub sequence: u64,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct WatchCursor {
+    pub created_at: i64,
+    pub watch_id: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct WatchHistoryCursor {
+    pub created_at: i64,
+    pub run_id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<String>,
+}
+
 pub fn encode_job_cursor(cursor: &JobCursor) -> String {
     encode(cursor)
 }
@@ -25,6 +39,22 @@ pub fn encode_event_cursor(cursor: &EventCursor) -> String {
 }
 
 pub fn decode_event_cursor(cursor: &str) -> Result<EventCursor, String> {
+    decode(cursor)
+}
+
+pub fn encode_watch_cursor(cursor: &WatchCursor) -> String {
+    encode(cursor)
+}
+
+pub fn decode_watch_cursor(cursor: &str) -> Result<WatchCursor, String> {
+    decode(cursor)
+}
+
+pub fn encode_watch_history_cursor(cursor: &WatchHistoryCursor) -> String {
+    encode(cursor)
+}
+
+pub fn decode_watch_history_cursor(cursor: &str) -> Result<WatchHistoryCursor, String> {
     decode(cursor)
 }
 

@@ -32,16 +32,16 @@ class RecentJobsRepositoryTest {
     }
 
     @Test fun `add then read returns the persisted entry`() = runBlocking {
-        repo.add(RecentJob("j1", "ingest", "github.com/o/r", 100L))
+        repo.add(RecentJob("j1", "source", "github.com/o/r", 100L))
         val items = repo.recent.first()
         assertEquals(1, items.size)
         assertEquals("j1", items[0].jobId)
-        assertEquals("ingest", items[0].kind)
+        assertEquals("source", items[0].kind)
     }
 
     @Test fun `add dedupes by jobId — re-submitting same job replaces in place`() = runBlocking {
-        repo.add(RecentJob("j1", "ingest", "t1", 100L))
-        repo.add(RecentJob("j1", "ingest", "t1-renamed", 200L))
+        repo.add(RecentJob("j1", "source", "t1", 100L))
+        repo.add(RecentJob("j1", "source", "t1-renamed", 200L))
         val items = repo.recent.first()
         assertEquals("expected single entry after dedup", 1, items.size)
         // The newer submittedAt + target win because the entry is replaced.
@@ -54,7 +54,7 @@ class RecentJobsRepositoryTest {
         // Insert 105 distinct jobs; only the 100 most-recently-added survive.
         // Newest entries have the highest submittedAt — they should win.
         repeat(105) { i ->
-            repo.add(RecentJob(jobId = "j$i", kind = "crawl", target = "t$i", submittedAt = i.toLong()))
+            repo.add(RecentJob(jobId = "j$i", kind = "source", target = "t$i", submittedAt = i.toLong()))
         }
         val items = repo.recent.first()
         assertEquals(100, items.size)
@@ -64,8 +64,8 @@ class RecentJobsRepositoryTest {
     }
 
     @Test fun `forget removes the entry by jobId`() = runBlocking {
-        repo.add(RecentJob("j1", "ingest", "t1", 100L))
-        repo.add(RecentJob("j2", "crawl", "t2", 200L))
+        repo.add(RecentJob("j1", "source", "t1", 100L))
+        repo.add(RecentJob("j2", "source", "t2", 200L))
         repo.forget("j1")
         val items = repo.recent.first()
         assertEquals(listOf("j2"), items.map { it.jobId })

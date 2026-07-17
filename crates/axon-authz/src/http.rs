@@ -78,8 +78,7 @@ impl AxonScope {
 /// This is the source-surface mapping used by the REST auth tests; the MCP
 /// server maintains its own `MCP_ACTION_SPECS` table. It is keyed on the
 /// unified source surface (`sources`, `resolve`, `watch`, `prune`, `reset`,
-/// retrieval, and tool/local execution) rather than the removed legacy verbs
-/// (`crawl`/`scrape`/`embed`/`ingest`/`extract`), which fold into `sources`.
+/// retrieval, and tool/local execution).
 pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'static str> {
     let scope = match action {
         "help" => return None,
@@ -98,7 +97,7 @@ pub fn scope_for_action(action: &str, subaction: Option<&str>) -> Option<&'stati
         "source" | "watch" | "memory" | "summarize" | "endpoints" | "brand" | "diff"
         | "screenshot" | "extract" | "upload" => AxonScope::Write,
         // Admin surface: destructive/prune/reset/provider config.
-        "prune" | "reset" | "dedupe" | "purge" | "migrate" => AxonScope::Admin,
+        "prune" | "reset" | "migrate" => AxonScope::Admin,
         // Tool-execution sources (CLI/MCP tool adapters) require `axon:execute`.
         "cli_tool" | "mcp_tool" | "exec" => AxonScope::Execute,
         // Local filesystem sources require `axon:local`.

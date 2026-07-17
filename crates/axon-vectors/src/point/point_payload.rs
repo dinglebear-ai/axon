@@ -26,6 +26,33 @@ pub(crate) fn build_payload(
     model: &str,
     context: &VectorPointBatchBuildContext,
 ) -> Result<MetadataMap, VectorPointBatchBuildError> {
+    let mut metadata = source_metadata(collection, document, chunk, point_id)?;
+    insert_chunk_metadata(&mut metadata, document, chunk);
+    insert_embedding_metadata(
+        &mut metadata,
+        collection,
+        batch_id,
+        job_id,
+        provider_id,
+        model,
+        context,
+    );
+
+    let metadata = apply_redaction(metadata, chunk);
+    VectorPayload::try_from_metadata(metadata)
+        .map(|payload| payload.into_metadata())
+        .map_err(|source| VectorPointBatchBuildError::Payload {
+            chunk_id: chunk.chunk_id.clone(),
+            source,
+        })
+}
+
+fn source_metadata(
+    collection: &CollectionSpec,
+    document: &PreparedDocument,
+    chunk: &PreparedChunk,
+    point_id: &VectorPointId,
+) -> Result<MetadataMap, VectorPointBatchBuildError> {
     let mut metadata = document.metadata.clone();
     metadata.remove("embedding_batch_id");
     metadata.remove("embedding_provider_id");
@@ -76,6 +103,14 @@ pub(crate) fn build_payload(
     );
     metadata.insert("committed_generation".to_string(), serde_json::Value::Null);
     metadata.insert("document_id".to_string(), json!(document.document_id.0));
+    Ok(metadata)
+}
+
+fn insert_chunk_metadata(
+    metadata: &mut MetadataMap,
+    document: &PreparedDocument,
+    chunk: &PreparedChunk,
+) {
     metadata.insert("chunk_id".to_string(), json!(chunk.chunk_id.0));
     metadata.insert("chunk_key".to_string(), json!(chunk.chunk_key));
     metadata.insert("chunk_index".to_string(), json!(chunk.chunk_index));
@@ -98,6 +133,14 @@ pub(crate) fn build_payload(
     );
     metadata.insert("chunk_text".to_string(), json!(chunk.content));
     metadata.insert("content_kind".to_string(), json!(chunk.content_kind));
+    metadata.insert("chunk_content_kind".to_string(), json!(chunk.content_kind));
+    if let Some(title) = chunk
+        .title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+    {
+        metadata.insert("chunk_title".to_string(), json!(title));
+    }
     metadata.insert(
         "chunk_locator".to_string(),
         chunk_locator_json(&chunk.chunk_locator),
@@ -106,7 +149,19 @@ pub(crate) fn build_payload(
         "source_range".to_string(),
         source_range_json(&chunk.source_range),
     );
-    insert_default_string(&mut metadata, "visibility", "internal");
+    insert_default_string(metadata, "visibility", "internal");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_embedding_metadata(
+    metadata: &mut MetadataMap,
+    collection: &CollectionSpec,
+    batch_id: &BatchId,
+    job_id: &JobId,
+    provider_id: &ProviderId,
+    model: &str,
+    context: &VectorPointBatchBuildContext,
+) {
     metadata.insert("job_id".to_string(), json!(job_id.0.to_string()));
     metadata.insert(
         "embedding_batch_id".to_string(),
@@ -135,17 +190,6 @@ pub(crate) fn build_payload(
         json!(context.embedded_at.0.clone()),
     );
     metadata.insert("vector_namespace".to_string(), json!(collection.dense.name));
-
-    // Run the contract Redactor over the assembled metadata and stamp an
-    // accurate `redaction_status` (`clean` vs `redacted`) BEFORE validation.
-    let metadata = apply_redaction(metadata, chunk);
-
-    VectorPayload::try_from_metadata(metadata)
-        .map(|payload| payload.into_metadata())
-        .map_err(|source| VectorPointBatchBuildError::Payload {
-            chunk_id: chunk.chunk_id.clone(),
-            source,
-        })
 }
 
 /// Only embedding-pipeline profile in use today: every vector point is a
@@ -153,13 +197,5 @@ pub(crate) fn build_payload(
 /// profile would add a second constant here, not repurpose this one.
 const DEFAULT_EMBEDDING_PROFILE: &str = "document";
 
-const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] = &[
-    "chunking_profile",
-    "chunking_method",
-    "preparer_version",
-    // Parser provenance stamped by axon-document's parse bridge. Kept as a
-    // preparer-internal diagnostic (like `chunking_profile`) rather than a
-    // strict vector-payload field, so it does not expand the payload contract.
-    "parser_id",
-    "parser_version",
-];
+const PREPARER_INTERNAL_CHUNK_METADATA: &[&str] =
+    &["chunking_profile", "chunking_method", "preparer_version"];

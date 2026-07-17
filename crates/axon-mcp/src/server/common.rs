@@ -6,7 +6,6 @@ use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_services::transport;
 use axon_services::types::ServiceTimeRange;
 use rmcp::ErrorData;
-use uuid::Uuid;
 
 // Re-export artifact helpers that are imported by multiple handler modules.
 pub(super) use super::artifacts::InlineHint;
@@ -27,6 +26,9 @@ tokio::task_local! {
     /// trait methods). Task-locals are per-async-task, so concurrent MCP
     /// calls on the shared `AxonMcpServer` never observe each other's value.
     pub(super) static CURRENT_PRUNE_AUTHZ: axon_services::prune::PruneAuthz;
+
+    /// Caller-derived authorization for destructive reset execution.
+    pub(super) static CURRENT_RESET_AUTHZ: axon_services::reset::ResetAuthz;
 
     /// The [`axon_services::memory::MemoryAuthz`] resolved for the in-flight
     /// `axon` tool call, when the action is `memory`.
@@ -49,7 +51,7 @@ tokio::task_local! {
     ///
     /// Same task-local seam as `CURRENT_PRUNE_AUTHZ` above: resolved once in
     /// `call_tool`'s scope gate, then read by job-submission handlers
-    /// (`extract.start`, and any future MCP-side crawl/embed/ingest starts)
+    /// such as `extract.start` and future source-backed starts
     /// so the `auth_snapshot` recorded on the unified job row reflects the
     /// real MCP caller instead of an unconditional `trusted_system` fallback.
     pub(super) static CURRENT_CALLER_AUTH_SNAPSHOT: Option<axon_api::source::AuthSnapshot>;
@@ -138,13 +140,6 @@ pub(super) fn validate_mcp_collection(collection: &str) -> Result<String, ErrorD
     axon_core::config::validate_collection_name(collection)
         .map_err(|reason| invalid_params(format!("invalid collection name: {reason}")))?;
     Ok(collection.to_string())
-}
-
-// --- Param parsers ---
-
-pub(super) fn parse_job_id(job_id: Option<&str>) -> Result<Uuid, ErrorData> {
-    let raw = job_id.ok_or_else(|| invalid_params("job_id is required for this subaction"))?;
-    Uuid::parse_str(raw).map_err(|e| invalid_params(format!("invalid job_id: {e}")))
 }
 
 pub use transport::{pagination as to_pagination, retrieve_options as to_retrieve_options};

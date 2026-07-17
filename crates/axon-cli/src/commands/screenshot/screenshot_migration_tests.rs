@@ -3,12 +3,13 @@
 //! These tests document the stable contracts that MUST survive the
 //! CDP → Spider screenshot migration:
 //!   1. Chrome requirement produces a clear error
-//!   2. JSON output has exactly {url, path, size_bytes}
+//!   2. JSON output exposes an opaque artifact identifier, never a path
 //!   3. Filename sanitization is deterministic
 //!
 //! All tests exercise pure functions — no Chrome, no network.
 
-use super::util::{format_screenshot_json, require_chrome, url_to_screenshot_filename};
+use super::util::{require_chrome, url_to_screenshot_filename};
+use axon_api::source::{ArtifactId, Timestamp};
 use axon_core::config::Config;
 use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
 
@@ -37,29 +38,22 @@ fn screenshot_requires_chrome_remote_url() {
 
 #[test]
 fn screenshot_json_contract_is_stable() {
-    let json_str = format_screenshot_json("https://example.com/page", "/tmp/shot.png", 42000);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_str).expect("must produce valid JSON");
+    let parsed = serde_json::to_value(axon_services::types::ScreenshotResult {
+        artifact_id: ArtifactId::new("art_screenshot_123"),
+        width: 1280,
+        height: 720,
+        captured_at: Timestamp("2026-07-16T00:00:00Z".to_string()),
+        warnings: Vec::new(),
+    })
+    .expect("must produce valid JSON");
 
     let obj = parsed.as_object().expect("top-level must be an object");
 
-    // Exactly three keys — no more, no less.
-    assert_eq!(
-        obj.len(),
-        3,
-        "JSON contract must have exactly 3 keys, got: {:?}",
-        obj.keys().collect::<Vec<_>>()
-    );
-
-    // Required keys with correct types.
-    assert!(obj["url"].is_string(), "url must be a string");
-    assert!(obj["path"].is_string(), "path must be a string");
-    assert!(obj["size_bytes"].is_number(), "size_bytes must be a number");
-
-    // Values pass through unchanged.
-    assert_eq!(obj["url"], "https://example.com/page");
-    assert_eq!(obj["path"], "/tmp/shot.png");
-    assert_eq!(obj["size_bytes"], 42000);
+    assert_eq!(obj.len(), 5);
+    assert_eq!(obj["artifact_id"], "art_screenshot_123");
+    assert!(obj.get("path").is_none());
+    assert!(obj.get("relative_path").is_none());
+    assert!(obj.get("display_path").is_none());
 }
 
 // ── 3. Filename sanitization ────────────────────────────────────────

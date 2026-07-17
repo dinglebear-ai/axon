@@ -134,6 +134,12 @@ impl GraphStore for FakeGraphStore {
                     "{}:{}:{}",
                     edge.edge_kind, from_node_id.0, to_node_id.0
                 ));
+                let edge_evidence = candidate
+                    .evidence
+                    .iter()
+                    .filter(|evidence| edge.evidence_ids.contains(&evidence.evidence_id))
+                    .cloned()
+                    .collect();
                 let new_edge = GraphEdge {
                     edge_id: edge_id.clone(),
                     kind: edge.edge_kind,
@@ -141,7 +147,7 @@ impl GraphStore for FakeGraphStore {
                     to_node_id,
                     authority: AuthorityLevel::Inferred,
                     confidence: candidate.confidence,
-                    evidence: candidate.evidence.clone(),
+                    evidence: edge_evidence,
                     metadata: edge.properties,
                 };
 

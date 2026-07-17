@@ -1,7 +1,9 @@
 use super::super::error::HttpError;
 use axon_core::config::Config;
-use axon_llm::{self as llm, CompletionRequest, LlmModelPurpose};
+use axon_llm::{CompletionRequest, LlmModelPurpose};
 use axon_services::client_contract::{RestChatRequest, RestChatResponse};
+use axon_services::context::ServiceContext;
+use axon_services::service_traits::{AskService, AskServiceImpl};
 use axum::{Extension, Json, http::StatusCode, response::IntoResponse};
 use std::sync::Arc;
 
@@ -38,20 +40,24 @@ pub(super) fn completion_request(cfg: &Config, message: &str, stream: bool) -> C
     tag = "rag"
 )]
 pub async fn v1_chat(
-    Extension(cfg): Extension<Arc<Config>>,
+    Extension(context): Extension<Arc<ServiceContext>>,
     Json(req): Json<RestChatRequest>,
 ) -> impl IntoResponse {
     if let Err(err) = validate_chat_message(&req.message) {
         return err.into_response();
     }
 
-    let request = completion_request(&cfg, &req.message, false);
-    let model = request.model.clone();
-    match llm::complete_text(request).await {
+    match AskServiceImpl::new(context)
+        .chat(axon_services::service_traits::ask_service::ChatRequest {
+            session_id: None,
+            message: req.message.clone(),
+        })
+        .await
+    {
         Ok(completion) => Json(RestChatResponse {
             message: req.message,
-            answer: completion.text,
-            model,
+            answer: completion.reply,
+            model: completion.model,
         })
         .into_response(),
         Err(err) => {

@@ -172,9 +172,10 @@ async fn fake_job_store_rejects_illegal_state_machine_edges_without_mutating_sta
 }
 
 #[tokio::test]
-async fn fake_job_store_filters_lists_and_rejects_cursors() {
+async fn fake_job_store_filters_and_cursor_paginates_lists() {
     let store = FakeJobWatchStore::new();
     let job = JobStore::create(&store, job_create()).await.unwrap();
+    let other = JobStore::create(&store, job_create()).await.unwrap();
     let listed = JobStore::list(
         &store,
         JobListRequest {
@@ -188,10 +189,28 @@ async fn fake_job_store_filters_lists_and_rejects_cursors() {
     )
     .await
     .unwrap();
-    assert_eq!(listed.total, Some(1));
-    assert_eq!(listed.items[0].job_id, job.job_id);
+    assert_eq!(listed.total, Some(2));
+    assert!(listed.next_cursor.is_some());
+    let second = JobStore::list(
+        &store,
+        JobListRequest {
+            status: Some(LifecycleStatus::Queued),
+            kind: Some(JobKind::Source),
+            source_id: None,
+            watch_id: None,
+            limit: Some(1),
+            cursor: listed.next_cursor,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(second.total, None);
+    assert_eq!(second.next_cursor, None);
+    let returned = [listed.items[0].job_id, second.items[0].job_id];
+    assert!(returned.contains(&job.job_id));
+    assert!(returned.contains(&other.job_id));
 
-    let err = JobStore::list(
+    let invalid = JobStore::list(
         &store,
         JobListRequest {
             status: None,
@@ -204,7 +223,7 @@ async fn fake_job_store_filters_lists_and_rejects_cursors() {
     )
     .await
     .unwrap_err();
-    assert_eq!(err.code.to_string(), "job.cursor_unsupported");
+    assert_eq!(invalid.code.to_string(), "job.cursor_invalid");
 }
 
 #[tokio::test]

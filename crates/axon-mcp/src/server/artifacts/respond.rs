@@ -1,7 +1,9 @@
 use super::super::common::internal_error;
-use super::path::{artifact_handle_for_path, build_artifact_path};
+use super::path::ensure_artifact_root;
 use super::shape::{clip_inline_json, json_shape_preview, line_count, sha256_hex};
 use crate::schema::{AxonToolResponse, ResponseMode};
+use axon_api::source::{ArtifactKind, JobId, MetadataMap};
+use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_core::env::env_usize_clamped;
 use rmcp::ErrorData;
 use uuid::Uuid;
@@ -28,26 +30,6 @@ pub async fn write_json_artifact(
     payload: &serde_json::Value,
 ) -> Result<serde_json::Value, ErrorData> {
     let text = serde_json::to_string_pretty(payload).map_err(|e| internal_error(e.to_string()))?;
-    let path = build_artifact_path(stem, "json").await?;
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| internal_error(format!("failed to create artifact directory: {e}")))?;
-    }
-
-    // Write to a sibling temp file first, then rename atomically.
-    let tmp_path = path.with_extension(format!("json.{}.tmp", Uuid::new_v4().simple()));
-    tokio::fs::write(&tmp_path, text.as_bytes())
-        .await
-        .map_err(|e| internal_error(format!("failed to write artifact temp file: {e}")))?;
-    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
-        let tmp = tmp_path.clone();
-        tokio::spawn(async move {
-            let _ = tokio::fs::remove_file(tmp).await;
-        });
-        internal_error(format!("failed to finalize artifact file: {e}"))
-    })?;
-
     let job_id = payload
         .get("job_id")
         .and_then(|value| value.as_str())
@@ -57,7 +39,17 @@ pub async fn write_json_artifact(
                 .and_then(|job| job.get("id"))
                 .and_then(|value| value.as_str())
         })
-        .map(ToString::to_string);
+        .and_then(|value| match Uuid::parse_str(value) {
+            Ok(id) => Some(id),
+            Err(_) => {
+                // A non-UUID job id would silently unlink this response
+                // artifact from `artifacts list --job-id`; make that drift
+                // diagnosable.
+                tracing::debug!(job_id = %value, "response artifact payload job_id is not a UUID; dropping job linkage");
+                None
+            }
+        })
+        .map(JobId::new);
     let url = payload
         .get("url")
         .and_then(|value| value.as_str())
@@ -68,25 +60,34 @@ pub async fn write_json_artifact(
                 .and_then(|value| value.as_str())
         })
         .map(ToString::to_string);
-    let handle = artifact_handle_for_path(
-        "json",
-        &path,
-        text.len() as u64,
-        Some(line_count(&text) as u64),
-        job_id,
-        url,
-    )
-    .await?;
-    let relative_path = handle.relative_path().to_string();
-    let display_path = handle.display_path().to_string();
-    let kind = handle.kind().to_string();
+    let mut metadata = MetadataMap::new();
+    metadata.insert("label".to_string(), format!("{stem}.json").into());
+    metadata.insert("producer".to_string(), "mcp".into());
+    metadata.insert("line_count".to_string(), line_count(&text).into());
+    if let Some(url) = url {
+        metadata.insert("source_url".to_string(), url.into());
+    }
+    let handle = FileArtifactStore::new(ensure_artifact_root().await?)
+        .put_bytes(ArtifactBytesWriteRequest {
+            kind: ArtifactKind::Report,
+            content_type: "application/json".to_string(),
+            bytes: text.as_bytes().to_vec(),
+            source_id: None,
+            job_id,
+            metadata,
+        })
+        .await
+        .map_err(|error| internal_error(error.to_string()))?;
+    let artifact_id = handle.artifact_id.0;
+    let artifact_handle = serde_json::json!({
+        "artifact_id": artifact_id,
+        "artifact_kind": "report",
+    });
 
     Ok(serde_json::json!({
-        "artifact_handle": handle,
-        "path": relative_path,
-        "relative_path": relative_path,
-        "display_path": display_path,
-        "kind": kind,
+        "artifact_handle": artifact_handle,
+        "artifact_id": artifact_id,
+        "artifact_kind": "report",
         "bytes": text.len(),
         "line_count": line_count(&text),
         "sha256": sha256_hex(text.as_bytes()),

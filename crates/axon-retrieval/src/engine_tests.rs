@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use axon_api::source::{
     BatchId, ChunkId, ContentKind, DocumentId, EmbeddingInput, EmbeddingResult, EmbeddingVector,
     JobId, JobPriority, MetadataMap, ProviderCapability, ProviderId, ProviderUsage,
-    SourceGenerationId, SourceId, SourceRange, SourceWarning, VectorPoint, VectorPointBatch,
-    VectorPointId, Visibility,
+    RedactionMetadata, RedactionStatus, SourceGenerationId, SourceId, SourceItemKey, SourceRange,
+    SourceWarning, VectorPoint, VectorPointBatch, VectorPointId, Visibility,
 };
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::provider::{EmbeddingProvider, Result as EmbeddingProviderResult};
@@ -26,7 +26,7 @@ fn request() -> RetrievalRequest {
         source_id: Some(SourceId::new("src-docs")),
         generation: Some(SourceGenerationId::new("7")),
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
-        excluded_namespaces: Vec::new(),
+        excluded_source_kinds: Vec::new(),
         byte_budget: 80,
         token_budget: 20,
     }
@@ -429,6 +429,7 @@ fn vector_match_text_falls_back_to_chunk_text_payload() {
     let mut payload = MetadataMap::new();
     payload.insert("chunk_text".to_string(), json!("payload body"));
     payload.insert("redaction_status".to_string(), json!("clean"));
+    stamp_citation_lineage(&mut payload);
     payload.insert(
         "chunk_locator".to_string(),
         json!({
@@ -447,7 +448,7 @@ fn vector_match_text_falls_back_to_chunk_text_payload() {
         chunk_id: Some(ChunkId::new("chunk")),
         document_id: Some(DocumentId::new("doc")),
         source_id: Some(SourceId::new("src")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: None,
         payload,
     };
@@ -486,6 +487,7 @@ fn vector_match_rejects_malformed_source_ranges() {
         let mut metadata = MetadataMap::new();
         metadata.insert("chunk_text".to_string(), json!("payload body"));
         metadata.insert("redaction_status".to_string(), json!("clean"));
+        stamp_citation_lineage(&mut metadata);
         metadata.extend(
             payload
                 .as_object()
@@ -500,7 +502,7 @@ fn vector_match_rejects_malformed_source_ranges() {
             chunk_id: Some(ChunkId::new("chunk")),
             document_id: Some(DocumentId::new("doc")),
             source_id: Some(SourceId::new("src")),
-            source_item_key: None,
+            source_item_key: Some(SourceItemKey::new("docs/guide")),
             text: None,
             payload: metadata,
         })
@@ -533,7 +535,7 @@ fn vector_match_rejects_non_clean_redaction_status() {
         chunk_id: Some(ChunkId::new("chunk")),
         document_id: Some(DocumentId::new("doc")),
         source_id: Some(SourceId::new("src")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: None,
         payload,
     })
@@ -564,7 +566,7 @@ fn vector_match_rejects_missing_redaction_status() {
         chunk_id: Some(ChunkId::new("chunk")),
         document_id: Some(DocumentId::new("doc")),
         source_id: Some(SourceId::new("src")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: None,
         payload,
     })
@@ -659,12 +661,15 @@ fn context_assembly_counts_separator_bytes_against_budget() {
 
 #[test]
 fn citations_always_include_source_document_chunk_uri_and_range() {
-    let citation = Citation::new(
-        SourceId::new("src-docs"),
-        DocumentId::new("doc-1"),
-        ChunkId::new("chunk-1"),
-        "https://example.com/docs/guide".to_string(),
-        SourceRange {
+    let citation = Citation {
+        source_id: SourceId::new("src-docs"),
+        source_item_key: SourceItemKey::new("docs/guide"),
+        generation: SourceGenerationId::new("7"),
+        document_id: DocumentId::new("doc-1"),
+        chunk_id: ChunkId::new("chunk-1"),
+        job_id: JobId::new(Uuid::from_u128(7)),
+        canonical_uri: "https://example.com/docs/guide".to_string(),
+        range: SourceRange {
             line_start: Some(10),
             line_end: Some(14),
             byte_start: Some(100),
@@ -682,7 +687,8 @@ fn citations_always_include_source_document_chunk_uri_and_range() {
             turn_start: None,
             turn_end: None,
         },
-    );
+        redaction: clean_redaction(),
+    };
 
     assert_eq!(citation.source_id, SourceId::new("src-docs"));
     assert_eq!(citation.document_id, DocumentId::new("doc-1"));
@@ -695,6 +701,7 @@ fn citations_always_include_source_document_chunk_uri_and_range() {
 #[test]
 fn citation_from_vector_match_reads_nested_chunk_locator_and_source_range() {
     let mut payload = MetadataMap::new();
+    stamp_citation_lineage(&mut payload);
     payload.insert(
         "chunk_locator".to_string(),
         json!({
@@ -722,7 +729,7 @@ fn citation_from_vector_match_reads_nested_chunk_locator_and_source_range() {
         chunk_id: Some(ChunkId::new("chunk-1")),
         document_id: Some(DocumentId::new("doc-1")),
         source_id: Some(SourceId::new("src-docs")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: Some("hello".to_string()),
         payload,
     })
@@ -738,6 +745,7 @@ fn citation_from_vector_match_reads_nested_chunk_locator_and_source_range() {
 #[test]
 fn citation_from_vector_match_falls_back_to_chunk_locator_range() {
     let mut payload = MetadataMap::new();
+    stamp_citation_lineage(&mut payload);
     payload.insert(
         "chunk_locator".to_string(),
         json!({
@@ -757,7 +765,7 @@ fn citation_from_vector_match_falls_back_to_chunk_locator_range() {
         chunk_id: Some(ChunkId::new("chunk-1")),
         document_id: Some(DocumentId::new("doc-1")),
         source_id: Some(SourceId::new("src-docs")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: Some("hello".to_string()),
         payload,
     })
@@ -773,6 +781,7 @@ fn citation_from_vector_match_falls_back_to_chunk_locator_range() {
 #[test]
 fn citation_from_vector_match_rejects_missing_range_locator() {
     let mut payload = MetadataMap::new();
+    stamp_citation_lineage(&mut payload);
     payload.insert(
         "chunk_locator".to_string(),
         json!({
@@ -786,13 +795,37 @@ fn citation_from_vector_match_rejects_missing_range_locator() {
         chunk_id: Some(ChunkId::new("chunk-1")),
         document_id: Some(DocumentId::new("doc-1")),
         source_id: Some(SourceId::new("src-docs")),
-        source_item_key: None,
+        source_item_key: Some(SourceItemKey::new("docs/guide")),
         text: Some("hello".to_string()),
         payload,
     })
     .expect_err("locator-less vector matches should be rejected");
 
     assert_eq!(err.code.to_string(), "retrieval.missing_source_range");
+}
+
+fn stamp_citation_lineage(payload: &mut MetadataMap) {
+    payload.insert("source_generation".to_string(), json!(7));
+    payload.insert("job_id".to_string(), json!(Uuid::from_u128(7).to_string()));
+    payload.insert("visibility".to_string(), json!("public"));
+    payload.insert("redaction_status".to_string(), json!("clean"));
+    payload.insert("redaction_version".to_string(), json!("2026-07-16"));
+    payload.insert("redacted_field_count".to_string(), json!(0));
+    payload.insert("dropped_field_count".to_string(), json!(0));
+    payload.insert("detector_count".to_string(), json!(0));
+    payload.insert("detector_names".to_string(), json!([]));
+}
+
+fn clean_redaction() -> RedactionMetadata {
+    RedactionMetadata {
+        redaction_status: RedactionStatus::Clean,
+        redaction_version: "2026-07-16".to_string(),
+        visibility: Visibility::Public,
+        redacted_field_count: 0,
+        dropped_field_count: 0,
+        detector_count: 0,
+        detector_names: Vec::new(),
+    }
 }
 
 fn point(point_id: &str, chunk_id: &str, vector: &[f32], text: &str) -> VectorPoint {
@@ -901,6 +934,11 @@ fn point_with_filters(
     );
     payload.insert("visibility".to_string(), json!(filters.visibility));
     payload.insert("redaction_status".to_string(), json!("clean"));
+    payload.insert("redaction_version".to_string(), json!("2026-07-16"));
+    payload.insert("redacted_field_count".to_string(), json!(0));
+    payload.insert("dropped_field_count".to_string(), json!(0));
+    payload.insert("detector_count".to_string(), json!(0));
+    payload.insert("detector_names".to_string(), json!([]));
     payload.insert(
         "job_id".to_string(),
         json!("00000000-0000-0000-0000-000000000099"),
@@ -919,6 +957,7 @@ fn point_with_filters(
     payload.insert("embedded_at".to_string(), json!("2026-07-01T00:00:00Z"));
     payload.insert("vector_namespace".to_string(), json!(filters.namespace));
     payload.insert("content_kind".to_string(), json!("markdown"));
+    payload.insert("chunk_content_kind".to_string(), json!("markdown"));
     payload.insert(
         "content_hash".to_string(),
         json!(format!("sha256:content-{chunk_id}")),

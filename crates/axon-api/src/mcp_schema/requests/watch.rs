@@ -2,7 +2,6 @@
 //! `requests.rs` to keep it under the monolith line cap.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use super::ResponseMode;
 
@@ -10,23 +9,22 @@ use super::ResponseMode;
 #[serde(deny_unknown_fields)]
 pub struct WatchRequest {
     pub subaction: Option<WatchSubaction>,
+    /// Watch id for get/status/update/pause/resume/delete/exec/history.
+    /// `status`, `exec`, and `history` also accept `source` when the caller does
+    /// not know the id.
     pub id: Option<String>,
-    pub name: Option<String>,
-    pub task_type: Option<String>,
-    pub task_payload: Option<Value>,
     pub every_seconds: Option<i64>,
     pub enabled: Option<bool>,
     pub limit: Option<i64>,
     /// Target collection for the source-request-backed watch store
-    /// (`subaction=update`/`subaction=create`). Unused by the legacy
-    /// create/list/get/exec/history subactions above.
+    /// (`subaction=update`/`subaction=create`).
     pub collection: Option<String>,
     /// Source URI to watch (issue #298 WS-B `subaction=create`), e.g.
     /// `https://example.com/docs` or `file:///path/to/repo`. Required for
     /// `subaction=create`; unused otherwise.
     pub source: Option<String>,
     /// Whether the source-request-backed watch (`subaction=create`) should
-    /// embed content on each run. Defaults to `false` when omitted.
+    /// embed content on each run. Defaults to `true` when omitted.
     pub embed: Option<bool>,
     pub response_mode: Option<ResponseMode>,
 }
@@ -37,6 +35,7 @@ pub enum WatchSubaction {
     Create,
     List,
     Get,
+    Status,
     Exec,
     History,
     /// Update a source-request-backed watch (issue #298 WS-B). Distinct

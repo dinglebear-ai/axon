@@ -125,7 +125,19 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "prune",
         scope: ActionScope::Admin,
-        description: "Plan (dry-run) or execute (destructive) a prune of a source, generation, or collection",
+        description: "Plan or execute source, generation, or collection cleanup behind axon-prune",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "collections",
+        scope: ActionScope::Read,
+        description: "List or inspect configured vector collections",
+        cost: "cheap",
+    },
+    McpActionSpec {
+        name: "reset",
+        scope: ActionScope::Admin,
+        description: "Plan or execute an explicit clean-slate store reset",
         cost: "write",
     },
     // U2-20/C6-20: ask/evaluate/suggest/research/summarize default to
@@ -149,7 +161,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "suggest",
         scope: ActionScope::Read,
-        description: "Suggest new documentation URLs to crawl",
+        description: "Suggest new documentation URLs to index",
         cost: "moderate",
     },
     McpActionSpec {
@@ -179,7 +191,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "extract",
         scope: ActionScope::Write,
-        description: "Run or manage async structured extraction jobs",
+        description: "Start async structured extraction jobs; use action=jobs for lifecycle",
         cost: "write",
     },
     McpActionSpec {
@@ -191,7 +203,7 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
     McpActionSpec {
         name: "summarize",
         scope: ActionScope::Read,
-        description: "Scrape URL context and summarize it with the configured LLM",
+        description: "Fetch URL context and summarize it with the configured LLM",
         cost: "write",
     },
     McpActionSpec {
@@ -200,14 +212,10 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         description: "Discover and optionally verify static site endpoints",
         cost: "write",
     },
-    // `watch` (issue #298 WS-B): `create`/`list`/`get`/`update`/`pause`/
-    // `resume`/`delete` subactions over the source-request-backed watch
-    // store, mirroring the REST `/v1/watches` surface. `list`/`get` are
-    // `axon:read` there and `create`/`update`/`pause`/`resume`/`delete` are
-    // `axon:write`; `ActionScope` has no per-subaction granularity (same
-    // simplification already used for `jobs` and `memory` above), so the
-    // action is gated at the broader `axon:write` requirement. `exec`/
-    // `history` subactions remain HTTP-only.
+    // `watch` (issue #298 WS-B): source-request-backed watch subactions mirror
+    // the REST `/v1/watches` surface. Per-subaction scope is enforced in
+    // `required_scope_for` below (`list`/`get`/`history` read; mutating
+    // lifecycle operations write).
     McpActionSpec {
         name: "watch",
         scope: ActionScope::Write,
@@ -223,6 +231,24 @@ pub(super) const MCP_ACTION_SPECS: &[McpActionSpec] = &[
         scope: ActionScope::Read,
         description: "Query the read-only SourceGraph: kinds, resolve, query, node, edge, source subgraph",
         cost: "cheap",
+    },
+    McpActionSpec {
+        name: "uploads",
+        scope: ActionScope::Write,
+        description: "Stage, inspect, complete, list, or abort durable uploads",
+        cost: "write",
+    },
+    McpActionSpec {
+        name: "artifacts",
+        scope: ActionScope::Read,
+        description: "List, inspect, or read artifacts by opaque artifact id",
+        cost: "cheap",
+    },
+    McpActionSpec {
+        name: "chat",
+        scope: ActionScope::Read,
+        description: "Send a direct prompt to the configured chat-purpose LLM",
+        cost: "moderate",
     },
 ];
 
@@ -289,9 +315,37 @@ pub(super) fn check_scope(
 
 /// Map an axon tool action and subaction to the minimum required scope.
 pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
+    if action == "reset" {
+        return match subaction {
+            "" | "plan" | "exec" => Some("axon:admin"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "collections" {
+        return match subaction {
+            "" | "list" | "get" => Some("axon:read"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "uploads" {
+        return match subaction {
+            "" | "list" | "get" => Some("axon:read"),
+            "create" | "put_content" | "complete" | "abort" => Some("axon:write"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "artifacts" {
+        return match subaction {
+            "" | "list" | "get" | "content" => Some("axon:read"),
+            _ => Some("__deny__"),
+        };
+    }
+    if action == "chat" && !subaction.is_empty() {
+        return Some("__deny__");
+    }
     if action == "jobs" {
         return match subaction {
-            "list" | "get" | "status" | "events" | "stream" | "artifacts" => Some("axon:read"),
+            "list" | "get" | "status" | "events" | "stream" => Some("axon:read"),
             "cancel" | "retry" => Some("axon:write"),
             "recover" | "cleanup" | "clear" => Some("axon:admin"),
             _ => Some("__deny__"),
@@ -326,6 +380,10 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
         .map_or(Some("__deny__"), |spec| spec.scope.as_scope(subaction))
 }
 
+#[cfg(test)]
+#[path = "authz_tests.rs"]
+mod tests;
+
 pub(super) fn required_scope_for_tool(
     tool_name: &str,
     action: &str,
@@ -346,7 +404,7 @@ pub(super) fn required_scope_for_tool(
 /// `axon:capabilities`/schema consumers still see the documented default.
 /// But two of them do NOT have a non-mutating default form today: `search`
 /// (`handle_search` in `handlers_query.rs` always calls
-/// `axon_services::search_crawl::search_and_crawl`, which unconditionally
+/// `axon_services::search_crawl::search_and_index_sources`, which unconditionally
 /// enqueues one bounded Source job per result URL) and `research`
 /// (`handle_research` always calls
 /// `axon_services::search::synthesis::research_with_context`, same

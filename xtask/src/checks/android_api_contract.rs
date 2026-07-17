@@ -13,8 +13,6 @@ const ANDROID_ROUTE_SOURCES: &[&str] = &[
     "apps/android/app/src/main/java/com/axon/app/ui/operations/OperationMode.kt",
 ];
 
-const JOB_KINDS: &[&str] = &["crawl", "embed", "extract", "ingest"];
-
 pub fn check(root: &Path) -> Result<()> {
     let openapi_routes = openapi_routes(root)?;
     let android_routes = android_routes(root)?;
@@ -130,10 +128,7 @@ fn normalize_android_route(raw: &str) -> Vec<String> {
         .replace("${encodePathSegment(session.id)}", "{id}");
 
     if path.contains("${kind.path}") || path.contains("{kind}") {
-        return JOB_KINDS
-            .iter()
-            .map(|kind| path.replace("${kind.path}", kind).replace("{kind}", kind))
-            .collect();
+        return Vec::new();
     }
 
     vec![path]
@@ -258,24 +253,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn normalizes_dynamic_job_routes() {
+    fn ignores_removed_dynamic_job_templates() {
         assert_eq!(
             normalize_android_route("/v1/${kind.path}/${encodePathSegment(id)}/cancel"),
-            vec![
-                "/v1/crawl/{id}/cancel",
-                "/v1/embed/{id}/cancel",
-                "/v1/extract/{id}/cancel",
-                "/v1/ingest/{id}/cancel",
-            ]
+            Vec::<String>::new()
         );
         assert_eq!(
             normalize_android_route("/v1/{kind}/{id}"),
-            vec![
-                "/v1/crawl/{id}",
-                "/v1/embed/{id}",
-                "/v1/extract/{id}",
-                "/v1/ingest/{id}",
-            ]
+            Vec::<String>::new()
         );
     }
 
@@ -324,10 +309,7 @@ mod tests {
             method: "GET".to_string(),
             path: "/v1/sources".to_string(),
         }));
-        assert!(routes.contains(&Route {
-            method: "POST".to_string(),
-            path: "/v1/crawl/{id}/cancel".to_string(),
-        }));
+        assert_eq!(routes.len(), 1);
     }
 
     #[test]

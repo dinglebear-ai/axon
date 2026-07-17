@@ -31,6 +31,7 @@
       "edge_kind": "commit_contains_file",
       "from_stable_key": "commit:local/x:abc123",
       "to_stable_key": "file:local/x:src/lib.rs",
+      "evidence_ids": ["ev_1"],
       "properties": {}
     }
   ],

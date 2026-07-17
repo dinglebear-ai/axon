@@ -30,11 +30,6 @@ pub struct GraphRequest {
     pub edge_kind: Option<String>,
     /// `node`: include incident edges in the response. Defaults to `false`.
     pub include_edges: Option<bool>,
-    /// `node`: include edge evidence in the response. Edges already carry
-    /// evidence when loaded; this flag is accepted for contract parity and
-    /// currently has no additional effect beyond `include_edges`.
-    #[allow(dead_code)] // accepted for API compat; evidence always ships with edges
-    pub include_evidence: Option<bool>,
     pub limit: Option<u32>,
     pub cursor: Option<String>,
     pub response_mode: Option<ResponseMode>,

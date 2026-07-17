@@ -10,10 +10,10 @@ type ArtifactHttpResult = {
   bodyBase64: string;
 };
 
-export async function loadArtifactObjectUrl(relativePath: string): Promise<string> {
+export async function loadArtifactObjectUrl(artifactId: string): Promise<string> {
   try {
     const result = await invoke<ArtifactHttpResult>("axon_artifact_request", {
-      relativePath,
+      artifactId,
     });
     if (!result.ok) {
       const detail = result.message?.trim();

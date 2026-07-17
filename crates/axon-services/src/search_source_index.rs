@@ -1,7 +1,7 @@
 //! Source-backed auto-index enqueue helpers for search and research.
 //!
 //! Search/research result URLs are untrusted third-party output, so this path
-//! builds a fresh, bounded [`SourceRequest`] rather than replaying caller crawl
+//! builds a fresh, bounded [`SourceRequest`] rather than replaying caller source
 //! config wholesale. In particular, caller headers are never copied into the
 //! web adapter options.
 

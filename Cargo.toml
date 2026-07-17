@@ -33,7 +33,7 @@ resolver = "2"
 # `axon` package keeps an explicit `version` too (the release checker reads it as
 # a string); `cargo xtask bump-version cli` moves both in lockstep.
 [workspace.package]
-version = "6.2.2"
+version = "7.0.0"
 edition = "2024"
 rust-version = "1.94.0"
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
@@ -55,7 +55,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "6.2.2"
+version = "7.0.0"
 edition = "2024"
 rust-version = "1.94.0"
 categories = ["command-line-utilities", "development-tools"]
@@ -72,7 +72,6 @@ name = "axon"
 
 [dependencies]
 axon-core = { path = "crates/axon-core" }
-axon-jobs = { path = "crates/axon-jobs" }
 axon-services = { path = "crates/axon-services" }
 axon-mcp = { path = "crates/axon-mcp" }
 axon-web = { path = "crates/axon-web" }
@@ -145,6 +144,7 @@ codegen-units = 16
 opt-level = 2
 
 [dev-dependencies]
+axon-api = { path = "crates/axon-api" }
 axon-core = { path = "crates/axon-core", features = ["test-util"] }
 axon-llm = { path = "crates/axon-llm" }
 tokio = { version = "1", features = [

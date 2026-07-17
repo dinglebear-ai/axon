@@ -49,6 +49,7 @@ fn batch() -> VectorPointBatch {
                 vector: vec![1.0, 0.0, 0.0],
                 sparse_vector: None,
                 payload: payload(
+                    "point-a",
                     "src-a",
                     7,
                     "doc-a",
@@ -65,6 +66,7 @@ fn batch() -> VectorPointBatch {
                 vector: vec![0.0, 1.0, 0.0],
                 sparse_vector: None,
                 payload: payload(
+                    "point-b",
                     "src-a",
                     8,
                     "doc-b",
@@ -81,6 +83,7 @@ fn batch() -> VectorPointBatch {
                 vector: vec![0.0, 0.0, 1.0],
                 sparse_vector: None,
                 payload: payload(
+                    "point-c",
                     "src-b",
                     7,
                     "doc-c",
@@ -101,6 +104,7 @@ fn batch() -> VectorPointBatch {
 
 #[allow(clippy::too_many_arguments)]
 fn payload(
+    point_id: &str,
     source_id: &str,
     generation: i64,
     document_id: &str,
@@ -136,6 +140,11 @@ fn payload(
             ("vector_namespace".to_string(), json!(namespace)),
             ("visibility".to_string(), json!(visibility)),
             ("redaction_status".to_string(), json!("clean")),
+            ("redaction_version".to_string(), json!("2026-07-16")),
+            ("redacted_field_count".to_string(), json!(0)),
+            ("dropped_field_count".to_string(), json!(0)),
+            ("detector_count".to_string(), json!(0)),
+            ("detector_names".to_string(), json!([])),
             (
                 "job_id".to_string(),
                 json!("00000000-0000-0000-0000-000000000000"),
@@ -156,13 +165,11 @@ fn payload(
             ("source_kind".to_string(), json!("web")),
             ("source_adapter".to_string(), json!("web")),
             ("source_scope".to_string(), json!("page")),
-            (
-                "vector_point_id".to_string(),
-                json!(format!("vpt-{chunk_id}")),
-            ),
+            ("vector_point_id".to_string(), json!(point_id)),
             ("source_canonical_uri".to_string(), json!(url)),
             ("item_canonical_uri".to_string(), json!(url)),
             ("content_kind".to_string(), json!(content_kind)),
+            ("chunk_content_kind".to_string(), json!(content_kind)),
             (
                 "content_hash".to_string(),
                 json!(format!("sha256:content-{chunk_id}")),
@@ -555,6 +562,8 @@ async fn fake_vector_store_rejects_payload_lineage_mismatches() {
     store.ensure_collection(collection()).await.unwrap();
 
     for (field, value) in [
+        ("vector_point_id", json!("other-point")),
+        ("chunk_id", json!("other-chunk")),
         ("collection", json!("other-collection")),
         (
             "embedding_batch_id",

@@ -3,10 +3,8 @@ Last Modified: 2026-06-30
 
 ## Contract
 
-This is the target clean-break `config.toml` shape. Current implementation uses
-the existing `config.toml.example` shape and accepts sections such as `build`,
-`services`, `llm`, `search`, `tei`, `workers`, `watch`, `scrape`, and related
-runtime groups with unknown keys denied.
+This is the clean-break `config.toml` shape. The runtime rejects the retired
+top-level sections and nested compatibility keys rather than accepting aliases.
 
 `config.toml` is the stable tuning and behavior contract. It contains sensible
 defaults plus the knobs a real user will actually tune: pipeline concurrency,
@@ -68,14 +66,8 @@ Non-secret behavior:
 
 URLs, bind addresses, public URLs, and auth secrets stay in `.env`.
 
-**Resolved (G1-02, 2026-07-09 audit):** the rename from `[search].collection`
-(current landed key, `crates/axon-core/src/config/`) to `[server].default_collection`
-(this target shape) is confirmed intentional — `default_collection` is a
-server-wide default, not search-specific, so it belongs under `[server]` in
-the target layout. This is not yet implemented in code; Workstream J
-(Configuration) owns moving the key from `[search]` to `[server]` and adding
-a deprecated-key read compatibility shim for `[search].collection`, per the
-`env-contract.md`/`config-contract.md` deprecation pattern used elsewhere.
+`default_collection` is server-wide and therefore belongs under `[server]`.
+The retired `[search].collection` form is not a runtime compatibility alias.
 
 ## Sources
 
@@ -150,7 +142,6 @@ Rules:
 | `delete_batch_points` | `512` | Points per delete selector batch. |
 | `hybrid_enabled` | `true` | Dense + sparse RRF when collection supports it. |
 | `hnsw_ef` | `128` | Named-mode search ef. |
-| `hnsw_ef_legacy` | `64` | Legacy unnamed ef. |
 
 ## Providers: LLM
 

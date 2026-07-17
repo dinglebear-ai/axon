@@ -3,6 +3,9 @@ use axon_api::source::{
     GraphEvidence, MetadataMap, Severity, SourceDocument, SourceError, SourceGenerationId,
     SourceId, SourceItemKey, SourceParseFacts, SourceRange, SourceWarning,
 };
+use axon_parse::vertical::{
+    VERTICAL_GRAPH_CANDIDATES_METADATA_KEY, VERTICAL_PARSE_FACTS_METADATA_KEY,
+};
 
 use crate::{
     ChunkingProfile, DocumentPreparer, PrepareSourceDocumentRequest,
@@ -221,6 +224,61 @@ fn preparer_rejects_graph_evidence_ranges_outside_normalized_document() {
 }
 
 #[test]
+fn preparer_rejects_unordered_time_and_turn_ranges() {
+    let prepared = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            "first\nsecond\n",
+            "gen-time-turn",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .unwrap()
+        .document;
+    let mut invalid = prepared;
+    invalid.chunks[0].source_range.time_start_ms = Some(200);
+    invalid.chunks[0].source_range.time_end_ms = Some(100);
+    invalid.chunks[0].chunk_locator.range.turn_start = Some("turn-9".to_string());
+    invalid.chunks[0].chunk_locator.range.turn_end = Some("turn-1".to_string());
+
+    let error = validate_prepared_document(&invalid).unwrap_err();
+
+    assert!(error.contains("source_range time_start_ms > time_end_ms"));
+    assert!(error.contains("locator range turn_start > turn_end"));
+}
+
+#[test]
+fn tool_output_chunks_promote_jsonl_record_metadata() {
+    let mut doc = source_doc(
+        ContentKind::Structured,
+        r#"{"tool":"shell","action":"exec","side_effect_class":"read","output":{"artifact_id":"art_1"}}"#,
+    );
+    doc.path = Some("tool-output.jsonl".to_string());
+    doc.metadata
+        .insert("source_family".to_string(), serde_json::json!("tool"));
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-tool-output"),
+            profile: Some(ChunkingProfile::ToolOutput),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunks.len(), 1);
+    let metadata = &prepared.chunks[0].metadata;
+    assert_eq!(metadata["segment_kind"], "tool_output");
+    assert_eq!(metadata["tool_name"], "shell");
+    assert_eq!(metadata["tool_action"], "exec");
+    assert_eq!(metadata["tool_side_effect_class"], "read");
+    assert_eq!(metadata["tool_output_artifact_id"], "art_1");
+}
+
+#[test]
 fn preparer_splits_repomix_packed_files_before_code_chunking() {
     let packed = "\
 ================================================================\n\
@@ -321,6 +379,86 @@ fn preparer_carries_parse_artifacts_to_prepared_document() {
     assert_eq!(prepared.graph_candidates, vec![candidate]);
     assert_eq!(prepared.warnings, vec![warning]);
     assert_eq!(prepared.errors, vec![error]);
+}
+
+#[test]
+fn preparer_consumes_vertical_parse_artifacts_without_leaking_bridge_metadata() {
+    let fact = SourceParseFacts {
+        document_id: DocumentId::from("doc-test"),
+        source_item_key: SourceItemKey::from("item-test"),
+        fact_kind: "repository".to_string(),
+        name: "jmagar/axon".to_string(),
+        value: serde_json::json!({ "git_provider": "github" }),
+        parser_id: "vertical_github_repo".to_string(),
+        parser_version: "3".to_string(),
+        parser_method: "vertical_metadata".to_string(),
+        range: None,
+        confidence: 0.95,
+        metadata: MetadataMap::new(),
+    };
+    let candidate = GraphCandidate {
+        candidate_id: "cand-vertical".to_string(),
+        job_id: serde_json::from_str("\"00000000-0000-0000-0000-000000000000\"").unwrap(),
+        source_id: SourceId::from("src-test"),
+        source_item_key: SourceItemKey::from("item-test"),
+        item_canonical_uri: "https://github.com/jmagar/axon".to_string(),
+        document_id: Some(DocumentId::from("doc-test")),
+        kind: "github_repo_metadata".to_string(),
+        merge_key: Some("github_repo:github.com/jmagar/axon".to_string()),
+        producer: GraphCandidateProducer {
+            adapter: "axon-adapters::web::vertical".to_string(),
+            parser: Some("vertical_github_repo".to_string()),
+            version: "3".to_string(),
+        },
+        nodes: Vec::new(),
+        edges: Vec::new(),
+        evidence: Vec::new(),
+        confidence: 0.95,
+        metadata: MetadataMap::new(),
+    };
+    let mut doc = source_doc(ContentKind::Markdown, "# Axon\n\nRepository metadata.");
+    doc.metadata.insert(
+        VERTICAL_PARSE_FACTS_METADATA_KEY.to_string(),
+        serde_json::to_value(vec![fact.clone()]).unwrap(),
+    );
+    doc.metadata.insert(
+        VERTICAL_GRAPH_CANDIDATES_METADATA_KEY.to_string(),
+        serde_json::to_value(vec![candidate.clone()]).unwrap(),
+    );
+
+    let prepared = DocumentPreparer::default()
+        .prepare(PrepareSourceDocumentRequest {
+            document: doc,
+            generation: SourceGenerationId::from("gen-vertical"),
+            profile: Some(ChunkingProfile::MarkdownSections),
+            parse_facts: Vec::new(),
+            graph_candidates: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        })
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.parse_facts, vec![fact]);
+    assert_eq!(prepared.graph_candidates, vec![candidate]);
+    assert!(
+        !prepared
+            .metadata
+            .contains_key(VERTICAL_PARSE_FACTS_METADATA_KEY)
+    );
+    assert!(
+        !prepared
+            .metadata
+            .contains_key(VERTICAL_GRAPH_CANDIDATES_METADATA_KEY)
+    );
+    assert!(prepared.chunks.iter().all(|chunk| {
+        !chunk
+            .metadata
+            .contains_key(VERTICAL_PARSE_FACTS_METADATA_KEY)
+            && !chunk
+                .metadata
+                .contains_key(VERTICAL_GRAPH_CANDIDATES_METADATA_KEY)
+    }));
 }
 
 #[test]

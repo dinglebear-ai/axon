@@ -118,7 +118,7 @@ where
         let matches = search
             .results
             .iter()
-            .filter(|item| !excluded_by_namespace(item, &plan))
+            .filter(|item| !excluded_by_source_kind(item, &plan))
             .map(match_from_vector)
             .collect::<Result<Vec<_>, _>>()?;
         let context = ContextBundle::from_matches(&matches, plan.byte_budget, plan.token_budget);
@@ -220,22 +220,18 @@ where
     }
 }
 
-/// True when `item` must be dropped by [`RetrievalPlan::excluded_namespaces`].
-/// Only applies when `namespace_filters` is empty — an explicit positive
-/// namespace allow-list already governs which namespaces can appear, so the
-/// default exclusion is only meaningful for unrestricted search.
-fn excluded_by_namespace(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bool {
-    if !plan.namespace_filters.is_empty() || plan.excluded_namespaces.is_empty() {
+/// True when `item` must be dropped by
+/// [`RetrievalPlan::excluded_source_kinds`].
+fn excluded_by_source_kind(item: &VectorSearchMatch, plan: &RetrievalPlan) -> bool {
+    if plan.excluded_source_kinds.is_empty() {
         return false;
     }
-    let Some(namespace) = item
-        .payload
-        .get("vector_namespace")
-        .and_then(|v| v.as_str())
-    else {
+    let Some(source_kind) = item.payload.get("source_kind").and_then(|v| v.as_str()) else {
         return false;
     };
-    plan.excluded_namespaces.iter().any(|n| n == namespace)
+    plan.excluded_source_kinds
+        .iter()
+        .any(|kind| kind == source_kind)
 }
 
 pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiError> {
@@ -278,6 +274,18 @@ fn visibility_value(visibility: &Visibility) -> &'static str {
 
 pub(crate) fn match_from_vector(item: &VectorSearchMatch) -> Result<RetrievalMatch, ApiError> {
     require_clean_redaction_status(item)?;
+    let text = item
+        .text
+        .clone()
+        .or_else(|| payload_string(&item.payload, "chunk_text"))
+        .ok_or_else(|| {
+            ApiError::new(
+                "retrieval.missing_chunk_text",
+                ErrorStage::Retrieving,
+                "vector search match did not include text or chunk_text payload",
+            )
+            .with_context("point_id", item.point_id.0.clone())
+        })?;
     let citation = Citation::from_vector_match(item)?;
     Ok(RetrievalMatch {
         chunk_id: citation.chunk_id.clone(),
@@ -285,18 +293,7 @@ pub(crate) fn match_from_vector(item: &VectorSearchMatch) -> Result<RetrievalMat
         source_id: citation.source_id.clone(),
         score: item.score,
         canonical_uri: citation.canonical_uri.clone(),
-        text: item
-            .text
-            .clone()
-            .or_else(|| payload_string(&item.payload, "chunk_text"))
-            .ok_or_else(|| {
-                ApiError::new(
-                    "retrieval.missing_chunk_text",
-                    ErrorStage::Retrieving,
-                    "vector search match did not include text or chunk_text payload",
-                )
-                .with_context("point_id", item.point_id.0.clone())
-            })?,
+        text,
         citation,
     })
 }

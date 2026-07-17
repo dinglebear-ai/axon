@@ -230,6 +230,11 @@ Candidate rules:
 - candidates that fail schema validation degrade or fail the source item
   according to scope policy
 
+`GraphEdgeCandidate.evidence_ids` is a required, non-empty list of IDs from
+the enclosing candidate's `evidence` array. Stores must resolve only those
+records for that edge; attaching the candidate's full evidence array to every
+edge is a contract violation.
+
 ## Parser-to-Graph Matrix
 
 Node and edge kinds here must be `source-graph.md`'s canonical registry

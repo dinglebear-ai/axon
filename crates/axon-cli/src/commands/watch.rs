@@ -5,7 +5,6 @@ use axon_services::watch as watch_svc;
 use clap::{Parser, Subcommand};
 use sqlx::SqlitePool;
 use std::error::Error;
-use uuid::Uuid;
 
 #[derive(Debug, Parser)]
 struct WatchRuntimeArgs {
@@ -16,16 +15,17 @@ struct WatchRuntimeArgs {
 #[derive(Debug, Subcommand)]
 enum WatchRuntimeSubcommand {
     Create {
-        name: String,
-        #[arg(long = "task-type")]
-        task_type: String,
+        source: String,
         #[arg(long = "every-seconds")]
         every_seconds: i64,
-        #[arg(long = "task-payload")]
-        task_payload: Option<String>,
+        #[arg(long = "collection")]
+        collection: Option<String>,
     },
     List,
     Get {
+        id: String,
+    },
+    Status {
         id: String,
     },
     Update {
@@ -53,11 +53,6 @@ enum WatchRuntimeSubcommand {
         #[arg(long, default_value_t = 50)]
         limit: i64,
     },
-    Artifacts {
-        run_id: String,
-        #[arg(long, default_value_t = 50)]
-        limit: i64,
-    },
 }
 
 fn parse_watch_runtime_args(args: &[String]) -> Result<WatchRuntimeArgs, Box<dyn Error>> {
@@ -65,11 +60,6 @@ fn parse_watch_runtime_args(args: &[String]) -> Result<WatchRuntimeArgs, Box<dyn
         std::iter::once("watch").chain(args.iter().map(String::as_str)),
     )
     .map_err(|err| err.to_string().into())
-}
-
-fn parse_uuid(raw: Option<&String>, action: &str) -> Result<Uuid, Box<dyn Error>> {
-    let id = raw.ok_or_else(|| format!("watch {action} requires <id>"))?;
-    Ok(Uuid::parse_str(id)?)
 }
 
 pub async fn run_watch(
@@ -81,18 +71,16 @@ pub async fn run_watch(
     let shared_pool = service_context.jobs.sqlite_pool();
     match subcmd {
         WatchRuntimeSubcommand::Create {
-            name,
-            task_type,
+            source,
             every_seconds,
-            task_payload,
+            collection,
         } => {
             handle_watch_create(
                 cfg,
                 shared_pool.as_deref(),
-                name,
-                task_type,
+                source,
                 every_seconds,
-                task_payload,
+                collection,
             )
             .await?
         }
@@ -138,6 +126,9 @@ pub async fn run_watch(
         WatchRuntimeSubcommand::Get { id } => {
             handle_watch_get(cfg, shared_pool.as_deref(), &id).await?
         }
+        WatchRuntimeSubcommand::Status { id } => {
+            handle_watch_status(cfg, service_context, shared_pool.as_deref(), &id).await?
+        }
         WatchRuntimeSubcommand::Update {
             id,
             every_seconds,
@@ -182,37 +173,6 @@ pub async fn run_watch(
         WatchRuntimeSubcommand::Delete { id } => {
             handle_watch_delete(cfg, shared_pool.as_deref(), &id).await?
         }
-        WatchRuntimeSubcommand::Artifacts { run_id, limit } => {
-            handle_watch_artifacts(cfg, shared_pool.as_deref(), &run_id, limit).await?
-        }
-    }
-    Ok(())
-}
-
-async fn handle_watch_artifacts(
-    cfg: &Config,
-    pool: Option<&SqlitePool>,
-    run_id: &str,
-    limit: i64,
-) -> Result<(), Box<dyn Error>> {
-    let run_id = parse_uuid(Some(&run_id.to_string()), "artifacts")?;
-    let artifacts = match pool {
-        Some(pool) => watch_svc::list_watch_run_artifacts_with_pool(pool, run_id, limit).await?,
-        None => watch_svc::list_watch_run_artifacts(cfg, run_id, limit).await?,
-    };
-    if cfg.json_output {
-        crate::json::print_json_gated(&artifacts)?;
-    } else {
-        println!("{}", primary("Watch Artifacts"));
-        if artifacts.is_empty() {
-            println!("  {}", muted("No artifacts found."));
-        } else {
-            for artifact in &artifacts {
-                let path = artifact.path.as_deref().unwrap_or("-");
-                println!("  #{} {} {}", artifact.id, artifact.kind, path);
-            }
-        }
-        println!("  {} total", artifacts.len());
     }
     Ok(())
 }
@@ -220,23 +180,13 @@ async fn handle_watch_artifacts(
 async fn handle_watch_create(
     cfg: &Config,
     pool: Option<&SqlitePool>,
-    name: String,
-    task_type: String,
+    source: String,
     every_seconds: i64,
-    task_payload_raw: Option<String>,
+    collection: Option<String>,
 ) -> Result<(), Box<dyn Error>> {
-    let task_payload = match task_payload_raw {
-        Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
-            format!("watch create: --task-payload is not valid JSON: {e} (got '{raw}')")
-        })?),
-        None => None,
-    };
-    let task_payload = task_payload.unwrap_or_else(|| serde_json::json!({}));
-    axon_jobs::watch::validate_every_seconds(every_seconds)
+    axon_jobs::watch_schedule::validate_every_seconds(every_seconds)
         .map_err(|msg| format!("watch create: {msg}"))?;
-    axon_jobs::watch::validate_task_type(&task_type)
-        .map_err(|msg| format!("watch create: {msg}"))?;
-    let source = watch_create_source(&name, &task_payload)?;
+    let source = source_from_arg(&source)?;
     let request = watch_svc::WatchRequest {
         source,
         schedule: watch_svc::WatchSchedule {
@@ -244,10 +194,10 @@ async fn handle_watch_create(
             cron: None,
             timezone: None,
         },
-        embed: false,
+        embed: true,
         options: watch_svc::AdapterOptions::default(),
         scope: None,
-        collection: None,
+        collection,
         enabled: Some(true),
     };
     let created = match pool {
@@ -276,54 +226,8 @@ fn watch_create_human_output(created: &watch_svc::WatchResult) -> String {
     )
 }
 
-fn watch_create_source(
-    name_or_source: &str,
-    task_payload: &serde_json::Value,
-) -> Result<String, Box<dyn Error>> {
-    if let Some(object) = task_payload.as_object() {
-        if object.is_empty() {
-            return source_from_name(name_or_source);
-        }
-
-        let unsupported = object
-            .keys()
-            .filter(|key| key.as_str() != "urls")
-            .cloned()
-            .collect::<Vec<_>>();
-        if !unsupported.is_empty() {
-            return Err(format!(
-                "watch create: --task-payload fields are not supported by source watches: {}; pass source options through the canonical source/watch API instead",
-                unsupported.join(", ")
-            )
-            .into());
-        }
-
-        let urls = object
-            .get("urls")
-            .and_then(|value| value.as_array())
-            .ok_or("watch create: --task-payload must contain urls as an array")?;
-        if urls.len() != 1 {
-            return Err(
-                "watch create: source watches accept exactly one URL/source per watch".into(),
-            );
-        }
-        let source = urls[0]
-            .as_str()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or("watch create: urls[0] must be a non-empty string")?;
-        return Ok(source.to_string());
-    }
-
-    if !task_payload.is_null() {
-        return Err("watch create: --task-payload must be a JSON object".into());
-    }
-
-    source_from_name(name_or_source)
-}
-
-fn source_from_name(name_or_source: &str) -> Result<String, Box<dyn Error>> {
-    let source = name_or_source.trim();
+fn source_from_arg(raw_source: &str) -> Result<String, Box<dyn Error>> {
+    let source = raw_source.trim();
     if source.is_empty() {
         return Err("watch create requires a source".into());
     }
@@ -334,12 +238,13 @@ async fn handle_watch_exec(
     cfg: &Config,
     service_context: &ServiceContext,
     pool: Option<&SqlitePool>,
-    raw_id: &str,
+    raw_id_or_source: &str,
 ) -> Result<(), Box<dyn Error>> {
+    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
     let run = watch_svc::exec_source_watch(
         service_context,
         pool,
-        watch_svc::WatchId::new(raw_id),
+        watch_id,
         watch_svc::WatchExecRequest {
             reason: None,
             refresh: None,
@@ -381,6 +286,46 @@ async fn handle_watch_get(
         }
         None => Err(format!("watch {raw_id} not found").into()),
     }
+}
+
+async fn handle_watch_status(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    pool: Option<&SqlitePool>,
+    raw_id_or_source: &str,
+) -> Result<(), Box<dyn Error>> {
+    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
+    let store = watch_svc::open_source_watch_store(cfg, pool).await?;
+    let watch = watch_svc::SourceWatchStoreTrait::get(&store, watch_id.clone())
+        .await?
+        .ok_or_else(|| format!("watch {} not found", watch_id.0))?;
+    let latest_job_summary = match watch.latest_job.as_ref() {
+        Some(job) => axon_services::jobs::unified_job_status(service_context, job.job_id)
+            .await
+            .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?,
+        None => None,
+    };
+    if cfg.json_output {
+        crate::json::print_json_gated(&serde_json::json!({
+            "watch": watch,
+            "latest_job_summary": latest_job_summary,
+        }))?;
+    } else {
+        println!("{}", primary("Watch Status"));
+        println!(
+            "  {} enabled={} every={}s",
+            watch.watch_id.0, watch.enabled, watch.schedule.every_seconds
+        );
+        println!("  source {}", watch.canonical_uri);
+        match latest_job_summary {
+            Some(job) => println!(
+                "  latest_job {} {:?} {:?}",
+                job.job_id.0, job.kind, job.status
+            ),
+            None => println!("  {}", muted("No jobs recorded.")),
+        }
+    }
+    Ok(())
 }
 
 /// Shared implementation for `axon watch update|pause|resume`.
@@ -431,15 +376,16 @@ async fn handle_watch_delete(
 async fn handle_watch_history(
     cfg: &Config,
     pool: Option<&SqlitePool>,
-    raw_id: &str,
+    raw_id_or_source: &str,
     limit: i64,
 ) -> Result<(), Box<dyn Error>> {
     let limit = u32::try_from(limit.max(0)).unwrap_or(u32::MAX);
+    let watch_id = watch_svc::resolve_source_watch_id(cfg, pool, raw_id_or_source).await?;
     let history = watch_svc::history_source_watch(
         cfg,
         pool,
         watch_svc::WatchHistoryRequest {
-            watch_id: watch_svc::WatchId::new(raw_id),
+            watch_id,
             limit: Some(limit),
             cursor: None,
             status: None,

@@ -1,47 +1,163 @@
 use super::*;
+#[cfg(test)]
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 
-/// Perform the destructive actions for the selected stores. Any single SQLite
-/// store selection wipes+re-migrates the whole unified DB exactly once.
-pub(super) async fn execute(
+pub(super) async fn execute_resumable(
     cfg: &Config,
     stores: &[String],
     sqlite_inv: &SqliteInventory,
     qdrant_inv: Option<&QdrantInventory>,
     artifact_root: &std::path::Path,
     warnings: &mut Vec<String>,
-) -> Result<(ResetDeleted, ResetCreated), Box<dyn Error>> {
-    let mut deleted = ResetDeleted::default();
-    let mut created = ResetCreated::default();
-
-    if wants_any_sqlite(stores) {
-        deleted.sqlite_tables = sqlite_inv.table_count;
-        let version = sqlite::wipe_and_remigrate(&cfg.sqlite_path).await?;
-        created.sqlite_schema_version = version;
-        log_info(&format!(
-            "reset sqlite wiped + re-migrated path={} schema_version={version}",
-            cfg.sqlite_path.display()
-        ));
+    plan: &ResetPlan,
+    existing: Option<ResetReceipt>,
+) -> Result<(ResetReceipt, String), Box<dyn Error>> {
+    let resumed = existing.is_some();
+    let mut receipt = existing.unwrap_or_else(|| ResetReceipt {
+        plan_id: plan.plan_id.clone(),
+        reset_id: plan.reset_id.clone(),
+        state: ResetExecutionState::Executing,
+        chunks: planned_chunks(stores),
+        deleted: ResetDeleted::default(),
+        created: ResetCreated::default(),
+        audit_events: vec![
+            "reset.plan".to_string(),
+            "reset.confirm".to_string(),
+            "reset.execute".to_string(),
+        ],
+    });
+    if receipt.plan_id != plan.plan_id {
+        return Err("reset.receipt_plan_mismatch: refusing to resume another plan".into());
     }
-
-    if wants(stores, RESET_STORE_VECTORS) {
-        reset_qdrant(cfg, qdrant_inv, &mut deleted, &mut created, warnings).await?;
-    }
-
-    if wants(stores, RESET_STORE_ARTIFACTS) {
-        match artifacts::purge_files(artifact_root) {
-            Ok(removed) => {
-                deleted.artifact_files = removed;
-                log_info(&format!(
-                    "reset artifacts purged files={removed} root={}",
-                    artifact_root.display()
-                ));
-            }
-            Err(e) => warnings.push(format!("failed to purge artifacts: {e}")),
+    if receipt.state != ResetExecutionState::Completed {
+        receipt.state = ResetExecutionState::Executing;
+        if resumed {
+            receipt.audit_events.push("reset.resume".to_string());
         }
     }
+    plan_store::save_receipt(cfg, &receipt).await?;
 
-    Ok((deleted, created))
+    for index in 0..receipt.chunks.len() {
+        if receipt.chunks[index].status == "completed" {
+            continue;
+        }
+        let store = receipt.chunks[index].store.clone();
+        let outcome = execute_physical_chunk(
+            cfg,
+            &store,
+            sqlite_inv,
+            qdrant_inv,
+            artifact_root,
+            warnings,
+            &mut receipt.deleted,
+            &mut receipt.created,
+        )
+        .await
+        .map_err(|error| error.to_string());
+        match outcome {
+            Ok((count, checkpoint)) => {
+                receipt.chunks[index].status = "completed".to_string();
+                receipt.chunks[index].item_count = count;
+                receipt.chunks[index].checkpoint = checkpoint;
+                receipt
+                    .audit_events
+                    .push(format!("reset.chunk.complete:{store}"));
+                plan_store::save_receipt(cfg, &receipt).await?;
+            }
+            Err(error) => {
+                receipt.chunks[index].status = "failed".to_string();
+                receipt.chunks[index].checkpoint = error.clone();
+                receipt.state = ResetExecutionState::Failed;
+                receipt
+                    .audit_events
+                    .push(format!("reset.chunk.failed:{store}"));
+                let _ = plan_store::save_receipt(cfg, &receipt).await;
+                return Err(error.into());
+            }
+        }
+    }
+    receipt.state = if warnings.is_empty() {
+        ResetExecutionState::Completed
+    } else {
+        ResetExecutionState::CompletedDegraded
+    };
+    receipt.audit_events.push("reset.complete".to_string());
+    let path = plan_store::save_receipt(cfg, &receipt).await?;
+    Ok((receipt, path))
+}
+
+pub(super) fn planned_chunks(stores: &[String]) -> Vec<ResetChunkReceipt> {
+    let mut chunks = Vec::new();
+    if wants_any_sqlite(stores) {
+        chunks.push(pending_chunk("chunk_0000", "sqlite"));
+    }
+    if wants(stores, RESET_STORE_VECTORS) {
+        chunks.push(pending_chunk("chunk_0001", RESET_STORE_VECTORS));
+    }
+    if wants(stores, RESET_STORE_ARTIFACTS) {
+        chunks.push(pending_chunk("chunk_0002", RESET_STORE_ARTIFACTS));
+    }
+    chunks
+}
+
+fn pending_chunk(id: &str, store: &str) -> ResetChunkReceipt {
+    ResetChunkReceipt {
+        chunk_id: id.to_string(),
+        store: store.to_string(),
+        status: "pending".to_string(),
+        item_count: 0,
+        checkpoint: "not_started".to_string(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn execute_physical_chunk(
+    cfg: &Config,
+    store: &str,
+    sqlite_inv: &SqliteInventory,
+    qdrant_inv: Option<&QdrantInventory>,
+    artifact_root: &std::path::Path,
+    warnings: &mut Vec<String>,
+    deleted: &mut ResetDeleted,
+    created: &mut ResetCreated,
+) -> Result<(u64, String), Box<dyn Error>> {
+    match store {
+        "sqlite" => {
+            deleted.sqlite_tables = sqlite_inv.table_count;
+            let schema = sqlite::wipe_and_remigrate(&cfg.sqlite_path).await?;
+            created.sqlite_schema_version = schema.version;
+            Ok((
+                sqlite_inv.content_rows,
+                format!(
+                    "schema_version={};schema_checksum={}",
+                    schema.version, schema.checksum
+                ),
+            ))
+        }
+        RESET_STORE_VECTORS => {
+            let before = qdrant_inv.cloned().unwrap_or_default();
+            if before.unreachable {
+                return Err("reset.vectors_unreachable: refusing partial clean slate".into());
+            }
+            reset_qdrant(cfg, qdrant_inv, deleted, created, warnings).await?;
+            Ok((
+                before.points,
+                format!(
+                    "created={}",
+                    created
+                        .qdrant_collections
+                        .iter()
+                        .any(|name| name == &cfg.collection)
+                ),
+            ))
+        }
+        RESET_STORE_ARTIFACTS => {
+            let removed = artifacts::purge_files(artifact_root)?;
+            deleted.artifact_files = removed;
+            Ok((removed as u64, "complete".to_string()))
+        }
+        _ => Err(format!("reset.unknown_chunk_store: {store}").into()),
+    }
 }
 
 async fn reset_qdrant(
@@ -64,11 +180,13 @@ async fn reset_qdrant(
     if dropped {
         deleted.qdrant_collections.push(cfg.collection.clone());
     }
-    // No process-wide vector-mode cache to invalidate here: `axon-vectors`
-    // (the replacement for the legacy `axon-vector` crate) resolves a
-    // collection's vector mode per request rather than caching it in a
-    // process-wide static, so there is nothing stale left behind by the
-    // drop+recreate above.
+    // Existing service contexts cache detected collection specs. A raw reset
+    // bypasses those store instances, so invalidate their epoch immediately
+    // after the drop before any concurrent request can reuse the old shape.
+    axon_vectors::QdrantVectorStore::invalidate_collection_spec_cache(
+        &cfg.qdrant_url,
+        &cfg.collection,
+    );
     match qdrant::probe_tei_dim(cfg).await {
         Some(dim) => {
             qdrant::create_named_collection(cfg, dim).await?;
@@ -96,6 +214,7 @@ async fn reset_qdrant(
 /// Write the reset receipt as a JSON artifact under the artifact root. Returns
 /// its filesystem path. The receipt is the durable record of a destructive
 /// reset required by the cutover contract.
+#[cfg(test)]
 pub(super) async fn write_receipt(
     reset_id: &str,
     stores: &[String],

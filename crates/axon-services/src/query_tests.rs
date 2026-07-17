@@ -2,6 +2,28 @@ use super::*;
 use axon_core::config::Config;
 use serde_json::json;
 
+fn citation(uri: &str, chunk_id: &str) -> serde_json::Value {
+    json!({
+        "source_id": "source-test",
+        "source_item_key": uri,
+        "generation": "1",
+        "document_id": format!("document-{chunk_id}"),
+        "chunk_id": chunk_id,
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "canonical_uri": uri,
+        "source_range": { "line_start": 1, "line_end": 2 },
+        "redaction": {
+            "redaction_status": "clean",
+            "redaction_version": "test-v1",
+            "visibility": "public",
+            "redacted_field_count": 0,
+            "dropped_field_count": 0,
+            "detector_count": 0,
+            "detector_names": []
+        }
+    })
+}
+
 // ── map_query_results ─────────────────────────────────────────────────────
 
 #[test]
@@ -20,6 +42,7 @@ fn map_query_results_typed_nonempty() {
             "url": "https://a.com",
             "source": "a.com",
             "snippet": "alpha",
+            "citation": citation("https://a.com", "chunk-a"),
             "chunk_index": 2
         }),
         json!({
@@ -29,6 +52,7 @@ fn map_query_results_typed_nonempty() {
             "url": "https://b.com",
             "source": "b.com",
             "snippet": "bravo",
+            "citation": citation("https://b.com", "chunk-b"),
             "chunk_index": null
         }),
     ];
@@ -53,6 +77,10 @@ fn map_query_results_populates_code_fields_from_emitted_keys() {
         "url": "https://github.com/x/y/blob/main/src/lib.rs#L1-L10",
         "source": "github.com",
         "snippet": "pub struct Buffer {}",
+        "citation": citation(
+            "https://github.com/x/y/blob/main/src/lib.rs#L1-L10",
+            "chunk-code"
+        ),
         "chunk_index": 0,
         "file_path": "src/lib.rs",
         "symbol": "Buffer",
