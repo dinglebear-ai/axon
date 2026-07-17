@@ -17,11 +17,13 @@ pub mod convert;
 mod http;
 mod read;
 mod search;
+mod store_cache;
 mod store_impl;
+mod store_trait;
 mod upsert;
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axon_api::source::*;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
@@ -53,6 +55,11 @@ const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 
+/// Process-wide generation for detected collection specs. Reset may drop and
+/// recreate Qdrant through raw HTTP without access to every live store clone;
+/// advancing this epoch makes all per-instance entries stale immediately.
+static COLLECTION_SPEC_CACHE_EPOCHS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+
 /// Qdrant-backed [`VectorStore`](crate::store::VectorStore).
 ///
 /// The `url` is stored verbatim and parsed (with credentials stripped) per
@@ -62,7 +69,7 @@ pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
     health: ProviderReservationManager,
-    collection_specs: Arc<RwLock<HashMap<String, CollectionSpec>>>,
+    collection_specs: Arc<RwLock<HashMap<String, (u64, CollectionSpec)>>>,
 }
 
 impl QdrantVectorStore {
@@ -95,6 +102,27 @@ impl QdrantVectorStore {
         &self.provider_id
     }
 
+    /// Invalidate every live store instance's detected collection specs.
+    /// Destructive collection reset must call this after a successful drop.
+    pub fn invalidate_collection_spec_cache(url: &str, collection: &str) {
+        let mut epochs = collection_spec_cache_epochs()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let epoch = epochs
+            .entry(collection_cache_key(url, collection))
+            .or_default();
+        *epoch = epoch.wrapping_add(1);
+    }
+
+    pub(super) fn collection_spec_cache_epoch(&self, collection: &str) -> u64 {
+        collection_spec_cache_epochs()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&collection_cache_key(&self.url, collection))
+            .copied()
+            .unwrap_or(0)
+    }
+
     /// Fold a fallible operation's outcome into the live health tracker,
     /// returning the result unchanged. Every [`crate::store::VectorStore`]
     /// trait method routes its result through this so `capabilities()`
@@ -111,6 +139,14 @@ impl QdrantVectorStore {
         }
         result
     }
+}
+
+fn collection_spec_cache_epochs() -> &'static Mutex<HashMap<String, u64>> {
+    COLLECTION_SPEC_CACHE_EPOCHS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn collection_cache_key(url: &str, collection: &str) -> String {
+    format!("{}\0{collection}", url.trim_end_matches('/'))
 }
 
 /// Build the capability snapshot for this store.

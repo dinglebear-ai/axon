@@ -67,25 +67,28 @@ pub(crate) async fn dispatch_memory(
                 || snapshot.granted_scopes.contains(&AuthScope::Admin)
         }),
     };
-    let adapter = MemorySourceAdapter::new(
+    let adapter = Arc::new(MemorySourceAdapter::new(
         Arc::new(ServiceMemorySourceProvider {
             store: crate::memory::memory_store(ctx).await?,
         }),
         access,
-    );
-    let acquired = adapter
-        .materialize(family_source_plan(input, route, embed, Some(1), None))
-        .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-        .context("memory acquisition failed")?;
+    ));
+    let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
-        &adapter,
-        acquired,
+        adapter.as_ref(),
+        family_source_plan(input, route, embed, Some(1), None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(|error| anyhow::anyhow!(error.to_string()))
+                .context("memory acquisition failed")
+        },
     )
     .await
     .context("memory source indexing failed")
@@ -107,22 +110,23 @@ pub(crate) async fn dispatch_upload(
         "command=source collection={collection} kind=upload embed={embed}"
     ));
     let adapter = UploadSourceAdapter::new();
-    let acquired = adapter
-        .materialize(
-            family_source_plan(input, route, embed, Some(1), None),
-            Arc::new(ServiceUploadSourceProvider { ctx: ctx.clone() }),
-        )
-        .await
-        .map_err(|error| anyhow::anyhow!(error.to_string()))
-        .context("upload materialization failed")?;
+    let materializer = adapter.clone();
+    let provider = Arc::new(ServiceUploadSourceProvider { ctx: ctx.clone() });
     dispatch_materialized(
         runtime,
         &adapter,
-        acquired,
+        family_source_plan(input, route, embed, Some(1), None),
         collection,
         owner_id,
         auth_snapshot,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan, provider)
+                .await
+                .map_err(|error| anyhow::anyhow!(error.to_string()))
+                .context("upload materialization failed")
+        },
     )
     .await
     .context("upload source indexing failed")

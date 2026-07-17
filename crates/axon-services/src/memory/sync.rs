@@ -19,6 +19,8 @@ use sha2::{Digest, Sha256};
 use crate::context::ServiceContext;
 
 const SYNC_POLICY_VERSION: &str = "memory-source-sync-v1";
+const INLINE_SYNC_LIMIT: usize = 16;
+const ENQUEUE_BATCH_SIZE: usize = 64;
 
 pub(crate) async fn sync_memory_records<I>(
     ctx: &ServiceContext,
@@ -35,14 +37,20 @@ where
         return Ok(());
     }
 
-    if ctx.target_local_source_runtime().is_some() {
-        for record in &records {
+    if ctx.target_local_source_runtime().is_some() && records.len() <= INLINE_SYNC_LIMIT {
+        let ctx = ctx.clone();
+        let operation = operation.to_string();
+        let mut outcomes = Vec::with_capacity(records.len());
+        for record in records {
             let result = crate::source::index_source_with_auth(
-                source_request(record, operation),
-                ctx,
+                source_request(&record, &operation),
+                &ctx,
                 Some(AuthSnapshot::trusted_system(SYNC_POLICY_VERSION)),
             )
             .await;
+            outcomes.push((record, result));
+        }
+        for (record, result) in outcomes {
             if matches!(
                 result.as_ref().map(|result| result.status),
                 Ok(LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded)
@@ -55,14 +63,12 @@ where
                 outcome = ?result,
                 "memory canonical publication failed inline; enqueueing recovery"
             );
-            enqueue_or_mark(ctx, store, record, operation).await?;
+            enqueue_or_mark(&ctx, store, &record, &operation).await?;
         }
         return Ok(());
     }
 
-    for record in &records {
-        enqueue_or_mark(ctx, store, record, operation).await?;
-    }
+    enqueue_or_mark_batch(ctx, store, &records, operation).await?;
     Ok(())
 }
 
@@ -71,29 +77,56 @@ pub(crate) async fn enqueue_memory_records(
     records: &[MemoryRecord],
     operation: &str,
 ) -> Result<()> {
-    for record in records {
-        let result = crate::source::enqueue::enqueue_source(
-            source_request(record, operation),
-            job_store,
-            Some(AuthSnapshot::trusted_system(SYNC_POLICY_VERSION)),
-        )
-        .await
-        .with_context(|| format!("enqueue memory source sync for {}", record.memory_id.0))?;
-        if !matches!(
-            result.status,
-            LifecycleStatus::Queued
-                | LifecycleStatus::Pending
-                | LifecycleStatus::Running
-                | LifecycleStatus::Completed
-                | LifecycleStatus::CompletedDegraded
-        ) {
-            bail!(
-                "memory source sync for {} was not accepted: {:?}",
-                record.memory_id.0,
-                result.status
-            );
+    for batch in records.chunks(ENQUEUE_BATCH_SIZE) {
+        for record in batch {
+            let result = crate::source::enqueue::enqueue_source(
+                source_request(record, operation),
+                job_store,
+                Some(AuthSnapshot::trusted_system(SYNC_POLICY_VERSION)),
+            )
+            .await
+            .with_context(|| format!("enqueue memory source sync for {}", record.memory_id.0))?;
+            if !matches!(
+                result.status,
+                LifecycleStatus::Queued
+                    | LifecycleStatus::Pending
+                    | LifecycleStatus::Running
+                    | LifecycleStatus::Completed
+                    | LifecycleStatus::CompletedDegraded
+            ) {
+                bail!(
+                    "memory source sync for {} was not accepted: {:?}",
+                    record.memory_id.0,
+                    result.status
+                );
+            }
         }
     }
+    Ok(())
+}
+
+async fn enqueue_or_mark_batch(
+    ctx: &ServiceContext,
+    memory_store: &dyn MemoryStore,
+    records: &[MemoryRecord],
+    operation: &str,
+) -> Result<()> {
+    let Some(job_store) = ctx.job_store() else {
+        let error = anyhow::anyhow!("unified source job store is unavailable");
+        for record in records {
+            mark_sync_recovery(memory_store, record, operation, &error.to_string()).await?;
+        }
+        return Err(error);
+    };
+    if let Err(error) = enqueue_memory_records(job_store.as_ref(), records, operation).await {
+        for record in records {
+            mark_sync_recovery(memory_store, record, operation, &error.to_string()).await?;
+        }
+        return Err(
+            error.context("memory records are durable in SQLite but publication is pending")
+        );
+    }
+    ctx.notify_unified();
     Ok(())
 }
 

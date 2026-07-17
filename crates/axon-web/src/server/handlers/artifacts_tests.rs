@@ -1,6 +1,10 @@
 use super::{
-    artifact_headers_for_path, is_structurally_unsafe, open_artifact_error, resolve_artifact_path,
+    ArtifactContentQuery, artifact_content_response, artifact_headers_for_path,
+    is_structurally_unsafe, open_artifact_error, resolve_artifact_path,
 };
+use axon_api::source::ArtifactId;
+use axon_services::artifacts::ArtifactContentFile;
+use axum::body::to_bytes;
 use axum::http::StatusCode;
 
 #[test]
@@ -162,4 +166,30 @@ fn download_filename_strips_header_injection_characters() {
         .content_disposition
         .expect("json is non-inline");
     assert_eq!(unicode, "attachment; filename=\"r_sum__.json\"");
+}
+
+#[tokio::test]
+async fn opaque_artifact_content_is_streamed_with_a_bounded_content_length() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("art_raw_test.bin");
+    tokio::fs::write(&path, b"stream me").await.unwrap();
+    let response = artifact_content_response(
+        ArtifactContentFile {
+            artifact_id: ArtifactId::new("art_raw_test"),
+            content_type: "application/octet-stream".to_string(),
+            disposition: "attachment; filename=\"test.bin\"".to_string(),
+            size_bytes: 9,
+            path,
+        },
+        ArtifactContentQuery { download: true },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(response.headers()["content-length"], "9");
+    assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+    assert_eq!(
+        to_bytes(response.into_body(), 9).await.unwrap().as_ref(),
+        b"stream me"
+    );
 }

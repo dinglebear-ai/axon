@@ -165,7 +165,11 @@ axon reset --stores jobs,ledger,graph,memory,vectors,artifacts
 
 Reset must be admin/destructive, require confirmation unless `--yes`, and print
 exactly what it will delete. This is not migration; it is intentional local
-state destruction.
+state destruction. The SQLite portion reports a composed schema version (the
+number of exact namespace/version migration receipts) and a SHA-256 schema
+identity in its chunk checkpoint; it is not the maximum version from one
+namespace. Execution acquires SQLite exclusive locking and fails closed while
+another process is using the database.
 
 Reset result shape:
 
@@ -181,10 +185,24 @@ Reset result shape:
     "artifact_files": 120
   },
   "created": {
-    "sqlite_schema_version": 1,
+    "sqlite_schema_version": 7,
     "qdrant_collections": ["axon"]
   },
   "receipt_artifact_id": "art_...",
   "warnings": []
 }
 ```
+
+Plan expiry prevents a destructive operation from starting after its reviewed
+inventory is stale. Once a receipt has recorded execution as started, expiry
+does not strand it: resume validates completed chunk postconditions and pending
+chunk preconditions independently. A completed chunk is never compared with
+the original whole-store checksum because its own deletion intentionally
+changed that inventory.
+
+Reset is not a cross-store transaction and does not attempt synthetic rollback.
+Before execution, stop Axon and take one coordinated backup set containing the
+SQLite DB, a Qdrant snapshot, and the artifact tree. Recovery from a failed or
+unwanted cutover is restore-only: restore every selected store from that same
+backup set before restarting workers. Never combine a restored SQLite ledger
+with a post-reset Qdrant collection or vice versa.

@@ -218,3 +218,128 @@ async fn retention_expiry_deletes_the_promoted_artifact_and_mapping() {
             .is_none()
     );
 }
+
+#[tokio::test]
+async fn indexed_pagination_is_sorted_bounded_and_cursor_stable() {
+    let (_temp, ctx) = context();
+    for suffix in 0..5 {
+        let mut request = create_request(b"x");
+        request.filename = format!("note-{suffix}.md");
+        create_upload(&ctx, request).await.unwrap();
+    }
+
+    let mut cursor = None;
+    let mut ids = Vec::new();
+    loop {
+        let page = list_uploads(
+            &ctx,
+            UploadListRequest {
+                status: Some(UploadStatusKind::Pending),
+                limit: Some(2),
+                cursor,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(page.items.len() <= 2);
+        ids.extend(page.items.into_iter().map(|status| status.upload_id.0));
+        let Some(next_cursor) = page.next_cursor else {
+            break;
+        };
+        cursor = Some(next_cursor);
+    }
+
+    assert_eq!(ids.len(), 5);
+    assert!(
+        ids.windows(2)
+            .all(|pair| pair[0].as_str() < pair[1].as_str())
+    );
+    assert!(upload_root(&ctx).join(INDEX_FILE).is_file());
+}
+
+#[tokio::test]
+async fn cleanup_waits_for_the_upload_lock_before_expiring_a_record() {
+    let (_temp, ctx) = context();
+    let created = create_upload(&ctx, create_request(b"x")).await.unwrap();
+    let root = upload_root(&ctx);
+    let mut record = load_record(&root, &created.upload_id).await.unwrap();
+    record.expires_at = Timestamp::from(Utc::now() - Duration::seconds(1));
+    save_record(&root, &record).await.unwrap();
+
+    let lock = acquire_lock(&root, &created.upload_id).await.unwrap();
+    let cleanup_ctx = ctx.clone();
+    let cleanup = tokio::spawn(async move { cleanup_expired_uploads(&cleanup_ctx).await });
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    assert!(
+        !cleanup.is_finished(),
+        "cleanup bypassed the per-upload lock"
+    );
+    drop(lock);
+
+    assert_eq!(cleanup.await.unwrap().unwrap(), 1);
+    assert_eq!(
+        get_upload(&ctx, created.upload_id).await.unwrap().status,
+        UploadStatusKind::Expired
+    );
+}
+
+#[tokio::test]
+async fn failed_promotion_record_commit_is_compensated_and_retryable() {
+    let (_temp, ctx) = context();
+    let bytes = b"retry promotion";
+    let created = create_upload(&ctx, create_request(bytes)).await.unwrap();
+    put_upload_content(&ctx, created.upload_id.clone(), bytes.to_vec(), None, None)
+        .await
+        .unwrap();
+    fail_next_record_save(&created.upload_id);
+
+    let error = complete_upload(&ctx, created.upload_id.clone(), Default::default())
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.0, "upload.test_record_save_failed");
+    let artifact_entries = std::fs::read_dir(ctx.cfg.output_dir.join("artifacts"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("art_"))
+        .count();
+    assert_eq!(artifact_entries, 0, "promotion left orphan artifact files");
+
+    let completed = complete_upload(&ctx, created.upload_id.clone(), Default::default())
+        .await
+        .unwrap();
+    tokio::fs::write(part_path(&upload_root(&ctx), &created.upload_id), bytes)
+        .await
+        .unwrap();
+    let retried = complete_upload(&ctx, created.upload_id.clone(), Default::default())
+        .await
+        .unwrap();
+    assert_eq!(retried.artifact_id, completed.artifact_id);
+    assert!(!part_path(&upload_root(&ctx), &created.upload_id).exists());
+}
+
+#[tokio::test]
+async fn abort_is_idempotent_without_duplicate_audit_events() {
+    let (_temp, ctx) = context();
+    let created = create_upload(&ctx, create_request(b"x")).await.unwrap();
+    for _ in 0..2 {
+        abort_upload(
+            &ctx,
+            created.upload_id.clone(),
+            UploadAbortRequest::default(),
+        )
+        .await
+        .unwrap();
+    }
+
+    let record = load_record(&upload_root(&ctx), &created.upload_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        record
+            .audit_events
+            .iter()
+            .filter(|event| event.event == "upload.abort")
+            .count(),
+        1
+    );
+}

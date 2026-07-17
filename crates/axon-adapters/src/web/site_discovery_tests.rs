@@ -28,3 +28,32 @@ fn map_strategy_has_no_crawl_or_disk_handoff() {
         );
     }
 }
+
+#[test]
+fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
+    let plan = crate::web_tests::web_plan("https://example.com/docs", SourceScope::Map);
+    let item = |url: &str| {
+        let web = WebUrlParts::parse(url).unwrap();
+        web_manifest_item(&plan, &web, None, None, None)
+    };
+
+    let items = finalize_items(
+        vec![
+            item("https://example.com/docs/z"),
+            item("https://example.com/docs/a"),
+            item("https://example.com/docs/a"),
+            item("https://example.com/docs/m"),
+        ],
+        2,
+    );
+
+    assert_eq!(items.len(), 2);
+    assert_eq!(
+        items[0].canonical_uri.as_str(),
+        "https://example.com/docs/a"
+    );
+    assert_eq!(
+        items[1].canonical_uri.as_str(),
+        "https://example.com/docs/m"
+    );
+}

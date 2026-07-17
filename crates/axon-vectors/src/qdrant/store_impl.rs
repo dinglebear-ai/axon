@@ -1,9 +1,8 @@
 //! Live `VectorStore` implementation over the Qdrant REST API.
 
-use async_trait::async_trait;
 use axon_api::source::*;
 
-use super::commit::{mark_generation_committed_rest, mark_unchanged_items_committed_rest};
+use super::QdrantVectorStore;
 use super::convert::{
     canonical_uri_filter_json, collection_create_json, eq_filter_json, eq2_filter_json,
     payload_index_json,
@@ -11,135 +10,16 @@ use super::convert::{
 use super::http::QdrantHttp;
 use super::search::qdrant_search;
 use super::upsert::upsert_batches_rest;
-use super::{QdrantVectorStore, capability_snapshot};
 use crate::collection::{
     check_collection_drift, normalize_collection_spec, validate_collection_spec,
 };
 use crate::filter::{selector_collection, validate_delete_selector};
 use crate::payload::generation_payload_i64;
-use crate::store::{Result, VectorStore};
+use crate::store::Result;
 use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
-    /// Build (or reuse) the redaction-safe reqwest transport.
-    pub(super) fn http(&self) -> Result<QdrantHttp> {
-        QdrantHttp::new(self.url(), &self.provider_id().0)
-    }
-
-    async fn cached_collection_spec(&self, collection: &str) -> Option<CollectionSpec> {
-        self.collection_specs.read().await.get(collection).cloned()
-    }
-
-    async fn cache_collection_spec(&self, spec: CollectionSpec) {
-        self.collection_specs
-            .write()
-            .await
-            .insert(spec.collection.clone(), spec);
-    }
-
-    /// Fetch and detect the on-disk spec for `collection`, or `None` if absent.
-    pub(super) async fn fetch_collection_spec(
-        &self,
-        http: &QdrantHttp,
-        collection: &str,
-        stage: axon_error::ErrorStage,
-    ) -> Result<Option<CollectionSpec>> {
-        let url = http.endpoint().collection_path(collection, "");
-        let body = http.get_json(stage, &url, "qdrant_get_collection").await?;
-        Ok(body.and_then(|body| detect_collection_spec(collection, &body)))
-    }
-
-    /// Load the collection spec or return a `collection_not_found` error.
-    pub(super) async fn require_collection_spec(
-        &self,
-        http: &QdrantHttp,
-        collection: &str,
-        stage: axon_error::ErrorStage,
-    ) -> Result<CollectionSpec> {
-        if let Some(spec) = self.cached_collection_spec(collection).await {
-            return Ok(spec);
-        }
-        let spec = self
-            .fetch_collection_spec(http, collection, stage)
-            .await?
-            .ok_or_else(|| {
-                ApiError::new(
-                    "vector.collection_not_found",
-                    stage,
-                    format!("collection {collection} has not been ensured"),
-                )
-            })?;
-        self.cache_collection_spec(spec.clone()).await;
-        Ok(spec)
-    }
-}
-
-#[async_trait]
-impl VectorStore for QdrantVectorStore {
-    // Every fallible method below routes its result through `self.track(..)`
-    // so `capabilities()` (via `capability_snapshot`) reflects live
-    // write/delete/search health/cooldown, not just a separate root-liveness
-    // probe — see `QdrantVectorStore::track`.
-    async fn ensure_collection(&self, spec: CollectionSpec) -> Result<()> {
-        self.track(self.ensure_collection_inner(spec).await).await
-    }
-
-    async fn upsert(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
-        self.track(self.upsert_inner(batch).await).await
-    }
-
-    async fn mark_generation_committed(
-        &self,
-        collection: String,
-        source_id: SourceId,
-        generation: SourceGenerationId,
-    ) -> Result<VectorStoreWriteResult> {
-        let http = self.http()?;
-        self.track(
-            mark_generation_committed_rest(self, &http, collection, source_id, generation).await,
-        )
-        .await
-    }
-
-    async fn mark_unchanged_items_committed(
-        &self,
-        collection: String,
-        source_id: SourceId,
-        previous_generation: SourceGenerationId,
-        committed_generation: SourceGenerationId,
-        source_item_keys: Vec<SourceItemKey>,
-    ) -> Result<VectorStoreWriteResult> {
-        let http = self.http()?;
-        self.track(
-            mark_unchanged_items_committed_rest(
-                self,
-                &http,
-                collection,
-                source_id,
-                previous_generation,
-                committed_generation,
-                source_item_keys,
-            )
-            .await,
-        )
-        .await
-    }
-
-    async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
-        self.track(self.delete_inner(selector).await).await
-    }
-
-    async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
-        self.track(self.search_inner(request).await).await
-    }
-
-    async fn capabilities(&self) -> Result<ProviderCapability> {
-        Ok(capability_snapshot(self).await)
-    }
-}
-
-impl QdrantVectorStore {
-    async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
+    pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
         let stage = axon_error::ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);
@@ -169,7 +49,10 @@ impl QdrantVectorStore {
         Ok(())
     }
 
-    async fn upsert_inner(&self, batch: VectorPointBatch) -> Result<VectorStoreWriteResult> {
+    pub(super) async fn upsert_inner(
+        &self,
+        batch: VectorPointBatch,
+    ) -> Result<VectorStoreWriteResult> {
         let stage = axon_error::ErrorStage::Upserting;
         let http = self.http()?;
         let spec = self
@@ -178,7 +61,7 @@ impl QdrantVectorStore {
         upsert_batches_rest(&http, &spec, batch, stage).await
     }
 
-    async fn delete_inner(
+    pub(super) async fn delete_inner(
         &self,
         selector: VectorDeleteSelector,
     ) -> Result<VectorStoreDeleteResult> {
@@ -206,7 +89,10 @@ impl QdrantVectorStore {
         Ok(delete_result(collection, 0))
     }
 
-    async fn search_inner(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
+    pub(super) async fn search_inner(
+        &self,
+        request: VectorSearchRequest,
+    ) -> Result<VectorSearchResult> {
         let stage = axon_error::ErrorStage::Retrieving;
         let http = self.http()?;
         let spec = self
@@ -495,7 +381,10 @@ fn delete_body(selector: &VectorDeleteSelector) -> Result<serde_json::Value> {
 ///
 /// Returns `None` when the body lacks a usable dense-vector config (e.g. an
 /// error envelope), so callers treat it as "collection absent".
-fn detect_collection_spec(collection: &str, body: &serde_json::Value) -> Option<CollectionSpec> {
+pub(super) fn detect_collection_spec(
+    collection: &str,
+    body: &serde_json::Value,
+) -> Option<CollectionSpec> {
     let params = body.pointer("/result/config/params")?;
     let vectors = params.get("vectors")?;
 

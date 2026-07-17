@@ -128,10 +128,17 @@ fn database_spec() -> FamilySpec {
     FamilySpec {
         family: SchemaFamily::Database,
         title: "AxonDatabaseSchema",
-        owner_crates: &["axon-jobs", "axon-ledger", "axon-graph", "axon-memory"],
+        owner_crates: &[
+            "axon-jobs",
+            "axon-ledger",
+            "axon-observe",
+            "axon-graph",
+            "axon-memory",
+        ],
         source_paths: &[
             "crates/axon-jobs/src/migrations",
             "crates/axon-ledger/src/migrations",
+            "crates/axon-observe/src/migrations",
             "crates/axon-graph/src/migrations",
             "crates/axon-memory/src/migrations",
             "xtask/src/schemas/database_defs.rs",

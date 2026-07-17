@@ -13,8 +13,8 @@
 //! [`CliToolSourceAdapter`] wires the above contract into the real
 //! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. `discover`
 //! stays metadata-only; `acquire` selects [`ToolExecutionMode::Execute`] only
-//! when the service layer stamps an execution-auth marker and supplies the
-//! allowlist/env/timeout/output-cap policy in validated route options.
+//! when the service layer stamps an execution-auth marker and injects the
+//! server-owned allowlist/env/timeout/output-cap snapshot in private metadata.
 
 mod adapter;
 pub(crate) mod exec;
@@ -142,7 +142,7 @@ impl std::error::Error for CliToolError {}
 /// must be true and `source.command` must appear verbatim in `allowlist`
 /// (checked by [`validate_execute_allowed`]) before a real process is
 /// spawned via [`execute_command`].
-pub fn resolve_and_acquire(
+pub async fn resolve_and_acquire(
     input: &str,
     mode: ToolExecutionMode,
     has_execute_scope: bool,
@@ -156,9 +156,10 @@ pub fn resolve_and_acquire(
         &allowlist,
         &CliToolExecutionConfig::default(),
     )
+    .await
 }
 
-pub fn resolve_and_acquire_configured(
+pub async fn resolve_and_acquire_configured(
     input: &str,
     mode: ToolExecutionMode,
     has_execute_scope: bool,
@@ -191,7 +192,7 @@ pub fn resolve_and_acquire_configured(
     }
 
     validate_execute_allowed(&source, has_execute_scope, allowlist)?;
-    let outcome = execute_command(&source)?;
+    let outcome = execute_command(&source).await?;
     Ok(execution_result(source, outcome))
 }
 
@@ -300,6 +301,22 @@ pub fn parse_cli_tool_source(input: &str) -> Result<CliToolSource, CliToolError>
             ("shell_expansion".to_string(), "disabled".to_string()),
         ],
     })
+}
+
+/// Reject secret-bearing argv before a detached invocation can be persisted.
+pub fn validate_persistable_cli_invocation(input: &str) -> Result<(), CliToolError> {
+    let source = parse_cli_tool_source(input)?;
+    if std::iter::once(&source.command)
+        .chain(source.argv.iter())
+        .any(|token| redact_text(token).1)
+    {
+        return Err(CliToolError {
+            code: "tool.secret_argument_denied",
+            message: "secret-bearing tool arguments cannot be persisted for detached execution"
+                .to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn apply_execution_config(source: &mut CliToolSource, config: &CliToolExecutionConfig) {

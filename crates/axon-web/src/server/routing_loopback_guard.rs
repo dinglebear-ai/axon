@@ -59,11 +59,25 @@ fn is_loopback_destructive_request(method: &Method, path: &str) -> bool {
     if is_mobile_session_write(method, path) {
         return true;
     }
+    if is_upload_write(method, path) {
+        return true;
+    }
 
     if path == "/v1/extract" {
         return *method == Method::POST;
     }
     false
+}
+
+fn is_upload_write(method: &Method, path: &str) -> bool {
+    (*method == Method::POST && path == "/v1/uploads")
+        || ((*method == Method::PUT
+            || *method == Method::POST
+            || *method == Method::PATCH
+            || *method == Method::DELETE)
+            && path
+                .strip_prefix("/v1/uploads/")
+                .is_some_and(|remainder| !remainder.is_empty()))
 }
 
 /// All mutating per-verb `/v1/memories*` routes.
@@ -103,3 +117,7 @@ fn is_mobile_session_write(method: &Method, path: &str) -> bool {
             .strip_prefix("/v1/mobile/sessions/")
             .is_some_and(|id| !id.is_empty())
 }
+
+#[cfg(test)]
+#[path = "routing_loopback_guard_tests.rs"]
+mod tests;

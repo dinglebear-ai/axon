@@ -83,9 +83,9 @@ pub(super) async fn save_receipt(
 
 async fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), Box<dyn Error>> {
     let parent = path.parent().ok_or("reset control path has no parent")?;
-    tokio::fs::create_dir_all(parent).await?;
-    let tmp = path.with_extension("json.tmp");
-    tokio::fs::write(&tmp, bytes).await?;
-    tokio::fs::rename(&tmp, path).await?;
+    let file_name = path
+        .file_name()
+        .ok_or("reset control path has no file name")?;
+    axon_core::artifacts::atomic_write_under(parent, file_name, bytes).await?;
     Ok(())
 }

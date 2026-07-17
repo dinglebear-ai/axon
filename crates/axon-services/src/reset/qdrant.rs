@@ -84,9 +84,25 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
         };
     }
 
-    let points = collection_point_count(client, base, collection).await;
+    let Some(points) = collection_point_count(client, base, collection).await else {
+        return QdrantInventory {
+            exists: true,
+            unreachable: true,
+            ..Default::default()
+        };
+    };
     let (payload_contract_versions, schema_incompatible) = if points > 0 {
-        sample_payload_contract_versions(client, base, collection).await
+        match payload_contract_versions(client, base, collection).await {
+            Some(inventory) => inventory,
+            None => {
+                return QdrantInventory {
+                    exists: true,
+                    points,
+                    unreachable: true,
+                    ..Default::default()
+                };
+            }
+        }
     } else {
         (Vec::new(), false)
     };
@@ -101,7 +117,11 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
     }
 }
 
-async fn collection_point_count(client: &reqwest::Client, base: &str, collection: &str) -> u64 {
+async fn collection_point_count(
+    client: &reqwest::Client,
+    base: &str,
+    collection: &str,
+) -> Option<u64> {
     let url = format!("{base}/collections/{collection}/points/count");
     let body = serde_json::json!({ "exact": true });
     match client.post(&url).json(&body).send().await {
@@ -109,57 +129,87 @@ async fn collection_point_count(client: &reqwest::Client, base: &str, collection
             .json::<Value>()
             .await
             .ok()
-            .and_then(|v| v.pointer("/result/count").and_then(Value::as_u64))
-            .unwrap_or(0),
-        _ => 0,
+            .and_then(|v| v.pointer("/result/count").and_then(Value::as_u64)),
+        _ => None,
     }
 }
 
-/// Scroll a bounded sample of points and read their
-/// `payload_contract_version`. Points with no contract version are legacy
-/// pre-unification payloads and are incompatible with the current shape.
-async fn sample_payload_contract_versions(
+/// Scroll every point and read its `payload_contract_version`. Compatibility
+/// is a collection-wide cutover invariant: sampling the first page can approve
+/// a collection that still contains legacy points later in the id order.
+async fn payload_contract_versions(
     client: &reqwest::Client,
     base: &str,
     collection: &str,
-) -> (Vec<String>, bool) {
+) -> Option<(Vec<String>, bool)> {
     let url = format!("{base}/collections/{collection}/points/scroll");
-    let body = serde_json::json!({
-        "limit": 256,
-        "with_payload": ["payload_contract_version"],
-        "with_vector": false,
-    });
-    let page: Value = match client.post(&url).json(&body).send().await {
-        Ok(resp) if resp.status().is_success() => match resp.json().await {
-            Ok(v) => v,
-            Err(_) => return (Vec::new(), false),
-        },
-        _ => return (Vec::new(), false),
-    };
-    let points = match page.pointer("/result/points").and_then(Value::as_array) {
-        Some(p) if !p.is_empty() => p,
-        _ => return (Vec::new(), false),
-    };
-    let mut versions = std::collections::BTreeSet::new();
-    let mut incompatible = false;
-    for point in points {
-        match point
-            .pointer("/payload/payload_contract_version")
-            .and_then(Value::as_str)
-        {
-            Some(version) => {
-                versions.insert(version.to_string());
-                if version != TARGET_PAYLOAD_CONTRACT_VERSION {
-                    incompatible = true;
+    let mut scan = PayloadContractScan::default();
+    let mut offset = None;
+    let mut seen_offsets = std::collections::BTreeSet::new();
+    loop {
+        let mut body = serde_json::json!({
+            "limit": 256,
+            "with_payload": ["payload_contract_version"],
+            "with_vector": false,
+        });
+        if let Some(current) = offset.take() {
+            body["offset"] = current;
+        }
+        let response = client.post(&url).json(&body).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        let page: Value = response.json().await.ok()?;
+        let points = page.pointer("/result/points")?.as_array()?;
+        scan.observe(points);
+        if points.is_empty() {
+            break;
+        }
+        let Some(next) = page.pointer("/result/next_page_offset").cloned() else {
+            break;
+        };
+        if next.is_null() {
+            break;
+        }
+        let offset_key = next.to_string();
+        if !seen_offsets.insert(offset_key) {
+            return None;
+        }
+        offset = Some(next);
+    }
+    Some(scan.finish())
+}
+
+#[derive(Default)]
+struct PayloadContractScan {
+    versions: std::collections::BTreeSet<String>,
+    incompatible: bool,
+}
+
+impl PayloadContractScan {
+    fn observe(&mut self, points: &[Value]) {
+        for point in points {
+            match point
+                .pointer("/payload/payload_contract_version")
+                .and_then(Value::as_str)
+            {
+                Some(version) => {
+                    self.versions.insert(version.to_string());
+                    self.incompatible |= version != TARGET_PAYLOAD_CONTRACT_VERSION;
                 }
-            }
-            None => {
-                versions.insert("<missing>".to_string());
-                incompatible = true;
+                None => {
+                    self.versions.insert("<missing>".to_string());
+                    self.incompatible = true;
+                }
             }
         }
     }
-    (versions.into_iter().collect(), incompatible)
+
+    fn finish(self) -> (Vec<String>, bool) {
+        let mut versions = self.versions.into_iter().collect::<Vec<_>>();
+        versions.sort_by_key(|version| (version != "<missing>", version.clone()));
+        (versions, self.incompatible)
+    }
 }
 
 /// Best-effort embedding dimension from TEI `/info`. Returns `None` when TEI is
@@ -225,3 +275,7 @@ pub async fn create_named_collection(cfg: &Config, dim: u64) -> Result<(), Box<d
         .error_for_status()?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "qdrant_tests.rs"]
+mod tests;

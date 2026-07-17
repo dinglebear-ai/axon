@@ -1,6 +1,6 @@
 use super::*;
 use axon_api::source::enums::LifecycleStatus;
-use axon_api::source::prune::PruneStepResult;
+use axon_api::source::prune::{PruneStepResult, PruneTargetKind};
 use axon_core::redact::Redactor;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -57,6 +57,35 @@ pub(super) fn checksum(plan: &PrunePlan) -> String {
     format!("{digest:x}")
 }
 
+pub(super) fn step_checksum(plan: &PrunePlan, target: PruneTargetKind) -> String {
+    use sha2::{Digest, Sha256};
+    let step = plan.steps.iter().find(|step| step.target == target);
+    let value = serde_json::json!({
+        "selector": &plan.selector,
+        "target": target,
+        "step": step,
+    });
+    format!("{:x}", Sha256::digest(value.to_string().as_bytes()))
+}
+
+pub(super) fn step_scope_checksum(plan: &PrunePlan, target: PruneTargetKind) -> String {
+    use sha2::{Digest, Sha256};
+    let mut step = plan
+        .steps
+        .iter()
+        .find(|step| step.target == target)
+        .cloned();
+    if let Some(step) = &mut step {
+        step.estimated_deletes = 0;
+    }
+    let value = serde_json::json!({
+        "selector": &plan.selector,
+        "target": target,
+        "step": step,
+    });
+    format!("{:x}", Sha256::digest(value.to_string().as_bytes()))
+}
+
 pub(super) async fn save_plan(
     ctx: &ServiceContext,
     plan: &PrunePlan,
@@ -109,14 +138,19 @@ async fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, Box
 
 async fn write_json<T: Serialize>(path: &Path, value: &T) -> Result<(), Box<dyn Error>> {
     let parent = path.parent().ok_or("prune control path has no parent")?;
-    tokio::fs::create_dir_all(parent).await?;
-    let tmp = path.with_extension("json.tmp");
     let value = serde_json::to_value(value)?;
     let (value, _) = axon_core::redact::DefaultRedactor::new().redact_json(
         value,
         &axon_core::redact::RedactionContext::artifact_metadata(),
     );
-    tokio::fs::write(&tmp, serde_json::to_vec_pretty(&value)?).await?;
-    tokio::fs::rename(tmp, path).await?;
+    let file_name = path
+        .file_name()
+        .ok_or("prune control path has no file name")?;
+    axon_core::artifacts::atomic_write_under(
+        parent,
+        file_name,
+        &serde_json::to_vec_pretty(&value)?,
+    )
+    .await?;
     Ok(())
 }

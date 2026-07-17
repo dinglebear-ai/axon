@@ -2,6 +2,8 @@ use super::*;
 use axon_api::mcp_schema::MemorySubaction;
 use uuid::Uuid;
 
+use crate::memory::import_export::replaced_scope_memory_ids;
+
 fn remember_req(body: &str) -> MemoryRequest {
     MemoryRequest {
         subaction: Some(MemorySubaction::Remember),
@@ -480,6 +482,45 @@ async fn import_replace_scope_with_admin_authz_is_allowed() {
     import(&ctx, req, &MemoryAuthz::admin())
         .await
         .expect("replace_scope with axon:admin must succeed");
+}
+
+#[tokio::test]
+async fn detached_replace_scope_collects_archived_and_created_publication_ids() {
+    let ctx = test_ctx().await;
+    let store = memory_store(&ctx).await.expect("memory store");
+    let existing = store
+        .remember(axon_api::source::MemoryRequest {
+            memory_type: axon_api::source::MemoryType::Fact,
+            body: "existing scope member".to_string(),
+            confidence: 1.0,
+            salience: 0.5,
+            scope: axon_api::source::MemoryScope {
+                kind: "global".to_string(),
+                value: String::new(),
+            },
+            title: None,
+            tags: Vec::new(),
+            links: Vec::new(),
+            decay: None,
+            embed: true,
+            visibility: None,
+        })
+        .await
+        .expect("remember existing record");
+    let request = axon_api::source::MemoryImportRequest {
+        records: vec![import_record("replacement")],
+        mode: axon_api::source::MemoryImportMode::ReplaceScope,
+        dry_run: false,
+    };
+
+    let mut affected = replaced_scope_memory_ids(store.as_ref(), &request)
+        .await
+        .expect("collect replaced ids");
+    let imported = store.import(request).await.expect("import replacement");
+    affected.extend(imported.created_ids.clone());
+
+    assert!(affected.contains(&existing.memory_id));
+    assert!(imported.created_ids.iter().all(|id| affected.contains(id)));
 }
 
 #[tokio::test]

@@ -8,7 +8,7 @@ use axon_core::content::extract_anchor_hrefs;
 use axon_core::http::{fetch_html, http_client, normalize_url};
 use axon_core::logging::{log_info, log_warn};
 
-use super::super::sitemap::{SitemapDiscovery, discover_sitemap_urls};
+use super::super::sitemap::{SitemapDiscovery, discover_sitemap_urls, sitemap_url_limit};
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
@@ -83,10 +83,12 @@ fn scope_and_filter_map_urls(
     candidates: Vec<String>,
     scope: &MapScope,
 ) -> Vec<String> {
+    let url_limit = sitemap_url_limit(cfg);
     let urls = merge_map_candidate_urls(Vec::new(), candidates, scope, true);
     let scope_prefix_len = scope.path_prefix.as_deref().map_or(0, str::len);
     urls.into_iter()
         .filter(|url| !is_excluded_map_url(url, &cfg.exclude_path_prefix, scope_prefix_len))
+        .take(url_limit)
         .collect()
 }
 

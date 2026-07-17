@@ -4,22 +4,19 @@ mod helpers;
 mod metadata;
 mod publish;
 mod vectorize;
-
-use helpers::*;
-
-use anyhow::Context as _;
-use axon_adapters::SourceAdapter;
-use axon_api::source::*;
-use axon_jobs::boundary::JobStore;
-use axon_ledger::store::LedgerStore;
-
 use super::events::SourceEventEmitter;
 use super::execution::SourceExecutionContext;
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-
+use anyhow::Context as _;
+use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
+use axon_api::source::*;
+use axon_jobs::boundary::JobStore;
+use axon_ledger::store::LedgerStore;
+use helpers::*;
+use std::future::Future;
 const SOURCE_LEASE_TTL_SECONDS: u64 = 30 * 60;
-
+const PUBLICATION_CONFIG_KEY: &str = "axon_publication_config_snapshot_id";
 pub(super) struct NonWebPipelineInput<'a> {
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,
@@ -29,10 +26,15 @@ pub(super) struct NonWebPipelineInput<'a> {
     pub(super) execution: &'a SourceExecutionContext,
 }
 
-pub(super) async fn index_materialized_source(
-    runtime: &TargetLocalSourceRuntime,
-    mut input: NonWebPipelineInput<'_>,
-) -> anyhow::Result<IndexCounts> {
+pub(super) async fn index_materialized_source<'a, F, Fut>(
+    runtime: &'a TargetLocalSourceRuntime,
+    mut input: NonWebPipelineInput<'a>,
+    materialize: F,
+) -> anyhow::Result<IndexCounts>
+where
+    F: FnOnce(SourcePlan) -> Fut + Send + 'a,
+    Fut: Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
+{
     input.plan.config_snapshot_id = crate::config_snapshot_hash::config_snapshot_id(
         &crate::config_snapshot_hash::JobConfigSnapshot {
             source_kind: input.adapter.name(),
@@ -66,32 +68,25 @@ pub(super) async fn index_materialized_source(
         )
         .with_attempt(input.execution.attempt);
 
-    let result = run_with_lease(runtime, &input, &emitter).await;
+    let result = run_with_lease(runtime, &mut input, &emitter, materialize).await;
     if owns_status {
         record_terminal_status(runtime.jobs.as_ref(), &input, &result).await?;
     }
     result
 }
 
-async fn run_with_lease(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-) -> anyhow::Result<IndexCounts> {
+async fn run_with_lease<'a, F, Fut>(
+    runtime: &'a TargetLocalSourceRuntime,
+    input: &mut NonWebPipelineInput<'a>,
+    emitter: &'a SourceEventEmitter,
+    materialize: F,
+) -> anyhow::Result<IndexCounts>
+where
+    F: FnOnce(SourcePlan) -> Fut + Send + 'a,
+    Fut: Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
+{
     let source_id = input.plan.route.source.source_id.clone();
     let previous = runtime.ledger.get_source(source_id.clone()).await?;
-    runtime
-        .ledger
-        .upsert_source(metadata::source_summary(
-            input,
-            LifecycleStatus::Running,
-            previous
-                .as_ref()
-                .map(|source| source.counts.clone())
-                .unwrap_or_else(empty_source_counts),
-            previous.as_ref(),
-        ))
-        .await?;
     record_running_phase(
         runtime,
         input,
@@ -111,7 +106,44 @@ async fn run_with_lease(
         })
         .await?
         .ok_or_else(|| anyhow::anyhow!("source refresh already running for {}", source_id.0))?;
-    let result = run_generation(runtime, input, emitter, &lease, previous).await;
+    runtime
+        .ledger
+        .upsert_source(metadata::source_summary(
+            input,
+            LifecycleStatus::Running,
+            previous
+                .as_ref()
+                .map(preserved_source_counts)
+                .unwrap_or_else(empty_source_counts),
+            previous.as_ref(),
+        ))
+        .await?;
+    let result = match materialize(input.plan.clone()).await {
+        Ok(materialized) => {
+            input.plan = materialized.plan.clone();
+            let result = run_generation(runtime, input, emitter, &lease, previous.clone()).await;
+            drop(materialized);
+            result
+        }
+        Err(error) => Err(error),
+    };
+    if let Err(error) = &result {
+        runtime
+            .ledger
+            .upsert_source(metadata::source_summary(
+                input,
+                LifecycleStatus::Failed,
+                previous
+                    .as_ref()
+                    .map(preserved_source_counts)
+                    .unwrap_or_else(empty_source_counts),
+                previous.as_ref(),
+            ))
+            .await
+            .with_context(|| {
+                format!("source failed with `{error}` and its summary could not be finalized")
+            })?;
+    }
     let release = runtime
         .ledger
         .release_lease(lease.lease_id, input.owner_id.to_string())
@@ -145,6 +177,10 @@ async fn run_generation(
     .await?;
     let mut manifest = input.adapter.discover(&input.plan).await?;
     apply_max_items(&mut manifest, input.plan.limits.effective.max_items);
+    manifest.metadata.insert(
+        PUBLICATION_CONFIG_KEY.to_string(),
+        serde_json::json!(input.plan.config_snapshot_id.0.clone()),
+    );
     record_running_phase(
         runtime,
         input,
@@ -153,8 +189,18 @@ async fn run_generation(
         "diffing source manifest",
     )
     .await?;
-    let diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
-    if !manifest_has_changes(&diff) {
+    let mut diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
+    let publication_config_unchanged = match diff.previous_generation.as_ref() {
+        Some(generation) => runtime
+            .ledger
+            .get_manifest(manifest.source_id.clone(), generation.clone())
+            .await?
+            .is_some_and(|previous| {
+                publication_config_matches(&previous, &input.plan.config_snapshot_id)
+            }),
+        None => false,
+    };
+    if !manifest_has_changes(&diff) && publication_config_unchanged {
         return unchanged_result(
             runtime.ledger.as_ref(),
             input,
@@ -163,6 +209,9 @@ async fn run_generation(
             previous.as_ref(),
         )
         .await;
+    }
+    if !publication_config_unchanged {
+        force_publication_refresh(&mut diff);
     }
 
     if input.plan.request.embed {
@@ -221,7 +270,7 @@ async fn run_created_generation(
     lease: &LeaseGuard,
     manifest: SourceManifest,
     diff: SourceManifestDiff,
-    mut generation: SourceGeneration,
+    generation: SourceGeneration,
     previous: Option<SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
     record_running_phase(
@@ -288,8 +337,29 @@ async fn run_created_generation(
         artifacts.extend(enrichment.artifacts.clone());
     }
 
+    publish_created_generation(
+        runtime, input, emitter, lease, manifest, diff, generation, previous, collection,
+        vectorized, artifacts,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn publish_created_generation(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    lease: &LeaseGuard,
+    manifest: SourceManifest,
+    diff: SourceManifestDiff,
+    generation: SourceGeneration,
+    previous: Option<SourceSummary>,
+    collection: CollectionSpec,
+    vectorized: vectorize::VectorizeResult,
+    artifacts: Vec<ArtifactRef>,
+) -> anyhow::Result<IndexCounts> {
     publish::ensure_lease(runtime.ledger.as_ref(), input, lease).await?;
-    generation = publish::complete_generation(
+    let generation = publish::complete_generation(
         runtime.ledger.as_ref(),
         generation,
         &diff,
@@ -306,24 +376,13 @@ async fn run_created_generation(
         input.plan.request.embed,
     )
     .await?;
-    for status in &vectorized.document_statuses {
-        runtime
-            .ledger
-            .update_document_status(publish::published_status(status))
-            .await?;
-    }
-    let counts = SourceCounts {
-        items_total: manifest.items.len() as u64,
-        items_changed: diff.counts.added + diff.counts.modified + diff.counts.removed,
-        documents_total: vectorized.documents_prepared,
-        chunks_total: vectorized.chunks_prepared,
-        vector_points_total: vectorized.points_written,
-        bytes_total: manifest
-            .items
-            .iter()
-            .map(|item| item.size_bytes.unwrap_or(0))
-            .sum(),
-    };
+    let published_statuses = vectorized
+        .document_statuses
+        .iter()
+        .map(publish::published_status)
+        .collect::<Vec<_>>();
+    vectorize::write_document_statuses(runtime.ledger.as_ref(), &published_statuses).await?;
+    let counts = terminal_source_counts(previous.as_ref(), &manifest, &diff, &vectorized);
     runtime
         .ledger
         .upsert_source(metadata::source_summary(
@@ -347,54 +406,6 @@ async fn run_created_generation(
         graph_candidates: vectorized.graph_candidates,
         warnings: vectorized.warnings,
         artifacts,
-        inline: None,
-    })
-}
-
-async fn unchanged_result(
-    ledger: &dyn LedgerStore,
-    input: &NonWebPipelineInput<'_>,
-    manifest: &SourceManifest,
-    diff: &SourceManifestDiff,
-    previous: Option<&SourceSummary>,
-) -> anyhow::Result<IndexCounts> {
-    let generation = diff
-        .previous_generation
-        .clone()
-        .ok_or_else(|| anyhow::anyhow!("unchanged source has no committed generation"))?;
-    let counts = previous
-        .map(|source| source.counts.clone())
-        .unwrap_or(SourceCounts {
-            items_total: manifest.items.len() as u64,
-            items_changed: 0,
-            documents_total: manifest.items.len() as u64,
-            chunks_total: 0,
-            vector_points_total: 0,
-            bytes_total: manifest
-                .items
-                .iter()
-                .map(|item| item.size_bytes.unwrap_or(0))
-                .sum(),
-        });
-    ledger
-        .upsert_source(metadata::source_summary(
-            input,
-            LifecycleStatus::Completed,
-            counts,
-            previous,
-        ))
-        .await?;
-    Ok(IndexCounts {
-        job_id: input.plan.job_id,
-        source_id: manifest.source_id.clone(),
-        generation,
-        documents_prepared: 0,
-        chunks_prepared: 0,
-        vector_points_written: 0,
-        removed: 0,
-        graph_candidates: Vec::new(),
-        warnings: Vec::new(),
-        artifacts: Vec::new(),
         inline: None,
     })
 }
@@ -434,12 +445,12 @@ async fn record_terminal_status(
 ) -> anyhow::Result<()> {
     let (status, error, counts) = match result {
         Ok(output) => (LifecycleStatus::Completed, None, Some(stage_counts(output))),
-        Err(_error) => (
+        Err(error) => (
             LifecycleStatus::Failed,
             Some(SourceError {
                 code: "source.index_failed".to_string(),
                 severity: Severity::Failed,
-                message: format!("{} source indexing failed", input.adapter.name()),
+                message: error.to_string(),
                 source_item_key: None,
                 retryable: false,
                 provider_id: None,

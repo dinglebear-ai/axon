@@ -201,6 +201,7 @@ pub async fn complete_upload(
     let mut record = load_record(&root, &upload_id).await?;
     ensure_active(&mut record, &root).await?;
     if record.status == UploadStatusKind::Completed {
+        remove_if_exists(part_path(&root, &upload_id)).await?;
         return completed_result(&record);
     }
     if record.status != UploadStatusKind::Received {
@@ -256,7 +257,17 @@ pub async fn complete_upload(
     record.source_ref = Some(source_ref.clone());
     record.retention_until = Some(Timestamp::from(retention_until));
     record.audit_events.push(audit_event("upload.complete"));
-    save_record(&root, &record).await?;
+    if let Err(record_error) = save_record(&root, &record).await {
+        if let Err(compensation_error) = store.delete(handle.clone()).await {
+            return Err(upload_error(
+                "upload.promotion_compensation_failed",
+                format!(
+                    "failed to commit completed upload ({record_error}); failed to remove promoted artifact ({compensation_error})"
+                ),
+            ));
+        }
+        return Err(record_error);
+    }
     remove_if_exists(part_path(&root, &upload_id)).await?;
     tracing::info!(event = "upload.complete", upload_id = %upload_id.0, artifact_id = %handle.artifact_id.0, "upload promoted");
     Ok(UploadCompleteResult {
@@ -290,43 +301,8 @@ pub async fn list_uploads(
     if let Some(cursor) = request.cursor.as_deref() {
         validate_upload_id(&UploadId::new(cursor))?;
     }
-    let mut entries = match tokio::fs::read_dir(&root).await {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(Page {
-                items: Vec::new(),
-                next_cursor: None,
-                limit,
-                total: None,
-            });
-        }
-        Err(error) => return Err(io_error("upload.list_failed", error)),
-    };
-    let mut records = Vec::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| io_error("upload.list_failed", e))?
-    {
-        let path = entry.path();
-        if path.extension().and_then(|v| v.to_str()) != Some("json") {
-            continue;
-        }
-        let record = load_record_path(&path).await?;
-        if request
-            .cursor
-            .as_deref()
-            .is_some_and(|cursor| record.upload_id.0.as_str() <= cursor)
-            || request.status.is_some_and(|status| status != record.status)
-        {
-            continue;
-        }
-        records.push(record);
-    }
-    records.sort_by(|a, b| a.upload_id.cmp(&b.upload_id));
-    let has_more = records.len() > limit as usize;
-    records.truncate(limit as usize);
-    let items = records.iter().map(UploadRecord::status).collect::<Vec<_>>();
+    let index = load_upload_index(&root).await?;
+    let (items, has_more) = index.page(request.cursor.as_deref(), request.status, limit as usize);
     let next_cursor = has_more.then(|| items.last().expect("non-empty page").upload_id.0.clone());
     Ok(Page {
         items,
@@ -345,6 +321,12 @@ pub async fn abort_upload(
     let root = upload_root(ctx);
     let _lock = acquire_lock(&root, &upload_id).await?;
     let mut record = load_record(&root, &upload_id).await?;
+    if record.status == UploadStatusKind::Aborted {
+        return Ok(UploadAbortResult {
+            upload_id,
+            deleted: true,
+        });
+    }
     if record.status == UploadStatusKind::Completed {
         let artifact_id = record.artifact_id.clone().ok_or_else(|| {
             upload_error(
@@ -410,22 +392,12 @@ pub async fn resolve_upload_artifact(
 
 pub async fn cleanup_expired_uploads(ctx: &ServiceContext) -> Result<u64, ApiError> {
     let root = upload_root(ctx);
-    let mut entries = match tokio::fs::read_dir(&root).await {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-        Err(error) => return Err(io_error("upload.cleanup_failed", error)),
-    };
+    let index = load_upload_index(&root).await?;
+    let due_upload_ids = index.due_upload_ids(Utc::now().timestamp_millis());
     let mut expired = 0;
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| io_error("upload.cleanup_failed", e))?
-    {
-        let path = entry.path();
-        if path.extension().and_then(|v| v.to_str()) != Some("json") {
-            continue;
-        }
-        let mut record = load_record_path(&path).await?;
+    for upload_id in due_upload_ids {
+        let _lock = acquire_lock(&root, &upload_id).await?;
+        let mut record = load_record(&root, &upload_id).await?;
         if expire_if_needed(&mut record, &root).await?
             || expire_retained_artifact_if_needed(ctx, &mut record, &root).await?
         {

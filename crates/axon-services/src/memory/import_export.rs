@@ -103,7 +103,7 @@ pub async fn import(
     .await
 }
 
-async fn replaced_scope_memory_ids(
+pub(crate) async fn replaced_scope_memory_ids(
     store: &dyn MemoryStore,
     request: &MemoryImportRequest,
 ) -> Result<Vec<axon_api::source::MemoryId>> {

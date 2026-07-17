@@ -12,7 +12,10 @@ mod filter;
 
 pub use backfill::append_candidate_backfill;
 pub use backfill::{BackfillStats, append_sitemap_backfill};
+pub(crate) use discover::sitemap_url_limit;
 pub use discover::{SitemapDiscovery, discover_sitemap_urls};
+#[cfg(test)]
+pub(crate) use discover::{insert_discovered_url, sitemap_fetch_limit};
 #[cfg(test)]
 use filter::is_already_markdown;
 pub use filter::loc_in_scope;

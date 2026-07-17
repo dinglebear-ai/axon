@@ -328,6 +328,7 @@ pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "section_level",
     "code_fence_language",
     "structured_record_kind",
+    "structured_parse_error",
     "segment_kind",
     "toml_table",
     "transcript_speaker",

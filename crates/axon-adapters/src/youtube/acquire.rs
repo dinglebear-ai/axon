@@ -53,6 +53,21 @@ const MAX_PLAYLIST_VIDEOS: usize = 500;
 /// any subprocess runs, and the canonical URL passed to yt-dlp is
 /// SSRF-validated. Errors are URL-redacted.
 pub async fn fetch_youtube_dump(target: &str) -> Result<PathBuf> {
+    let path = youtube_cache_path(target);
+    fetch_youtube_dump_to_path(target, &path).await?;
+    Ok(path)
+}
+
+pub(super) async fn fetch_youtube_dump_to_temporary_file(
+    target: &str,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    let temporary = tempfile::tempdir().context("failed to create youtube run directory")?;
+    let path = temporary.path().join("youtube.json");
+    fetch_youtube_dump_to_path(target, &path).await?;
+    Ok((temporary, path))
+}
+
+async fn fetch_youtube_dump_to_path(target: &str, path: &std::path::Path) -> Result<()> {
     let parsed = parse_youtube_target(target)
         .map_err(|err| anyhow::anyhow!("invalid youtube target '{target}': {}", err.message))?;
 
@@ -70,7 +85,6 @@ pub async fn fetch_youtube_dump(target: &str) -> Result<PathBuf> {
 
     let dump = serde_json::json!({ "videos": videos });
     let bytes = serde_json::to_vec(&dump).context("failed to serialize youtube dump")?;
-    let path = youtube_cache_path(target);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -79,7 +93,7 @@ pub async fn fetch_youtube_dump(target: &str) -> Result<PathBuf> {
     tokio::fs::write(&path, &bytes)
         .await
         .with_context(|| format!("failed to write youtube dump for target '{target}'"))?;
-    Ok(path)
+    Ok(())
 }
 
 /// Deterministic on-disk path for a youtube target:

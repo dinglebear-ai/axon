@@ -18,6 +18,13 @@ pub(super) struct ManifestDiscovery {
     pub(super) metadata: MetadataMap,
 }
 
+fn finalize_items(mut items: Vec<ManifestItem>, limit: usize) -> Vec<ManifestItem> {
+    items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
+    items.dedup_by(|left, right| left.source_item_key == right.source_item_key);
+    items.truncate(limit);
+    items
+}
+
 pub(super) async fn manifest_items(
     plan: &SourcePlan,
     refresh_content: bool,
@@ -48,12 +55,10 @@ pub(super) async fn manifest_items(
         item.version = refresh_version.clone();
         items.push(item);
     }
-    items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
-    items.dedup_by(|left, right| left.source_item_key == right.source_item_key);
-
-    if refresh_content && cfg.max_pages > 0 {
-        items.truncate(cfg.max_pages as usize);
-    }
+    let items = finalize_items(
+        items,
+        crate::web_engine::engine::sitemap::sitemap_url_limit(&cfg),
+    );
 
     let mut metadata = MetadataMap::new();
     metadata.insert(

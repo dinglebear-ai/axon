@@ -26,6 +26,9 @@
 use axon_api::migration::{MigrationSet, SqlMigration};
 use sqlx::{Executor, SqlitePool};
 
+#[path = "migrations/identity.rs"]
+mod identity;
+
 /// Ordered jobs migration set, exposed for the composed runner.
 ///
 /// The clean-break jobs schema is a single canonical baseline. Older stores
@@ -57,48 +60,58 @@ fn composed_sets() -> [MigrationSet; 5] {
 }
 
 /// Apply every crate's migration set against the shared pool, in dependency
-/// order, idempotently.
+/// order, atomically.
 ///
-/// Records applied `(namespace, version)` pairs in `axon_applied_migrations` so
-/// a fresh DB migrates cleanly and repeated runs are no-ops. Migration SQL is
-/// itself idempotent (`CREATE ... IF NOT EXISTS`); the applied-version guard
-/// additionally skips already-applied migrations without re-executing them.
+/// A fresh database receives the complete canonical schema and exact migration
+/// receipts in one transaction. An existing database is accepted only when its
+/// epoch, receipt names/checksums, tables, and foreign keys match exactly.
 ///
 /// A failure is reported with the offending `namespace/name` id, satisfying the
 /// schema contract's "migration failure is reported with migration id" rule.
 pub async fn apply_all_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    ensure_applied_table(pool).await?;
-    for set in composed_sets() {
-        apply_set(pool, &set).await?;
+    let sets = composed_sets();
+    validate_sets(&sets)?;
+
+    let mut tx = pool.begin().await?;
+    let fresh = identity::validate_before_mutation(&mut tx, &sets).await?;
+    if fresh {
+        ensure_applied_table(&mut tx).await?;
+        for set in sets {
+            apply_set(&mut tx, set).await?;
+        }
+        identity::stamp_schema_epoch(&mut tx).await?;
+        identity::validate_canonical(&mut tx, &sets).await?;
     }
+    tx.commit().await?;
     Ok(())
 }
 
 /// Create the single applied-migrations ledger table if absent.
-async fn ensure_applied_table(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    pool.execute(
-        "CREATE TABLE IF NOT EXISTS axon_applied_migrations (
+async fn ensure_applied_table(connection: &mut sqlx::SqliteConnection) -> Result<(), sqlx::Error> {
+    connection
+        .execute(
+            "CREATE TABLE IF NOT EXISTS axon_applied_migrations (
             namespace  TEXT NOT NULL,
             version    INTEGER NOT NULL,
             name       TEXT NOT NULL,
+            checksum   TEXT NOT NULL,
+            schema_epoch INTEGER NOT NULL,
             applied_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (namespace, version)
         )",
-    )
-    .await?;
+        )
+        .await?;
     Ok(())
 }
 
-/// Apply one namespace's migrations in version order, skipping any already
-/// recorded in `axon_applied_migrations`.
-async fn apply_set(pool: &SqlitePool, set: &MigrationSet) -> Result<(), sqlx::Error> {
-    validate_versions(set)?;
-    for migration in set.migrations {
-        if is_applied(pool, set.namespace, migration.version).await? {
-            continue;
-        }
-        run_migration(pool, set.namespace, migration).await?;
-        record_applied(pool, set.namespace, migration).await?;
+/// Apply one namespace's migrations in version order.
+async fn apply_set(
+    connection: &mut sqlx::SqliteConnection,
+    set: MigrationSet,
+) -> Result<(), sqlx::Error> {
+    for &migration in set.migrations {
+        run_migration(connection, set.namespace, migration).await?;
+        record_applied(connection, set.namespace, migration).await?;
     }
     Ok(())
 }
@@ -107,12 +120,11 @@ async fn apply_set(pool: &SqlitePool, set: &MigrationSet) -> Result<(), sqlx::Er
 /// connection's batch executor. A failure surfaces the migration id so
 /// operators can locate the offending file.
 async fn run_migration(
-    pool: &SqlitePool,
-    namespace: &str,
-    migration: &SqlMigration,
+    connection: &mut sqlx::SqliteConnection,
+    namespace: &'static str,
+    migration: SqlMigration,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    tx.execute(migration.sql).await.map_err(|e| {
+    connection.execute(migration.sql).await.map_err(|e| {
         sqlx::Error::Configuration(
             format!(
                 "migration {namespace}/{name} (v{version}) failed: {e}",
@@ -122,37 +134,25 @@ async fn run_migration(
             .into(),
         )
     })?;
-    tx.commit().await?;
     Ok(())
 }
 
-/// True when `(namespace, version)` is already recorded as applied.
-async fn is_applied(pool: &SqlitePool, namespace: &str, version: i64) -> Result<bool, sqlx::Error> {
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM axon_applied_migrations WHERE namespace = ? AND version = ?",
-    )
-    .bind(namespace)
-    .bind(version)
-    .fetch_one(pool)
-    .await?;
-    Ok(count > 0)
-}
-
-/// Record a migration as applied. `INSERT OR IGNORE` keeps concurrent/repeat
-/// runs a no-op.
+/// Record the exact identity of an applied migration.
 async fn record_applied(
-    pool: &SqlitePool,
-    namespace: &str,
-    migration: &SqlMigration,
+    connection: &mut sqlx::SqliteConnection,
+    namespace: &'static str,
+    migration: SqlMigration,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "INSERT OR IGNORE INTO axon_applied_migrations (namespace, version, name) \
-         VALUES (?, ?, ?)",
+        "INSERT INTO axon_applied_migrations \
+         (namespace, version, name, checksum, schema_epoch) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(namespace)
     .bind(migration.version)
     .bind(migration.name)
-    .execute(pool)
+    .bind(identity::migration_checksum(migration.sql))
+    .bind(identity::SCHEMA_EPOCH)
+    .execute(connection)
     .await?;
     Ok(())
 }
@@ -174,6 +174,28 @@ fn validate_versions(set: &MigrationSet) -> Result<(), sqlx::Error> {
                     name = migration.name,
                 )
                 .into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_sets(sets: &[MigrationSet]) -> Result<(), sqlx::Error> {
+    let mut namespaces = std::collections::BTreeSet::new();
+    for set in sets {
+        if !namespaces.insert(set.namespace) {
+            return Err(sqlx::Error::Configuration(
+                format!("duplicate migration namespace '{}'", set.namespace).into(),
+            ));
+        }
+        validate_versions(set)?;
+        if set
+            .migrations
+            .first()
+            .is_some_and(|migration| migration.version != 1)
+        {
+            return Err(sqlx::Error::Configuration(
+                format!("migration set '{}' must begin at version 1", set.namespace).into(),
             ));
         }
     }

@@ -45,7 +45,7 @@ impl SourceAdapter for McpToolSourceAdapter {
     }
 
     async fn discover(&self, plan: &SourcePlan) -> AdapterResult<SourceManifest> {
-        discover_sync(plan)
+        discover_plan(plan)
     }
 
     async fn acquire(
@@ -53,7 +53,7 @@ impl SourceAdapter for McpToolSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> AdapterResult<SourceAcquisition> {
-        acquire_sync(plan, diff)
+        acquire_plan(plan, diff).await
     }
 
     async fn normalize(
@@ -85,7 +85,7 @@ fn resolve_target(plan: &SourcePlan) -> AdapterResult<McpToolTarget> {
         .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
 }
 
-fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult> {
+async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult> {
     let mode = execution_mode(plan);
     let has_execute_scope = plan
         .request
@@ -108,10 +108,11 @@ fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult>
             .as_ref()
             .map(|caller| caller as &dyn super::McpToolCaller),
     )
+    .await
     .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
 }
 
-fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
+fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     mcp_tool_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = resolve_target(plan)?;
@@ -135,7 +136,7 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
         display_path: Some(item_key),
         parent_key: None,
         size_bytes: None,
-        content_hash: None,
+        content_hash: execution_content_hash(plan),
         mtime: None,
         version: None,
         fetch_plan: None,
@@ -154,7 +155,10 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     })
 }
 
-fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<SourceAcquisition> {
+async fn acquire_plan(
+    plan: &SourcePlan,
+    diff: &SourceManifestDiff,
+) -> AdapterResult<SourceAcquisition> {
     validate_adapter(plan)?;
     let manifest_items = diff
         .added
@@ -162,7 +166,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let resolved = resolve_for_acquire(plan)?;
+    let resolved = resolve_for_acquire(plan).await?;
     let content = resolved
         .documents
         .first()
@@ -281,9 +285,7 @@ fn execution_mode(plan: &SourcePlan) -> McpExecutionMode {
 }
 
 fn mcp_allowlist(plan: &SourcePlan) -> Vec<(String, String)> {
-    string_list_option(plan, "mcp_allowlist")
-        .or_else(|| string_list_option(plan, "tool_allowlist"))
-        .unwrap_or_default()
+    policy_string_list(plan, "mcp_allowlist")
         .into_iter()
         .filter_map(|entry| {
             let (server, tool) = entry.split_once('/')?;
@@ -294,11 +296,48 @@ fn mcp_allowlist(plan: &SourcePlan) -> Vec<(String, String)> {
 
 fn command_caller(plan: &SourcePlan) -> Option<CommandMcpToolCaller> {
     Some(CommandMcpToolCaller {
-        command: string_option(plan, "mcp_caller_command")?,
-        env_allowlist: string_list_option(plan, "env_allowlist").unwrap_or_default(),
-        timeout_ms: u64_option(plan, "timeout_ms").unwrap_or(5_000),
-        output_cap_bytes: u64_option(plan, "output_cap_bytes").unwrap_or(64 * 1024) as usize,
+        command: policy_string(plan, "mcp_caller_command")?,
+        env_allowlist: policy_string_list(plan, "env_allowlist"),
+        timeout_ms: policy_u64(plan, "timeout_ms").unwrap_or(5_000),
+        output_cap_bytes: policy_u64(plan, "output_cap_bytes").unwrap_or(64 * 1024) as usize,
     })
+}
+
+fn execution_content_hash(plan: &SourcePlan) -> Option<String> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execute_authorized")
+        .and_then(serde_json::Value::as_bool)
+        .filter(|authorized| *authorized)
+        .map(|_| format!("tool-execution:{}", plan.job_id.0))
+}
+
+fn policy_value<'a>(plan: &'a SourcePlan, key: &str) -> Option<&'a serde_json::Value> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execution_policy")?
+        .as_object()?
+        .get(key)
+}
+
+fn policy_string(plan: &SourcePlan, key: &str) -> Option<String> {
+    policy_value(plan, key)?.as_str().map(str::to_string)
+}
+
+fn policy_string_list(plan: &SourcePlan, key: &str) -> Vec<String> {
+    policy_value(plan, key)
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn policy_u64(plan: &SourcePlan, key: &str) -> Option<u64> {
+    policy_value(plan, key)?.as_u64()
 }
 
 fn option_string_any(plan: &SourcePlan, keys: &[&str]) -> Option<String> {
@@ -313,29 +352,6 @@ fn string_option(plan: &SourcePlan, key: &str) -> Option<String> {
         .get(key)
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-}
-
-fn string_list_option(plan: &SourcePlan, key: &str) -> Option<Vec<String>> {
-    let value = plan.request.options.values.0.get(key)?;
-    if let Some(values) = value.as_array() {
-        return Some(
-            values
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .map(str::to_string)
-                .collect(),
-        );
-    }
-    value.as_str().map(|single| vec![single.to_string()])
-}
-
-fn u64_option(plan: &SourcePlan, key: &str) -> Option<u64> {
-    plan.request
-        .options
-        .values
-        .0
-        .get(key)
-        .and_then(serde_json::Value::as_u64)
 }
 
 fn bool_option(plan: &SourcePlan, key: &str) -> Option<bool> {

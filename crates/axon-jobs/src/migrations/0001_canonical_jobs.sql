@@ -215,4 +215,3 @@ CREATE INDEX IF NOT EXISTS jobs_watch_id_idx ON jobs(watch_id);
 CREATE INDEX IF NOT EXISTS provider_reservations_job_id_idx ON provider_reservations(job_id);
 CREATE INDEX IF NOT EXISTS provider_reservations_provider_kind_idx ON provider_reservations(provider_kind);
 CREATE INDEX IF NOT EXISTS provider_reservations_stage_id_idx ON provider_reservations(stage_id);
-

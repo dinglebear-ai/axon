@@ -108,6 +108,26 @@ pub fn parse_registry_target(input: &str) -> Result<(String, String), String> {
 /// (not a random temp name), mirroring the reddit/feed/youtube caches. Errors
 /// are URL-redacted.
 pub async fn fetch_registry_dump(registry: &str, package: &str) -> Result<PathBuf> {
+    let path = registry_cache_path(registry, package);
+    fetch_registry_dump_to_path(registry, package, &path).await?;
+    Ok(path)
+}
+
+pub(super) async fn fetch_registry_dump_to_temporary_file(
+    registry: &str,
+    package: &str,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    let temporary = tempfile::tempdir().context("failed to create registry run directory")?;
+    let path = temporary.path().join("registry.json");
+    fetch_registry_dump_to_path(registry, package, &path).await?;
+    Ok((temporary, path))
+}
+
+async fn fetch_registry_dump_to_path(
+    registry: &str,
+    package: &str,
+    path: &std::path::Path,
+) -> Result<()> {
     let registry = registry.trim().to_ascii_lowercase();
     let package = package.trim();
     if package.is_empty() {
@@ -122,7 +142,6 @@ pub async fn fetch_registry_dump(registry: &str, package: &str) -> Result<PathBu
     let dump = map_dump(&registry, package, &value)?;
 
     let bytes = serde_json::to_vec(&dump).context("failed to serialize registry dump")?;
-    let path = registry_cache_path(&registry, package);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -131,7 +150,7 @@ pub async fn fetch_registry_dump(registry: &str, package: &str) -> Result<PathBu
     tokio::fs::write(&path, &bytes)
         .await
         .with_context(|| format!("failed to write registry dump for '{registry}/{package}'"))?;
-    Ok(path)
+    Ok(())
 }
 
 /// Build the metadata endpoint URL for a `(registry, package)` pair.

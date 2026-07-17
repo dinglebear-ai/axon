@@ -42,7 +42,7 @@ impl RedditSourceAdapter {
         mut plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_adapter(&plan)?;
-        let path = fetch_reddit_dump(&plan.request.source)
+        let (temporary, path) = acquire::fetch_reddit_dump_to_temporary_file(&plan.request.source)
             .await
             .map_err(|err| {
                 crate::acquisition::materialization_error(
@@ -54,8 +54,8 @@ impl RedditSourceAdapter {
             "reddit_dump_path".to_string(),
             json!(path.to_string_lossy()),
         );
-        Ok(crate::acquisition::MaterializedSource::persistent(
-            plan, path,
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
         ))
     }
 }

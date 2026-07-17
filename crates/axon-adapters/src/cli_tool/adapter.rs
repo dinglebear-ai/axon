@@ -45,7 +45,7 @@ impl SourceAdapter for CliToolSourceAdapter {
     }
 
     async fn discover(&self, plan: &SourcePlan) -> AdapterResult<SourceManifest> {
-        discover_sync(plan)
+        discover_plan(plan).await
     }
 
     async fn acquire(
@@ -53,7 +53,7 @@ impl SourceAdapter for CliToolSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> AdapterResult<SourceAcquisition> {
-        acquire_sync(plan, diff)
+        acquire_plan(plan, diff).await
     }
 
     async fn normalize(
@@ -61,7 +61,7 @@ impl SourceAdapter for CliToolSourceAdapter {
         plan: &SourcePlan,
         acquisition: SourceAcquisition,
     ) -> AdapterResult<StageExecutionResult<Vec<SourceDocument>>> {
-        normalize_sync(plan, acquisition)
+        normalize_plan(plan, acquisition).await
     }
 }
 
@@ -78,7 +78,7 @@ fn cli_tool_capability(version: &str) -> AdapterCapability {
     .with_scope(SourceScope::Api)
 }
 
-fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
+async fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
     resolve_and_acquire_configured(
         &plan.request.source,
         ToolExecutionMode::MetadataOnly,
@@ -86,10 +86,11 @@ fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
         &[],
         &CliToolExecutionConfig::default(),
     )
+    .await
     .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
 }
 
-fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
+async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
     let mode = execution_mode(plan);
     let has_execute_scope = plan
         .request
@@ -98,14 +99,12 @@ fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult>
         .get("tool_execute_authorized")
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(false);
-    let allowlist = string_list_option(plan, "command_allowlist")
-        .or_else(|| string_list_option(plan, "tool_allowlist"))
-        .unwrap_or_default();
+    let allowlist = policy_string_list(plan, "command_allowlist");
     let config = CliToolExecutionConfig {
-        env_allowlist: string_list_option(plan, "env_allowlist").unwrap_or_default(),
-        side_effect_class: string_option(plan, "side_effect_class"),
-        timeout_ms: u64_option(plan, "timeout_ms"),
-        output_cap_bytes: u64_option(plan, "output_cap_bytes").map(|value| value as usize),
+        env_allowlist: policy_string_list(plan, "env_allowlist"),
+        side_effect_class: policy_string(plan, "side_effect_class"),
+        timeout_ms: policy_u64(plan, "timeout_ms"),
+        output_cap_bytes: policy_u64(plan, "output_cap_bytes").map(|value| value as usize),
     };
     resolve_and_acquire_configured(
         &plan.request.source,
@@ -114,13 +113,14 @@ fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult>
         &allowlist,
         &config,
     )
+    .await
     .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
 }
 
-fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
+async fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     cli_tool_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
-    let resolved = resolve_metadata(plan)?;
+    let resolved = resolve_metadata(plan).await?;
     let source = &resolved.source;
 
     let identity = item_identity(
@@ -130,7 +130,7 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     )?;
     let mut item_metadata = MetadataMap::new();
     item_metadata.insert("tool_command".to_string(), json!(source.command));
-    item_metadata.insert("tool_argv".to_string(), json!(source.argv));
+    item_metadata.insert("tool_argv_count".to_string(), json!(source.argv.len()));
 
     let item = ManifestItem {
         source_id: plan.route.source.source_id.clone(),
@@ -141,7 +141,7 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
         display_path: Some(source.command.clone()),
         parent_key: None,
         size_bytes: None,
-        content_hash: None,
+        content_hash: execution_content_hash(plan),
         mtime: None,
         version: None,
         fetch_plan: None,
@@ -160,7 +160,10 @@ fn discover_sync(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
     })
 }
 
-fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<SourceAcquisition> {
+async fn acquire_plan(
+    plan: &SourcePlan,
+    diff: &SourceManifestDiff,
+) -> AdapterResult<SourceAcquisition> {
     validate_adapter(plan)?;
     let manifest_items = diff
         .added
@@ -168,7 +171,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
         .chain(diff.modified.iter())
         .cloned()
         .collect::<Vec<_>>();
-    let resolved = resolve_for_acquire(plan)?;
+    let resolved = resolve_for_acquire(plan).await?;
     let content = resolved
         .documents
         .first()
@@ -225,12 +228,12 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> AdapterResult<S
     })
 }
 
-fn normalize_sync(
+async fn normalize_plan(
     plan: &SourcePlan,
     acquisition: SourceAcquisition,
 ) -> AdapterResult<StageExecutionResult<Vec<SourceDocument>>> {
     validate_adapter(plan)?;
-    let resolved = resolve_metadata(plan)?;
+    let resolved = resolve_metadata(plan).await?;
     let documents = acquisition
         .fetched_items
         .iter()
@@ -282,6 +285,43 @@ fn execution_mode(plan: &SourcePlan) -> ToolExecutionMode {
     }
 }
 
+fn execution_content_hash(plan: &SourcePlan) -> Option<String> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execute_authorized")
+        .and_then(serde_json::Value::as_bool)
+        .filter(|authorized| *authorized)
+        .map(|_| format!("tool-execution:{}", plan.job_id.0))
+}
+
+fn policy_value<'a>(plan: &'a SourcePlan, key: &str) -> Option<&'a serde_json::Value> {
+    plan.request
+        .metadata
+        .0
+        .get("tool_execution_policy")?
+        .as_object()?
+        .get(key)
+}
+
+fn policy_string(plan: &SourcePlan, key: &str) -> Option<String> {
+    policy_value(plan, key)?.as_str().map(str::to_string)
+}
+
+fn policy_string_list(plan: &SourcePlan, key: &str) -> Vec<String> {
+    policy_value(plan, key)
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect()
+}
+
+fn policy_u64(plan: &SourcePlan, key: &str) -> Option<u64> {
+    policy_value(plan, key)?.as_u64()
+}
+
 fn option_string_any(plan: &SourcePlan, keys: &[&str]) -> Option<String> {
     keys.iter().find_map(|key| string_option(plan, key))
 }
@@ -294,29 +334,6 @@ fn string_option(plan: &SourcePlan, key: &str) -> Option<String> {
         .get(key)
         .and_then(serde_json::Value::as_str)
         .map(str::to_string)
-}
-
-fn string_list_option(plan: &SourcePlan, key: &str) -> Option<Vec<String>> {
-    let value = plan.request.options.values.0.get(key)?;
-    if let Some(values) = value.as_array() {
-        return Some(
-            values
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .map(str::to_string)
-                .collect(),
-        );
-    }
-    value.as_str().map(|single| vec![single.to_string()])
-}
-
-fn u64_option(plan: &SourcePlan, key: &str) -> Option<u64> {
-    plan.request
-        .options
-        .values
-        .0
-        .get(key)
-        .and_then(serde_json::Value::as_u64)
 }
 
 fn bool_option(plan: &SourcePlan, key: &str) -> Option<bool> {

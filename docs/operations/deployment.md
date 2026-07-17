@@ -228,7 +228,22 @@ ssh tootie 'docker logs --tail=200 axon-qdrant'
 
 ## Rollback Procedure
 
-Rollback is compose-based and image-based.
+Code-only rollback is compose-based and image-based. A deployment that runs
+`axon reset` also changes durable state and requires a coordinated backup before
+the reset:
+
+- stop every Axon process so reset can acquire SQLite exclusive locking
+- copy the SQLite DB and sidecars while stopped
+- create a Qdrant snapshot for the selected collection
+- archive the selected artifact tree
+- record all three under one backup-set identifier
+
+Reset recovery is restore-only. Do not try to reverse individual reset chunks
+or mix stores from different points in time. Restore SQLite, Qdrant, and
+artifacts from the same backup set, then start workers and run the validation
+checklist. If a reset was interrupted but restoration is not required, rerun
+the same plan id: started plans remain resumable after their planning TTL and
+validate completed postconditions plus pending preconditions before continuing.
 
 1. Stop current stack:
 

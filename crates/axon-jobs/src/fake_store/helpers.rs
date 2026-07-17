@@ -195,6 +195,81 @@ pub(super) fn retry_locked(
     })
 }
 
+pub(super) fn recover_locked(
+    state: &mut FakeJobWatchState,
+    request: JobRecoveryRequest,
+) -> crate::boundary::Result<JobRecoveryResult> {
+    if request.older_than_seconds.is_none() && !request.allow_without_cutoff {
+        return Err(ApiError::new(
+            "job_recovery.cutoff_required",
+            ErrorStage::Planning,
+            "recovery requires older_than_seconds unless allow_without_cutoff is explicit",
+        ));
+    }
+    let now = state.timestamp();
+    let mut scanned = 0;
+    let mut failed = 0;
+    for job in state.jobs.values_mut() {
+        if request.kind.is_some_and(|kind| kind != job.kind)
+            || !matches!(
+                job.status,
+                LifecycleStatus::Running | LifecycleStatus::Waiting
+            )
+            || !is_stale(job, &now, request.older_than_seconds)
+        {
+            continue;
+        }
+        scanned += 1;
+        if !request.dry_run {
+            job.status = LifecycleStatus::Failed;
+            job.phase = PipelinePhase::Complete;
+            job.updated_at = now.clone();
+            job.finished_at = Some(now.clone());
+            if let Some(heartbeat) = job.heartbeat.as_mut() {
+                heartbeat.status = LifecycleStatus::Failed;
+                heartbeat.phase = PipelinePhase::Complete;
+                heartbeat.heartbeat_at = now.clone();
+            }
+            failed += 1;
+        }
+    }
+    if !request.dry_run {
+        fail_recovered_stages(state, &now);
+    }
+    Ok(JobRecoveryResult {
+        recovered: 0,
+        job_ids: Vec::new(),
+        warnings: Vec::new(),
+        jobs_scanned: scanned,
+        jobs_requeued: 0,
+        jobs_failed: failed,
+    })
+}
+
+fn fail_recovered_stages(state: &mut FakeJobWatchState, now: &Timestamp) {
+    let failed_jobs = state
+        .jobs
+        .iter()
+        .filter_map(|(job_id, job)| {
+            (job.status == LifecycleStatus::Failed && job.updated_at == *now).then_some(*job_id)
+        })
+        .collect::<Vec<_>>();
+    for job_id in failed_jobs {
+        if let Some(stages) = state.stages.get_mut(&job_id) {
+            for stage in stages {
+                if matches!(
+                    stage.status,
+                    LifecycleStatus::Running | LifecycleStatus::Waiting
+                ) {
+                    stage.status = LifecycleStatus::Failed;
+                    stage.completed_at = Some(now.clone());
+                    stage.error = Some(recovery_api_error());
+                }
+            }
+        }
+    }
+}
+
 pub(super) fn new_job_descriptor(
     job_id: JobId,
     kind: JobKind,

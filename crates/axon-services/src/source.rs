@@ -47,7 +47,7 @@ use axon_api::source::{AuthSnapshot, PipelinePhase, SourceRequest, SourceResult,
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use classify::SourceInputKind;
 pub(crate) use execution::SourceExecutionContext;
-use result_map::{IndexCounts, to_source_result};
+use result_map::{IndexCounts, to_source_result_with_counts};
 
 /// Stable owner id used to lease sources indexed through this orchestrator when
 /// the request does not carry its own. Matches the CLI's historical owner id.
@@ -213,13 +213,19 @@ async fn index_source_inner(
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;
 
-    Ok(to_source_result(
+    let source_counts = runtime
+        .ledger
+        .get_source(counts.source_id.clone())
+        .await?
+        .map(|source| source.counts);
+    Ok(to_source_result_with_counts(
         route.source.source_kind,
         adapter,
         route.scope,
         route.source.canonical_uri,
         counts,
         graph,
+        source_counts,
     ))
 }
 

@@ -57,6 +57,21 @@ const THREAD_COMMENT_DEPTH: u32 = 10;
 /// environment; a missing pair is a clear, actionable error surfaced *before*
 /// any network call. Auth and fetch errors are credential-/URL-redacted.
 pub async fn fetch_reddit_dump(target: &str) -> Result<PathBuf> {
+    let path = reddit_cache_path(target);
+    fetch_reddit_dump_to_path(target, &path).await?;
+    Ok(path)
+}
+
+pub(super) async fn fetch_reddit_dump_to_temporary_file(
+    target: &str,
+) -> Result<(tempfile::TempDir, PathBuf)> {
+    let temporary = tempfile::tempdir().context("failed to create reddit run directory")?;
+    let path = temporary.path().join("reddit.json");
+    fetch_reddit_dump_to_path(target, &path).await?;
+    Ok((temporary, path))
+}
+
+async fn fetch_reddit_dump_to_path(target: &str, path: &std::path::Path) -> Result<()> {
     let parsed = parse_reddit_target(target)
         .map_err(|err| anyhow::anyhow!("invalid reddit target '{target}': {err}"))?;
 
@@ -72,7 +87,6 @@ pub async fn fetch_reddit_dump(target: &str) -> Result<PathBuf> {
     };
 
     let bytes = serde_json::to_vec(&items).context("failed to serialize reddit dump")?;
-    let path = reddit_cache_path(target);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -81,7 +95,7 @@ pub async fn fetch_reddit_dump(target: &str) -> Result<PathBuf> {
     tokio::fs::write(&path, &bytes)
         .await
         .with_context(|| format!("failed to write reddit dump for target '{target}'"))?;
-    Ok(path)
+    Ok(())
 }
 
 /// Read `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`, returning a clear,

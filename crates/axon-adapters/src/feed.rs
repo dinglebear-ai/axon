@@ -42,7 +42,7 @@ impl FeedSourceAdapter {
         mut plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_adapter(&plan)?;
-        let path = fetch_feed_to_file(&plan.request.source)
+        let (temporary, path) = acquire::fetch_feed_to_temporary_file(&plan.request.source)
             .await
             .map_err(|err| {
                 crate::acquisition::materialization_error(
@@ -54,8 +54,8 @@ impl FeedSourceAdapter {
             .validated_options
             .values
             .insert("feed_path".to_string(), json!(path.to_string_lossy()));
-        Ok(crate::acquisition::MaterializedSource::persistent(
-            plan, path,
+        Ok(crate::acquisition::MaterializedSource::temporary_at(
+            plan, temporary, path,
         ))
     }
 }

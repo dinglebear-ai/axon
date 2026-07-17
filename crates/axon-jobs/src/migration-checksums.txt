@@ -2,4 +2,4 @@
 #
 # Migrations are append-only once merged because SQLx stores checksums in
 # live SQLite databases. To change an applied migration, add a new migration instead.
-0001_canonical_jobs.sql e38e03cf080bc1e95a0d981609148bd306a3df072be3e4e6e0c8e49950282a28f963f8ff19d855c4a202dc979317bd0a
+0001_canonical_jobs.sql 0f16dcf9e469f63ddc2dfd9673661ce7c887a7e9e84a84427582e7e4275d2b611f0827a519236bcddca55e456b868ce2

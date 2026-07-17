@@ -56,14 +56,26 @@ pub fn to_source_result(
     counts: IndexCounts,
     graph: GraphWriteSummary,
 ) -> SourceResult {
-    let source_counts = SourceCounts {
+    to_source_result_with_counts(kind, adapter, scope, canonical_uri, counts, graph, None)
+}
+
+pub fn to_source_result_with_counts(
+    kind: SourceKind,
+    adapter: AdapterRef,
+    scope: SourceScope,
+    canonical_uri: String,
+    counts: IndexCounts,
+    graph: GraphWriteSummary,
+    authoritative_counts: Option<SourceCounts>,
+) -> SourceResult {
+    let source_counts = authoritative_counts.unwrap_or_else(|| SourceCounts {
         items_total: counts.documents_prepared,
         items_changed: counts.documents_prepared,
         documents_total: counts.documents_prepared,
         chunks_total: counts.chunks_prepared,
         vector_points_total: counts.vector_points_written,
         bytes_total: 0,
-    };
+    });
 
     let ledger = LedgerSummary {
         source_id: counts.source_id.clone(),

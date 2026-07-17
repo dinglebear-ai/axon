@@ -14,7 +14,7 @@ pub(super) fn source_summary(
         display_name: input.plan.route.source.canonical_uri.clone(),
         source_kind: input.plan.route.source.source_kind,
         adapter: input.plan.route.adapter.clone(),
-        authority: AuthorityLevel::UserPinned,
+        authority: input.plan.route.source.authority,
         status,
         counts,
         created_at: previous
@@ -24,7 +24,11 @@ pub(super) fn source_summary(
         graph_node_ids: previous
             .map(|source| source.graph_node_ids.clone())
             .unwrap_or_default(),
-        last_refreshed_at: (status == LifecycleStatus::Completed).then(timestamp),
+        last_refreshed_at: if status == LifecycleStatus::Completed {
+            Some(timestamp())
+        } else {
+            previous.and_then(|source| source.last_refreshed_at.clone())
+        },
         user_label: previous.and_then(|source| source.user_label.clone()),
         tags: previous
             .map(|source| source.tags.clone())

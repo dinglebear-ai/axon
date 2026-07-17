@@ -181,10 +181,34 @@ async fn dispatch_virtual_kind(
 ) -> anyhow::Result<IndexCounts> {
     match kind {
         SourceInputKind::CliTool => {
-            dispatch::dispatch_cli_tool(runtime, input, owner_id, auth_snapshot, route).await
+            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
+            dispatch::dispatch_cli_tool(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                route,
+                execution,
+                &policy,
+            )
+            .await
         }
         SourceInputKind::McpTool => {
-            dispatch::dispatch_mcp_tool(runtime, input, owner_id, auth_snapshot, route).await
+            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
+            dispatch::dispatch_mcp_tool(
+                runtime,
+                input,
+                collection,
+                owner_id,
+                auth_snapshot,
+                embed,
+                route,
+                execution,
+                &policy,
+            )
+            .await
         }
         SourceInputKind::Memory => {
             dispatch::dispatch_memory(
