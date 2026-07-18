@@ -103,7 +103,11 @@ pub(crate) async fn dispatch_web(
         )
         .await
     }
-    .map_err(|e| anyhow::anyhow!(e.to_string()))
+    // Both branches above already return `anyhow::Result`, so `.context()`
+    // applies directly and preserves the existing chain. The prior
+    // `.map_err(|e| anyhow::anyhow!(e.to_string()))` round-tripped the error
+    // through a bare string first, discarding whatever chain it already
+    // carried before this frame was even added.
     .context("web source indexing failed")?;
     Ok(IndexCounts {
         job_id: output.job_id,

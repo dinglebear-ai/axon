@@ -52,6 +52,20 @@ fn request_target_fields(
         return (source.clone(), None, source, None);
     }
 
+    // Flat source-request shape: `{"scope": ..., "source": "<url>", "source_kind": ...}`,
+    // an older `SourceRequest` serialization that stores the source at the top
+    // level instead of nested under `source_request`. Without this, such jobs
+    // fall through to `job.id` in `format_subject`, and the 36-char UUID trips
+    // the high-entropy secret redactor in `axon status`, rendering the whole
+    // label as `[REDACTED]` even though nothing sensitive is present.
+    if let Some(source) = request_json
+        .get("source")
+        .and_then(serde_json::Value::as_str)
+    {
+        let source = source.to_string();
+        return (Some(source.clone()), None, Some(source), None);
+    }
+
     match kind {
         JobKind::Extract => {
             let urls_json = request_json.get("urls").cloned();
@@ -261,3 +275,7 @@ pub(super) async fn count_by_status(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+#[path = "service_job_view_tests.rs"]
+mod tests;

@@ -122,7 +122,12 @@ pub async fn dispatch_local(
         runtime.vector_store.as_ref(),
     )
     .await
-    .map_err(|e| anyhow::anyhow!(e.to_string()))
+    // `index_local_source_with_job` already returns `anyhow::Result`, so
+    // `.context()` applies directly and preserves its chain — the previous
+    // `.map_err(|e| anyhow::anyhow!(e.to_string()))` round-tripped the error
+    // through a bare string first, collapsing it to the outermost frame
+    // before this context was even added (same defect as the web dispatch
+    // path; see `source/dispatch/web.rs`).
     .context("local source indexing failed")?;
     Ok(IndexCounts {
         job_id: output.job_id,

@@ -79,17 +79,28 @@ fn terminal_source_error(err: &anyhow::Error, root: &Path) -> SourceError {
     if let Some(api_error) = err.downcast_ref::<ApiError>() {
         return source_error_from_api_error(api_error);
     }
-    let safe_error = redact_local_root(&err.to_string(), root);
+    let message = redact_local_root(&err.to_string(), root);
+    // `{err:#}` (anyhow's alternate Display) prints the whole `.context()`
+    // chain; `message` above only ever holds the outermost frame. Only
+    // populate `cause` when the chain actually adds something beyond
+    // `message`, so a single-frame error doesn't get a pointless duplicate —
+    // and it gets the same local-root redaction `message` already does.
+    let full_chain = redact_local_root(&format!("{err:#}"), root);
+    let cause = (full_chain != message).then_some(full_chain);
     SourceError {
         code: "source.local.index_failed".to_string(),
         severity: Severity::Failed,
-        message: safe_error.clone(),
+        message,
         source_item_key: None,
         retryable: false,
         provider_id: None,
-        cause: Some(safe_error),
+        cause,
     }
 }
+
+#[cfg(test)]
+#[path = "local_source_job_tests.rs"]
+mod tests;
 
 fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> JobCreateRequest {
     JobCreateRequest {
