@@ -924,16 +924,6 @@
             },
             {
               "required": [
-                "extractor_name"
-              ]
-            },
-            {
-              "required": [
-                "extractor_version"
-              ]
-            },
-            {
-              "required": [
                 "structured_payload_omitted"
               ]
             },
@@ -1228,6 +1218,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -1755,6 +1765,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -2248,6 +2278,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -2736,6 +2786,16 @@
             },
             {
               "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -3185,6 +3245,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -3732,6 +3812,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -4261,6 +4361,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -4808,6 +4928,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -5292,6 +5432,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -5834,6 +5994,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -6372,6 +6552,26 @@
             },
             {
               "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
+              ]
+            },
+            {
+              "required": [
                 "feed_title"
               ]
             },
@@ -6906,6 +7106,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -7454,6 +7674,26 @@
             {
               "required": [
                 "git_web_url"
+              ]
+            },
+            {
+              "required": [
+                "extractor_name"
+              ]
+            },
+            {
+              "required": [
+                "extractor_version"
+              ]
+            },
+            {
+              "required": [
+                "git_fetch_method"
+              ]
+            },
+            {
+              "required": [
+                "git_title"
               ]
             },
             {
@@ -8148,6 +8388,9 @@
     "feed_title": {
       "type": "string"
     },
+    "git_fetch_method": {
+      "type": "string"
+    },
     "git_host": {
       "type": "string"
     },
@@ -8158,6 +8401,9 @@
       "type": "string"
     },
     "git_repo": {
+      "type": "string"
+    },
+    "git_title": {
       "type": "string"
     },
     "git_web_url": {
@@ -8676,10 +8922,14 @@
         "embedding_model": "text-embedding-test",
         "embedding_profile": "default",
         "embedding_provider": "tei",
+        "extractor_name": "extractor_name",
+        "extractor_version": "extractor_version",
+        "git_fetch_method": "git_fetch_method",
         "git_host": "git_host",
         "git_owner": "git_owner",
         "git_provider": "git_provider",
         "git_repo": "git_repo",
+        "git_title": "git_title",
         "git_web_url": "git_web_url",
         "item_canonical_uri": "item_canonical_uri",
         "job_id": "job-code",
@@ -10104,7 +10354,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:d2728946df52670c8788a0e5807851f761dfbbf97ad8c399cd0b22669a0e4991",
+        "checksum": "sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -10154,7 +10404,11 @@
           "git_host",
           "git_repo",
           "git_owner",
-          "git_web_url"
+          "git_web_url",
+          "extractor_name",
+          "extractor_version",
+          "git_fetch_method",
+          "git_title"
         ],
         "source_family": "code"
       },

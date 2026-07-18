@@ -574,7 +574,7 @@
         {
           "path": "crates/axon-vectors/src/payload_families.rs",
           "kind": "rust_module",
-          "checksum": "sha256:d2728946df52670c8788a0e5807851f761dfbbf97ad8c399cd0b22669a0e4991"
+          "checksum": "sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e"
         },
         {
           "path": "crates/axon-vectors/src/point.rs",
@@ -607,7 +607,7 @@
           "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54"
         }
       ],
-      "manifest_checksum": "0711db40334659fe928caf267f95e1da608410555039a749cbc8458461c83b0b"
+      "manifest_checksum": "07f82a519c8c64642eafdf8e5e668565df29905820051d881692daad477978ce"
     }
   ]
 }

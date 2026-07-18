@@ -26,6 +26,13 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "git_repo",
             "git_owner",
             "git_web_url",
+            // GitHub sub-page vertical documents (issue/PR/release) re-enter on
+            // the `code` family but carry the same vertical-extractor metadata
+            // the web family declares — see `axon-adapters::git::vertical`.
+            "extractor_name",
+            "extractor_version",
+            "git_fetch_method",
+            "git_title",
         ],
     ),
     (
