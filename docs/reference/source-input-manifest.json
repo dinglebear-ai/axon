@@ -37,7 +37,7 @@
         {
           "path": "docs/pipeline-unification/sources/adapter-scopes.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:b156c244dc58a5f2d3e60897967b4c7c36fa9e4df85b9ece1f3be3a27794dcf8"
+          "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd"
         },
         {
           "path": "docs/pipeline-unification/sources/new-source-contract.md",
@@ -45,7 +45,7 @@
           "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
         }
       ],
-      "manifest_checksum": "44f408b726e62e55d21f4bdc1be6b9042a36a2ce9e69dea2558142c1db24e09f"
+      "manifest_checksum": "b1a1d685adaf35da2cd3a26eb4ad77449d9afc14a030dfe005ebad74f6572ecc"
     },
     {
       "family": "api",

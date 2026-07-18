@@ -152,7 +152,7 @@ fn router_carries_tool_execution_options_with_trusted_policy() {
 }
 
 #[test]
-fn router_uses_api_style_parser_ids_for_mcp_tools() {
+fn router_emits_no_default_parser_hints_for_mcp_tools() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
     let request = SourceRequest::new("mcp:context7/resolve-library-id");

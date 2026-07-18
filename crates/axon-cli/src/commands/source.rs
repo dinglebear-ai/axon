@@ -9,13 +9,15 @@
 //! MCP, and REST share one entrypoint.
 
 use axon_api::source::{
-    ArtifactKind, ArtifactMode, ContentRef, LifecycleStatus, ResponseMode, SourceIntent,
-    SourceLimits, SourceRequest, SourceResult, SourceScope,
+    ArtifactKind, ArtifactMode, ContentRef, LifecycleStatus, ResponseMode, Severity, SourceIntent,
+    SourceLimits, SourceRequest, SourceResult, SourceScope, SourceWarning,
 };
 use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
 use axon_services::index_source;
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::error::Error;
 
 pub(crate) mod detach;
@@ -241,9 +243,52 @@ fn print_input_line(result: &SourceResult) {
 }
 
 fn print_warnings(result: &SourceResult) {
-    for warning in &result.warnings {
-        println!("  {}", muted(&format!("Warning: {}", warning.message)));
+    for (label, message, count) in grouped_warnings(&result.warnings) {
+        let line = if count > 1 {
+            format!("{label} {message} (x{count})")
+        } else {
+            format!("{label} {message}")
+        };
+        println!("  {}", muted(&sanitize_terminal_text(&line)));
     }
+}
+
+/// Collapse identical `(severity label, message)` pairs into one entry with a
+/// count, preserving first-seen order. Per-document warnings repeat once per
+/// document, so a site-scope run can otherwise print hundreds of identical
+/// lines; JSON output keeps the full per-item list. The `HashMap` index keeps
+/// grouping linear even when a large crawl emits mostly-unique messages.
+fn grouped_warnings(warnings: &[SourceWarning]) -> Vec<(&'static str, &str, usize)> {
+    let mut grouped: Vec<(&'static str, &str, usize)> = Vec::new();
+    let mut index: HashMap<(&'static str, &str), usize> = HashMap::new();
+    for warning in warnings {
+        let label = severity_label(warning);
+        match index.entry((label, warning.message.as_str())) {
+            Entry::Occupied(slot) => grouped[*slot.get()].2 += 1,
+            Entry::Vacant(slot) => {
+                slot.insert(grouped.len());
+                grouped.push((label, warning.message.as_str(), 1));
+            }
+        }
+    }
+    grouped
+}
+
+/// Informational diagnostics (e.g. `parse.parser_hint_unregistered`) must not
+/// masquerade as degradations in human output.
+fn severity_label(warning: &SourceWarning) -> &'static str {
+    if matches!(warning.severity, Severity::Debug | Severity::Info) {
+        "Note:"
+    } else {
+        "Warning:"
+    }
+}
+
+/// Warning text can embed upstream-derived strings; strip control characters
+/// (including ANSI escape introducers) before the text joins an ANSI-styled
+/// terminal line.
+fn sanitize_terminal_text(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
 }
 
 /// Render the job-descriptor shape for a detached (still non-terminal) source
@@ -283,7 +328,6 @@ fn render_failed_source(result: &SourceResult) -> bool {
     print_warnings(result);
     true
 }
-
 fn render_inline_source_content(result: &SourceResult) -> bool {
     let Some(inline) = &result.inline else {
         return false;
@@ -353,3 +397,7 @@ async fn write_scrape_output_if_requested(
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "source_tests.rs"]
+mod tests;

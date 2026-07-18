@@ -83,32 +83,41 @@ below.
 
 `ParserRegistry::parse(input)`:
 
-1. If the input requests an explicit parser (`ParseInput.requested_parser`,
-   falling back to the document's first `parser_hints` entry), look it up by
-   `parser_id`. If found, use it. If requested but not found, return a
-   `parse.requested_parser_unavailable` degraded result — never silently fall
-   through to auto-selection.
-2. Otherwise, run `select_best_match`: score every registered parser against
-   the input using `match_score`, which checks (in priority order, taking
-   the **maximum** matching score):
+1. If the caller demands an explicit parser (`ParseInput.requested_parser`),
+   look it up by `parser_id`. If found, it runs alone. If demanded but not
+   found, return a `parse.requested_parser_unavailable` degraded result —
+   never silently fall through to auto-selection.
+2. Otherwise, if the document's first `parser_hints` entry names a registered
+   parser, that parser runs alone. A hint naming an unregistered parser is
+   advisory upstream metadata, not a caller demand: selection falls through
+   to auto-selection below and the result records an informational
+   `parse.parser_hint_unregistered` warning.
+3. Otherwise, run `ranked_matches`: **every** parser that specifically
+   identifies the document runs together (multi-parser fan-out; their facts,
+   graph candidates, warnings, and errors merge into one result). Specific
+   identification is scored per parser via `specific_score`, taking the
+   **maximum** matching signal:
 
    | Match | Score |
    |---|---|
-   | Path extension/suffix (`matches_path`) | 50 |
    | MIME type (`matches_mime_type`) | 40 |
-   | Content sniffing — text prefix match (`matches_sniffing`) | 30 |
-   | Content kind (`matches_content_kind`) | 10 |
+   | Path extension/suffix (`matches_path`) | 30 |
+   | Content sniffing — text prefix match (`matches_sniffing`) | 20 |
 
-   Ties on score are broken by lower `priority` value winning. A parser with
-   no match on any axis is excluded entirely (`match_score` returns `None`).
-3. If nothing matches, return an `unsupported_result` — a
-   `CompletedDegraded` result with a `parse.unsupported` warning and empty
-   facts/candidates, not an error. **Unsupported content must degrade
-   cleanly and never block ingestion.**
+   The best-scored match is the primary parser (its identity and header
+   win); ties break toward the lower `priority` value. Content kind
+   (`matches_content_kind`) is not a scored signal: only when no parser
+   matches specifically does the single highest-priority content-kind match
+   run alone, as the last resort — it never fans out.
+4. If nothing matches at all, return an `unsupported_result` — a `Skipped`
+   result with a `parse.unsupported` warning and empty facts/candidates, not
+   an error. **Unsupported content must degrade cleanly and never block
+   ingestion.**
 
-Design your `ParserCapability` to be specific: prefer `file_extensions`/
-`path_suffixes` over a bare `content_kinds` match when you can, since path
-matches score highest and are the least ambiguous signal.
+Design your `ParserCapability` to be specific: prefer `mime_types`/
+`file_extensions`/`path_suffixes` over a bare `content_kinds` match when you
+can — MIME type scores highest, and content kind is only the last-resort
+fallback.
 
 ## Step 3: Emit evidence-backed facts and graph candidates
 

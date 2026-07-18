@@ -33,7 +33,7 @@ resolver = "2"
 # `axon` package keeps an explicit `version` too (the release checker reads it as
 # a string); `cargo xtask bump-version cli` moves both in lockstep.
 [workspace.package]
-version = "7.1.1"
+version = "7.1.2"
 edition = "2024"
 rust-version = "1.94.0"
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
@@ -55,7 +55,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "7.1.1"
+version = "7.1.2"
 edition = "2024"
 rust-version = "1.94.0"
 categories = ["command-line-utilities", "development-tools"]
