@@ -1598,7 +1598,7 @@
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:b156c244dc58a5f2d3e60897967b4c7c36fa9e4df85b9ece1f3be3a27794dcf8",
+        "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

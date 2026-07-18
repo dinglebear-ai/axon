@@ -78,6 +78,44 @@ fn manifest_document_routes_to_code_manifest() {
 }
 
 #[test]
+fn web_document_with_stale_route_hint_still_parses_markdown() {
+    // Regression: the router used to stamp every web document with a
+    // fabricated `ParserHint { parser_id: "web" }`. No parser is registered
+    // under that id, so every page of a site crawl degraded with "requested
+    // parser is not registered: web" and produced zero parse facts. An
+    // unregistered advisory hint must fall back to content-based selection.
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        "index.md",
+        "# Claude Code\n\nDocs body\n",
+    );
+    doc.canonical_uri = "https://code.claude.com/".to_string();
+    doc.path = None;
+    doc.parser_hints = vec![ParserHint {
+        parser_id: "web".to_string(),
+        reason: "route default parser".to_string(),
+        options: MetadataMap::new(),
+    }];
+
+    let parse = parse_document(&doc);
+
+    assert_eq!(parse.parser_id, "markdown_headings");
+    assert_ne!(parse.parser_version, "unavailable");
+    assert!(
+        parse
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "parse.parser_hint_unregistered")
+    );
+    assert!(
+        parse
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "parse.requested_parser_unavailable")
+    );
+}
+
+#[test]
 fn prose_document_has_no_routed_profile_override() {
     let doc = source_doc(
         ContentKind::Markdown,

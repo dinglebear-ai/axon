@@ -226,6 +226,89 @@ fn requested_missing_parser_degrades_without_fallback() {
 }
 
 #[test]
+fn unregistered_document_hint_falls_back_to_content_selection() {
+    let registry = ParserRegistry::new()
+        .with_parser(parser("markdown").with_content_kind(ContentKind::Markdown));
+    let mut doc = source_doc(ContentKind::Markdown, Some("README.md"), None, "# Readme");
+    doc.parser_hints.push(ParserHint {
+        parser_id: "web".to_string(),
+        reason: "route default parser".to_string(),
+        options: MetadataMap::new(),
+    });
+
+    let selected = registry
+        .select(&input(doc.clone()))
+        .expect("unregistered hint falls back to content selection");
+    assert_eq!(selected.capability().parser_id, "markdown");
+
+    let result = registry.parse(&input(doc));
+
+    assert_eq!(result.parser_id, "markdown");
+    assert_eq!(result.header.status, LifecycleStatus::Completed);
+    let hint_warning = result
+        .warnings
+        .iter()
+        .find(|warning| warning.code == "parse.parser_hint_unregistered")
+        .expect("fallback records the unregistered hint");
+    assert_eq!(hint_warning.severity, Severity::Info);
+}
+
+#[test]
+fn unregistered_document_hint_is_recorded_even_when_nothing_matches() {
+    let registry = ParserRegistry::new()
+        .with_parser(parser("markdown").with_content_kind(ContentKind::Markdown));
+    let mut doc = source_doc(ContentKind::PlainText, None, None, "plain body");
+    doc.parser_hints.push(ParserHint {
+        parser_id: "web".to_string(),
+        reason: "route default parser".to_string(),
+        options: MetadataMap::new(),
+    });
+
+    let result = registry.parse(&input(doc));
+
+    assert_eq!(result.header.status, LifecycleStatus::Skipped);
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "parse.unsupported")
+    );
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "parse.parser_hint_unregistered")
+    );
+}
+
+#[test]
+fn registered_document_hint_runs_only_that_parser() {
+    let registry = production_registry();
+    let mut doc = source_doc(
+        ContentKind::Yaml,
+        Some("docker-compose.yaml"),
+        None,
+        "services:\n  api:\n    image: alpine:3\n",
+    );
+    doc.parser_hints.push(ParserHint {
+        parser_id: "manifest".to_string(),
+        reason: "caller supplied".to_string(),
+        options: MetadataMap::new(),
+    });
+
+    let result = registry.parse(&input(doc));
+
+    assert_eq!(result.parser_id, "manifest");
+    assert!(result.facts.iter().all(|fact| fact.parser_id == "manifest"));
+    assert!(
+        result
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "parse.parser_hint_unregistered")
+    );
+}
+
+#[test]
 fn production_registry_runs_real_parser_families() {
     let registry = production_registry();
 
@@ -540,7 +623,7 @@ fn multiple_parsers_run_when_they_specifically_match_same_document() {
 }
 
 #[test]
-fn explicit_hint_runs_only_the_requested_parser() {
+fn explicit_requested_parser_runs_alone_even_with_specific_matches() {
     let registry = production_registry();
     let mut request = input(source_doc(
         ContentKind::Yaml,

@@ -78,6 +78,10 @@ impl SourceRouter {
                 values: request.options.values.clone(),
             },
             chunking_hints: chunking_hints(adapter.source_kind),
+            // Pass through adapter-declared parser hints (every adapter
+            // declares none today). The route fabricates no defaults: a hint
+            // is exclusive per parsing-contract.md, and a per-source-kind
+            // guess cannot make a per-document parser decision.
             parser_hints: adapter.parser_hints.clone(),
             graph_fact_kinds: graph_fact_kinds(adapter.source_kind),
             watch_supported: adapter.watch_supported,

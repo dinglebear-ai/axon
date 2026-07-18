@@ -102,7 +102,7 @@ Scope capability:
 | `accepts_uploads` | yes | Prepared uploads accepted. |
 | `output_item_kind` | yes | file/page/repo_file/package/transcript/etc. |
 | `option_schema` | yes | JSON schema for scope-specific options. |
-| `chunking_hints` | yes | Default chunk profile/parser hints. |
+| `chunking_hints` | yes | Default chunk profile. Parser hints are never defaulted per source kind; an adapter-declared parser hint must name a registered parser id (see parsing-contract.md). |
 | `required_graph_fact_kinds` | yes | Graph facts this scope must emit when the source contains the corresponding structures. |
 | `optional_graph_fact_kinds` | yes | Opportunistic graph facts this scope may emit without failing when absent. |
 | `degraded_modes` | yes | Allowed degraded behavior. |

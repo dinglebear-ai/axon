@@ -425,7 +425,7 @@ fn route_plan(adapter_name: &str, source_kind: SourceKind, scope: SourceScope) -
             options: MetadataMap::new(),
         }],
         parser_hints: vec![ParserHint {
-            parser_id: "markdown".to_string(),
+            parser_id: "markdown_headings".to_string(),
             reason: "test parser hint".to_string(),
             options: MetadataMap::new(),
         }],
