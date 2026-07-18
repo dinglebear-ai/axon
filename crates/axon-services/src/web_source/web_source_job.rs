@@ -187,17 +187,31 @@ async fn record_terminal_status(
 }
 
 fn terminal_source_error(err: &anyhow::Error) -> SourceError {
-    let message = err.to_string();
+    // This is persisted straight into `jobs.last_error_json` — a column with
+    // no automatic redaction pass (unlike `job_events`/`details_json`, which
+    // run through `redact_metadata`) — so secrets must be scrubbed before
+    // either field is populated.
+    let message = axon_core::redact::redact_secrets(&err.to_string());
+    // `{err:#}` (anyhow's alternate Display) prints the whole `.context()`
+    // chain; `message` above only ever holds the outermost frame. Only
+    // populate `cause` when the chain actually adds something beyond
+    // `message`, so a single-frame error doesn't get a pointless duplicate.
+    let full_chain = axon_core::redact::redact_secrets(&format!("{err:#}"));
+    let cause = (full_chain != message).then_some(full_chain);
     SourceError {
         code: "source.web.index_failed".to_string(),
         severity: Severity::Failed,
-        message: message.clone(),
+        message,
         source_item_key: None,
         retryable: false,
         provider_id: None,
-        cause: Some(message),
+        cause,
     }
 }
+
+#[cfg(test)]
+#[path = "web_source_job_tests.rs"]
+mod tests;
 
 fn counts_for_output(output: &WebSourceIndexOutput) -> StageCounts {
     StageCounts {

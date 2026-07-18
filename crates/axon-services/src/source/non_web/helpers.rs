@@ -307,3 +307,27 @@ pub(super) fn enrichment_graph_candidates(
         .map(|(key, enrichment)| (key.clone(), enrichment.graph_candidates.clone()))
         .collect()
 }
+
+/// Build the terminal `SourceError` for a failed non-web pipeline run.
+///
+/// This is persisted straight into `jobs.last_error_json` — a column with no
+/// automatic redaction pass (unlike `job_events`/`details_json`, which run
+/// through `redact_metadata`) — so secrets must be scrubbed here before
+/// either field is populated. `message` keeps anyhow's top-context frame
+/// only (unchanged shape from before); `cause` carries the full `.context()`
+/// chain via `{error:#}`, and only when it actually adds something beyond
+/// `message`, so a single-frame error doesn't get a pointless duplicate.
+pub(super) fn terminal_source_error(error: &anyhow::Error) -> SourceError {
+    let message = axon_core::redact::redact_secrets(&error.to_string());
+    let full_chain = axon_core::redact::redact_secrets(&format!("{error:#}"));
+    let cause = (full_chain != message).then_some(full_chain);
+    SourceError {
+        code: "source.index_failed".to_string(),
+        severity: Severity::Failed,
+        message,
+        source_item_key: None,
+        retryable: false,
+        provider_id: None,
+        cause,
+    }
+}

@@ -12,14 +12,29 @@ pub(crate) async fn pipeline_failed(emitter: &SourceEventEmitter, error: &anyhow
         .failed_with_error(
             PipelinePhase::Complete,
             "source pipeline failed",
-            ApiError::new(
-                "source.index_failed",
-                ErrorStage::Internal,
-                error.to_string(),
-            ),
+            pipeline_failed_error(error),
         )
         .await;
 }
+
+/// Build the terminal `ApiError` for a failed pipeline run.
+///
+/// Uses `{error:#}` (anyhow's alternate `Display`) rather than `{error}` so
+/// the full `.context()` chain survives into `message` — plain `Display`
+/// only prints the outermost context frame, which previously made every
+/// pipeline failure surface as an undiagnosable generic string (e.g. "web
+/// source indexing failed") with the real cause silently discarded.
+fn pipeline_failed_error(error: &anyhow::Error) -> ApiError {
+    ApiError::new(
+        "source.index_failed",
+        ErrorStage::Internal,
+        format!("{error:#}"),
+    )
+}
+
+#[cfg(test)]
+#[path = "progress_tests.rs"]
+mod tests;
 
 pub(crate) async fn discovered(emitter: &SourceEventEmitter, manifest: &SourceManifest) {
     emitter

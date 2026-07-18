@@ -3,7 +3,7 @@ mod watch;
 use crate::commands::job_progress::{extract_progress_summary, source_progress_summary};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
-use axon_core::redact::redact_secrets;
+use axon_core::redact::{is_secret_like, redact_secrets};
 use axon_core::sqlite::diagnostics as sqlite_diagnostics;
 use axon_core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
 use axon_jobs::store::RECLAIMED_ERROR_TEXT;
@@ -200,6 +200,76 @@ fn format_subject(job: &ServiceJob) -> String {
     }
 }
 
+/// Query-parameter keys whose *values* are sensitive in status output. Extends
+/// the shared `is_secret_like` field heuristic with URL-signing / session
+/// identifiers that appear as query params but not as header/field names.
+fn is_sensitive_query_key(lower_key: &str) -> bool {
+    is_secret_like(lower_key)
+        || lower_key == "key"
+        || lower_key == "sig"
+        || lower_key.contains("signature")
+        || lower_key.contains("session")
+}
+
+/// URL-aware redaction for a status subject line.
+///
+/// For `http`/`https` subjects this parses the URL and redacts **only** the
+/// userinfo (credentials in `user:pass@host`) and the *values* of
+/// secret-bearing query parameters, preserving the scheme, host, path, and
+/// non-sensitive params so the source stays legible in `axon status`. Any
+/// non-URL or non-http subject (a `source_type: target` label, a bare job id,
+/// or free text) falls back to the full `redact_secrets` scrubber, which is the
+/// blunt whole-string redactor this URL-aware path deliberately avoids for URLs
+/// (it would wholesale-redact any URL merely *containing* `token=`/`secret=`).
+fn redact_status_subject(subject: &str) -> String {
+    let Ok(mut url) = url::Url::parse(subject) else {
+        return redact_secrets(subject);
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return redact_secrets(subject);
+    }
+
+    let mut changed = false;
+
+    // A token may live in either the username (`https://<token>@host`) or the
+    // password (`https://user:<token>@host`), so redact both when present.
+    if !url.username().is_empty() || url.password().is_some() {
+        let _ = url.set_password(None);
+        let _ = url.set_username("REDACTED");
+        changed = true;
+    }
+
+    // Redact only the values of secret-bearing query keys; keep everything else.
+    if url.query().is_some() {
+        let mut redacted_pairs: Vec<(String, String)> = Vec::new();
+        let mut any_sensitive = false;
+        for (key, value) in url.query_pairs() {
+            if is_sensitive_query_key(&key.to_ascii_lowercase()) {
+                any_sensitive = true;
+                redacted_pairs.push((key.into_owned(), "REDACTED".to_string()));
+            } else {
+                redacted_pairs.push((key.into_owned(), value.into_owned()));
+            }
+        }
+        if any_sensitive {
+            changed = true;
+            let mut serializer = url.query_pairs_mut();
+            serializer.clear();
+            for (key, value) in &redacted_pairs {
+                serializer.append_pair(key, value);
+            }
+        }
+    }
+
+    if changed {
+        url.to_string()
+    } else {
+        // Nothing sensitive: return the original spelling, not a re-serialized
+        // URL, so ordinary sources render byte-for-byte as the user entered them.
+        subject.to_string()
+    }
+}
+
 fn write_status_section(
     out: &mut String,
     title: &str,
@@ -224,9 +294,11 @@ fn write_status_section(
         let label_limit = STATUS_TEXT_DISPLAY_LIMIT.saturating_sub(prefix.chars().count());
         // D1-09: job labels/targets and error text are DB-persisted strings
         // that may embed URL credentials or upstream error bodies with
-        // tokens — redact before display, same boundary the doctor renderer
-        // uses (see doctor/render.rs::report_text).
-        let label = truncate_status_text_to(&redact_secrets(&label_for(job)), label_limit);
+        // tokens — redact before display. Labels are usually source URLs, so
+        // use the URL-aware redactor (userinfo + secret query values only);
+        // non-URL labels and the free-text error body still go through the
+        // full `redact_secrets` scrubber the doctor renderer uses.
+        let label = truncate_status_text_to(&redact_status_subject(&label_for(job)), label_limit);
         let _ = writeln!(out, "{prefix}{label}");
         let _ = writeln!(out, "    {}", muted(&format!("id {}", job.id)));
         if let Some(p) = progress_for(job) {
@@ -280,3 +352,7 @@ fn job_error_hint(status: &str, error_text: &str) -> Option<String> {
     }
     Some(error_text.to_string())
 }
+
+#[cfg(test)]
+#[path = "status_tests.rs"]
+mod tests;

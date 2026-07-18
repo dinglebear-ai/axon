@@ -480,15 +480,7 @@ async fn record_terminal_status(
         Ok(output) => (LifecycleStatus::Completed, None, Some(stage_counts(output))),
         Err(error) => (
             LifecycleStatus::Failed,
-            Some(SourceError {
-                code: "source.index_failed".to_string(),
-                severity: Severity::Failed,
-                message: error.to_string(),
-                source_item_key: None,
-                retryable: false,
-                provider_id: None,
-                cause: None,
-            }),
+            Some(terminal_source_error(error)),
             None,
         ),
     };
