@@ -214,6 +214,25 @@ run_error_case() {
   fi
 }
 
+# Like run_json_case but tolerant of mcporter's non-zero exit on MCP error
+# responses: asserts the filter against whatever envelope came back (a valid
+# `ok:true` success OR a structured `error` string both count as "the tool
+# responded"). Use for routes whose success depends on non-deterministic state
+# (job phase, provider availability) where either a success or a structured
+# error is an acceptable, non-crashing response.
+run_envelope_case() {
+  local name="$1"
+  local filter="$2"
+  shift 2
+  local logfile="$OUTDIR/${name}.log"
+  "$@" >"$logfile" 2>&1 || true
+  if json_payload "$logfile" | jq -e "$filter" >/dev/null 2>&1; then
+    record_pass "$name"
+  else
+    record_fail "$name" "$logfile"
+  fi
+}
+
 call_tool() {
   "${MCPORTER[@]}" call "$SELECTOR" "$@" --output json
 }
@@ -412,6 +431,105 @@ run_suite() {
   run_json_case "${prefix}_jobs_recover" '.ok == true and .action == "jobs" and .subaction == "recover" and ((.data.data.recovered | type) == "number" or (.data.data.recovered_jobs | type) == "number")' call_tool_json '{"action":"jobs","subaction":"recover","dry_run":true,"limit":5,"stale_before":"2020-01-01T00:00:00Z"}'
   run_json_case "${prefix}_jobs_cleanup" '.ok == true and .action == "jobs" and .subaction == "cleanup" and ((.data.data.deleted | type) == "number" or (.data.data.deleted_jobs | type) == "number")' call_tool action:jobs subaction:cleanup dry_run:true limit:5
   run_json_case "${prefix}_prune_plan" '.ok == true and .action == "prune" and .subaction == "plan" and ((.data.data.plan // .data.inline.plan) | type == "object")' call_tool action:prune subaction:plan target:collection:axon response_mode:inline
+
+  # --- Full route coverage: every remaining action:subaction is called and its
+  # response asserted (success shape where deterministic, otherwise a valid
+  # ok-or-structured-error envelope). Stateful routes chain off ids created
+  # above (watch_id, memory_id, extract job, help path artifact).
+  echo "== $mode read-only coverage ==" | tee -a "$SUMMARY"
+  run_json_case "${prefix}_brand" '.ok == true and .action == "brand" and .subaction == "brand" and ((.data.data.url // .data.inline.url) | type == "string")' call_tool_with_timeout 120000 action:brand url:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_diff" '.ok == true and .action == "diff" and .subaction == "diff" and ((.data.data.status // .data.inline.status // .data.data.url_a) | type == "string")' call_tool_with_timeout 120000 action:diff url_a:https://example.com url_b:https://example.org
+  run_json_case "${prefix}_endpoints" '.ok == true and .action == "endpoints" and .subaction == "endpoints" and ((.data.data.endpoints // .data.inline.endpoints) | type == "array")' call_tool_with_timeout 120000 action:endpoints url:https://api.github.com
+  run_envelope_case "${prefix}_suggest" '(.ok == true and .action == "suggest" and .subaction == "suggest" and ((.data.data.suggestions // .data.inline.suggestions) | type == "array")) or ((.error | type) == "string")' call_tool action:suggest
+  run_json_case "${prefix}_collections_list" '.ok == true and .action == "collections" and .subaction == "list"' call_tool_with_timeout 120000 action:collections subaction:list
+  run_envelope_case "${prefix}_collections_get" '(.ok == true and .action == "collections" and .subaction == "get" and ((.data.data.collection // .data.inline.collection) != null)) or ((.error | type) == "string")' call_tool action:collections subaction:get collection:axon
+  run_json_case "${prefix}_providers_get" '.ok == true and .action == "providers" and .subaction == "get" and ((.data.data.id // .data.inline.id) | type == "string")' call_tool action:providers subaction:get provider_id:tei
+  run_json_case "${prefix}_reset_plan" '.ok == true and .action == "reset" and .subaction == "plan" and ((.data.data.plan_id // .data.inline.plan_id) | type == "string")' call_tool action:reset subaction:plan
+  run_envelope_case "${prefix}_summarize" '(.ok == true and .action == "summarize" and .subaction == "summarize") or ((.error | type) == "string")' call_tool_with_timeout 180000 action:summarize url:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_evaluate" '(.ok == true and .action == "evaluate" and .subaction == "evaluate") or ((.error | type) == "string")' call_tool_with_timeout 240000 action:evaluate query:'rust async'
+  run_envelope_case "${prefix}_chat" '(.ok == true and .action == "chat" and .subaction == "chat") or ((.error | type) == "string")' call_tool_with_timeout 180000 action:chat message:'hello from mcporter smoke'
+
+  echo "== $mode graph reads coverage ==" | tee -a "$SUMMARY"
+  run_json_case "${prefix}_graph_resolve" '.ok == true and .action == "graph" and .subaction == "resolve" and ((.data.data.resolved // .data.inline.resolved) | type == "array")' call_tool action:graph subaction:resolve id:"$REAL_PAGE_URL"
+  run_json_case "${prefix}_graph_query" '.ok == true and .action == "graph" and .subaction == "query" and ((.data.data.nodes // .data.inline.nodes) | type == "array")' call_tool action:graph subaction:query node_id:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_graph_node" '(.ok == true and .action == "graph" and .subaction == "node") or ((.error | type) == "string")' call_tool action:graph subaction:node id:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_graph_edge" '(.ok == true and .action == "graph" and .subaction == "edge") or ((.error | type) == "string")' call_tool action:graph subaction:edge id:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_graph_source" '(.ok == true and .action == "graph" and .subaction == "source") or ((.error | type) == "string")' call_tool action:graph subaction:source id:"$REAL_PAGE_URL"
+
+  echo "== $mode watch extras coverage ==" | tee -a "$SUMMARY"
+  run_json_case "${prefix}_watch_get" '.ok == true and .action == "watch" and .subaction == "get" and ((.data.data.watch_id // .data.inline.watch_id) | type == "string")' call_tool action:watch subaction:get id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_list" '.ok == true and .action == "watch" and .subaction == "list" and ((.data.data.items // .data.inline.items) | type == "array")' call_tool action:watch subaction:list
+  run_json_case "${prefix}_watch_pause" '.ok == true and .action == "watch" and .subaction == "pause"' call_tool action:watch subaction:pause id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_resume" '.ok == true and .action == "watch" and .subaction == "resume"' call_tool action:watch subaction:resume id:"$watch_id" response_mode:inline
+  run_json_case "${prefix}_watch_update" '.ok == true and .action == "watch" and .subaction == "update"' call_tool action:watch subaction:update id:"$watch_id" every_seconds:7200 response_mode:inline
+  run_json_case "${prefix}_watch_delete" '.ok == true and .action == "watch" and .subaction == "delete"' call_tool action:watch subaction:delete id:"$watch_id" response_mode:inline
+
+  echo "== $mode jobs extras coverage ==" | tee -a "$SUMMARY"
+  local extract_job_id
+  extract_job_id="$(extract_json_field "$OUTDIR/${prefix}_extract_start.log" '.data.job_id' 2>/dev/null || true)"
+  if [[ -n "${extract_job_id:-}" ]]; then
+    run_json_case "${prefix}_jobs_get" '.ok == true and .action == "jobs" and .subaction == "get" and ((.data.data.job // .data.inline.job) | type == "object")' call_tool action:jobs subaction:get job_id:"$extract_job_id"
+    run_json_case "${prefix}_jobs_status" '.ok == true and .action == "jobs" and .subaction == "status"' call_tool action:jobs subaction:status job_id:"$extract_job_id"
+    run_json_case "${prefix}_jobs_events" '.ok == true and .action == "jobs" and .subaction == "events"' call_tool action:jobs subaction:events job_id:"$extract_job_id" limit:5
+    run_envelope_case "${prefix}_jobs_retry" '(.ok == true and .action == "jobs" and .subaction == "retry") or ((.error | type) == "string")' call_tool action:jobs subaction:retry job_id:"$extract_job_id"
+    run_envelope_case "${prefix}_jobs_cancel" '(.ok == true and .action == "jobs" and .subaction == "cancel") or ((.error | type) == "string")' call_tool action:jobs subaction:cancel job_id:"$extract_job_id" reason:'mcporter smoke'
+    run_envelope_case "${prefix}_jobs_stream" '(.ok == true and .action == "jobs" and .subaction == "stream") or ((.error | type) == "string")' call_tool_with_timeout 6000 action:jobs subaction:stream job_id:"$extract_job_id"
+  else
+    record_pass "${prefix}_jobs_extras_skipped_no_job_id"
+  fi
+
+  echo "== $mode memory extras coverage ==" | tee -a "$SUMMARY"
+  if [[ -n "${memory_id:-}" ]]; then
+    run_json_case "${prefix}_memory_reinforce" '.ok == true and .action == "memory" and .subaction == "reinforce"' call_tool_with_timeout 60000 action:memory subaction:reinforce id:"$memory_id"
+    run_json_case "${prefix}_memory_pin" '.ok == true and .action == "memory" and .subaction == "pin"' call_tool action:memory subaction:pin id:"$memory_id" pinned:true
+    run_json_case "${prefix}_memory_review" '.ok == true and .action == "memory" and .subaction == "review"' call_tool action:memory subaction:review project:axon limit:3
+    run_envelope_case "${prefix}_memory_compact" '(.ok == true and .action == "memory" and .subaction == "compact") or ((.error | type) == "string")' call_tool_json "{\"action\":\"memory\",\"subaction\":\"compact\",\"memory_ids\":[\"$memory_id\",\"$replacement_memory_id\"],\"dry_run\":true}"
+    run_json_case "${prefix}_memory_export" '.ok == true and .action == "memory" and .subaction == "export"' call_tool action:memory subaction:export project:axon
+    run_envelope_case "${prefix}_memory_import" '(.ok == true and .action == "memory" and .subaction == "import") or ((.error | type) == "string")' call_tool_json '{"action":"memory","subaction":"import","records":[],"import_mode":"merge"}'
+    run_json_case "${prefix}_memory_contradict" '.ok == true and .action == "memory" and .subaction == "contradict" and ((.data.edge.id // .data.data.edge.id) | type == "string")' call_tool action:memory subaction:contradict source_id:"$replacement_memory_id" target_id:"$memory_id"
+    run_json_case "${prefix}_memory_archive" '.ok == true and .action == "memory" and .subaction == "archive"' call_tool action:memory subaction:archive id:"$memory_id"
+    run_json_case "${prefix}_memory_forget" '.ok == true and .action == "memory" and .subaction == "forget"' call_tool action:memory subaction:forget id:"$memory_id"
+  else
+    record_pass "${prefix}_memory_extras_skipped_tei_unavailable"
+  fi
+
+  echo "== $mode artifacts coverage ==" | tee -a "$SUMMARY"
+  local artifact_id
+  artifact_id="$(extract_json_field "$OUTDIR/${prefix}_help_path.log" '.data.artifact.artifact_id' 2>/dev/null || true)"
+  run_json_case "${prefix}_artifacts_list" '.ok == true and .action == "artifacts" and .subaction == "list"' call_tool_with_timeout 120000 action:artifacts subaction:list
+  if [[ -n "${artifact_id:-}" ]]; then
+    run_envelope_case "${prefix}_artifacts_get" '(.ok == true and .action == "artifacts" and .subaction == "get") or ((.error | type) == "string")' call_tool action:artifacts subaction:get artifact_id:"$artifact_id"
+    run_envelope_case "${prefix}_artifacts_content" '(.ok == true and .action == "artifacts" and .subaction == "content") or ((.error | type) == "string")' call_tool action:artifacts subaction:content artifact_id:"$artifact_id"
+  else
+    record_pass "${prefix}_artifacts_get_skipped_no_artifact_id"
+  fi
+
+  echo "== $mode uploads lifecycle coverage ==" | tee -a "$SUMMARY"
+  run_json_case "${prefix}_uploads_create" '.ok == true and .action == "uploads" and .subaction == "create" and ((.data.data.upload_id // .data.inline.upload_id // .data.data.id // .data.inline.id) | type == "string")' call_tool action:uploads subaction:create content_type:text/plain size_bytes:11 purpose:source_artifact filename:smoke.txt
+  local upload_id
+  upload_id="$(extract_json_field "$OUTDIR/${prefix}_uploads_create.log" '.data.data.upload_id // .data.inline.upload_id // .data.data.id // .data.inline.id' 2>/dev/null || true)"
+  if [[ -n "${upload_id:-}" ]]; then
+    run_json_case "${prefix}_uploads_put_content" '.ok == true and .action == "uploads" and .subaction == "put_content"' call_tool_json "{\"action\":\"uploads\",\"subaction\":\"put_content\",\"upload_id\":\"$upload_id\",\"content\":\"aGVsbG8gd29ybGQ=\"}"
+    run_json_case "${prefix}_uploads_get" '.ok == true and .action == "uploads" and .subaction == "get"' call_tool action:uploads subaction:get upload_id:"$upload_id"
+    run_json_case "${prefix}_uploads_list" '.ok == true and .action == "uploads" and .subaction == "list"' call_tool action:uploads subaction:list
+    run_envelope_case "${prefix}_uploads_complete" '(.ok == true and .action == "uploads" and .subaction == "complete") or ((.error | type) == "string")' call_tool action:uploads subaction:complete upload_id:"$upload_id"
+    run_json_case "${prefix}_uploads_create2" '.ok == true and .action == "uploads" and .subaction == "create"' call_tool action:uploads subaction:create content_type:text/plain size_bytes:5 purpose:source_artifact filename:smoke2.txt
+    local upload_id2
+    upload_id2="$(extract_json_field "$OUTDIR/${prefix}_uploads_create2.log" '.data.data.upload_id // .data.inline.upload_id // .data.data.id // .data.inline.id' 2>/dev/null || true)"
+    run_json_case "${prefix}_uploads_abort" '.ok == true and .action == "uploads" and .subaction == "abort"' call_tool action:uploads subaction:abort upload_id:"$upload_id2"
+  else
+    record_pass "${prefix}_uploads_lifecycle_skipped_no_upload_id"
+  fi
+
+  echo "== $mode destructive guards (fail-path coverage) ==" | tee -a "$SUMMARY"
+  # prune:exec / reset:exec are exercised via their guard paths so the shared
+  # Qdrant collection is never actually dropped by the smoke run: a bare exec
+  # must refuse (missing confirm / plan id) with a structured error.
+  run_envelope_case "${prefix}_prune_exec_guard" '(.error | type) == "string"' call_tool action:prune subaction:exec target:collection:axon_mcporter_smoke_never_real
+  run_envelope_case "${prefix}_reset_exec_guard" '(.error | type) == "string"' call_tool action:reset subaction:exec
+  # jobs:clear wipes job history — exercise only its confirm/admin guard so the
+  # smoke run never actually clears jobs.
+  run_envelope_case "${prefix}_jobs_clear_guard" '(.error | type) == "string"' call_tool action:jobs subaction:clear
 }
 
 if [[ "$URL_MODE" == "1" ]]; then
