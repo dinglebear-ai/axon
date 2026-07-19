@@ -243,7 +243,14 @@ async fn vectorize_documents(
         }
     };
     drop(embedding_reservation);
-    let point_batch = vector_point_batch_for_documents(input, collection, &documents, &embeddings)?;
+    let (point_batch, skipped_redaction) =
+        vector_point_batch_for_documents(input, collection, &documents, &embeddings)?;
+    if skipped_redaction > 0 {
+        tracing::warn!(
+            skipped_redaction,
+            "skipped chunk(s) with secret-redaction-forbidden payload values during local source vectorization (not indexed)"
+        );
+    }
     let vector_reservation = reserve_vector(input).await?;
     record_progress_with_reservations(
         progress,
@@ -374,8 +381,9 @@ fn vector_point_batch_for_documents(
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
-) -> anyhow::Result<VectorPointBatch> {
+) -> anyhow::Result<(VectorPointBatch, u64)> {
     let mut points = Vec::new();
+    let mut skipped_redaction = 0u64;
     let vectors_by_chunk = embeddings
         .vectors
         .iter()
@@ -396,7 +404,7 @@ fn vector_point_batch_for_documents(
         }
         let document_embeddings =
             embedding_result_for_document(embeddings, &document, &vectors_by_chunk);
-        let batch = VectorPointBatchBuilder::new(
+        let (batch, document_skipped) = VectorPointBatchBuilder::new(
             collection.clone(),
             document,
             document_embeddings,
@@ -404,18 +412,22 @@ fn vector_point_batch_for_documents(
                 embedded_at: timestamp(),
             },
         )
-        .build()?;
+        .build_with_skipped_count()?;
         points.extend(batch.points);
+        skipped_redaction += document_skipped;
     }
-    Ok(VectorPointBatch {
-        batch_id: embeddings.batch_id.clone(),
-        collection: collection.collection,
-        points,
-        model: embeddings.model.clone(),
-        dimensions: embeddings.dimensions,
-        sparse_vectors: None,
-        payload_indexes: collection.payload_indexes,
-    })
+    Ok((
+        VectorPointBatch {
+            batch_id: embeddings.batch_id.clone(),
+            collection: collection.collection,
+            points,
+            model: embeddings.model.clone(),
+            dimensions: embeddings.dimensions,
+            sparse_vectors: None,
+            payload_indexes: collection.payload_indexes,
+        },
+        skipped_redaction,
+    ))
 }
 
 fn embedding_result_for_document(

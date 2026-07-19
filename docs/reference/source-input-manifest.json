@@ -579,7 +579,7 @@
         {
           "path": "crates/axon-vectors/src/point.rs",
           "kind": "rust_module",
-          "checksum": "sha256:5888f298ef6deb59b3a932cca604ff0749147dee1f2486fe84bd44ba8ebc9cc7"
+          "checksum": "sha256:f54a5d4bfb55b42073fae50303585633f843178698d224d8b56726d8423aaa87"
         },
         {
           "path": "crates/axon-vectors/src/schema_registry.rs",
@@ -607,7 +607,7 @@
           "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54"
         }
       ],
-      "manifest_checksum": "07f82a519c8c64642eafdf8e5e668565df29905820051d881692daad477978ce"
+      "manifest_checksum": "06e0dc6ddf6922c7a062de5d9eecb61454b580b754feee21a6272443f46aeaa8"
     }
   ]
 }

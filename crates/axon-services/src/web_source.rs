@@ -1,5 +1,6 @@
 mod artifacts;
 mod job_execution;
+mod normalize;
 mod publish;
 mod reuse;
 mod run;

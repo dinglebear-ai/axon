@@ -164,7 +164,7 @@ pub(super) fn vector_point_batch_for_documents(
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
-) -> anyhow::Result<VectorPointBatch> {
+) -> anyhow::Result<(VectorPointBatch, u64)> {
     let vectors_by_chunk = embeddings
         .vectors
         .iter()
@@ -172,10 +172,11 @@ pub(super) fn vector_point_batch_for_documents(
         .map(|vector| (vector.chunk_id.clone(), vector))
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut points = Vec::new();
+    let mut skipped_redaction = 0u64;
     for document in documents {
         let document_embeddings =
             embedding_result_for_document(embeddings, document, &vectors_by_chunk)?;
-        let batch = VectorPointBatchBuilder::new(
+        let (batch, document_skipped) = VectorPointBatchBuilder::new(
             collection.clone(),
             document.clone(),
             document_embeddings,
@@ -183,18 +184,22 @@ pub(super) fn vector_point_batch_for_documents(
                 embedded_at: Timestamp(chrono::Utc::now().to_rfc3339()),
             },
         )
-        .build()?;
+        .build_with_skipped_count()?;
         points.extend(batch.points);
+        skipped_redaction += document_skipped;
     }
-    Ok(VectorPointBatch {
-        batch_id: embeddings.batch_id.clone(),
-        collection: collection.collection,
-        points,
-        model: embeddings.model.clone(),
-        dimensions: embeddings.dimensions,
-        sparse_vectors: None,
-        payload_indexes: collection.payload_indexes,
-    })
+    Ok((
+        VectorPointBatch {
+            batch_id: embeddings.batch_id.clone(),
+            collection: collection.collection,
+            points,
+            model: embeddings.model.clone(),
+            dimensions: embeddings.dimensions,
+            sparse_vectors: None,
+            payload_indexes: collection.payload_indexes,
+        },
+        skipped_redaction,
+    ))
 }
 
 fn embedding_result_for_document(
