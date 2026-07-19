@@ -28,5 +28,5 @@
     "openapi:types": "node scripts/generate-openapi-types.mjs openapi/axon.json src/api/generated/axon-api.ts",
     "test": "vitest run"
   },
-  "version": "7.1.4"
+  "version": "7.1.5"
 }

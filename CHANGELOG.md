@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.1.5] - 2026-07-19
+
+### Fixed
+- `web_source` publish invariant (`mark_vectors_for_completed_generation` /
+  `ensure_full_write`) compared a preparation-stage count
+  (`chunks_prepared`) against a publish-stage count (`points_written`).
+  Whenever a chunk's payload tripped the secret-redaction `ForbiddenValue`
+  check and was skipped (do-not-index-secrets), `expected != wrote` and the
+  entire web-source job failed. The invariant now compares two publish-stage
+  numbers (`points_attempted` vs `points_written`), per the stage-result and
+  observability contracts' separation of `axon_chunks_prepared_total`
+  (preparation) from `axon_vector_points_written_total` (publish). Affects
+  CLI, MCP, and REST equally — all three route web-URL sources through the
+  shared `web_source` pipeline.
+- Secret-redaction chunk skips are now observable, not silent. Previously
+  the only signal was a `tracing::warn!` line. Web and non-web (git, feed,
+  youtube, reddit, session, registry) sources now surface the skip count as
+  a `SourceWarning` (`*.vectorize.redaction_skipped_chunks`) on job events
+  and the source result; local sources emit an aggregated `tracing::warn!`.
+  Added via a new `VectorPointBatchBuilder::build_with_skipped_count()` that
+  returns `(VectorPointBatch, skipped_count)`; `build()` is unchanged.
+
 ## [7.1.4] - 2026-07-18
 
 ### Fixed

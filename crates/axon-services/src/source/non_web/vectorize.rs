@@ -194,13 +194,26 @@ async fn vectorize_batch(
         &vector_reservation,
     )
     .await?;
-    let point_batch = point_batch(collection, &documents, &embeddings)?;
+    let (point_batch, skipped_redaction) = point_batch(collection, &documents, &embeddings)?;
     let write = runtime.vector_store.upsert(point_batch).await?;
     drop(vector_reservation);
 
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embeddings.warnings);
+    if skipped_redaction > 0 {
+        result.warnings.push(SourceWarning {
+            code: "source.vectorize.redaction_skipped_chunks".to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "skipped {} chunk(s) with secret-redaction-forbidden payload values \
+                 (not indexed; reduced vector point count accordingly)",
+                skipped_redaction
+            ),
+            source_item_key: None,
+            retryable: false,
+        });
+    }
     for status in &mut result.document_statuses {
         status.vector_point_count = status.chunk_count;
     }
@@ -294,7 +307,7 @@ fn point_batch(
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
-) -> anyhow::Result<VectorPointBatch> {
+) -> anyhow::Result<(VectorPointBatch, u64)> {
     let by_chunk = embeddings
         .vectors
         .iter()
@@ -302,6 +315,7 @@ fn point_batch(
         .map(|vector| (vector.chunk_id.clone(), vector))
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut points = Vec::new();
+    let mut skipped_redaction = 0u64;
     for document in documents {
         let document_embeddings = EmbeddingResult {
             batch_id: embeddings.batch_id.clone(),
@@ -317,28 +331,30 @@ fn point_batch(
             usage: embeddings.usage.clone(),
             warnings: embeddings.warnings.clone(),
         };
-        points.extend(
-            VectorPointBatchBuilder::new(
-                collection.clone(),
-                document.clone(),
-                document_embeddings,
-                VectorPointBatchBuildContext {
-                    embedded_at: timestamp(),
-                },
-            )
-            .build()?
-            .points,
-        );
+        let (batch, document_skipped) = VectorPointBatchBuilder::new(
+            collection.clone(),
+            document.clone(),
+            document_embeddings,
+            VectorPointBatchBuildContext {
+                embedded_at: timestamp(),
+            },
+        )
+        .build_with_skipped_count()?;
+        points.extend(batch.points);
+        skipped_redaction += document_skipped;
     }
-    Ok(VectorPointBatch {
-        batch_id: embeddings.batch_id.clone(),
-        collection: collection.collection,
-        points,
-        model: embeddings.model.clone(),
-        dimensions: embeddings.dimensions,
-        sparse_vectors: None,
-        payload_indexes: collection.payload_indexes,
-    })
+    Ok((
+        VectorPointBatch {
+            batch_id: embeddings.batch_id.clone(),
+            collection: collection.collection,
+            points,
+            model: embeddings.model.clone(),
+            dimensions: embeddings.dimensions,
+            sparse_vectors: None,
+            payload_indexes: collection.payload_indexes,
+        },
+        skipped_redaction,
+    ))
 }
 
 async fn reserve_embedding(

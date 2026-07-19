@@ -244,7 +244,7 @@ async fn publish_completed_vectors(
         &run.source_id,
         &completed,
         diff,
-        vectorized.chunks_prepared,
+        vectorized.points_attempted,
     )
     .await
     {

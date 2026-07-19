@@ -552,3 +552,38 @@ fn embedding_provider_provenance_is_checked_without_batch_id() {
         VectorPointBatchBuildError::EmbeddingProviderMismatch { .. }
     ));
 }
+
+#[test]
+fn build_with_skipped_count_reports_redaction_skips_and_drops_those_points() {
+    // A `chunk_text` body containing a dotenv-style secret assignment trips
+    // the secret-redaction `ForbiddenValue` validator. Such a chunk must be
+    // skipped (not indexed), and `build_with_skipped_count` must surface the
+    // skip count so callers can report it instead of silently swallowing it
+    // (the production scenario behind the publish-invariant mismatch bug).
+    let mut document = test_prepared_document();
+    document.chunks[1].content = "API_KEY=abc123".to_string();
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
+        .build_with_skipped_count()
+        .unwrap();
+
+    // The forbidden chunk is dropped; only the clean chunk becomes a point.
+    assert_eq!(batch.points.len(), 1);
+    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-1"));
+    // The skip is reported.
+    assert_eq!(skipped_redaction, 1);
+}
+
+#[test]
+fn build_with_skipped_count_reports_zero_when_nothing_is_redacted() {
+    let document = test_prepared_document();
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
+        .build_with_skipped_count()
+        .unwrap();
+
+    assert_eq!(batch.points.len(), 2);
+    assert_eq!(skipped_redaction, 0);
+}

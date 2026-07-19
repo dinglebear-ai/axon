@@ -11,10 +11,11 @@ use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 use tokio::sync::Mutex;
 
+use super::normalize::normalize_changed_documents;
 use super::run::{
     apply_reused_item_keys, overlay_previous_web_etags, resolve_web_run, source_summary,
 };
-use super::vectorize::{collection_spec, normalize_changed_documents, vectorize_changed_documents};
+use super::vectorize::{collection_spec, vectorize_changed_documents};
 use super::{WebSourceIndexInput, reuse};
 
 #[derive(Debug, Default)]

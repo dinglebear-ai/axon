@@ -369,6 +369,15 @@ Counters:
 | `axon_chunks_prepared_total` | `content_kind`, `profile` | chunks emitted |
 | `axon_embeddings_total` | `provider`, `model`, `status` | embedding requests/items |
 | `axon_vector_points_written_total` | `collection`, `namespace` | vector upserts |
+
+`axon_chunks_prepared_total` is a **preparation-stage** count (chunks emitted
+by the document preparer). `axon_vector_points_written_total` is a
+**publish-stage** count (points actually upserted to the vector store). The two
+can differ when a chunk's payload trips the secret-redaction `ForbiddenValue`
+check and the chunk is skipped (do-not-index-secrets) — see "Vector point
+redaction skips" below. Publish-write invariants (`ensure_full_write`) compare
+two publish-stage numbers (`points_attempted` vs `points_written`), never a
+preparation-stage count against a publish-stage count.
 | `axon_graph_candidates_total` | `kind`, `status` | graph candidates |
 | `axon_errors_total` | `stage`, `code`, `severity` | errors |
 
@@ -437,6 +446,34 @@ Redaction events include:
 - count of redactions
 - warning if content was omitted
 
+### Vector point redaction skips
+
+When a prepared chunk's payload trips the secret-redaction `ForbiddenValue`
+validator (`axon_vectors::payload::VectorPayloadValidationError::ForbiddenValue`),
+the chunk is **skipped, not indexed** — do-not-index-secrets is a hard
+contract. A skip reduces the publish-stage vector point count relative to the
+preparation-stage chunk count for the same generation.
+
+Skips are observable through two channels:
+
+- a per-chunk `tracing::warn!` (`skipping chunk with secret-redaction-forbidden
+  payload value`) with the chunk id, for logs/traces
+- a per-batch `SourceWarning` with a stable code, surfaced to job events and
+  the source result for CLI/MCP/REST visibility:
+  - `web.vectorize.redaction_skipped_chunks` — web-page sources
+  - `source.vectorize.redaction_skipped_chunks` — git/feed/youtube/reddit/
+    session/registry sources (the `non_web` pipeline)
+
+The warning message names the skipped count so an operator can reconcile
+`chunks_prepared` against `points_written` without reading logs. Local
+filesystem sources (`local_source`) surface the skip count as an aggregated
+`tracing::warn!` only; they have no `SourceWarning` channel on their
+vectorize result.
+
+Publish-write invariants must not compare `chunks_prepared` (preparation)
+against `points_written` (publish) — that conflation previously failed entire
+web-source jobs whenever any chunk was redaction-skipped.
+
 ## Validation Checklist
 
 Implementation is incomplete until:
@@ -451,5 +488,8 @@ Implementation is incomplete until:
 - provider cooling is visible
 - cleanup debt is visible
 - redaction is observable without leaking content
+- vector redaction skips are surfaced as a `SourceWarning` (web/non-web) or
+  aggregated `tracing::warn!` (local), and publish-write invariants compare
+  publish-stage counts only (never `chunks_prepared` against `points_written`)
 - fatal errors include stable error codes
 - public outputs contain no sensitive fields

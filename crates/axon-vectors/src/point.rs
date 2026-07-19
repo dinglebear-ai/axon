@@ -164,6 +164,25 @@ impl VectorPointBatchBuilder {
     }
 
     pub fn build(self) -> Result<VectorPointBatch, VectorPointBatchBuildError> {
+        let (batch, _skipped_redaction) = self.build_with_skipped_count()?;
+        Ok(batch)
+    }
+
+    /// Like [`build`](Self::build), but also returns the count of chunks
+    /// skipped because their payload tripped the secret-redaction
+    /// `ForbiddenValue` check (see `point.rs`'s `Payload`-skip branch).
+    ///
+    /// Callers that surface per-source statistics should use this variant so
+    /// redaction-skipped chunks are observable as a count (and, where the
+    /// caller has a `SourceWarning` channel, as a warning) rather than only
+    /// as a `tracing::warn!` line. The skip count is a publish-stage concern
+    /// (it reduces the number of vector points actually upserted) and is
+    /// distinct from the preparation-stage `chunks_prepared` count — see
+    /// `docs/pipeline-unification/runtime/observability-contract.md`'s
+    /// `axon_chunks_prepared_total` vs `axon_vector_points_written_total`.
+    pub fn build_with_skipped_count(
+        self,
+    ) -> Result<(VectorPointBatch, u64), VectorPointBatchBuildError> {
         let expected_dimensions = self.collection.dense.dimensions;
         if self.embeddings.dimensions != expected_dimensions {
             return Err(VectorPointBatchBuildError::DimensionMismatch {
@@ -182,6 +201,7 @@ impl VectorPointBatchBuilder {
         let mut vectors =
             vectors_by_chunk_id(self.embeddings.vectors, &chunks, expected_dimensions)?;
         let mut points = Vec::with_capacity(self.document.chunks.len());
+        let mut skipped_redaction = 0u64;
 
         for chunk in &self.document.chunks {
             let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
@@ -215,11 +235,14 @@ impl VectorPointBatchBuilder {
                 // session transcripts, crawled pages) legitimately contain
                 // dotenv-style lines or token-shaped strings; one such chunk
                 // must not fail the entire index. Every other payload validation
-                // error is a real defect and still propagates.
+                // error is a real defect and still propagates. Count the skip so
+                // callers can surface it as a stat/warning instead of only a
+                // `tracing::warn!` line that no programmatic consumer sees.
                 Err(VectorPointBatchBuildError::Payload {
                     chunk_id,
                     source: crate::payload::VectorPayloadValidationError::ForbiddenValue { .. },
                 }) => {
+                    skipped_redaction += 1;
                     tracing::warn!(
                         chunk_id = %chunk_id.0,
                         "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
@@ -243,15 +266,18 @@ impl VectorPointBatchBuilder {
             });
         }
 
-        Ok(VectorPointBatch {
-            batch_id,
-            collection: self.collection.collection,
-            points,
-            model,
-            dimensions: expected_dimensions,
-            sparse_vectors: None,
-            payload_indexes: self.collection.payload_indexes,
-        })
+        Ok((
+            VectorPointBatch {
+                batch_id,
+                collection: self.collection.collection,
+                points,
+                model,
+                dimensions: expected_dimensions,
+                sparse_vectors: None,
+                payload_indexes: self.collection.payload_indexes,
+            },
+            skipped_redaction,
+        ))
     }
 }
 
