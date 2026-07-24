@@ -831,7 +831,7 @@ jobs:
   live-qdrant:
     name: live-qdrant
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_qdrant_tests) }}
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-latest
     services:
       qdrant:
         image: qdrant/qdrant:v1.13.1
@@ -841,9 +841,10 @@ jobs:
       AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-soldr
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
 
@@ -891,7 +892,7 @@ jobs:
   # retrieval/RRF/rerank regression could merge and auto-release unverified.
   live-rag-pr:
     name: live-rag-pr
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-latest
     needs: [rag-changes]
     if: ${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
     timeout-minutes: 30
@@ -907,9 +908,12 @@ jobs:
       AXON_TEST_TEI_URL: http://127.0.0.1:52000
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-soldr
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: live-rag-pr
 
       - name: Restore Hugging Face model cache
         uses: actions/cache@v5
