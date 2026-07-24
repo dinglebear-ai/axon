@@ -1,18 +1,30 @@
+---
+type: "Reference"
+title: "Integrations"
+description: "External and internal integration changes touched by the `e7d34a6b` update."
+---
+
 # Integrations
 
 ## External integrations affected indirectly
 
-- CI tooling integration migrated from `taiki-e/install-action` and direct npm install to `jdx/mise-action` and versioned package IDs.
-- OpenWiki workflow now uses OpenRouter + LangSmith env for model/tracing (`OPENROUTER_API_KEY`, `OPENWIKI_MODEL_ID`, `LANGSMITH_API_KEY`, `LANGCHAIN_PROJECT`, `LANGCHAIN_TRACING_V2`).
-- `scripts/cargo-rustc-wrapper` can delegate to external helper wrappers when present (`cargo-bin-artifact-wrapper`) while preserving local wrapper behavior.
+- CI tooling integration shifts:
+  - `taiki-e/install-action` usage in specific flows is being replaced by `jdx/mise-action` with pinned package IDs in selected jobs.
+  - `mcporter` is installed via mise shim and pinned.
+- OpenWiki workflow now runs against a Tailscale-accessible OpenAI-compatible API and performs preflight checks.
 
-## Related project integrations (README additions)
+## Repository control integrations
 
-- Links to related RMCP/community projects were added in `README.md` under **Related Servers**.
+- OpenWiki automation now includes control files (`AGENTS.md`, `CLAUDE.md`, workflow file) in generated update PRs, improving documentation-control alignment.
+
+## Related project references
+
+- README has added RMCP-related “Related Servers” links that are useful for ecosystem context.
 
 ## For maintainers
 
-If external integration behavior drifts:
+If integration behavior drifts:
 
-- Check `openwiki/quickstart.md` + `openwiki/workflows.md` for update instructions.
-- Reconcile versions in `.github/workflows/openwiki-update.yml` and `.github/workflows/ci.yml` with `jdx/mise-action` install IDs.
+- verify `.github/workflows/openwiki-update.yml` endpoint and secret wiring,
+- confirm `.github/workflows/ci.yml` still aligns installer IDs and expected tool behavior,
+- inspect `scripts/cargo-rustc-wrapper` for wrapper helper precedence changes before changing wrapper-specific build infra.
