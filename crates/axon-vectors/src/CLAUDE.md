@@ -8,8 +8,9 @@ contract (owns / API / deps / tests):
 · behavior spec:
 [../../../docs/pipeline-unification/runtime/storage-contract.md](../../../docs/pipeline-unification/runtime/storage-contract.md).
 
-## Status — Phase 10 (Qdrant store live)
-Most modules are still **markers** pending later phases, but `qdrant.rs` is now a
+## Status — live Qdrant store
+Only `query.rs` and `health.rs` remain 3-line markers; the rest of the crate is
+implemented. `qdrant.rs` is a
 **live** `VectorStore` over the Qdrant REST API (reqwest): GET-then-PUT-on-404
 collection ensure, named dense + bm42 sparse RRF hybrid search, generation-aware
 publish (`mark_generation_committed` flips visibility in place;
@@ -26,10 +27,12 @@ embedding generation, chunking, ledger commits, or RAG synthesis here.
 | `qdrant.rs` | `QdrantVectorStore` — the only concrete implementation |
 | `collection.rs` | `CollectionSpec` — named/sparse vectors, dimensions, payload indexes |
 | `point.rs` | `VectorPointBatch`, `VectorPoint` construction from prepared chunks + embeddings |
-| `payload.rs` | `VectorPayload` — validation + schema snapshots |
+| `payload.rs` + `payload_{families,generation,redaction,shape}.rs` | `VectorPayload` validation + payload-family/generation/redaction/shape logic |
 | `filter.rs` | `VectorFilter` — source/generation-scoped filters |
-| `query.rs` | `VectorQuery`, `VectorSearchResult` — search primitives (upsert/delete/scroll/retrieve-by-source) |
-| `health.rs` | store health + backpressure errors |
+| `bm42.rs` / `sparse.rs` | BM42 sparse-vector computation |
+| `redactor.rs` / `validation.rs` | payload redaction + validation helpers |
+| `store_helpers.rs` / `schema_registry.rs` | shared store helpers + schema registry |
+| `query.rs` / `health.rs` | **markers** (3-line stubs) — search primitives / store-health surfaces not yet split out here |
 | `testing.rs` | `FakeVectorStore` — deterministic search ordering + outage/partial/slow fixtures |
 
 ## Boundary — keep OUT of this crate

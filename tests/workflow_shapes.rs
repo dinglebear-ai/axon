@@ -435,13 +435,12 @@ fn ci_runs_docs_and_chrome_contract_checks() {
 }
 
 #[test]
-fn required_review_and_codeql_are_not_variable_gated() {
-    let review = include_str!("../.github/workflows/claude-code-review.yml");
+fn required_codeql_is_not_variable_gated() {
+    // The Claude Code Review workflow was removed (org move broke its app token);
+    // only codeql remains among the always-run required contract workflows.
     let codeql = include_str!("../.github/workflows/codeql.yml");
-    for workflow in [review, codeql] {
-        assert!(!workflow.contains("AXON_ENABLE_HEAVY_CI"));
-        assert!(!workflow.contains("TEMP(refactor)"));
-    }
+    assert!(!codeql.contains("AXON_ENABLE_HEAVY_CI"));
+    assert!(!codeql.contains("TEMP(refactor)"));
     assert!(codeql.contains("require_success analyze"));
     assert!(!codeql.contains("success|skipped"));
 }
@@ -533,6 +532,12 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {
+    // Self-hosted CI does full checkouts (sparse-checkout was removed because it
+    // poisoned the shared per-runner workdir). A job with no `sparse-checkout:`
+    // block checks out the entire tree, so it inherently covers every path.
+    if !block.contains("sparse-checkout:") {
+        return true;
+    }
     block.lines().map(str::trim).any(|entry| {
         entry == path
             || path

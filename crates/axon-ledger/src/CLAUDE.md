@@ -15,8 +15,10 @@ manifest diffing, document status tracking, leases, and cleanup debt recording.
 Per the DTO ownership rule, `SourceRecord`/`SourceManifest`/`SourceGeneration`/
 `DocumentStatus`/`CleanupDebt`/etc. live in `axon-api`, not here — `source.rs`,
 `item.rs`, `manifest.rs`, `diff.rs`, `generation.rs`, `document_status.rs`,
-`lease.rs`, `cleanup_debt.rs`, and `transaction.rs` remain marker files for that
-reason, not because the functionality is unimplemented. Do not add
+`lease.rs`, and `transaction.rs` remain marker files for that
+reason, not because the functionality is unimplemented (`cleanup_debt.rs` is
+**not** a marker — it holds real shared row-builder logic like
+`vector_delete_debt`). Do not add
 acquisition/embedding/vector behavior here.
 
 ## Module map

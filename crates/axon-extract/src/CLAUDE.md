@@ -1,17 +1,18 @@
 # src/extract — Vertical Extractor Framework
 Last Modified: 2026-06-19
 
-Per-site/per-API "vertical" extractors that produce richer, more structured docs than generic HTML-to-markdown web acquisition. Ships 18 extractors across a match-chain dispatcher. Replaces the legacy webclaw dispatcher.
+Per-site/per-API "vertical" extractors that produce richer, more structured docs than generic HTML-to-markdown web acquisition. Ships 18 extractors, each a plain module. **This crate owns only the extractor implementations + narrow shared types** — URL/name matching order and dispatch policy live in `axon-adapters::vertical_registry` (see Dispatch Model below), so this implementation crate has no pipeline ownership.
 
 ## Module Layout
 
 ```
 extract/
-├── context.rs          # VerticalContext — http client + cfg + cache surface passed to every extractor
+├── lib.rs              # public API root (re-exports VerticalContext, VerticalError, ExtractorInfo, ScrapedDoc)
+├── context.rs          # VerticalContext — narrowed ServiceContext view passed to every extractor
 ├── error.rs            # VerticalError enum
-├── registry.rs         # list(), dispatch_by_url(), dispatch_by_name() — match-chain dispatch (no trait objects)
+├── git_payload.rs      # git-source structured payload shaping
 ├── types.rs            # ScrapedDoc, ExtractorInfo
-├── verticals.rs        # module root re-exporting all verticals/*
+├── verticals.rs        # declares all vertical sub-modules (`pub mod <name>;`)
 └── verticals/          # one file per extractor
     ├── amazon.rs            # auto_dispatch: false (ToS-risky)
     ├── arxiv.rs
@@ -35,16 +36,16 @@ extract/
 
 ## Dispatch Model
 
-Two entry points, both in `registry.rs`:
+Dispatch is **not in this crate** — it lives in `crates/axon-adapters/src/vertical_registry.rs`, which composes the per-module `INFO`/`matches()`/`extract()` functions. Two entry points there:
 
-| Function | When it fires | Used by |
+| Function (in `axon-adapters::vertical_registry`) | When it fires | Used by |
 |----------|---------------|---------|
-| `dispatch_by_url(url, ctx)` | `auto_dispatch: true` extractors only; first matching `matches(url)` wins | `services::scrape::scrape` — called before the generic HTTP path when `cfg.enable_verticals` is true |
-| `dispatch_by_name(name, url, ctx)` | Explicit by extractor name — fires `auto_dispatch: false` extractors too | MCP `vertical_scrape` (catalog-only), reserved for future `--vertical <name>` CLI shortcut |
+| `dispatch_by_url(url, ctx)` | `auto_dispatch: true` extractors only; first matching `matches(url)` wins | the web/git acquisition adapters (`axon-adapters::web::vertical` / `git::vertical`) when `cfg.enable_verticals` is true, before the generic HTTP path |
+| `dispatch_by_name(name, url, ctx)` | Explicit by extractor name — fires `auto_dispatch: false` extractors too | reserved for explicit by-name acquisition |
 
 **No trait objects** — plain match-chain. Named-function dispatch is cleaner and faster at this scale.
 
-**Exhaustiveness:** a unit test asserts every `list()` entry has a corresponding arm in `dispatch_by_name()` so the "added to catalog but forgot to wire" bug is impossible.
+**Exhaustiveness:** a unit test in `axon-adapters` asserts every `list()` entry has a corresponding arm in `dispatch_by_name()` so the "added to catalog but forgot to wire" bug is impossible.
 
 ## ScrapedDoc Output
 
@@ -59,7 +60,7 @@ pub struct ScrapedDoc {
 }
 ```
 
-`extractor_name` + `extractor_version` flow through to the Qdrant payload (`payload_schema_version = 8`, see `crates/axon-vectors/src/CLAUDE.md` — Payload schema versioning). Bumping `extractor_version` forces points with that extractor name to be re-embedded on the next source refresh.
+`extractor_name` + `extractor_version` flow through to the Qdrant payload (governed by the vector payload contract `payload_contract_version`, currently `"2026-07-01"` in `axon-api::reset`; see `crates/axon-vectors/src/CLAUDE.md`). Bumping `extractor_version` forces points with that extractor name to be re-embedded on the next source refresh.
 
 ## auto_dispatch Flag
 
@@ -71,50 +72,34 @@ pub struct ScrapedDoc {
 
 `dispatch_by_url()` skips them entirely. They only fire via `dispatch_by_name()`.
 
-## Integration With `scrape`
+## Integration With acquisition
 
-The services layer wires this in `crates/axon-services/src/scrape.rs`:
+Vertical dispatch is wired into the acquisition adapters, not this crate: `axon-adapters::web::vertical` and `git::vertical` call `vertical_registry::dispatch_by_url(...)` before the generic HTTP path when `cfg.enable_verticals` is true; if a vertical claims the URL its `ScrapedDoc` is returned instead. (`axon-services::scrape` reads `cfg.enable_verticals` but the dispatch itself lives in the adapters.)
 
-```rust
-if cfg.enable_verticals {
-    if let Some(result) = dispatch_by_url(&normalized, &ctx).await {
-        return result; // vertical claimed the URL
-    }
-}
-// fall through to generic HTTP scrape
-```
-
-`cfg.enable_verticals` defaults to `true`. Disable with `AXON_ENABLE_VERTICALS=false` for A/B testing or to force generic-path behavior. This means `scrape` is no longer a pure HTML→markdown transformer — it can return GitHub/PyPI/etc. structured docs transparently when a URL matches.
+`cfg.enable_verticals` defaults to `true`. Disable with `AXON_ENABLE_VERTICALS=false` for A/B testing or to force generic-path behavior. This means acquisition is no longer a pure HTML→markdown transformer — it can return GitHub/PyPI/etc. structured docs transparently when a URL matches.
 
 ## Adding a New Extractor
 
+In **this crate** (`axon-extract`):
 1. Create `verticals/<name>.rs` with three items:
    - `pub const INFO: ExtractorInfo = ExtractorInfo { ... }`
    - `pub fn matches(url: &str) -> bool`
    - `pub async fn extract(url: &str, ctx: &VerticalContext) -> Result<ScrapedDoc, VerticalError>`
 2. Add `pub mod <name>;` to `verticals.rs`
-3. Add an entry to `list()` in `registry.rs`
+
+Then in **`axon-adapters`** (`src/vertical_registry.rs`):
+3. Add an entry to `list()`
 4. Add an arm to `dispatch_by_url()` (if `auto_dispatch: true`) AND `dispatch_by_name()`
-5. The exhaustiveness test will fail if you skip step 4 for `dispatch_by_name()` — `cargo test extract::registry`
+5. The exhaustiveness test (in `axon-adapters`) fails if you skip step 4 for `dispatch_by_name()`
 
 **Ordering matters in `dispatch_by_url()`.** More specific URL patterns must come before less specific ones (e.g. `github_repo` matches 2-segment paths, `github_release` matches 3+ — list the more specific one second, after the broader matcher has had its chance to reject).
-
-## MCP Surface (Discovery-Only)
-
-The MCP `vertical_scrape` action exposes the catalog but does NOT run extraction:
-
-- `subaction=list` → returns `ExtractorInfo[]`
-- `subaction=capabilities` → returns metadata for a single extractor
-- `subaction=run` → **removed**; redirects to `action=scrape url=<url>` (which auto-routes via `dispatch_by_url`)
-
-See `crates/axon-mcp/src/server/handlers_vertical_scrape.rs` for the redirect message.
 
 ## Testing
 
 ```bash
-cargo test extract                  # all extractor tests
-cargo test extract::registry        # dispatch + exhaustiveness tests
-cargo test verticals::github_repo   # one extractor's tests
+cargo test -p axon-extract              # all extractor + matches() tests
+cargo test -p axon-adapters vertical    # dispatch + exhaustiveness tests (registry lives in adapters)
+cargo test verticals::github_repo       # one extractor's tests
 ```
 
 Each `verticals/<name>.rs` includes a `matches()` truth-table test. Live HTTP tests are gated behind feature flags or env-driven skips.
