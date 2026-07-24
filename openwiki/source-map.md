@@ -1,27 +1,54 @@
+---
+type: "Reference"
+title: "Source Map"
+description: "Changed files and high-value source paths for the `e7d34a6b` update."
+---
+
 # Source Map
 
 ## Files directly changed since previous documentation snapshot
 
-- `.github/workflows/ci.yml` (tooling install changes for `taplo`, `cargo-nextest`, `cargo-audit`, `cargo-deny`, `mcporter`)
-- `.github/workflows/openwiki-update.yml` (trigger/env/schema + PR payload changes)
-- `CLAUDE.md` (OpenWiki docs section marker)
-- `Justfile` (helper targets and install hints)
-- `README.md` (related-server links addition)
-- `scripts/cargo-rustc-wrapper` (helper-aware wrapper + cache helper detection)
-- `docs/reference/actions/*.md` (generated surfaces block refresh)
-- `docs/reference/actions/README.md` (generated index surface matrix references)
+- `src/main.rs`
+- `scripts/cargo-rustc-wrapper`
+- `scripts/generate_action_docs.py`
+- `.github/workflows/ci.yml`
+- `.github/workflows/openwiki-update.yml`
+- `CLAUDE.md`
+- `Justfile`
+- `README.md`
+- `docs/reference/actions/README.md`
+- `docs/reference/api-parity.md`
+- generated `docs/reference/actions/*.md` surface blocks
 
-## Key paths for runtime behavior
+## Primary inspection paths
 
-- Compile/tooling: `scripts/cargo-rustc-wrapper`
-- Workflow automation: `.github/workflows/ci.yml`, `.github/workflows/openwiki-update.yml`
-- Generated documentation source of truth: `scripts/generate_action_docs.py` and `docs/reference/api-parity.md`
-- Manual docs anchors: `CLAUDE.md`, `README.md`, action pages under `docs/reference/actions/`.
+### Runtime and startup behavior
+
+- `src/main.rs`: startup flow, bounded error-chain traversal, redaction boundary.
+- `src/lib.rs`: command dispatch re-export boundary.
+
+### Build/tooling behavior
+
+- `scripts/cargo-rustc-wrapper`: helper and cache wrapper fallback logic.
+- `Justfile`: `mise`-based install guidance and removed wrapper install recipes.
+
+### CI/workflow behavior
+
+- `.github/workflows/ci.yml`: re-enabled conditionals and stricter final gate check.
+- `.github/workflows/openwiki-update.yml`: Tailscale/API preflight and expanded PR scope.
+
+### Documentation-generation paths
+
+- `scripts/generate_action_docs.py`: compatibility and surface fallback behavior.
+- `docs/reference/api-parity.md`: source parity snapshot.
+- `docs/reference/actions/README.md` and action files with generated `Surfaces` blocks.
 
 ## Follow-up for deeper archaeology
 
-If a question requires current implementation details (for example, why a REST route is present for an action), read:
+For implementation-level questions, prefer:
 
+- `src/main.rs`
+- `.github/workflows/ci.yml`
+- `scripts/generate_action_docs.py`
 - `docs/reference/api-parity.md`
-- `apps/web/openapi/axon.json` and `docs/reference/mcp/tool-schema.md` (for client/server contract evidence)
-- CI guard jobs (especially generated parity and route tests in `.github/workflows/ci.yml`)
+- `docs/reference/actions/README.md`
