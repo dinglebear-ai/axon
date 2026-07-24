@@ -24,6 +24,15 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Self-hosted Rust jobs build through soldr/zccache (setup-rust-soldr).
+  # Incremental must be off under a compile wrapper; the zccache store persists
+  # per-runner on local disk.
+  CARGO_INCREMENTAL: "0"
+  SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
+  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
+  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
+  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
+  SOLDR_NATIVE_CACHE: "0"
   WINDOWS_PORTABLE_RUSTFLAGS: >-
     -C target-cpu=x86-64
     -C target-feature=-avx512f,-avx512vl,-avx512bw,-avx512dq,-avx512cd,-avx512ifma,-avx512vbmi,-avx512vbmi2,-avx512vnni,-avx512bitalg,-avx512vpopcntdq
@@ -31,7 +40,7 @@ env:
 jobs:
   version:
     name: resolve and validate version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -74,7 +83,7 @@ jobs:
   palette-linux:
     name: build axon-palette (linux)
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     steps:
       # Full checkout: LFS blobs come down as pointers (lfs: false default) and
       # are not needed to build.
@@ -87,13 +96,9 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/palette-tauri/src-tauri
-          shared-key: release-palette-linux
       # Tauri on Linux links against WebKitGTK + GTK + libsoup.
       - name: Install Tauri Linux system deps
         run: |
@@ -178,7 +183,7 @@ jobs:
   publish:
     name: publish github release
     needs: [version, palette-linux, palette-windows]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     # Attach artifacts only when release-please dispatches this workflow on an
     # existing palette-v* release tag.
     if: >-

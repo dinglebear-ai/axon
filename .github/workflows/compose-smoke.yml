@@ -15,7 +15,7 @@ concurrency:
 jobs:
   changes:
     name: changes
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     outputs:
       compose: ${{ steps.classify.outputs.compose }}
       docker: ${{ steps.classify.outputs.docker }}
@@ -63,21 +63,20 @@ jobs:
 
   compose-config:
     name: compose-config
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.compose == 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          sparse-checkout: |
-            config
-            apps/web
-            scripts
 
       # Docker Compose v5 validates external networks exist even during config --quiet.
       # Create the network so both prod and dev compose files pass static validation.
       - name: Create Docker network
-        run: docker network create "${DOCKER_NETWORK:-axon}" || true
+        # Reused self-hosted runners can carry a leftover network from a prior
+        # (or cancelled) job; remove any stale one first, then (re)create.
+        run: |
+          docker network rm "${DOCKER_NETWORK:-axon}" 2>/dev/null || true
+          docker network create "${DOCKER_NETWORK:-axon}" || true
 
       - name: Validate production compose
         run: docker compose --env-file .env.example -f docker-compose.prod.yaml config --quiet
@@ -100,7 +99,7 @@ jobs:
 
   image-build-smoke:
     name: image-build-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.docker == 'true' }}
     steps:
@@ -121,7 +120,7 @@ jobs:
 
   compose-smoke-gate:
     name: compose-smoke-gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     if: always()
     needs:
       - changes

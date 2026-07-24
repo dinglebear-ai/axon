@@ -1,0 +1,161 @@
+name: Setup Rust with soldr
+description: Install a Rust toolchain plus soldr (zccache-backed build caching) and print cache evidence.
+inputs:
+  toolchain:
+    description: Rust toolchain to install.
+    required: false
+    default: stable
+  components:
+    description: Comma-separated Rust components to install.
+    required: false
+    default: ""
+  targets:
+    description: Comma-separated Rust targets to install.
+    required: false
+    default: ""
+  enable-shims:
+    description: >-
+      "true" (default) installs setup-soldr's PATH shims (cargo, rustc,
+      rustfmt, clippy-driver, rustdoc) so plain `cargo ...` steps route
+      through soldr; "false" installs soldr without shims so cargo runs
+      bare — used by the native Windows job.
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Install Linux build prerequisites
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        need_install=false
+        command -v cc >/dev/null 2>&1 || need_install=true
+        command -v pkg-config >/dev/null 2>&1 || need_install=true
+        pkg-config --exists openssl 2>/dev/null || need_install=true
+        pkg-config --exists dbus-1 2>/dev/null || need_install=true
+        # soma-tauri-shell (crates/shared/tauri-shell) pulls in Tauri's Linux
+        # desktop stack: GTK3 (tray icon/windowing), WebKitGTK (webview),
+        # ayatana-appindicator (tray icon), rsvg (icon rendering), and xdotool
+        # (global shortcuts).
+        pkg-config --exists gtk+-3.0 2>/dev/null || need_install=true
+        pkg-config --exists webkit2gtk-4.1 2>/dev/null || need_install=true
+        pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null || need_install=true
+        pkg-config --exists librsvg-2.0 2>/dev/null || need_install=true
+        pkg-config --exists xdo 2>/dev/null || need_install=true
+        if [ "$need_install" = false ]; then
+          exit 0
+        fi
+        packages="build-essential pkg-config libssl-dev libdbus-1-dev libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev"
+        if command -v apt-get >/dev/null 2>&1; then
+          if [ "$(id -u)" = "0" ]; then
+            apt-get update
+            # shellcheck disable=SC2086
+            apt-get install -y $packages
+          elif command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            # shellcheck disable=SC2086
+            sudo apt-get install -y $packages
+          else
+            echo "::error::apt-get is available but the runner is not root and sudo is missing."
+            exit 1
+          fi
+          exit 0
+        fi
+        echo "::error::No C compiler found and no supported package manager is available."
+        exit 1
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+        targets: ${{ inputs.targets }}
+
+    # setup-soldr installs the soldr front door (zccache compilation caching).
+    # cache-preset: minimal — these are persistent self-hosted runners, so the
+    # zccache store persists on local disk (SOLDR_CACHE_DIR in workflow env,
+    # same pattern as the old SCCACHE_DIR) and the GitHub-cache save/restore
+    # layers would only add network overhead. Compile caching itself stays ON
+    # (do NOT use `cache: false` here — that umbrella switch exports
+    # SOLDR_BUILD_CACHE_MODE=off and disables zccache entirely). With
+    # shims: true, plain `cargo ...` steps trampoline into `soldr cargo ...`.
+    # version pins the soldr binary; bump deliberately, not via tag drift.
+    - name: Install soldr
+      uses: zackees/setup-soldr@c4e66a9114a45193605ff4a27404ef74b9b9a6dc # v0
+      with:
+        version: "0.8.19"
+        cache-preset: minimal
+        shims: ${{ inputs.enable-shims }}
+        toolchain: ${{ inputs.toolchain }}
+        # platform-default keeps the system linker (cc/gcc). soldr's own
+        # default (`fast`) injects a clang + mold/rust-lld toolchain that the
+        # CI runner image does not have (`error: linker 'clang' not found`),
+        # and soma leaves linker choice to the developer's global config, so
+        # CI has no linker preference to honor. This matches the pre-migration
+        # sccache behavior (system default linker).
+        linker: platform-default
+        # Disable the cargo-chef `cook` dependency prebuild. On soma it (a)
+        # panics — cargo-chef 0.1.73 chokes on this workspace — and (b) when
+        # its delta cache hits, restores a target/deps archive whose wasmtime
+        # is built with a different feature set than the real build needs,
+        # producing `error[E0432]: unresolved import crate::Result`. Every
+        # cache-preset keeps cook on, so it must be opted out explicitly.
+        # zccache compile caching (the actual point of soldr) is unaffected.
+        prebuild-deps: none
+        # Persist the zccache compile store across runs the way the
+        # pre-migration sccache setup did: root the cache under the workspace.
+        # \$GITHUB_WORKSPACE is /_work/<repo>/<repo>, which the runner farm
+        # bind-mounts persistently per runner (/mnt/cache/runner/work/ci-runner-N).
+        # setup-soldr derives SOLDR_CACHE_DIR=<cache-dir>-soldr, so the compile
+        # store lands at /_work/<repo>/.soldr-soldr/cache/zccache: persistent AND
+        # per-runner, so there is no cross-runner shared binary (the #204 exec
+        # race) and no shared /mnt/cache mount to manage. Mirrors old SCCACHE_DIR.
+        cache-dir: ${{ github.workspace }}/../.soldr
+
+    # GitHub release assets are MUTABLE: the version pin above pins the tag
+    # name, not the bytes — a compromised upstream account could swap the
+    # 0.8.19 asset in place. These hashes anchor the exact binaries validated
+    # 2026-07-21 (Linux hash independently cross-checked against a known-good
+    # local install; setup-soldr itself performs no checksum verification).
+    # On a soldr version bump: download the new release assets, extract, hash
+    # the soldr binaries, and update both values deliberately.
+    - name: Verify soldr binary integrity
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "$(uname -s)" in
+          Linux) want="8dc4051fe83c498ded65f8aa245d7a5e5576f3998d971e0c6d501464e9f580ac" ;;
+          MINGW*|MSYS*|CYGWIN*) want="46c95c9e9bfa3ffd99da221ab5bdbcab2723ebc0c98f596905f058ddbb495ddd" ;;
+          *) echo "::warning::no pinned soldr hash for $(uname -s); skipping integrity check"; exit 0 ;;
+        esac
+        bin="$(command -v soldr)"
+        got="$(sha256sum "$bin" | cut -d' ' -f1)"
+        if [ "$got" != "$want" ]; then
+          echo "::error::soldr binary hash mismatch at $bin (got $got want $want) — possible swapped release asset; refusing to build"
+          exit 1
+        fi
+        echo "soldr binary integrity OK: $got"
+
+    - name: Show Rust cache configuration
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustc -vV
+        cargo -V
+        soldr --version
+        printf 'SOLDR_CACHE_DIR=%s\n' "${SOLDR_CACHE_DIR:-}"
+        printf 'RUSTUP_TOOLCHAIN=%s\n' "${RUSTUP_TOOLCHAIN:-}"
+        # Guard against the silent no-op failure mode: if shims were
+        # requested, `cargo` on PATH must resolve into setup-soldr's shims
+        # dir. A bare cargo here means every build silently runs uncached.
+        if [ "${{ inputs.enable-shims }}" = "true" ]; then
+          resolved="$(command -v cargo)"
+          case "$resolved" in
+            *shims*) printf 'cargo shim engaged: %s\n' "$resolved" ;;
+            *)
+              echo "::error::soldr cargo shim NOT engaged (cargo=$resolved); builds would run uncached"
+              exit 1
+              ;;
+          esac
+        fi

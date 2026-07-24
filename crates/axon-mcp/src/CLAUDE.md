@@ -19,7 +19,8 @@ responses return opaque artifact IDs rather than server filesystem paths.
 Current groups from `crates/axon-mcp/src/`:
 | Area | Owns |
 |---|---|
-| `lib.rs` | crate root + `run_mcp_server` bootstrap |
+| `lib.rs` | crate root — re-exports `AxonMcpServer` + `run_stdio_server` bootstrap |
+| `schema_registry.rs` | shared MCP schema-registry helpers |
 | `server.rs` + `server/` | MCP server, transport handlers, action routing (target `handler.rs`/`progress.rs`) |
 | `schema.rs` | tool input/output schema generated from `axon-api` (target `tool_model.rs`) |
 | `auth.rs` | caller extraction / auth wiring via `axon-authz` |
