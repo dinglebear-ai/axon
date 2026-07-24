@@ -32,6 +32,8 @@ enum Command {
     GenApiParity,
     /// Verify MCP HTTP transport support.
     CheckMcpHttp,
+    /// Verify .cargo/audit.toml and deny.toml advisory ignore lists match.
+    CheckAuditIgnoreSync,
     /// Reject staged secret env files.
     CheckEnvStaged,
     /// Warn about newly staged unwrap/expect calls.
@@ -168,6 +170,7 @@ fn main() -> Result<()> {
         Command::CheckApiParity => checks::api_parity::check(&root),
         Command::GenApiParity => checks::api_parity::write(&root),
         Command::CheckMcpHttp => checks::mcp_http::check(&root),
+        Command::CheckAuditIgnoreSync => checks::audit_ignore_sync::check(&root),
         Command::CheckEnvStaged => checks::env_staged::check(&root),
         Command::CheckUnwraps => checks::unwraps::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),

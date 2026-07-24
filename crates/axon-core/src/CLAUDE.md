@@ -36,12 +36,12 @@ and injected into `build_doctor_report`).
 Current groups from `crates/axon-core/src/` (target modules in parens):
 | Area | Owns |
 |---|---|
-| `config.rs` + `config/` | config loading, effective config, source tracking (`EffectiveConfig`) |
-| `paths.rs` | data-dir / cache / temp / artifact path helpers (`DataDirs`/`SafePath`) |
+| `config.rs` + `config/` | config loading, effective config, source tracking (`Config` in `config/types/`) |
+| `paths.rs` | data-dir / cache / temp / artifact path helpers (`axon_data_dir`, `ensure_private_dir`, `open_private_append`) |
 | `env.rs` · `sqlite.rs` · `logging/` | env + local sqlite + structured logging primitives (ids/time → `ids.rs`/`time.rs`) |
-| `redact.rs` | redaction primitives + safe display (`Redactor`/`SecretString`) |
+| `redact.rs` | redaction primitives + safe display (`redact_secrets`, `is_secret_like`) |
 | `http.rs` + `http/` | URL/HTTP safety, SSRF preflight, fs guards (`http_safety.rs`/`fs.rs`) |
-| `artifacts.rs` | artifact handle primitives (`ArtifactPath`/`ArtifactKind`) |
+| `artifacts.rs` | artifact write primitives (`ArtifactWriteError`; `ArtifactKind` is an `axon-api` DTO) |
 | `health/` · `binary_status.rs` · `endpoints.rs` · `structured/` · `ui/` | diagnostics/feature-flag/test primitives (`diagnostics.rs`/`testing.rs`) |
 | `llm.rs` | LLM **DTO/config layer only** (backends now live in `axon-llm`); embedded in `Config`, so it stays here to avoid a cycle. `TextCompleter`/`CompletionRunner` injection seams. |
 | `content/` | **LEAVING** → `axon-parse` + `axon-document` |

@@ -1,39 +1,66 @@
+---
+type: "Reference"
+title: "Domain Concepts"
+description: "Action-surface and control-plane concepts introduced/adjusted in the `e7d34a6b` update."
+---
+
 # Domain Concepts
 
 ## What changed in this update
 
-### Generated action surface contracts
-`docs/reference/actions/*.md` pages include an auto-generated `Surfaces` block generated from parity data. In this update, many pages moved to generic markers like:
+### Runtime and error-handling concept
 
-- `REST: Not inventoried`
-- `MCP: Not exposed as a dedicated MCP action.`
-- `Service: Not inventoried`
+`src/main.rs` now enriches user-facing failure text by traversing `Error::source()` chains with a bounded depth (16), then applying transport redaction. This keeps CLI failures actionable while preserving privacy boundaries.
 
-Those values come from the action surface parser when entries are missing in the current parity inventory.
+### Wrapper delegation concept
 
-### Wrapper delegation
-`scripts/cargo-rustc-wrapper` now supports:
+`scripts/cargo-rustc-wrapper` now follows a layered execution model:
 
-- `CARGO_BIN_ARTIFACT_WRAPPER_HELPER` / auto-discovery of `cargo-bin-artifact-wrapper`
-- optional use of `sccache-wrapper`
-- fallback to `sccache` and then bare rustc
+1. explicit helper override (`CARGO_BIN_ARTIFACT_WRAPPER_HELPER`),
+2. auto-discovered `cargo-bin-artifact-wrapper`,
+3. `sccache-wrapper`,
+4. `sccache`,
+5. bare `rustc`.
 
-The primary behavior remains: when not delegated, it still behaves as a compile wrapper and preserves the binary-install side effects expected by repo scripts.
+This supports configurable wrapper composition without changing callers.
 
-### OpenWiki workflow control plane
-The OpenWiki scheduler now calls `openwiki code --update --print` directly and updates additional paths in generated PRs.
+### Action-surface compatibility concept
 
-## Why this matters
+The action docs model moved to a unified `source` interpretation for removed source-family commands:
 
-- Reduced drift: action surface documentation tracks parity assumptions in a predictable way.
-- Reduced bootstrap risk: the compile wrapper can route through helper tooling when installed.
-- Lower operational friction: workflow updates include workflow/docs control files in one PR payload.
+- `github`, `reddit`, `youtube` are now documented as CLI compatibility entrypoints (`axon <source>`) that dispatch through `source` semantics.
+- `crawl`, `ingest`, and `code-search` docs now explicitly indicate deprecation-style removal with migration guidance.
+
+`scripts/generate_action_docs.py` now emits compatibility and “Not inventoried” fallbacks when parity data is absent, so generated pages are explicit about surface coverage.
+
+### OpenWiki workflow control concept
+
+`openwiki-update.yml` now:
+
+- runs a preflight API check before generation,
+- includes additional control files in its PR payload,
+- and runs with explicit helper environment and fixed endpoint settings.
 
 ## Related files
 
+- `src/main.rs`
 - `scripts/cargo-rustc-wrapper`
-- `docs/reference/actions/*.md`
-- `docs/reference/actions/README.md`
-- `docs/reference/api-parity.md`
 - `scripts/generate_action_docs.py`
+- `docs/reference/api-parity.md`
+- `docs/reference/actions/README.md`
+- `docs/reference/actions/*.md`
 - `.github/workflows/openwiki-update.yml`
+
+## Why this matters
+
+- Error handling gives operators better root-cause visibility without widening secret exposure.
+- Wrapper delegation supports team-specific tool orchestration.
+- Action docs now reflect the unified source contract and removed-compatibility behavior consistently.
+- Automated OpenWiki PRs now refresh more authoritative control files, reducing drift.
+
+## Next-linking for related concepts
+
+- [src/main.rs](../architecture/overview.md#runtime-and-error-handling-concept)
+- [Workflow gates](../workflows.md)
+- [Action parity matrix](../../docs/reference/api-parity.md)
+- [Action index](../../docs/reference/actions/README.md)

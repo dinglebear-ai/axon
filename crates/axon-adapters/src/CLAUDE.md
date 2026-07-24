@@ -13,7 +13,7 @@ family, at what declared scope, and what did the fetch return." Full contract
 ## Status — live crate, Phase 4 + Phase 9 landed
 The adapter framework (trait, registry, capability, manifest) and per-source
 ports (git, web, local, sessions, reddit, youtube, registry, cli_tool, mcp_tool,
-feed — see `family_matrix.rs`) are real and tested, not markers. Do not add
+feed, memory, upload — see `family_matrix.rs`) are real and tested, not markers. Do not add
 ledger, embedding, vector, or transport behavior here — adapters classify and
 normalize; they don't own storage.
 
@@ -23,7 +23,8 @@ normalize; they don't own storage.
 | `adapter.rs` | `SourceAdapter` trait |
 | `registry.rs` | `AdapterRegistry` — registration + lookup |
 | `capability.rs` | `AdapterCapability`, `AdapterVersion`, declared scopes |
-| `acquisition.rs` | `SourceAcquisition`, `AcquiredItem`, `FetchStatus` |
+| `acquisition.rs` | `AcquiredItem`, `FetchStatus`, `MaterializedSource` (`SourceAcquisition` is an `axon-api::source::stage` DTO) |
+| `memory.rs` / `upload.rs` | `MemorySourceAdapter` / `UploadSourceAdapter` — memory + upload source families |
 | `manifest.rs` | `AcquisitionManifest` (added/changed/removed) |
 | `web.rs` / `local.rs` / `git.rs` | web page/site, local file/dir, git repo adapters |
 | `registry_sources.rs` / `feed.rs` | package-registry, RSS/Atom/JSON feed adapters |

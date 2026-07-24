@@ -28,8 +28,8 @@ Current groups from `crates/axon-cli/src/`:
 |---|---|
 | `lib.rs` | `run` / `run_once` entrypoints + top-level dispatch |
 | `commands.rs` + `commands/` | per-command handlers (argv → request DTO → service call) |
-| clap args / render / progress / json / exit | parser tree, human renderers, progress, `--json` envelope, exit-code mapping (target modules `app.rs`/`args.rs`/`render.rs`/`progress.rs`/`json.rs`/`exit.rs`/`help.rs`/`config.rs`) |
-| `testing.rs` | CLI test harness / clap-snapshot helpers |
+| clap args / render / progress / json / exit | parser tree, human renderers, progress, `--json` envelope, exit-code mapping (arg/render/progress/json helpers live under `commands/` and `axon-core`; `app.rs`/`args.rs`/`exit.rs`/`help.rs` are not yet split out) |
+| `*_tests.rs` sidecars | CLI tests (e.g. `json_tests.rs`) — `_tests.rs` sidecar convention, no dedicated `testing.rs` |
 
 ## Boundary — keep OUT of this crate
 - Source pipeline logic, provider/store/domain internals — always go through `axon-services`.
