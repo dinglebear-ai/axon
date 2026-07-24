@@ -1,32 +1,35 @@
+---
+type: "Reference"
+title: "Operations Notes"
+description: "Operational checks and local maintenance notes after the `e7d34a6b` update."
+---
+
 # Operations Notes
 
 ## Local build/tooling adjustments
 
-- `Justfile` removed `nextest-install` and `llvm-cov-install` recipes, shifting install guidance toward `mise`-installed tools.
-- `taplo-check`, `taplo-fmt`, and coverage commands now emit actionable `mise` install commands:
-  - `mise install cargo:taplo-cli`
-  - `mise install cargo:cargo-llvm-cov`
-- `cargo-machete` and other optional helpers remain optional and are now referenced with `mise` install guidance.
+- `Justfile` dropped `nextest-install` and `llvm-cov-install` recipes in favor of `mise`-managed commands.
+- `scripts/cargo-rustc-wrapper` now supports explicit/auto helper delegation and layered cache wrappers.
 
-## Script/tooling guardrails
+## Runtime/tooling validation priorities
 
-- `scripts/cargo-rustc-wrapper` now first checks:
-  1. `CARGO_BIN_ARTIFACT_WRAPPER_HELPER`
-  2. `cargo-bin-artifact-wrapper`
-  3. `sccache-wrapper`
-  4. `sccache`
-  5. rustc fallback
-
-This preserves current artifact-install behavior while allowing helper-driven replacement.
+1. **Wrapper behavior:** run a normal local build path that exercises `RUSTC_WRAPPER` (or a comparable CI-equivalent path) after wrapper-selection changes.
+2. **Workflow debugging:** inspect `.github/workflows/ci.yml` change-conditioned jobs and the final `verify required jobs` phase for skipped-vs-required mismatches.
+3. **OpenWiki updates:** when docs automation is suspect, inspect `openwiki-update` run logs around preflight endpoint checks and generated PR payload composition.
 
 ## OpenWiki/Docs control surfaces
 
-- `CLAUDE.md` now includes an OpenWiki section with a concise pointer to `openwiki/quickstart.md`.
-- `README.md` has new “Related Servers” links in this snapshot.
+- `CLAUDE.md` contains the OpenWiki navigation pointer.
+- `README.md` now includes related-server links in its Related Servers section.
+- `src/main.rs` and parity docs should be kept aligned with generated surface pages.
 
-## Recommended operational checks
+## Recurrent commands
 
-1. If CI helper-related failures appear, inspect job logs around `Install` steps in `.github/workflows/ci.yml` and `openwiki-update.yml`.
-2. Validate wrapper behavior by running a normal local build path that exercises `RUSTC_WRAPPER`.
-3. If action docs are stale, regenerate via:
-   - `python3 scripts/generate_action_docs.py` and review generated surface blocks in `docs/reference/actions/*.md`.
+- `python3 scripts/generate_action_docs.py` (refresh generated action surfaces)
+- `python3 scripts/generate_action_docs.py --check` (if available in your local workflow)
+- `cargo run --manifest-path xtask/Cargo.toml --no-default-features -- docs generate --check` (in current CI path)
+
+## Risk watchlist
+
+- CI endpoint availability for OpenWiki preflight (`/models`) can fail independently of source correctness.
+- Wrapper fallback precedence changes should be validated before major branch merges that depend on custom artifact wrappers.
