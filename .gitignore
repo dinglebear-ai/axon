@@ -77,6 +77,14 @@ Thumbs.db
 # Nested cargo target dirs from per-workspace builds (e.g. apps/palette-tauri).
 apps/*/target/
 apps/*/*/target/
+# Cargo/soldr-managed cache files. The ~/.local/bin/cargo front door pins
+# CARGO_HOME=~/.cargo so these should no longer land in the repo, but ignore
+# any stragglers from before that pin (or if someone runs plain `cargo` with
+# a redirected CARGO_HOME). Do NOT ignore .cargo/config.toml or .cargo/audit.toml.
+.cargo/.global-cache
+.cargo/.package-cache
+.cargo/.package-cache-mutate
+.cargo/registry/
 **/*.rs.bk
 *.profraw
 *.profdata

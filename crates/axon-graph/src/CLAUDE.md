@@ -28,9 +28,9 @@ ledger lifecycle here.
 | `migration.rs` | forward-only SQLite graph schema |
 | `node.rs` / `edge.rs` | `GraphNode`, `GraphEdge` records + node/edge kinds |
 | `evidence.rs` | `GraphEvidence` — required provenance for non-manual edges |
-| `candidate.rs` | `GraphCandidateIngest` — idempotent candidate ingestion |
+| `candidate.rs` | `validate_candidate(&GraphCandidate)` — candidate validation |
 | `authority.rs` | `AuthorityDecision` — explicit authority records (docs→repo→package) |
-| `merge.rs` | `GraphMergePolicy` — merge/upsert/conflict/provenance rules |
+| `merge.rs` | merge helpers (`node_id_for`, `resolve_node`, `authority_from_evidence`, `confidence_from_evidence`) — merge/upsert/conflict/provenance rules |
 | `store.rs` / `sqlite.rs` | `query()` (`GraphQueryRequest`/`GraphQueryResult`) — retrieval/app query helpers live on the `GraphStore` trait itself, there is no separate `query.rs` module |
 | `schema_registry.rs` | `GraphKindSpec`/`node_kind_registry()` — node/edge kind registry consumed by schema-contract generation |
 | `testing.rs` | `FakeGraphStore` + graph fixtures (authority, dep graph, session, conflict) |

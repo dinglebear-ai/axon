@@ -1,0 +1,51 @@
+# Axon unified server — bare-metal systemd unit.
+#
+# This is the same native-binary-under-systemd model the Incus deployment uses
+# (see deploy/incus/bootstrap.sh, which writes an equivalent `axon-native.service`
+# inside the Incus container), lifted onto a bare host and de-Incused:
+#   - no After=docker.service (axon itself has no Docker dependency; Qdrant/TEI/
+#     Chrome are reached over the network, not as local containers it owns)
+#   - /var/lib/axon + /etc/axon/axon.env instead of the Incus /mnt/axon-data mount
+#   - a dedicated `axon` user instead of root
+#   - no forced AXON_HTTP_HOST=0.0.0.0 (loopback by default; open it via a
+#     reverse proxy or override AXON_HTTP_HOST in /etc/axon/axon.env)
+#
+# Install (root):
+#   useradd --system --home /var/lib/axon --shell /usr/sbin/nologin axon
+#   install -d -o axon -g axon /var/lib/axon
+#   install -m 0755 axon /usr/local/bin/axon
+#   install -d /etc/axon
+#   install -m 0600 your.env /etc/axon/axon.env
+#   install -m 0644 deploy/systemd/axon.service /etc/systemd/system/axon.service
+#   systemctl daemon-reload
+#   systemctl enable --now axon
+#
+# See deploy/systemd/README.md for the full walkthrough and infra notes.
+
+[Unit]
+Description=Axon unified server (native binary, bare-metal)
+Documentation=https://github.com/jmagar/axon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/axon/axon.env
+Environment=AXON_HOME=/var/lib/axon
+Environment=AXON_DATA_DIR=/var/lib/axon
+WorkingDirectory=/var/lib/axon
+ExecStart=/usr/local/bin/axon serve
+Restart=always
+RestartSec=5
+User=axon
+Group=axon
+
+# Hardening — safe defaults; relax if your environment requires it.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/axon
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

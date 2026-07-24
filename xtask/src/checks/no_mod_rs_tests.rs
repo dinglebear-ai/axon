@@ -40,3 +40,28 @@ fn ignores_target_dir_entries() {
         "expected target/ entries to be skipped: {result:?}"
     );
 }
+
+#[test]
+fn ignores_vendored_and_cargo_registry_entries() {
+    let dir = tempdir().expect("create tempdir");
+    // Repo-local CARGO_HOME registry cache: upstream crate sources use mod.rs.
+    let registry = dir
+        .path()
+        .join(".cargo")
+        .join("registry")
+        .join("src")
+        .join("some-crate-1.0.0")
+        .join("stream");
+    fs::create_dir_all(&registry).expect("mkdir .cargo registry");
+    fs::write(registry.join("mod.rs"), "// vendored dep\n").expect("write");
+    // `cargo vendor` output likewise.
+    let vendor = dir.path().join("vendor").join("other-crate").join("io");
+    fs::create_dir_all(&vendor).expect("mkdir vendor");
+    fs::write(vendor.join("mod.rs"), "// vendored dep\n").expect("write");
+
+    let result = check(dir.path());
+    assert!(
+        result.is_ok(),
+        "expected .cargo/ and vendor/ entries to be skipped: {result:?}"
+    );
+}

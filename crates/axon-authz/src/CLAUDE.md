@@ -19,10 +19,14 @@ invariant). Do not add source fetching or redaction detectors here.
 ## Module map
 | File | Owns |
 |---|---|
-| `lib.rs` | **live** — OAuth scope constants + scope-satisfaction logic; the crate's public surface |
-| `http.rs` | **live** — scope checks against required-scope for Axon read/write routes |
-| `lib_tests.rs` | scope-matching + satisfaction tests |
-| _(planned per contract)_ | `caller.rs`/`scope.rs`/`policy.rs`/`decision.rs`/`visibility.rs`/`affinity.rs`/`testing.rs` — `CallerContext`, `AuthScope`, `ExecutionAffinity`, `SecurityPolicy`, `SecurityDecision`, `VisibilityPolicy`, `PolicyEvaluator`, `FakePolicyEvaluator` |
+| `lib.rs` | OAuth scope constants + scope-satisfaction logic; the crate's public surface |
+| `http.rs` | scope checks against required-scope for Axon read/write routes |
+| `caller.rs` | `CallerContext` + constructors (`trusted_local_caller`, `system_caller`, `scoped_caller`) |
+| `decision.rs` | `PolicyEvaluator` trait + `ScopePolicyEvaluator` |
+| `policy.rs` | `SecurityPolicy` / `CredentialProvider` traits |
+| `visibility.rs` | `VisibilityPolicy` + `ceiling_for(caller)` |
+| `affinity.rs` | `AffinityPolicy` + `required_scope_for_safety_class` |
+| `lib_tests.rs` | scope-matching + satisfaction tests (tests are `_tests.rs` sidecars) |
 
 ## Boundary — keep OUT of this crate
 - OAuth / bearer-token HTTP middleware, MCP transport auth handshake.
