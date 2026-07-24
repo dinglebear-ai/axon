@@ -2,7 +2,19 @@ use anyhow::{Result, bail};
 use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
 
-const SKIP_DIRS: &[&str] = &[".git", "target", "node_modules", ".cache", ".next"];
+// Directories that hold build artifacts or vendored third-party sources, never
+// first-party module roots. `.cargo` covers a repo-local CARGO_HOME registry
+// cache, and `vendor` covers `cargo vendor` output — both contain upstream
+// crates that legitimately use `mod.rs` and must not fail this first-party lint.
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    "node_modules",
+    ".cache",
+    ".next",
+    ".cargo",
+    "vendor",
+];
 
 fn is_skipped_dir(entry: &DirEntry) -> bool {
     if !entry.file_type().is_dir() {

@@ -172,8 +172,10 @@ The production stack and local development stack are split:
 
 | File | Contents | Env file |
 |------|----------|----------|
-| `docker-compose.prod.yaml` | Axon server, Qdrant, Chrome, TEI | `~/.axon/.env` |
+| `docker-compose.prod.yaml` | Axon server, Qdrant, Chrome, TEI (qdrant is **mandatory** here — every `up -d` starts all 4) | `~/.axon/.env` |
 | `docker-compose.yaml` | Local dev stack; extends production services and runs `axon` from the bind-mounted local debug binary in `target/debug` | `~/.axon/.env` |
+| `docker-compose.external-qdrant.yaml` | Overlay (apply **on top of** `-f docker-compose.prod.yaml`) that drops the bundled `axon-qdrant` and points axon at an existing external Qdrant. Requires `AXON_EXTERNAL_QDRANT_URL` (fails loudly if unset). **This homelab's mode — Qdrant lives on tootie, off dookie for RAM reasons.** Recipes: `just prod-up-external-qdrant` / `just prod-down-external-qdrant`. | `~/.axon/.env` |
+| `docker-compose.llama.yaml` | Standalone llama.cpp GGUF server (own `llama-cpp` project, joins the external `${DOCKER_NETWORK:-axon}` network) for a local OpenAI-compatible endpoint at `:${LLAMA_CPP_PORT:-8080}/v1`. Not part of the axon stack. | — |
 
 **GPU acceleration:** On NVIDIA hosts, `docker-compose.prod.yaml` includes NVIDIA reservations for `axon-tei`.
 
