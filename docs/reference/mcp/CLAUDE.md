@@ -2,9 +2,10 @@
 
 Documentation for the Axon MCP server (`axon mcp`).
 
-These docs describe the current pre-#298 MCP runtime. The future clean-break
-tool contract is `docs/pipeline-unification/surfaces/tool-contract.md`; the
-current generated `tool-schema.md` is no longer the future source of truth.
+These docs describe the current clean-break MCP runtime (one `axon` tool with
+action/subaction routing). The design contract is
+`docs/pipeline-unification/surfaces/tool-contract.md`; the generated
+`tool-schema.md` is the current runtime source-of-truth snapshot.
 
 ## Files
 

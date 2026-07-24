@@ -139,7 +139,10 @@ Code reviews, audits, security analysis. Named by date and scope: `2026-02-22-fu
 
 ### Database schema
 
-The SQLite schema is auto-created by migrations under `src/jobs/migrations/` plus store helpers in `src/jobs/store.rs`. There is no separate hand-maintained schema doc.
+The SQLite schema is auto-created by migrations owned per-crate under
+`crates/{axon-jobs,axon-ledger,axon-graph,axon-memory,axon-observe}/src/migrations/`.
+The authoritative generated schema reference is
+`docs/reference/runtime/database-schema.json` (do not hand-edit it — regenerate).
 
 ---
 

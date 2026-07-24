@@ -36,6 +36,8 @@ transport-specific status rendering here.
 | `sink.rs` + `sink/sqlite.rs` + `sink/tracing_sink.rs` | production `ObservabilitySink` impls: `SqliteObservabilitySink` (durable event/heartbeat/provider-health rows, owns an in-crate migration) and `TracingObservabilitySink` (forwards to the `tracing` subscriber via `SpanFieldSet`) |
 | `migration.rs` | `MIGRATIONS`/`migration_set()` — this crate's SQL migration set, composed into the shared cross-crate SQLite runner (see `axon-jobs`) rather than run standalone in production |
 | `schema_registry.rs` | `EventSpec`/`event_registry()` — runtime event name/phase/status registry consumed by schema-contract generation |
+| `redaction.rs` | fail-closed redaction gate for observable event writes (`RedactedPublicWrite`) |
+| `source_metrics.rs` | source metric label allowlist + aggregation |
 | `testing.rs` | `InMemoryObservabilitySink` + `InMemoryObservabilitySnapshot` — in-memory `ObservabilitySink` fixture for tests, plus `test_error()` |
 
 ## Boundary — keep OUT of this crate

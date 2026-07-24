@@ -16,17 +16,17 @@ query_via_retrieval` routes plain `query` (no LLM) through it, and
 SEARCH + CONTEXT half of `ask`/`evaluate` through it too, embedding +
 dense/sparse hybrid-searching via injected `VectorStore`/`EmbeddingProvider`
 trait objects. `retrieve.rs` (`retrieve_document`) ports legacy
-`axon-vector`'s `retrieve_result` as a thin composition over
+`retrieve_result` as a thin composition over
 `axon-vectors::QdrantVectorStore::retrieve_by_url` +
 `render_full_doc_from_points`. LLM synthesis for `ask`/`evaluate` stays OUT of
 this crate per its charter below — it lives in
 `axon-services::query::synthesis`/`query::evaluate`. The legacy
-`build_ask_context` reranker (`ask --explain`, used by `train`) remains on the
-`axon-vector`-owned path — it depends on qdrant/tei/ranking dispatch
-internals shared with `code_search`/legacy `query_hits`, which stay in
-`axon-vector` until a separate slice migrates them; porting it here would mean
-either duplicating that shared dispatch layer or changing its ranking
-algorithm, so it was deliberately left out of this cutover. Memory isolation
+`build_ask_context` reranker (`ask --explain`, used by `train`) was
+deliberately left out of this crate — it depends on qdrant/tei/ranking dispatch
+internals shared with `code_search`/legacy `query_hits`, which live in
+`axon-services` (with vector-store internals in `axon-vectors`); porting it here
+would mean either duplicating that shared dispatch layer or changing its ranking
+algorithm. Memory isolation
 between plain `query`/`ask` and `memory search` is enforced here via
 `RetrievalPlan.excluded_source_kinds`. `filter.rs`, `rank.rs`, and `graph.rs`
 remain marker files — filtering lives in `engine.rs`'s `search_filters`/
