@@ -25,15 +25,11 @@ permissions:
 jobs:
   build:
     name: package chrome extension
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     permissions:
       contents: write  # required to upload release artifacts
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            apps/chrome-extension
-          sparse-checkout-cone-mode: false
 
       - name: Build extension zip
         id: build

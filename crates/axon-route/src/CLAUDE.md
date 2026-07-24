@@ -27,6 +27,9 @@ behavior here.
 | `authority.rs` | `AuthorityRecord` — official docs/repo/package/registry mapping |
 | `alias.rs` | `AliasRecord` — alias → authority resolution (no network) |
 | `capability.rs` | adapter capability matching |
+| `boundary.rs` | trait boundaries for the route stage (`SourceResolver`/`SourceRouter`) |
+| `github.rs` / `local_path.rs` / `provider_host.rs` | provider-specific canonicalization + host resolution |
+| `query.rs` / `web_options.rs` | query-string parsing + web adapter option parsing/validation |
 | `testing.rs` | alias/GitHub/local/web-scope + denied-scope fixtures |
 
 ## Boundary — keep OUT of this crate

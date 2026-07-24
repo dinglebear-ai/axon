@@ -20,7 +20,8 @@ generated clients. Do not add legacy route aliases.
 Current groups from `crates/axon-web/src/`:
 | Area | Owns |
 |---|---|
-| `lib.rs` | crate root + web server bootstrap (`WebServer`) |
+| `lib.rs` | crate root — re-exports `router`, `PanelRuntimeState`, `openapi_document()` |
+| `schema_registry.rs` + `schema_registry/` | REST route schema-registry helpers (admin/watch/extract/graph/memory routes) |
 | `server.rs` + `server/` | Axum router build, route registration, app state (target `router.rs`/`routes.rs`/`state.rs`/`openapi.rs`/`sse.rs`) |
 | `auth.rs` | HTTP auth middleware integration (`axon-authz`) |
 | `security.rs` | security headers / hardening |
