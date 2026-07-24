@@ -39,6 +39,10 @@ env:
   # shared cross-runner cache mount and no GitHub-cache network round-trip.
   CARGO_INCREMENTAL: "0"
   SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
+  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
+  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
+  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
+  SOLDR_NATIVE_CACHE: "0"
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 

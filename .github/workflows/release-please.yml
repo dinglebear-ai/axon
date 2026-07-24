@@ -19,6 +19,10 @@ env:
   # incremental must be off under a compile wrapper.
   CARGO_INCREMENTAL: "0"
   SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
+  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
+  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
+  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
+  SOLDR_NATIVE_CACHE: "0"
 
 jobs:
   release-please:
