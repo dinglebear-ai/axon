@@ -25,11 +25,20 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Self-hosted Rust jobs build through soldr/zccache (setup-rust-soldr).
+  # Incremental must be off under a compile wrapper; the zccache store persists
+  # per-runner on local disk.
+  CARGO_INCREMENTAL: "0"
+  SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
+  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
+  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
+  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
+  SOLDR_NATIVE_CACHE: "0"
 
 jobs:
   axon-linux:
     name: build axon (linux)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     # The `secrets` context is NOT allowed in step-level `if:` conditionals, so
     # the optional signing secret is promoted to job-level env here (where
     # referencing `secrets` IS allowed) and the signing steps gate on
@@ -42,12 +51,9 @@ jobs:
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-axon-linux
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
@@ -150,7 +156,7 @@ jobs:
   publish:
     name: publish github release
     needs: [axon-linux, axon-windows]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     # Attach artifacts only when release-please dispatches this workflow on an
     # existing v* release tag.
     if: >-

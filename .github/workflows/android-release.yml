@@ -48,7 +48,7 @@ env:
 jobs:
   build:
     name: build android apk
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     # Only this job publishes release artifacts; scope contents: write here rather than
     # granting it workflow-wide to every step (build/sign included).
     permissions:

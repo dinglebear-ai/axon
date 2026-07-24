@@ -31,14 +31,31 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTC_WRAPPER: ""
+  # Force plain (uncolored) CLI output so tests that assert on human-readable
+  # symbols (e.g. "✗ docker") match: on the self-hosted runner the axon CLI's
+  # color auto-detection enables ANSI codes, wrapping the symbol
+  # ("\e[..m✗\e[0m docker") and breaking substring asserts. NO_COLOR wins the
+  # CLI's color decision, so output is deterministic plain text in CI.
+  NO_COLOR: "1"
+  # Self-hosted Rust jobs build through the soldr front door (cargo shims
+  # installed by ./.github/actions/setup-rust-soldr); soldr sets RUSTC_WRAPPER
+  # for its zccache compile cache. Incremental must be off under a compile
+  # wrapper. The zccache store persists on the runner's local disk, per-runner
+  # (SOLDR_CACHE_DIR resolves under the bind-mounted /_work), so there is no
+  # shared cross-runner cache mount and no GitHub-cache network round-trip.
+  CARGO_INCREMENTAL: "0"
+  SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
+  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
+  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
+  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
+  SOLDR_NATIVE_CACHE: "0"
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
   changes:
     name: changes
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     outputs:
       all: ${{ steps.classify.outputs.all }}
       docs: ${{ steps.classify.outputs.docs }}
@@ -100,37 +117,14 @@ jobs:
 
   mcp-transport-modes:
     name: mcp-transport-modes
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: xtask
+      - uses: ./.github/actions/setup-rust-soldr
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -140,23 +134,17 @@ jobs:
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            apps/android
-            apps/palette-tauri
-            docs/reference/aurora-primitive-inventory.json
-            scripts/check_aurora_primitive_inventory.py
       - name: Check Aurora primitive inventory guard
         run: python3 scripts/check_aurora_primitive_inventory.py
 
   android:
     name: android
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -234,15 +222,13 @@ jobs:
 
   android-openapi-client:
     name: android-openapi-client
+    # Kept on ubuntu-latest: the self-hosted unraid runner has no Android SDK
+    # (ANDROID_HOME unset), so :app:verifyOpenApiGeneratedClient fails there.
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.openapi == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            apps/web/openapi
-            apps/android
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
@@ -273,36 +259,12 @@ jobs:
 
   no-mod-rs:
     name: no-mod-rs
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: xtask
+      - uses: ./.github/actions/setup-rust-soldr
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -320,36 +282,12 @@ jobs:
 
   sqlite-migrations:
     name: sqlite-migrations
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: xtask
+      - uses: ./.github/actions/setup-rust-soldr
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -359,39 +297,11 @@ jobs:
 
   toml-fmt:
     name: toml-fmt
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            .cargo/config.toml
-            .config/nextest.toml
-            .taplo.toml
-            Cargo.toml
-            Cargo.lock
-            build.rs
-            config.example.toml
-            deny.toml
-            release/components.toml
-            rust-toolchain.toml
-            docs/reference/env-matrix.toml
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
         with:
           install_args: cargo:taplo-cli
@@ -409,7 +319,7 @@ jobs:
 
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
@@ -419,23 +329,11 @@ jobs:
 
   palette-tauri:
     name: palette-tauri
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          # Cone mode (default) so root-level files — notably the tracked
-          # `.gitignore` — are checked out. Under non-cone sparse checkout the
-          # root `.gitignore` is left out of the working tree, and with
-          # actions/checkout's blobless partial clone cargo's gix file-walker
-          # fails to build its excludes stack while fingerprinting the build
-          # script ("Failed to update the excludes stack"), breaking
-          # `cargo check`. The green check/clippy jobs use cone mode for the
-          # same reason.
-          sparse-checkout: |
-            apps/palette-tauri
-            apps/web/openapi
       - uses: pnpm/action-setup@v4
         with:
           version: 11.3.0
@@ -444,14 +342,10 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/palette-tauri/src-tauri
-          shared-key: palette-tauri
       - name: Install Tauri Linux system deps
         run: |
           sudo apt-get update
@@ -490,7 +384,12 @@ jobs:
       - name: Tauri cargo check
         run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
       - name: Tauri cargo test
-        run: cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+        # --test-threads=1: terminal_tests mutate the process-global SHELL env
+        # (set_var("SHELL","/bin/zsh")); run in parallel that leaks into the
+        # real-shell-spawn tests, which then try to spawn /bin/zsh. The
+        # self-hosted runner image has no zsh (GitHub's ubuntu-latest does, which
+        # masked this), so the spawn fails NotFound. Serialize to kill the race.
+        run: cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml -- --test-threads=1
       # CI-H1: build the actual desktop binary in CI (no installer bundle) so a
       # non-building Tauri app is caught here, before any release tag is cut.
       # Without this the first real desktop build happens only in
@@ -513,30 +412,6 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          # Cone mode keeps root-level files such as `.gitignore` available.
-          # Non-cone sparse checkouts can make older Cargo/gix fail while
-          # fingerprinting the root build script.
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -572,6 +447,10 @@ jobs:
     # lib-test recompile roughly doubles the job time). The test still lives in
     # src/core/paths_tests.rs and was confirmed passing on Windows 11 against
     # this cross-compiled binary.
+    #
+    # Kept on ubuntu-latest: on the self-hosted unraid runner rustc failed to
+    # execute (os error 2) with missing target .d files — a runner env/workspace
+    # issue. This cross-compile is proven on ubuntu-latest, so pin it here.
     runs-on: ubuntu-latest
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' }}
@@ -581,26 +460,6 @@ jobs:
       AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
     steps:
       - uses: actions/checkout@v5
-        with:
-          # Cone mode keeps root-level files such as `.gitignore` available.
-          # Non-cone sparse checkouts can make older Cargo/gix fail while
-          # fingerprinting the root build script.
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            assets
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
       - uses: dtolnay/rust-toolchain@stable
         with:
           # Match rust-toolchain.toml so the Windows target is installed on
@@ -634,32 +493,14 @@ jobs:
 
   shell-completions-smoke:
     name: shell-completions-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -671,14 +512,11 @@ jobs:
 
   web-panel:
     name: web-panel
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.web == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            apps/web
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -693,14 +531,11 @@ jobs:
 
   chrome-extension:
     name: chrome-extension
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.chrome == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            apps/chrome-extension
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -709,7 +544,7 @@ jobs:
 
   mcp-schema-doc-sync:
     name: mcp-schema-doc-sync
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.mcp == 'true' }}
     steps:
@@ -721,12 +556,12 @@ jobs:
 
   schema-contract-sync:
     name: schema-contract-sync
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
       - name: Enforce generated pipeline schema artifacts are in sync
@@ -738,42 +573,14 @@ jobs:
 
   version-sync:
     name: version-sync
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          sparse-checkout: |
-            Cargo.toml
-            Cargo.lock
-            src
-            crates
-            xtask
-            .cargo
-            release/components.toml
-            apps/android
-            apps/chrome-extension
-            apps/palette-tauri
-            apps/web/openapi/axon.json
-            plugins/axon/references/rag-synthesize/SKILL.md
-            # check-version-sync asserts this manifest carries no version key.
-            plugins/axon/.claude-plugin
-            # axon-services include_str!s these at compile time; a sparse
-            # checkout without them cannot build xtask's dependency graph.
-            config
-            config.example.toml
-            docker-compose.prod.yaml
-            # check-release-versions verifies each component's
-            # release_workflow file exists on disk.
-            .github/workflows
-            migrations
-            vendor
-            README.md
-            CHANGELOG.md
-            .release-please-manifest.json
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
       - name: Enforce per-component release version parity
@@ -781,38 +588,14 @@ jobs:
 
   rest-api-parity:
     name: rest-api-parity
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
-            Cargo.toml
-            Cargo.lock
-            rust-toolchain.toml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: rest-api-parity
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -838,7 +621,7 @@ jobs:
 
   mcp-oauth-smoke:
     name: mcp-oauth-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     env:
@@ -848,25 +631,9 @@ jobs:
       QDRANT_URL: http://127.0.0.1:53333
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -878,26 +645,11 @@ jobs:
 
   advisory-lock-policy:
     name: advisory-lock-policy
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - name: Ban session-scoped advisory lock APIs
         run: |
           set -euo pipefail
@@ -923,26 +675,11 @@ jobs:
 
   ban-skip-validation:
     name: ban-skip-validation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - name: Ban spawn_adapter_skip_validation outside tests/
         run: |
           set -euo pipefail
@@ -957,27 +694,13 @@ jobs:
 
   monolith:
     name: monolith
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - name: Enforce monolith policy (changed Rust files only)
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -1023,31 +746,15 @@ jobs:
 
   fmt:
     name: fmt
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
       - name: cargo fmt check
         run: cargo fmt --all -- --check
 
@@ -1058,44 +765,15 @@ jobs:
   # `cargo check -D warnings`, so the `clippy` job below covers them.
   clippy:
     name: clippy
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            migrations
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-            release
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
           components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Shared with `test` (same toolchain + features, no RUSTFLAGS) and
-          # warmed from main, so PRs restore a hot dep cache instead of each job
-          # recompiling the workspace. `clippy -D warnings` also denies rustc
-          # warnings, so this job subsumes the removed `check`/`msrv` jobs.
-          shared-key: rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -1105,7 +783,7 @@ jobs:
 
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -1116,47 +794,12 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            .env.example
-            Cargo.toml
-            CHANGELOG.md
-            Justfile
-            README.md
-            docker-compose.prod.yaml
-            docker-compose.yaml
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            apps/palette-tauri
-            apps/android
-            apps/chrome-extension
-            assets
-            plugins
-            docs
-            migrations
-            .github
-            tests
-            scripts
-            config
-            release
-            vendor
-            .cargo
-            .config/nextest.toml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.140
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Shared with `clippy` (same toolchain + features, no RUSTFLAGS);
-          # warmed from main.
-          shared-key: rust
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -1176,28 +819,12 @@ jobs:
   test-infra:
     name: test-infra
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_infra_tests) }}
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
       - name: run ignored SQLite/in-process worker tests
         run: cargo test --locked worker_e2e --features test-helpers -- --ignored
 
@@ -1214,21 +841,6 @@ jobs:
       AXON_TEST_QDRANT_URL: http://127.0.0.1:6333
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -1242,7 +854,7 @@ jobs:
   # `rag` boolean output consumed by `live-rag-pr`.
   rag-changes:
     name: rag-changes
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     if: ${{ github.event_name == 'pull_request' }}
     outputs:
       rag: ${{ steps.filter.outputs.rag }}
@@ -1296,21 +908,6 @@ jobs:
       AXON_TEST_TEI_URL: http://127.0.0.1:52000
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.94.0
@@ -1370,30 +967,14 @@ jobs:
 
   security:
     name: security
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
 
       - uses: taiki-e/install-action@v2
         with:
@@ -1419,21 +1000,6 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
-        with:
-          sparse-checkout: |
-            src
-            crates
-            xtask
-            benches
-            apps/web
-            plugins
-            docs
-            .github
-            tests
-            scripts
-            config
-            vendor
-            .cargo
       - name: Fetch MCP doc fixture for smoke test
         run: mkdir -p docs && git show HEAD:docs/reference/mcp/overview.md > docs/reference/mcp/overview.md
 
@@ -1603,21 +1169,14 @@ jobs:
 
   release:
     name: release
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: ./.github/actions/setup-rust-soldr
         with:
           toolchain: 1.94.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          # Release-profile artifacts (distinct from the debug `rust` cache);
-          # warmed from main so the PR release build + serialized mcp-smoke start
-          # sooner.
-          shared-key: release
-          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -1638,7 +1197,7 @@ jobs:
 
   release-smoke:
     name: release-smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     needs: [changes, release]
     if: ${{ needs.release.result == 'success' }}
     steps:
@@ -1653,7 +1212,7 @@ jobs:
 
   ci-gate:
     name: ci-gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, unraid]
     if: always()
     needs:
       - changes

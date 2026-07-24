@@ -436,7 +436,7 @@ rebuild:
 
 # Kill any running axon mcp or workers
 stop:
-    -pkill -f 'axon.*(mcp|crawl worker|embed worker|extract worker|ingest worker)' 2>/dev/null || true
+    -pkill -f 'axon.*(mcp|jobs worker)' 2>/dev/null || true
     @echo "Stopped running servers and workers"
 
 # Start local infra (TEI, Chrome), then run axon mcp as the worker daemon.

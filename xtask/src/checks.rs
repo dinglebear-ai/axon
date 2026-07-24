@@ -3,6 +3,7 @@ use std::path::Path;
 
 pub mod android_api_contract;
 pub mod api_parity;
+pub mod audit_ignore_sync;
 pub mod broken_symlinks;
 pub mod claude_symlinks;
 pub mod crate_contracts;
@@ -50,6 +51,7 @@ pub fn check(root: &Path) -> Result<()> {
     redaction_logs::check(root)?;
     sqlite_migrations::check(root)?;
     secrets::check(root)?;
+    audit_ignore_sync::check(root)?;
     release_versions::check_local(root)?;
     println!("All checks passed.");
     Ok(())

@@ -32,6 +32,10 @@ acquisition, graph persistence, chunking, or vector-write behavior here.
 | `session.rs` | `SessionFact` — AI session transcripts |
 | `tool.rs` | tool-call / MCP tool schema, skills, agents parsers |
 | `env.rs` / `docker.rs` / `config.rs` | env-example, Docker Compose, and config facts |
+| `builtins.rs` | `production_registry()` — assembles the built-in parser set |
+| `markdown.rs` | markdown parser |
+| `vertical.rs` | parser-facing facts derived from vertical-extractor metadata |
+| `tool_schema.rs` / `validate.rs` | tool-schema parsing + parse validation |
 | `testing.rs` | `FakeParser` + parse fixtures (Cargo/npm/Python/compose/env/OpenAPI/JSONL/code) |
 
 ## Boundary — keep OUT of this crate

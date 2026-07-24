@@ -29,11 +29,12 @@ derived publications.
 | File | Owns |
 |---|---|
 | `store.rs` | `MemoryStore` trait + `FakeMemoryStore` — the durable boundary all callers use |
-| `sqlite.rs` + `sqlite/{error,lifecycle,compact,rows}.rs` | `SqliteMemoryStore` — full lifecycle implementation (remember/search/show/link/supersede/reinforce/decay/review/update/pin/archive/forget/compact/import/export) |
+| `sqlite.rs` + `sqlite/{error,lifecycle,compact,rows,recall}.rs` | `SqliteMemoryStore` — full lifecycle implementation (remember/search/show/link/supersede/reinforce/decay/review/update/pin/archive/forget/compact/import/export) |
 | `vector.rs` + `vector/search.rs` | `VectorBackedMemoryStore` recall decorator over canonical `source_kind=memory` vectors; mutation methods delegate only |
 | `graph.rs` | reusable graph decorator/mirror for isolated domain composition; production graph candidates are emitted by `axon-adapters::memory` |
+| `graph_refs.rs` / `observe.rs` | memory-search graph-ref enrichment + memory-lifecycle observability (emits `axon-observe` events) |
 | `migration.rs` | forward-only SQLite memory schema |
-| `record.rs` | `MemoryRecord` — memory record shape + retention rules |
+| `record.rs` | time/age scoring — `Clock` trait + `parse_epoch_secs`/`age_days` (`MemoryRecord` itself lives in `axon-api::source`) |
 | `decay.rs` | `MemoryDecayPolicy` — decay + reinforcement rules |
 | `testing.rs` | `FixedClock` + fixtures |
 | `link.rs` / `recall.rs` / `review.rs` / `context.rs` | marker files — superseded by the real logic in `store.rs`/`sqlite.rs`/`sqlite/*.rs`; do not duplicate |

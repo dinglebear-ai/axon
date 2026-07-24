@@ -1,0 +1,67 @@
+name: Session-log auto-merge
+
+# Auto-merges pull requests that touch ONLY docs/sessions/** (session logs
+# produced by the save-to-md skill) into the default branch.
+#
+# Why this is safe:
+#   - It never merges a PR that changes any path outside docs/sessions/**.
+#   - It uses GitHub's native auto-merge, which still WAITS for the required
+#     status checks (ci-gate, codeql-gate, compose-smoke-gate). For a
+#     docs/sessions-only diff those gates pass fast because
+#     scripts/ci/changed_paths.py classifies session logs as prose-only, so the
+#     heavy CI jobs are intentionally skipped and the gates' skip-is-ok logic
+#     succeeds. Non-required checks (e.g. claude-review) do not block auto-merge.
+#   - It runs with the default GITHUB_TOKEN (no PAT/secret) and only handles
+#     same-repo PRs; forked PRs get a read-only token and are ignored.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: session-log-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  automerge:
+    name: auto-merge session logs
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Enable auto-merge for docs/sessions-only PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Total changed-file count, and the enumerated paths. gh caps the
+          # files array; if it is truncated we must NOT assume "sessions only".
+          total="$(gh pr view "$PR" --repo "$REPO" --json changedFiles -q '.changedFiles')"
+          mapfile -t files < <(gh pr view "$PR" --repo "$REPO" --json files -q '.files[].path')
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed files reported for PR #$PR; nothing to do."
+            exit 0
+          fi
+          if [ "${#files[@]}" -ne "$total" ]; then
+            echo "File list truncated ($total total, ${#files[@]} returned); not auto-merging for safety."
+            exit 0
+          fi
+
+          for f in "${files[@]}"; do
+            if [[ "$f" != docs/sessions/* ]]; then
+              echo "PR #$PR changes '$f' outside docs/sessions/**; not auto-merging."
+              exit 0
+            fi
+          done
+
+          echo "PR #$PR changes only docs/sessions/** (${#files[@]} file(s)); enabling squash auto-merge."
+          gh pr merge "$PR" --repo "$REPO" --squash --auto --delete-branch
