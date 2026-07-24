@@ -532,6 +532,12 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {
+    // Self-hosted CI does full checkouts (sparse-checkout was removed because it
+    // poisoned the shared per-runner workdir). A job with no `sparse-checkout:`
+    // block checks out the entire tree, so it inherently covers every path.
+    if !block.contains("sparse-checkout:") {
+        return true;
+    }
     block.lines().map(str::trim).any(|entry| {
         entry == path
             || path

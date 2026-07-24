@@ -31,6 +31,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Force plain (uncolored) CLI output so tests that assert on human-readable
+  # symbols (e.g. "✗ docker") match: on the self-hosted runner the axon CLI's
+  # color auto-detection enables ANSI codes, wrapping the symbol
+  # ("\e[..m✗\e[0m docker") and breaking substring asserts. NO_COLOR wins the
+  # CLI's color decision, so output is deterministic plain text in CI.
+  NO_COLOR: "1"
   # Self-hosted Rust jobs build through the soldr front door (cargo shims
   # installed by ./.github/actions/setup-rust-soldr); soldr sets RUSTC_WRAPPER
   # for its zccache compile cache. Incremental must be off under a compile
