@@ -727,14 +727,6 @@ pub struct Config {
     /// Env: `AXON_OPENAI_EMBED_POOL_MAX_INPUTS`. TOML: `embed.openai-pool-max-inputs`. Clamped 64–65536. Default: 1024.
     pub openai_embed_pool_max_inputs: usize,
 
-    /// Parallel ingest worker lanes.
-    /// Env: `AXON_INGEST_LANES`. TOML: `workers.ingest-lanes`. Clamped 1–16. Default: 2.
-    pub ingest_lanes: usize,
-
-    /// Parallel embed worker lanes.
-    /// Env: `AXON_EMBED_LANES`. TOML: `workers.embed-lanes`. Clamped 1–32. Default: 2.
-    pub embed_lanes: usize,
-
     /// Maximum number of unified-job-store jobs the single unified worker
     /// runs concurrently (bounded via a semaphore around its claim loop).
     /// Deliberately not auto-derived from provider-specific lane knobs: this
@@ -742,19 +734,19 @@ pub struct Config {
     /// Env: `AXON_UNIFIED_WORKER_CONCURRENCY`. TOML: `workers.unified-worker-concurrency`. Clamped 1–64. Default: 8.
     pub unified_worker_concurrency: usize,
 
-    /// Maximum number of site-scope source jobs the unified worker runs
-    /// concurrently, independent of `unified_worker_concurrency`.
-    ///
-    /// Crawl jobs share exactly one Chrome instance (`resolve_cdp_ws_url` in
-    /// `axon-crawl/src/engine/runtime.rs` hits the single `axon-chrome`
-    /// container's `/json/version`); running many crawls at once risks CDP
-    /// session contention and Chrome resource exhaustion. This knob keeps
-    /// broad crawl-like source jobs on an explicit, conservative-by-default
-    /// rail instead of letting them share the general
-    /// `unified_worker_concurrency` semaphore (default 8) with every other
-    /// job kind.
-    /// Env: `AXON_CRAWL_JOB_CONCURRENCY_LIMIT`. TOML: `workers.crawl-job-concurrency-limit`. Clamped 1–64. Default: 1.
-    pub crawl_job_concurrency_limit: usize,
+    /// Maximum number of concurrent `Source` jobs (every source job kind —
+    /// web, git, feeds, registries, Reddit, YouTube, CLI/MCP tools, local
+    /// paths — plus `map`) the unified worker runs at once, independent of
+    /// `unified_worker_concurrency`. This is a general per-source-kind rail,
+    /// not a web/Chrome-specific one: several source kinds share constrained
+    /// external resources (a single Chrome instance for web/render-backed
+    /// acquisition, upstream API rate limits for git/registry/Reddit
+    /// adapters, and so on), so gating all `Source` jobs together avoids one
+    /// noisy kind starving the rest of the general
+    /// `unified_worker_concurrency` semaphore (default 8).
+    /// Env: `AXON_SOURCE_JOB_CONCURRENCY_LIMIT`. TOML: `pipeline.max-active-source-jobs`
+    /// (the config-contract's canonical spelling for this knob). Clamped 1–64. Default: 4.
+    pub source_job_concurrency_limit: usize,
 
     /// Per-document embed timeout in seconds (used by the embed pipeline).
     /// Env: `AXON_EMBED_DOC_TIMEOUT_SECS`. TOML: `workers.embed-doc-timeout-secs`. Clamped 30–3600. Default: 300.
@@ -767,22 +759,6 @@ pub struct Config {
     /// Buffered Qdrant points before flush.
     /// Env: `AXON_QDRANT_POINT_BUFFER`. TOML: `workers.qdrant-point-buffer`. Clamped 128–16384. Default: 1024.
     pub qdrant_point_buffer: usize,
-
-    /// Crawl queue cap (0 = unlimited).
-    /// Env: `AXON_MAX_PENDING_CRAWL_JOBS`. TOML: `workers.max-pending-crawl-jobs`. Clamped 0–10_000. Default: 100.
-    pub max_pending_crawl_jobs: usize,
-
-    /// Embed queue cap (0 = unlimited).
-    /// Env: `AXON_MAX_PENDING_EMBED_JOBS`. TOML: `workers.max-pending-embed-jobs`. Clamped 0–10_000. Default: 50.
-    pub max_pending_embed_jobs: usize,
-
-    /// Extract queue cap (0 = unlimited).
-    /// Env: `AXON_MAX_PENDING_EXTRACT_JOBS`. TOML: `workers.max-pending-extract-jobs`. Clamped 0–10_000. Default: 50.
-    pub max_pending_extract_jobs: usize,
-
-    /// Ingest queue cap (0 = unlimited).
-    /// Env: `AXON_MAX_PENDING_INGEST_JOBS`. TOML: `workers.max-pending-ingest-jobs`. Clamped 0–10_000. Default: 50.
-    pub max_pending_ingest_jobs: usize,
 
     /// HNSW `ef` for named-mode (dense+sparse) collection searches.
     /// Env: `AXON_HNSW_EF_SEARCH`. TOML: `search.hnsw-ef`. Clamped 32–512. Default: 128.
@@ -818,13 +794,6 @@ pub struct Config {
     /// starvation detector.
     /// Env: `AXON_WORKER_STARVATION_SECS`. TOML: `workers.worker-starvation-secs`. Default: 120.
     pub worker_starvation_secs: i64,
-
-    /// Maximum wall-clock seconds a single crawl job may run before the worker
-    /// aborts it. Defends against a wedged crawl-engine future that would
-    /// otherwise park the single crawl lane indefinitely while its heartbeat
-    /// keeps the row from being reclaimed. `0` disables the timeout.
-    /// Env: `AXON_CRAWL_JOB_TIMEOUT_SECS`. TOML: `workers.crawl-job-timeout-secs`. Default: 7200.
-    pub crawl_job_timeout_secs: i64,
 
     /// Maximum number of times a job may be reclaimed out of a stale `running`
     /// state before the watchdog dead-letters it (marks it `failed`) instead of

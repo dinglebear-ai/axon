@@ -9,6 +9,12 @@ use walkdir::{DirEntry, WalkDir};
 const SKIP_DIRS: &[&str] = &[
     ".git",
     "target",
+    // Cross-glibc build output. The Incus container runs Debian bookworm
+    // (glibc 2.36) while the dev host is newer, so the container binary is
+    // built via `docker run ... rust:1-bookworm` with
+    // CARGO_TARGET_DIR=target-bookworm. That output is third-party build
+    // artifacts, not first-party modules.
+    "target-bookworm",
     "node_modules",
     ".cache",
     ".next",

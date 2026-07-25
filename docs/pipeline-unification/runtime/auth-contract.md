@@ -1,5 +1,5 @@
 # Auth Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-24
 
 ## Contract
 
@@ -43,6 +43,46 @@ pub enum AuthScope {
 | local filesystem source | `axon:local` |
 
 `axon:write` does not imply `axon:admin`, `axon:execute`, or `axon:local`.
+
+### `axon:read` / `axon:write` compatibility widening (deliberate)
+
+For the two broad operation classes above (`axon:read` routes and `axon:write`
+routes — not `axon:admin`/`axon:execute`/`axon:local`), holding **either**
+broad Axon scope satisfies a required broad Axon scope. Newly issued OAuth
+tokens default to `AXON_FULL_ACCESS_SCOPE` (`"axon:read axon:write"`, both
+scopes together), and the static-bearer/OAuth default-scope configuration
+mirrors that (see `docs/pipeline-unification/runtime/security-contract.md`'s
+"Contract" paragraph, root `CLAUDE.md`'s "MCP Security Env" section, and
+`axon_authz::scope_satisfies`'s doc comment for the implementation). This is a
+compatibility affordance, not an oversight: it exists so a route that gets
+reclassified between the broad groups does not invalidate every previously
+issued token. It does **not** extend to the fine-grained `axon:admin` /
+`axon:execute` / `axon:local` scopes, which still require the caller to hold
+that exact scope — see the paragraph above.
+
+### Strict scope elevation (`mutates_if`)
+
+A small number of routes are nominally `axon:read` for schema/docs purposes
+but actually mutate state unconditionally today — `/v1/search` and
+`/v1/research` (and the equivalent MCP `search`/`research` actions) always
+enqueue a bounded Source job per result, with no request-level opt-out. These
+routes enforce an in-handler conditional elevation to `axon:write`
+(`require_mutates_if_write_scope` in `axon-web`'s
+`server/handlers/exploration.rs`; `mutates_if_upgrade` /
+`check_scope_explicit` in `axon-mcp`'s `server/authz.rs`, applied at both the
+synchronous `call_tool` dispatch path and the deferred task-tool path in
+`server/tasks.rs`).
+
+Because the compatibility widening above already treats `axon:read` as
+satisfying `axon:write` for ordinary broad routes, this elevation check
+deliberately does **not** use the same broad `scope_satisfies` matcher —
+doing so would make the elevation a silent no-op (CWE-863): a caller holding
+only `axon:read` would already "satisfy" the elevated `axon:write`
+requirement before the elevation is even consulted. Instead, elevation checks
+use `axon_authz::has_explicit_scope`, which requires the caller to hold the
+literal `axon:write` scope string with no broad-scope widening in either
+direction. Any future `mutates_if`-style elevation must use
+`has_explicit_scope`, not `scope_satisfies`, for the same reason.
 
 ## Trusted CLI Context
 

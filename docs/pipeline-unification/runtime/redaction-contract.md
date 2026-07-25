@@ -28,14 +28,23 @@ pub struct RedactionContext {
 }
 ```
 
-**Known dependency gap (C1-V01, 2026-07-09 audit):** `axon-web` currently
-hardcodes `visibility_ceiling: Visibility::Internal` for every caller,
-which does not reflect real caller policy. This is understood as a
-chicken-and-egg dependency, not a standalone bug to fix in this doc pass:
-there is no `VisibilityPolicy` type yet for `axon-web` to call (tracked as
-C1-16, `axon-authz`'s policy-evaluator work). Do not resolve the hardcoded
-ceiling until `axon-authz` exposes a real `VisibilityPolicy`; then wire
-`axon-web` to call it instead of hardcoding.
+**C1-V01 (2026-07-09 audit) — resolved for `axon-web`, reopened against
+`axon-mcp`, 2026-07-24 review:** The chicken-and-egg dependency this note
+originally described is gone. `axon-authz` now exposes a real
+`VisibilityPolicy` with `ceiling_for` (`crates/axon-authz/src/visibility.rs`,
+~lines 20-66), and `axon-web` calls it instead of hardcoding a ceiling, at
+`handlers/sources.rs:228`, `handlers/source_watch.rs:312`,
+`handlers/memory_routes.rs:58`, and `handlers/async_jobs.rs:97`.
+
+The gap is not closed everywhere, though: `axon-mcp` still hardcodes
+`visibility_ceiling: Visibility::Internal` for every caller, at
+`crates/axon-mcp/src/server.rs:378-398` and
+`crates/axon-mcp/src/server/tasks.rs:218`. Those two sites do not call
+`VisibilityPolicy`, so MCP callers currently get the same
+does-not-reflect-real-caller-policy behavior `axon-web` used to have. C1-V01
+is reopened against `axon-mcp` specifically; wiring those two sites to
+`VisibilityPolicy::ceiling_for` is a separate, tracked follow-up, not part of
+this doc pass.
 
 ```rust
 

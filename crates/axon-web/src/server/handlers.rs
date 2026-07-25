@@ -34,8 +34,6 @@ pub mod mobile_sessions;
 pub(crate) mod providers;
 #[path = "handlers/rag.rs"]
 pub mod rag;
-#[path = "handlers/rest.rs"]
-pub(crate) mod rest;
 #[path = "handlers/setup.rs"]
 pub mod setup;
 #[path = "handlers/source_watch.rs"]

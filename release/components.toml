@@ -19,7 +19,6 @@ shipping_paths = [
   "Cargo.toml",
   "Cargo.lock",
   "build.rs",
-  "migrations",
   "apps/web",
   "rust-toolchain.toml",
   "vendor",

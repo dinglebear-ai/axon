@@ -139,9 +139,11 @@ transport adapters over those typed boundaries.
 the data lives — single-domain logic in its domain crate, the `*Result` DTO in
 `axon-api`, `axon-services` as a thin facade; only cross-domain or job-runtime
 work lives *in* `axon-services`. Transports never import a domain crate's
-internal `::ops::*` modules. Canonical doc:
-[`docs/architecture/crate-ownership.md`](docs/architecture/crate-ownership.md);
-enforced by `cargo xtask check-layering`.
+internal `::ops::*` modules. Canonical docs:
+[`docs/architecture/crate-structure.md`](docs/architecture/crate-structure.md)
+for the current 23-crate map and
+[`docs/architecture/crate-ownership.md`](docs/architecture/crate-ownership.md)
+for the ownership decision rule; enforced by `cargo xtask check-layering`.
 
 High-level ownership:
 
@@ -671,7 +673,7 @@ paths, and (for `cli` only) `release_please_managed = false`:
 
 | Component | Shipping paths | Version source | Tag prefix | Release workflow | release-please managed |
 |-----------|----------------|----------------|-----------|------------------|------------------------|
-| **cli** (Linux + Windows; web panel bundled in) | `src`, `Cargo.toml`/`Cargo.lock`, `build.rs`, `migrations`, `apps/web`, `rust-toolchain.toml`, `vendor` | `Cargo.toml` `[package]` version | `v` | `release.yml` | **No — manual bump** |
+| **cli** (Linux + Windows; web panel bundled in) | `src`, `Cargo.toml`/`Cargo.lock`, `build.rs`, `apps/web`, `rust-toolchain.toml`, `vendor` | `Cargo.toml` `[package]` version | `v` | `release.yml` | **No — manual bump** |
 | **palette** (Linux + Windows) | `apps/palette-tauri` | `apps/palette-tauri/src-tauri/tauri.conf.json` | `palette-v` | `palette-release.yml` | Yes |
 | **android** (APK) | `apps/android` | `apps/android/app/build.gradle.kts` `versionName` | `android-v` | `android-release.yml` | Yes |
 | **chrome** (extension zip) | `apps/chrome-extension` | `apps/chrome-extension/manifest.json` `version` | `chrome-ext-v` | `chrome-extension-release.yml` | Yes |

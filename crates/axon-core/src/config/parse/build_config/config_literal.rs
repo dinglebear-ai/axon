@@ -376,10 +376,6 @@ fn populate_misc(
         .or(inputs.toml.workers.worker_starvation_secs)
         .unwrap_or(120)
         .clamp(0, 3600);
-    cfg.crawl_job_timeout_secs = parse_i64_env("AXON_CRAWL_JOB_TIMEOUT_SECS")
-        .or(inputs.toml.workers.crawl_job_timeout_secs)
-        .unwrap_or(7200)
-        .clamp(0, 86_400);
     cfg.max_job_attempts = parse_i64_env("AXON_MAX_JOB_ATTEMPTS")
         .or(inputs.toml.workers.max_job_attempts)
         .map(|value| value.clamp(0, 1_000) as u32)

@@ -111,6 +111,7 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
         Some(&snapshot),
         true,
         &routed.route,
+        &test_execution("./.env"),
     )
     .await;
     let err = match result {

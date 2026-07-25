@@ -64,4 +64,119 @@ Run `cargo xtask schemas generate --check`.
 
 ## Commands
 
-Generated from the owner crate schema registry.
+**Scope note:** this file is a per-command quick reference projected from `docs/reference/cli/commands.json`, not literal `axon <command> --help` output. `CliRegistryCommand` does not carry a flags/arguments registry, so flag-level help text cannot be generated mechanically yet; that requires the clap/help renderer described as the `cli-help` family target in `docs/pipeline-unification/delivery/docs-generator-contract.md`. Run `axon <command> --help` for authoritative flag documentation in the meantime.
+
+| Command | Group | Summary | Mutates | Auth Scope | Async |
+|---|---|---|---|---|---|
+| `artifacts content` | `artifacts` | Read or download artifact content by opaque artifact id | no | `read` | no |
+| `artifacts get` | `artifacts` | Show one artifact record by opaque artifact id | no | `read` | no |
+| `artifacts list` | `artifacts` | List artifacts by kind, source, or job | no | `read` | no |
+| `ask` | `ask` | RAG: retrieve relevant context, then answer with LLM | no | `read` | no |
+| `brand` | `brand` | Analyze a URL's brand identity: colors, fonts, logos, favicon | no | `read` | no |
+| `capabilities` | `capabilities` | Print machine-readable runtime capabilities | no | `read` | no |
+| `chat` | `chat` | Send a direct prompt to the configured LLM | no | `read` | no |
+| `collections get` | `collections` | Show one vector collection with optional schema and indexes | no | `read` | no |
+| `collections list` | `collections` | List configured vector collections | no | `read` | no |
+| `completions` | `completions` | Generate shell completions (bash, zsh, fish) | no | `read` | no |
+| `compose down` | `compose` | Stop the Docker service stack | yes | `admin` | no |
+| `compose rebuild` | `compose` | Rebuild the Axon image and start the stack | yes | `admin` | no |
+| `compose restart` | `compose` | Restart running services | yes | `admin` | no |
+| `compose up` | `compose` | Pull and start the Docker service stack | yes | `admin` | no |
+| `config get` | `config` | Print a single config value (auto-detects file by key shape) | no | `admin` | no |
+| `config list` | `config` | List every entry from .env and config.toml (secrets redacted) | no | `admin` | no |
+| `config path` | `config` | Print resolved paths to .env and config.toml | no | `admin` | no |
+| `config set` | `config` | Write a config value (auto-detects file by key shape) | yes | `admin` | no |
+| `config unset` | `config` | Remove a config value from .env or config.toml | yes | `admin` | no |
+| `debug` | `debug` | Run doctor diagnostics plus LLM-assisted troubleshooting | no | `admin` | no |
+| `diff` | `diff` | Diff two URLs — show what changed between them | no | `read` | no |
+| `doctor` | `doctor` | Check connectivity to all required services | no | `admin` | no |
+| `doctor diagnose` | `doctor` | Print doctor output plus LLM diagnosis when configured | no | `admin` | no |
+| `domains` | `domains` | List indexed domains with document statistics | no | `read` | no |
+| `endpoints` | `endpoints` | Discover API endpoints from page HTML/JS bundles | no | `read` | no |
+| `evaluate` | `evaluate` | RAG vs baseline with independent LLM judge scoring | no | `read` | no |
+| `extract` | `extract` | LLM-powered structured data extraction from URLs | yes | `write` | yes |
+| `extract cancel` | `extract` | Cancel a running extract job | yes | `write` | no |
+| `extract cleanup` | `extract` | Remove old terminal extract jobs | yes | `write` | no |
+| `extract clear` | `extract` | Clear all extract job rows | yes | `write` | no |
+| `extract errors` | `extract` | Show an extract job's errors | no | `read` | no |
+| `extract list` | `extract` | List extract jobs | no | `read` | no |
+| `extract recover` | `extract` | Reclaim stale/interrupted extract jobs | yes | `admin` | no |
+| `extract status` | `extract` | Show an extract job's status | no | `read` | no |
+| `extract worker` | `extract` | Run an extract worker inline | yes | `admin` | yes |
+| `graph edge` | `graph` | Show one SourceGraph edge with optional evidence | no | `read` | no |
+| `graph kinds` | `graph` | List SourceGraph node and edge kinds | no | `read` | no |
+| `graph node` | `graph` | Show one SourceGraph node with optional edges and evidence | no | `read` | no |
+| `graph query` | `graph` | Query SourceGraph nodes | no | `read` | no |
+| `graph resolve` | `graph` | Resolve an identifier to SourceGraph nodes | no | `read` | no |
+| `graph source` | `graph` | Walk the SourceGraph neighborhood of a source | no | `read` | no |
+| `jobs cancel` | `jobs` | Request cancellation for a unified durable job | yes | `write` | no |
+| `jobs cleanup` | `jobs` | Remove old terminal unified durable jobs | yes | `write` | no |
+| `jobs clear` | `jobs` | Clear all unified durable job rows | yes | `admin` | no |
+| `jobs events` | `jobs` | Show one job's event page | no | `read` | no |
+| `jobs get` | `jobs` | Show one unified durable job | no | `read` | no |
+| `jobs list` | `jobs` | List unified durable jobs | no | `read` | no |
+| `jobs recover` | `jobs` | Recover stale unified durable jobs | yes | `admin` | no |
+| `jobs retry` | `jobs` | Retry a unified durable job | yes | `write` | yes |
+| `jobs stream` | `jobs` | Fetch an event page for stream consumers | no | `read` | no |
+| `jobs worker` | `jobs` | Run a standalone worker process for the unified durable queue | yes | `admin` | no |
+| `map` | `map` | Discover all URLs on a site without scraping | no | `read` | no |
+| `mcp` | `mcp` | Start MCP stdio or unified HTTP runtime | no | `admin` | no |
+| `memory context` | `memory` | Build an inline, defanged context block from memories | no | `read` | no |
+| `memory link` | `memory` | Link two memories in the SQLite graph | yes | `write` | no |
+| `memory list` | `memory` | List memory metadata without semantic search | no | `read` | no |
+| `memory remember` | `memory` | Store a memory in the dedicated memory collection | yes | `write` | no |
+| `memory search` | `memory` | Search active memories | no | `read` | no |
+| `memory show` | `memory` | Show one memory by id | no | `read` | no |
+| `memory supersede` | `memory` | Mark an old memory as superseded by a replacement memory | yes | `write` | no |
+| `migrate` | `migrate` | Migrate an unnamed-vector collection to named-mode (enables hybrid RRF search) | yes | `admin` | no |
+| `monitor jobs` | `monitor` | Stream source and extract lifecycle events | no | `read` | no |
+| `palette` | `palette` | Resolve, launch, and optionally install the axon-palette desktop binary | no | `read` | no |
+| `preflight` | `preflight` | Check host prerequisites and service readiness | no | `admin` | no |
+| `providers get` | `providers` | Show one provider with optional health and limits | no | `read` | no |
+| `providers list` | `providers` | List providers by kind or status | no | `read` | no |
+| `prune exec` | `prune` | Execute a prune target's plan (destructive; requires --confirm) | yes | `admin` | no |
+| `prune plan` | `prune` | Resolve a prune target into a reviewable dry-run plan | no | `read` | no |
+| `query` | `query` | Semantic vector search over the Qdrant index | no | `read` | no |
+| `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
+| `reset exec` | `reset` | Execute a reviewed clean-slate reset plan | yes | `admin` | no |
+| `reset plan` | `reset` | Create a reviewable clean-slate reset plan without deleting data | no | `admin` | no |
+| `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
+| `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
+| `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
+| `search` | `search` | Web search via SearXNG/Tavily, auto-queues Source jobs for results | yes | `read` | no |
+| `serve` | `serve` | Start service runtimes | no | `admin` | no |
+| `serve mcp` | `serve` | Start unified web + MCP HTTP runtime | no | `admin` | no |
+| `sessions` | `sessions` | Index AI session exports (Claude, Codex, Gemini) into Qdrant | yes | `write` | yes |
+| `setup check` | `setup` | Check local prerequisites without mutating files or services | no | `admin` | no |
+| `setup config rewrite` | `setup` | Preview or apply clean-break config key rewrites | yes | `admin` | no |
+| `setup init` | `setup` | Initialize local Axon config, env, and compose assets | yes | `admin` | no |
+| `setup install` | `setup` | Copy the axon binary into ~/.local/bin for terminal use | yes | `admin` | no |
+| `setup plugin-hook` | `setup` | Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart | yes | `admin` | no |
+| `setup targets` | `setup` | List SSH host aliases discovered from ~/.ssh/config | no | `admin` | no |
+| `smoke` | `smoke` | Run source/ask smoke checks against the running stack | yes | `admin` | no |
+| `source` | `source` | Index a source through the unified pipeline | yes | `write` | yes |
+| `sources` | `sources` | List all indexed source URLs with chunk counts | no | `read` | no |
+| `stats` | `stats` | Show Qdrant collection and SQLite job statistics | no | `read` | no |
+| `status` | `status` | Show unified jobs, watches, cleanup, totals, and service status | no | `read` | no |
+| `suggest` | `suggest` | Suggest new documentation URLs to index | no | `read` | no |
+| `summarize` | `summarize` | Scrape one or more URLs and summarize them with the configured LLM | no | `read` | no |
+| `sync pending` | `sync` | Show local artifacts waiting to be reconciled with the server | no | `read` | no |
+| `train` | `train` | Collect human preference votes for retrieved RAG candidates | yes | `write` | no |
+| `update` | `update` | Download and install the latest GitHub Release binary, then sync the local container | yes | `admin` | no |
+| `uploads abort` | `uploads` | Abort and discard a staged upload | yes | `write` | no |
+| `uploads complete` | `uploads` | Finalize a staged upload into a durable source reference | yes | `write` | no |
+| `uploads create` | `uploads` | Stage a local file as a durable upload | yes | `write` | no |
+| `uploads get` | `uploads` | Show one staged upload | no | `read` | no |
+| `uploads list` | `uploads` | List staged uploads | no | `read` | no |
+| `watch create` | `watch` | Create a recurring source watch | yes | `write` | no |
+| `watch delete` | `watch` | Delete a source watch | yes | `write` | no |
+| `watch exec` | `watch` | Run a source watch immediately | yes | `write` | yes |
+| `watch get` | `watch` | Show one source watch | no | `read` | no |
+| `watch history` | `watch` | Show watch run history | no | `read` | no |
+| `watch list` | `watch` | List source watches | no | `read` | no |
+| `watch pause` | `watch` | Pause a source watch | yes | `write` | no |
+| `watch resume` | `watch` | Resume a paused source watch | yes | `write` | no |
+| `watch status` | `watch` | Show source watch status | no | `read` | no |
+| `watch update` | `watch` | Update a source watch | yes | `write` | no |
+
+Total: 110 commands.
