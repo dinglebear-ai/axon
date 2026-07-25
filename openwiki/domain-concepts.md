@@ -60,7 +60,7 @@ The action docs model moved to a unified `source` interpretation for removed sou
 
 ## Next-linking for related concepts
 
-- [src/main.rs](../architecture/overview.md#runtime-and-error-handling-concept)
-- [Workflow gates](../workflows.md)
-- [Action parity matrix](../../docs/reference/api-parity.md)
-- [Action index](../../docs/reference/actions/README.md)
+- [src/main.rs](architecture/overview.md#runtime-behavior-impact)
+- [Workflow gates](workflows.md)
+- [Action parity matrix](../docs/reference/api-parity.md)
+- [Action index](../docs/reference/actions/README.md)
