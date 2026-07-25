@@ -7,6 +7,22 @@ name: llama-cpp
 #   context to device memory. The model file can live on NVMe, but good
 #   generation performance requires enough system RAM to avoid active swap.
 #
+# Sharing the GPU with axon-tei:
+#   Both fit on one 12 GB card, but only if each side is bounded:
+#     1. Cap TEI's server-side batch (TEI_MAX_BATCH_TOKENS, e.g. 24576). TEI's
+#        activation VRAM is ~linear in batch tokens (~41 KiB/token measured), so
+#        the stock 196608 lets it transiently spike to ~9 GB and evict llama.cpp.
+#        Do NOT cap TEI's --max-client-batch-size instead: axon sends 128 inputs
+#        per request and would get HTTP 413/422.
+#     2. Reserve that spike for TEI via llama.cpp's --fit-target (see below), and
+#        leave --n-cpu-moe unset so --fit can pick the MoE offload split itself.
+#   Measured on an RTX 4070 (12282 MiB) with Qwen3.6-35B-A3B UD-IQ4_XS @ 262144
+#   ctx: TEI 1.4 GB idle / 2.6 GB peak, llama.cpp 8.3 GB, combined peak 10.9 GB,
+#   0 failures under sustained simultaneous load.
+#
+#   Start TEI first and let it settle to idle before starting llama.cpp: --fit
+#   sizes the model against whatever is free at load time.
+#
 # Network:
 #   This compose file joins the external ${DOCKER_NETWORK:-axon} network.
 #   Start the main Axon stack first, or create it once with:
@@ -62,12 +78,34 @@ services:
     image: ${LLAMA_CPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     container_name: llama-cpp
     environment:
-      TZ: ${TZ:-America/New_York}
-      LLAMA_CACHE: /root/.cache/llama.cpp
-      HF_TOKEN: ${HF_TOKEN:-}
+      - TZ=${TZ:-America/New_York}
+      - LLAMA_CACHE=/root/.cache/llama.cpp
+      - HF_TOKEN=${HF_TOKEN:-}
+      # Optional manual-offload escape hatches, passed through ONLY when the
+      # variable is actually present in the env file. Bare keys (no `=`) are
+      # required here: `VAR: ${VAR:-}` would set the variable to the empty
+      # string, and llama.cpp would then try to parse "" as an integer.
+      #
+      # Leave BOTH unset for normal operation. `--fit on` can only adjust
+      # arguments the user has not set, so pinning LLAMA_ARG_N_CPU_MOE disables
+      # the very auto-offload that makes this fit alongside TEI.
+      - LLAMA_ARG_N_CPU_MOE
+      - LLAMA_ARG_FIT_CTX
+      # Draft model for --spec-type draft-mtp, for GGUFs that ship the MTP head
+      # as a SEPARATE file rather than baked in. Qwen3.6-*-MTP-GGUF has it baked
+      # in and needs nothing here; HauhauCS Gemma4 QAT ships a standalone
+      # mtp-gemma-4-26B-A4B-it.gguf and requires:
+      #   LLAMA_ARG_SPEC_DRAFT_MODEL=/models/mtp-gemma-4-26B-A4B-it.gguf
+      # (drop the file in ${LLAMA_CPP_MODELS_DIR}; it mounts at /models).
+      - LLAMA_ARG_SPEC_DRAFT_MODEL
     volumes:
-      - ${AXON_HOME:-${HOME}/.axon}/llama-cpp/cache:/root/.cache/llama.cpp
-      - ${AXON_HOME:-${HOME}/.axon}/llama-cpp/models:/models
+      # NOT derived from AXON_HOME by default. On dookie the shared ~/.axon/.env
+      # sets AXON_HOME=/mnt/axon-data, which only exists *inside* the axon Incus
+      # container — deriving from it on the host silently points at a nonexistent
+      # path and re-downloads the whole model. Override LLAMA_CPP_CACHE_DIR if the
+      # GGUF cache lives elsewhere.
+      - ${LLAMA_CPP_CACHE_DIR:-${HOME}/.axon/llama-cpp/cache}:/root/.cache/llama.cpp
+      - ${LLAMA_CPP_MODELS_DIR:-${HOME}/.axon/llama-cpp/models}:/models
     ports:
       - "${LLAMA_CPP_PORT:-8080}:8080"
     command:
@@ -81,14 +119,31 @@ services:
       - "${LLAMA_CPP_CTX_SIZE:-131072}"
       - --fit
       - "${LLAMA_CPP_FIT:-on}"
-      - --fit-ctx
-      - "${LLAMA_CPP_FIT_CTX:-131072}"
+      # Margin (MiB) --fit leaves FREE on the device after placing this model.
+      # This is the TEI co-tenancy budget, not slack: axon-tei idles ~1.4 GB but
+      # spikes ~1.2 GB above that while embedding, and llama.cpp would otherwise
+      # claim that headroom at startup and get evicted on the first batch.
+      # 2048 measured good on a 12 GB RTX 4070 with TEI_MAX_BATCH_TOKENS=24576
+      # (combined peak 10.9/12.0 GB). Raise it if you raise TEI's batch budget.
+      #
+      # NOTE: --n-cpu-moe and --fit-ctx are deliberately NOT passed here. --fit
+      # only adjusts arguments that are unset, so passing them pins the offload
+      # split and the context floor and defeats auto-fitting. Set
+      # LLAMA_ARG_N_CPU_MOE / LLAMA_ARG_FIT_CTX in the env file to override.
       - --fit-target
-      - "${LLAMA_CPP_FIT_TARGET:-512}"
-      - --n-cpu-moe
-      - "${LLAMA_CPP_N_CPU_MOE:-20}"
-      - --no-mmap
-      - --mlock
+      - "${LLAMA_CPP_FIT_TARGET:-2048}"
+      # Disabling mmap is critical, not cosmetic: with MoE tensors overridden to
+      # CPU, mmap'd expert weights are re-faulted from page cache on every token.
+      # See ~/docs/gemma4-26b-a4b-12gb-llama-baseline.md: 12.6 -> 27.7 tok/s.
+      #
+      # MUST be --load-mode, NOT --no-mmap. Current llama.cpp builds accept
+      # --no-mmap but only print "DEPRECATED: --mmap and --no-mmap are
+      # deprecated" and then load with mmap ANYWAY — the giveaway is the later
+      # "tensor overrides to CPU are used with mmap enabled" warning. The old
+      # flag is silently ineffective, which reads as a mysterious ~4x slowdown.
+      # (--load-mode mlock would re-enable mmap; "none" is the --no-mmap equivalent.)
+      - --load-mode
+      - "${LLAMA_CPP_LOAD_MODE:-none}"
       - --flash-attn
       - "on"
       - --kv-unified
@@ -96,6 +151,17 @@ services:
       - "${LLAMA_CPP_CTX_CHECKPOINTS:-4}"
       - --cache-ram
       - "${LLAMA_CPP_CACHE_RAM:-2048}"
+      # Multi-token prediction. Default OFF because it requires a GGUF that
+      # actually ships MTP heads (e.g. unsloth/*-MTP-GGUF). Set
+      # LLAMA_CPP_SPEC_TYPE=draft-mtp in the env file for such a model: it is
+      # lossless (drafts are verified against the main model) and cuts main-model
+      # forward passes. Measured on Qwen3.6-35B-A3B UD-IQ4_XS: 49% draft
+      # acceptance on prose (148/303), ~100% on highly predictable output.
+      # Confirm it engaged via "draft_n"/"draft_n_accepted" in the response
+      # timings — /props reports speculative.types from per-request sampling
+      # defaults and shows "none" even when MTP is active.
+      - --spec-type
+      - "${LLAMA_CPP_SPEC_TYPE:-none}"
       - --jinja
       - --no-mmproj
       - --reasoning
@@ -104,16 +170,29 @@ services:
       - "${LLAMA_CPP_CACHE_TYPE_K:-q8_0}"
       - --cache-type-v
       - "${LLAMA_CPP_CACHE_TYPE_V:-q8_0}"
+      # Lower both if the CUDA compute buffer needs to shrink to make room for a
+      # co-tenant (e.g. axon-tei); --fit accounts for it either way.
       - --batch-size
       - "${LLAMA_CPP_BATCH_SIZE:-1024}"
       - --ubatch-size
       - "${LLAMA_CPP_UBATCH_SIZE:-512}"
       - --parallel
       - "${LLAMA_CPP_PARALLEL:-1}"
+      # Thread count matters far less than it looks once the model is fully
+      # GPU-resident: decode becomes CPU-*orchestration* bound (kernel launches,
+      # sampling, detokenize), not CPU-math bound. Extra threads then just add
+      # scheduler contention for the one thread that submits work. Keep this high
+      # only when MoE experts are offloaded to CPU (--n-cpu-moe / --cpu-moe).
       - --threads
       - "${LLAMA_CPP_THREADS:-10}"
       - --threads-batch
       - "${LLAMA_CPP_THREADS_BATCH:-12}"
+      # llama.cpp busy-polls by default (--poll 50), so idle worker threads spin
+      # on-core instead of sleeping. On a shared host that steals cycles from the
+      # submitting thread and starves the GPU. Set LLAMA_CPP_POLL=0 for a
+      # fully-GPU-resident model; leave the default when experts run on CPU.
+      - --poll
+      - "${LLAMA_CPP_POLL:-50}"
       - --no-warmup
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS --max-time 4 http://127.0.0.1:8080/health >/dev/null || exit 1"]
