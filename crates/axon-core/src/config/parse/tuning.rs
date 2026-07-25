@@ -250,17 +250,11 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         64,
         65_536,
     );
-    cfg.ingest_lanes = ingest_lanes(toml);
-    cfg.embed_lanes = embed_lanes(toml);
     cfg.unified_worker_concurrency = unified_worker_concurrency(toml);
-    cfg.crawl_job_concurrency_limit = crawl_job_concurrency_limit(toml);
+    cfg.source_job_concurrency_limit = source_job_concurrency_limit(toml);
     cfg.embed_doc_timeout_secs = embed_doc_timeout_secs(toml);
     cfg.queue_summary_secs = queue_summary_secs(toml);
     cfg.qdrant_point_buffer = qdrant_point_buffer(toml);
-    cfg.max_pending_crawl_jobs = max_pending(toml, "crawl");
-    cfg.max_pending_embed_jobs = max_pending(toml, "embed");
-    cfg.max_pending_extract_jobs = max_pending(toml, "extract");
-    cfg.max_pending_ingest_jobs = max_pending(toml, "ingest");
     cfg.hnsw_ef_search =
         resolve_clamped_usize("AXON_HNSW_EF_SEARCH", toml.search.hnsw_ef, 128, 32, 512);
     cfg.hnsw_ef_search_legacy = cfg.hnsw_ef_search;
@@ -971,14 +965,6 @@ fn tei_max_client_batch_size(toml: &TomlConfig) -> usize {
     )
 }
 
-fn ingest_lanes(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize("AXON_INGEST_LANES", toml.workers.ingest_lanes, 2, 1, 16)
-}
-
-fn embed_lanes(toml: &TomlConfig) -> usize {
-    resolve_clamped_usize("AXON_EMBED_LANES", toml.workers.embed_lanes, 2, 1, 32)
-}
-
 fn unified_worker_concurrency(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "AXON_UNIFIED_WORKER_CONCURRENCY",
@@ -989,11 +975,11 @@ fn unified_worker_concurrency(toml: &TomlConfig) -> usize {
     )
 }
 
-fn crawl_job_concurrency_limit(toml: &TomlConfig) -> usize {
+fn source_job_concurrency_limit(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
-        "AXON_CRAWL_JOB_CONCURRENCY_LIMIT",
-        toml.workers.crawl_job_concurrency_limit,
-        1,
+        "AXON_SOURCE_JOB_CONCURRENCY_LIMIT",
+        toml.workers.source_job_concurrency_limit,
+        4,
         1,
         64,
     )
@@ -1037,33 +1023,6 @@ fn job_wait_timeout_secs(toml: &TomlConfig) -> u64 {
         30,
         3600,
     )
-}
-
-fn max_pending(toml: &TomlConfig, kind: &str) -> usize {
-    let (env_key, toml_value, default): (&str, Option<usize>, usize) = match kind {
-        "crawl" => (
-            "AXON_MAX_PENDING_CRAWL_JOBS",
-            toml.workers.max_pending_crawl_jobs,
-            100,
-        ),
-        "embed" => (
-            "AXON_MAX_PENDING_EMBED_JOBS",
-            toml.workers.max_pending_embed_jobs,
-            50,
-        ),
-        "extract" => (
-            "AXON_MAX_PENDING_EXTRACT_JOBS",
-            toml.workers.max_pending_extract_jobs,
-            50,
-        ),
-        "ingest" => (
-            "AXON_MAX_PENDING_INGEST_JOBS",
-            toml.workers.max_pending_ingest_jobs,
-            50,
-        ),
-        _ => unreachable!("unknown pending-jobs kind: {kind}"),
-    };
-    resolve_clamped_usize(env_key, toml_value, default, 0, 10_000)
 }
 
 #[cfg(test)]

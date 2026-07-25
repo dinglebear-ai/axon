@@ -9,11 +9,6 @@ on:
     - cron: '0 3 * * 1'  # Weekly Monday 3am UTC
   workflow_dispatch:
     inputs:
-      run_infra_tests:
-        description: "Run ignored SQLite/in-process infra smoke tests"
-        required: false
-        default: false
-        type: boolean
       run_live_qdrant_tests:
         description: "Run live Qdrant vector integration tests"
         required: false
@@ -805,7 +800,7 @@ jobs:
           mkdir -p apps/web/out
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: cargo nextest
-        run: cargo nextest run --workspace --locked --features test-helpers -E 'not test(/worker_e2e/)'
+        run: cargo nextest run --workspace --locked --features test-helpers
 
       - name: cargo test ignored cli infra tests
         run: cargo test --locked cli_ --features test-helpers -- --ignored --quiet
@@ -815,18 +810,6 @@ jobs:
 
       - name: ask quality regression fixtures
         run: ./scripts/test-ask-quality-regressions.sh --verify-only
-
-  test-infra:
-    name: test-infra
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_infra_tests) }}
-    runs-on: [self-hosted, unraid]
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-soldr
-        with:
-          toolchain: 1.94.0
-      - name: run ignored SQLite/in-process worker tests
-        run: cargo test --locked worker_e2e --features test-helpers -- --ignored
 
   live-qdrant:
     name: live-qdrant
@@ -1008,6 +991,16 @@ jobs:
 
       - name: Install mcporter
         uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
+        env:
+          # mise's npm backend runs a supply-chain trust check that hard-fails
+          # when a transitive dependency loses trusted-publisher evidence
+          # between releases. On 2026-07-25 `@hono/node-server@1.19.15` (pulled
+          # in by mcporter) published without trust evidence where 2.0.10 had
+          # it, which broke this job on every PR including docs-only ones.
+          # Shelling out to the npm CLI installs the same pinned mcporter
+          # version without that check. This is a smoke-test tool, not a
+          # shipped dependency.
+          MISE_NPM_SHELL_OUT: "true"
         with:
           install_args: node npm:mcporter@0.7.3
       - name: Pin mcporter for mise shims

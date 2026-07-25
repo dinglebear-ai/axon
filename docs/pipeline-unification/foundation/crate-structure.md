@@ -1,5 +1,5 @@
 # Crate Structure Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-24
 
 ## Contract
 
@@ -60,8 +60,19 @@ facades.
 | `axon-code-index` | `axon-ledger`, `axon-parse`, `axon-document`, `axon-jobs`, `axon-vectors` | Local code freshness becomes normal source ledger/generation/watch/query behavior. |
 | `axon-crawl` | `axon-adapters`, `axon-route`, `axon-ledger`, `axon-document`, `axon-jobs` | Web crawl becomes a web adapter/source job, not a separate job family. |
 | `axon-ingest` | `axon-adapters`, `axon-route`, `axon-ledger`, `axon-document`, `axon-jobs` | GitHub, feeds, Reddit, YouTube, registries, sessions, CLI/MCP tools become adapters. |
-| `axon-extract` | `axon-llm`, `axon-parse`, `axon-adapters`, `axon-services` | Structured LLM extraction remains a top-level action, but vertical scraping/adapters move under source routing. |
 | root `src/*` domain modules | target domain crates | Root crate keeps only binary/bootstrap glue. |
+
+`axon-extract` is not in this table: it is a retained target-workspace crate,
+not a removed/renamed one. Its LLM-based structured extraction action lives in
+`axon-services`/`axon-llm` as before, but the vertical-extractor implementation
+catalog itself (per-site scrape functions such as GitHub repo/issue/PR/release,
+PyPI, npm, crates.io, Reddit, and friends) was restored as `axon-extract` on
+2026-07-15 rather than dispersed into `axon-parse`/`axon-adapters`. See its
+row in the Target Workspace table below and
+[../crates/axon-extract/README.md](../crates/axon-extract/README.md) for the
+full contract; `../plans/finish-unification-metaplan.md` tracks the open
+follow-up to eventually re-home those extractor modules behind
+adapter/parser ownership.
 
 ## Target Workspace
 
@@ -73,6 +84,7 @@ facades.
 | `axon-core` | config, paths, redaction, shared utilities, time/id helpers | domain orchestration |
 | `axon-observe` | progress events, spans, metrics, structured log fields, heartbeat emitters | job scheduling, transport rendering |
 | `axon-route` | source resolution, URL/source normalization, adapter routing | fetching/chunking/vector writes |
+| `axon-extract` | vertical-extractor implementations (per-site scrape functions: GitHub, PyPI, npm, crates.io, Reddit, and others) consumed one-way by `axon-adapters` | dispatch/routing policy, source acquisition orchestration, a dependency on `axon-adapters` |
 | `axon-adapters` | source adapters and acquisition implementations | chunk persistence/vector writes |
 | `axon-ledger` | SourceLedger, manifests, diffs, generations, leases, cleanup debt | Qdrant search, graph semantics |
 | `axon-parse` | source parsers, manifest parsers, schema/session/tool parsers | graph persistence |
@@ -106,6 +118,7 @@ crates/
   axon-core/
   axon-observe/
   axon-route/
+  axon-extract/
   axon-adapters/
   axon-ledger/
   axon-parse/
@@ -167,6 +180,7 @@ members = [
   "crates/axon-core",
   "crates/axon-observe",
   "crates/axon-route",
+  "crates/axon-extract",
   "crates/axon-adapters",
   "crates/axon-ledger",
   "crates/axon-parse",
@@ -193,7 +207,10 @@ No removed current crate remains in `members` after cutover:
 - `crates/axon-code-index`
 - `crates/axon-crawl`
 - `crates/axon-ingest`
-- `crates/axon-extract`
+
+`crates/axon-extract` is not on this list: it is a retained target-workspace
+crate (restored 2026-07-15), not a removed one. See the "Restored-Crate Note"
+in [../crates/axon-extract/README.md](../crates/axon-extract/README.md).
 
 ## Crate Public API Contracts
 
@@ -207,6 +224,7 @@ Each crate exposes a small stable surface:
 | `axon-core` | config loader, path helpers, id/time helpers, redaction utilities, HTTP safety helpers, artifact primitives if not split. |
 | `axon-observe` | `SourceProgressEvent`, heartbeat helpers, tracing span builders, metric instruments, redacted structured logging fields. |
 | `axon-route` | `SourceResolver`, `SourceRouter`, `ResolvedSource`, canonical URI/source id utilities. |
+| `axon-extract` | `VerticalContext`, `VerticalError`, `ExtractorInfo`, `ScrapedDoc`, per-site `verticals::<name>` extractor modules. |
 | `axon-adapters` | `SourceAdapter`, adapter registry, adapter capability documents, adapter option schemas. |
 | `axon-ledger` | `LedgerStore`, source/item/generation models, manifest diffing, leases, cleanup debt. |
 | `axon-parse` | `Parser`, parse facts, graph candidates, manifest/schema/session/tool parsers. |
@@ -483,6 +501,41 @@ Must not own:
 - adapter execution
 - vector writes
 - ledger mutation beyond lookup-friendly ids
+
+### `axon-extract`
+
+Purpose: vertical-extractor implementation catalog — per-site structured
+extraction functions consumed one-way by `axon-adapters`. Retained rather than
+dispersed; see the "Restored-Crate Note" in
+[../crates/axon-extract/README.md](../crates/axon-extract/README.md) for why
+this crate departs from the original split plan and the open follow-up to
+eventually re-home it.
+
+Required public modules: only `verticals` is `pub mod`; `context`, `error`,
+`git_payload`, and `types` are private modules re-exported at the crate root.
+See [../crates/axon-extract/README.md](../crates/axon-extract/README.md) for
+the full module tree.
+
+```text
+lib.rs
+verticals.rs
+```
+
+Must expose:
+
+- `VerticalContext`
+- `VerticalError`
+- `ExtractorInfo`
+- `ScrapedDoc`
+- `verticals::<name>::{INFO, matches, extract}` per extractor
+
+Must not own:
+
+- dispatch/routing order (owned by `axon-adapters::vertical_registry`)
+- a dependency on `axon-adapters` (dependency flows one-way:
+  `axon-adapters -> axon-extract`)
+- source acquisition orchestration, ledger persistence, chunking, embedding,
+  or vector writes
 
 ### `axon-adapters`
 
@@ -1210,6 +1263,7 @@ axon-error
   -> axon-api
   -> axon-core / axon-authz / axon-observe
   -> axon-route
+  -> axon-extract
   -> axon-adapters / axon-ledger / axon-parse / axon-graph / axon-memory
   -> axon-document
   -> axon-embedding / axon-vectors / axon-retrieval / axon-llm / axon-prune
@@ -1230,6 +1284,12 @@ Rules:
 - Domain crates must not import transport crates.
 - Provider boundary crates may depend on `axon-api` and `axon-core`.
 - Cycles are forbidden.
+- `axon-extract`'s `Cargo.toml` also declares `axon-llm` and `axon-api` as
+  dependencies (`axon-api` is unused today; `axon-llm` is likewise currently
+  unreferenced from `axon-extract` source despite being declared) even though
+  `axon-llm` sits later in this chain. That declared-but-unused dependency is
+  not exercised by any import today, so it is not a live ordering violation,
+  but it should be trimmed or genuinely adopted rather than left stale.
 
 ## Dependency Matrix
 
@@ -1248,7 +1308,8 @@ Legend:
 | `axon-core` | `axon-error`, `axon-api` for shared primitive DTOs only |
 | `axon-observe` | `axon-error`, `axon-api`, `axon-core` |
 | `axon-route` | `axon-error`, `axon-api`, `axon-core`, `axon-authz`, `axon-observe`, `axon-graph` types, `axon-ledger` types |
-| `axon-adapters` | `axon-error`, `axon-api`, `axon-core`, `axon-route`, `axon-authz`, `axon-observe`, `axon-parse` types |
+| `axon-extract` | `axon-core` (used); `axon-api`, `axon-llm` (declared, currently unused) |
+| `axon-adapters` | `axon-error`, `axon-api`, `axon-core`, `axon-route`, `axon-authz`, `axon-observe`, `axon-parse` types, `axon-extract` (one-way; `axon-extract` must not depend back on `axon-adapters`) |
 | `axon-ledger` | `axon-error`, `axon-api`, `axon-core`, `axon-observe`, `axon-route` types |
 | `axon-parse` | `axon-error`, `axon-api`, `axon-core`, `axon-observe`, `axon-document` types only if needed |
 | `axon-graph` | `axon-error`, `axon-api`, `axon-core`, `axon-observe`, `axon-parse` types, `axon-ledger` types |
@@ -1411,7 +1472,7 @@ Current crate disposition:
 | `axon-code-index` | remove after ledger/document/jobs/watch source path absorbs it |
 | `axon-crawl` | remove after web adapter/source jobs absorb it |
 | `axon-ingest` | remove after adapters/source jobs absorb it |
-| `axon-extract` | remove or shrink into parser/LLM extraction service pieces |
+| `axon-extract` | keep; retained vertical-extractor implementation catalog, consumed one-way by `axon-adapters` (see the restored-crate note in `../crates/axon-extract/README.md`) |
 | `axon-jobs` | keep; convert to unified job model |
 | `axon-services` | keep; keep orchestration only |
 | `axon-mcp` | keep; target schema only |

@@ -45,22 +45,6 @@ impl MemorySourceAdapter {
         }
     }
 
-    pub async fn materialize(
-        &self,
-        plan: SourcePlan,
-    ) -> Result<crate::acquisition::MaterializedSource> {
-        validate_plan(&plan)?;
-        let memory_id = memory_id_from_uri(&plan.route.source.canonical_uri)?;
-        let record = self
-            .provider
-            .get(memory_id.clone())
-            .await?
-            .ok_or_else(|| missing_memory(&memory_id))?;
-        authorize_record(&record, self.access)?;
-        *self.materialized.write().map_err(cache_error)? = Some(record);
-        Ok(crate::acquisition::MaterializedSource::virtual_source(plan))
-    }
-
     fn record(&self) -> Result<MemoryRecord> {
         self.materialized
             .read()
@@ -84,6 +68,22 @@ impl SourceAdapter for MemorySourceAdapter {
 
     fn version(&self) -> &'static str {
         env!("CARGO_PKG_VERSION")
+    }
+
+    async fn materialize(
+        &self,
+        plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        validate_plan(&plan)?;
+        let memory_id = memory_id_from_uri(&plan.route.source.canonical_uri)?;
+        let record = self
+            .provider
+            .get(memory_id.clone())
+            .await?
+            .ok_or_else(|| missing_memory(&memory_id))?;
+        authorize_record(&record, self.access)?;
+        *self.materialized.write().map_err(cache_error)? = Some(record);
+        Ok(crate::acquisition::MaterializedSource::virtual_source(plan))
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {

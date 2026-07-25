@@ -3,7 +3,8 @@ use super::*;
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
 use axon_api::source::{
-    JobCancelRequest, JobCreateRequest, JobIntent, JobPriority, JobStagePlan, MetadataMap,
+    JobCancelRequest, JobCreateRequest, JobIntent, JobPriority, JobRecoveryRequest, JobStagePlan,
+    MetadataMap, Timestamp,
 };
 use tempfile::NamedTempFile;
 use tokio::sync::Notify;
@@ -222,11 +223,14 @@ impl UnifiedJobRunner for ConcurrencyTrackingRunner {
     }
 }
 
-/// Regression test for fix 3: source jobs must stay bounded by the
-/// source/web crawl concurrency limit even when the general
-/// `unified_worker_concurrency` semaphore is set much higher. Web source jobs
-/// share constrained browser/render resources, so letting them freely consume
-/// general worker slots risks CDP session contention.
+/// Regression test for fix 3: source jobs must stay bounded by the general
+/// source-job concurrency limit even when the general
+/// `unified_worker_concurrency` semaphore is set much higher. This is a
+/// general per-source-kind cap, not a web/CDP-specific one — several source
+/// kinds share constrained external resources (a single Chrome instance for
+/// web/render-backed acquisition, upstream API rate limits for other
+/// adapters), so letting them freely consume general worker slots risks
+/// starving other job kinds or exhausting a shared resource.
 #[tokio::test]
 async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_general_concurrency() {
     let (pool, _temp) = test_pool().await;
@@ -252,8 +256,11 @@ async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_genera
     let notify = Arc::new(Notify::new());
     let shutdown = CancellationToken::new();
 
-    // High general concurrency (8), but source-specific limit of 1 — matching
-    // Config::crawl_job_concurrency_limit's default.
+    // High general concurrency (8), but a tightly-set source-specific limit
+    // of 1 (independent of Config::source_job_concurrency_limit's own
+    // default of 4) — the tight value, not the specific number, is what
+    // proves the semaphore actually bounds source jobs below general
+    // concurrency.
     let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits(
         Arc::clone(&pool),
         Arc::clone(&notify),
@@ -306,6 +313,258 @@ async fn source_jobs_stay_bounded_by_source_specific_limit_even_with_high_genera
         1,
         "at most one source job should ever run concurrently despite concurrency=8"
     );
+}
+
+/// Regression test for defect P1: a `Source` job that cannot get the
+/// source-specific permit right now must never block the claim loop from
+/// claiming and running jobs of a *different* kind. Enqueues more `Source`
+/// jobs than the general concurrency allows to even be claimed at once (the
+/// exact "N+1 queued source jobs, N = general concurrency" shape from the
+/// bug report), plus one `Prune` job queued behind them, and asserts the
+/// `Prune` job completes while the `Source` jobs are still deliberately
+/// parked — i.e. without ever waiting for the source lane to drain.
+///
+/// Before the fix: the general permit was acquired *after* a job was
+/// already claimed (flipped to `running`) and the source-specific permit was
+/// then awaited *inside* the spawned task, so a parked `Source` task held a
+/// general-concurrency slot hostage. With `concurrency = 2` and
+/// `source_concurrency = 1`, the third `Source` claim exhausts the general
+/// semaphore (one task running, one task parked-but-holding-a-permit) and
+/// the claim loop blocks forever waiting for a general permit before it can
+/// even look at the `Prune` job — this test times out and fails on
+/// unfixed code.
+#[tokio::test]
+async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
+    let (pool, _temp) = test_pool().await;
+    let pool = Arc::new(pool);
+
+    const GENERAL_CONCURRENCY: usize = 2;
+    const SOURCE_CONCURRENCY: usize = 1;
+    const SOURCE_JOBS: usize = 3; // > GENERAL_CONCURRENCY, matching "N+1" from the bug report
+
+    let mut source_job_ids = Vec::new();
+    for _ in 0..SOURCE_JOBS {
+        source_job_ids.push(enqueue_test_job(&pool, UnifiedJobKind::Source).await);
+    }
+    let prune_job_id = enqueue_test_job(&pool, UnifiedJobKind::Prune).await;
+
+    struct BlockingRunner {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for BlockingRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<(), ApiError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+    }
+
+    struct ImmediateRunner;
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for ImmediateRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<(), ApiError> {
+            Ok(())
+        }
+    }
+
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(
+        UnifiedJobKind::Source,
+        Arc::new(BlockingRunner {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }),
+    );
+    registry.register(UnifiedJobKind::Prune, Arc::new(ImmediateRunner));
+    let registry = Arc::new(registry);
+
+    let notify = Arc::new(Notify::new());
+    let shutdown = CancellationToken::new();
+    let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits(
+        Arc::clone(&pool),
+        Arc::clone(&notify),
+        shutdown.clone(),
+        Some(registry),
+        GENERAL_CONCURRENCY,
+        SOURCE_CONCURRENCY,
+    ));
+
+    // Wait until a Source job has actually started (parked on `release`), so
+    // we know the source lane is genuinely occupied before checking on the
+    // Prune job below.
+    tokio::time::timeout(std::time::Duration::from_secs(10), started.notified())
+        .await
+        .expect("a source job should start within 10s");
+
+    let store = SqliteUnifiedJobStore::new((*pool).clone());
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            notify.notify_one();
+            let summary = store.get(prune_job_id).await.unwrap().unwrap();
+            if summary.status == LifecycleStatus::Completed {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect(
+        "the Prune job must complete without waiting for the Source jobs \
+         (still deliberately parked on `release`) to drain",
+    );
+
+    // Sanity: prove this test actually exercised the starvation scenario —
+    // the source jobs must still be blocked (not completed) when the Prune
+    // job finished, rather than having raced ahead of it.
+    for job_id in &source_job_ids {
+        let summary = store.get(*job_id).await.unwrap().unwrap();
+        assert_ne!(
+            summary.status,
+            LifecycleStatus::Completed,
+            "source jobs should still be parked on `release` when the Prune job completes"
+        );
+    }
+
+    release.notify_waiters();
+    shutdown.cancel();
+    let _ = handle.await;
+}
+
+/// Regression test for defect P2: a job must never sit `status = 'running'`
+/// while its task cannot yet make progress (parked behind a full
+/// source-specific lane) — that state is exactly what let the watchdog's
+/// stale-job sweep reclaim a still-alive job and requeue it for a second,
+/// duplicate execution. With the P1 fix, a job that cannot get the
+/// source-specific permit is left `queued` (never claimed) until a worker is
+/// genuinely about to run it, so it can never become eligible for
+/// `recover_jobs`'s `status IN ('running', 'waiting')` sweep while parked.
+///
+/// This directly exercises `JobStore::recover` (the same call the watchdog
+/// makes — see `crates/axon-jobs/src/workers/watchdog.rs`) with an
+/// aggressive `stale_before` cutoff of "right now" while a second `Source`
+/// job is blocked behind a full source lane, and asserts recovery finds
+/// nothing to reclaim.
+#[tokio::test]
+async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
+    let (pool, _temp) = test_pool().await;
+    let pool = Arc::new(pool);
+
+    let running_job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+    let parked_job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+
+    struct BlockingRunner {
+        started: Arc<Notify>,
+        release: Arc<Notify>,
+    }
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for BlockingRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<(), ApiError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+    }
+
+    let started = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(
+        UnifiedJobKind::Source,
+        Arc::new(BlockingRunner {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }),
+    );
+    let registry = Arc::new(registry);
+
+    let notify = Arc::new(Notify::new());
+    let shutdown = CancellationToken::new();
+    // source_concurrency = 1: only one of the two Source jobs can run.
+    let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits(
+        Arc::clone(&pool),
+        Arc::clone(&notify),
+        shutdown.clone(),
+        Some(registry),
+        8,
+        1,
+    ));
+
+    tokio::time::timeout(std::time::Duration::from_secs(10), started.notified())
+        .await
+        .expect("the first source job should start within 10s");
+
+    let store = SqliteUnifiedJobStore::new((*pool).clone());
+    // Give the parked job every chance to have been (incorrectly) claimed if
+    // the fix regressed, without depending on a specific delay elsewhere.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let parked_summary = store.get(parked_job_id).await.unwrap().unwrap();
+    assert_eq!(
+        parked_summary.status,
+        LifecycleStatus::Queued,
+        "a job that cannot get the source-specific permit must stay queued, \
+         never flip to running with nowhere to run"
+    );
+
+    // The watchdog's own sweep uses exactly this call
+    // (crates/axon-jobs/src/workers/watchdog.rs) with a cutoff derived from
+    // `watchdog_stale_timeout_secs + watchdog_confirm_secs` (360s by
+    // default). Use a generous-but-realistic 5-minute cutoff here — not
+    // "right now", which would also flag the genuinely-running job's
+    // legitimately-fresh (merely non-zero-age) heartbeat as "before the
+    // cutoff" and defeat the point of the assertion — to prove there is
+    // nothing actually stale for it to find.
+    let stale_before = Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(5 * 60));
+    let recovery = store
+        .recover(JobRecoveryRequest {
+            kind: None,
+            stale_before: Some(stale_before),
+            limit: None,
+            older_than_seconds: None,
+            dry_run: false,
+            allow_without_cutoff: false,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        recovery.jobs_requeued, 0,
+        "no job should be reclaimed: the running job has a fresh heartbeat \
+         and the parked job was never claimed in the first place"
+    );
+
+    let parked_summary_after = store.get(parked_job_id).await.unwrap().unwrap();
+    assert_eq!(
+        parked_summary_after.attempt, 1,
+        "the parked job's attempt count must be untouched by recovery"
+    );
+    let running_summary = store.get(running_job_id).await.unwrap().unwrap();
+    assert_eq!(
+        running_summary.status,
+        LifecycleStatus::Running,
+        "the actually-running job must not have been reclaimed either"
+    );
+
+    release.notify_waiters();
+    shutdown.cancel();
+    let _ = handle.await;
 }
 
 #[test]

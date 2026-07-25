@@ -23,6 +23,7 @@ use axon_api::source::*;
 use axon_core::boundary::ArtifactStore;
 use axon_core::boundary::DocumentCache;
 use axon_embedding::provider::EmbeddingProvider;
+use axon_embedding::reservation::ProviderReservationManager;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
@@ -89,6 +90,10 @@ pub struct WebSourceIndexInput {
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
     pub event_store: Option<Arc<dyn JobStore>>,
+    /// Admission control for embed/upsert (finding C1: web used to skip this,
+    /// unlike every non-web family/local — see `web_source/vectorize.rs`).
+    pub embedding_reservations: Arc<ProviderReservationManager>,
+    pub vector_reservations: Arc<ProviderReservationManager>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

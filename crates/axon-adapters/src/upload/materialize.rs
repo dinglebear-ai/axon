@@ -14,6 +14,13 @@ pub trait UploadSourceProvider: Send + Sync {
 }
 
 impl UploadSourceAdapter {
+    /// Deliberately NOT a `SourceAdapter::materialize` trait override: the
+    /// upload store is call-scoped (threaded per request from
+    /// `axon-services`' upload store, not owned by the adapter instance the
+    /// way `MemorySourceAdapter` owns its `MemorySourceProvider`), so this
+    /// needs an extra `provider` argument the trait's `&self`-only signature
+    /// has no room for. `dispatch/virtual_sources.rs::dispatch_upload` calls
+    /// this inherent method directly instead of going through the trait.
     pub async fn materialize(
         &self,
         mut plan: SourcePlan,

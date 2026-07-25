@@ -9,13 +9,13 @@ const ESTIMATED_CHARS_PER_TOKEN: f64 = 4.0;
 
 #[derive(Default)]
 pub(super) struct JobMetrics {
-    pub(super) crawl_count: Option<i64>,
+    pub(super) source_count: Option<i64>,
     pub(super) extract_count: Option<i64>,
     pub(super) average_pages_per_second: Option<f64>,
     pub(super) average_crawl_duration_seconds: Option<f64>,
     pub(super) average_embedding_duration_seconds: Option<f64>,
-    pub(super) average_overall_crawl_duration_seconds: Option<f64>,
-    pub(super) longest_crawl: Option<serde_json::Value>,
+    pub(super) average_overall_source_duration_seconds: Option<f64>,
+    pub(super) longest_source: Option<serde_json::Value>,
     pub(super) most_chunks: Option<serde_json::Value>,
     pub(super) total_chunks: Option<i64>,
     pub(super) total_docs: Option<i64>,
@@ -33,8 +33,8 @@ pub(super) struct JobMetrics {
     pub(super) suggest_count: Option<i64>,
     // Temporal / freshness metrics
     pub(super) last_indexed_secs_ago: Option<i64>,
-    pub(super) crawls_last_24h: Option<i64>,
-    pub(super) crawls_last_7d: Option<i64>,
+    pub(super) sources_last_24h: Option<i64>,
+    pub(super) sources_last_7d: Option<i64>,
     pub(super) chunks_per_day_7d: Vec<serde_json::Value>,
 }
 
@@ -62,19 +62,19 @@ pub(super) async fn collect_job_metrics(cfg: &Config) -> JobMetrics {
 async fn collect_sqlite_metrics(pool: &SqlitePool) -> JobMetrics {
     let mut m = JobMetrics::default();
 
-    m.crawl_count = count_completed_kind(pool, "source").await;
-    m.embed_count = m.crawl_count;
+    m.source_count = count_completed_kind(pool, "source").await;
+    m.embed_count = m.source_count;
     m.extract_count = count_completed_kind(pool, "extract").await;
 
     m.average_crawl_duration_seconds = avg_duration_secs_for_kind(pool, "source").await;
     m.average_embedding_duration_seconds = m.average_crawl_duration_seconds;
-    m.average_overall_crawl_duration_seconds = m.average_crawl_duration_seconds;
+    m.average_overall_source_duration_seconds = m.average_crawl_duration_seconds;
 
     m.average_pages_per_second = avg_pages_per_second(pool).await;
 
     m.last_indexed_secs_ago = last_indexed_secs_ago(pool).await;
-    m.crawls_last_24h = recent_completed_kind(pool, "source", 86_400_000).await;
-    m.crawls_last_7d = recent_completed_kind(pool, "source", 7 * 86_400_000).await;
+    m.sources_last_24h = recent_completed_kind(pool, "source", 86_400_000).await;
+    m.sources_last_7d = recent_completed_kind(pool, "source", 7 * 86_400_000).await;
 
     let (total_docs, total_chunks) = embed_totals(pool).await;
     m.total_docs = total_docs;
@@ -82,7 +82,7 @@ async fn collect_sqlite_metrics(pool: &SqlitePool) -> JobMetrics {
     m.avg_chunk_tokens_estimate = Some(estimated_avg_chunk_tokens());
     m.avg_doc_tokens_estimate = estimated_avg_doc_tokens(total_docs, total_chunks);
     m.most_chunks = most_chunks_job(pool).await;
-    m.longest_crawl = longest_crawl_job(pool).await;
+    m.longest_source = longest_source_job(pool).await;
 
     m
 }
@@ -196,7 +196,7 @@ async fn most_chunks_job(pool: &SqlitePool) -> Option<serde_json::Value> {
     row.and_then(|(id, chunks)| chunks.map(|c| serde_json::json!({"job_id": id, "chunks": c})))
 }
 
-async fn longest_crawl_job(pool: &SqlitePool) -> Option<serde_json::Value> {
+async fn longest_source_job(pool: &SqlitePool) -> Option<serde_json::Value> {
     let q = "SELECT job_id, (julianday(finished_at) - julianday(started_at)) * 86400.0 AS secs \
               FROM jobs \
               WHERE kind='source' AND status='completed' \

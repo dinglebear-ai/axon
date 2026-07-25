@@ -3789,3 +3789,159 @@ container_allowed = false
 toml_destination = ""
 compatibility = "advanced"
 reason = "Host-side embedding experiment cache override used by scripts; not Axon runtime config."
+
+[[env]]
+key = "AXON_SOURCE_JOB_CONCURRENCY_LIMIT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "docs", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "pipeline.max-active-source-jobs"
+compatibility = "warn-env-override"
+reason = "Caps concurrently running source jobs across every family plus map. Renamed from AXON_CRAWL_JOB_CONCURRENCY_LIMIT; canonical TOML spelling is pipeline.max-active-source-jobs."
+
+[[env]]
+key = "AXON_CRAWL_JOB_CONCURRENCY_LIMIT"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = "pipeline.max-active-source-jobs"
+compatibility = "warn-env-override"
+reason = "Removed clean-break name. The knob gated every source job kind, not only crawls. Replaced by AXON_SOURCE_JOB_CONCURRENCY_LIMIT / pipeline.max-active-source-jobs."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_EVENT_DAYS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.event-retention-days"
+compatibility = "warn-env-override"
+reason = "Retention window for job events. Deletes operator data on a schedule."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_FAILED_EVENT_DAYS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.failed-event-retention-days"
+compatibility = "warn-env-override"
+reason = "Retention window for failed job events. Deletes operator data on a schedule."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_TERMINAL_DAYS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.terminal-retention-days"
+compatibility = "warn-env-override"
+reason = "Retention window for terminal job rows. Deletes operator data on a schedule."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_PROVIDER_HEALTH_DAYS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.provider-health-retention-days"
+compatibility = "warn-env-override"
+reason = "Retention window for provider health samples. Deletes operator data on a schedule."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_ARTIFACT_DAYS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.artifact-retention-days"
+compatibility = "warn-env-override"
+reason = "Retention window for job artifacts. Deletes operator data on a schedule."
+
+[[env]]
+key = "AXON_JOBS_RETENTION_SWEEP_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.retention-sweep-secs"
+compatibility = "warn-env-override"
+reason = "Interval between retention sweeps that apply the jobs.*-retention-days windows."
+
+[[env]]
+key = "AXON_JOBS_INTERACTIVE_STARVATION_SLO_SECS"
+classification = "move-toml"
+runtime_placement = "not-runtime"
+surfaces = ["src", "env-template"]
+secret = false
+url_or_path = false
+container_allowed = true
+toml_destination = "jobs.interactive-starvation-slo-secs"
+compatibility = "warn-env-override"
+reason = "Starvation SLO for the interactive job lane. Currently inert: no transport can set JobPriority::Interactive."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_DELEGATE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_LOCAL_BIN"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
+
+[[env]]
+key = "AXON_RUSTC_WRAPPER_NO_SCCACHE"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."

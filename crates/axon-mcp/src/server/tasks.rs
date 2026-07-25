@@ -182,12 +182,21 @@ fn authorize_task_tool_call<'a>(
     // effective scope as the synchronous dispatch path.
     let base_required_scope = server_authz::required_scope_for_tool("axon", &action, &subaction);
     let required_scope = server_authz::required_scope_with_mutates_if(&action, base_required_scope);
+    // CWE-863 fix: mirrors the `is_elevated` branch in `server.rs::call_tool`
+    // — when `mutates_if_upgrade` elevated the requirement, this deferred
+    // task-tool path must use the same strict `check_scope_explicit`, not
+    // the broad `check_scope`, or the elevation is a silent no-op here too.
+    let is_elevated = server_authz::mutates_if_upgrade(&action).is_some();
     match (auth, required_scope) {
         (Some(_), Some("__deny__")) => Err(ErrorData::invalid_request(
             format!("forbidden: unknown action `{action}`"),
             None,
         )),
         (Some(auth_ctx), None) => Ok(Some(auth_ctx)),
+        (Some(auth_ctx), Some(required_scope)) if is_elevated => {
+            server_authz::check_scope_explicit(auth_ctx, required_scope, &action)?;
+            Ok(Some(auth_ctx))
+        }
         (Some(auth_ctx), Some(required_scope)) => {
             server_authz::check_scope(auth_ctx, required_scope, &action)?;
             Ok(Some(auth_ctx))
@@ -201,6 +210,13 @@ fn authorize_task_tool_call<'a>(
 /// `caller_auth_snapshot` construction for the `enqueue_task` (rmcp Tasks)
 /// path, which receives its own `RequestContext` directly instead of going
 /// through the `CURRENT_CALLER_AUTH_SNAPSHOT` task-local.
+///
+/// Visibility ceiling comes from `axon_authz::VisibilityPolicy`, not a
+/// hardcoded `Internal` — mirrors `axon-web`'s `caller_context_from_auth`
+/// (crates/axon-web/src/server/handlers/sources.rs). A remote MCP caller is
+/// never `trusted_local`, so only callers who additionally hold `axon:admin`
+/// get `Internal`; every other remote caller is capped at `Public`, matching
+/// the identical REST caller.
 fn caller_auth_snapshot_from_auth_context(
     auth_ctx: &lab_auth::AuthContext,
 ) -> axon_api::source::AuthSnapshot {
@@ -209,20 +225,19 @@ fn caller_auth_snapshot_from_auth_context(
     } else {
         axon_api::source::AuthMode::Oauth
     };
-    axon_api::source::AuthSnapshot::from_caller(
-        &axon_api::source::CallerContext {
-            caller_id: Some(auth_ctx.sub.clone()),
-            transport: axon_api::source::TransportKind::Mcp,
-            trusted_local: false,
-            scopes: auth_ctx.scopes.clone(),
-            visibility_ceiling: axon_api::source::Visibility::Internal,
-            auth_mode,
-            token_id: None,
-            display_name: None,
-        },
-        axon_api::source::Visibility::Internal,
-        "runtime",
-    )
+    let mut caller = axon_api::source::CallerContext {
+        caller_id: Some(auth_ctx.sub.clone()),
+        transport: axon_api::source::TransportKind::Mcp,
+        trusted_local: false,
+        scopes: auth_ctx.scopes.clone(),
+        visibility_ceiling: axon_api::source::Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    let ceiling = axon_authz::VisibilityPolicy::new().ceiling_for(&caller);
+    caller.visibility_ceiling = ceiling;
+    axon_api::source::AuthSnapshot::from_caller(&caller, ceiling, "runtime")
 }
 
 fn authorize_task_lifecycle(

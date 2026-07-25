@@ -20,7 +20,6 @@ just test
 Behavior:
 - Uses `cargo nextest` when available.
 - Falls back to `cargo test` if `cargo-nextest` is not installed.
-- Skips `worker_e2e` tests.
 - Enforces lockfile reproducibility (`--locked`).
 
 ### Fastest inner loop (lib-focused)
@@ -29,18 +28,18 @@ Behavior:
 just test-fast
 ```
 
-Use while iterating on library logic; excludes `worker_e2e`.
+Use while iterating on library logic; scoped to `--lib` tests only.
 
-### Infra lane (explicit)
-Use this when touching ignored infra-backed tests:
+### Infra lane (no-op placeholder)
 
 ```bash
 just test-infra
 ```
 
-Behavior:
-- Runs ignored `worker_e2e` tests explicitly.
-- Requires local infra dependencies to be reachable.
+`worker_e2e` matches zero tests in this workspace — the recipe is currently a
+no-op that prints a notice and exits. It is kept as a stable command name for
+when an ignored infra-backed suite is reintroduced; there is nothing to run
+today.
 
 ### REST/MCP smoke lane
 
@@ -207,8 +206,7 @@ just verify
 
 ## CI Mapping
 
-- `test` job: standard Rust test lane (`cargo test --all --locked --features test-helpers -- --skip worker_e2e`) plus ignored CLI infra tests. The workflow still declares legacy Postgres/Redis/RabbitMQ service containers, but the current runtime does not require them.
-- `test-infra` job: scheduled/manual-only lane, triggered by schedule or `workflow_dispatch` input `run_infra_tests=true`. Runs `just test-infra`; current ignored worker tests should not add a non-SQLite job backend dependency.
+- `test` job: `cargo nextest run --workspace --locked --features test-helpers`, plus ignored `cli_*` infra tests, ignored `github_integration_*` tests, and the ask-quality regression fixture check. There is no separate `test-infra` job — `worker_e2e` matches zero tests, so `just test-infra` (see above) is a no-op and CI does not schedule it.
 - `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
 - `mcp-smoke` job: builds the release binary, starts `docker-compose.prod.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
 - `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
@@ -269,10 +267,6 @@ just coverage-branch
 
 ## Common Failure Modes
 
-### `worker_e2e` tests not running
-- Cause: They are intentionally `#[ignore]` in default test lane.
-- Fix: Run `just test-infra`.
-
 ### Integration tests silently skipping
 - Cause: the relevant `AXON_TEST_*` URL for that suite is unset.
 - Fix: start the needed service and set the matching env var. For Qdrant, use `just services-up` and `AXON_TEST_QDRANT_URL=http://127.0.0.1:53333`.
@@ -288,6 +282,5 @@ just coverage-branch
 
 ## Pull Request Checklist (Testing)
 - Ran `just test` after code changes.
-- Ran `just test-infra` when changing ignored worker/queue/DB integration paths and the required external services are available.
 - Ran `just services-up && just test` when changing Qdrant/TEI/Chrome-backed integration behavior.
 - Ran `just verify` before opening/updating PR.

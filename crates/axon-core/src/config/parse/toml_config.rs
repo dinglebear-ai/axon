@@ -370,30 +370,19 @@ pub(super) struct TomlMcpEmbedSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlWorkersSection {
-    /// Parallel ingest worker lanes.
-    pub ingest_lanes: Option<usize>,
-    /// Parallel embed worker lanes.
-    pub embed_lanes: Option<usize>,
     /// Maximum concurrent jobs the unified worker runs at once.
     pub unified_worker_concurrency: Option<usize>,
-    /// Maximum concurrent site-scope source jobs the unified worker runs at
-    /// once, independent of `unified_worker_concurrency` (crawl jobs share
-    /// one Chrome instance).
-    pub crawl_job_concurrency_limit: Option<usize>,
+    /// Maximum concurrent `Source` jobs (every source job kind, not just
+    /// web/crawl) the unified worker runs at once, independent of
+    /// `unified_worker_concurrency`. Canonical TOML spelling:
+    /// `pipeline.max-active-source-jobs`.
+    pub source_job_concurrency_limit: Option<usize>,
     /// Per-document embed timeout in seconds.
     pub embed_doc_timeout_secs: Option<u64>,
     /// Queue summary interval in seconds.
     pub queue_summary_secs: Option<u64>,
     /// Buffered Qdrant points before flush.
     pub qdrant_point_buffer: Option<usize>,
-    /// Crawl queue cap (0 = unlimited).
-    pub max_pending_crawl_jobs: Option<usize>,
-    /// Embed queue cap (0 = unlimited).
-    pub max_pending_embed_jobs: Option<usize>,
-    /// Extract queue cap (0 = unlimited).
-    pub max_pending_extract_jobs: Option<usize>,
-    /// Ingest queue cap (0 = unlimited).
-    pub max_pending_ingest_jobs: Option<usize>,
     /// Retention window (days) for terminal unified job rows.
     pub jobs_retention_terminal_days: Option<i64>,
     /// Retention window (days) for non-failed `job_events` rows.
@@ -433,8 +422,6 @@ pub(super) struct TomlWorkersSection {
     /// Seconds pending jobs may starve (zero running) before the liveness
     /// watchdog kicks/respawns the lane. 0 disables.
     pub worker_starvation_secs: Option<i64>,
-    /// Maximum wall-clock seconds a single crawl job may run before abort. 0 disables.
-    pub crawl_job_timeout_secs: Option<i64>,
     /// Maximum reclaim attempts before a stale-running job is dead-lettered
     /// (marked failed) instead of re-queued. 0 disables the cap.
     pub max_job_attempts: Option<i64>,

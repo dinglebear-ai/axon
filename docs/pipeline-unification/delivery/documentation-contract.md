@@ -161,6 +161,9 @@ docs/
       contradiction-review.md
       cutover-contract.md
       surface-removal-contract.md
+    plans/
+      finish-unification-metaplan.md
+      ...dated concrete plan files...
     ...implementation contracts...
 ```
 

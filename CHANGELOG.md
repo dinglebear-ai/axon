@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.0] - 2026-07-25
+
+Remediates 28 of the 56 findings from the 2026-07-24 pipeline-unification
+review. Remaining work is tracked in issue #465.
+
+### Fixed
+- **Worker starvation.** The job claim loop awaited its concurrency permit
+  *inside* the loop while holding an already-claimed job, so `extract`,
+  `watch`, `prune`, and `graph` jobs were never claimed while source jobs were
+  queued. Restructured to acquire capacity before claiming.
+- **Duplicate job execution.** A source job parked waiting for a slot was
+  marked `running` without a heartbeat, so the 360s watchdog requeued it while
+  its task was still executing. Resolved by the claim-loop restructure.
+- **Local source jobs were unrecoverable.** Indexing a local path created a
+  second, orphaned job whose stored request could not be parsed by the worker,
+  so it could never be retried or recovered. A local index now produces exactly
+  one job.
+- **Large git repositories could exhaust memory.** Non-web sources materialized
+  the entire changed file set before preparing it; acquisition now streams in
+  batches.
+- `axon stats` reported `n/a` for the largest-document job instead of the real
+  value.
+
+### Security
+- MCP callers were given an `internal` visibility ceiling regardless of scope,
+  exposing local filesystem paths and provider internals that the equivalent
+  REST caller did not receive. MCP now applies the same visibility policy as
+  REST.
+- The write-scope elevation on `/v1/search` and `/v1/research` never took
+  effect, so a read-only token could enqueue indexing work. These routes now
+  require an explicit `axon:write` scope. Tokens carrying both scopes (the
+  default) are unaffected.
+
+### Changed
+- **Breaking:** `[pipeline].crawl-job-concurrency-limit` is now
+  `[pipeline].max-active-source-jobs`, and its default changes from `1` to `4`.
+  The old knob throttled every source family — not just crawls — so indexing
+  ran effectively single-threaded.
+- **Breaking:** `[pipeline].ingest-lanes`, `[pipeline].embed-lanes`,
+  `[pipeline].max-pending-crawl-jobs`, `[pipeline].max-pending-embed-jobs`,
+  `[pipeline].max-pending-extract-jobs`, `[pipeline].max-pending-ingest-jobs`,
+  and `[jobs].crawl-job-timeout-secs` are removed. None of them were ever read
+  at runtime. Axon now refuses to start if any are present, naming the
+  replacement. Remove them from `config.toml` before upgrading.
+- The seven `[jobs]` retention settings are documented for the first time.
+  They delete job events, artifacts, and terminal job rows on a schedule.
+
+### Removed
+- Dead code that implemented removed surfaces: the unmounted duplicate REST
+  router, the `code-search-watch` service, an unused ledger-free write path,
+  and a stale top-level `migrations/` directory. Roughly 4,500 lines.
+
 ## [7.1.5] - 2026-07-19
 
 ### Fixed
@@ -96,6 +148,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [7.0.0] - 2026-07-17
 
+This is a clean-break major release for the issue #298 pipeline unification.
+It removes every source-family-specific command, action, route, and config
+key in favor of the unified `SourceRequest`/`source` surface across CLI,
+REST, and MCP. There is no compatibility shim and no automatic data
+migration for any item below — see
+`docs/reference/cli/commands.md#removed-commands` for the CLI table and
+`xtask/src/schemas/removed_registry.rs` for the full machine-readable
+registry (CLI commands, MCP actions, REST routes, config keys, and DTO
+fields) that this entry is generated from.
+
 ### Changed
 
 - Complete the issue #298 pipeline unification: one `SourceRequest` pipeline
@@ -104,9 +166,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   CLI/REST/MCP surfaces.
 - **Breaking:** artifact-bearing responses return opaque artifact IDs instead
   of server filesystem paths across CLI, REST, MCP, web, and Palette.
+- **Breaking:** every source-family-specific CLI command is removed and now
+  fails immediately with a reserved-token routing error instead of running:
+  `axon crawl` (use `axon <url> --scope site`), `axon embed` (use
+  `axon <source>`), `axon ingest` (use `axon <source>`), `axon code-search`
+  (use `axon query <query> --content-kind code --freshness committed`),
+  `axon code-search-watch` (use `axon watch <path>`), `axon purge` and
+  `axon dedupe` (use `axon prune plan ...` then `axon prune exec ... --confirm`),
+  `axon refresh` (use `axon <source>`), and `axon fresh` (use `axon watch
+  ...`).
+- **Breaking:** the matching MCP `axon` tool actions are removed: `embed`,
+  `ingest`, `scrape`, `crawl` (use `source` with `scope=page`/`scope=site`),
+  `code_search` and `code_search_watch` (use `query` with code filters plus
+  committed freshness, and `watch`), `vertical_scrape` (use adapter
+  capabilities plus `source`), and `purge`/`dedupe` (use `prune`).
+- **Breaking:** the matching REST routes are removed with no redirect:
+  `POST /v1/embed`, `POST /v1/ingest`, `POST /v1/scrape`, `POST /v1/crawl`
+  (use `POST /v1/sources`), `POST /v1/purge`, `POST /v1/dedupe`,
+  `POST /v1/prune/purge`, `POST /v1/prune/dedupe` (use
+  `POST /v1/prune/plan` then `POST /v1/prune/exec`),
+  `POST /v1/watch/{id}/run` (use `POST /v1/watches/{watch_id}/exec`), and
+  `GET /v1/artifacts/{path}` (use `GET /v1/artifacts/{artifact_id}` or
+  `GET /v1/artifacts/{artifact_id}/content`).
 - **Breaking:** web source options use the canonical `headers` object plus
   `respect_robots`, `cache_policy`, and per-extractor
   `vertical_cache_ttl_secs` keys.
+- **Breaking:** `config.toml` moves from the old flat/mixed section shape to
+  the ~20-section contract in
+  `docs/pipeline-unification/configuration/config-contract.md` (top-level
+  `server`, `sources`, `pipeline`, `jobs`, `providers`, `retrieval`, `ask`,
+  `crawl`, `watch`, `memory`, `graph`, `artifacts`, `prune`, `observability`,
+  `security`, and more). Every section is parsed with
+  `#[serde(deny_unknown_fields)]`, so a `config.toml` still carrying an old
+  `[workers]`, `[qdrant]`, `[tei]`, `[embed]`, `[scrape]`, `[chunking]`,
+  `[chrome]`, `[build]`, `[mcp]`, `[endpoints]`, or `[code-search]` section
+  now **hard-fails Axon at startup** instead of being silently ignored. Run
+  `axon setup config rewrite` to preview and apply the migration to the new
+  section shape before upgrading a live deployment.
+- **Breaking:** the SQLite job and source-ledger schema is a clean-break
+  epoch with no migration path from pre-7.0 rows. Upgrading assumes empty
+  durable-job and source-ledger stores plus a full reindex, not an in-place
+  data migration; do not deploy this build against a pre-7.0 `jobs.db`
+  without planning for that reindex.
+- **Breaking:** request DTO fields with no replacement shim:
+  `EmbedRequest.input`/`.source_type`,
+  `IngestRequest.target`/`.source_type`/`.include_source`,
+  `CrawlRequest.urls`, `ScrapeRequest.url`, `PurgeRequest.target`/`.prefix`,
+  and `CodeSearchRequest.cwd`/`.path_prefix`/`.no_freshness` all move onto
+  the corresponding `SourceRequest`/`QueryRequest`/`PruneSelector` fields.
+- Also removed, folded into typed `config.toml` keys or their unqualified
+  `AXON_*` equivalent: the `AXON_MCP_*`-prefixed env vars (`AXON_MCP_HTTP_HOST`,
+  `AXON_MCP_HTTP_PORT`, `AXON_MCP_HTTP_TOKEN`, `AXON_MCP_AUTH_MODE`,
+  `AXON_MCP_PUBLIC_URL`, `AXON_MCP_GOOGLE_CLIENT_ID`,
+  `AXON_MCP_GOOGLE_CLIENT_SECRET`, `AXON_MCP_AUTH_ADMIN_EMAIL`,
+  `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS`, `AXON_MCP_ALLOWED_ORIGINS`) plus
+  `AXON_COLLECTION`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`,
+  `AXON_INGEST_LANES`, `AXON_EMBED_DOC_TIMEOUT_SECS`,
+  `AXON_WATCH_TICK_SECS`, and `AXON_WATCH_LEASE_SECS`.
+- Generated `web`, `palette`, `android`, and `chrome-extension` API clients
+  drop their `embed`/`ingest`/`scrape`/`crawl` operations in favor of
+  `create_source`, drop `purge`/`dedupe`/`prune_purge`/`prune_dedupe` in
+  favor of `prune_plan`/`prune_exec`, and drop `watch_run` in favor of
+  `exec_watch`.
 - Source progress events carry structured source identity, generation, stage
   counts, current item, warnings, and errors on both web and non-web paths.
 

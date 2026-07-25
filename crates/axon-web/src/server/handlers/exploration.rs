@@ -1,4 +1,4 @@
-use axon_authz::scope_satisfies;
+use axon_authz::has_explicit_scope;
 use axon_core::config::{Config, ConfigOverrides};
 use axon_core::http::{normalize_url, validate_url};
 use axon_services as services;
@@ -36,15 +36,28 @@ use super::rag::required_text;
 /// (mutating) behavior. `LoopbackDev` has no `AuthContext` and is locally
 /// trusted, matching every other elevation check in this crate.
 ///
-/// Mirrors `axon_mcp::server::server_authz::mutates_if_upgrade` — see that
-/// function's doc comment for why `ask`/`evaluate`/`suggest`/`summarize` stay
-/// ungated (they do not enqueue jobs in the current runtime).
+/// Uses [`has_explicit_scope`], not `scope_satisfies` (CWE-863 fix). The
+/// broad `scope_satisfies` helper deliberately treats `axon:read` and
+/// `axon:write` as interchangeable for ordinary read/write routes — a
+/// documented OAuth dual-scope compatibility affordance (see
+/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
+/// paragraph and `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// "Scope Rules"). If this elevation check used `scope_satisfies`, a
+/// read-only caller (`axon:read` only) would already satisfy the
+/// `axon:write` requirement, making the whole elevation a silent no-op —
+/// exactly the hole this function exists to close. `has_explicit_scope`
+/// requires the caller to hold `axon:write` literally.
+///
+/// Mirrors `axon_mcp::server::server_authz::mutates_if_upgrade` /
+/// `check_scope_explicit` — see that function's doc comment for why
+/// `ask`/`evaluate`/`suggest`/`summarize` stay ungated (they do not enqueue
+/// jobs in the current runtime).
 pub(super) fn require_mutates_if_write_scope(
     auth: Option<&Extension<AuthContext>>,
 ) -> Result<(), HttpError> {
     match auth {
         None => Ok(()),
-        Some(Extension(auth_ctx)) if scope_satisfies(&auth_ctx.scopes, "axon:write") => Ok(()),
+        Some(Extension(auth_ctx)) if has_explicit_scope(&auth_ctx.scopes, "axon:write") => Ok(()),
         Some(_) => Err(HttpError::new(
             StatusCode::FORBIDDEN,
             "forbidden",
@@ -56,6 +69,10 @@ pub(super) fn require_mutates_if_write_scope(
 #[path = "exploration_stream.rs"]
 pub(crate) mod exploration_stream;
 pub(crate) use exploration_stream::{research_stream, summarize_stream};
+
+#[cfg(test)]
+#[path = "exploration_tests.rs"]
+mod tests;
 
 pub(super) type WebState = (super::super::state::AppState, Arc<Config>);
 

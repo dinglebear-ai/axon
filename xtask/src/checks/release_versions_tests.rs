@@ -36,7 +36,6 @@ fn reads_component_manifest() {
                     "Cargo.toml".to_owned(),
                     "Cargo.lock".to_owned(),
                     "build.rs".to_owned(),
-                    "migrations".to_owned(),
                     "apps/web".to_owned(),
                     "rust-toolchain.toml".to_owned(),
                     "vendor".to_owned(),

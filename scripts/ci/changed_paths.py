@@ -85,7 +85,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     )
     docs = any_match(
         paths,
-        lambda p: starts(p, "docs/") or p in {"README.md", "CHANGELOG.md"} or p in DOC_CI_HELPER_SCRIPTS,
+        lambda p: starts(p, "docs/", "openwiki/")
+        or p in {"README.md", "CHANGELOG.md"}
+        or p in DOC_CI_HELPER_SCRIPTS,
     )
     # Version-bearing root docs only. version-sync (which recompiles xtask, ~5min)
     # keys off this rather than the broad `docs` signal, so prose-only doc changes

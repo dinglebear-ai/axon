@@ -1,5 +1,5 @@
 use crate::auth::AuthPolicy;
-use axon_authz::scope_satisfies;
+use axon_authz::{has_explicit_scope, scope_satisfies};
 use lab_auth::AuthContext;
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 
@@ -313,6 +313,44 @@ pub(super) fn check_scope(
     ))
 }
 
+/// Strict counterpart to [`check_scope`] for conditional scope *elevation*
+/// checks only (see [`mutates_if_upgrade`]).
+///
+/// `check_scope` calls `axon_authz::scope_satisfies`, which deliberately
+/// treats `axon:read` and `axon:write` as interchangeable for ordinary broad
+/// read/write route gating (OAuth dual-scope compatibility — see
+/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
+/// paragraph and `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// "Scope Rules"). That widening is correct for ordinary routes, but it makes
+/// `mutates_if_upgrade`'s elevation a silent no-op if reused here: a caller
+/// holding only `axon:read` already "satisfies" a required `axon:write`
+/// before the elevation even matters, defeating the entire point of
+/// upgrading `search`/`research` to `axon:write` (CWE-863). This function
+/// uses `axon_authz::has_explicit_scope` instead, which requires the caller
+/// to hold the exact elevated scope with no broad-scope widening. Use this
+/// only where [`required_scope_with_mutates_if`] actually applied an
+/// elevation — use `check_scope` for every ordinary action/subaction scope
+/// check.
+pub(super) fn check_scope_explicit(
+    auth: &AuthContext,
+    required_scope: &str,
+    action: &str,
+) -> Result<(), ErrorData> {
+    if has_explicit_scope(&auth.scopes, required_scope) {
+        return Ok(());
+    }
+    tracing::warn!(
+        subject = %auth.sub,
+        action = %action,
+        required_scope = %required_scope,
+        "MCP tool invocation denied: insufficient scope (explicit elevation check)"
+    );
+    Err(ErrorData::invalid_request(
+        format!("forbidden: requires scope: {required_scope}"),
+        None,
+    ))
+}
+
 /// Map an axon tool action and subaction to the minimum required scope.
 pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str> {
     if action == "reset" {
@@ -423,6 +461,14 @@ pub(super) fn required_scope_for_tool(
 /// none of them enqueue a job in the current runtime, so there is nothing to
 /// upgrade yet. Extend this predicate (ideally to inspect the parsed request
 /// once a real per-call opt-out/opt-in option exists) if that changes.
+///
+/// **CWE-863 note:** callers MUST gate the scope this returns with
+/// [`check_scope_explicit`], not [`check_scope`]. `check_scope` calls
+/// `axon_authz::scope_satisfies`, which treats `axon:read` and `axon:write`
+/// as interchangeable for ordinary broad routes — reusing it here would make
+/// this whole elevation a silent no-op, since a caller holding only
+/// `axon:read` already "satisfies" `axon:write` under that broad rule. See
+/// `check_scope_explicit`'s doc comment.
 pub fn mutates_if_upgrade(action: &str) -> Option<&'static str> {
     match action {
         "search" | "research" => Some("axon:write"),

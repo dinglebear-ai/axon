@@ -110,20 +110,20 @@ fn config_default_ignores_env_tuning_knobs() {
     with_env_saved(
         &[
             "TEI_MAX_RETRIES",
-            "AXON_INGEST_LANES",
+            "AXON_UNIFIED_WORKER_CONCURRENCY",
             "AXON_HNSW_EF_SEARCH",
         ],
         || {
             unsafe {
                 env::set_var("TEI_MAX_RETRIES", "19");
-                env::set_var("AXON_INGEST_LANES", "12");
+                env::set_var("AXON_UNIFIED_WORKER_CONCURRENCY", "12");
                 env::set_var("AXON_HNSW_EF_SEARCH", "256");
             }
 
             let cfg = Config::default();
 
             assert_eq!(cfg.tei_max_retries, 5);
-            assert_eq!(cfg.ingest_lanes, 2);
+            assert_eq!(cfg.unified_worker_concurrency, 8);
             assert_eq!(cfg.hnsw_ef_search, 128);
         },
     );
@@ -138,7 +138,7 @@ fn config_default_minimal_applies_toml_tuning_when_env_unset() {
         &[
             "AXON_CONFIG_PATH",
             "TEI_MAX_RETRIES",
-            "AXON_INGEST_LANES",
+            "AXON_UNIFIED_WORKER_CONCURRENCY",
             "AXON_HNSW_EF_SEARCH",
         ],
         || {
@@ -148,20 +148,20 @@ fn config_default_minimal_applies_toml_tuning_when_env_unset() {
                 .expect("temp config");
             writeln!(
                 file,
-                "[providers.embedding]\nmax-retries = 4\n[pipeline]\ningest-lanes = 6\n[providers.vector]\nhnsw-ef = 300"
+                "[providers.embedding]\nmax-retries = 4\n[pipeline]\nunified-worker-concurrency = 6\n[providers.vector]\nhnsw-ef = 300"
             )
             .expect("write config");
             unsafe {
                 env::set_var("AXON_CONFIG_PATH", file.path());
                 env::remove_var("TEI_MAX_RETRIES");
-                env::remove_var("AXON_INGEST_LANES");
+                env::remove_var("AXON_UNIFIED_WORKER_CONCURRENCY");
                 env::remove_var("AXON_HNSW_EF_SEARCH");
             }
 
             let cfg = Config::default_minimal();
 
             assert_eq!(cfg.tei_max_retries, 4);
-            assert_eq!(cfg.ingest_lanes, 6);
+            assert_eq!(cfg.unified_worker_concurrency, 6);
             assert_eq!(cfg.hnsw_ef_search, 300);
         },
     );

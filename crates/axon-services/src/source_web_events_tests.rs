@@ -11,11 +11,23 @@ use std::sync::Arc;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_api::source::*;
 use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorMode, FakeVectorStore};
 
 use super::{WebSourceIndexInput, index_web_source};
+
+fn test_reservations(provider_id: &str, kind: ProviderKind) -> Arc<ProviderReservationManager> {
+    Arc::new(ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new(provider_id),
+        provider_kind: kind,
+        capacity: 4,
+        interactive_reserve: 1,
+        cooldown_after_failures: 1,
+        cooldown_secs: 30,
+    }))
+}
 
 fn input(store: Arc<FakeJobWatchStore>, job_id: JobId) -> WebSourceIndexInput {
     let providers = Arc::new(FakeAdapterProviders::new());
@@ -40,6 +52,8 @@ fn input(store: Arc<FakeJobWatchStore>, job_id: JobId) -> WebSourceIndexInput {
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: Some(store),
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     }
 }
 

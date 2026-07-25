@@ -4,6 +4,7 @@ use axon_adapters::boundary::FakeAdapterProviders;
 use axon_api::source::*;
 use axon_core::boundary::{ArtifactStore, DocumentCache, FakeCoreBoundaries};
 use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 
@@ -11,6 +12,17 @@ use crate::source::prune::drain_cleanup_debt_full_with_boundaries;
 
 use super::artifacts::{ARTIFACT_METADATA_KEY, WebArtifactIndex, record_artifacts_on_manifest};
 use super::{WebSourceIndexInput, index_web_source};
+
+fn test_reservations(provider_id: &str, kind: ProviderKind) -> Arc<ProviderReservationManager> {
+    Arc::new(ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new(provider_id),
+        provider_kind: kind,
+        capacity: 4,
+        interactive_reserve: 1,
+        cooldown_after_failures: 1,
+        cooldown_secs: 30,
+    }))
+}
 
 fn web_input(core: FakeCoreBoundaries, output: OutputPolicy) -> WebSourceIndexInput {
     web_input_with_text(
@@ -53,6 +65,8 @@ fn web_input_with_text(
         artifact_store: Arc::new(core.clone()),
         document_cache: Arc::new(core),
         event_store: None,
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     }
 }
 

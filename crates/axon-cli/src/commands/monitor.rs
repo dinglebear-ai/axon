@@ -48,8 +48,6 @@ pub struct JobMonitorEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunks: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub embed_job_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -184,7 +182,6 @@ fn detect_one(
             job.result_json.as_ref(),
             &["chunks_embedded", "chunks", "chunk_count"],
         ),
-        embed_job_id: metric_string(job.result_json.as_ref(), &["embed_job_id", "embed_job"]),
         error: job.error_text.clone(),
         created_at: job.created_at,
         updated_at: job.updated_at,
@@ -229,16 +226,6 @@ fn metric_u64(result_json: Option<&Value>, keys: &[&str]) -> Option<u64> {
     let result_json = result_json?;
     keys.iter()
         .find_map(|key| result_json.get(*key).and_then(Value::as_u64))
-}
-
-fn metric_string(result_json: Option<&Value>, keys: &[&str]) -> Option<String> {
-    let result_json = result_json?;
-    keys.iter().find_map(|key| {
-        result_json
-            .get(*key)
-            .and_then(Value::as_str)
-            .map(ToString::to_string)
-    })
 }
 
 fn job_target(job: &ServiceJob) -> Option<String> {

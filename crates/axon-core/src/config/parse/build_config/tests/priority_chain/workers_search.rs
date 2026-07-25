@@ -7,65 +7,139 @@ use super::super::*;
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn toml_workers_ingest_lanes_wins_over_default() {
+fn toml_pipeline_max_active_source_jobs_wins_over_default() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\ningest-lanes = 7").unwrap();
+    writeln!(f, "[pipeline]\nmax-active-source-jobs = 7").unwrap();
     let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", f.path());
-        env::remove_var("AXON_INGEST_LANES");
-        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
-    });
-    assert_eq!(got, 7, "TOML ingest-lanes=7 should override default (2)");
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SOURCE_JOB_CONCURRENCY_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_SOURCE_JOB_CONCURRENCY_LIMIT");
+            got = into_config_via_args(&["status"])
+                .unwrap()
+                .source_job_concurrency_limit;
+        },
+    );
+    assert_eq!(
+        got, 7,
+        "TOML max-active-source-jobs=7 should override default (4)"
+    );
 }
 
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn toml_workers_ingest_lanes_clamps_lower_bound() {
+fn toml_pipeline_max_active_source_jobs_clamps_lower_bound() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\ningest-lanes = 0").unwrap();
+    writeln!(f, "[pipeline]\nmax-active-source-jobs = 0").unwrap();
     let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", f.path());
-        env::remove_var("AXON_INGEST_LANES");
-        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
-    });
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SOURCE_JOB_CONCURRENCY_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_SOURCE_JOB_CONCURRENCY_LIMIT");
+            got = into_config_via_args(&["status"])
+                .unwrap()
+                .source_job_concurrency_limit;
+        },
+    );
     assert_eq!(got, 1);
 }
 
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn toml_workers_ingest_lanes_clamps_upper_bound() {
+fn toml_pipeline_max_active_source_jobs_clamps_upper_bound() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\ningest-lanes = 999").unwrap();
+    writeln!(f, "[pipeline]\nmax-active-source-jobs = 999").unwrap();
     let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", f.path());
-        env::remove_var("AXON_INGEST_LANES");
-        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
-    });
-    assert_eq!(got, 16);
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SOURCE_JOB_CONCURRENCY_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("AXON_SOURCE_JOB_CONCURRENCY_LIMIT");
+            got = into_config_via_args(&["status"])
+                .unwrap()
+                .source_job_concurrency_limit;
+        },
+    );
+    assert_eq!(got, 64);
 }
 
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn env_wins_over_toml_for_workers_ingest_lanes() {
+fn env_wins_over_toml_for_pipeline_max_active_source_jobs() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\ningest-lanes = 7").unwrap();
+    writeln!(f, "[pipeline]\nmax-active-source-jobs = 7").unwrap();
     let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_INGEST_LANES"], || unsafe {
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_SOURCE_JOB_CONCURRENCY_LIMIT"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::set_var("AXON_SOURCE_JOB_CONCURRENCY_LIMIT", "12");
+            got = into_config_via_args(&["status"])
+                .unwrap()
+                .source_job_concurrency_limit;
+        },
+    );
+    assert_eq!(
+        got, 12,
+        "env AXON_SOURCE_JOB_CONCURRENCY_LIMIT=12 should override TOML=7"
+    );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_pipeline_removed_keys_are_rejected_with_helpful_error() {
+    let _guard = env_guard();
+    let cases = [
+        ("ingest-lanes = 7", "ingest-lanes"),
+        ("embed-lanes = 6", "embed-lanes"),
+        ("max-pending-crawl-jobs = 10", "max-pending-crawl-jobs"),
+        ("max-pending-embed-jobs = 10", "max-pending-embed-jobs"),
+        ("max-pending-extract-jobs = 10", "max-pending-extract-jobs"),
+        ("max-pending-ingest-jobs = 10", "max-pending-ingest-jobs"),
+        (
+            "crawl-job-concurrency-limit = 2",
+            "crawl-job-concurrency-limit",
+        ),
+    ];
+    for (line, key) in cases {
+        let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+        writeln!(f, "[pipeline]\n{line}").unwrap();
+        with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            let err = into_config_via_args(&["status"]).expect_err("removed key must fail");
+            assert!(
+                err.contains(key),
+                "expected error naming removed key {key}, got: {err}"
+            );
+        });
+    }
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn toml_jobs_crawl_job_timeout_secs_is_rejected_with_helpful_error() {
+    let _guard = env_guard();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(f, "[jobs]\ncrawl-job-timeout-secs = 3600").unwrap();
+    with_env_saved(&["AXON_CONFIG_PATH"], || unsafe {
         env::set_var("AXON_CONFIG_PATH", f.path());
-        env::set_var("AXON_INGEST_LANES", "12");
-        got = into_config_via_args(&["status"]).unwrap().ingest_lanes;
+        let err = into_config_via_args(&["status"]).expect_err("removed key must fail");
+        assert!(
+            err.contains("crawl-job-timeout-secs"),
+            "unexpected error: {err}"
+        );
     });
-    assert_eq!(got, 12, "env AXON_INGEST_LANES=12 should override TOML=7");
 }
 
 #[allow(unsafe_code)]
@@ -211,60 +285,6 @@ fn toml_workers_adaptive_concurrency_rejects_unsupported_knobs() {
 #[allow(unsafe_code)]
 #[serial_test::serial]
 #[test]
-fn toml_workers_embed_lanes_wins_over_default() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nembed-lanes = 6").unwrap();
-    let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", f.path());
-        env::remove_var("AXON_EMBED_LANES");
-        got = into_config_via_args(&["status"]).unwrap().embed_lanes;
-    });
-    assert_eq!(got, 6);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn env_wins_over_toml_for_workers_embed_lanes() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nembed-lanes = 6").unwrap();
-    let mut got = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", f.path());
-        env::set_var("AXON_EMBED_LANES", "9");
-        got = into_config_via_args(&["status"]).unwrap().embed_lanes;
-    });
-    assert_eq!(got, 9);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_workers_embed_lanes_clamps_bounds() {
-    let _guard = env_guard();
-    let mut low = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    let mut high = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(low, "[pipeline]\nembed-lanes = 0").unwrap();
-    writeln!(high, "[pipeline]\nembed-lanes = 999").unwrap();
-    let mut got_low = 0usize;
-    let mut got_high = 0usize;
-    with_env_saved(&["AXON_CONFIG_PATH", "AXON_EMBED_LANES"], || unsafe {
-        env::set_var("AXON_CONFIG_PATH", low.path());
-        env::remove_var("AXON_EMBED_LANES");
-        got_low = into_config_via_args(&["status"]).unwrap().embed_lanes;
-        env::set_var("AXON_CONFIG_PATH", high.path());
-        got_high = into_config_via_args(&["status"]).unwrap().embed_lanes;
-    });
-    assert_eq!(got_low, 1);
-    assert_eq!(got_high, 32);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
 fn toml_workers_queue_summary_secs_allows_disable_and_env_override() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
@@ -323,90 +343,6 @@ fn toml_workers_qdrant_point_buffer_wins_and_clamps() {
     assert_eq!(got, 1024);
     assert_eq!(env_got, 2048);
     assert_eq!(high_got, 16_384);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_workers_max_pending_crawl_clamps_out_of_range() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nmax-pending-crawl-jobs = 99999999").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_CRAWL_JOBS"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_MAX_PENDING_CRAWL_JOBS");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .max_pending_crawl_jobs;
-        },
-    );
-    assert_eq!(got, 10_000, "TOML cap should clamp to 10_000 upper bound");
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_workers_max_pending_embed_wins_over_default() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nmax-pending-embed-jobs = 25").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_EMBED_JOBS"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_MAX_PENDING_EMBED_JOBS");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .max_pending_embed_jobs;
-        },
-    );
-    assert_eq!(got, 25, "TOML embed cap=25 should override default (50)");
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_workers_max_pending_extract_wins_over_default() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nmax-pending-extract-jobs = 11").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_EXTRACT_JOBS"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_MAX_PENDING_EXTRACT_JOBS");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .max_pending_extract_jobs;
-        },
-    );
-    assert_eq!(got, 11);
-}
-
-#[allow(unsafe_code)]
-#[serial_test::serial]
-#[test]
-fn toml_workers_max_pending_ingest_wins_over_default() {
-    let _guard = env_guard();
-    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
-    writeln!(f, "[pipeline]\nmax-pending-ingest-jobs = 13").unwrap();
-    let mut got = 0usize;
-    with_env_saved(
-        &["AXON_CONFIG_PATH", "AXON_MAX_PENDING_INGEST_JOBS"],
-        || unsafe {
-            env::set_var("AXON_CONFIG_PATH", f.path());
-            env::remove_var("AXON_MAX_PENDING_INGEST_JOBS");
-            got = into_config_via_args(&["status"])
-                .unwrap()
-                .max_pending_ingest_jobs;
-        },
-    );
-    assert_eq!(got, 13);
 }
 
 #[allow(unsafe_code)]

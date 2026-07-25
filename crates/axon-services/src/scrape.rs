@@ -1,15 +1,8 @@
-use crate::contract_write::{
-    adhoc_generation, embed_and_upsert_documents, prepare_document, retain_contract_fields,
-    stable_token,
-};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::ScrapeResult;
 use axon_adapters::vertical_registry::dispatch_by_url;
 use axon_api::result::DocumentBackend;
-use axon_api::source::{
-    ArtifactKind, ChunkHint, ContentKind, ContentRef, DocumentId, MetadataMap, ParserHint,
-    PreparedDocument, SourceDocument, SourceId, SourceItemKey, SourceScope,
-};
+use axon_api::source::{ArtifactKind, MetadataMap};
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_core::config::Config;
 use axon_core::http::normalize_url;
@@ -373,107 +366,6 @@ async fn scrape_batch_inner(
         .map(|(_, result)| result)
         .collect();
     Ok(results)
-}
-
-/// Scrape a batch and embed it when `cfg.embed` is true.
-///
-/// This is the shared service entry point for the `/v1` REST scrape endpoint.
-/// It embeds the in-memory scrape result instead of round-tripping through the
-/// output directory, so vertical metadata is preserved in Qdrant payloads.
-#[must_use = "scrape_batch_with_optional_embed returns a Result that should be handled"]
-pub async fn scrape_batch_with_optional_embed(
-    cfg: &Config,
-    urls: &[String],
-    tx: Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<Vec<ScrapeResult>, Box<dyn Error>> {
-    let results = scrape_batch(cfg, urls, tx).await?;
-    if cfg.embed {
-        embed_scrape_results(cfg, &results, "scrape batch embed").await?;
-    }
-    Ok(results)
-}
-
-pub async fn embed_scrape_results(
-    cfg: &Config,
-    results: &[ScrapeResult],
-    label: &'static str,
-) -> Result<(), Box<dyn Error>> {
-    let mut docs = Vec::with_capacity(results.len());
-    for result in results {
-        docs.push(scrape_result_to_prepared_doc(cfg, result).await?);
-    }
-    embed_and_upsert_documents(cfg, &cfg.collection, docs)
-        .await
-        .map_err(|err| -> Box<dyn Error> { format!("{label}: {err}").into() })?;
-    Ok(())
-}
-
-/// Source-family-specific fields this function stamps directly into
-/// `metadata` before building the [`SourceDocument`] (kept via
-/// `retain_contract_fields`). Not exhaustive for the `"web"` family: the
-/// `web_structured_kind`/`web_structured_blob` fields
-/// (`axon_vectors::payload_families::VECTOR_SOURCE_FAMILY_FIELDS`) are added
-/// later, downstream, by `axon_document::preparer::project_structured_payload_metadata`
-/// from `SourceDocument::structured_payload` rather than here.
-const WEB_PAYLOAD_ALLOWED_FIELDS: &[&str] = &["web_title", "web_domain"];
-
-/// Build a [`PreparedDocument`] from a scrape result: a `"web"`-family
-/// [`SourceDocument`] (markdown content, routed to `MarkdownSections`
-/// chunking) run through `DocumentPreparer`.
-///
-/// Behavior note: vertical scrapes can attach structured data via
-/// [`ScrapeResult::structured_for_embedding`]. `axon_document::preparer`
-/// projects that payload to `web_structured_kind`/`web_structured_blob`, the
-/// fields declared by the `"web"` vector payload family. Generic HTML scrapes
-/// usually leave it empty; vertical outputs preserve the richer structured
-/// payload through the same contract path.
-pub async fn scrape_result_to_prepared_doc(
-    cfg: &Config,
-    result: &ScrapeResult,
-) -> anyhow::Result<PreparedDocument> {
-    let _ = cfg; // kept for API stability; structured-data sizing no longer applies here
-    let token = stable_token(&format!("scrape:{}", result.url));
-    let mut metadata = MetadataMap::new();
-    metadata.insert("source_family".to_string(), serde_json::json!("web"));
-    metadata.insert("source_type".to_string(), serde_json::json!("scrape"));
-    metadata.insert("source_kind".to_string(), serde_json::json!("web"));
-    metadata.insert(
-        "source_adapter".to_string(),
-        serde_json::json!("web_scrape"),
-    );
-    metadata.insert(
-        "source_scope".to_string(),
-        serde_json::json!(SourceScope::Page),
-    );
-    if let Some(title) = &result.title {
-        metadata.insert("web_title".to_string(), serde_json::json!(title));
-    }
-    metadata.insert(
-        "web_domain".to_string(),
-        serde_json::json!(axon_core::content::url_to_domain(&result.url)),
-    );
-    retain_contract_fields(&mut metadata, WEB_PAYLOAD_ALLOWED_FIELDS);
-
-    let document = SourceDocument {
-        document_id: DocumentId::new(format!("doc_scrape_{token}")),
-        source_id: SourceId::new(format!("src_scrape_{token}")),
-        source_item_key: SourceItemKey::new(result.url.clone()),
-        canonical_uri: result.url.clone(),
-        content_kind: ContentKind::Markdown,
-        content: ContentRef::InlineText {
-            text: result.markdown.clone(),
-        },
-        metadata,
-        title: result.title.clone(),
-        language: None,
-        path: None,
-        mime_type: None,
-        structured_payload: result.structured_for_embedding.clone(),
-        artifact_id: None,
-        chunk_hints: Vec::<ChunkHint>::new(),
-        parser_hints: Vec::<ParserHint>::new(),
-    };
-    prepare_document(document, adhoc_generation()).map_err(|err| anyhow::anyhow!(err))
 }
 
 #[cfg(test)]

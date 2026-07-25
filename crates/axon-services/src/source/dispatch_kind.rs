@@ -146,6 +146,7 @@ async fn dispatch_local_or_git(
                 auth_snapshot,
                 embed,
                 route,
+                execution,
             )
             .await
         }
