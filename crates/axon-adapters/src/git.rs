@@ -38,8 +38,23 @@ impl GitSourceAdapter {
     pub fn new() -> Self {
         Self
     }
+}
 
-    pub async fn materialize(
+#[async_trait]
+impl SourceAdapter for GitSourceAdapter {
+    fn name(&self) -> &'static str {
+        ADAPTER_NAME
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
+        Ok(git_capability(self.version()).into())
+    }
+
+    async fn materialize(
         &self,
         mut plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
@@ -61,21 +76,6 @@ impl GitSourceAdapter {
         Ok(crate::acquisition::MaterializedSource::temporary(
             plan, checkout,
         ))
-    }
-}
-
-#[async_trait]
-impl SourceAdapter for GitSourceAdapter {
-    fn name(&self) -> &'static str {
-        ADAPTER_NAME
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
-    }
-
-    async fn capabilities(&self) -> Result<SourceAdapterCapability> {
-        Ok(git_capability(self.version()).into())
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {

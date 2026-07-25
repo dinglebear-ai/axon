@@ -207,11 +207,7 @@ fn print_pipeline_stats(stats: &serde_json::Value) {
         println!(
             "  {} {} ({})",
             muted("Most Chunks:"),
-            accent(
-                most.get("embed_job_id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("n/a")
-            ),
+            accent(most.get("job_id").and_then(|v| v.as_str()).unwrap_or("n/a")),
             accent(
                 &most
                     .get("chunks")

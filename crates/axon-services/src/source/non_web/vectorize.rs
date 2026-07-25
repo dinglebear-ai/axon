@@ -123,7 +123,7 @@ fn split_oversized_document(document: PreparedDocument) -> Vec<PreparedDocument>
     windows
 }
 
-fn merge_vectorize_result(output: &mut VectorizeResult, result: VectorizeResult) {
+pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: VectorizeResult) {
     output.chunks_prepared = output
         .chunks_prepared
         .saturating_add(result.chunks_prepared);

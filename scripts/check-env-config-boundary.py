@@ -105,6 +105,14 @@ MIGRATION_ACTION_CLASSIFICATIONS = {
 }
 
 VALID_TOML_DESTINATIONS = {
+    "pipeline.max-active-source-jobs",
+    "jobs.event-retention-days",
+    "jobs.failed-event-retention-days",
+    "jobs.terminal-retention-days",
+    "jobs.provider-health-retention-days",
+    "jobs.artifact-retention-days",
+    "jobs.retention-sweep-secs",
+    "jobs.interactive-starvation-slo-secs",
     "search.hybrid-enabled",
     "search.hybrid-candidates",
     "search.ask-hybrid-candidates",

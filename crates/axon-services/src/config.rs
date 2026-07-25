@@ -123,11 +123,6 @@ pub const REMOVED_CONFIG_KEYS: &[RemovedConfigKey] = &[
         target: "config.toml",
     },
     RemovedConfigKey {
-        removed_key: "AXON_INGEST_LANES",
-        replacement: "pipeline.ingest_lanes",
-        target: "config.toml",
-    },
-    RemovedConfigKey {
         removed_key: "AXON_EMBED_DOC_TIMEOUT_SECS",
         replacement: "providers.embedding.doc_timeout_secs",
         target: "config.toml",

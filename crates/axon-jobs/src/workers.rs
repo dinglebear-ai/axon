@@ -67,7 +67,7 @@ pub fn spawn_workers(
             shutdown.clone(),
             job_runner_registry,
             cfg.unified_worker_concurrency,
-            cfg.crawl_job_concurrency_limit,
+            cfg.source_job_concurrency_limit,
         ),
         tokio::spawn(watchdog::watchdog_loop(
             Arc::clone(&pool),

@@ -74,12 +74,12 @@ fn valid_toml_parses_tei_and_workers() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(
         f,
-        "[providers.embedding]\nmax-retries = 3\n[pipeline]\ningest-lanes = 4"
+        "[providers.embedding]\nmax-retries = 3\n[pipeline]\nmax-active-source-jobs = 4"
     )
     .unwrap();
     let cfg = load_from_path(f.path(), false).unwrap();
     assert_eq!(cfg.tei.max_retries, Some(3));
-    assert_eq!(cfg.workers.ingest_lanes, Some(4));
+    assert_eq!(cfg.workers.source_job_concurrency_limit, Some(4));
 }
 
 #[test]

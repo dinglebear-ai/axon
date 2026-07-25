@@ -78,32 +78,3 @@ async fn scrape_emits_start_log_event_during_validation() {
         }
     );
 }
-
-#[tokio::test]
-async fn scrape_result_embedding_uses_markdown_not_public_output() {
-    let mut result = map_scrape_payload(serde_json::json!({
-        "url": "https://example.com/package",
-        "markdown": "# Package\n\nbody"
-    }))
-    .expect("scrape result");
-    result.output = "<article>Package</article>".to_string();
-    result.extractor_name = Some("example".to_string());
-
-    let prepared = super::scrape_result_to_prepared_doc(&Config::default(), &result)
-        .await
-        .expect("prepared");
-
-    assert_eq!(result.output, "<article>Package</article>");
-    assert!(
-        prepared
-            .chunks
-            .iter()
-            .any(|chunk| chunk.content.contains("# Package"))
-    );
-    assert!(
-        !prepared
-            .chunks
-            .iter()
-            .any(|chunk| chunk.content.contains("<article>"))
-    );
-}

@@ -2,6 +2,7 @@ use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_embedding::provider::EmbeddingProvider;
+use axon_embedding::reservation::ProviderReservationContext;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
@@ -275,11 +276,35 @@ async fn vectorize_documents(
         return Ok(VectorizeResultWithStats::default());
     }
     let batch = embedding_batch_for_documents(input, &documents)?;
+    let embedding_reservation = input
+        .embedding_reservations
+        .reserve_with_context(ProviderReservationContext {
+            job_id: input.job_id,
+            stage_id: None,
+            provider_id: Some(input.embedding_provider_id.clone()),
+            priority: JobPriority::Background,
+            units: 1,
+            ttl_seconds: Some(300),
+        })
+        .await?;
     let embeddings = embedding_provider.embed(batch).await?;
+    drop(embedding_reservation);
     let (point_batch, skipped_redaction) =
         vector_point_batch_for_documents(collection, &documents, &embeddings)?;
     let expected_points = point_batch.points.len() as u64;
+    let vector_reservation = input
+        .vector_reservations
+        .reserve_with_context(ProviderReservationContext {
+            job_id: input.job_id,
+            stage_id: None,
+            provider_id: Some(input.vector_provider_id.clone()),
+            priority: JobPriority::Background,
+            units: 1,
+            ttl_seconds: Some(300),
+        })
+        .await?;
     let write = vector_store.upsert(point_batch).await?;
+    drop(vector_reservation);
     if write.points_attempted != write.points_written || write.points_written != expected_points {
         return Err(anyhow::anyhow!(
             "upsert wrote {} of {} attempted points; expected {expected_points}",

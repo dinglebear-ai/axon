@@ -7,9 +7,9 @@
 //! `severity`, `visibility`, `details`, …). The HTTP status is derived from the
 //! error's code family / stage rather than from ad-hoc string heuristics.
 //!
-//! This module is the single place the two REST error boundaries
-//! ([`super::error::HttpError`] and [`super::handlers::rest::error::rest_error`])
-//! funnel through, so both transports emit one shape.
+//! This module is the single place REST error boundaries
+//! ([`super::error::HttpError`]) funnel through, so the transport emits one
+//! shape.
 
 use axon_api::ApiError;
 use axon_api::source::{ErrorEnvelope, TraceContext};

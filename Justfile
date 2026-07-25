@@ -17,10 +17,10 @@ check-tests:
     {{rust_dev_env}}; cargo check -q --tests --locked
 
 test:
-    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --workspace -E 'not test(/worker_e2e/)'; else echo "cargo-nextest not installed; falling back to cargo test"; {{rust_dev_env}}; cargo test -q --locked -- --skip worker_e2e; fi
+    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --workspace; else echo "cargo-nextest not installed; falling back to cargo test"; {{rust_dev_env}}; cargo test -q --locked; fi
 
 test-fast:
-    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib -E 'not test(/worker_e2e/)'; else {{rust_dev_env}}; cargo test -q --lib --locked -- --skip worker_e2e; fi
+    if cargo nextest --version >/dev/null 2>&1; then {{rust_dev_env}}; cargo nextest run --locked --lib; else {{rust_dev_env}}; cargo test -q --lib --locked; fi
 
 test-watch:
     {{rust_dev_env}}; RUST_MIN_STACK=16777216 cargo test -q --lib --locked jobs::watch
@@ -28,8 +28,13 @@ test-watch:
     {{rust_dev_env}}; cargo test -q --lib --locked parse_watch
     {{rust_dev_env}}; cargo test -q --lib --locked web::server::handlers::rest::tests::watch_
 
+# No `worker_e2e`-named tests currently exist in the workspace (the ignored
+# SQLite/in-process worker E2E suite this recipe used to run was removed).
+# Kept as a documented no-op so `just test-infra` doesn't hard-fail for
+# anyone following existing docs/session notes; replace this body if/when a
+# real ignored infra-integration suite is reintroduced.
 test-infra:
-    {{rust_dev_env}}; cargo test --locked worker_e2e -- --ignored --nocapture
+    @echo "no worker_e2e tests exist in this workspace; test-infra is currently a no-op"
 
 mcp-smoke:
     ./scripts/test-mcp-tools-mcporter.sh
@@ -426,7 +431,7 @@ test-infra-down:
     just services-down
 
 watch-check:
-    cargo watch -x 'check -q --locked' -x 'check -q --tests --locked' -x 'test -q --lib --locked -- --skip worker_e2e'
+    cargo watch -x 'check -q --locked' -x 'check -q --tests --locked' -x 'test -q --lib --locked'
 
 rebuild:
     just check

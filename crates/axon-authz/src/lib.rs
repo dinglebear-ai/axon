@@ -103,6 +103,51 @@ fn is_fine_grained_axon_scope(scope: &str) -> bool {
     )
 }
 
+/// Returns whether `scopes` holds `required_scope` **exactly**, with none of
+/// [`scope_satisfies`]'s broad `axon:read`/`axon:write` interchangeability.
+///
+/// ## Why this exists — do not fold it back into `scope_satisfies`
+///
+/// `scope_satisfies` treats `axon:read` and `axon:write` as interchangeable
+/// for the ordinary broad read/write route groups. That widening is a
+/// deliberate OAuth dual-scope compatibility affordance — newly issued
+/// tokens default to holding both scopes together
+/// (`AXON_FULL_ACCESS_SCOPE`), and existing tokens issued before some route's
+/// classification changed must keep working. See root `CLAUDE.md`'s "MCP
+/// Security Env" section and
+/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
+/// paragraph for the compatibility rationale, and
+/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules" for
+/// the documented exception.
+///
+/// A small number of call sites intentionally opt **out** of that widening:
+/// conditional scope *elevation* checks, where a route is nominally
+/// `axon:read` for schema/docs purposes but actually mutates state today
+/// (`require_mutates_if_write_scope` in `axon-web`'s
+/// `handlers/exploration.rs`, mirrored by `axon-mcp`'s
+/// `server::authz::mutates_if_upgrade`/`check_scope_explicit`). If those
+/// checks used `scope_satisfies`, the elevation would be a silent no-op:
+/// `is_broad_axon_scope(AXON_WRITE_SCOPE)` is true, so
+/// `scope_satisfies(["axon:read"], "axon:write")` already returns `true`
+/// before this function is ever consulted — a read-only caller would sail
+/// through a check that exists specifically to stop them (CWE-863,
+/// documented in
+/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules").
+/// `has_explicit_scope` closes that hole by requiring the caller to hold the
+/// exact scope string, with no broad-scope widening in either direction.
+///
+/// Use this function **only** for elevation/upgrade checks layered on top of
+/// a nominal scope class. Use `scope_satisfies` for every ordinary
+/// route/action scope check — replacing it here would break every existing
+/// deployed token that was issued before dual-scope compatibility, which is
+/// exactly the behavior `scope_satisfies` exists to preserve.
+pub fn has_explicit_scope(scopes: &[String], required_scope: &str) -> bool {
+    scopes
+        .iter()
+        .flat_map(|scope| scope.split_whitespace())
+        .any(|scope| scope == required_scope)
+}
+
 #[path = "lib_tests.rs"]
 #[cfg(test)]
 mod tests;

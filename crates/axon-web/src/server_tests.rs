@@ -718,3 +718,448 @@ async fn v1_ask_rejects_removed_graph_field() {
     stop(shutdown, handle).await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+// ── Migrated from the deleted `handlers/rest.rs` shadow router (M3 review) ──
+//
+// `handlers/rest.rs` and `rest_tests.rs` re-implemented a second `/v1/*`
+// router purely so a test suite could exercise scope-guard middleware — the
+// live router built in `routing.rs` was never mounted with it. Worse: its
+// `sync_post::v1_sources` called `axon_services::index_source` directly with
+// no per-source authorization boundary, unlike the live
+// `handlers::sources::index_source` (see that module's doc comment), so the
+// dead module was a live SSRF/local-filesystem/tool-execution ingress that
+// merely happened not to be wired into any router. The tests below carry the
+// genuinely valuable assertions from `rest_tests.rs` over to the live router
+// via `spawn_full_test_server`, adapted where the live handlers' error codes
+// differ from the shadow router's bespoke `require_field`/`rest_error`
+// helpers (`handlers::sources::index_source` reports empty `source` as
+// `route.validation.missing_field`; every other handler here funnels through
+// `HttpError::bad_request` → `route.validation.invalid_field`). All bodies
+// touching `/v1/sources` or `/v1/extract` use `AuthPolicy::Mounted` with a
+// bearer token rather than `LoopbackDev`, because the live router's
+// `block_loopback_destructive_request` guard (`routing_loopback_guard.rs`)
+// blocks those two routes outright in loopback-dev-without-auth mode — a
+// stricter behavior the shadow router never had (it had no destructive-route
+// guard at all).
+
+/// Removed direct verb/family routes must 404 on the live router, and the
+/// unified `POST /v1/sources` replacement must be mounted (never 404/405).
+/// Ported from `rest_tests.rs::legacy_indexing_routes_are_absent_and_sources_present`.
+#[tokio::test]
+#[serial]
+async fn legacy_indexing_routes_are_absent_and_sources_present_on_live_router() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    for path in [
+        "/v1/embed",
+        "/v1/ingest",
+        "/v1/scrape",
+        "/v1/crawl",
+        "/v1/purge",
+        "/v1/dedupe",
+    ] {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("post {path}: {e}"));
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "removed route {path} should 404"
+        );
+    }
+
+    let response = client
+        .post(format!("{base}/v1/sources"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({ "source": "" }))
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+    stop(shutdown, handle).await;
+    assert_ne!(
+        status,
+        StatusCode::NOT_FOUND,
+        "POST /v1/sources should be mounted"
+    );
+    assert_ne!(
+        status,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "POST /v1/sources should be mounted"
+    );
+    assert_eq!(status, StatusCode::BAD_REQUEST, "empty source is a 400");
+    assert_eq!(body["error"]["code"], "route.validation.missing_field");
+}
+
+/// Extract lifecycle/status/control routes moved under `/v1/jobs`; the
+/// family-scoped `/v1/extract/*` routes must stay absent from the live
+/// router. Ported from `rest_tests.rs::extract_lifecycle_routes_are_removed`.
+#[tokio::test]
+#[serial]
+async fn extract_lifecycle_routes_are_removed_on_live_router() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    let unknown = Uuid::nil().to_string();
+
+    for (method, path, expected) in [
+        (
+            "GET",
+            "/v1/extract".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ),
+        (
+            "DELETE",
+            "/v1/extract".to_string(),
+            StatusCode::METHOD_NOT_ALLOWED,
+        ),
+        (
+            "POST",
+            "/v1/extract/cleanup".to_string(),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "POST",
+            "/v1/extract/recover".to_string(),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "GET",
+            format!("/v1/extract/{unknown}"),
+            StatusCode::NOT_FOUND,
+        ),
+        (
+            "POST",
+            format!("/v1/extract/{unknown}/cancel"),
+            StatusCode::NOT_FOUND,
+        ),
+    ] {
+        let url = format!("{base}{path}");
+        let response = match method {
+            "GET" => {
+                client
+                    .get(&url)
+                    .header("authorization", "Bearer secret")
+                    .send()
+                    .await
+            }
+            "POST" => {
+                client
+                    .post(&url)
+                    .header("authorization", "Bearer secret")
+                    .send()
+                    .await
+            }
+            "DELETE" => {
+                client
+                    .delete(&url)
+                    .header("authorization", "Bearer secret")
+                    .send()
+                    .await
+            }
+            _ => unreachable!(),
+        }
+        .unwrap_or_else(|e| panic!("{method} {path}: {e}"));
+        assert_eq!(response.status(), expected, "{method} {path}");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// The retired family-scoped watch routes (`/v1/watch`, singular) must stay
+/// absent; their canonical replacement is `/v1/watches`. Ported from
+/// `rest_tests.rs::retired_watch_routes_are_absent`.
+#[tokio::test]
+#[serial]
+async fn retired_watch_routes_are_absent_on_live_router() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+    let unknown = Uuid::nil().to_string();
+
+    for (method, path) in [
+        ("GET", "/v1/watch".to_string()),
+        ("POST", "/v1/watch".to_string()),
+        ("GET", format!("/v1/watch/{unknown}")),
+        ("POST", format!("/v1/watch/{unknown}/run")),
+    ] {
+        let request = match method {
+            "GET" => client.get(format!("{base}{path}")),
+            "POST" => client.post(format!("{base}{path}")),
+            _ => unreachable!(),
+        };
+        let response = request.send().await.expect("retired watch route request");
+        assert_eq!(response.status(), StatusCode::NOT_FOUND, "{method} {path}");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// F2 sync POST routes that are not loopback-destructive-gated
+/// (`/v1/query`, `/v1/retrieve`, `/v1/map`, `/v1/search`, `/v1/research`)
+/// return 400 `route.validation.invalid_field` when the required string
+/// field is empty or whitespace-only. Ported from
+/// `rest_tests.rs::sync_post_routes_reject_empty_required_fields`, minus the
+/// `/v1/sources` case (covered separately above, and destructive-gated in
+/// loopback dev so it needs a bearer token instead).
+#[tokio::test]
+#[serial]
+async fn sync_post_routes_reject_empty_required_fields_on_live_router() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let cases = [
+        ("/v1/query", serde_json::json!({ "query": "" })),
+        ("/v1/retrieve", serde_json::json!({ "url": "" })),
+        ("/v1/map", serde_json::json!({ "url": "" })),
+        ("/v1/search", serde_json::json!({ "query": "  " })),
+        ("/v1/research", serde_json::json!({ "query": "" })),
+    ];
+
+    for (path, body) in cases {
+        let response = client
+            .post(format!("{base}{path}"))
+            .json(&body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{path} expected 400");
+        assert_eq!(
+            body["error"]["code"], "route.validation.invalid_field",
+            "{path} code"
+        );
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// F2 `/v1/search` `time_range` parsing rejects invalid values. Ported from
+/// `rest_tests.rs::sync_post_search_rejects_invalid_time_range`.
+#[tokio::test]
+#[serial]
+async fn sync_post_search_rejects_invalid_time_range_on_live_router() {
+    let _env = EnvGuard::set(None);
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/search"))
+        .json(&serde_json::json!({ "query": "test", "time_range": "decade" }))
+        .send()
+        .await
+        .expect("request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["ok"], false);
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("time_range"),
+        "expected time_range error, got {body}"
+    );
+}
+
+/// F3 `/v1/extract` rejects an empty `urls` list and an SSRF-blocked private
+/// URL before enqueue, both as 400 `route.validation.invalid_field`. Ported
+/// from `rest_tests.rs::async_submit_routes_reject_empty_required_fields`
+/// and `::async_submit_routes_reject_private_urls_before_enqueue`, merged
+/// since both exercise the same live `/v1/extract` validation chain
+/// (`handlers::async_jobs::start_extract`) and both need a bearer token
+/// because `/v1/extract` is loopback-destructive-gated.
+#[tokio::test]
+#[serial]
+async fn async_submit_routes_reject_invalid_urls_on_live_router() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    for body in [
+        serde_json::json!({ "urls": [] }),
+        serde_json::json!({ "urls": ["http://127.0.0.1/admin"] }),
+    ] {
+        let response = client
+            .post(format!("{base}/v1/extract"))
+            .header("authorization", "Bearer secret")
+            .json(&body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request /v1/extract with {body}: {e}"));
+        let status = response.status();
+        let response_body: serde_json::Value = response.json().await.expect("json body");
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "/v1/extract with {body} expected 400"
+        );
+        assert_eq!(
+            response_body["error"]["code"], "route.validation.invalid_field",
+            "/v1/extract with {body} code"
+        );
+    }
+
+    stop(shutdown, handle).await;
+}
+
+/// Every body struct with `#[serde(deny_unknown_fields)]` rejects an unknown
+/// field on the live router. Ported from
+/// `rest_tests.rs::sync_post_rejects_unknown_fields` and
+/// `::all_submit_routes_reject_unknown_fields`, merged into one
+/// parametrized case list. All requests carry a bearer token so
+/// `/v1/sources` and `/v1/extract` (loopback-destructive-gated) are
+/// reachable alongside the non-gated routes.
+#[tokio::test]
+#[serial]
+async fn all_submit_routes_reject_unknown_fields_on_live_router() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let cases: &[(&str, serde_json::Value)] = &[
+        ("/v1/query", serde_json::json!({ "query": "test", "_x": 1 })),
+        (
+            "/v1/retrieve",
+            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
+        ),
+        (
+            "/v1/map",
+            serde_json::json!({ "url": "https://example.com", "_x": 1 }),
+        ),
+        ("/v1/suggest", serde_json::json!({ "_x": 1 })),
+        (
+            "/v1/search",
+            serde_json::json!({ "query": "test", "_x": 1 }),
+        ),
+        (
+            "/v1/research",
+            serde_json::json!({ "query": "test", "_x": 1 }),
+        ),
+        (
+            "/v1/sources",
+            serde_json::json!({ "source": "https://example.com", "_x": 1 }),
+        ),
+        (
+            "/v1/extract",
+            serde_json::json!({ "urls": ["https://example.com"], "_x": 1 }),
+        ),
+    ];
+
+    for (path, body) in cases {
+        let response = client
+            .post(format!("{base}{path}"))
+            .header("authorization", "Bearer secret")
+            .json(body)
+            .send()
+            .await
+            .unwrap_or_else(|e| panic!("request {path}: {e}"));
+        let status = response.status();
+        assert!(
+            status.is_client_error(),
+            "{path} with unknown field should return 4xx, got {status}"
+        );
+        assert_ne!(status, StatusCode::NOT_FOUND, "{path} should be mounted");
+    }
+
+    stop(shutdown, handle).await;
+}
+
+// ── New: closes the real coverage gap the shadow router masked ─────────────
+//
+// The shadow router's `bearer_token_passes_write_scope_guard` only ever
+// proved a bearer token satisfies the *broad* `axon:write` router-layer
+// scope check. It never exercised `handlers::sources::index_source`'s
+// *per-source* fine-grained authorization boundary
+// (`authorize_source_request`), because the shadow router's own
+// `sync_post::v1_sources` didn't call it at all — it called
+// `axon_services::index_source` directly with no auth boundary whatsoever.
+// That is the actual live gap: a caller holding only the static bearer
+// token (granted `axon:read`+`axon:write`+`axon:admin`, never the
+// fine-grained `axon:local`/`axon:execute` scopes — see
+// `axon_authz::http::build_auth_layer`) must still be denied when the
+// source classifies as `SafetyClass::LocalFilesystem`, and the only way to
+// prove that is against the mounted router with a real request.
+
+/// A valid write-scoped bearer token is NOT sufficient to index a
+/// local-filesystem source: `authorize_source_request` in the live
+/// `handlers::sources::index_source` must independently deny it for lacking
+/// `axon:local`. This is the fine-grained scope-discrimination assertion
+/// that `rest_tests.rs` explicitly documented as untestable without an
+/// OAuth token (see its `bearer_token_passes_write_scope_guard` doc
+/// comment) — the static-bearer path can't prove denial for a scope it's
+/// never granted, but it CAN prove denial for a scope (`axon:local`) it
+/// deliberately never grants. That is exactly the fine-grained boundary
+/// this test exercises.
+#[tokio::test]
+#[serial]
+async fn v1_sources_denies_local_path_without_axon_local_scope() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+    let local_dir = tempfile::tempdir().expect("tempdir");
+
+    let response = client
+        .post(format!("{base}/v1/sources"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({ "source": local_dir.path().to_string_lossy() }))
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.expect("json body");
+
+    stop(shutdown, handle).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "expected fine-grained auth denial for a local path, got {status}: {body}"
+    );
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["error"]["code"], "auth.forbidden");
+    assert_eq!(body["error"]["details"]["required_scope"], "axon:local");
+    assert_eq!(body["error"]["details"]["safety_class"], "local_filesystem");
+}
+
+/// Counterpart to the denial above: the same bearer token IS sufficient for
+/// a `PublicNetwork`-classified source (no fine-grained scope required), so
+/// the scope guard discriminates on safety class rather than blanket-denying
+/// every `/v1/sources` call. Never 401/403 proves the request reached the
+/// handler past both the router-layer `axon:write` check and the per-source
+/// boundary. Ported from `rest_tests.rs::bearer_token_passes_write_scope_guard`.
+#[tokio::test]
+#[serial]
+async fn v1_sources_allows_public_network_source_with_write_scope() {
+    let _env = EnvGuard::set(Some("secret"));
+    let (base, shutdown, handle) =
+        spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .post(format!("{base}/v1/sources"))
+        .header("authorization", "Bearer secret")
+        .json(&serde_json::json!({ "source": "https://example.invalid/" }))
+        .send()
+        .await
+        .expect("sources request");
+    let status = response.status();
+
+    stop(shutdown, handle).await;
+    assert_ne!(status, StatusCode::UNAUTHORIZED, "valid bearer rejected");
+    assert_ne!(status, StatusCode::FORBIDDEN, "valid bearer rejected");
+}

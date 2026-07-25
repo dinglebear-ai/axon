@@ -52,19 +52,6 @@ impl SessionSourceAdapter {
         Self
     }
 
-    pub async fn materialize(
-        &self,
-        plan: SourcePlan,
-    ) -> Result<crate::acquisition::MaterializedSource> {
-        let roots = SessionRoots::from_home_env().map_err(|err| {
-            crate::acquisition::materialization_error(
-                "adapter.session.roots_unavailable",
-                err.to_string(),
-            )
-        })?;
-        self.materialize_with_roots(plan, &roots).await
-    }
-
     pub async fn materialize_with_roots(
         &self,
         mut plan: SourcePlan,
@@ -107,6 +94,19 @@ impl SourceAdapter for SessionSourceAdapter {
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
         Ok(session_capability(self.version()).into())
+    }
+
+    async fn materialize(
+        &self,
+        plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        let roots = SessionRoots::from_home_env().map_err(|err| {
+            crate::acquisition::materialization_error(
+                "adapter.session.roots_unavailable",
+                err.to_string(),
+            )
+        })?;
+        self.materialize_with_roots(plan, &roots).await
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {

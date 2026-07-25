@@ -19,7 +19,6 @@ use super::{
 pub struct CodeSearchRefreshResult {
     pub project_root: PathBuf,
     pub project_key: String,
-    pub legacy_code_index_generation: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_source_id: Option<SourceId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -110,7 +109,6 @@ async fn refresh_target_local_code_search_index_with_progress(
             let result = CodeSearchRefreshResult {
                 project_root: project_root.clone(),
                 project_key: project_key.clone(),
-                legacy_code_index_generation: None,
                 target_source_id: Some(output.source_id),
                 target_source_generation: Some(output.generation),
                 freshness: code_search_freshness(
@@ -169,7 +167,6 @@ fn target_refresh_failed_result(
     CodeSearchRefreshResult {
         project_root,
         project_key,
-        legacy_code_index_generation: None,
         target_source_id: if committed_generation.is_some() {
             source_id
         } else {
@@ -217,7 +214,6 @@ pub(super) async fn target_code_search_committed_state(
     Ok(CodeSearchRefreshResult {
         project_root: identity.project_root,
         project_key: identity.project_key,
-        legacy_code_index_generation: None,
         target_source_id: committed.as_ref().map(|_| source_id),
         target_source_generation: committed,
         freshness: code_search_freshness("skipped", None, 0, 0),

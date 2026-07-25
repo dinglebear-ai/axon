@@ -15,6 +15,7 @@ use axon_jobs::boundary::JobStore;
 use axon_jobs::status::JobStatus;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
+use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::payload::generation_payload_i64;
 use axon_vectors::store::FakeVectorStore;
@@ -102,12 +103,27 @@ pub(crate) struct SourceWebJobIdentityHarness {
     _tmp: tempfile::TempDir,
     ctx: ServiceContext,
     store: Arc<dyn JobStore>,
-    ledger: Arc<FakeLedgerStore>,
+    ledger: Arc<dyn LedgerStore>,
+    /// Concrete handles to the fakes wired into `ctx`'s
+    /// `TargetLocalSourceRuntime`, kept alongside the trait-object versions
+    /// so differential/family-parity tests can inspect `.calls()` after
+    /// driving a dispatch through `ctx()` — `Arc<dyn EmbeddingProvider>` /
+    /// `Arc<dyn VectorStore>` have no downcast path back to these.
+    embedder: Arc<FakeEmbeddingProvider>,
+    vectors: Arc<FakeVectorStore>,
 }
 
 impl SourceWebJobIdentityHarness {
     pub(crate) fn ctx(&self) -> &ServiceContext {
         &self.ctx
+    }
+
+    pub(crate) fn embedder(&self) -> &Arc<FakeEmbeddingProvider> {
+        &self.embedder
+    }
+
+    pub(crate) fn vectors(&self) -> &Arc<FakeVectorStore> {
+        &self.vectors
     }
 
     pub(crate) async fn enqueue_and_claim_source(
@@ -173,7 +189,11 @@ impl SourceWebJobIdentityHarness {
             axon_api::source::ApiError::new(
                 "job_runner.source_failed",
                 axon_api::source::ErrorStage::Fetching,
-                error.to_string(),
+                // `{error:#}` (anyhow's alternate Display) prints the full
+                // `.context()` chain instead of only the outermost frame —
+                // needed so test failures surface the real cause instead of
+                // a generic "... indexing failed" wrapper message.
+                format!("{error:#}"),
             )
         })
     }
@@ -215,7 +235,31 @@ impl SourceWebJobIdentityHarness {
     }
 }
 
-pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJobIdentityHarness> {
+/// Which `LedgerStore` backs a [`SourceWebJobIdentityHarness`]. Both variants
+/// share the same real SQLite-backed `jobs` store; only the ledger differs.
+enum LedgerBackend {
+    /// In-memory, non-persisting fake. Fine for web-source dispatch, whose
+    /// `SourceEventEmitter::emit` swallows `jobs.update_status` failures
+    /// (logs a warning, does not propagate) — so a `jobs.source_id` FK
+    /// mismatch against a ledger that never actually writes `sources` rows
+    /// never surfaces.
+    Fake,
+    /// A real `SqliteLedgerStore` bound to the *same* pool as `jobs`,
+    /// matching the production contract ("the runtime uses ONE database so
+    /// `jobs.source_id` can FK to `sources(source_id)`" —
+    /// `SqliteLedgerStore::from_pool`'s doc comment). Local-source dispatch's
+    /// `JobProgressSink::record_phase` (unlike web's event emitter)
+    /// propagates `jobs.update_status` errors via `?`, so it needs a ledger
+    /// that really persists `upsert_source` into the same database the
+    /// `jobs` FK checks against — the in-memory `Fake` backend fails every
+    /// local-source run with `FOREIGN KEY constraint failed` the instant the
+    /// first phase update stamps `jobs.source_id`.
+    SharedSqlite,
+}
+
+async fn build_source_job_identity_harness(
+    ledger_backend: LedgerBackend,
+) -> anyhow::Result<SourceWebJobIdentityHarness> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::test_default();
     cfg.sqlite_path = tmp.path().join("jobs.db");
@@ -231,16 +275,19 @@ pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJo
         Arc::clone(&cfg),
         backend,
     ));
-    let store: Arc<dyn JobStore> = Arc::new(SqliteUnifiedJobStore::new(pool));
+    let store: Arc<dyn JobStore> = Arc::new(SqliteUnifiedJobStore::new(pool.clone()));
 
-    let ledger = Arc::new(FakeLedgerStore::new());
+    let ledger: Arc<dyn LedgerStore> = match ledger_backend {
+        LedgerBackend::Fake => Arc::new(FakeLedgerStore::new()),
+        LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool)),
+    };
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let mut target = TargetLocalSourceRuntime::new(
         Arc::clone(&store),
         ledger.clone(),
-        embedder,
-        vectors,
+        embedder.clone(),
+        vectors.clone(),
         axon_api::source::ProviderId::new("fake-embedding"),
         "fake-embedding",
         8,
@@ -255,5 +302,24 @@ pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJo
         ctx,
         store,
         ledger,
+        embedder,
+        vectors,
     })
+}
+
+pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJobIdentityHarness> {
+    build_source_job_identity_harness(LedgerBackend::Fake).await
+}
+
+/// Same runtime wiring as [`source_context_with_fake_web`], but for exercising
+/// **local**-source dispatch: a real `SqliteLedgerStore` shares the `jobs`
+/// pool instead of the non-persisting `FakeLedgerStore` — see
+/// [`LedgerBackend::SharedSqlite`] for why local dispatch specifically needs
+/// this. Everything else (fake embedding/vector providers, fake web
+/// fetch/render providers on `target`, `ServiceContext` wiring) is identical;
+/// local dispatch never touches the fake web providers, so the same harness
+/// shape covers both families.
+pub(crate) async fn source_context_with_local_sqlite_ledger()
+-> anyhow::Result<SourceWebJobIdentityHarness> {
+    build_source_job_identity_harness(LedgerBackend::SharedSqlite).await
 }

@@ -103,6 +103,77 @@ pub(super) fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u
     }
 }
 
+/// Split a diff's added+modified items into batches of at most `batch_size`,
+/// preserving every other diff field (header/source_id/generations) on each
+/// batch so `adapter.acquire(&plan, &batch)` sees a well-formed
+/// `SourceManifestDiff`. Mirrors the pre-collapse `local_source_vectorize.rs`
+/// / `web_source/vectorize_helpers.rs` `changed_diff_batches` helpers those
+/// two pipelines already used — now the one copy every non-web family
+/// (including local) streams acquisition through (finding C1: `non_web` used
+/// to be the only pipeline that acquired an entire changed generation in one
+/// unbounded call).
+pub(super) fn batch_changed_diff(
+    diff: &SourceManifestDiff,
+    batch_size: usize,
+) -> Vec<SourceManifestDiff> {
+    let batch_size = batch_size.max(1);
+    let mut batches = Vec::new();
+    let mut current = empty_diff_like(diff);
+    for item in &diff.added {
+        current.added.push(item.clone());
+        if changed_batch_len(&current) == batch_size {
+            push_changed_batch(&mut batches, &mut current, diff);
+        }
+    }
+    for item in &diff.modified {
+        current.modified.push(item.clone());
+        if changed_batch_len(&current) == batch_size {
+            push_changed_batch(&mut batches, &mut current, diff);
+        }
+    }
+    if changed_batch_len(&current) > 0 {
+        push_changed_batch(&mut batches, &mut current, diff);
+    }
+    batches
+}
+
+fn changed_batch_len(batch: &SourceManifestDiff) -> usize {
+    batch.added.len() + batch.modified.len()
+}
+
+fn push_changed_batch(
+    batches: &mut Vec<SourceManifestDiff>,
+    current: &mut SourceManifestDiff,
+    diff: &SourceManifestDiff,
+) {
+    current.counts.added = current.added.len() as u64;
+    current.counts.modified = current.modified.len() as u64;
+    batches.push(std::mem::replace(current, empty_diff_like(diff)));
+}
+
+fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
+    SourceManifestDiff {
+        header: diff.header.clone(),
+        source_id: diff.source_id.clone(),
+        previous_generation: diff.previous_generation.clone(),
+        next_generation: diff.next_generation.clone(),
+        added: Vec::new(),
+        modified: Vec::new(),
+        removed: Vec::new(),
+        unchanged: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
+        counts: DiffCounts {
+            added: 0,
+            modified: 0,
+            removed: 0,
+            unchanged: 0,
+            skipped: 0,
+            failed: 0,
+        },
+    }
+}
+
 pub(super) fn manifest_has_changes(diff: &SourceManifestDiff) -> bool {
     !diff.added.is_empty()
         || !diff.modified.is_empty()

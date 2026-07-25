@@ -37,6 +37,55 @@ const DEPRECATED_SECTIONS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Individual keys that used to live inside a still-valid section but have
+/// since been removed or renamed. Unlike `DEPRECATED_SECTIONS` above (whole
+/// section gone), the *section* here still parses fine — only these specific
+/// keys are gone — so a bare `deny_unknown_fields` "unknown field" error
+/// would give no hint about where the knob went, or that it never did
+/// anything at all. `(section, key, new_home)`.
+const DEPRECATED_SECTION_KEYS: &[(&str, &str, &str)] = &[
+    (
+        "pipeline",
+        "ingest-lanes",
+        "removed — zero runtime consumers ever read this knob",
+    ),
+    (
+        "pipeline",
+        "embed-lanes",
+        "removed — zero runtime consumers ever read this knob",
+    ),
+    (
+        "pipeline",
+        "max-pending-crawl-jobs",
+        "removed — nothing ever enforced this queue cap",
+    ),
+    (
+        "pipeline",
+        "max-pending-embed-jobs",
+        "removed — nothing ever enforced this queue cap",
+    ),
+    (
+        "pipeline",
+        "max-pending-extract-jobs",
+        "removed — nothing ever enforced this queue cap",
+    ),
+    (
+        "pipeline",
+        "max-pending-ingest-jobs",
+        "removed — nothing ever enforced this queue cap",
+    ),
+    (
+        "pipeline",
+        "crawl-job-concurrency-limit",
+        "renamed to [pipeline].max-active-source-jobs (now gates every source job kind, not just crawls)",
+    ),
+    (
+        "jobs",
+        "crawl-job-timeout-secs",
+        "removed — no timeout was ever enforced against a running job",
+    ),
+];
+
 /// Scan the raw TOML for deprecated top-level section names before doing a
 /// typed parse, so the error names every offending section and its new home
 /// in one message instead of surfacing a generic "unknown field" per key.
@@ -63,6 +112,15 @@ pub(super) fn deprecated_section_error(contents: &str) -> Option<String> {
         .is_some_and(|vector| vector.contains_key("hnsw-ef-legacy"))
     {
         hits.push("  [providers.vector].hnsw-ef-legacy -> [providers.vector].hnsw-ef".to_string());
+    }
+    for (section, key, new_home) in DEPRECATED_SECTION_KEYS {
+        let present = table
+            .get(*section)
+            .and_then(toml::Value::as_table)
+            .is_some_and(|sect| sect.contains_key(*key));
+        if present {
+            hits.push(format!("  [{section}].{key} -> {new_home}"));
+        }
     }
     if hits.is_empty() {
         return None;
@@ -107,18 +165,12 @@ pub(super) fn into_legacy(raw: RawTomlConfig) -> TomlConfig {
 
 fn apply_pipeline(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     let p = &raw.pipeline;
-    legacy.workers.ingest_lanes = p.ingest_lanes;
-    legacy.workers.embed_lanes = p.embed_lanes;
+    legacy.workers.source_job_concurrency_limit = p.max_active_source_jobs;
     legacy.workers.unified_worker_concurrency = p.unified_worker_concurrency;
-    legacy.workers.crawl_job_concurrency_limit = p.crawl_job_concurrency_limit;
     legacy.workers.embed_doc_timeout_secs = p.embed_doc_timeout_secs;
     legacy.workers.queue_summary_secs = p.queue_summary_secs;
     legacy.workers.qdrant_point_buffer = p.qdrant_point_buffer;
     legacy.workers.job_wait_timeout_secs = p.job_wait_timeout_secs;
-    legacy.workers.max_pending_crawl_jobs = p.max_pending_crawl_jobs;
-    legacy.workers.max_pending_embed_jobs = p.max_pending_embed_jobs;
-    legacy.workers.max_pending_extract_jobs = p.max_pending_extract_jobs;
-    legacy.workers.max_pending_ingest_jobs = p.max_pending_ingest_jobs;
     legacy.chunking.markdown_min_chars = p.chunking.markdown_min_chars;
     legacy.chunking.markdown_max_chars = p.chunking.markdown_max_chars;
     legacy.chunking.overlap_chars = p.chunking.overlap_chars;
@@ -134,7 +186,6 @@ fn apply_jobs(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
     legacy.workers.watchdog_confirm_secs = j.stale_grace_secs;
     legacy.workers.watchdog_sweep_secs = j.watchdog_sweep_secs;
     legacy.workers.worker_starvation_secs = j.worker_starvation_secs;
-    legacy.workers.crawl_job_timeout_secs = j.crawl_job_timeout_secs;
     legacy.workers.max_job_attempts = j.max_job_attempts;
     legacy.workers.jobs_retention_terminal_days = j.terminal_retention_days.map(i64::from);
     legacy.workers.jobs_retention_event_days = j.event_retention_days.map(i64::from);
