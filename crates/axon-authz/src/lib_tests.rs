@@ -1,12 +1,44 @@
 use super::{
     AXON_ADMIN_SCOPE, AXON_EXECUTE_SCOPE, AXON_FULL_ACCESS_SCOPE, AXON_LOCAL_SCOPE,
-    AXON_READ_SCOPE, AXON_WRITE_SCOPE, scope_satisfies,
+    AXON_READ_SCOPE, AXON_WRITE_SCOPE, has_explicit_scope, scope_satisfies,
 };
 
+/// Pins the deliberate `axon:read`/`axon:write` compatibility widening in
+/// `scope_satisfies` (see that function's doc comment and
+/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
+/// paragraph plus `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// "Scope Rules" for the two contracts that document it). This is NOT an
+/// oversight or a bug: it exists so existing OAuth tokens keep working across
+/// route-classification changes.
+///
+/// Because this widening is deliberate, it is exactly why
+/// [`has_explicit_scope`] exists as a separate, stricter primitive — any
+/// caller that needs "does this caller actually hold `axon:write`, no broad
+/// widening" (elevation/upgrade checks, not ordinary route gating) must use
+/// `has_explicit_scope`, not this function. See
+/// `explicit_scope_check_rejects_broad_widening` below, which pins the two
+/// functions as deliberately different for the exact same input.
 #[test]
-fn axon_read_scope_satisfies_write_routes() {
+fn axon_read_scope_satisfies_write_routes_by_design_compatibility_widening() {
     let scopes = vec![AXON_READ_SCOPE.to_string()];
     assert!(scope_satisfies(&scopes, AXON_WRITE_SCOPE));
+}
+
+/// The strict counterpart to
+/// `axon_read_scope_satisfies_write_routes_by_design_compatibility_widening`:
+/// `has_explicit_scope` must NOT apply the broad-scope widening, otherwise
+/// elevation checks built on top of it (e.g. `require_mutates_if_write_scope`
+/// in `axon-web`, `mutates_if_upgrade`/`check_scope_explicit` in `axon-mcp`)
+/// would be silent no-ops, same as the original CWE-863 finding this type
+/// exists to close.
+#[test]
+fn explicit_scope_check_rejects_broad_widening() {
+    let scopes = vec![AXON_READ_SCOPE.to_string()];
+    assert!(scope_satisfies(&scopes, AXON_WRITE_SCOPE));
+    assert!(!has_explicit_scope(&scopes, AXON_WRITE_SCOPE));
+
+    let write_scopes = vec![AXON_WRITE_SCOPE.to_string()];
+    assert!(has_explicit_scope(&write_scopes, AXON_WRITE_SCOPE));
 }
 
 #[test]

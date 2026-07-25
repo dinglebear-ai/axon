@@ -37,6 +37,7 @@ mod runtime_defs;
 #[path = "vector_payload.rs"]
 mod vector_payload;
 
+use super::removed;
 use bundles::registry_schema_bundle;
 pub(super) use bundles::{enum_defs, schema_bundle, schema_id};
 use markdown_render::{
@@ -273,6 +274,13 @@ fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let spec = family_specs::spec_for(SchemaFamily::Cli);
     let inputs = source_inputs(root, spec.source_paths)?;
     let commands = cli_registry::command_records();
+    let removed: Vec<(&str, &str)> = removed::removed_surface_registry()
+        .cli_commands
+        .iter()
+        .map(|op| (op.name, op.replacement))
+        .collect();
+    let commands_md = markdown_render::cli_markdown(&inputs, &commands, &removed);
+    let help_md = markdown_render::cli_help_markdown(&inputs, &commands);
     let schema = registry_schema_bundle(
         schema_id(SchemaFamily::Cli),
         spec.title,
@@ -285,14 +293,8 @@ fn cli_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     );
     Ok(vec![
         SchemaArtifact::new(rel(spec.json_path), json_string(&schema)?),
-        SchemaArtifact::new(
-            rel(spec.markdown_path),
-            registry_markdown("cli", &inputs, "Commands"),
-        ),
-        SchemaArtifact::new(
-            rel(spec.extra_markdown_path.unwrap()),
-            registry_markdown("cli-help", &inputs, "Commands"),
-        ),
+        SchemaArtifact::new(rel(spec.markdown_path), commands_md),
+        SchemaArtifact::new(rel(spec.extra_markdown_path.unwrap()), help_md),
     ])
 }
 

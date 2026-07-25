@@ -1,6 +1,20 @@
 # Pipeline Unification Contracts
 Last Modified: 2026-06-30
 
+> **Planning artifact, written 2026-06-30 — not a live-behavior reference.**
+> This packet is the pre-implementation design contract for issue #298. 88 of
+> the roughly 98 dated files under this tree still carry
+> `Last Modified: 2026-06-30`, and 18 of them include a "Current
+> Implementation Snapshot" section that describes the code as it stood
+> **before** the #298 cutover. Do not read any snapshot section here as
+> current Axon behavior. For what Axon actually does today, use the generated
+> references under [`../reference/`](../reference/) plus the root
+> [`CLAUDE.md`](../../CLAUDE.md). For what #298 has actually finished versus
+> what remains open, see
+> [`plans/finish-unification-metaplan.md`](plans/finish-unification-metaplan.md)
+> and the 2026-07-24 six-agent review, not this README's future-tense framing
+> below.
+
 This folder is the design contract packet for GitHub issue
 [#298](https://github.com/jmagar/axon/issues/298). It supersedes the narrower
 command-only framing in issue #280.

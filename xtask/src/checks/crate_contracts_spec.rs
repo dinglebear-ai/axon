@@ -1,6 +1,6 @@
 //! Data tables mirroring `docs/pipeline-unification/crates/<name>/README.md`.
 //!
-//! Three categories of workspace crate carry a pipeline-unification contract:
+//! Four categories of workspace crate carry a pipeline-unification contract:
 //!
 //! - Crates built fresh for issue #298 (`axon-adapters`, `axon-document`,
 //!   `axon-embedding`, `axon-error`, `axon-graph`, `axon-ledger`, `axon-llm`,
@@ -22,6 +22,15 @@
 //!   `docs/pipeline-unification/README.md`'s "Current Implementation
 //!   Snapshot" framing. Only the dependency-direction rule is enforced for
 //!   these until they're similarly reconciled.
+//! - `axon-extract` is a restored transitional crate (removed from the
+//!   clean-break list, then intentionally restored 2026-07-15 as the
+//!   vertical-extractor implementation catalog — see the "Restored-Crate
+//!   Note" in `docs/pipeline-unification/crates/axon-extract/README.md`).
+//!   Its `modules` entry lists only `verticals`, the sole `pub mod` in its
+//!   `lib.rs`; its other files (`context`, `error`, `git_payload`, `types`)
+//!   are private modules whose types are re-exported at the crate root, so
+//!   listing them would false-positive against the literal `pub mod <name>;`
+//!   check.
 //!
 //! `forbidden_axon_deps` is derived only from each README's explicit
 //! "Dependencies Forbidden" text (named crates, or unambiguous category terms
@@ -281,6 +290,34 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-crawl",
             "axon-ingest",
             "axon-extract",
+            "axon-code-index",
+        ],
+    },
+    CrateContract {
+        name: "axon-extract",
+        // Restored transitional vertical-extractor catalog (see the
+        // "Restored-Crate Note" in
+        // docs/pipeline-unification/crates/axon-extract/README.md). Only
+        // `verticals` is `pub mod` in lib.rs — `context`, `error`,
+        // `git_payload`, and `types` are private modules whose types are
+        // re-exported at the crate root via `pub use`, so they are not
+        // listed here (the check requires a literal `pub mod <name>;`).
+        modules: &["verticals"],
+        forbidden_axon_deps: &[
+            "axon-adapters",
+            "axon-vectors",
+            "axon-embedding",
+            "axon-retrieval",
+            "axon-ledger",
+            "axon-graph",
+            "axon-jobs",
+            "axon-services",
+            "axon-cli",
+            "axon-mcp",
+            "axon-web",
+            "axon-vector",
+            "axon-crawl",
+            "axon-ingest",
             "axon-code-index",
         ],
     },

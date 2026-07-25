@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axon_api::source::{
     ApiError, AuthSnapshot, ErrorStage, JobId, JobKind as UnifiedJobKind, LifecycleStatus,
-    PipelinePhase, Timestamp,
+    PipelinePhase,
 };
 use futures::FutureExt;
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
@@ -15,7 +15,11 @@ use super::auth_enforcement::{require_job_scope, required_scope_for_kind};
 use super::{POLL_INTERVAL, WORKER_BATCH_LIMIT};
 
 mod helpers;
-use helpers::{json_error, parse_enum, parse_uuid, sql_error};
+
+mod claim;
+#[allow(unused_imports)] // only used by #[cfg(test)] call sites in sibling test files
+pub(crate) use claim::claim_next_unified_job;
+use claim::claim_next_unified_job_unchecked;
 
 mod runner_registry;
 pub use runner_registry::{JobRunnerRegistry, UnifiedJobRunner};
@@ -61,13 +65,33 @@ const DEFAULT_CONCURRENCY: usize = 8;
 /// `concurrency`, so one slow job (e.g. a long crawl) does not stall every
 /// other queued job behind it the way a fully serial claim loop would.
 ///
-/// Broad site-scope source work gets a second, independent semaphore,
-/// regardless of how high `concurrency` is. Crawl-like source jobs share
-/// exactly one Chrome instance, so letting them freely consume up to
-/// `concurrency` general worker slots risks CDP session contention and Chrome
-/// resource exhaustion. The crawl-specific permit is acquired inside the
-/// spawned task so a crawl job waiting for its slot never blocks the claim
-/// loop from picking up other work.
+/// Every `Source` job (web, git, feeds, registries, Reddit, YouTube,
+/// CLI/MCP tools, local paths — plus `map`) is *also* bounded by a second,
+/// independent semaphore, regardless of how high `concurrency` is. This is a
+/// general per-source-kind rail, not a web/Chrome-specific one: several
+/// source kinds share constrained external resources (a single Chrome
+/// instance for web/render-backed acquisition, upstream API rate limits for
+/// other adapters), so letting them freely consume up to `concurrency`
+/// general worker slots risks starving other job kinds or exhausting a
+/// shared resource.
+///
+/// **Both permits are acquired before a job is ever claimed from the
+/// database, not after.** Each pass first makes a *non-blocking* attempt at
+/// the source-specific permit — this tells us, before touching the DB,
+/// whether we are currently allowed to claim a `Source` job — then blocks on
+/// the general permit (legitimate backpressure: by this point we already
+/// know we can use it), and only then runs the claim query, telling it
+/// whether a `Source` job may be selected this time. A row is therefore
+/// never flipped to `running` unless a worker is about to actually run it;
+/// no claimed job ever sits parked waiting on a permit. This matters for two
+/// reasons: (1) a `Source` job that can't get the source-specific permit
+/// right now is left `queued` rather than claimed, so it never occupies a
+/// general-concurrency slot while parked — other job kinds keep being
+/// claimed and run even while the source lane is completely full; and (2) a
+/// claimed job's first heartbeat is written essentially immediately (no
+/// permit wait stands between claim and the task starting), so it can never
+/// sit `running` with a stale heartbeat long enough for the watchdog to
+/// reclaim it as abandoned while its task is still alive.
 pub(crate) async fn unified_worker_loop_with_concurrency(
     pool: Arc<SqlitePool>,
     notify: Arc<Notify>,
@@ -81,17 +105,17 @@ pub(crate) async fn unified_worker_loop_with_concurrency(
         shutdown,
         registry,
         concurrency,
-        DEFAULT_CRAWL_CONCURRENCY,
+        DEFAULT_SOURCE_CONCURRENCY,
     )
     .await;
 }
 
-/// Default crawl-job concurrency used by callers that don't thread a
-/// configured value (matches `Config::crawl_job_concurrency_limit`'s
+/// Default source-job concurrency used by callers that don't thread a
+/// configured value (matches `Config::source_job_concurrency_limit`'s
 /// default). Production callers go through
 /// [`crate::workers::spawn_unified::spawn_unified_worker`], which always
-/// passes `cfg.crawl_job_concurrency_limit` explicitly.
-const DEFAULT_CRAWL_CONCURRENCY: usize = 1;
+/// passes `cfg.source_job_concurrency_limit` explicitly.
+const DEFAULT_SOURCE_CONCURRENCY: usize = 4;
 
 pub(crate) async fn unified_worker_loop_with_concurrency_limits(
     pool: Arc<SqlitePool>,
@@ -99,10 +123,10 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
     shutdown: CancellationToken,
     registry: Option<Arc<JobRunnerRegistry>>,
     concurrency: usize,
-    crawl_concurrency: usize,
+    source_concurrency: usize,
 ) {
     let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency.max(1)));
-    let source_semaphore = Arc::new(tokio::sync::Semaphore::new(crawl_concurrency.max(1)));
+    let source_semaphore = Arc::new(tokio::sync::Semaphore::new(source_concurrency.max(1)));
     let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let mut wake_count: u64 = 0;
     loop {
@@ -118,40 +142,69 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
         loop {
             let mut processed = 0usize;
             while processed < WORKER_BATCH_LIMIT && !shutdown.is_cancelled() {
-                match claim_next_unified_job_unchecked(&pool).await {
+                // Speculatively reserve a source-specific slot *before*
+                // touching the database. This is a non-blocking attempt: if
+                // the source lane is full we simply proceed without one
+                // (`allow_source = false`), which tells the claim query
+                // below to skip `Source` rows entirely rather than flip one
+                // to `running` with nowhere to run it. Because this process
+                // is the only claimer of `source_semaphore` (spawned tasks
+                // only ever hold/release a permit handed to them, they never
+                // acquire one themselves), there is no race between this
+                // check and the claim query that follows.
+                let source_permit = match Arc::clone(&source_semaphore).try_acquire_owned() {
+                    Ok(permit) => Some(permit),
+                    Err(tokio::sync::TryAcquireError::NoPermits) => None,
+                    Err(tokio::sync::TryAcquireError::Closed) => break, // shutting down
+                };
+                let allow_source = source_permit.is_some();
+
+                // The general permit is allowed to block: by this point we
+                // already know we could use it (either this is a non-Source
+                // job, or it's a Source job and we already hold the narrower
+                // permit above), so waiting here is real backpressure, not a
+                // wasted reservation. Race it against shutdown so a
+                // cancellation during a long wait unblocks the loop
+                // immediately instead of leaving it parked until some other
+                // task's permit frees up.
+                let permit = tokio::select! {
+                    biased;
+                    _ = shutdown.cancelled() => break,
+                    result = Arc::clone(&semaphore).acquire_owned() => match result {
+                        Ok(permit) => permit,
+                        Err(_) => break, // semaphore closed — shutting down
+                    },
+                };
+
+                match claim_next_unified_job_unchecked(&pool, allow_source).await {
                     Ok(Some(claimed)) => {
-                        let permit = match Arc::clone(&semaphore).acquire_owned().await {
-                            Ok(permit) => permit,
-                            Err(_) => break, // semaphore closed — shutting down
+                        // We may be holding a speculative source permit for
+                        // a job that, in the end, wasn't the one claimed
+                        // (e.g. a higher-priority or earlier-queued
+                        // non-Source job won instead) — release it right
+                        // away rather than holding it idle for the lifetime
+                        // of an unrelated job.
+                        let source_permit = if claimed.kind == UnifiedJobKind::Source {
+                            debug_assert!(
+                                source_permit.is_some(),
+                                "claim query selected a Source job without a held source permit"
+                            );
+                            source_permit
+                        } else {
+                            None
                         };
                         let pool = Arc::clone(&pool);
                         let shutdown = shutdown.clone();
                         let registry = registry.clone();
-                        let source_semaphore = (claimed.kind == UnifiedJobKind::Source)
-                            .then(|| Arc::clone(&source_semaphore));
                         in_flight.push(tokio::spawn(async move {
-                            // Acquire the source-specific slot only for source
-                            // jobs, and only inside the spawned task — this
-                            // blocks that task, not the claim loop above, so
-                            // other job kinds keep being claimed and run
-                            // while a source job queues for its acquisition slot.
-                            let _source_permit = match source_semaphore {
-                                Some(sem) => match sem.acquire_owned().await {
-                                    Ok(permit) => Some(permit),
-                                    Err(_) => {
-                                        drop(permit);
-                                        return; // source semaphore closed — shutting down
-                                    }
-                                },
-                                None => None,
-                            };
+                            let _source_permit = source_permit;
                             run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref())
                                 .await;
                             drop(permit);
                         }));
                         processed += 1;
                     }
-                    Ok(None) => break,
+                    Ok(None) => break, // nothing eligible given current capacity
                     Err(error) => {
                         tracing::error!(
                             error = %error.message,
@@ -185,15 +238,6 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
     }
 }
 
-/// Test-only entry point: production code claims via the poll loop in
-/// [`unified_worker_loop`]; tests use this to claim+run one job deterministically.
-#[allow(dead_code)]
-pub(crate) async fn claim_next_unified_job(
-    pool: &SqlitePool,
-) -> Result<Option<UnifiedClaimedJob>, ApiError> {
-    claim_next_unified_job_unchecked(pool).await
-}
-
 /// Test-only entry point: exercises the same terminal-failure write path as
 /// `fail_unified_claimed`/`mark_terminal` (including their unconditional
 /// `cooldown_until = NULL` clear) without requiring a full claim + registered
@@ -207,7 +251,7 @@ pub(crate) async fn mark_job_failed_for_tests(
         .bind(job_id.0.to_string())
         .fetch_one(pool)
         .await
-        .map_err(sql_error)?;
+        .map_err(helpers::sql_error)?;
     let error = ApiError::new(
         "job_runner.test_failure",
         ErrorStage::Publishing,
@@ -227,105 +271,6 @@ pub(crate) async fn mark_job_failed_for_tests(
         Some(error),
     )
     .await
-}
-
-async fn claim_next_unified_job_unchecked(
-    pool: &SqlitePool,
-) -> Result<Option<UnifiedClaimedJob>, ApiError> {
-    let mut tx = pool.begin().await.map_err(sql_error)?;
-    let now = chrono::Utc::now().to_rfc3339();
-    let row = sqlx::query(
-        "SELECT job_id, kind, attempt, request_json, auth_snapshot_json
-         FROM jobs
-         WHERE status IN ('queued', 'waiting', 'blocked')
-           AND (cooldown_until IS NULL OR cooldown_until <= ?)
-         ORDER BY
-           CASE priority
-             WHEN 'interactive' THEN 0
-             WHEN 'high' THEN 1
-             WHEN 'normal' THEN 2
-             WHEN 'background' THEN 3
-             WHEN 'maintenance' THEN 4
-             ELSE 5
-           END,
-           updated_at ASC,
-           job_id ASC
-         LIMIT 1",
-    )
-    .bind(now.as_str())
-    .fetch_optional(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-
-    let Some(row) = row else {
-        tx.commit().await.map_err(sql_error)?;
-        return Ok(None);
-    };
-
-    let job_id = JobId::new(parse_uuid(row.get::<String, _>("job_id"))?);
-    let kind = parse_enum(row.get::<String, _>("kind"))?;
-    let attempt = (row.get::<i64, _>("attempt") as u32).max(1);
-    let request_json = row
-        .get::<Option<String>, _>("request_json")
-        .map(|value| serde_json::from_str(&value).map_err(json_error))
-        .transpose()?;
-    let auth_snapshot: AuthSnapshot =
-        serde_json::from_str(&row.get::<String, _>("auth_snapshot_json")).map_err(json_error)?;
-    let now = Timestamp::from(chrono::Utc::now());
-
-    // Claiming a job always moves it to Running, so cooldown_until (only ever
-    // meaningful while a job sits in Waiting) is cleared here too — this is a
-    // direct SQL write, not routed through update_job_status's CASE-based
-    // clear, so it needs its own.
-    let result = sqlx::query(
-        "UPDATE jobs SET
-            status = 'running',
-            phase = 'planning',
-            attempt = ?,
-            started_at = COALESCE(started_at, ?),
-            updated_at = ?,
-            cooldown_until = NULL
-         WHERE job_id = ? AND status IN ('queued', 'waiting', 'blocked')",
-    )
-    .bind(attempt as i64)
-    .bind(now.0.as_str())
-    .bind(now.0.as_str())
-    .bind(job_id.0.to_string())
-    .execute(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-
-    if result.rows_affected() == 0 {
-        tx.commit().await.map_err(sql_error)?;
-        return Ok(None);
-    }
-
-    sqlx::query(
-        "INSERT INTO job_attempts (
-            attempt_id, job_id, attempt, status, worker_id, started_at, heartbeat_at
-         ) VALUES (?, ?, ?, 'running', NULL, ?, ?)
-         ON CONFLICT(job_id, attempt) DO UPDATE SET
-            status = 'running',
-            started_at = COALESCE(job_attempts.started_at, excluded.started_at),
-            heartbeat_at = excluded.heartbeat_at",
-    )
-    .bind(format!("{}:{}", job_id.0, attempt))
-    .bind(job_id.0.to_string())
-    .bind(attempt as i64)
-    .bind(now.0.as_str())
-    .bind(now.0.as_str())
-    .execute(&mut *tx)
-    .await
-    .map_err(sql_error)?;
-
-    tx.commit().await.map_err(sql_error)?;
-    Ok(Some(UnifiedClaimedJob {
-        job_id,
-        kind,
-        attempt,
-        request_json,
-        auth_snapshot,
-    }))
 }
 
 pub(crate) async fn run_unified_claimed(

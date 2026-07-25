@@ -73,33 +73,30 @@
 # changed-file-batch-size = 64
 
 [pipeline]
-# Parallel ingest worker lanes (GitHub, Reddit, YouTube; clamped 1-16).
-# Env: AXON_INGEST_LANES
-# ingest-lanes = 2
-# Parallel embed worker lanes (clamped 1-32).
-# Env: AXON_EMBED_LANES
-# embed-lanes = 2
 # Maximum concurrent jobs the unified job-store worker runs at once (clamped 1-64).
 # Env: AXON_UNIFIED_WORKER_CONCURRENCY
 # unified-worker-concurrency = 8
+# Maximum concurrent `Source` jobs (every source job kind — web, git, feeds,
+# registries, Reddit, YouTube, CLI/MCP tools, local paths — plus `map`), gated
+# independently of unified-worker-concurrency above (clamped 1-64). Several
+# source kinds share constrained external resources (a single Chrome instance
+# for web/render-backed acquisition, upstream API rate limits for other
+# adapters), so this keeps one noisy source kind from starving the rest of
+# the general worker pool. Raising it increases source-acquisition
+# throughput at the cost of more concurrent Chrome sessions / adapter API
+# load; lowering it protects those shared resources at the cost of slower
+# source ingestion.
+# Env: AXON_SOURCE_JOB_CONCURRENCY_LIMIT
+# max-active-source-jobs = 4
 # Per-document embed timeout in seconds.
 # Env: AXON_EMBED_DOC_TIMEOUT_SECS
 # embed-doc-timeout-secs = 300
 # Queue summary interval in seconds (0 = disabled, clamped 0-3600).
 # Env: AXON_QUEUE_SUMMARY_SECS
 # queue-summary-secs = 30
-# Buffered Qdrant points before pipeline flush (clamped 128-16384).
-# Env: AXON_QDRANT_POINT_BUFFER
-# qdrant-point-buffer = 1024
 # Timeout in seconds for --wait true job polling (clamped 30-3600).
 # Env: AXON_JOB_WAIT_TIMEOUT_SECS
 # job-wait-timeout-secs = 300
-# Queue caps — reject new jobs above these counts (0 = unlimited).
-# Env: AXON_MAX_PENDING_CRAWL_JOBS / _EMBED_ / _EXTRACT_ / _INGEST_JOBS
-# max-pending-crawl-jobs = 100
-# max-pending-embed-jobs = 50
-# max-pending-extract-jobs = 50
-# max-pending-ingest-jobs = 50
 
 [pipeline.chunking]
 # Markdown chunk target maximum. Env still wins for ad hoc overrides.
@@ -137,9 +134,6 @@
 # before the liveness watchdog kicks the lane. 0 disables.
 # Env: AXON_WORKER_STARVATION_SECS
 # worker-starvation-secs = 120
-# Maximum wall-clock seconds a single crawl job may run before abort. 0 disables.
-# Env: AXON_CRAWL_JOB_TIMEOUT_SECS
-# crawl-job-timeout-secs = 7200
 # Maximum reclaim attempts before a stale job is dead-lettered. 0 = unlimited.
 # Env: AXON_MAX_JOB_ATTEMPTS
 # max-job-attempts = 5
@@ -150,6 +144,40 @@
 # Idle seconds before an auto-started worker exits. 0 = run until stopped.
 # Env: AXON_JOBS_WORKER_IDLE_EXIT_SECS
 # worker-idle-exit-secs = 300
+#
+# ── Retention sweep (DELETES OPERATOR DATA on a schedule) ──────────────────
+# The background retention sweep in `SqliteUnifiedJobStore::run_retention_sweep`
+# permanently DELETES rows older than these windows: job/event/artifact
+# history is not recoverable once swept. Widen a window before you need the
+# history, not after.
+# Seconds between periodic retention sweeps.
+# Env: AXON_JOBS_RETENTION_SWEEP_SECS
+# retention-sweep-secs = 3600
+# Days a terminal (completed/failed/canceled) job row — and its cascaded
+# children — survives before the sweep DELETES it.
+# Env: AXON_JOBS_RETENTION_TERMINAL_DAYS
+# terminal-retention-days = 30
+# Days a `job_events` row for a non-failed job survives before the sweep
+# DELETES it.
+# Env: AXON_JOBS_RETENTION_EVENT_DAYS
+# event-retention-days = 14
+# Days a `job_events` row for a failed job survives before the sweep DELETES
+# it (kept longer than ordinary events for postmortem evidence).
+# Env: AXON_JOBS_RETENTION_FAILED_EVENT_DAYS
+# failed-event-retention-days = 60
+# Days a `provider_reservations` row (provider capacity/health history)
+# survives before the sweep DELETES it.
+# Env: AXON_JOBS_RETENTION_PROVIDER_HEALTH_DAYS
+# provider-health-retention-days = 7
+# Days a `job_artifacts` row survives before the sweep DELETES it.
+# Env: AXON_JOBS_RETENTION_ARTIFACT_DAYS
+# artifact-retention-days = 30
+# Seconds an `interactive`-priority job may sit queued with no
+# `interactive`-priority job running before the starvation watchdog emits a
+# warning event. Does not delete anything; grouped here because it shares
+# the `[jobs]` section. 0 disables the check.
+# Env: AXON_JOBS_INTERACTIVE_STARVATION_SLO_SECS
+# interactive-starvation-slo-secs = 30
 
 [providers.embedding]
 # This section is critical for avoiding embedding-pipeline bottlenecks.

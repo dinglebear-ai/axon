@@ -117,7 +117,9 @@ pub(in crate::config) struct RawCodeSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(in crate::config) struct RawPipelineSection {
-    #[allow(dead_code)]
+    /// Maximum concurrent `Source` jobs (every source job kind plus `map`).
+    /// The contract's canonical spelling for this knob; wired to
+    /// `Config::source_job_concurrency_limit`.
     pub max_active_source_jobs: Option<usize>,
     #[allow(dead_code)]
     pub max_active_interactive_jobs: Option<usize>,
@@ -129,18 +131,11 @@ pub(in crate::config) struct RawPipelineSection {
     pub publish_requires_cleanup: Option<bool>,
     #[allow(dead_code)]
     pub max_document_bytes: Option<u64>,
-    pub ingest_lanes: Option<usize>,
-    pub embed_lanes: Option<usize>,
     pub unified_worker_concurrency: Option<usize>,
-    pub crawl_job_concurrency_limit: Option<usize>,
     pub embed_doc_timeout_secs: Option<u64>,
     pub queue_summary_secs: Option<u64>,
     pub qdrant_point_buffer: Option<usize>,
     pub job_wait_timeout_secs: Option<u64>,
-    pub max_pending_crawl_jobs: Option<usize>,
-    pub max_pending_embed_jobs: Option<usize>,
-    pub max_pending_extract_jobs: Option<usize>,
-    pub max_pending_ingest_jobs: Option<usize>,
     #[serde(default)]
     pub chunking: RawChunkingSection,
     #[serde(default)]
@@ -188,7 +183,6 @@ pub(in crate::config) struct RawJobsSection {
     pub default_priority: Option<String>,
     pub watchdog_sweep_secs: Option<i64>,
     pub worker_starvation_secs: Option<i64>,
-    pub crawl_job_timeout_secs: Option<i64>,
     pub max_job_attempts: Option<i64>,
     /// Auto-start a background worker after detached CLI enqueues.
     pub auto_worker: Option<bool>,

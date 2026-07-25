@@ -1,5 +1,6 @@
 //! Generic adapter-owned pipeline for non-web sources.
 
+mod created_generation;
 mod helpers;
 mod metadata;
 mod publish;
@@ -18,6 +19,11 @@ use helpers::*;
 use std::future::Future;
 const SOURCE_LEASE_TTL_SECONDS: u64 = 30 * 60;
 const PUBLICATION_CONFIG_KEY: &str = "axon_publication_config_snapshot_id";
+/// Bound on added+modified items acquired/normalized/prepared/embedded per
+/// streaming batch inside `run_created_generation` — matches the batch size
+/// `web_source`/`local_source` already streamed diffs at before their
+/// collapse into this runner (finding C1).
+const ACQUIRE_BATCH_SIZE: usize = 64;
 pub(super) struct NonWebPipelineInput<'a> {
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,
@@ -243,7 +249,7 @@ async fn run_generation(
     manifest.generation = generation.generation.clone();
     runtime.ledger.put_manifest(manifest.clone()).await?;
 
-    let result = run_created_generation(
+    let result = created_generation::run_created_generation(
         runtime,
         input,
         emitter,
@@ -279,162 +285,6 @@ async fn run_generation(
         }
     }
     result
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn run_created_generation(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    lease: &LeaseGuard,
-    manifest: SourceManifest,
-    diff: SourceManifestDiff,
-    generation: SourceGeneration,
-    previous: Option<SourceSummary>,
-) -> anyhow::Result<IndexCounts> {
-    record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Fetching,
-        "acquiring changed source items",
-    )
-    .await?;
-    let acquisition = input.adapter.acquire(&input.plan, &diff).await?;
-    progress::acquired(emitter, &acquisition).await;
-    let mut artifacts = acquisition.artifacts.clone();
-    let mut warnings = acquisition.header.warnings.clone();
-    let enrichments = enrich(
-        runtime.enricher.clone(),
-        &input.plan,
-        &acquisition.fetched_items,
-    )
-    .await?;
-    record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Normalizing,
-        "normalizing source documents",
-    )
-    .await?;
-    let normalized = input.adapter.normalize(&input.plan, acquisition).await?;
-    progress::normalized(emitter, &generation.generation, &normalized.header).await;
-    warnings.extend(normalized.header.warnings.clone());
-    let mut documents = normalized.data;
-    apply_enrichments(&mut documents, &enrichments);
-    let enrichment_graph = enrichment_graph_candidates(&enrichments);
-    metadata::sanitize_documents(input.plan.route.source.source_kind, &mut documents);
-
-    record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Preparing,
-        "preparing source documents",
-    )
-    .await?;
-    let collection = collection_spec(input.collection, runtime.embedding_dimensions);
-    if input.plan.request.embed {
-        runtime
-            .vector_store
-            .ensure_collection(collection.clone())
-            .await?;
-    }
-    let mut vectorized = vectorize::prepare_embed_publish(
-        runtime,
-        input,
-        documents,
-        &enrichment_graph,
-        input.plan.route.source.source_kind == SourceKind::Session,
-        &generation.generation,
-        collection.clone(),
-        emitter,
-    )
-    .await?;
-    vectorized.warnings.splice(0..0, warnings);
-    for enrichment in enrichments.values() {
-        vectorized.warnings.extend(enrichment.warnings.clone());
-        artifacts.extend(enrichment.artifacts.clone());
-    }
-
-    publish_created_generation(
-        runtime, input, emitter, lease, manifest, diff, generation, previous, collection,
-        vectorized, artifacts,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn publish_created_generation(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    lease: &LeaseGuard,
-    manifest: SourceManifest,
-    diff: SourceManifestDiff,
-    generation: SourceGeneration,
-    previous: Option<SourceSummary>,
-    collection: CollectionSpec,
-    vectorized: vectorize::VectorizeResult,
-    artifacts: Vec<ArtifactRef>,
-) -> anyhow::Result<IndexCounts> {
-    publish::ensure_lease(runtime.ledger.as_ref(), input, lease).await?;
-    let generation = publish::complete_generation(
-        runtime.ledger.as_ref(),
-        generation,
-        &diff,
-        manifest.items.len() as u64,
-        &vectorized,
-    )
-    .await?;
-    let published = publish::publish(
-        runtime.ledger.as_ref(),
-        runtime.vector_store.as_ref(),
-        &collection,
-        &generation,
-        &diff,
-        input.plan.request.embed,
-    )
-    .await?;
-    let published_statuses = vectorized
-        .document_statuses
-        .iter()
-        .map(publish::published_status)
-        .collect::<Vec<_>>();
-    vectorize::write_document_statuses(runtime.ledger.as_ref(), &published_statuses).await?;
-    let counts = terminal_source_counts(previous.as_ref(), &manifest, &diff, &vectorized);
-    runtime
-        .ledger
-        .upsert_source(metadata::source_summary(
-            input,
-            LifecycleStatus::Completed,
-            counts,
-            previous.as_ref(),
-        ))
-        .await?;
-    progress::published(
-        emitter,
-        &published.generation,
-        manifest.items.len() as u64,
-        &vectorized.warnings,
-        vectorized.documents_prepared,
-        vectorized.chunks_prepared,
-    )
-    .await;
-    Ok(IndexCounts {
-        job_id: input.plan.job_id,
-        source_id: manifest.source_id,
-        generation: published.generation,
-        documents_prepared: vectorized.documents_prepared,
-        chunks_prepared: vectorized.chunks_prepared,
-        vector_points_written: vectorized.points_written,
-        removed: diff.counts.removed,
-        graph_candidates: vectorized.graph_candidates,
-        warnings: vectorized.warnings,
-        artifacts,
-        inline: None,
-    })
 }
 
 fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {

@@ -254,7 +254,6 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "artifacts",
             "brand",
             "client_contract",
-            "code_search_watch",
             "config",
             "config_snapshot_hash",
             "context",

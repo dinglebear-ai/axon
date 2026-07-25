@@ -6,12 +6,15 @@ use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use std::path::Path;
-use tokio::sync::Mutex;
 
 use super::local_source_adapter::{local_source_id, timestamp};
 use super::local_source_progress::{LocalSourceProgress, source_error_from_api_error};
 use super::{LocalSourceIndexInput, LocalSourceIndexOutput, index_local_source_with_progress};
 
+/// Create a source job row, index the local source under it, and record
+/// terminal job status. Used by callers that always own the job outright —
+/// no worker has already claimed one for this run (e.g. code-search
+/// auto-refresh, `query/code_search_refresh.rs`).
 pub async fn index_local_source_with_job(
     mut input: LocalSourceIndexInput,
     jobs: &dyn JobStore,
@@ -29,10 +32,47 @@ pub async fn index_local_source_with_job(
         })?;
     let source_id = local_source_id(&root);
     let descriptor = jobs
-        .create(job_create_request(&input, source_id.clone()))
+        .create(job_create_request(&input, JobPriority::Background, None, 1))
         .await?;
     input.job_id = descriptor.job_id;
-    let progress = JobProgressSink::new(jobs, input.job_id, source_id.clone());
+    run_indexing(
+        input,
+        descriptor.job_id,
+        true,
+        source_id,
+        jobs,
+        ledger,
+        embedding_provider,
+        vector_store,
+    )
+    .await
+}
+
+/// Shared indexing + terminal-status bookkeeping, used by
+/// `index_local_source_with_job` above (the sole remaining caller —
+/// `code_search_refresh.rs`'s code-search auto-refresh, which always owns
+/// its job outright). The unified `source::dispatch::dispatch_local` path no
+/// longer has a counterpart entry point here: it routes through the shared
+/// `non_web` runner instead (finding C1;
+/// `source/dispatch/local.rs`), which already has its own
+/// `owns_status`-equivalent handling of a worker-claimed parent job id via
+/// `SourceExecutionContext`.
+///
+/// `owns_status` gates only the *terminal* `Complete` status write —
+/// intermediate phase updates inside `index_local_source_with_progress`
+/// always flow through `progress` (`JobProgressSink`) regardless of
+/// ownership.
+async fn run_indexing(
+    input: LocalSourceIndexInput,
+    job_id: JobId,
+    owns_status: bool,
+    source_id: SourceId,
+    jobs: &dyn JobStore,
+    ledger: &dyn LedgerStore,
+    embedding_provider: &dyn EmbeddingProvider,
+    vector_store: &dyn VectorStore,
+) -> anyhow::Result<LocalSourceIndexOutput> {
+    let progress = JobProgressSink::new(jobs, job_id, source_id);
     match index_local_source_with_progress(
         input.clone(),
         ledger,
@@ -43,32 +83,36 @@ pub async fn index_local_source_with_job(
     .await
     {
         Ok(output) => {
-            progress
-                .record_phase(
-                    PipelinePhase::Complete,
-                    LifecycleStatus::Completed,
-                    Some(counts_for_output(&output)),
-                    None,
-                    Vec::new(),
-                )
-                .await?;
+            if owns_status {
+                progress
+                    .record_phase(
+                        PipelinePhase::Complete,
+                        LifecycleStatus::Completed,
+                        Some(counts_for_output(&output)),
+                        None,
+                        Vec::new(),
+                    )
+                    .await?;
+            }
             Ok(output)
         }
         Err(err) => {
-            let source_error = terminal_source_error(&err, &input.root);
-            if let Err(progress_err) = progress
-                .record_phase(
-                    PipelinePhase::Complete,
-                    LifecycleStatus::Failed,
-                    None,
-                    Some(source_error),
-                    Vec::new(),
-                )
-                .await
-            {
-                return Err(err.context(format!(
-                    "also failed to record terminal local source job failure: {progress_err}"
-                )));
+            if owns_status {
+                let source_error = terminal_source_error(&err, &input.root);
+                if let Err(progress_err) = progress
+                    .record_phase(
+                        PipelinePhase::Complete,
+                        LifecycleStatus::Failed,
+                        None,
+                        Some(source_error),
+                        Vec::new(),
+                    )
+                    .await
+                {
+                    return Err(err.context(format!(
+                        "also failed to record terminal local source job failure: {progress_err}"
+                    )));
+                }
             }
             Err(err)
         }
@@ -102,7 +146,12 @@ fn terminal_source_error(err: &anyhow::Error, root: &Path) -> SourceError {
 #[path = "local_source_job_tests.rs"]
 mod tests;
 
-fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> JobCreateRequest {
+fn job_create_request(
+    input: &LocalSourceIndexInput,
+    priority: JobPriority,
+    idempotency_key: Option<String>,
+    attempt: u32,
+) -> JobCreateRequest {
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
@@ -116,14 +165,19 @@ fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> Jo
         watch_id: None,
         parent_job_id: None,
         root_job_id: None,
-        attempt: 1,
-        priority: JobPriority::Background,
-        idempotency_key: None,
+        attempt,
+        priority,
+        idempotency_key,
         stage_plan: Vec::new(),
-        request: Some(serde_json::json!({
-            "source_kind": "local",
-            "root_hint": public_path_hint(&input.root),
-        })),
+        // Wrap as `{"source_request": <..>}` — the shape the source worker
+        // (`source_runner.rs::run`) requires. The previous
+        // `{"source_kind": "local", "root_hint": ...}` shape had no
+        // `source_request` key, so a locally-created job could never be
+        // recovered or retried: the runner's claim path fails immediately
+        // with "source job request is missing `source_request`" (finding
+        // C2). Match every other family's `job_create_request`
+        // (`source/non_web.rs`, `web_source/web_source_job.rs`).
+        request: Some(serde_json::json!({ "source_request": local_source_request(input) })),
         auth_snapshot: input
             .auth_snapshot
             .clone()
@@ -148,6 +202,29 @@ fn job_create_request(input: &LocalSourceIndexInput, _source_id: SourceId) -> Jo
         metadata: MetadataMap::new(),
         deadline_at: None,
     }
+}
+
+/// Reconstruct a retryable `SourceRequest` for the job payload. Mirrors
+/// `source/dispatch.rs::family_source_plan`'s ad-hoc reconstruction for the
+/// generic non-web families: not necessarily byte-identical to whatever
+/// caller-facing request originally routed here, but sufficient for
+/// `source_runner.rs` to re-run this exact local index on retry/recovery.
+/// When `input.route` carries the real routed plan (every `dispatch_local`
+/// call sets it — see `LocalSourceIndexInput::route`'s doc comment), its
+/// `scope`/`adapter`/`validated_options` are carried over; callers that
+/// bypass routing (tests, `query/code_search_refresh.rs`) fall back to a
+/// plain `SourceRequest::local_path` built from the root path.
+fn local_source_request(input: &LocalSourceIndexInput) -> SourceRequest {
+    let is_dir = input.root.is_dir();
+    let mut request = SourceRequest::local_path(input.root.to_string_lossy().to_string(), is_dir);
+    request.embed = input.embed;
+    request.collection = Some(input.collection.clone());
+    if let Some(route) = &input.route {
+        request.scope = Some(route.scope);
+        request.adapter = Some(route.adapter.name.clone());
+        request.options = route.validated_options.clone();
+    }
+    request
 }
 
 fn public_path_hint(path: &Path) -> String {
@@ -176,7 +253,6 @@ struct JobProgressSink<'a> {
     jobs: &'a dyn JobStore,
     job_id: JobId,
     source_id: SourceId,
-    sequence: Mutex<u64>,
 }
 
 impl<'a> JobProgressSink<'a> {
@@ -185,7 +261,6 @@ impl<'a> JobProgressSink<'a> {
             jobs,
             job_id,
             source_id,
-            sequence: Mutex::new(0),
         }
     }
 }
@@ -200,9 +275,24 @@ impl LocalSourceProgress for JobProgressSink<'_> {
         error: Option<SourceError>,
         provider_reservations: Vec<ProviderReservationSnapshot>,
     ) -> anyhow::Result<()> {
-        let mut sequence = self.sequence.lock().await;
-        *sequence += 1;
-        let sequence = *sequence;
+        // Query the job's current latest event sequence instead of tracking
+        // one locally. A sink-local counter (previously `Mutex<u64>` starting
+        // at 0) is only correct when this sink is the very first writer for
+        // `job_id` — true when local always created its own fresh job, but
+        // no longer true once local dispatch can reuse a worker-claimed
+        // parent job (finding C2 fix, `dispatch_local`): that job may already
+        // carry events from the routing/authorizing stages emitted before
+        // local dispatch even started, so a counter starting at 1 collides
+        // with the store's real next-sequence expectation
+        // (`job_event.sequence_invalid`). Mirrors
+        // `source/events.rs::emit_source_event`, the pattern every other
+        // family's event emission already uses.
+        let sequence = self
+            .jobs
+            .latest_event_sequence(self.job_id)
+            .await?
+            .unwrap_or(0)
+            + 1;
         let event_error = error
             .as_ref()
             .map(|error| source_error_to_api_error(error, phase, self.job_id, &self.source_id));

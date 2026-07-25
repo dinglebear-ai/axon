@@ -21,6 +21,7 @@ use std::sync::Arc;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_api::source::*;
 use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::FakeVectorStore;
 
@@ -31,6 +32,17 @@ use super::{WebSourceIndexInput, index_web_source};
 
 fn job_id() -> JobId {
     JobId::new(uuid::Uuid::from_u128(0x29812))
+}
+
+fn test_reservations(provider_id: &str, kind: ProviderKind) -> Arc<ProviderReservationManager> {
+    Arc::new(ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new(provider_id),
+        provider_kind: kind,
+        capacity: 4,
+        interactive_reserve: 1,
+        cooldown_after_failures: 1,
+        cooldown_secs: 30,
+    }))
 }
 
 fn input() -> WebSourceIndexInput {
@@ -56,6 +68,8 @@ fn input() -> WebSourceIndexInput {
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     }
 }
 
@@ -197,6 +211,8 @@ async fn map_scope_publishes_manifest_without_embedding_or_vectors() {
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     };
 
     let output = index_web_source(map_input, &ledger, &embedder, &vectors)
@@ -246,6 +262,8 @@ fn map_scope_without_prefetched_urls_uses_adapter_discovery() {
         artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
         event_store: None,
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     };
 
     let run = resolve_web_run(&map_input).expect("map run");

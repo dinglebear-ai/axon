@@ -7,9 +7,21 @@ use axon_adapters::boundary::{FetchProvider, RenderProvider};
 use axon_api::source::*;
 use axon_core::boundary::{DocumentCache, FakeCoreBoundaries};
 use axon_embedding::fake::FakeEmbeddingProvider;
+use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 use tokio::sync::Mutex;
+
+fn test_reservations(provider_id: &str, kind: ProviderKind) -> Arc<ProviderReservationManager> {
+    Arc::new(ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new(provider_id),
+        provider_kind: kind,
+        capacity: 4,
+        interactive_reserve: 1,
+        cooldown_after_failures: 1,
+        cooldown_secs: 30,
+    }))
+}
 
 use super::normalize::normalize_changed_documents;
 use super::run::{
@@ -174,6 +186,8 @@ fn web_input(
         artifact_store: Arc::new(FakeCoreBoundaries::new()),
         document_cache,
         event_store: None,
+        embedding_reservations: test_reservations("fake-embedding", ProviderKind::Embedding),
+        vector_reservations: test_reservations("fake-vector", ProviderKind::Vector),
     }
 }
 

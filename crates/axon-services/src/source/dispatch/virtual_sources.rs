@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use async_trait::async_trait;
+use axon_adapters::SourceAdapter as _;
 use axon_adapters::memory::{MemorySourceAccess, MemorySourceAdapter, MemorySourceProvider};
 use axon_adapters::upload::{UploadSourceAdapter, UploadSourceProvider};
 use axon_api::source::{

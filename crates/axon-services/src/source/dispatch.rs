@@ -4,6 +4,7 @@
 //! materialization. The returned adapter-owned guard keeps temporary artifacts
 //! alive while the shared non-web document pipeline runs.
 
+mod local;
 mod tool;
 mod tool_artifacts;
 pub(super) mod tool_auth;
@@ -20,8 +21,7 @@ use axon_adapters::sessions::{SessionRoots, SessionSourceAdapter};
 use axon_adapters::youtube::YoutubeSourceAdapter;
 use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
-    AuthScope, AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, SourceLimits, SourcePlan,
-    SourceRequest,
+    AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, SourceLimits, SourcePlan, SourceRequest,
 };
 use axon_core::logging::log_info;
 use uuid::Uuid;
@@ -30,13 +30,17 @@ use super::SourceExecutionContext;
 use super::non_web::{NonWebPipelineInput, index_materialized_source};
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
-use crate::{LocalSourceIndexInput, LocalSourceSelectionPolicy, index_local_source_with_job};
+pub(crate) use local::dispatch_local;
 pub(crate) use tool::{dispatch_cli_tool, dispatch_mcp_tool};
 pub(crate) use virtual_sources::{dispatch_memory, dispatch_upload};
 pub(crate) use web::dispatch_web;
 
-/// Placeholder used only by the remaining local-source implementation, which
-/// replaces it with the durable job id before execution.
+/// Placeholder job id for a `SourcePlan`/`LocalSourceIndexInput` field that
+/// gets overwritten with the real durable job id before any use — every
+/// generic non-web family (`family_source_plan`, below) and `dispatch_web`
+/// (`dispatch/web.rs`) construct their plan with this placeholder and then
+/// immediately replace it once the real (worker-supplied or freshly created)
+/// job id is known, so the placeholder itself is never observed.
 fn placeholder_job_id() -> JobId {
     JobId::new(Uuid::nil())
 }
@@ -78,70 +82,6 @@ fn family_source_plan(
         config_snapshot_id: ConfigSnapshotId::new("cfg_source_dispatch"),
         provider_reservations: Vec::new(),
     }
-}
-
-/// Local-path source: dispatch straight to the local bridge (no acquisition).
-#[allow(clippy::too_many_arguments)]
-pub async fn dispatch_local(
-    runtime: &TargetLocalSourceRuntime,
-    input: &str,
-    collection: &str,
-    owner_id: &str,
-    auth_snapshot: Option<&AuthSnapshot>,
-    embed: bool,
-    route: &axon_api::source::RoutePlan,
-) -> anyhow::Result<IndexCounts> {
-    log_info(&format!(
-        "command=source collection={collection} kind=local embed={embed}"
-    ));
-    let has_local_scope = auth_snapshot
-        .map(|snapshot| super::authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
-        .unwrap_or(true);
-    super::enforce_local_source_policy(input, has_local_scope)?;
-    let index_input = LocalSourceIndexInput {
-        root: std::path::PathBuf::from(input),
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: placeholder_job_id(),
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        selection_policy: LocalSourceSelectionPolicy::Permissive,
-        embedding_reservations: Some(runtime.embedding_reservations.clone()),
-        vector_reservations: Some(runtime.vector_reservations.clone()),
-        auth_snapshot: auth_snapshot.cloned(),
-        embed,
-        route: Some(route.clone()),
-    };
-    let output = index_local_source_with_job(
-        index_input,
-        runtime.jobs.as_ref(),
-        runtime.ledger.as_ref(),
-        runtime.embedding_provider.as_ref(),
-        runtime.vector_store.as_ref(),
-    )
-    .await
-    // `index_local_source_with_job` already returns `anyhow::Result`, so
-    // `.context()` applies directly and preserves its chain — the previous
-    // `.map_err(|e| anyhow::anyhow!(e.to_string()))` round-tripped the error
-    // through a bare string first, collapsing it to the outermost frame
-    // before this context was even added (same defect as the web dispatch
-    // path; see `source/dispatch/web.rs`).
-    .context("local source indexing failed")?;
-    Ok(IndexCounts {
-        job_id: output.job_id,
-        source_id: output.source_id,
-        generation: output.generation,
-        documents_prepared: output.documents_prepared,
-        chunks_prepared: output.chunks_prepared,
-        vector_points_written: output.vector_points_written,
-        removed: output.removed_files,
-        graph_candidates: output.graph_candidates,
-        warnings: Vec::new(),
-        artifacts: Vec::new(),
-        inline: None,
-    })
 }
 
 /// Git-repository source: adapter-owned materialization followed by the shared
@@ -440,3 +380,7 @@ mod tests;
 #[cfg(test)]
 #[path = "dispatch/tool_tests.rs"]
 mod tool_tests;
+
+#[cfg(test)]
+#[path = "dispatch/local_collapse_tests.rs"]
+mod local_collapse_tests;

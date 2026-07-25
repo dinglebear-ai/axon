@@ -1,6 +1,7 @@
 use super::CANONICAL_ENUMS;
 use super::api_defs;
 use crate::schemas::source_input::SourceInput;
+use serde_json::Value;
 
 pub(super) fn enum_markdown() -> String {
     let mut out = generated_header("api-enums", "api");
@@ -51,6 +52,99 @@ pub(super) fn registry_markdown(family: &str, inputs: &[SourceInput], section: &
         "\n## {section}\n\nGenerated from the owner crate schema registry.\n"
     ));
     out
+}
+
+/// Renders `docs/reference/cli/commands.md` from the same in-memory command
+/// records that produce `docs/reference/cli/commands.json`, plus a Removed
+/// Commands section sourced from the removed-surface registry
+/// (`xtask/src/schemas/removed_registry.rs`). This is CLAUDE.md's
+/// authoritative CLI reference — it must never regress to a header-only stub.
+pub(super) fn cli_markdown(
+    inputs: &[SourceInput],
+    commands: &[Value],
+    removed: &[(&str, &str)],
+) -> String {
+    let mut out = markdown("cli", inputs);
+    out.push_str(&format!(
+        "\n## Commands\n\nSourced from `docs/reference/cli/commands.json` ({} commands). \
+         `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word \
+         `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror \
+         the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that \
+         can return a durable job id instead of completing synchronously.\n\n",
+        commands.len()
+    ));
+    out.push_str(&command_table(commands));
+    out.push_str(&format!("\nTotal: {} commands.\n", commands.len()));
+
+    out.push_str(
+        "\n## Removed Commands\n\nRemoved in the 7.0.0 clean-break pipeline unification \
+         (issue #298) and not present in `commands.json`. Source: \
+         `xtask/src/schemas/removed_registry.rs` (`CLI_COMMANDS`). Every removed command \
+         now fails fast with a reserved-token error at the parser boundary rather than \
+         dispatching; see `crates/axon-core/src/config/source_routing.rs` for the \
+         reserved-token rejection table backing that error text.\n\n",
+    );
+    out.push_str("| Removed command | Replacement |\n|---|---|\n");
+    for (name, replacement) in removed {
+        out.push_str(&format!("| `axon {name} ...` | `{replacement}` |\n"));
+    }
+    out.push_str(
+        "\nREST and MCP removed-surface entries (routes/actions retired in the same clean \
+         break) are tracked by the `openapi` and `mcp` schema families, not duplicated here.\n",
+    );
+    out
+}
+
+/// Renders `docs/reference/cli/axon-help.md`. The target design
+/// (`docs/pipeline-unification/delivery/docs-generator-contract.md`'s
+/// `cli-help` family) is a real clap `--help` text renderer; that renderer
+/// does not exist yet — `CliRegistryCommand` (`xtask/src/schemas/cli_registry.rs`)
+/// has no flags/arguments field to render, only path/summary/mutates/async/
+/// auth-scope. Until a flag-level renderer lands, this projects the same
+/// command registry as a per-command quick-reference instead of an empty
+/// stub, and says so explicitly rather than silently under-delivering.
+pub(super) fn cli_help_markdown(inputs: &[SourceInput], commands: &[Value]) -> String {
+    let mut out = markdown("cli-help", inputs);
+    out.push_str(
+        "\n## Commands\n\n**Scope note:** this file is a per-command quick reference \
+         projected from `docs/reference/cli/commands.json`, not literal `axon <command> \
+         --help` output. `CliRegistryCommand` does not carry a flags/arguments registry, \
+         so flag-level help text cannot be generated mechanically yet; that requires the \
+         clap/help renderer described as the `cli-help` family target in \
+         `docs/pipeline-unification/delivery/docs-generator-contract.md`. Run \
+         `axon <command> --help` for authoritative flag documentation in the meantime.\n\n",
+    );
+    out.push_str(&command_table(commands));
+    out.push_str(&format!("\nTotal: {} commands.\n", commands.len()));
+    out
+}
+
+fn command_table(commands: &[Value]) -> String {
+    let mut sorted: Vec<&Value> = commands.iter().collect();
+    sorted.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    let mut out = String::from(
+        "| Command | Group | Summary | Mutates | Auth Scope | Async |\n|---|---|---|---|---|---|\n",
+    );
+    for command in sorted {
+        let name = command["name"].as_str().unwrap_or_default();
+        let group = command["group"].as_str().unwrap_or_default();
+        let summary = command["summary"].as_str().unwrap_or_default();
+        let mutates = bool_flag(command, "mutates");
+        let auth_scope = command["requires_auth_scope"].as_str().unwrap_or_default();
+        let is_async = bool_flag(command, "async");
+        out.push_str(&format!(
+            "| `{name}` | `{group}` | {summary} | {mutates} | `{auth_scope}` | {is_async} |\n"
+        ));
+    }
+    out
+}
+
+fn bool_flag(command: &Value, field: &str) -> &'static str {
+    if command[field].as_bool().unwrap_or(false) {
+        "yes"
+    } else {
+        "no"
+    }
 }
 
 pub(super) fn registry_projection_markdown(

@@ -64,6 +64,8 @@ pub(crate) async fn dispatch_web(
         artifact_store: runtime.artifact_store.clone(),
         document_cache: runtime.document_cache.clone(),
         event_store: Some(runtime.jobs.clone()),
+        embedding_reservations: runtime.embedding_reservations.clone(),
+        vector_reservations: runtime.vector_reservations.clone(),
     };
     let output = if let Some(job_id) = source_execution.existing_job_id {
         let execution = WebSourceJobExecution {

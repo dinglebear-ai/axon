@@ -238,15 +238,13 @@ impl fmt::Debug for Config {
                 "openai_embed_pool_max_inputs",
                 &self.openai_embed_pool_max_inputs,
             )
-            .field("ingest_lanes", &self.ingest_lanes)
-            .field("embed_lanes", &self.embed_lanes)
             .field("embed_doc_timeout_secs", &self.embed_doc_timeout_secs)
             .field("queue_summary_secs", &self.queue_summary_secs)
             .field("qdrant_point_buffer", &self.qdrant_point_buffer)
-            .field("max_pending_crawl_jobs", &self.max_pending_crawl_jobs)
-            .field("max_pending_embed_jobs", &self.max_pending_embed_jobs)
-            .field("max_pending_extract_jobs", &self.max_pending_extract_jobs)
-            .field("max_pending_ingest_jobs", &self.max_pending_ingest_jobs)
+            .field(
+                "source_job_concurrency_limit",
+                &self.source_job_concurrency_limit,
+            )
             .field("hnsw_ef_search", &self.hnsw_ef_search)
             .field("hnsw_ef_search_legacy", &self.hnsw_ef_search_legacy)
             .field("evaluate_retrieval_ab", &self.evaluate_retrieval_ab)

@@ -36,8 +36,19 @@ impl FeedSourceAdapter {
     pub fn new() -> Self {
         Self
     }
+}
 
-    pub async fn materialize(
+#[async_trait]
+impl SourceAdapter for FeedSourceAdapter {
+    fn name(&self) -> &'static str {
+        ADAPTER_NAME
+    }
+
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
+    async fn materialize(
         &self,
         mut plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
@@ -57,17 +68,6 @@ impl FeedSourceAdapter {
         Ok(crate::acquisition::MaterializedSource::temporary_at(
             plan, temporary, path,
         ))
-    }
-}
-
-#[async_trait]
-impl SourceAdapter for FeedSourceAdapter {
-    fn name(&self) -> &'static str {
-        ADAPTER_NAME
-    }
-
-    fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
