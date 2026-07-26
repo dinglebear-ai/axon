@@ -123,9 +123,10 @@ contracts at `docs/pipeline-unification/crates/<name>/{README.md,CLAUDE.md}`
 ## Notes on transitional state
 
 - The legacy single-purpose crates (`axon-vector`, `axon-crawl`, `axon-ingest`,
-  `axon-code-index`) are removed from the workspace. `cargo xtask check-layering`
-  still carries forbidden-module prefixes and a small allowlist referencing
-  their old paths as a guardrail — see [dependency-layering.md](dependency-layering.md).
+  `axon-code-index`) are removed from the workspace. The live
+  `cargo xtask check-layering` gate checks the current crate graph and exact
+  exception ledger; it does not retain compatibility rules for those removed
+  paths. See [dependency-layering.md](dependency-layering.md).
 - `axon-extract` remains even though the contract disposition said "remove or
   shrink"; it is still depended on by `axon-adapters` and `axon-services` for
   vertical extraction.
