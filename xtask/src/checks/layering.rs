@@ -14,7 +14,8 @@ mod exception_table;
 mod exceptions;
 mod syntax;
 
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
 use exception_table::{MANIFEST_EXCEPTIONS, REACH_EXCEPTIONS};
@@ -128,22 +129,47 @@ fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<M
                 continue;
             }
         };
-        for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
-            let Some(table) = parsed.get(table_name).and_then(toml::Value::as_table) else {
-                continue;
-            };
+        for (table_name, table) in dependency_tables(&parsed) {
             for dependency in TRANSPORT_FORBIDDEN_DEPS {
                 if table.contains_key(*dependency) {
                     findings.push(ManifestFinding {
                         path: (*manifest).to_owned(),
                         dependency: (*dependency).to_owned(),
-                        table: table_name.to_owned(),
+                        table: table_name.clone(),
                     });
                 }
             }
         }
     }
     findings
+}
+
+fn dependency_tables(parsed: &toml::Table) -> Vec<(String, &toml::Table)> {
+    let mut tables = Vec::new();
+    for dependency_kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(table) = parsed.get(dependency_kind).and_then(toml::Value::as_table) {
+            tables.push((dependency_kind.to_owned(), table));
+        }
+    }
+    if let Some(targets) = parsed.get("target").and_then(toml::Value::as_table) {
+        for (target_name, target) in targets {
+            let Some(target) = target.as_table() else {
+                continue;
+            };
+            for dependency_kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                if let Some(table) = target.get(dependency_kind).and_then(toml::Value::as_table) {
+                    tables.push((format!("target.'{target_name}'.{dependency_kind}"), table));
+                }
+            }
+        }
+    }
+    tables
+}
+
+struct ParsedRustFile {
+    path: PathBuf,
+    rel: String,
+    syntax: syn::File,
 }
 
 fn collect_rust_findings(
@@ -155,6 +181,7 @@ fn collect_rust_findings(
     let mut findings = Vec::new();
     for src in src_roots {
         let dir = root.join(src);
+        let mut parsed_files = Vec::new();
         for entry in WalkDir::new(&dir) {
             let entry = match entry {
                 Ok(entry) => entry,
@@ -191,14 +218,50 @@ fn collect_rust_findings(
                     continue;
                 }
             };
-            let mut file_findings = syntax::scan(&parsed, &rel, reach_rules);
-            if rel == RESERVED_CALL_FACADE {
+            parsed_files.push(ParsedRustFile {
+                path: path.to_owned(),
+                rel,
+                syntax: parsed,
+            });
+        }
+
+        let excluded_modules = cfg_test_external_module_paths(&parsed_files);
+        for file in parsed_files {
+            if excluded_modules.contains(&file.path) {
+                continue;
+            }
+            let mut file_findings = syntax::scan(&file.syntax, &file.rel, reach_rules);
+            if file.rel == RESERVED_CALL_FACADE {
                 file_findings.retain(|finding| !finding.rule.starts_with("provider-"));
             }
             findings.extend(file_findings);
         }
     }
     findings
+}
+
+fn cfg_test_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf> {
+    let mut excluded = BTreeSet::new();
+    for file in files {
+        let parent = file.path.parent().unwrap_or_else(|| Path::new(""));
+        let stem = file
+            .path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default();
+        let module_dir = if matches!(stem, "lib" | "main") {
+            parent.to_owned()
+        } else {
+            parent.join(stem)
+        };
+        for (module, path_override) in syntax::cfg_test_external_modules(&file.syntax) {
+            excluded.insert(path_override.map_or_else(
+                || module_dir.join(format!("{module}.rs")),
+                |path| parent.join(path),
+            ));
+        }
+    }
+    excluded
 }
 
 fn check_with_exceptions(

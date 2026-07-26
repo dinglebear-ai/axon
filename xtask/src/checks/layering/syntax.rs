@@ -1,15 +1,24 @@
-use std::collections::BTreeMap;
+mod aliases;
+mod cfg;
+mod tokens;
 
+use aliases::{AliasStack, import_from_extern_crate, imports_from_use};
 use syn::visit::Visit;
-use syn::{ExprField, ExprMethodCall, ItemUse, Member, Path, UseTree};
+use syn::{
+    Arm, Block, ExprField, ExprMethodCall, FieldPat, FieldValue, ImplItem, Item, ItemExternCrate,
+    ItemMod, ItemUse, Local, Macro, Member, Path, TraitItem,
+};
+use tokens::TokenFinding;
 
 use super::{Finding, ReachRule};
 
 const PROVIDER_TYPES: &[&str] = &[
     "EmbeddingProvider",
     "VectorStore",
+    "SearchProvider",
     "FetchProvider",
     "RenderProvider",
+    "NetworkCaptureProvider",
     "GraphStore",
     "ArtifactStore",
     "LlmProvider",
@@ -18,45 +27,87 @@ const PROVIDER_TYPES: &[&str] = &[
 const PROVIDER_HANDLES: &[&str] = &[
     "embedding_provider",
     "vector_store",
+    "search_provider",
     "fetch_provider",
     "render_provider",
+    "network_capture_provider",
+    "capture_provider",
     "graph_store",
     "artifact_store",
     "llm_provider",
 ];
 
-// Only names specific enough to avoid rejecting unrelated domain methods.
-// Collision-prone operations (`get`, `delete`, `reset`, `query`, `search`,
-// `resolve`, `capabilities`, and `fetch`) are enforced through the provider
-// type/import or provider-handle boundary instead.
-const DISTINCT_PROVIDER_OPERATIONS: &[&str] = &[
+// Names specific enough to reject independent of receiver type. Collision-
+// prone operations remain enforceable whenever the receiver handle/type or
+// provider-qualified UFCS path is present.
+const LOW_COLLISION_PROVIDER_METHODS: &[&str] = &[
     "embed",
     "ensure_collection",
-    "upsert",
     "mark_generation_committed",
     "mark_unchanged_items_committed",
-    "render",
     "upsert_candidates",
     "put_bytes",
-    "complete",
     "complete_streaming",
+    "node_edges",
+    "nodes_for_source",
+    "delete_nodes",
+    "delete_edges",
+];
+
+const PROVIDER_GLOB_ROOTS: &[&str] = &[
+    "axon_adapters",
+    "axon_embedding",
+    "axon_graph",
+    "axon_llm",
+    "axon_services",
+    "axon_vectors",
 ];
 
 pub(super) fn scan(syntax: &syn::File, rel: &str, reach_rules: &[ReachRule]) -> Vec<Finding> {
     let mut scanner = Scanner {
         rel,
         reach_rules,
-        aliases: BTreeMap::new(),
+        aliases: AliasStack::default(),
         findings: Vec::new(),
     };
     scanner.visit_file(syntax);
     scanner.findings
 }
 
+pub(super) fn cfg_test_external_modules(syntax: &syn::File) -> Vec<(String, Option<String>)> {
+    syntax
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Mod(module) if module.content.is_none() && cfg::item_is_test_only(item) => {
+                Some((
+                    module.ident.to_string(),
+                    module.attrs.iter().find_map(|attribute| {
+                        if !attribute.path().is_ident("path") {
+                            return None;
+                        }
+                        let syn::Meta::NameValue(name_value) = &attribute.meta else {
+                            return None;
+                        };
+                        let syn::Expr::Lit(expr) = &name_value.value else {
+                            return None;
+                        };
+                        let syn::Lit::Str(path) = &expr.lit else {
+                            return None;
+                        };
+                        Some(path.value())
+                    }),
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 struct Scanner<'a> {
     rel: &'a str,
     reach_rules: &'a [ReachRule],
-    aliases: BTreeMap<String, Vec<String>>,
+    aliases: AliasStack,
     findings: Vec<Finding>,
 }
 
@@ -70,7 +121,7 @@ impl Scanner<'_> {
     }
 
     fn inspect_path(&mut self, original: Vec<String>) {
-        let resolved = resolve_alias(&original, &self.aliases);
+        let resolved = self.aliases.resolve(&original);
         let rendered = resolved.join("::");
 
         for reach in self.reach_rules {
@@ -95,9 +146,7 @@ impl Scanner<'_> {
         if resolved.len() >= 2 {
             let operation = resolved.last().expect("non-empty path");
             let owner = &resolved[resolved.len() - 2];
-            if PROVIDER_TYPES.contains(&owner.as_str())
-                && DISTINCT_PROVIDER_OPERATIONS.contains(&operation.as_str())
-            {
+            if PROVIDER_TYPES.contains(&owner.as_str()) {
                 self.record(
                     format!("provider-op:{owner}::{operation}"),
                     format!("calls raw provider operation `{rendered}`"),
@@ -118,18 +167,122 @@ impl Scanner<'_> {
             );
         }
     }
+
+    fn inspect_member(&mut self, name: &str) {
+        if PROVIDER_HANDLES.contains(&name) {
+            self.record(
+                format!("provider-handle:{name}"),
+                format!("accesses raw provider handle `{name}`"),
+            );
+        }
+    }
+
+    fn inspect_method(&mut self, name: &str) {
+        self.inspect_member(name);
+        if LOW_COLLISION_PROVIDER_METHODS.contains(&name) {
+            self.record(
+                format!("provider-method:{name}"),
+                format!("calls reserved provider method `.{name}(...)`"),
+            );
+        }
+    }
+
+    fn inspect_glob(&mut self, canonical: Vec<String>) {
+        let resolved = self.aliases.resolve(&canonical);
+        if resolved
+            .first()
+            .is_some_and(|root| PROVIDER_GLOB_ROOTS.contains(&root.as_str()))
+        {
+            let rendered = resolved.join("::");
+            self.record(
+                format!("provider-glob:{rendered}"),
+                format!("imports provider-bearing glob `{rendered}::*`"),
+            );
+        }
+        self.inspect_path(canonical);
+    }
+
+    fn inspect_macro(&mut self, node: &Macro) {
+        self.inspect_path(path_segments(&node.path));
+        for finding in tokens::scan(&node.tokens) {
+            match finding {
+                TokenFinding::Path(path) => self.inspect_path(path),
+                TokenFinding::Method(method) => self.inspect_method(&method),
+                TokenFinding::Ident(ident) => self.inspect_member(&ident),
+            }
+        }
+    }
 }
 
 impl<'ast> Visit<'ast> for Scanner<'_> {
-    fn visit_item_use(&mut self, node: &'ast ItemUse) {
-        let mut imports = Vec::new();
-        flatten_use_tree(&node.tree, Vec::new(), &mut imports);
-        for (local, canonical) in imports {
-            self.aliases.insert(local, canonical.clone());
-            self.inspect_path(canonical);
+    fn visit_file(&mut self, node: &'ast syn::File) {
+        self.aliases.push_items(&node.items);
+        for item in &node.items {
+            self.visit_item(item);
         }
-        // Imports were flattened above. Do not traverse them again and double
-        // count grouped, renamed, or multiline entries.
+        self.aliases.pop();
+    }
+
+    fn visit_item(&mut self, node: &'ast Item) {
+        if !cfg::item_is_test_only(node) {
+            syn::visit::visit_item(self, node);
+        }
+    }
+
+    fn visit_impl_item(&mut self, node: &'ast ImplItem) {
+        if !cfg::impl_item_is_test_only(node) {
+            syn::visit::visit_impl_item(self, node);
+        }
+    }
+
+    fn visit_trait_item(&mut self, node: &'ast TraitItem) {
+        if !cfg::trait_item_is_test_only(node) {
+            syn::visit::visit_trait_item(self, node);
+        }
+    }
+
+    fn visit_local(&mut self, node: &'ast Local) {
+        if !cfg::attrs_are_test_only(&node.attrs) {
+            syn::visit::visit_local(self, node);
+        }
+    }
+
+    fn visit_arm(&mut self, node: &'ast Arm) {
+        if !cfg::attrs_are_test_only(&node.attrs) {
+            syn::visit::visit_arm(self, node);
+        }
+    }
+
+    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
+        if let Some((_, items)) = &node.content {
+            self.aliases.push_items(items);
+            for item in items {
+                self.visit_item(item);
+            }
+            self.aliases.pop();
+        }
+    }
+
+    fn visit_block(&mut self, node: &'ast Block) {
+        self.aliases.push_stmts(&node.stmts);
+        for stmt in &node.stmts {
+            self.visit_stmt(stmt);
+        }
+        self.aliases.pop();
+    }
+
+    fn visit_item_use(&mut self, node: &'ast ItemUse) {
+        for import in imports_from_use(node) {
+            if import.glob {
+                self.inspect_glob(import.canonical);
+            } else {
+                self.inspect_path(import.canonical);
+            }
+        }
+    }
+
+    fn visit_item_extern_crate(&mut self, node: &'ast ItemExternCrate) {
+        self.inspect_path(import_from_extern_crate(node).canonical);
     }
 
     fn visit_path(&mut self, node: &'ast Path) {
@@ -139,26 +292,32 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 
     fn visit_expr_field(&mut self, node: &'ast ExprField) {
         if let Member::Named(member) = &node.member {
-            let name = member.to_string();
-            if PROVIDER_HANDLES.contains(&name.as_str()) {
-                self.record(
-                    format!("provider-handle:{name}"),
-                    format!("accesses raw provider handle `.{name}`"),
-                );
-            }
+            self.inspect_member(&member.to_string());
         }
         syn::visit::visit_expr_field(self, node);
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
-        let name = node.method.to_string();
-        if PROVIDER_HANDLES.contains(&name.as_str()) {
-            self.record(
-                format!("provider-handle:{name}"),
-                format!("accesses raw provider handle `.{name}(...)`"),
-            );
-        }
+        self.inspect_method(&node.method.to_string());
         syn::visit::visit_expr_method_call(self, node);
+    }
+
+    fn visit_field_pat(&mut self, node: &'ast FieldPat) {
+        if let Member::Named(member) = &node.member {
+            self.inspect_member(&member.to_string());
+        }
+        syn::visit::visit_field_pat(self, node);
+    }
+
+    fn visit_field_value(&mut self, node: &'ast FieldValue) {
+        if let Member::Named(member) = &node.member {
+            self.inspect_member(&member.to_string());
+        }
+        syn::visit::visit_field_value(self, node);
+    }
+
+    fn visit_macro(&mut self, node: &'ast Macro) {
+        self.inspect_macro(node);
     }
 }
 
@@ -169,50 +328,10 @@ fn path_segments(path: &Path) -> Vec<String> {
         .collect()
 }
 
-fn resolve_alias(path: &[String], aliases: &BTreeMap<String, Vec<String>>) -> Vec<String> {
-    let Some((first, tail)) = path.split_first() else {
-        return Vec::new();
-    };
-    let Some(prefix) = aliases.get(first) else {
-        return path.to_vec();
-    };
-    prefix.iter().cloned().chain(tail.iter().cloned()).collect()
-}
-
 fn path_has_prefix(path: &[String], prefix: &[&str]) -> bool {
     path.len() >= prefix.len()
         && path
             .iter()
             .zip(prefix)
             .all(|(segment, expected)| segment == expected)
-}
-
-fn flatten_use_tree(tree: &UseTree, prefix: Vec<String>, output: &mut Vec<(String, Vec<String>)>) {
-    match tree {
-        UseTree::Path(path) => {
-            let mut next = prefix;
-            next.push(path.ident.to_string());
-            flatten_use_tree(&path.tree, next, output);
-        }
-        UseTree::Name(name) => {
-            let mut canonical = prefix;
-            canonical.push(name.ident.to_string());
-            output.push((name.ident.to_string(), canonical));
-        }
-        UseTree::Rename(rename) => {
-            let mut canonical = prefix;
-            canonical.push(rename.ident.to_string());
-            output.push((rename.rename.to_string(), canonical));
-        }
-        UseTree::Glob(_) => {
-            if let Some(local) = prefix.last() {
-                output.push((local.clone(), prefix));
-            }
-        }
-        UseTree::Group(group) => {
-            for item in &group.items {
-                flatten_use_tree(item, prefix.clone(), output);
-            }
-        }
-    }
 }

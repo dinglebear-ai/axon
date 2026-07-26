@@ -36,11 +36,15 @@ axon                  (root binary bootstrap)
 
 ## What `check-layering` enforces
 
-The check parses all non-test `.rs` files under the three transport crates and
-`axon-services` with `syn`. Grouped, multiline, and renamed imports are
-resolved structurally; comments and string literals are not scanned as code.
-An unreadable source tree/file, malformed Rust file, unreadable manifest, or
-malformed manifest fails closed.
+The check parses production `.rs` items under the three transport crates and
+`axon-services` with `syn`. Grouped, multiline, renamed, chained,
+block-scoped, and `extern crate` aliases are resolved before traversal with
+lexical shadowing and cycle protection. Provider-bearing macro tokens are
+inspected structurally while comments and string literals remain data.
+`#[cfg(test)]` items and externally declared test-only modules are excluded
+without excluding production items that share a file. An unreadable source
+tree/file, malformed Rust file, unreadable manifest, or malformed manifest
+fails closed.
 
 It rejects:
 
@@ -48,9 +52,12 @@ It rejects:
   `axon-services::source` execution modules, and selected domain internals;
 - transport manifest dependencies on `axon-adapters`, `axon-embedding`,
   `axon-llm`, `axon-retrieval`, or `axon-vectors`, in normal, dev, or build
-  dependency tables;
-- raw `EmbeddingProvider`, `VectorStore`, `FetchProvider`, `RenderProvider`,
-  `GraphStore`, `ArtifactStore`, and `LlmProvider` type/import/UFCS access;
+  dependency tables, including their target-specific
+  `[target.'cfg(...)'.*dependencies]` forms;
+- raw `EmbeddingProvider`, `VectorStore`, `SearchProvider`, `FetchProvider`,
+  `RenderProvider`, `NetworkCaptureProvider`, `GraphStore`, `ArtifactStore`,
+  and `LlmProvider` type/import/UFCS access, provider-bearing globs, named
+  handle destructuring, and low-collision provider method calls;
 - raw provider-handle member access outside the fixed
   `crates/axon-services/src/reserved_call.rs` scheduler facade.
 
@@ -92,8 +99,9 @@ by `check-layering`, others by review):
 ## Verification
 
 ```bash
-cargo xtask check-layering     # the layering check alone
-cargo xtask check              # aggregate (layering + crate-contracts + others)
+cargo xtask check-layering         # the layering check alone
+cargo xtask check-crate-contracts  # standalone contract/inventory audit
+cargo xtask check                  # aggregate includes layering, not crate-contracts
 ```
 
 The check currently passes with exact-count debt owned by the named pipeline

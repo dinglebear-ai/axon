@@ -100,6 +100,116 @@ fn provider_handle_alias_fails_without_receiver_name_dependency() {
 }
 
 #[test]
+fn low_collision_provider_method_fails_without_receiver_type() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub async fn run(arbitrary: Unknown) { arbitrary.embed(vec![]).await; }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("[provider-method:embed]"), "{error}");
+}
+
+#[test]
+fn provider_qualified_collision_prone_ufcs_operation_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_vectors::VectorStore;\npub async fn run(store: &dyn VectorStore) { VectorStore::delete(store, selector()).await; }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        error.contains("[provider-op:VectorStore::delete]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn provider_glob_import_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_embedding::*;\npub fn run() {}\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("[provider-glob:axon_embedding]"), "{error}");
+}
+
+#[test]
+fn provider_named_destructuring_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub fn run(runtime: Runtime) { let Runtime { embedding_provider: arbitrary, .. } = runtime; consume(arbitrary); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        error.contains("[provider-handle:embedding_provider]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn search_and_network_capture_boundaries_fail() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_adapters::{SearchProvider, NetworkCaptureProvider};\npub fn run(runtime: Runtime, _: &dyn SearchProvider, _: &dyn NetworkCaptureProvider) { consume(runtime.search_provider); consume(runtime.network_capture_provider); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-type:SearchProvider",
+        "provider-type:NetworkCaptureProvider",
+        "provider-handle:search_provider",
+        "provider-handle:network_capture_provider",
+    ] {
+        assert!(error.contains(rule), "missing {rule}: {error}");
+    }
+}
+
+#[test]
+fn macro_tokens_enforce_alias_ufcs_and_method_calls_once() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_vectors::VectorStore as VS;\npub async fn run(store: Store, arbitrary: Unknown) { tokio::select! { _ = VS::delete(&store, selector()) => {}, _ = arbitrary.embed(vec![]) => {} } }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        error.contains("[provider-op:VectorStore::delete]"),
+        "{error}"
+    );
+    assert!(error.contains("[provider-method:embed]"), "{error}");
+    assert_eq!(
+        error.matches("[provider-op:VectorStore::delete]").count(),
+        1,
+        "{error}"
+    );
+    assert_eq!(
+        error.matches("[provider-method:embed]").count(),
+        1,
+        "{error}"
+    );
+}
+
+#[test]
+fn macro_string_and_comment_literals_do_not_trigger() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub fn run(cfg: Config) { trace!(\"embedding_provider.embed() VectorStore::delete\", embed = cfg.embed); /* artifact_store.put_bytes() */ }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
 fn provider_ufcs_through_renamed_trait_fails() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());
@@ -111,6 +221,58 @@ fn provider_ufcs_through_renamed_trait_fails() {
     assert!(error.contains("[provider-type:VectorStore]"), "{error}");
     assert!(
         error.contains("[provider-op:VectorStore::upsert]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn aliases_resolve_before_source_order_and_to_fixed_point() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub async fn run(store: Store) { Alias::delete(&store, selector()).await; }\nuse Base as Alias;\nuse axon_vectors::VectorStore as Base;\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        error.contains("[provider-op:VectorStore::delete]"),
+        "{error}"
+    );
+}
+
+#[test]
+fn nested_alias_shadowing_uses_innermost_scope() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_vectors as v;\npub fn run() { use harmless as v; consume(v::qdrant::Value); }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
+fn alias_cycles_terminate_without_false_positive() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use b as a;\nuse a as b;\npub fn run() { consume(a::qdrant::Value); }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
+fn extern_crate_alias_resolves_provider_paths() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "extern crate axon_vectors as v;\npub async fn run(store: Store) { v::VectorStore::delete(&store, selector()).await; }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        error.contains("[provider-op:VectorStore::delete]"),
         "{error}"
     );
 }
@@ -166,6 +328,55 @@ fn malformed_or_missing_manifest_fails_closed() {
 }
 
 #[test]
+fn target_specific_dependency_tables_are_scanned_with_exact_paths() {
+    for dependency_kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        let temp = tempdir().unwrap();
+        write_surface_fixture(temp.path());
+        write(
+            &temp.path().join("crates/axon-cli/Cargo.toml"),
+            &format!(
+                "[package]\nname='axon-cli'\nversion='0.0.0'\n[target.'cfg(unix)'.{dependency_kind}]\naxon-vectors={{path='../axon-vectors'}}\n"
+            ),
+        );
+        let error = check(temp.path()).unwrap_err().to_string();
+        let table = format!("target.'cfg(unix)'.{dependency_kind}");
+        assert!(error.contains(&format!("[{table}]")), "{error}");
+    }
+}
+
+#[test]
+fn target_specific_exception_is_bound_to_full_table_path() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    let manifest = "crates/axon-cli/Cargo.toml";
+    write(
+        &temp.path().join(manifest),
+        "[package]\nname='axon-cli'\nversion='0.0.0'\n[target.'cfg(unix)'.dependencies]\naxon-adapters={path='../axon-adapters'}\n",
+    );
+    let exact = [ManifestException {
+        path: manifest,
+        dependency: "axon-adapters",
+        table: "target.'cfg(unix)'.dependencies",
+        owner: "axon_rust-test",
+        expected_count: 1,
+    }];
+    check_fixture_with_exceptions(temp.path(), &[], &exact).unwrap();
+
+    let wrong_table = [ManifestException {
+        table: "dependencies",
+        ..exact[0]
+    }];
+    let error = check_fixture_with_exceptions(temp.path(), &[], &wrong_table)
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("[dependencies] exception"), "{error}");
+    assert!(
+        error.contains("declares [target.'cfg(unix)'.dependencies]"),
+        "{error}"
+    );
+}
+
+#[test]
 fn missing_manifest_and_source_tree_fail_closed() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());
@@ -174,6 +385,62 @@ fn missing_manifest_and_source_tree_fail_closed() {
     let error = check(temp.path()).unwrap_err().to_string();
     assert!(error.contains("failed to read manifest"), "{error}");
     assert!(error.contains("failed to walk source tree"), "{error}");
+}
+
+#[test]
+fn cfg_test_items_and_test_only_external_modules_are_excluded() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "#[cfg(test)]\nmod test_support;\n#[cfg(all(test, unix))]\npub fn test_only(runtime: Runtime) { consume(runtime.embedding_provider); }\npub const OK: bool = true;\n",
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/test_support.rs"),
+        "pub fn helper(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
+fn mixed_file_still_scans_production_items() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "#[cfg(test)]\npub fn test_only(runtime: Runtime) { consume(runtime.embedding_provider); }\npub fn production(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(!error.contains("embedding_provider"), "{error}");
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
+}
+
+#[test]
+fn production_test_support_module_is_not_hidden_by_filename() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "mod test_support;\npub const OK: bool = true;\n",
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/test_support.rs"),
+        "pub fn production(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
+}
+
+#[test]
+fn cfg_any_test_or_production_is_still_scanned() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "#[cfg(any(test, unix))]\npub fn production_on_unix(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
 }
 
 #[test]

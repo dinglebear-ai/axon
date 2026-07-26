@@ -23,8 +23,8 @@
 //!    `[workspace].members` and Cargo manifests under `crates/`; duplicate
 //!    contract rows and count drift are rejected.
 //!
-//! The check is also part of the `cargo xtask check` aggregate. Run it
-//! explicitly with `cargo xtask check-crate-contracts`.
+//! This is a standalone check, not part of the `cargo xtask check` aggregate.
+//! Run it explicitly with `cargo xtask check-crate-contracts`.
 
 use std::path::Path;
 
