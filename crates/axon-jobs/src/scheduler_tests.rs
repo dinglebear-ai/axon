@@ -82,3 +82,46 @@ async fn sqlite_scheduler_grants_and_fences_a_reservation() {
         Err(SchedulerError::StaleFence)
     ));
 }
+
+#[tokio::test]
+async fn reserved_call_releases_capacity_after_provider_completion() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query("INSERT INTO sources (source_id, summary_json, created_at, updated_at) VALUES ('s', '{}', '', '')")
+        .execute(&pool)
+        .await
+        .expect("source");
+    sqlx::query("INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at) VALUES ('00000000-0000-0000-0000-000000000008', 'source', 'queued', 'queued', 'normal', 's', '', '')")
+        .execute(&pool)
+        .await
+        .expect("job");
+    let scheduler = ProviderScheduler::new(
+        pool,
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei".into(),
+            authority_id: "a".into(),
+        },
+        SchedulerConfig {
+            capacity: 1,
+            interactive_reserve: 0,
+            max_entries: 4,
+            max_units: 4,
+        },
+    )
+    .expect("scheduler");
+    let result = call_reserved::<(), _, _, _, _>(
+        &scheduler,
+        ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(8)),
+            stage_id: None,
+            attempt: 1,
+            fence: "fence".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        },
+        |_lease| async { Ok::<_, &'static str>("ok") },
+    )
+    .await
+    .expect("reserved call");
+    assert_eq!(result, "ok");
+}

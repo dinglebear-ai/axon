@@ -9,6 +9,7 @@ use axon_api::source::{JobId, JobPriority, ProviderKind, StageId};
 use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
+use std::future::Future;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +54,16 @@ pub enum SchedulerError {
     QueueFull,
     #[error("scheduler lease fence rejected")]
     StaleFence,
+    #[error("scheduler reservation is queued")]
+    Queued,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ReservedCallError<E> {
+    #[error("provider reservation failed: {0}")]
+    Scheduler(#[from] SchedulerError),
+    #[error("reserved provider call failed: {0}")]
+    Provider(E),
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +71,63 @@ pub struct ProviderScheduler {
     pool: SqlitePool,
     domain: ProviderCapacityDomain,
     config: SchedulerConfig,
+}
+
+#[derive(Debug)]
+pub struct ActiveReservationLease<K> {
+    scheduler: ProviderScheduler,
+    reservation_id: String,
+    fence: String,
+    _kind: std::marker::PhantomData<fn() -> K>,
+}
+
+impl<K> Clone for ActiveReservationLease<K> {
+    fn clone(&self) -> Self {
+        Self {
+            scheduler: self.scheduler.clone(),
+            reservation_id: self.reservation_id.clone(),
+            fence: self.fence.clone(),
+            _kind: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<K> ActiveReservationLease<K> {
+    pub async fn complete(self) -> Result<(), SchedulerError> {
+        self.scheduler
+            .complete(&self.reservation_id, &self.fence)
+            .await
+    }
+}
+
+/// Execute one provider operation only after the SQLite scheduler has granted
+/// capacity. Provider traits stay unchanged; the lease is the only value the
+/// operation receives from the scheduler boundary.
+pub async fn call_reserved<K, T, E, F, Fut>(
+    scheduler: &ProviderScheduler,
+    request: ReservationRequest,
+    operation: F,
+) -> Result<T, ReservedCallError<E>>
+where
+    F: FnOnce(ActiveReservationLease<K>) -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+{
+    let fence = request.fence.clone();
+    let grant = scheduler.reserve(request).await?;
+    if !grant.granted {
+        return Err(ReservedCallError::Scheduler(SchedulerError::Queued));
+    }
+    let lease = ActiveReservationLease {
+        scheduler: scheduler.clone(),
+        reservation_id: grant.reservation_id,
+        fence,
+        _kind: std::marker::PhantomData,
+    };
+    let value = operation(lease.clone())
+        .await
+        .map_err(ReservedCallError::Provider)?;
+    lease.complete().await?;
+    Ok(value)
 }
 
 impl ProviderScheduler {

@@ -519,7 +519,7 @@ characterization; no ignored red test lands.
 
 ### Call gate and all lanes
 
-- [ ] Implement `call_reserved` over unchanged provider traits.
+- [x] Implement `call_reserved` over unchanged provider traits.
 - [ ] Remove/de-authorize
   `axon-observe::ProviderReservationManager`; observation reads durable state.
 - [ ] Route source embedding, interactive query/ask/retrieve embedding, vector
