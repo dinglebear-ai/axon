@@ -16,7 +16,15 @@ struct PipelineObservation {
     request: SourceRequest,
     progress: Vec<JobEvent>,
     durable_stages: Vec<JobStageSnapshot>,
+    provider_calls: FakeProviderCalls,
     result: SourceResult,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FakeProviderCalls {
+    embedding_batches: usize,
+    vector_operations: usize,
+    vector_points: usize,
 }
 
 async fn observe(
@@ -44,10 +52,20 @@ async fn observe(
         .await?
         .events;
     let durable_stages = store.stages(result.job_id).await?;
+    let provider_calls = FakeProviderCalls {
+        embedding_batches: harness.embedder().calls().await.len(),
+        vector_operations: harness.vectors().calls().await.len(),
+        vector_points: harness
+            .vectors()
+            .points(&harness.ctx().cfg().collection)
+            .await
+            .len(),
+    };
     Ok(PipelineObservation {
         request,
         progress: events,
         durable_stages,
+        provider_calls,
         result,
     })
 }
@@ -78,6 +96,19 @@ fn public_observation(observation: &PipelineObservation) -> (Vec<PipelinePhase>,
         observation.durable_stages.len(),
         observation.result.counts.documents_total as usize,
     )
+}
+
+fn expected_shared_phase_spine() -> Vec<PipelinePhase> {
+    vec![
+        PipelinePhase::Discovering,
+        PipelinePhase::Diffing,
+        PipelinePhase::Fetching,
+        PipelinePhase::Normalizing,
+        PipelinePhase::Preparing,
+        PipelinePhase::Embedding,
+        PipelinePhase::Upserting,
+        PipelinePhase::Publishing,
+    ]
 }
 
 fn assert_one_job(observation: &PipelineObservation) {
@@ -124,6 +155,11 @@ async fn web_and_local_share_the_observable_source_contract() {
 
     assert_one_job(&web_observation);
     assert_one_job(&local_observation);
+    assert_eq!(phase_spine(&web_observation), expected_shared_phase_spine());
+    assert_eq!(
+        phase_spine(&local_observation),
+        expected_shared_phase_spine()
+    );
     assert_eq!(
         public_observation(&web_observation).0,
         public_observation(&local_observation).0,
@@ -134,6 +170,10 @@ async fn web_and_local_share_the_observable_source_contract() {
     assert_eq!(
         web_observation.result.counts.documents_total,
         local_observation.result.counts.documents_total
+    );
+    assert_eq!(
+        web_observation.provider_calls,
+        local_observation.provider_calls
     );
     assert!(
         web_observation
@@ -161,8 +201,34 @@ async fn session_source_joins_the_same_observable_source_contract() {
     }
     let observation = observation.unwrap();
     assert_one_job(&observation);
+    assert_eq!(phase_spine(&observation), expected_shared_phase_spine());
     assert_eq!(observation.result.counts.documents_total, 1);
     assert!(observation.progress.iter().all(|event| {
         !event.message.contains("session fixture") && !event.message.contains("response")
     }));
+}
+
+#[tokio::test]
+async fn route_failures_map_to_the_same_failed_source_result() {
+    for input in ["", "ftp://unsupported.example.test/source"] {
+        let harness = crate::test_support::source_context_with_fake_web()
+            .await
+            .unwrap();
+        let result = crate::source::index_source_with_auth(
+            SourceRequest::new(input),
+            harness.ctx(),
+            Some(AuthSnapshot::trusted_system("differential-test")),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.status, LifecycleStatus::Failed, "input={input:?}");
+        assert!(
+            !result.warnings.is_empty(),
+            "route failure must be surfaced as a warning: input={input:?}"
+        );
+        assert_eq!(
+            result.counts.documents_total, 0,
+            "route failure must not prepare documents: input={input:?}"
+        );
+    }
 }

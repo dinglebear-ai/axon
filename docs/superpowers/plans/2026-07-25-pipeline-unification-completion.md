@@ -394,10 +394,10 @@ pub struct PipelineObservation {
 It derives phases from existing events/stage rows and adds fake-only call
 counts. It does not add a production phase enum, counter model, or trace format.
 
-- [ ] Add equivalent web, local, and non-web fixture requests.
+- [x] Add equivalent web, local, and non-web fixture requests.
 - [ ] Assert identical route, stage order, normalized shape, publication
   semantics, one-job identity, cancellation, and error mapping.
-- [ ] Assert progress is visible before publication but contains no document
+- [x] Assert progress is visible before publication but contains no document
   content.
 - [ ] Change the three tests that pin defective family behavior into failing
   canonical expectations.
