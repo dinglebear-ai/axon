@@ -91,5 +91,6 @@ mod source_web_job_identity_tests;
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod sync_tests;
-#[cfg(test)]
-pub(crate) mod test_support;
+#[cfg(any(test, feature = "test-util"))]
+#[allow(dead_code)]
+pub mod test_support;

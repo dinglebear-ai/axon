@@ -114,7 +114,7 @@ rmcp = { version = "1.7.0", features = [
 # All default OFF — enabling them is a build-time choice.
 # See docs/reference/cargo-features.md for full rationale and CI impact.
 default = []
-test-helpers = []
+test-helpers = ["axon-services/test-util"]
 live-qdrant = []
 
 # TLS fingerprinting via wreq+BoringSSL. Requires cmake/clang/perl/go.

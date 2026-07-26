@@ -99,7 +99,7 @@ impl ServiceJobRuntime for NoopServiceRuntime {
     }
 }
 
-pub(crate) struct SourceWebJobIdentityHarness {
+pub struct SourceWebJobIdentityHarness {
     _tmp: tempfile::TempDir,
     ctx: ServiceContext,
     store: Arc<dyn JobStore>,
@@ -114,15 +114,15 @@ pub(crate) struct SourceWebJobIdentityHarness {
 }
 
 impl SourceWebJobIdentityHarness {
-    pub(crate) fn ctx(&self) -> &ServiceContext {
+    pub fn ctx(&self) -> &ServiceContext {
         &self.ctx
     }
 
-    pub(crate) fn embedder(&self) -> &Arc<FakeEmbeddingProvider> {
+    pub fn embedder(&self) -> &Arc<FakeEmbeddingProvider> {
         &self.embedder
     }
 
-    pub(crate) fn vectors(&self) -> &Arc<FakeVectorStore> {
+    pub fn vectors(&self) -> &Arc<FakeVectorStore> {
         &self.vectors
     }
 
@@ -307,7 +307,7 @@ async fn build_source_job_identity_harness(
     })
 }
 
-pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJobIdentityHarness> {
+pub async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJobIdentityHarness> {
     build_source_job_identity_harness(LedgerBackend::Fake).await
 }
 
@@ -319,7 +319,7 @@ pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJo
 /// fetch/render providers on `target`, `ServiceContext` wiring) is identical;
 /// local dispatch never touches the fake web providers, so the same harness
 /// shape covers both families.
-pub(crate) async fn source_context_with_local_sqlite_ledger()
--> anyhow::Result<SourceWebJobIdentityHarness> {
+pub async fn source_context_with_local_sqlite_ledger() -> anyhow::Result<SourceWebJobIdentityHarness>
+{
     build_source_job_identity_harness(LedgerBackend::SharedSqlite).await
 }
