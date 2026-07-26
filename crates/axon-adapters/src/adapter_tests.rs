@@ -186,6 +186,26 @@ async fn source_adapter_registry_rejects_missing_matrix_families() {
 }
 
 #[tokio::test]
+async fn source_adapter_registry_rejects_capability_matrix_drift() {
+    let spec = crate::source_family_matrix()
+        .iter()
+        .find(|spec| spec.adapter == "web")
+        .expect("web matrix entry");
+    let capability = AdapterCapability::new(
+        AdapterRef {
+            name: "web".to_string(),
+            version: "1".to_string(),
+        },
+        SourceKind::Local,
+        SourceScope::Directory,
+    );
+    let wire: SourceAdapterCapability = capability.into();
+    let error = crate::registry::validate_capability(spec, &wire.0)
+        .expect_err("capability drift must fail closed");
+    assert_eq!(error.code, "adapter.registry.capability_mismatch".into());
+}
+
+#[tokio::test]
 async fn fake_source_adapter_preserves_content_for_normalized_absolute_item_keys() {
     let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
     let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(

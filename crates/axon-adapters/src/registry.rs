@@ -95,7 +95,7 @@ fn registry_error(code: &'static str, message: impl Into<String>) -> ApiError {
     ApiError::new(code, ErrorStage::Planning, message)
 }
 
-fn validate_capability(
+pub(crate) fn validate_capability(
     spec: &crate::SourceAdapterSpec,
     capability: &CapabilityBase,
 ) -> Result<(), ApiError> {
