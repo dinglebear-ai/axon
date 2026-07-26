@@ -8,9 +8,10 @@
 //!
 //! All tests exercise pure functions — no Chrome, no network.
 
-use super::util::{require_chrome, url_to_screenshot_filename};
+use super::util::require_chrome;
 use axon_api::source::{ArtifactId, Timestamp};
 use axon_core::config::Config;
+use axon_core::paths::url_to_screenshot_filename;
 use spider::features::chrome_common::{ScreenShotConfig, ScreenshotParams};
 
 // ── 1. Chrome requirement ───────────────────────────────────────────

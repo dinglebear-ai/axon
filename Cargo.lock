@@ -489,7 +489,6 @@ version = "7.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axon-adapters",
  "axon-api",
  "axon-core",
  "axon-jobs",
