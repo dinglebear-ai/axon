@@ -15,6 +15,10 @@ fn write(path: &Path, body: &str) {
 }
 
 fn write_surface_fixture(root: &Path) {
+    write(
+        &root.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n[workspace.dependencies]\n",
+    );
     for surface in ["axon-cli", "axon-web", "axon-mcp"] {
         write(
             &root.join("crates").join(surface).join("Cargo.toml"),
@@ -691,4 +695,217 @@ fn axon_services_root_glob_is_allowed_while_provider_crate_glob_is_rejected() {
     );
     let error = check(temp.path()).unwrap_err().to_string();
     assert!(error.contains("provider-glob:axon_vectors"), "{error}");
+}
+
+#[test]
+fn syntax_visible_provider_laundering_and_pattern_scopes_are_tracked_positionally() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(
+    seed: Store,
+    pair: (Store, Plain),
+    providers: Vec<Store>,
+    maybe: Option<Store>,
+) {
+    let cloned = std::sync::Arc::clone(&seed);
+    cloned.upsert(batch()).await;
+    let boxed = Box::from(cloned);
+    let referenced = Box::as_ref(&boxed);
+    referenced.delete(selector()).await;
+
+    let (store, plain) = pair;
+    store.search(request()).await;
+    plain.search(request()).await;
+
+    let mut slot = plain;
+    slot = std::sync::Arc::clone(&seed);
+    slot.fetch(request()).await;
+    slot = Plain::new();
+    slot.render(request()).await;
+
+    if let Some(inner) = maybe {
+        inner.get(handle()).await;
+    }
+    while let Some(inner) = maybe {
+        inner.render(request()).await;
+    }
+    for inner in providers {
+        inner.query(request()).await;
+    }
+    match maybe {
+        Some(inner) => inner.delete(selector()).await,
+        None => {}
+    }
+    {
+        let cloned = Plain::new();
+        cloned.search(request()).await;
+    }
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for (rule, count) in [
+        ("provider-method:upsert", 1),
+        ("provider-method:delete", 2),
+        ("provider-method:search", 1),
+        ("provider-method:fetch", 1),
+        ("provider-method:get", 1),
+        ("provider-method:render", 1),
+        ("provider-method:query", 1),
+    ] {
+        assert_eq!(
+            error.matches(&format!("[{rule}]")).count(),
+            count,
+            "{rule}: {error}"
+        );
+    }
+}
+
+#[test]
+fn provider_owned_module_prefixes_track_type_shaped_implementations_only() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+pub async fn run() {
+    let store = axon_vectors::qdrant::RenamedVectorStore::new();
+    store.upsert(batch()).await;
+    let unrelated = axon_vectors::qdrant::helper();
+    unrelated.search(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert_eq!(
+        error.matches("[provider-method:upsert]").count(),
+        1,
+        "{error}"
+    );
+    assert!(!error.contains("[provider-method:search]"), "{error}");
+}
+
+#[test]
+fn custom_helper_return_inference_remains_out_of_scope() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub async fn run() { let opaque = custom_provider_helper(); opaque.search(request()).await; }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
+fn workspace_inherited_dependency_aliases_are_canonicalized_in_all_table_shapes() {
+    for table in [
+        "dependencies",
+        "dev-dependencies",
+        "build-dependencies",
+        "target.'cfg(unix)'.dependencies",
+        "target.'cfg(unix)'.dev-dependencies",
+        "target.'cfg(unix)'.build-dependencies",
+    ] {
+        let temp = tempdir().unwrap();
+        write_surface_fixture(temp.path());
+        write(
+            &temp.path().join("Cargo.toml"),
+            "[workspace]\nmembers=[]\n[workspace.dependencies]\nvector-alias={package='axon-vectors', path='crates/axon-vectors'}\n",
+        );
+        write(
+            &temp.path().join("crates/axon-cli/Cargo.toml"),
+            &format!(
+                "[package]\nname='axon-cli'\nversion='0.0.0'\n[{table}]\nvector-alias={{workspace=true}}\n"
+            ),
+        );
+        let error = check(temp.path()).unwrap_err().to_string();
+        assert!(error.contains(&format!("[{table}]")), "{error}");
+        assert!(error.contains("`axon-vectors`"), "{error}");
+        assert!(!error.contains("dependency on `vector-alias`"), "{error}");
+    }
+}
+
+#[test]
+fn workspace_inheritance_fails_closed_for_missing_or_malformed_definitions() {
+    for root_manifest in [
+        "[workspace]\nmembers=[]\n[workspace.dependencies]\n",
+        "[workspace\nthis is malformed",
+        "[workspace]\nmembers=[]\n[workspace.dependencies]\nvector-alias={workspace=true}\n",
+        "[workspace]\nmembers=[]\n[workspace.dependencies]\nvector-alias={package=42}\n",
+        "[workspace]\nmembers=[]\n[workspace.dependencies]\nvector-alias=[]\n",
+    ] {
+        let temp = tempdir().unwrap();
+        write_surface_fixture(temp.path());
+        write(&temp.path().join("Cargo.toml"), root_manifest);
+        write(
+            &temp.path().join("crates/axon-cli/Cargo.toml"),
+            "[package]\nname='axon-cli'\nversion='0.0.0'\n[dependencies]\nvector-alias={workspace=true}\n",
+        );
+        let error = check(temp.path()).unwrap_err().to_string();
+        assert!(
+            error.contains("failed to resolve [dependencies] dependency `vector-alias`"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn nested_inline_module_reachability_preserves_production_and_excludes_test_only_paths() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+mod outer {
+    #[path = "shared.rs"]
+    mod production;
+    #[cfg(test)]
+    #[path = "shared.rs"]
+    mod test_alias;
+    #[cfg(test)]
+    mod only_test;
+}
+"#,
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/outer/shared.rs"),
+        "pub fn production(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    write(
+        &temp
+            .path()
+            .join("crates/axon-services/src/outer/only_test.rs"),
+        "pub fn test_only(runtime: Runtime) { consume(runtime.embedding_provider); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
+    assert!(
+        !error.contains("provider-handle:embedding_provider"),
+        "{error}"
+    );
+}
+
+#[test]
+fn nested_inline_module_path_overrides_use_the_containing_module_base() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+mod outer {
+    #[cfg(test)]
+    #[path = "../shared_test.rs"]
+    mod test_alias;
+}
+"#,
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/shared_test.rs"),
+        "pub fn test_only(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    check(temp.path()).unwrap();
 }

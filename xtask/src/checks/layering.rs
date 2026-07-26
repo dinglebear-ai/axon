@@ -113,6 +113,7 @@ fn is_test_file(rel: &str) -> bool {
 
 fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<ManifestFinding> {
     let mut findings = Vec::new();
+    let workspace_dependencies = read_workspace_dependencies(root);
     for manifest in SURFACE_MANIFESTS {
         let path = root.join(manifest);
         let text = match std::fs::read_to_string(&path) {
@@ -131,11 +132,24 @@ fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<M
         };
         for (table_name, table) in dependency_tables(&parsed) {
             for (declared_name, declaration) in table {
-                let dependency = canonical_dependency_name(declared_name, declaration);
-                if TRANSPORT_FORBIDDEN_DEPS.contains(&dependency) {
+                let dependency = match canonical_dependency_name(
+                    declared_name,
+                    declaration,
+                    &workspace_dependencies,
+                ) {
+                    Ok(dependency) => dependency,
+                    Err(error) => {
+                        violations.push(format!(
+                            "{manifest}: failed to resolve [{table_name}] dependency \
+                             `{declared_name}`: {error}"
+                        ));
+                        continue;
+                    }
+                };
+                if TRANSPORT_FORBIDDEN_DEPS.contains(&dependency.as_str()) {
                     findings.push(ManifestFinding {
                         path: (*manifest).to_owned(),
-                        dependency: dependency.to_owned(),
+                        dependency,
                         table: table_name.clone(),
                     });
                 }
@@ -145,12 +159,87 @@ fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<M
     findings
 }
 
-fn canonical_dependency_name<'a>(declared_name: &'a str, value: &'a toml::Value) -> &'a str {
-    value
-        .as_table()
-        .and_then(|table| table.get("package"))
-        .and_then(toml::Value::as_str)
-        .unwrap_or(declared_name)
+fn read_workspace_dependencies(root: &Path) -> Result<toml::Table, String> {
+    let path = root.join("Cargo.toml");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let parsed = toml::from_str::<toml::Table>(&text)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    Ok(parsed
+        .get("workspace")
+        .and_then(toml::Value::as_table)
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .unwrap_or_default())
+}
+
+fn canonical_dependency_name(
+    declared_name: &str,
+    value: &toml::Value,
+    workspace_dependencies: &Result<toml::Table, String>,
+) -> Result<String, String> {
+    let Some(table) = value.as_table() else {
+        return Ok(declared_name.to_owned());
+    };
+    let inherited = match table.get("workspace") {
+        Some(value) => value.as_bool().ok_or_else(|| {
+            format!(
+                "`workspace` must be a boolean, found {}",
+                toml_value_kind(value)
+            )
+        })?,
+        None => false,
+    };
+    if !inherited {
+        return optional_package_name(table, declared_name);
+    }
+
+    let workspace_dependencies = workspace_dependencies
+        .as_ref()
+        .map_err(|error| format!("cannot load inherited workspace dependency: {error}"))?;
+    let inherited = workspace_dependencies.get(declared_name).ok_or_else(|| {
+        format!("workspace dependency `{declared_name}` is missing from [workspace.dependencies]")
+    })?;
+    if inherited.is_str() {
+        return Ok(declared_name.to_owned());
+    }
+    let inherited_table = inherited.as_table().ok_or_else(|| {
+        format!(
+            "workspace dependency `{declared_name}` must be a string or table, found {}",
+            toml_value_kind(inherited)
+        )
+    })?;
+    if inherited_table.get("workspace").is_some() {
+        return Err(format!(
+            "workspace dependency `{declared_name}` cannot itself use `workspace` inheritance"
+        ));
+    }
+    optional_package_name(inherited_table, declared_name)
+}
+
+fn optional_package_name(table: &toml::Table, declared_name: &str) -> Result<String, String> {
+    match table.get("package") {
+        Some(value) => value.as_str().map(str::to_owned).ok_or_else(|| {
+            format!(
+                "`package` must be a string, found {}",
+                toml_value_kind(value)
+            )
+        }),
+        None => Ok(declared_name.to_owned()),
+    }
+}
+
+fn toml_value_kind(value: &toml::Value) -> &'static str {
+    match value {
+        toml::Value::String(_) => "string",
+        toml::Value::Integer(_) => "integer",
+        toml::Value::Float(_) => "float",
+        toml::Value::Boolean(_) => "boolean",
+        toml::Value::Datetime(_) => "datetime",
+        toml::Value::Array(_) => "array",
+        toml::Value::Table(_) => "table",
+    }
 }
 
 fn dependency_tables(parsed: &toml::Table) -> Vec<(String, &toml::Table)> {
@@ -253,22 +342,8 @@ fn test_only_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf
     let mut production = BTreeSet::new();
     let mut test = BTreeSet::new();
     for file in files {
-        let parent = file.path.parent().unwrap_or_else(|| Path::new(""));
-        let stem = file
-            .path
-            .file_stem()
-            .and_then(|stem| stem.to_str())
-            .unwrap_or_default();
-        let module_dir = if matches!(stem, "lib" | "main") {
-            parent.to_owned()
-        } else {
-            parent.join(stem)
-        };
-        for module in syntax::external_modules(&file.syntax) {
-            let path = module.path_override.map_or_else(
-                || module_dir.join(format!("{}.rs", module.name)),
-                |path| parent.join(path),
-            );
+        for module in syntax::external_modules(&file.syntax, &file.path) {
+            let path = module.path;
             if module.test_only {
                 test.insert(path);
             } else {

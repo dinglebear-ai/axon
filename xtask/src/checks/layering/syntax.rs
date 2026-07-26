@@ -1,88 +1,26 @@
 mod aliases;
 mod bindings;
 mod cfg;
+mod flow;
+mod modules;
+mod providers;
 mod tokens;
 
 use aliases::{AliasStack, import_from_extern_crate, imports_from_use};
-use bindings::ProviderBindings;
+use bindings::{ProviderBindings, ProviderShape};
+pub(super) use modules::external_modules;
+use providers::{
+    LOW_COLLISION_PROVIDER_METHODS, PROVIDER_GLOB_ROOTS, PROVIDER_HANDLES, is_provider_type_name,
+};
 use syn::visit::Visit;
 use syn::{
-    Arm, Block, ExprClosure, ExprField, ExprMethodCall, FieldPat, FieldValue, ImplItem, ImplItemFn,
-    Item, ItemExternCrate, ItemFn, ItemMod, ItemUse, Local, Macro, Member, Path, ReturnType,
-    TraitItem, TraitItemFn,
+    Arm, Block, ExprAssign, ExprClosure, ExprField, ExprForLoop, ExprIf, ExprMatch, ExprMethodCall,
+    ExprWhile, FieldPat, FieldValue, ImplItem, ImplItemFn, Item, ItemExternCrate, ItemFn, ItemMod,
+    ItemUse, Local, Macro, Member, ReturnType, TraitItem, TraitItemFn,
 };
 use tokens::TokenFinding;
 
 use super::{Finding, ReachRule};
-
-const PROVIDER_TYPES: &[&str] = &[
-    "EmbeddingProvider",
-    "VectorStore",
-    "SearchProvider",
-    "FetchProvider",
-    "RenderProvider",
-    "NetworkCaptureProvider",
-    "GraphStore",
-    "ArtifactStore",
-    "LlmProvider",
-];
-
-const CONCRETE_PROVIDER_TYPES: &[&str] = &[
-    "QdrantVectorStore",
-    "FakeVectorStore",
-    "TeiEmbeddingProvider",
-    "OpenAiCompatEmbeddingProvider",
-    "FakeEmbeddingProvider",
-    "SearxngSearchProvider",
-    "TavilySearchProvider",
-    "HttpFetchProvider",
-    "ChromeRenderProvider",
-    "FakeAdapterProviders",
-    "ChromeNetworkCapture",
-    "FileArtifactStore",
-    "FakeCoreBoundaries",
-    "SqliteGraphStore",
-    "FakeGraphStore",
-    "FakeLlmProvider",
-];
-
-const PROVIDER_HANDLES: &[&str] = &[
-    "embedding_provider",
-    "vector_store",
-    "search_provider",
-    "fetch_provider",
-    "render_provider",
-    "network_capture_provider",
-    "capture_provider",
-    "graph_store",
-    "artifact_store",
-    "llm_provider",
-];
-
-// Names specific enough to reject independent of receiver type. Collision-
-// prone operations remain enforceable whenever the receiver handle/type or
-// provider-qualified UFCS path is present.
-const LOW_COLLISION_PROVIDER_METHODS: &[&str] = &[
-    "embed",
-    "ensure_collection",
-    "mark_generation_committed",
-    "mark_unchanged_items_committed",
-    "upsert_candidates",
-    "put_bytes",
-    "complete_streaming",
-    "node_edges",
-    "nodes_for_source",
-    "delete_nodes",
-    "delete_edges",
-];
-
-const PROVIDER_GLOB_ROOTS: &[&str] = &[
-    "axon_adapters",
-    "axon_embedding",
-    "axon_graph",
-    "axon_llm",
-    "axon_vectors",
-];
 
 pub(super) fn scan(syntax: &syn::File, rel: &str, reach_rules: &[ReachRule]) -> Vec<Finding> {
     let mut scanner = Scanner {
@@ -94,41 +32,6 @@ pub(super) fn scan(syntax: &syn::File, rel: &str, reach_rules: &[ReachRule]) -> 
     };
     scanner.visit_file(syntax);
     scanner.findings
-}
-
-pub(super) struct ExternalModule {
-    pub name: String,
-    pub path_override: Option<String>,
-    pub test_only: bool,
-}
-
-pub(super) fn external_modules(syntax: &syn::File) -> Vec<ExternalModule> {
-    syntax
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            Item::Mod(module) if module.content.is_none() => Some(ExternalModule {
-                name: module.ident.to_string(),
-                path_override: module.attrs.iter().find_map(|attribute| {
-                    if !attribute.path().is_ident("path") {
-                        return None;
-                    }
-                    let syn::Meta::NameValue(name_value) = &attribute.meta else {
-                        return None;
-                    };
-                    let syn::Expr::Lit(expr) = &name_value.value else {
-                        return None;
-                    };
-                    let syn::Lit::Str(path) = &expr.lit else {
-                        return None;
-                    };
-                    Some(path.value())
-                }),
-                test_only: cfg::item_is_test_only(item),
-            }),
-            _ => None,
-        })
-        .collect()
 }
 
 struct Scanner<'a> {
@@ -249,7 +152,7 @@ impl Scanner<'_> {
 impl<'ast> Visit<'ast> for Scanner<'_> {
     fn visit_file(&mut self, node: &'ast syn::File) {
         self.aliases.push_items(&node.items);
-        self.bindings.push();
+        self.bindings.push_items(&self.aliases, &node.items);
         for item in &node.items {
             self.visit_item(item);
         }
@@ -278,25 +181,27 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
     fn visit_local(&mut self, node: &'ast Local) {
         if !cfg::attrs_are_test_only(&node.attrs) {
             syn::visit::visit_local(self, node);
-            let initialized_as_provider = node
+            let shape = node
                 .init
                 .as_ref()
-                .is_some_and(|init| self.bindings.expr_is_provider(&self.aliases, &init.expr));
+                .map_or(ProviderShape::Scalar(false), |init| {
+                    self.bindings.expr_shape(&self.aliases, &init.expr)
+                });
             self.bindings
-                .bind_pat(&self.aliases, &node.pat, initialized_as_provider);
+                .bind_pat_shape(&self.aliases, &node.pat, &shape);
         }
     }
 
     fn visit_arm(&mut self, node: &'ast Arm) {
         if !cfg::attrs_are_test_only(&node.attrs) {
-            syn::visit::visit_arm(self, node);
+            flow::visit_arm(self, node, &ProviderShape::Scalar(false));
         }
     }
 
     fn visit_item_mod(&mut self, node: &'ast ItemMod) {
         if let Some((_, items)) = &node.content {
             self.aliases.push_items(items);
-            self.bindings.push();
+            self.bindings.push_items(&self.aliases, items);
             for item in items {
                 self.visit_item(item);
             }
@@ -307,7 +212,15 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 
     fn visit_block(&mut self, node: &'ast Block) {
         self.aliases.push_stmts(&node.stmts);
-        self.bindings.push();
+        let items: Vec<_> = node
+            .stmts
+            .iter()
+            .filter_map(|stmt| match stmt {
+                syn::Stmt::Item(item) => Some(item.clone()),
+                _ => None,
+            })
+            .collect();
+        self.bindings.push_items(&self.aliases, &items);
         for stmt in &node.stmts {
             self.visit_stmt(stmt);
         }
@@ -344,13 +257,34 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
     fn visit_expr_closure(&mut self, node: &'ast ExprClosure) {
         self.bindings.push();
         for input in &node.inputs {
-            self.bindings.bind_pat(&self.aliases, input, false);
+            self.bindings
+                .bind_pat_shape(&self.aliases, input, &ProviderShape::Scalar(false));
         }
         if let ReturnType::Type(_, ty) = &node.output {
             self.visit_type(ty);
         }
         self.visit_expr(&node.body);
         self.bindings.pop();
+    }
+
+    fn visit_expr_assign(&mut self, node: &'ast ExprAssign) {
+        flow::visit_assign(self, node);
+    }
+
+    fn visit_expr_if(&mut self, node: &'ast ExprIf) {
+        flow::visit_if(self, node);
+    }
+
+    fn visit_expr_while(&mut self, node: &'ast ExprWhile) {
+        flow::visit_while(self, node);
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast ExprForLoop) {
+        flow::visit_for(self, node);
+    }
+
+    fn visit_expr_match(&mut self, node: &'ast ExprMatch) {
+        flow::visit_match(self, node);
     }
 
     fn visit_item_use(&mut self, node: &'ast ItemUse) {
@@ -367,7 +301,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
         self.inspect_path(import_from_extern_crate(node).canonical);
     }
 
-    fn visit_path(&mut self, node: &'ast Path) {
+    fn visit_path(&mut self, node: &'ast syn::Path) {
         self.inspect_path(path_segments(node));
         syn::visit::visit_path(self, node);
     }
@@ -407,7 +341,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
     }
 }
 
-fn path_segments(path: &Path) -> Vec<String> {
+fn path_segments(path: &syn::Path) -> Vec<String> {
     path.segments
         .iter()
         .map(|segment| segment.ident.to_string())
@@ -420,8 +354,4 @@ fn path_has_prefix(path: &[String], prefix: &[&str]) -> bool {
             .iter()
             .zip(prefix)
             .all(|(segment, expected)| segment == expected)
-}
-
-fn is_provider_type_name(name: &str) -> bool {
-    PROVIDER_TYPES.contains(&name) || CONCRETE_PROVIDER_TYPES.contains(&name)
 }

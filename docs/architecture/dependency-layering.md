@@ -41,13 +41,18 @@ The check parses production `.rs` items under the three transport crates and
 block-scoped, and `extern crate` aliases are resolved before traversal with
 lexical shadowing and cycle protection. Provider-bearing macro tokens are
 inspected structurally while comments, string literals, and bare macro metadata
-keys remain data. Provider-typed bindings and bindings initialized from known
-concrete provider implementations are tracked through references, clones, and
-lexical scopes, so collision-prone calls are rejected only on proven provider
-receivers. `#[cfg(test)]` items and external modules reachable only through
-test declarations are excluded; a production declaration of the same module
-path always keeps it in scope. An unreadable source tree/file, malformed Rust
-file, unreadable manifest, or malformed manifest fails closed.
+keys remain data. Provider-typed bindings, local provider type aliases, and
+bindings initialized from known or provider-module-owned concrete
+implementations are tracked through standard wrapper references/clones,
+positional tuple patterns, syntax-visible assignments, and lexical pattern
+scopes (`if let`, `while let`, `for`, match arms, and closures). Collision-prone
+calls are therefore rejected only on proven provider receivers. Custom
+interprocedural helper-return inference is intentionally outside this lexical
+gate's scope. `#[cfg(test)]` items and external modules reachable only through
+test declarations are excluded recursively through inline module trees; a
+production declaration of the same normalized module path always keeps it in
+scope. An unreadable source tree/file, malformed Rust file, unreadable
+manifest, or malformed inherited workspace dependency fails closed.
 
 It rejects:
 
@@ -56,8 +61,9 @@ It rejects:
 - transport manifest dependencies on `axon-adapters`, `axon-embedding`,
   `axon-llm`, `axon-retrieval`, or `axon-vectors`, in normal, dev, or build
   dependency tables, including their target-specific
-  `[target.'cfg(...)'.*dependencies]` forms and renamed Cargo dependencies
-  whose `package` field names a forbidden crate;
+  `[target.'cfg(...)'.*dependencies]` forms, renamed Cargo dependencies whose
+  `package` field names a forbidden crate, and `workspace = true` aliases
+  resolved through the root `[workspace.dependencies]` table;
 - raw `EmbeddingProvider`, `VectorStore`, `SearchProvider`, `FetchProvider`,
   `RenderProvider`, `NetworkCaptureProvider`, `GraphStore`, `ArtifactStore`,
   and `LlmProvider` type/import/UFCS access, known concrete provider
