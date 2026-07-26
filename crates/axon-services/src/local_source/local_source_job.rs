@@ -22,6 +22,7 @@ pub async fn index_local_source_with_job(
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
 ) -> anyhow::Result<LocalSourceIndexOutput> {
+    reject_symlinked_source_root(&input.root).await?;
     let root = tokio::fs::canonicalize(&input.root)
         .await
         .with_context(|| {
@@ -46,6 +47,19 @@ pub async fn index_local_source_with_job(
         vector_store,
     )
     .await
+}
+
+async fn reject_symlinked_source_root(root: &Path) -> anyhow::Result<()> {
+    let metadata = tokio::fs::symlink_metadata(root)
+        .await
+        .with_context(|| format!("invalid local source root {}", public_path_hint(root)))?;
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!(
+            "unsafe local source root {}: symlinks are not allowed",
+            public_path_hint(root)
+        );
+    }
+    Ok(())
 }
 
 /// Shared indexing + terminal-status bookkeeping, used by

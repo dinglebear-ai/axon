@@ -205,7 +205,200 @@ async fn local_discovery_rejects_followed_symlink_that_escapes_root() {
         .await
         .expect_err("followed symlinks must remain contained in the source root");
 
+    assert_eq!(err.code.0, "adapter.local.symlinks_unsupported");
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn local_discovery_rejects_a_symlinked_source_root() {
+    let adapter = LocalSourceAdapter::new();
+    let parent = temp_source_dir();
+    let outside = temp_source_dir();
+    fs::write(outside.join("secret.rs"), "pub fn leaked() {}\n").unwrap();
+    let linked = parent.join("current");
+    std::os::unix::fs::symlink(&outside, &linked).unwrap();
+    let plan = source_plan(linked, SourceScope::Directory);
+
+    let err = adapter
+        .discover(&plan)
+        .await
+        .expect_err("a source root symlink must not be traversed");
+
+    assert_eq!(err.code.0, "adapter.local.root_unsafe");
+    assert!(!err.message.contains(&outside.display().to_string()));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn local_acquire_rejects_directory_symlink_swap_after_discovery() {
+    let adapter = LocalSourceAdapter::new();
+    let parent = temp_source_dir();
+    let root = parent.join("current");
+    let outside = temp_source_dir();
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("README.md"), "# safe").unwrap();
+    fs::write(outside.join("README.md"), "# secret").unwrap();
+    let plan = source_plan(root.clone(), SourceScope::Directory);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items);
+
+    fs::remove_dir_all(&root).unwrap();
+    std::os::unix::fs::symlink(&outside, &root).unwrap();
+
+    let err = adapter
+        .acquire(&plan, &diff)
+        .await
+        .expect_err("a swapped source-root symlink must not be traversed");
+
     assert_eq!(err.code.0, "adapter.local.item_key.escape");
+    assert_eq!(err.message, "local source containment denied");
+    assert!(!err.message.contains(&outside.display().to_string()));
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn contained_local_adapter_holds_allowed_root_across_path_replacement() {
+    let allowed = temp_source_dir();
+    let root = allowed.join("current");
+    let retired = allowed.join("retired");
+    let outside = temp_source_dir();
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("README.md"), "# safe").unwrap();
+    fs::write(outside.join("README.md"), "# secret").unwrap();
+    let adapter = LocalSourceAdapter::new_contained(
+        &root,
+        SourceScope::Directory,
+        std::slice::from_ref(&allowed),
+    )
+    .unwrap();
+    let plan = source_plan(root.clone(), SourceScope::Directory);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items);
+
+    fs::rename(&root, &retired).unwrap();
+    std::os::unix::fs::symlink(&outside, &root).unwrap();
+
+    let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
+    assert!(matches!(
+        &acquisition.fetched_items[0].content_ref,
+        ContentRef::InlineText { text } if text == "# safe"
+    ));
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn overlapping_local_jobs_keep_distinct_root_handles() {
+    let adapter = LocalSourceAdapter::new();
+    let parent = temp_source_dir();
+    let first_root = parent.join("first");
+    let first_retired = parent.join("first-retired");
+    let second_root = parent.join("second");
+    fs::create_dir(&first_root).unwrap();
+    fs::create_dir(&second_root).unwrap();
+    fs::write(first_root.join("README.md"), "# first").unwrap();
+    fs::write(second_root.join("README.md"), "# second").unwrap();
+    let mut first = source_plan(first_root.clone(), SourceScope::Directory);
+    first.job_id = JobId::new(uuid::Uuid::new_v4());
+    let mut second = source_plan(second_root, SourceScope::Directory);
+    second.job_id = JobId::new(uuid::Uuid::new_v4());
+    let first_manifest = adapter.discover(&first).await.unwrap();
+    let first_diff = manifest_diff(&first, first_manifest.items);
+    adapter.discover(&second).await.unwrap();
+
+    fs::rename(&first_root, &first_retired).unwrap();
+    fs::create_dir(&first_root).unwrap();
+    fs::write(first_root.join("README.md"), "# replacement").unwrap();
+
+    let acquisition = adapter.acquire(&first, &first_diff).await.unwrap();
+    assert!(matches!(
+        &acquisition.fetched_items[0].content_ref,
+        ContentRef::InlineText { text } if text == "# first"
+    ));
+}
+
+#[tokio::test]
+async fn failed_local_discoveries_do_not_retain_root_handles() {
+    let adapter = LocalSourceAdapter::new();
+    for _ in 0..128 {
+        let root = temp_source_dir();
+        let mut plan = source_plan(root, SourceScope::Directory);
+        plan.job_id = JobId::new(uuid::Uuid::new_v4());
+        plan.route
+            .validated_options
+            .values
+            .insert("follow_symlinks".to_string(), true.into());
+        adapter
+            .discover(&plan)
+            .await
+            .expect_err("unsafe discovery must fail");
+    }
+
+    assert_eq!(adapter.held_root_count(), 0);
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn contained_local_adapter_reuses_root_handle_across_large_batches() {
+    let allowed = temp_source_dir();
+    let root = allowed.join("source");
+    fs::create_dir(&root).unwrap();
+    for index in 0..130 {
+        fs::write(
+            root.join(format!("item-{index:03}.md")),
+            format!("# {index}"),
+        )
+        .unwrap();
+    }
+    let adapter = LocalSourceAdapter::new_contained(
+        &root,
+        SourceScope::Directory,
+        std::slice::from_ref(&allowed),
+    )
+    .unwrap();
+    let plan = source_plan(root, SourceScope::Directory);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let full_diff = manifest_diff(&plan, manifest.items);
+
+    let mut fetched = 0;
+    for items in full_diff.added.chunks(64) {
+        let mut batch = manifest_diff(&plan, items.to_vec());
+        batch.next_generation = full_diff.next_generation.clone();
+        fetched += adapter
+            .acquire(&plan, &batch)
+            .await
+            .unwrap()
+            .fetched_items
+            .len();
+    }
+
+    assert_eq!(fetched, 130);
+    assert_eq!(adapter.held_root_count(), 1);
+    adapter.release(&plan);
+    assert_eq!(adapter.held_root_count(), 0);
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn unchanged_refresh_lifecycles_release_root_handles() {
+    let allowed = temp_source_dir();
+    let root = allowed.join("source");
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("README.md"), "# unchanged").unwrap();
+    let adapter = LocalSourceAdapter::new_contained(
+        &root,
+        SourceScope::Directory,
+        std::slice::from_ref(&allowed),
+    )
+    .unwrap();
+
+    for _ in 0..128 {
+        let mut plan = source_plan(root.clone(), SourceScope::Directory);
+        plan.job_id = JobId::new(uuid::Uuid::new_v4());
+        adapter.discover(&plan).await.unwrap();
+        adapter.release(&plan);
+    }
+
+    assert_eq!(adapter.held_root_count(), 0);
 }
 
 #[tokio::test]

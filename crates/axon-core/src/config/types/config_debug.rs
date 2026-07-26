@@ -71,7 +71,10 @@ impl fmt::Debug for Config {
             .field("format", &self.format)
             .field("collection", &self.collection)
             .field("embed", &self.embed)
-            .field("mcp_embed_allowed_roots", &self.mcp_embed_allowed_roots)
+            .field(
+                "source_local_allowed_roots",
+                &self.source_local_allowed_roots,
+            )
             .field("mcp_embed_max_local_bytes", &self.mcp_embed_max_local_bytes)
             .field("mcp_embed_max_local_depth", &self.mcp_embed_max_local_depth)
             .field(
