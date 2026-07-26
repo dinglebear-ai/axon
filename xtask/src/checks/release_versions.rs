@@ -36,6 +36,8 @@ use git::{
 };
 
 #[cfg(test)]
+use files::replace_npm_package_lock_version;
+#[cfg(test)]
 use files::{
     increment_gradle_version_code, read_cargo_lock_package_version, read_cargo_package_version,
     read_gradle_version_code, read_gradle_version_name, read_json_version,
@@ -90,7 +92,7 @@ struct Component {
     /// googleapis/release-please#2478), which made it impossible to release
     /// the root Cargo workspace package through release-please at all — see
     /// CLAUDE.md's Release Pipeline section. `cli` is bumped manually via
-    /// `cargo xtask bump-version cli`; a component with this set to `false`
+    /// `cargo xtask bump-version patch --component cli`; a component with this set to `false`
     /// is exempt from `check_manifest_versions`'s
     /// `.release-please-manifest.json` consistency check, since it has no
     /// entry there to be consistent with.

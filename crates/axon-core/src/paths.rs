@@ -89,6 +89,46 @@ pub fn path_basename<'a>(path: &'a str, fallback: &'a str) -> &'a str {
         .unwrap_or(fallback)
 }
 
+/// Sanitize a URL into a deterministic screenshot filename.
+///
+/// Strips the scheme, replaces non-ASCII-alphanumeric characters with hyphens,
+/// collapses hyphen runs, trims edges, and truncates the sanitized URL to 120
+/// characters before adding the zero-padded index and `.png` suffix.
+pub fn url_to_screenshot_filename(url: &str, idx: usize) -> String {
+    let stripped = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url);
+
+    let sanitized: String = stripped
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+
+    let mut collapsed = String::with_capacity(sanitized.len());
+    let mut prev_hyphen = true;
+    for c in sanitized.chars() {
+        if c == '-' {
+            if !prev_hyphen {
+                collapsed.push('-');
+            }
+            prev_hyphen = true;
+        } else {
+            collapsed.push(c);
+            prev_hyphen = false;
+        }
+    }
+    let collapsed = collapsed.trim_end_matches('-');
+
+    let name = if collapsed.len() > 120 {
+        &collapsed[..120]
+    } else {
+        collapsed
+    };
+
+    format!("{idx:04}-{name}.png")
+}
+
 /// Create a directory tree (recursive) with mode 0o700 on Unix.
 ///
 /// Tightens permissions to 0o700 if the directory already exists with a

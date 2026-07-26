@@ -321,3 +321,14 @@ fn axon_home_dir_returns_none_when_home_contains_dotdot() {
         "HOME containing .. should return None to prevent path traversal"
     );
 }
+
+#[test]
+fn screenshot_filename_is_safe_and_deterministic() {
+    let name = url_to_screenshot_filename("https://docs.rs/axon/<guide>?q=a&b=c#frag", 7);
+    assert_eq!(name, "0007-docs-rs-axon-guide-q-a-b-c-frag.png");
+    assert_eq!(
+        url_to_screenshot_filename("https://docs.rs/axon/<guide>?q=a&b=c#frag", 7),
+        name
+    );
+    assert!(!name.contains("--"));
+}

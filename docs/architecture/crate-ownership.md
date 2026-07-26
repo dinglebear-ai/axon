@@ -1,6 +1,6 @@
 # Crate Ownership & the Service Boundary
 
-Last Modified: 2026-07-24
+Last Modified: 2026-07-26
 
 **Canonical rule for where logic, contracts, and orchestration live in the Axon
 workspace.** This supersedes the older "everything goes through `axon-services`"
@@ -81,22 +81,18 @@ without a direct `axon-api` import — the same "facade, not forced hop" pattern
 Apply this rule to **new** code and when you're **already editing** an
 operation. Do **not** sweep the whole tree to relocate working code. The
 existing reaches into domain internals are tracked by
-`cargo xtask check-layering` (a seeded allowlist that prevents *new* violations
-while documenting current debt).
+`cargo xtask check-layering`. Its exact exception ledger records the owning
+Bead and expected occurrence count for each remaining violation, so new reaches
+and unreviewed count drift fail closed.
 
 ## Enforcement
 
 - `cargo xtask check-layering` — fails when a transport crate (`axon-cli`,
-  `axon-web`, `axon-mcp`) imports a domain crate's internal module outside the
-  allowlist. Run in CI; add new legitimate exceptions to the allowlist
-  consciously (each is debt to pay down, not a free pass).
-  **Known gap (as of 2026-07-24):** the current check implementation
-  (`xtask/src/checks/layering.rs`) still scans for forbidden-path prefixes
-  under the removed `axon-vector`/`axon-crawl`/`axon-ingest`/`axon-code-index`
-  crates, so it cannot currently fail against the live crate list. A sibling
-  task is rewriting it to check the real crates in
-  [`crate-structure.md`](crate-structure.md); until that lands, treat this
-  section's enforcement claim as aspirational and lean on code review for the
-  rule above.
+  `axon-web`, `axon-mcp`) imports forbidden domain/provider surfaces, or when a
+  transport manifest declares a forbidden dependency. The fail-closed AST gate
+  audits all 23 live crates, resolves dependency aliases and production module
+  reachability, and permits only exact path/rule/count exceptions tied to open
+  Beads. Run it in CI; every removed exception is a verified debt reduction,
+  and new exceptions require explicit ownership rather than a broad allowlist.
 - Code review: a new `pub struct *Result` in `axon-services` for a single-domain
   op is a red flag — it probably belongs in `axon-api`.
