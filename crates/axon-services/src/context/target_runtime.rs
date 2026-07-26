@@ -6,8 +6,9 @@
 //! [`Config`] so long-lived processes (`serve`, `mcp`) carry a working target
 //! local-source runtime.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
@@ -97,10 +98,22 @@ fn query_instruction_support(cfg: &Config) -> InstructionSupport {
 
 /// Resolved embedding model + dimensions used to size the collection, seed the
 /// provider, and stamp vector payloads.
+#[derive(Debug, Clone)]
 struct EmbeddingIdentity {
     model: String,
     dimensions: u32,
 }
+
+#[derive(Debug, Clone)]
+struct CachedEmbeddingIdentity {
+    identity: EmbeddingIdentity,
+    expires_at: Instant,
+}
+
+static EMBEDDING_IDENTITY_CACHE: OnceLock<Mutex<HashMap<String, CachedEmbeddingIdentity>>> =
+    OnceLock::new();
+const EMBEDDING_IDENTITY_CACHE_TTL: Duration = Duration::from_secs(30);
+const EMBEDDING_IDENTITY_FALLBACK_TTL: Duration = Duration::from_secs(5);
 
 /// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
 /// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
@@ -108,6 +121,10 @@ struct EmbeddingIdentity {
 /// back to the configured defaults when the provider is unreachable, so a
 /// fire-and-forget CLI enqueue or an offline TEI never blocks store construction.
 async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
+    let cache_key = embedding_identity_cache_key(cfg);
+    if let Some(identity) = cached_embedding_identity(&cache_key) {
+        return identity;
+    }
     let probe = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
         endpoint: cfg.tei_url.clone(),
         model: EMBEDDING_MODEL_FALLBACK.to_string(),
@@ -127,10 +144,12 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
                 dimensions = derived.dimensions,
                 "derived embedding model/dimensions from TEI provider"
             );
-            EmbeddingIdentity {
+            let identity = EmbeddingIdentity {
                 model: derived.model,
                 dimensions: derived.dimensions,
-            }
+            };
+            cache_embedding_identity(&cache_key, identity.clone(), EMBEDDING_IDENTITY_CACHE_TTL);
+            identity
         }
         Err(err) => {
             tracing::warn!(
@@ -139,11 +158,55 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
                 fallback_dimensions = EMBEDDING_DIMENSIONS_FALLBACK,
                 "could not derive embedding identity from TEI provider; using config/default fallback"
             );
-            EmbeddingIdentity {
+            let identity = EmbeddingIdentity {
                 model: EMBEDDING_MODEL_FALLBACK.to_string(),
                 dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
-            }
+            };
+            cache_embedding_identity(
+                &cache_key,
+                identity.clone(),
+                EMBEDDING_IDENTITY_FALLBACK_TTL,
+            );
+            identity
         }
+    }
+}
+
+fn embedding_identity_cache_key(cfg: &Config) -> String {
+    format!(
+        "{}|{}|{}|{}|{}|{}",
+        cfg.tei_url,
+        cfg.tei_request_timeout_ms,
+        cfg.tei_max_client_batch_size,
+        cfg.embed_tei_query_instruction_enabled,
+        cfg.embed_tei_retry_backoff_ms,
+        cfg.tei_max_retries,
+    )
+}
+
+fn cached_embedding_identity(key: &str) -> Option<EmbeddingIdentity> {
+    let cache = EMBEDDING_IDENTITY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut cache = cache.lock().ok()?;
+    let entry = cache.get(key)?;
+    if entry.expires_at > Instant::now() {
+        return Some(entry.identity.clone());
+    }
+    cache.remove(key);
+    None
+}
+
+fn cache_embedding_identity(key: &str, identity: EmbeddingIdentity, ttl: Duration) {
+    if let Ok(mut cache) = EMBEDDING_IDENTITY_CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+    {
+        cache.insert(
+            key.to_string(),
+            CachedEmbeddingIdentity {
+                identity,
+                expires_at: Instant::now() + ttl,
+            },
+        );
     }
 }
 
