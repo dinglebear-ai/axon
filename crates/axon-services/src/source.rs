@@ -65,7 +65,15 @@ pub async fn index_source(
     request: SourceRequest,
     ctx: &ServiceContext,
 ) -> anyhow::Result<SourceResult> {
-    index_source_with_auth(request, ctx, None).await
+    // This entrypoint is reserved for in-process CLI/system callers. Make its
+    // trusted-local identity explicit so server transports cannot accidentally
+    // inherit the historical `None`-means-local convention.
+    index_source_with_auth(
+        request,
+        ctx,
+        Some(AuthSnapshot::trusted_cli(env!("CARGO_PKG_VERSION"))),
+    )
+    .await
 }
 
 pub(crate) async fn index_source_with_execution(
