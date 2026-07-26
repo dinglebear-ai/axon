@@ -767,7 +767,7 @@ pub async fn run(
         ("provider-method:search", 1),
         ("provider-method:fetch", 1),
         ("provider-method:get", 1),
-        ("provider-method:render", 2),
+        ("provider-method:render", 1),
         ("provider-method:query", 1),
     ] {
         assert_eq!(
@@ -924,7 +924,7 @@ mod outer {
 }
 
 #[test]
-fn provider_assignment_taint_is_monotonic_across_branch_orders_matches_and_loops() {
+fn provider_assignment_taint_merges_at_branches_matches_and_loop_exits() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());
     write(
@@ -955,12 +955,18 @@ pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
     }
     matched.query(request()).await;
 
-    let mut looped = plain;
+    let mut looped = std::sync::Arc::clone(&provider);
     while condition {
-        looped = std::sync::Arc::clone(&provider);
         looped = Plain::new();
     }
     looped.fetch(request()).await;
+
+    let mut overwritten_each_iteration = plain;
+    while condition {
+        overwritten_each_iteration = std::sync::Arc::clone(&provider);
+        overwritten_each_iteration = Plain::new();
+    }
+    overwritten_each_iteration.get(handle()).await;
 
     let shadowed = plain;
     {
@@ -981,6 +987,27 @@ pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
         assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
     }
     assert!(!error.contains("[provider-method:render]"), "{error}");
+    assert!(!error.contains("[provider-method:get]"), "{error}");
+}
+
+#[test]
+fn straight_line_provider_to_plain_overwrite_clears_collision_taint() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store) {
+    let mut sequential = std::sync::Arc::clone(&provider);
+    sequential = Plain::new();
+    sequential.search(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-type:VectorStore"), "{error}");
+    assert!(!error.contains("[provider-method:search]"), "{error}");
 }
 
 #[test]

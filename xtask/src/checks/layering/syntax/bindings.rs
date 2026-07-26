@@ -21,13 +21,13 @@ impl ProviderShape {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct BindingScope {
     values: BTreeMap<String, ProviderShape>,
     type_aliases: BTreeMap<String, bool>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct ProviderBindings {
     scopes: Vec<BindingScope>,
 }
@@ -80,13 +80,31 @@ impl ProviderBindings {
             .rev()
             .find(|scope| scope.values.contains_key(name))
         {
-            let existing = scope
-                .values
-                .get(name)
-                .expect("binding existence was checked");
-            scope
-                .values
-                .insert(name.to_owned(), merge_shapes(existing, &shape));
+            scope.values.insert(name.to_owned(), shape);
+        }
+    }
+
+    pub fn checkpoint(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn restore(&mut self, checkpoint: &Self) {
+        self.clone_from(checkpoint);
+    }
+
+    pub fn merge_control_flow(&mut self, exits: &[Self]) {
+        let Some((first, remaining)) = exits.split_first() else {
+            return;
+        };
+        self.clone_from(first);
+        for exit in remaining {
+            for (scope, exit_scope) in self.scopes.iter_mut().zip(&exit.scopes) {
+                for (name, shape) in &mut scope.values {
+                    if let Some(exit_shape) = exit_scope.values.get(name) {
+                        *shape = merge_shapes(shape, exit_shape);
+                    }
+                }
+            }
         }
     }
 

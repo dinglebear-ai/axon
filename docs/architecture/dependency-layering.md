@@ -47,9 +47,11 @@ implementations are tracked through standard wrapper references/clones,
 positional tuple patterns, syntax-visible assignments, and lexical pattern
 scopes (`if let`, `while let`, `for`, match arms, and closures). Collision-prone
 calls are therefore rejected only on proven provider receivers. Assignment
-taint is monotonic within a lexical binding, conservatively preserving a
-possible provider value across branch, match-arm, and loop traversal while
-newly shadowed bindings remain isolated. Custom
+tracking uses strong replacement in straight-line code, so a later proven
+non-provider assignment clears the binding's provider state. Branch and match
+exits merge their possible states, while `while` and `for` exits merge the loop
+entry with the analyzed body exit because the body may not run. Newly shadowed
+bindings remain isolated. Custom
 interprocedural helper-return inference is intentionally outside this lexical
 gate's scope. `#[cfg(test)]` items and external modules reachable only through
 test declarations are excluded by transitive traversal from each crate root,
