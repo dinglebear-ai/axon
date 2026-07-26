@@ -46,13 +46,16 @@ RUN if [ -d apps/web/out ]; then \
     fi
 
 # Use BuildKit cache mounts for the Cargo registry, git index, and target
-# directory. Keeps incremental rebuilds fast while still producing a clean
-# output binary.
+# directory. The container build is an artifact/deployment build, so use the
+# workspace's container-fast profile: the production systemd service does not
+# need thin/linker-plugin LTO, and shallow optimization with high codegen
+# parallelism avoids multi-minute links on the four-vCPU Incus builder while
+# retaining a stripped deployment binary.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build/target \
-    cargo build --release --locked --bin axon \
-    && cp /build/target/release/axon /usr/local/bin/axon
+    cargo build --profile container-fast --locked --bin axon \
+    && cp /build/target/container-fast/axon /usr/local/bin/axon
 
 # ── Runtime ───────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim AS runtime

@@ -140,6 +140,16 @@ inherits = "release"
 lto = false
 codegen-units = 16
 
+# Deployment builds for the Bookworm Incus service. This keeps the binary
+# optimized enough for a runtime smoke/deploy artifact while minimizing cold
+# builder time: no LTO, shallow optimization, and maximal codegen parallelism.
+[profile.container-fast]
+inherits = "release"
+opt-level = 1
+lto = false
+codegen-units = 256
+strip = true
+
 [profile.dev.package.spider]
 opt-level = 2
 

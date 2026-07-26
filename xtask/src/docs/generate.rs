@@ -34,6 +34,16 @@ pub fn run(root: &Path, args: &DocsGenerateArgs) -> Result<()> {
             generator.generate(root)
         })
         .collect::<Result<Vec<_>>>()?;
+    let rerendered = sets
+        .iter()
+        .map(|set| {
+            let generator = families::generator_for(set.family);
+            generator.generate(root)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    if sets != rerendered {
+        bail!("docs generate: renderer output is not deterministic");
+    }
     if args.print {
         for set in &sets {
             for artifact in &set.artifacts {
