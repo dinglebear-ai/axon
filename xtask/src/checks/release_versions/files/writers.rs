@@ -1,7 +1,7 @@
 //! Manual write path for the `cli` component's version-bearing files —
 //! release-please no longer manages it (see `release/components.toml`'s
 //! `cli` entry and CLAUDE.md's Release Pipeline section). Used by
-//! `cargo xtask bump-version cli`.
+//! `cargo xtask bump-version patch --component cli`.
 
 use regex::Regex;
 
@@ -107,12 +107,10 @@ pub(super) fn replace_json_version(
 /// blind "match every `\"version\": \"OLD\"`" pattern isn't safe here: a
 /// dependency can coincidentally pin the exact same version string (e.g.
 /// `chai@6.2.2` when axon itself is also 6.2.2). Each of the two real
-/// targets is instead anchored to its distinctive neighboring key —
-/// `"requires": true` immediately precedes the root version, and
-/// `"name": "<package>"` immediately precedes the `packages['']` version —
-/// matching the exact structure `read_npm_package_lock_version` already
-/// relies on to read them.
-pub(super) fn replace_npm_package_lock_version(
+/// targets is instead anchored to its structural location: the document root
+/// for `.version`, and `packages[""]` for the workspace package version. This
+/// matches npm lockfile v3 ordering while leaving dependency versions alone.
+pub(crate) fn replace_npm_package_lock_version(
     content: &str,
     package: Option<&str>,
     next: &str,
@@ -122,17 +120,20 @@ pub(super) fn replace_npm_package_lock_version(
     let escaped_current = regex::escape(&current);
     let root = replace_anchored_json_string_field(
         content,
-        r#""requires"\s*:\s*true"#,
+        &format!(r#"\A\s*\{{\s*"name"\s*:\s*"{}""#, regex::escape(package)),
         &escaped_current,
         next,
-        "package-lock root version (anchored after \"requires\": true)",
+        "package-lock root version",
     )?;
     let both = replace_anchored_json_string_field(
         &root,
-        &format!(r#""name"\s*:\s*"{}""#, regex::escape(package)),
+        &format!(
+            r#""packages"\s*:\s*\{{\s*""\s*:\s*\{{\s*"name"\s*:\s*"{}""#,
+            regex::escape(package)
+        ),
         &escaped_current,
         next,
-        "package-lock packages[''] version (anchored after \"name\")",
+        "package-lock packages[''] version",
     )?;
     Ok(both)
 }

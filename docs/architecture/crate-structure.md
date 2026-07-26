@@ -1,10 +1,10 @@
 # Crate Structure
 
-Last Modified: 2026-07-19
+Last Modified: 2026-07-26
 
 Axon is a Cargo workspace: a thin root `axon` binary that delegates to
 `axon-cli`, plus 23 focused crates under `crates/`. All crates inherit the
-product version via `version.workspace = true` (currently 7.1.5, edition 2024,
+product version via `version.workspace = true` (currently 7.2.1, edition 2024,
 rust-version 1.94.0).
 
 > The contract target for this layout lives at
@@ -90,7 +90,7 @@ edges, read from each crate's `Cargo.toml`.
 |---|---|---|
 | `axon-mcp` | MCP transport: single `axon` tool, `action`/`subaction` routing | `axon-api`, `axon-authz`, `axon-core`, `axon-services` |
 | `axon-web` | REST/OpenAPI/panel transport (Axum) | `axon-api`, `axon-authz`, `axon-core`, `axon-error`, `axon-jobs`, `axon-llm`, `axon-services` |
-| `axon-cli` | CLI transport (clap parser, rendering) | `axon-adapters`, `axon-api`, `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web` |
+| `axon-cli` | CLI transport (clap parser, rendering) | `axon-api`, `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web` |
 
 ### Binary
 
@@ -123,9 +123,10 @@ contracts at `docs/pipeline-unification/crates/<name>/{README.md,CLAUDE.md}`
 ## Notes on transitional state
 
 - The legacy single-purpose crates (`axon-vector`, `axon-crawl`, `axon-ingest`,
-  `axon-code-index`) are removed from the workspace. `cargo xtask check-layering`
-  still carries forbidden-module prefixes and a small allowlist referencing
-  their old paths as a guardrail — see [dependency-layering.md](dependency-layering.md).
+  `axon-code-index`) are removed from the workspace. The live
+  `cargo xtask check-layering` gate checks the current crate graph and exact
+  exception ledger; it does not retain compatibility rules for those removed
+  paths. See [dependency-layering.md](dependency-layering.md).
 - `axon-extract` remains even though the contract disposition said "remove or
   shrink"; it is still depended on by `axon-adapters` and `axon-services` for
   vertical extraction.
