@@ -1,1533 +1,857 @@
 # Pipeline Unification Completion Implementation Plan
 
-> **For implementing agents:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:subagent-driven-development` only when Jacob explicitly requests delegated agent work. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:executing-plans` to implement this plan task-by-task. Use `superpowers:subagent-driven-development` only when Jacob explicitly requests delegated agent work. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close the remaining 28 children of `axon_rust-enbmu`, prove that every source family uses one execution pipeline, enforce global provider fairness, close the remaining security gaps, and deploy the resulting Axon release.
+**Goal:** Close the remaining 28 implementation findings under
+`axon_rust-enbmu`, prove one source execution path and one provider-capacity
+authority, reconcile the pipeline-unification contract packet with reality, and
+ship the resulting release.
 
-**Architecture:** Work proceeds through explicit, dependency-ordered PR waves, each
-based on the latest merged `origin/main`. Behavioral tests, executable
-documentation drift checks, and live architectural guardrails land before the
-source-runner collapse; the canonical runner then becomes family-blind above
-`SourceAdapter`; provider capacity moves behind one SQLite-authoritative,
-cross-process scheduler; security and transport parity are proved at real
-execution boundaries rather than by declaration-only tests.
+**Architecture:** Live guardrails and behavioral characterization land first.
+Canonical stage and attempt identities then become executable data. One
+SQLite-authoritative scheduler gates existing provider traits through a single
+reserved-call facade. One family-blind runner consumes the existing adapter
+registry and publishes through an epoch/watermark protocol spanning Qdrant,
+SQLite, graph state, artifacts, and retrieval. Security is enforced at
+admission, connect, same-handle local reads, and publication. Real transport and
+production-ingress tests close the loop.
 
-**Tech Stack:** Rust 2024, Tokio, Axum, rmcp, SQLite, Qdrant, TEI, `cargo xtask`, Beads (`bd`), GitHub Actions, Docker Compose, Incus/systemd.
+**Tech Stack:** Rust 2024, Tokio, Axum, rmcp, SQLite, Qdrant, TEI, Chrome/CDP,
+`cargo xtask`, Beads (`bd`), GitHub Actions, Docker Compose, Incus, systemd.
+
+## Confirmed Starting State — 2026-07-26
+
+- Review branch base and `origin/main` are both
+  `fd4fac12def85e0b065a6a0035781a29f426dce4`.
+- The review worktree is clean before this plan edit.
+- PR `#466` merged the first 28 findings and tagged `v7.2.0`.
+- PR `#468` merged the llama/TEI compose work. Do not recreate that branch or
+  preserve an old dirty compose diff.
+- PR `#469` merged the first reviewed version of this plan.
+- The host and Incus container both still report `axon 7.1.5`; the operational
+  v7.2 deployment remains undone and is independent of the code dependency
+  graph.
+- Epic `axon_rust-enbmu` still owns 28 open implementation findings. Tracking
+  bead `axon_rust-enbmu.2` owns this plan review only.
+- `marketplace-no-mcp` remains the intentional protected marketplace variant.
 
 ## Global Constraints
 
-- `CLAUDE.md` is the source of truth; do not edit `AGENTS.md` or `GEMINI.md` directly.
-- Use `.worktrees/<branch>` under the repository root for implementation worktrees.
-- Create or claim a bead before every non-trivial code change; record evidence
-  before push, but close it only after its PR merges and the merged commit is
-  verified.
-- Preserve `marketplace-no-mcp` as a protected long-lived branch; never merge or delete it as cleanup.
-- Never use `foo/mod.rs`; use `foo.rs` plus `foo/*.rs`.
-- Tests live in sibling `*_tests.rs` files through `#[path = "..."]`.
-- Keep changed production `.rs` files at or below 500 lines and functions below the monolith hard limit.
-- Keep transports thin: CLI, MCP, and REST call `axon-services`; they do not own orchestration or call provider internals.
-- One `SourceRequest` must retain one job id through route, acquire, prepare, embed, publish, graph, and cleanup.
-- Treat `docs/pipeline-unification/` as the target contract. When current code, a dated snapshot, or this plan conflicts with the packet, the target contract wins and the discrepancy must be repaired explicitly.
-- Keep the public `SourceAdapter` trait exactly at the contracted boundary: `name`, `version`, `capabilities`, `discover`, `acquire`, and `normalize`. Family-specific preparation and conditional-fetch behavior stay behind those methods or in declarative `SourceAdapterSpec` data; do not retain public `materialize` or `reuse_policy` escape hatches.
-- Use the existing `SourceRequest.execution.priority: JobPriority`; do not create a competing transport priority field or enum. Map foreground source work to `High`, interactive query/ask/retrieve to `Interactive`, refresh to `Background`, and maintenance to `Maintenance`.
-- Provider reservations and fairness are owned by the unified job scheduler. Providers require a granted reservation but do not own cross-job queues or scheduling policy.
-- Redaction failures fail closed before vector, artifact, event, graph, or memory writes.
-- Run the smallest targeted test while iterating; run the full repository gate
-  once per code PR before push.
-- Before the generator-engine wave lands, use existing schema checks and
-  hand-update only affected contract text. After it lands, every implementation
-  PR must regenerate and check only the documentation families affected by its
-  changed surface.
-- Do not deploy from a dirty checkout or a pre-merge commit.
-- Never merge an ignored/failing contract test. A red characterization commit
-  may lead a stacked branch, but the PR that reaches `main` must include the
-  corresponding green implementation.
-- Do not use job, reservation, source, URL, or caller identifiers as metric
-  labels. Provider metrics are bounded to provider kind, bounded provider
-  instance id, priority, and job kind.
+- Treat `docs/pipeline-unification/` as normative. If live code and a current
+  contract disagree, repair one or the other explicitly in the same PR.
+- `CLAUDE.md` is the agent-memory source; keep sibling `AGENTS.md` and
+  `GEMINI.md` symlinked to it.
+- Use `.worktrees/<branch>` and a claimed Bead for each non-trivial unit.
+- Keep CLI, MCP, REST, and panel thin; orchestration belongs in
+  `axon-services`.
+- Keep the public `SourceAdapter` boundary to `name`, `version`,
+  `capabilities`, `discover`, `acquire`, and `normalize`.
+- Reuse `SourceAdapterRegistry`, `JobStagePlan`, `PipelinePhase`,
+  `SourceProgressEvent`, `JobPriority`, and current provider traits. Do not add
+  parallel factories, phase registries, priority enums, or fake proof types.
+- One source request retains one job id across all stages. Crash recovery keeps
+  the job id but always creates a new fenced attempt.
+- Provider capacity is enforced before the call. Publication visibility is
+  enforced before public reads.
+- Redaction failure is fail-closed and cannot leak through its audit path.
+- No `mod.rs`; tests use sibling `*_tests.rs`; production Rust files remain
+  within the monolith policy.
+- Run targeted checks while iterating and the full repository gate once for
+  each code PR. Documentation-only plan edits use structural validation.
+- Merge each unit before branching its dependent. Close a Bead only after its
+  acceptance criteria are verified on merged `origin/main`.
+- Preserve `marketplace-no-mcp`; do not merge or delete it.
 
----
+## Contract Alignment
 
-## Confirmed Starting State
-
-- PR `#466` merged as `cc08c978b059f435719833ea6e7e5a9c352362c4`; its tree is byte-identical to the clean `claude/pipeline-unification-review-052d57` worktree.
-- The primary checkout is three commits behind `origin/main`.
-- The only tracked dirty file before this plan was created is `docker-compose.llama.yaml` (`91` additions, `12` deletions).
-- `docker-compose.llama.yaml` has no overlap with the 135 files changed by PR `#466`; it belongs to the separate llama.cpp/TEI tuning session.
-- `.full-review/` is ignored review evidence, not uncommitted production work.
-- Epic `axon_rust-enbmu` has 28 closed and 28 open children.
-- Host and Incus Axon binaries are still `7.1.5`; `origin/main` is `v7.2.0`.
-
-## Contract Authority and Alignment Matrix
-
-The implementation must cite the affected contract sections in each PR body and
-record any current-code divergence that the PR removes. A task is not complete
-merely because current tests pass if the target contract still says otherwise.
-
-| Concern | Canonical contract | Required invariant |
+| Concern | Authority | Required outcome |
 |---|---|---|
-| Pipeline ownership | `README.md`, `foundation/source-pipeline.md` | `axon-services` owns one family-blind execution path; transports never reroute. |
-| Adapter boundary | `foundation/types/trait-contract.md`, `sources/new-source-contract.md` | `SourceAdapter` exposes only the six contracted methods and emits normalized `SourceDocument` results. |
-| DTOs and enums | `foundation/types/dto-contract.md`, `foundation/types/enum-contract.md` | Reuse `ExecutionPolicy.priority` and canonical `JobPriority::{Interactive, High, Normal, Background, Maintenance}`. |
-| Jobs and capacity | `runtime/job-contract.md`, `runtime/provider-contract.md` | The job scheduler owns reservation state and fairness; provider calls require granted reservations. |
-| Auth and security | `runtime/auth-contract.md`, `runtime/security-contract.md`, `runtime/redaction-contract.md` | Snapshots never escalate, SSRF/local-path policy is injected and testable, and redaction fails closed. |
-| Behavioral proof | `delivery/testing-contract.md` | Fake-boundary tests precede live smokes; family and transport parity compare execution behavior. |
-| Generated references | `delivery/documentation-contract.md`, `delivery/docs-generator-contract.md` | All 17 generator families use the contracted layout, interfaces, flags, and drift semantics. |
-| Delivery order | `delivery/dependency-order-map.md` | Fake providers and route/adapter boundaries land before reservations and source ports; broad live smokes come last. |
+| Source runner | `foundation/source-pipeline.md` | One family-blind executor above the six-method adapter boundary. |
+| Adapter types | `foundation/types/trait-contract.md` | Shared registry instances; execution state only in typed requests/results. |
+| Jobs and stages | `runtime/job-contract.md` | One job id; new attempt after owner loss; canonical stage ids and skips. |
+| Provider capacity | `runtime/provider-contract.md` | One capacity domain authority; queued SQLite grants; no raw service bypass. |
+| Authentication | `runtime/auth-contract.md` | Compatibility scope widening remains; mutating operations separately require literal write scope. |
+| Security | `runtime/security-contract.md`, `runtime/redaction-contract.md` | Connect-time SSRF, same-handle local containment, fail-closed redaction. |
+| Testing | `delivery/testing-contract.md` | Behavioral family and transport parity through real boundaries. |
+| Documentation | `delivery/docs-generator-contract.md` | All 17 families render from declared live inputs and drift checks compare bytes. |
 
-## Engineering Review Decisions
+## Normative Designs
 
-These decisions incorporate the Lavra architecture, simplicity, security, and
-performance reviews. They are normative implementation constraints.
+### Stage and attempt identity
 
-### Delivery topology
+Use the existing `JobStagePlan` and `PipelinePhase` as the only executable
+stage registry. Add stable stage ids, applicability, allowed skips, and
+transition validation there. A stale/process-crash recovery always increments
+the attempt. Stage ids, source leases, publication leases, reservation leases,
+and side-effect fences bind to `(job_id, attempt)`. Only an in-process retry
+under the same live owner may continue an attempt. Every mutation rejects an
+older attempt.
 
-- The llama/TEI compose change and deployment of already-merged v7.2.0 are an
-  independent operational lane. Neither blocks Tasks 2-4.
-- Every PR wave uses a new `.worktrees/<branch>` checkout from the latest merged
-  `origin/main`; do not accumulate Tasks 2-10 on one branch.
-- Large tasks are split into boundary-sized PRs. A bead may receive prerequisite
-  work in multiple waves, but it has exactly one closure owner and closes only
-  after that owner PR merges.
+### Provider capacity domain and scheduler authority
 
-### Canonical stage and visibility model
+Define:
 
-Before porting any family, encode one executable stage plan from
-`foundation/source-pipeline.md`. Intent-specific operations may declare
-contracted skips, but may not reorder stages. Resolve the graph-ordering
-contradiction in favor of the target contract: graph candidates are prepared
-before publication, and generation commit is the single visibility barrier.
+```rust
+pub struct ProviderCapacityDomain {
+    pub kind: ProviderKind,
+    pub instance_id: ProviderInstanceId,
+    pub authority_id: SchedulerAuthorityId,
+}
+```
 
-- Vector points, graph evidence, document status, and generated artifacts carry
-  the pending generation fence and remain invisible to public reads before
-  commit.
-- A required-stage failure prevents generation commit and records cleanup debt
-  for any external writes that cannot be transactionally rolled back.
-- Optional failures may yield `completed_degraded` only when the error policy
-  explicitly permits publication.
-- Recovery reuses the same `job_id`, creates/continues the contracted attempt,
-  and idempotently reconciles every mutating stage.
-- Crash-injection tests run after each mutating stage and prove that no vector,
-  graph, status, artifact, or event projection exposes a partial generation.
+One authority/database owns each stable `(kind, instance_id)`. Processes may
+either share that SQLite file on a filesystem with supported locking or proxy
+reservation-bearing operations through the authority service. A local process
+configured for a remote authority must reject provider-backed `--local`
+execution when it cannot share the authority database. Two distinct databases
+must never independently grant against the same provider identity.
 
-### Global reservation kernel
+The queue algorithm is fixed:
 
-`axon-jobs` owns the only production reservation kernel. SQLite
-`provider_reservations` rows and atomic transactions are authoritative across
-server and CLI worker processes. `axon-observe` is read-only projection and
-metrics; any existing `axon-observe::ProviderReservationManager` authority is
-deleted or reduced to a compatibility facade in the kernel PR. In-process
-oneshots/`Notify` may reduce wakeup latency but never decide capacity.
+- Base ranks are `Interactive=0`, `High=1`, `Normal=2`, `Background=3`,
+  `Maintenance=4`.
+- Every configured aging quantum reduces effective rank by one, to a floor of
+  zero.
+- Candidates order by effective rank, enqueue sequence, then reservation id.
+- A configured interactive capacity reserve is unavailable to lower ranks while
+  interactive work is queued.
+- Global entries, per-job entries, queued units, maximum request units, and
+  maximum active duration are bounded.
+- A caller holds capacity for at most one configured fairness quantum, bounded
+  by units, batches, and wall time, then yields and reacquires.
+- The maximum-wait test derives its bound from queue caps, maximum active
+  duration, fairness quantum, and aging quantum.
 
-- Grants atomically validate owning job, attempt, stage, provider kind/instance,
-  server-computed units, effective priority, cooldown, queue deadline, lease,
-  and fencing generation.
-- The typed RAII permit owns exactly one `granted -> active -> terminal`
-  transition and rejects forged, replayed, cross-job, cross-stage,
-  cross-provider, duplicate-activation, and duplicate-release use.
-- Real providers have no missing-proof runtime bypass. Fake providers use a
-  compile-time fake proof implementation.
-- Queue deadline, granted-start deadline, and active lease expiry are distinct.
-  Queue length, queued units, per-job entries, and ungrantable requests are
-  bounded; `units > capacity` fails immediately.
-- Interactive reserve is combined with weighted aging or bounded lane quotas.
-  Long-running work releases and reacquires between batches so every lane has a
-  tested maximum wait bound.
-- Worker admission does not mark a job `running` or hold a general worker permit
-  while it waits for a narrower source/provider slot. Capacity wait is
-  `blocked`, with accurate heartbeat and starvation metrics.
+SQLite is the correctness path. Waiters use a predicate loop with bounded
+jittered polling until grant, terminal state, or deadline. An in-process
+`Notify` may reduce latency but is never required for correctness.
 
-### Security admission and publication
+### Reserved provider call
 
-- Search is read-only for `axon:read` callers. Auto-indexing occurs only when the
-  authenticated caller also has write permission; otherwise results are
-  returned without indexing. No trusted-system/Admin/Local snapshot is minted.
-- Effective priority is server-derived: query/ask/retrieve may be
-  `Interactive`; trusted-local foreground source work may be `High`; detached
-  source/watch work is `Background`; `Maintenance` is admin/system only.
-  Persist requested and effective priority and audit downgrades.
-- Adapter output is untrusted. Route safety class, caller snapshot, visibility
-  ceiling, local/tool permission, reservation proof, and redaction are checked
-  before the first side effect and again at each public publication boundary.
-- Security denials emit structured, redacted audit events with job/source/caller
-  identity and policy version. URLs, query strings, headers, auth snapshots,
-  reservation proofs, provider errors, and local paths are scrubbed from logs.
+Keep `EmbeddingProvider`, `VectorStore`, fetch/render, graph, artifact, and LLM
+traits unchanged. Gate them through one scheduler-owned facade:
 
-### Reviewable PR waves
+```rust
+pub async fn call_reserved<K, T, E, F, Fut>(
+    scheduler: &ProviderScheduler,
+    request: ReservationRequest<K>,
+    operation: F,
+) -> Result<T, ReservedCallError<E>>
+where
+    F: FnOnce(ActiveReservationLease<K>) -> Fut,
+    Fut: Future<Output = Result<T, E>>;
+```
 
-| Wave | Mergeable units |
-|---|---|
-| O | Independent llama preservation and v7.2 deployment/rollback; does not block code waves. |
-| A | Live layering gate; then boundary-violation fixes. |
-| B | Docs generator engine/drift core; then `api-dto`, `api-enums`, `adapters`, `events`, `providers`, `schema`. |
-| C | Shared observation/conformance harness; adapter metadata; router/classifier; site discovery. |
-| D | SQLite reservation kernel/recovery; embedding/query lane; vector-write lane. |
-| E | Canonical stage/visibility foundation; web port; local port; remaining adapter ports and deletion. |
-| F | Auth/panel/CodeSearch; SSRF/redirects; local paths; redaction/visibility. |
-| G | Bounded streaming/SQLite/performance reliability; remaining provider capacity classes. |
-| H | Transport parity; adapter goldens; Tier-5 recovery/security cases. |
-| I | Remaining documentation families, historical reconciliation, final audit/release/deploy. |
+`call_reserved` atomically queues/grants, activates, renews, invokes, and records
+one terminal transition. Production `axon-services` code cannot retain raw
+provider handles outside this facade; `cargo xtask check-layering` rejects new
+raw calls. Tests use the same facade with a fake reservation store.
+
+`Drop` is not an async terminal transition. Callers explicitly
+`complete`, `fail`, or `cancel`; a dropped lease records cleanup debt/best-effort
+notification, and the reconciler owns terminal cleanup.
+
+An unactivated grant may expire and be regranted. An active lease is renewed by
+the owning attempt heartbeat and may be replaced only after its provider future
+is aborted and joined, or after owner death plus the provider hard deadline and
+conservative grace. If termination cannot be proven, quarantine the units and
+enter degraded/cooldown state. Never regrant on lease expiry alone. Side-effect
+writes revalidate the fence immediately before commit.
+
+### Publication epoch and visibility
+
+Use one serialized publication lease initially; sharding is deferred. For
+reserved epoch `E` and current visible watermark `W`:
+
+1. Bind the publication lease to `(job_id, attempt, source_id, generation, E)`.
+2. Write Qdrant points as pending with `born_epoch=E`; mark replaced points with
+   `retired_epoch=E`. Public retrieval continues to snapshot `W`.
+3. Stage content-addressed artifact bytes without public registry rows.
+4. In one SQLite transaction, apply graph mutations, document status, artifact
+   registry rows, ledger generation CAS, durable `publication_authorized`, and
+   advance the collection watermark to `E`.
+5. Public vector reads filter
+   `born_epoch <= W AND (retired_epoch IS NULL OR retired_epoch > W)`.
+   Service retrieval also batch-verifies `(source_id, generation, fence)`
+   against the committed ledger until promotion finalization is complete.
+6. Idempotent finalization marks external data promoted. A pre-watermark crash
+   leaves data invisible and records cleanup debt; a post-watermark crash
+   resumes finalization and never rolls the committed head backward.
+
+Job lifecycle and owner-visible progress events remain immediate. Before
+authorization they contain only phase/count/failure data and never content.
+They may not claim `Publishing`, `Complete`, or public generation success.
+Only vectors, graph evidence/mutations, statuses, artifacts, and other
+generation-scoped projections are commit-fenced.
+
+### Authentication and security
+
+Preserve the deliberate compatibility rule that ordinary Axon read/write
+scopes satisfy general route checks. Mutating `/v1/search` and `/v1/research`
+must additionally call `has_explicit_scope(axon:write)`. A read-only caller is
+denied that mutating operation; optional non-indexing search is not introduced
+without a separate contract and schema change.
+
+Every durable job stores the exact caller scope set, visibility ceiling, policy
+version, and requested/effective priority. Retry, recovery, watch, query, ask,
+retrieve, and child work clone that snapshot; none mint Admin, Local, Execute,
+or broader visibility.
+
+HTTP acquisition uses an injected resolver, canonical host parsing, and a
+pinned reqwest connect target for every redirect. Ambient HTTP(S) proxy
+variables are ignored unless an explicitly configured proxy is itself
+validated. Browser traffic uses an Axon-controlled forward proxy/network
+gateway that applies the same resolve-once/pinned-connect policy to main frames,
+redirects, subresources, service workers, and WebSockets. Missing interception
+or enforcement fails startup/request closed.
+
+Local reads use one validated handle throughout:
+
+- Linux: `openat2` component walk with containment flags.
+- Other Unix: `openat` plus `O_NOFOLLOW` component walk.
+- Windows: `CreateFileW` with reparse-point controls, final path/volume
+  verification, and reads through that same handle.
+- Unsupported platforms fail closed for local, tool, CodeSearch, and artifact
+  roots.
+
+Hardlinks outside an explicitly configured trusted root are rejected. The test
+matrix covers symlink, rename, hardlink, magic-link/reparse-point, `scope=file`,
+and CodeSearch races on every shipped OS.
+
+If redaction fails or panics, emit only a constant-shape emergency event made
+from enums, bounded counts, stable policy/detector ids, and an opaque
+correlation id. It contains no raw input, URL/path, error `Display`/source
+chain, payload hash, or metadata and does not call the failed redactor.
+
+Panel authentication maps to an explicit fixed panel scope set and visibility
+ceiling. It does not imply Local or Execute. Background jobs clone that exact
+snapshot. `/api/panel/env` returns only compile-time-allowlisted non-secret key
+names and `configured: bool`; it never returns values, defaults, lengths,
+dynamic prefixes, or inferred metadata.
 
 ## Delivery Graph
 
 ```text
-independent ops lane: llama + v7.2 deploy/rollback
+independent v7.2 deployment
 
-live layering gates ---> docs drift engine ---> behavior harness
-                                                |
-                                                v
-                                 adapter/routing normalization
-                                                |
-                                                v
-                         durable scheduler + embedding/vector proof
-                                                |
-                                                v
-                           stage/visibility model + runner ports
-                                      |                 |
-                                      v                 v
-                              security waves    bounded reliability
-                                      \                 /
-                                       v               v
-                               real transport + fixture proof
-                                                |
-                                                v
-                              remaining docs + final audit/release
+live gates + docs engine
+          |
+behavior harness + adapter/router normalization
+          |
+stage/attempt identity
+          |
+SQLite scheduler + reserved-call gate
+          |
+publication epoch + canonical runner ports
+          |
+security + bounded reliability
+          |
+real transport/ingress proof
+          |
+17 docs families + final audit/release/deploy
 ```
 
-## Task 1: Run the Independent Operational Baseline Lane
-
-**Beads:**
-- Existing related bead: `axon_rust-ana1h`
-- Create a separate task for landing the compose diff; do not attach it to `axon_rust-enbmu`.
-
-**Files:**
-- Modify and commit separately: `docker-compose.llama.yaml`
-- Read only: `~/.axon/.env`, Incus `axon:/mnt/axon-data/config.toml`
-
-**Interfaces:**
-- Consumes: the current 103-line dirty compose diff.
-- Produces: a dedicated llama/TEI PR plus an atomic, rollback-tested v7.2
-  deployment. This lane may run before or alongside Tasks 2-4 and does not block
-  their implementation.
-
-- [ ] **Step 1: Record the exact dirty surface**
-
-```bash
-git status --short --branch
-git diff --check
-git diff --stat
-git diff -- docker-compose.llama.yaml
-```
-
-Expected: only `docker-compose.llama.yaml` is modified before this plan file is considered.
-
-- [ ] **Step 2: Create and claim a Beads task**
-
-```bash
-bd create \
-  --title="Land llama.cpp and TEI coexistence compose tuning" \
-  --description="Preserve and review the docker-compose.llama.yaml changes produced by Claude session e552af6f-b0a8-4fbd-9857-6b6dd4cdf924. This is unrelated to #298 and must land separately before the primary checkout is cleaned." \
-  --type=task \
-  --priority=2
-bd update <created-id> --claim
-```
-
-- [ ] **Step 3: Copy only the compose diff into a clean worktree**
-
-```bash
-git fetch origin
-git worktree add .worktrees/llama-tei-compose-tuning \
-  -b fix/llama-tei-compose-tuning origin/main
-git diff --binary -- docker-compose.llama.yaml |
-  git -C .worktrees/llama-tei-compose-tuning apply -
-git -C .worktrees/llama-tei-compose-tuning diff --check
-```
-
-The primary checkout and the new plan file remain untouched. Verify the copied
-diff is byte-equivalent before committing.
-
-- [ ] **Step 4: Validate and commit the standalone compose file**
-
-```bash
-cd .worktrees/llama-tei-compose-tuning
-docker compose --env-file /home/jmagar/.axon/.env \
-  -f docker-compose.llama.yaml config --quiet
-git add docker-compose.llama.yaml
-git commit -m "fix(compose): preserve llama and TEI GPU coexistence tuning"
-git diff HEAD^ --check
-```
-
-Expected: Compose renders successfully without changing the running service.
-
-- [ ] **Step 5: Push the isolated branch and open its PR**
-
-```bash
-git push -u origin fix/llama-tei-compose-tuning
-gh pr create \
-  --base main \
-  --title "fix(compose): preserve llama and TEI GPU coexistence tuning" \
-  --body "Separates the completed llama.cpp/TEI tuning from the #298 pipeline-unification program."
-```
-
-- [ ] **Step 6: Establish the v7.2 deployment rollback set**
-
-From a clean worktree at exact merged commit `cc08c978b...`, capture:
-
-```bash
-git rev-parse HEAD
-sha256sum Cargo.lock ~/.axon/config.toml ~/.axon/.env
-incus exec axon -- sha256sum \
-  /usr/local/bin/axon /mnt/axon-data/config.toml
-```
-
-Back up the exact existing host/container binaries, `~/.axon/config.toml`,
-`~/.axon/.env`, the container config, SQLite database, artifact tree, and a
-Qdrant snapshot. Record recovery paths and checksums in the deployment bead.
-Do not expose secret file contents in logs or the session report.
-
-- [ ] **Step 7: Build and validate both artifacts before replacement**
-
-```bash
-cargo build --release --locked --bin axon
-./target/release/axon --version
-ldd ./target/release/axon
-docker run --rm \
-  -v "$PWD:/w" \
-  -v /home/jmagar/.cargo/registry:/usr/local/cargo/registry \
-  -w /w \
-  -e CARGO_TARGET_DIR=/w/target-bookworm \
-  rust:1-bookworm cargo build --release --locked --bin axon
-file target-bookworm/release/axon
-sha256sum target/release/axon target-bookworm/release/axon
-```
+## Per-PR Merge Protocol
+
+1. Fetch `origin`; create `.worktrees/<unit>` from merged `origin/main`; claim
+   only the listed Bead.
+2. Add the focused failing test first and record the expected failure.
+3. Implement the smallest unit below; regenerate only affected references.
+4. Run the focused commands listed for that unit, then `just precommit`.
+5. Commit, push, open a focused PR, wait for required checks, and merge.
+6. Verify the merge on `origin/main`, attach implementation/test evidence to the
+   Bead, then close it if every subfinding is complete.
+7. Run `bd dolt push`; branch the next dependency from the merged commit.
+
+## Task 1: Complete the Independent v7.2 Operational Baseline
+
+**Tracking:** existing operational Bead `axon_rust-ana1h`; not an
+`axon_rust-enbmu` code dependency.
+
+**Files:** read-only `~/.axon/.env`,
+`axon:/mnt/axon-data/config.toml`; install paths
+`/home/jmagar/.local/bin/axon` and `axon:/usr/local/bin/axon`.
+
+- [ ] Verify PR `#468` is on `origin/main`; do not create another compose PR.
+- [ ] Back up both binaries and the validated container config with checksums.
+- [ ] Build the host binary from merged `main`.
+- [ ] Build a separate Bookworm-compatible binary for the Incus container.
+- [ ] Install with temporary files plus atomic rename.
+- [ ] Apply the already-validated config migration.
+- [ ] Restart and enforce a bounded health deadline.
+- [ ] Smoke host CLI, container service, REST, and MCP.
+- [ ] On any mixed version or failed health check, restore both binaries and
+  configs and verify `7.1.5` health.
+
+This operation must not block Tasks 2–5.
+
+## Task 2: Repair Live Gates in Small PRs
+
+**Beads:** `axon_rust-jc20j`; prerequisite portions of
+`axon_rust-a155h` and `axon_rust-5iglz`.
+
+### Task 2A — Layering gate
+
+**Files:** `xtask/src/checks/layering.rs`,
+`xtask/src/checks/layering_tests.rs`,
+`xtask/src/checks/crate_contracts_spec.rs`,
+`xtask/src/checks/crate_contracts_spec_cont.rs`.
+
+- [ ] Add fixtures containing the known transport imports from
+  `axon-adapters`, `axon-llm`, and source internals.
+- [ ] Run `cargo test -p xtask layering -- --nocapture`; record the red result.
+- [ ] Replace deleted-crate prefixes and remove stale allowlist rows.
+- [ ] Audit all 23 live crates.
+- [ ] Add a rule rejecting raw provider calls from transports and
+  `axon-services` modules outside the reserved-call facade path.
+- [ ] Run `cargo xtask check-layering` and
+  `cargo xtask check-crate-contracts`.
+
+### Task 2B — Screenshot helper
+
+**Files:** `crates/axon-adapters/src/web_engine/screenshot.rs`,
+`crates/axon-core/src/paths.rs`,
+`crates/axon-cli/src/commands/screenshot/util.rs` and sidecar tests.
+
+- [ ] Move only the pure filename/path helper to `axon-core`.
+- [ ] Remove the CLI production dependency on `axon-adapters` if unused.
+- [ ] Run `cargo test -p axon-cli screenshot --no-fail-fast`.
+
+### Task 2C — Chat provider facade
+
+**Files:** `crates/axon-web/src/server/handlers/chat_stream.rs`,
+`crates/axon-web/src/server/handlers/chat_stream_tests.rs`, and the existing
+`axon-services` chat facade.
+
+- [ ] Move direct provider construction behind a typed service method without
+  changing response semantics.
+- [ ] Propagate cancellation when the transport disconnects.
+- [ ] Run `cargo test -p axon-web chat_stream --no-fail-fast`.
+- [ ] File bounded slow-consumer/idle-total deadline tuning as a separate
+  reliability Bead; it is not part of the layering PR.
+
+### Task 2D — Documentation engine
+
+**Files:** `xtask/src/docs.rs`, existing `xtask/src/docs/*`, and new sibling
+modules named by `delivery/docs-generator-contract.md`.
+
+- [ ] Add `DocsFamilyGenerator`, `DocsArtifactSet`, and
+  `GeneratedDocArtifact`.
+- [ ] Make `--check` render in memory and byte-compare declared outputs without
+  writing.
+- [ ] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
+  and secret/path canaries.
+- [ ] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
+  `events`, `providers`, and `schema`.
+- [ ] Run `cargo test -p xtask docs -- --nocapture` and
+  `cargo xtask docs generate --check`.
+
+Close `axon_rust-jc20j` after 2A–2C merge. Keep contract exemptions and the docs
+Bead open until Tasks 7 and 11.
+
+## Task 3: Characterize Behavior Without a New Runtime Model
+
+**Beads:** `axon_rust-fts94`, `axon_rust-j801x`.
 
-Verify both binaries report `7.2.0`, embed the expected commit/build identity,
-and that the Bookworm binary resolves inside the container before touching the
-installed paths.
+**Files:** integration tests under `tests/`, sidecars adjacent to the shared
+source service, `crates/axon-adapters/src/testing.rs`.
 
-- [ ] **Step 8: Install atomically and enforce a health deadline**
-
-Copy each binary to a temporary sibling, verify checksum and version in place,
-then rename atomically over the target. Apply the validated config migration
-through a temporary file plus atomic rename. Restart `axon-native.service` and
-require service-active, doctor, local `--local` smoke, and deployed REST/MCP
-build-identity checks within a bounded timeout.
-
-If any host or container check fails, stop the new service, atomically restore
-the old binary and config, restore data only when a migration changed it,
-restart, and prove the previous version healthy. A mixed host/container version
-is a failed deployment.
-
-## Per-Wave Merge Protocol
-
-Apply this protocol to every implementation unit below:
-
-1. `git fetch origin`, create/reuse a dedicated `.worktrees/<wave-unit>` from
-   the latest merged `origin/main`, and claim only the affected bead(s).
-2. Run the stated baseline/targeted tests and record pre-existing failures.
-3. Implement one boundary-sized unit, regenerate only affected docs families,
-   run its full PR gate, commit, push, and open a focused PR.
-4. Wait for required checks and merge through normal branch protection.
-5. Verify the merged commit on `origin/main`; only then close beads whose full
-   acceptance checklist is satisfied.
-6. Create the next dependent worktree from that merged `origin/main`. Do not
-   stack unrelated waves on a long-lived implementation branch.
-
-## Task 2: Make the Layering and Crate-Contract Gates Observe the Live Workspace
-
-**Beads:** `axon_rust-jc20j`, first half of `axon_rust-a155h`
-
-**Files:**
-- Modify: `xtask/src/checks/layering.rs`
-- Modify: `xtask/src/checks/layering_tests.rs`
-- Modify: `xtask/src/checks/crate_contracts_spec.rs`
-- Modify: `xtask/src/checks/crate_contracts_spec_cont.rs`
-- Modify: `crates/axon-core/src/paths.rs` or a focused sibling path-helper module
-- Modify: `crates/axon-cli/src/commands/screenshot/util.rs`
-- Modify: `crates/axon-services/src/scrape.rs`
-- Modify: `crates/axon-web/src/server/handlers/chat_stream.rs`
-- Modify: the existing `axon-services` chat/synthesis facade
-- Test: sidecars adjacent to each moved service/helper
-
-**Interfaces:**
-- Consumes: the current 23-crate dependency graph and `axon-services` facade.
-- Produces: a gate that rejects transport-to-domain/provider internals and a clean live dependency graph.
-
-- [ ] **Step 1: Write gate regressions for the three known live violations**
-
-Add tests in `xtask/src/checks/layering_tests.rs` whose fixtures contain:
-
-```rust
-use axon_adapters::web_engine::screenshot::url_to_screenshot_filename;
-use axon_llm::runtime::complete_streaming;
-use axon_adapters::web_engine::scrape::scrape_to_result;
-```
-
-Each fixture must produce one finding naming the importing layer and forbidden target.
-
-- [ ] **Step 2: Prove the tests fail against the current allowlist**
-
-```bash
-cargo test -p xtask layering -- --nocapture
-```
-
-Expected: the new assertions fail because the live prefixes are not enforced.
-
-- [ ] **Step 3: Replace deleted-crate prefixes and deleted-file allowlist rows**
-
-Update `xtask/src/checks/layering.rs` so the forbidden graph names current crates and module roots. Remove every allowlist entry whose file no longer exists. Keep exceptions path-specific and document the bead that removes each temporary exception.
-
-- [ ] **Step 4: Move the pure screenshot filename helper to `axon-core`**
-
-Expose the helper from `axon-core`; update the CLI import; remove the CLI production dependency on `axon-adapters` if no other production import remains.
-
-- [ ] **Step 5: Put streaming completion behind `axon-services`**
-
-Add a typed service method that accepts the existing completion request and delta callback. Make `chat_stream.rs` call that facade and remove its direct provider construction.
-
-- [ ] **Step 6: Separate read-only acquisition from canonical `scrape`**
-
-Name and type the read-only acquisition projection separately and limit it to
-summarize/diff-style callers. It constructs a page `SourcePlan`, invokes the web
-adapter, and returns normalized content without a ledger generation or vectors.
-The retained CLI `axon scrape` continues to submit a canonical page
-`SourceRequest`, uses one durable source job, and honors `embed=true`.
-
-Add one end-to-end test for each behavior so the read-only facade cannot
-silently capture the CLI command.
-
-- [ ] **Step 6a: Bound streaming completion backpressure**
-
-The `axon-services` streaming facade must propagate cancellation and apply
-bounded buffering plus idle/total deadlines. A stalled REST client must not hold
-an LLM/provider call indefinitely. Add slow-consumer and disconnect tests.
-
-- [ ] **Step 7: Run focused gates**
-
-```bash
-cargo test -p xtask layering -- --nocapture
-cargo xtask check-layering
-cargo xtask check-crate-contracts
-cargo test -p axon-cli screenshot --no-fail-fast
-cargo test -p axon-web chat_stream --no-fail-fast
-cargo test -p axon-services scrape --no-fail-fast
-```
-
-- [ ] **Step 8: Commit and close only the boundary bead**
-
-```bash
-git add xtask crates/axon-core crates/axon-cli crates/axon-services crates/axon-web
-git commit -m "refactor(architecture): enforce live crate boundaries"
-```
-
-After merge, close `axon_rust-jc20j`. Keep `axon_rust-a155h` open until Task 6
-removes the temporary source-runner contract exceptions.
-
-## Task 2B: Land Executable Documentation Drift Guardrails
-
-**Beads:** prerequisite portion of `axon_rust-5iglz`
-
-**PR units:**
-
-1. Generator engine, source-input manifests, deterministic rendering, real
-   byte comparison, non-empty validation, and negative drift tests.
-2. Critical runtime families: `api-dto`, `api-enums`, `adapters`, `events`,
-   `providers`, and `schema`.
-
-**Interfaces:**
-- Consumes: live runtime registries and schema sources.
-- Produces: the contracted `DocsFamilyGenerator`, `DocsArtifactSet`, and
-  `GeneratedDocArtifact` engine before runtime contracts begin changing.
-
-- [ ] **Step 1: Build the contracted engine layout**
-
-Create the shared `xtask/src/docs/{mod,args,artifact,check,markdown,manifest,render,examples}.rs`
-modules and the family registry. Check mode renders in memory and never writes.
-Generation writes only declared outputs.
-
-- [ ] **Step 2: Prove drift detection is executable**
-
-Add tests that mutate a registry fixture and require `--check` to fail, omit a
-declared input and require exit code `3`, reject empty/header-only output, and
-prove deterministic ordering across randomized map insertion.
-
-- [ ] **Step 3: Add secret/path canaries**
-
-Seed fake auth headers, endpoint userinfo, secret values, and absolute local
-paths into test inputs. Generated docs, examples, manifests, diagnostics, and
-JSON reports must not contain the canaries.
-
-- [ ] **Step 4: Implement the six critical families**
-
-Add the `api-dto`, `api-enums`, `adapters`, `events`, `providers`, and `schema`
-family generators. Their input manifests must enumerate every source registry
-so omitting an input makes `--check` fail.
-
-- [ ] **Step 5: Run and merge the guardrail**
-
-```bash
-cargo test -p xtask docs -- --nocapture
-cargo xtask docs generate
-cargo xtask docs generate --check
-cargo xtask schemas all --check
-```
-
-After this wave merges, Tasks 4-9 must regenerate/check the affected critical
-families in their own PRs. Keep `axon_rust-5iglz` open until Task 10 supplies all
-17 families.
-
-## Task 3: Land Behavioral Harnesses Before Changing the Runner
-
-**Beads:** `axon_rust-fts94`, `axon_rust-j801x`
-
-**Files:**
-- Modify: `crates/axon-services/src/test_support.rs`
-- Create: `crates/axon-services/src/source_pipeline_parity_tests.rs`
-- Modify: `crates/axon-services/src/lib.rs` or the source module root for the sidecar declaration
-- Modify: `crates/axon-authz/src/lib_tests.rs`
-- Modify: `crates/axon-jobs/src/workers/unified_tests.rs`
-- Modify: `crates/axon-services/src/local_source_tests.rs`
-
-**Interfaces:**
-- Consumes: `dispatch_kind`, fake ledger/vector/embedding providers, and `SourceExecutionContext`.
-- Produces: one reusable `PipelineObservation` assembled from public results,
-  job/events, and existing fake-boundary call logs. Task 9 reuses this same
-  harness; it does not invent a second parity model.
-
-- [ ] **Step 1: Extend the fake runtime with traceable counters**
-
-Add a bounded observation collector for:
+Define the harness as a test-only aggregation:
 
 ```rust
 pub struct PipelineObservation {
-    pub result_job_id: JobId,
-    pub observed_job_ids: HashSet<JobId>,
-    pub reservation_priorities: Vec<JobPriority>,
-    pub prepared_chunk_count: usize,
-    pub document_status_writes: usize,
-    pub ensure_collection_calls: usize,
-    pub phases: Vec<PipelinePhase>,
+    pub request: SourceRequest,
+    pub progress: Vec<SourceProgressEvent>,
+    pub durable_stages: Vec<JobStageRecord>,
+    pub provider_calls: FakeProviderCalls,
+    pub result: SourceResult,
 }
 ```
 
-The fake ledger, vector store, authz policy, DNS resolver, redactor, vector
-provider, and embedding provider append bounded observations rather than
-exposing implementation internals. The fake and production compositions use
-the same composition constructor. Include allow/deny/visibility, resolver
-failure/private-address, and redactor-failure modes; do not use a global
-loopback or auth bypass.
+It derives phases from existing events/stage rows and adds fake-only call
+counts. It does not add a production phase enum, counter model, or trace format.
 
-- [ ] **Step 2: Add the web/local/git case matrix**
+- [ ] Add equivalent web, local, and non-web fixture requests.
+- [ ] Assert identical route, stage order, normalized shape, publication
+  semantics, one-job identity, cancellation, and error mapping.
+- [ ] Assert progress is visible before publication but contains no document
+  content.
+- [ ] Change the three tests that pin defective family behavior into failing
+  canonical expectations.
+- [ ] Run the harness against production composition with fake providers.
+- [ ] Run `cargo test --test source_pipeline_differential -- --nocapture`.
 
-Create web/local/git cases using one identical bounded two-document corpus and
-parameterize execution mode. Assertions:
+The PR reaching `main` includes the green implementation for each changed
+characterization; no ignored red test lands.
+
+## Task 4: Normalize the Existing Adapter Registry and Router
+
+**Beads:** `axon_rust-yygrl`, `axon_rust-dkuqo`, `axon_rust-gpuz9`,
+`axon_rust-igp0i`, `axon_rust-bfsp5`; prerequisite portion of
+`axon_rust-upay4`.
+
+**Files:** `crates/axon-adapters/src/{adapter,registry,spec,family_matrix}.rs`,
+`crates/axon-adapters/src/web/site_discovery.rs`,
+`crates/axon-adapters/src/providers/http_fetch.rs`, route modules in
+`crates/axon-route/src/`, and sidecar tests.
+
+- [ ] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
+  `Arc<dyn SourceAdapter>` values.
+- [ ] Validate duplicate names, missing families, capability/spec mismatch, and
+  full family-matrix coverage once at startup.
+- [ ] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
+  normalized results.
+- [ ] Add sequential and concurrent same-instance tests proving no ETag,
+  request, auth, or output leakage.
+- [ ] Delete both family classifiers and route from canonical source
+  identity/capabilities.
+- [ ] Remove `SourceRouter::validate_options`; validate exactly once during
+  `RoutePlan` construction and remove its generator/contract references.
+- [ ] Route CodeSearch refresh through the normal source route instead of
+  returning `None`.
+- [ ] Inject `FetchProvider` into web discovery and remove direct network calls.
+- [ ] Put ledger-trusted ETag/Last-Modified and `CachePolicy::Revalidate` into
+  each changed item’s typed `FetchPlan`; reject equivalent untrusted manifest
+  metadata.
+- [ ] Run adapter, route, discovery, and CodeSearch focused tests.
+
+## Task 5: Land Canonical Stage and Attempt Identity
+
+**Beads:** prerequisite portions of `axon_rust-drahp`,
+`axon_rust-nl7au`, and `axon_rust-a155h`.
+
+**Files:** existing `JobStagePlan`/`PipelinePhase` owners in `axon-api`,
+`axon-jobs`, `axon-observe`, and source service stage tests.
+
+- [ ] Extend the existing phase descriptor with stable id, applicability,
+  allowed skip, and transition rules.
+- [ ] Make every mutating stage accept `(job_id, attempt, stage_id, fence)`.
+- [ ] Make stale/process-crash recovery increment attempt; allow same-attempt
+  retry only under a live owner.
+- [ ] Reject old-attempt ledger, reservation, event, graph, vector, artifact,
+  and document-status mutations.
+- [ ] Add a split-brain test in which the old worker resumes after recovery and
+  proves every stale mutation rejected or invisible.
+- [ ] Run `cargo test -p axon-jobs attempt -- --nocapture` and source stage
+  transition tests.
+
+## Task 6: Implement the SQLite Scheduler and Reserved-Call Gate
+
+**Beads:** `axon_rust-nl7au`, `axon_rust-uzy27`; reservation portions of
+`axon_rust-er3z7`.
+
+**Files:** `crates/axon-jobs/src/migrations/0002_provider_scheduler.sql`,
+`crates/axon-jobs/src/migrations.rs`,
+`crates/axon-jobs/src/migration-checksums.txt`,
+`crates/axon-jobs/src/unified/heartbeat.rs`, new focused scheduler siblings,
+`crates/axon-services/src/` provider composition, generated database schema.
+
+### Schema and upgrade
+
+- [ ] Add append-only migration `0002_provider_scheduler.sql`; do not edit
+  epoch-1 history.
+- [ ] Add capacity-domain identity, enqueue sequence, requested/effective
+  priority, queue/grant/lease deadlines, lease owner, attempt/stage fence,
+  renewal, terminal reason, and quarantine state.
+- [ ] Add selection and expiry indexes used by the grant/reaper queries.
+- [ ] Convert current heartbeat reservation writes into read-only projection in
+  the same PR so there is one authority.
+- [ ] Define disposition for old `requested`, `queued`, `granted`, and `active`
+  rows: nonterminal epoch-1 rows become terminal `migration_cancelled` and are
+  safely retried under the new attempt.
+- [ ] Add a real epoch-1 fixture upgrade test and update migration identity and
+  generated database-schema references.
+
+### Atomic grant and wait
+
+- [ ] Implement queue/grant in one `BEGIN IMMEDIATE` transaction using the
+  indexed head candidate from each lane.
+- [ ] Implement the fixed aging/FIFO algorithm and interactive reserve exactly
+  as specified above.
+- [ ] Reject requests larger than declared capacity before queueing.
+- [ ] Enforce global/per-job entry and unit caps.
+- [ ] Implement bounded jittered SQLite predicate polling; local notification
+  is optional latency optimization only.
+- [ ] Add cross-process tests proving a waiter in process B observes a release
+  from process A without a shared in-memory signal.
+- [ ] Add query-plan assertions preventing full scans and record scheduler SQL
+  statements per grant.
+
+### Lease lifecycle
+
+- [ ] Implement explicit async activate, renew, complete, fail, cancel, and
+  reconcile transitions.
+- [ ] Tie renewal to the owning attempt heartbeat and provider hard deadline.
+- [ ] Quarantine uncertain active units; regrant only after abort/join or
+  owner-death deadline plus grace.
+- [ ] Add dropped-lease, killed-process, hung-provider, and stale-completion
+  tests.
+- [ ] Prove no replacement grant while the old provider future remains alive.
+
+### Call gate and all lanes
+
+- [ ] Implement `call_reserved` over unchanged provider traits.
+- [ ] Remove/de-authorize
+  `axon-observe::ProviderReservationManager`; observation reads durable state.
+- [ ] Route source embedding, interactive query/ask/retrieve embedding, vector
+  writes, and fetch/render through the gate.
+- [ ] Create/reuse query job, attempt, stage, and reservation in one transaction;
+  retain them only for a short configured diagnostic window.
+- [ ] Persist requested and server-derived effective priority.
+- [ ] Release after the bounded fairness quantum and reacquire with one
+  continuation cursor and idempotency key.
+- [ ] Test two schedulers on one database, and reject two databases declaring
+  authority for the same stable provider identity.
+- [ ] Reject provider-backed `--local` execution when only the remote authority
+  may schedule it.
+
+### Numeric acceptance
+
+- [ ] Under the deterministic mixed-load fixture, assert no capacity
+  overcommit, zero lost wakeups, and the derived maximum wait.
+- [ ] Assert scheduler p95 grant transaction time under 25 ms, SQLite busy
+  failures equal zero, no selection full scan, and no more than the documented
+  constant SQL statements per grant/release.
+- [ ] Run focused scheduler tests, SQLite migration checks, query/embedding
+  tests, then `just precommit`.
+
+## Task 7: Implement Publication Epochs and Collapse the Runner
+
+**Beads:** `axon_rust-drahp`, `axon_rust-2wq1r`; remainder of
+`axon_rust-upay4` and `axon_rust-a155h`.
+
+**Files:** `crates/axon-services/src/source.rs`,
+`crates/axon-services/src/{source_jobs,web_source}.rs`,
+`crates/axon-vectors/src/qdrant/`,
+`crates/axon-vectors/src/qdrant/read/retrieve.rs`,
+`crates/axon-ledger/src/migrations/`,
+`crates/axon-graph/src/migrations/`,
+artifact registry/store owners, source crash/parity sidecars.
+
+### Publication foundation
+
+- [ ] Add append-only ledger/graph publication-state migrations and exact
+  Qdrant payload fields `born_epoch` and `retired_epoch`.
+- [ ] Add a durable serialized publication lease with bounded takeover rules.
+- [ ] Add one SQLite finalization transaction covering graph mutations,
+  document status, artifact registry, ledger CAS, authorization, and watermark.
+- [ ] Add retrieval watermark filtering and batched committed-ledger fence
+  verification.
+- [ ] Make artifact staging content-addressed and registry publication
+  transactional.
+- [ ] Add idempotent finalization and cleanup debt.
+- [ ] Inject crashes before authorization, after authorization, mid-Qdrant
+  promotion, during artifact promotion, after watermark, and during cleanup.
+- [ ] Prove direct Qdrant reads and service retrieval cannot expose pending or
+  mismatched-fence data.
+
+### One runner
+
+- [ ] Express the canonical executor with existing `JobStagePlan` and
+  `PipelinePhase`; add no second stage registry.
+- [ ] Give `JobIntent::Acquire` the canonical route/discover/acquire/normalize
+  prefix and declared skips for publish/graph/cleanup.
+- [ ] Keep CLI `scrape` as the canonical page indexing projection.
+- [ ] Invoke shared `Arc<dyn SourceAdapter>` values; do not construct
+  per-execution adapter factories.
+- [ ] Slice `SourceManifestDiff` into bounded batches before `acquire` and
+  `normalize`; enforce hard discovery item/byte caps.
+- [ ] Port web, then local, then every remaining family through that executor.
+- [ ] Delete `web_source`, local orphan-job creation, and remaining family
+  orchestration only after parity is green.
+- [ ] Keep progress events immediate and content-free before publication.
+- [ ] Add `Acquire` versus `Index` prefix parity and same-adapter concurrency
+  tests.
+- [ ] Run the Task 3 differential harness and crash matrix after each family
+  port.
+
+## Task 8: Close Authentication and Security Gaps
+
+**Beads:** `axon_rust-9veac`, `axon_rust-cjxfw`,
+`axon_rust-4ygmz`, `axon_rust-0sgqz`, `axon_rust-a4t01`,
+`axon_rust-hf37r`; security portions of `axon_rust-zb0k1`.
+
+### Auth snapshot and panel
+
+- [ ] Preserve `axon_read_scope_satisfies_write_routes` compatibility coverage.
+- [ ] Preserve/add `explicit_scope_check_rejects_broad_widening`.
+- [ ] Require literal `axon:write` for mutating search/research in REST and MCP.
+- [ ] Persist exact caller snapshots for search, query, ask, retrieve, retry,
+  recovery, watch, and child jobs; add no-escalation tests across attempts.
+- [ ] Derive effective priority server-side and audit downgrades.
+- [ ] Implement the fixed panel scope set and visibility ceiling; exclude Local
+  and Execute unless a separate explicit operator control grants them.
+- [ ] Test panel tokens against env, local, tool, source, and job endpoints.
+- [ ] Restrict `/api/panel/env` to the compile-time key/configured-state allowlist.
+
+### Admission policy
+
+- [ ] Invoke exactly one `SourceAccessDecision` at service admission and retain
+  `AffinityPolicy` only as its internal component.
+- [ ] Build `RouteSecurityPolicy` from operator config and caller policy.
+- [ ] Remove `trusted_tool_execution()` from production routing.
+- [ ] Delete dead `enforce_network_source_policy`; connect-time policy belongs
+  only at injected fetch/render boundaries.
+
+### HTTP and browser SSRF
+
+- [ ] Canonicalize IDNA, trailing dot, IPv4-mapped IPv6, and alternate numeric
+  forms before policy; reject userinfo and unsupported schemes.
+- [ ] Pin the validated connect target and revalidate every redirect.
+- [ ] Disable ambient proxy bypass; validate explicitly configured proxies.
+- [ ] Route all browser traffic through the Axon-controlled pinned-connect
+  gateway and require CDP interception as defense in depth.
+- [ ] Test DNS rebinding, mixed A/AAAA, redirect, subresource, service worker,
+  WebSocket, proxy-env, and interception-loss cases.
+- [ ] Remove all release-build loopback test bypasses.
+
+### Local containment
+
+- [ ] Implement Linux, Unix, and Windows same-handle algorithms specified above.
+- [ ] Unify denylists for local source, CodeSearch, tool, and artifact roots.
+- [ ] Enforce the explicit hardlink policy.
+- [ ] Run the per-OS race suite; fail closed on unsupported platforms.
+- [ ] Remove blocking canonicalization from async worker paths.
+
+### Redaction
+
+- [ ] Redact before every vector, artifact, graph, event, and memory write.
+- [ ] Abort publication on detector error/panic.
+- [ ] Emit the constant-shape emergency audit event without invoking redaction.
+- [ ] Add canaries proving no raw value, hash, URL/path, metadata, or error chain
+  reaches logs/events/traces when detector or audit sink fails.
+
+## Task 9: Bound Reliability and Performance
+
+**Beads:** remainder of `axon_rust-er3z7`; remainder of
+`axon_rust-zb0k1`.
+
+**Files:** source runner batching, document-status store, manifest merge,
+embedding identity cache, Qdrant writer/readers, worker admission, observability
+queries.
+
+- [ ] Replace per-document status writes with bounded multi-row transactions;
+  prove rollback and bind-count limits.
+- [ ] Replace quadratic status/manifest merge with one indexed map/set pass;
+  assert comparison count is linear.
+- [ ] Enforce actual encoded bytes after serialization and before every channel,
+  artifact, and Qdrant batch; cap sparse entries and status records.
+- [ ] Bound manifest items, acquisition items, normalized documents, chunk
+  buffers, vectors, statuses, graph candidates, and artifact metadata.
+- [ ] Reject an indivisible oversized item with a structured error; prove split
+  logic always makes forward progress.
+- [ ] Make `embed=false` skip collection ensure/create.
+- [ ] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
+  config with per-key singleflight, bounded TTL/negative behavior, and explicit
+  invalidation.
+- [ ] Wire `qdrant-point-buffer` as the only vector item limit and delete
+  `UPSERT_BATCH_SIZE`.
+- [ ] Consume/document source concurrency or delete the dead knob.
+- [ ] Limit concurrent DB stages with a semaphore derived from pool size while
+  reserving one connection for heartbeat/control work.
+- [ ] Use operation-specific Qdrant deadlines, idempotency keys, cancellation,
+  and partial-timeout reconciliation.
+- [ ] Aggregate observability with bounded SQL queries and bounded labels; no
+  job/source/URL/caller labels and no per-provider N+1.
+- [ ] Assert high-water counters, SQL statement counts, p95 latency, busy count,
+  and bounded metric cardinality under mixed load.
+
+## Task 10: Prove Real Transport and Deployment Parity
+
+**Beads:** `axon_rust-yow0c`, `axon_rust-j5gry`.
+
+**Files:** transport integration tests, status DTO/handlers, `build.rs`,
+deployment smoke scripts/reports.
+
+Add:
 
 ```rust
-assert!(observation
-    .observed_job_ids
-    .iter()
-    .all(|id| id == &observation.result_job_id));
-assert_eq!(detached.reservation_priorities, vec![JobPriority::Background]);
-assert_eq!(foreground.reservation_priorities, vec![JobPriority::High]);
-assert_eq!(observation.prepared_chunk_count, expected_chunks);
-assert_eq!(observation.document_status_writes, 2);
-assert_eq!(observation.ensure_collection_calls, 1);
-assert_eq!(observation.phases, expected_pipeline_phases);
+pub struct BuildIdentity {
+    pub version: String,
+    pub git_sha: String,
+    pub build_profile: String,
+    pub schema_epoch: u32,
+}
 ```
 
-- [ ] **Step 3: Run the matrix and retain the expected red state**
-
-```bash
-cargo test -p axon-services source_pipeline_parity -- --nocapture
-```
-
-Expected before Task 6: failures expose the surviving web/local/non-web
-divergences. Keep the red characterization commit first in the affected stacked
-branch, but merge it only together with the code that makes it green. Never add
-`#[ignore]` or weaken the assertions to land a known-red contract.
-
-- [ ] **Step 4: Correct tests that pin defective behavior**
-
-Replace:
-
-- `axon_read_scope_satisfies_write_routes` with explicit read-does-not-satisfy-write coverage.
-- the source-only semaphore assertion with a claim-loop progress test covering `Source` plus `Extract`.
-- local fixtures defaulting `route: None` and `embedding_reservations: None` with routed, reserved defaults.
-
-- [ ] **Step 5: Run focused tests**
-
-```bash
-cargo test -p axon-authz --lib --no-fail-fast
-cargo test -p axon-jobs unified --no-fail-fast
-cargo test -p axon-services local_source --no-fail-fast
-```
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add crates/axon-services crates/axon-authz crates/axon-jobs
-git commit -m "test(pipeline): add cross-family execution invariants"
-```
-
-After merge, close `axon_rust-fts94` only when all three family cases execute.
-Close `axon_rust-j801x` only when all three defective tests have been replaced.
-
-## Task 4: Normalize Adapter Output, Routing, and Discovery
-
-**Beads:** `axon_rust-yygrl`, `axon_rust-dkuqo`, `axon_rust-gpuz9`, `axon_rust-igp0i`, `axon_rust-bfsp5`, adapter-owned portion of `axon_rust-upay4`
-
-**Files:**
-- Modify: `crates/axon-adapters/src/registry_sources.rs`
-- Modify: `crates/axon-adapters/src/sessions.rs`
-- Modify: their existing sidecar tests
-- Delete family branches from: `crates/axon-services/src/source/non_web/metadata.rs`
-- Modify: `crates/axon-services/src/query/code_search_refresh.rs`
-- Modify: `crates/axon-services/src/source/dispatch_kind.rs`
-- Modify: `crates/axon-route` option validation files and sidecars
-- Modify: `crates/axon-adapters/src/web/site_discovery.rs`
-- Modify: `crates/axon-adapters/src/web/site_discovery_tests.rs`
-- Modify: `crates/axon-adapters/src/adapter.rs`
-
-**Interfaces:**
-- Consumes: `SourceRequest`, `RoutePlan`, `SourceAdapter`, and injected `FetchProvider`.
-- Produces: adapter-normalized metadata, a single router classification, a
-  validated production adapter composition root, and provider-accounted site
-  discovery.
-
-**PR units:** adapter metadata; router/classifier plus CodeSearch safety; site
-discovery. Each unit merges before the next starts.
-
-- [ ] **Step 1: Add adapter-output tests**
-
-Assert that registry normalization emits `package_*` fields and `source_family = "package"` directly, and that session normalization emits only its allowlisted metadata fields.
-
-- [ ] **Step 2: Delete shared-pipeline family rewrites**
-
-Remove `sanitize_documents` and session chunk sanitization from `source/non_web`. The shared runner must accept adapter output without inspecting `SourceKind`.
-
-- [ ] **Step 3: Route code-search refresh through `index_source`**
-
-In the same PR, first remove CodeSearch’s forced `visibility="public"` stamp,
-enforce the caller’s local/visibility policy, and add a zero-public-write
-negative test. Then build a canonical local `SourceRequest` with
-`LocalSourceSelectionPolicy::CodeSearch` represented in validated route options.
-Remove the random private job id and `route: None`. Do not reactivate the route
-in an intermediate commit that can publish local code as public.
-
-- [ ] **Step 4: Make option validation one pure source of truth**
-
-Extract `validate_options_against_spec(request, options, SourceAdapterSpec)` and
-call it while constructing `RoutePlan`. `ValidatedOptions` is immutable/opaque.
-If the trait contract retains `validate_options`, it calls that same pure
-function with the exact compiled spec/policy identity; it never reconstructs
-rules from a lossy capability summary. If the target contract is amended to
-drop redundant revalidation, remove the trait method and generator references
-in the same PR.
-
-- [ ] **Step 5: Remove the duplicate string family classifier**
-
-Use `axon-route`’s resolved `SourceKind` for authorization and dispatch classification. Assert that every `source_family_matrix()` entry resolves identically through route, auth, and adapter selection.
-
-- [ ] **Step 6: Inject `FetchProvider` into site discovery**
-
-Change `manifest_items` and downstream sitemap/robots/llms.txt discovery
-functions to accept the adapter’s injected fetch provider. Delete the private
-reqwest client and retry loop from discovery. Bound discovered URLs, concurrent
-fetches, response bytes, retries, and total deadline. Apply reservations and
-cooldown at the actual fetch-call granularity so a 512-item sitemap cannot
-amplify 429 retries outside scheduler accounting.
-
-- [ ] **Step 6a: Add the production adapter composition root**
-
-Construct one registry of `SourceAdapterSpec` plus an internal constructor for
-a fresh `Arc<dyn SourceAdapter>` per execution. Fail startup on duplicate
-name/version, missing implementation, unsupported kind, or spec/capability
-mismatch. Require exact coverage of `source_family_matrix()`; router output must
-resolve to exactly one registered adapter with no fallback.
-
-- [ ] **Step 7: Run focused tests**
-
-```bash
-cargo test -p axon-adapters registry_sources --no-fail-fast
-cargo test -p axon-adapters sessions --no-fail-fast
-cargo test -p axon-adapters site_discovery --no-fail-fast
-cargo test -p axon-route --lib --no-fail-fast
-cargo test -p axon-services code_search_refresh --no-fail-fast
-```
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add crates/axon-adapters crates/axon-route crates/axon-services
-git commit -m "refactor(source): make routing and adapter output canonical"
-```
-
-## Task 5: Implement Real Global Provider Fairness
-
-**Beads:** `axon_rust-nl7au`, `axon_rust-uzy27`, provider-reservation portion of `axon_rust-er3z7`
-
-**Interfaces:**
-- Consumes: durable job/attempt/stage ownership, provider capacity registry,
-  cancellation, cooldown, and server-derived `JobPriority`.
-- Produces: one SQLite-authoritative reservation kernel whose
-  `requested -> queued -> granted -> active -> released/canceled/expired/failed`
-  lifecycle remains correct across processes and restarts.
-
-**PR units:**
-
-1. SQLite kernel, migration away from `axon-observe` ownership, recovery, and
-   worker admission.
-2. Durable interactive query/ask/retrieve ownership plus embedding integration.
-3. Vector-read/write integration. Remaining provider classes wait until the
-   canonical runner exists and land in Task 8.
-
-- [ ] **Step 1: Write durable cross-process kernel tests**
-
-Use two independently constructed stores/schedulers against one temporary
-SQLite database. Prove aggregate granted/active units never exceed capacity,
-including concurrent grants. Cover restart recovery for queued, granted, and
-active rows; fencing-token rejection; cancellation/grant, expiry/grant,
-cooldown/release, lost-wakeup, thundering-herd, and duplicate-release races.
-
-- [ ] **Step 2: Make SQLite grant transactions authoritative**
-
-Create the one `axon-jobs` reservation registry keyed by stable provider
-instance id plus `ProviderKind`. The grant transaction validates job, attempt,
-stage, cooldown, effective priority, queue deadline, requested units, current
-grants, and lease/fencing generation before atomically changing
-`queued -> granted`. It must not hold a database transaction or connection
-across a provider await.
-
-Use per-waiter oneshots where practical. Any `Notify` optimization waits in a
-predicate loop against durable state so a release between check and sleep cannot
-strand a waiter, and one free unit does not wake the entire queue.
-
-`axon-observe` reads durable state and exports bounded metrics only. Delete or
-reduce the current `axon-observe::ProviderReservationManager` and
-`axon-embedding` compatibility manager in the same PR so there is no second
-capacity truth.
-
-- [ ] **Step 3: Define liveness and overload policy**
-
-Implement interactive reserve plus weighted aging/bounded lane quotas. A bulk
-job yields between batches and cannot repeatedly jump older waiters. Reject
-`units > capacity`; bound queue entries/units globally and per job; distinguish
-queue deadline, granted-start deadline, and active lease expiry; return
-structured overload/timeout errors. Cooldown cancels queued background work,
-preserves safe active cleanup, and health probes may end cooldown.
-
-Sustained-arrival tests assert a maximum wait bound for `Interactive`, `High`,
-`Normal`, `Background`, and `Maintenance`, not merely one preferred grant.
-
-- [ ] **Step 4: Fix worker admission semantics**
-
-Do not claim a job as `running` or hold a general worker permit while it waits
-for source/provider admission. Use `blocked` plus an explicit reason and
-heartbeat while waiting, then acquire admission and transition to `running`
-atomically. Test more source jobs than both limits followed by interactive and
-non-source jobs; neither may starve behind source semaphore waiters.
-
-- [ ] **Step 5: Add a bound, replay-proof RAII permit**
-
-The permit atomically binds reservation id, job/attempt/stage, provider
-kind/instance, effective priority, server-computed units, lease, and fencing
-generation. It owns exactly one `granted -> active -> terminal` lifecycle.
-Test forged ids, cross-job/stage/provider reuse, duplicate activation/release,
-expiry during a call, and cancellation races. Real providers cannot compile a
-call without a real proof; fake providers receive a fake proof type, not a
-runtime bypass.
-
-- [ ] **Step 6: Give interactive operations durable ownership**
-
-Query, ask, and retrieve create/reuse canonical job, attempt, and stage
-identities for provider-backed work. Persist requested and effective priority
-in the immutable snapshot. Server policy derives the effective value; MCP/REST
-callers cannot self-promote. Foreground trusted-local source work maps to
-`High`, detached source/watch to `Background`, and maintenance to
-admin/system-only `Maintenance`.
-
-- [ ] **Step 7: Integrate embedding and vector capacity**
-
-The service obtains a grant before invoking the real embedding/vector provider
-and passes the typed permit. Providers activate/release the permit but do not
-schedule. Query/ask/retrieve use `Interactive`. Embedding and vector-write use
-separate capacity classes and declared units, batch limits, and deadlines.
-
-- [ ] **Step 8: Run focused and concurrency tests**
-
-```bash
-cargo test -p axon-jobs reservation --no-fail-fast
-cargo test -p axon-jobs worker_admission --no-fail-fast
-cargo test -p axon-observe reservation --no-fail-fast
-cargo test -p axon-embedding reservation --no-fail-fast
-cargo test -p axon-retrieval --lib --no-fail-fast
-cargo test -p axon-services provider --no-fail-fast
-```
-
-Merge each PR unit separately and close `axon_rust-nl7au`/`axon_rust-uzy27`
-only after all three units and their merged-commit tests are verified.
-
-## Task 6: Collapse Web, Local, and Non-Web onto One Canonical Runner
-
-**Beads:** `axon_rust-drahp`, `axon_rust-2wq1r`, remaining `axon_rust-upay4`, remaining `axon_rust-a155h`
-
-**Files:**
-- Promote/refactor: `crates/axon-services/src/source/non_web.rs`
-- Rename its focused children to family-neutral names under `crates/axon-services/src/source/`
-- Modify: `crates/axon-services/src/source/dispatch_kind.rs`
-- Modify: `crates/axon-adapters/src/adapter.rs`
-- Delete: `crates/axon-services/src/web_source.rs`
-- Delete: `crates/axon-services/src/web_source/`
-- Delete: `crates/axon-services/src/local_source.rs`
-- Delete: `crates/axon-services/src/local_source/`
-- Delete: `crates/axon-services/src/local_source_vectorize.rs`
-- Delete obsolete web/local sidecars after moving their assertions to the parity harness
-- Modify: `xtask/src/checks/crate_contracts_spec.rs`
-- Modify: `docs/pipeline-unification/foundation/crate-structure.md`
-- Modify: `crates/axon-services/src/CLAUDE.md`
-
-**Interfaces:**
-- Consumes: the exact six-method `SourceAdapter` contract, declarative `SourceAdapterSpec`, one `SourceExecutionContext`, and the Task 3 parity harness.
-- Produces: one family-neutral source executor, one executable stage plan, and
-  one generation visibility/recovery model.
-
-**PR units:** stage/visibility foundation; web port; local port; remaining
-adapter ports plus deletion. Each port is green and mergeable independently,
-then the final unit deletes all parallel executors.
-
-- [ ] **Step 1: Encode the canonical stage and commit model**
-
-Represent the target contract’s stage order and intent-specific allowed skips as
-data shared by execution and tests. Graph preparation occurs before publish.
-Generation commit is the sole public visibility barrier for vectors, graph
-evidence, document status, and generated artifacts. Required failures prevent
-commit; optional degradation follows explicit error policy; external leftovers
-create cleanup debt.
-
-Add crash injection after every mutating stage. Recovery under the same
-`job_id`/attempt contract must be idempotent and prove no partial generation is
-vector-searchable, graph-visible, artifact-visible, or reported published.
-
-- [ ] **Step 2: Rename the canonical input and entry point**
-
-Replace `NonWebPipelineInput` with `SourcePipelineInput` and `index_materialized_source` with a family-neutral `execute_source_pipeline`. The input retains adapter, plan, collection, owner, auth snapshot, and execution context.
-
-- [ ] **Step 3: Remove transitional methods and hidden adapter state**
-
-Delete public `SourceAdapter::materialize` and `SourceAdapter::reuse_policy`.
-Fold family-specific preparation behind `discover`, `acquire`, and `normalize`,
-so every adapter returns the contracted normalized `SourceDocument` stage
-result. Keep declarative capabilities and option validation in
-`SourceAdapterSpec`; do not move family branching into `axon-services`.
-
-Construct a fresh adapter instance per source execution. Move inherent
-materialization into the earliest contracted phase that needs it, return all
-acquired state through `SourceAcquisition`, and prohibit cross-request adapter
-state except explicit provider caches. Add a test proving acquire/normalize
-cannot observe residue from a prior request.
-
-- [ ] **Step 4: Keep conditional HTTP reuse behind the web adapter**
-
-The web adapter may use prior ETag/Last-Modified metadata internally during
-`acquire`. Pass immutable prior-item metadata through a typed contract DTO; the
-adapter never reaches into the ledger. The shared runner supplies generic
-plan/manifest state and never
-branches on `ReusePolicy`, adapter name, or `SourceKind`. If the behavior must
-be advertised, declare it in capability/spec data rather than adding an
-execution method to the trait.
-
-Add a 304 case proving no body fetch, prior document/content preservation, no
-empty-generation publication, and identical phase/status semantics.
-
-- [ ] **Step 5: Port web, local, and remaining adapters in separate PRs**
-
-Each family resolves through the production registry and calls
-`execute_source_pipeline` with the worker’s existing `SourceExecutionContext`.
-Map scope becomes a documented discovery-only stage skip, not a separate
-executor. Before the first adapter call, assert route safety class, caller
-snapshot, visibility ceiling, local/tool permission, and reservation proof.
-
-- [ ] **Step 6: Unify phase events and document status writes**
-
-Every family emits the same ordered phases and uses the same batch writer. Family-specific events may originate inside adapters, but the service-level lifecycle is identical.
-
-- [ ] **Step 7: Delete the parallel implementations**
-
-Remove all web/local vectorize, publish, progress, job-creation, and reuse modules made redundant by the canonical runner. Keep only adapter-owned web/local acquisition code in `axon-adapters`.
-Collapse `dispatch_kind` to the validated registry lookup; do not retain
-`dispatch_web` or `dispatch_local` as durable production branches.
-
-- [ ] **Step 8: Turn the Task 3 parity matrix green**
-
-```bash
-cargo test -p axon-services source_pipeline_parity -- --nocapture
-```
-
-All web/local/git assertions must pass without family-specific expected values.
-
-- [ ] **Step 9: Remove crate-contract exemptions**
-
-Update the crate contract to describe the resulting `axon-services` module surface. Remove “until the #298 cutover” exemptions for crates whose target layout now holds. The gate must audit all 23 production crates.
-
-- [ ] **Step 10: Run structural and service gates**
-
-```bash
-cargo xtask check-layering
-cargo xtask check-crate-contracts
-cargo test -p axon-services --lib --no-fail-fast
-cargo xtask check-file-size
-```
-
-- [ ] **Step 11: Merge and close**
-
-Merge each family-port PR before beginning its dependent deletion unit. Close
-`axon_rust-drahp`, `axon_rust-2wq1r`, `axon_rust-upay4`, and
-`axon_rust-a155h` only after the deletion PR merges and the merged tree contains
-one runner and zero contract exemptions.
-
-## Task 7: Close Authorization, SSRF, Local-Path, and Redaction Gaps
-
-**Beads:** `axon_rust-9veac`, `axon_rust-cjxfw`, `axon_rust-4ygmz`, `axon_rust-0sgqz`, `axon_rust-a4t01`, `axon_rust-hf37r`, security portion of `axon_rust-zb0k1`
-
-**Interfaces:**
-- Consumes: caller `AuthSnapshot`, injectable DNS/address policy, canonical local containment policy, public-write redaction gate.
-- Produces: no scope escalation, testable connect-time SSRF enforcement, race-safe local reads, explicit panel policy, and fail-closed writes/outputs.
-
-**PR units:** auth/panel/CodeSearch; SSRF/redirects; local paths; redaction and
-visibility. No unit combines unrelated security boundaries.
-
-- [ ] **Step 1: Fix search auto-index authorization**
-
-Search remains readable with `axon:read`, but auto-indexing occurs only when the
-same caller has `axon:write`; otherwise it returns search results without
-creating a job. Persist the caller id and exact snapshot for allowed auto-index
-jobs. Test read-only, read+write, and denied inputs through real REST auth
-middleware. Never mint trusted-system/Admin/Local authority.
-
-- [ ] **Step 2: Make the fine-grained scope model reachable and symmetric**
-
-Decide and implement production issuance/configuration for `axon:local` and
-`axon:execute`; include them in OAuth/static-token capability metadata only
-under explicit operator policy. Use one trusted-local default for synchronous
-and detached execution, preserving caller/delegator provenance. Remove
-`auth_snapshot=None` opposite defaults. A production watch missing its stored
-snapshot fails closed or records an explicit migrated system snapshot; it never
-uses `AuthSnapshot::default()`/`AuthMode::Test`.
-
-- [ ] **Step 3: Put panel routes inside an explicit security boundary**
-
-Map the panel token to an explicit admin-equivalent `CallerContext` and
-visibility policy. Replace `/api/panel/env` raw content with an allowlisted key
-and configured/unconfigured status response; values are always redacted. Add
-response/log canaries proving API keys, passwords, auth headers, and local
-secret paths never leave REST or logs.
-
-- [ ] **Step 4: Wire or remove every dormant enforcement mechanism**
-
-Wire router tool gating, shared network policy, `AffinityPolicy`,
-`SourceAccessDecision`, visibility policy, and the real `allow_tool_execution`
-config at their service boundaries. If a mechanism is rejected, delete it and
-amend the target contract in the same PR. Remove adapter-specific secret
-detector lists and complete the canonical Gitea/Reddit detectors.
-
-- [ ] **Step 5: Make SSRF enforcement connect-time and race-free**
-
-Compile the resolver in tests and inject resolver/policy separately from the
-test server address. For every request and redirect, resolve once, reject if any
-A/AAAA answer is forbidden, pin the actual connection to the validated address,
-and avoid a second validation/connect lookup. Apply the same policy to fetch,
-discovery, Chrome, and screenshot; fail closed if Chrome interception cannot be
-installed.
-
-Cap redirect hops, total duration, response bytes, and retries here—not in the
-later performance task. Reject scheme downgrade and non-HTTP schemes. Test
-private/metadata/link-local targets, mixed allowed+denied answers, IPv4-mapped
-IPv6, supported alternate numeric forms, userinfo, DNS rebinding, resolver
-failure, redirect loops, and sitemap/robots/llms/screenshot paths. The
-`test-util` feature must not expose a release-build loopback bypass; only the
-injected test resolver may target the local harness.
-
-- [ ] **Step 6: Make local reads handle-based and race-safe**
-
-Use Linux `openat2` with `RESOLVE_BENEATH|RESOLVE_NO_MAGICLINKS` or a
-documented safe fallback. Validate the opened handle’s identity and read from
-that handle; never canonicalize, validate, then reopen by path. Move any
-remaining blocking filesystem work to `tokio::fs` or `spawn_blocking`. Apply one
-policy to local sources, scope=file, CodeSearch, uploads, artifacts, and tool
-paths. Test symlink swap, hardlink/rename race, `..`, magic links, denylisted
-`.env`/SSH/cloud/Codex/Gemini/browser paths, and artifact-root traversal. Redact
-absolute paths from identities, events, and errors.
-
-- [ ] **Step 7: Enforce redaction at every public boundary**
-
-Create a table-driven boundary suite covering vectors, graph evidence, memory,
-artifacts, job events, CLI JSON, MCP, REST, metrics/traces, and provider
-`last_error`. Unknown metadata defaults internal. A detector error or forbidden
-value produces zero public writes/response leakage, emits a structured redacted
-audit event, and prevents partial generation publication. CodeSearch never
-force-stamps public visibility.
-
-- [ ] **Step 8: Prove audit-event completeness**
-
-Auth, SSRF, local-path, tool, redaction, artifact, and priority denials record
-job/source/caller/policy-version context with a redacted reason. Add canaries
-showing URL query strings, headers, snapshots, reservation proofs, provider
-errors, and raw local paths never appear in events or logs.
-
-- [ ] **Step 9: Run focused security tests**
-
-```bash
-cargo test -p axon-authz --lib --no-fail-fast
-cargo test -p axon-core ssrf --no-fail-fast
-cargo test -p axon-route local --no-fail-fast
-cargo test -p axon-vectors redaction --no-fail-fast
-cargo test -p axon-services authorize --no-fail-fast
-cargo test -p axon-web panel --no-fail-fast
-cargo test -p axon-services security_boundary --no-fail-fast
-cargo xtask check-redaction-logs
-```
-
-- [ ] **Step 10: Verify the grouped security checklist before closure**
-
-Before closing any grouped bead, match every numbered item in `hf37r`, `a4t01`,
-and the security portion of `zb0k1` to a merged implementation and focused
-negative test. Generic umbrella tests do not satisfy closure.
-
-## Task 8: Close Remaining Performance and Reliability Defects
-
-**Beads:** remaining `axon_rust-er3z7`, remaining `axon_rust-zb0k1`
-
-**Interfaces:**
-- Consumes: the canonical runner from Task 6 and queued reservations from Task 5.
-- Produces: a bounded streaming pipeline, batched transactional status writes,
-  linear merge behavior, measured SQLite concurrency, cached provider identity,
-  and remaining provider-class gates.
-
-**PR units:** streaming/vector/status; SQLite/runtime contention; provider
-identity/config cleanup; fetch/render; parse/graph/artifact.
-
-- [ ] **Step 1: Add high-water and complexity regressions**
-
-```rust
-assert!(max_embedding_batch_items <= configured_limit);
-assert!(max_in_flight_serialized_bytes <= configured_byte_limit);
-assert!(max_retained_vector_points <= configured_point_limit);
-assert!(max_retained_sparse_entries <= configured_sparse_limit);
-assert!(max_retained_statuses <= configured_status_limit);
-assert_eq!(document_status_store_calls, expected_batch_calls);
-assert!(manifest_merge_comparisons <= linear_bound);
-```
-
-Counters are deterministic regressions, not benchmarks. Add separate ignored
-criterion/soak benchmarks only if useful after correctness gates are green.
-
-- [ ] **Step 2: Stream end-to-end with bounded memory**
-
-Do not construct a whole `VectorPointBatch` or all document statuses before
-chunking. Stream bounded prepared chunks through embedding, vector point
-construction, sparse maps, upsert, and status writes with limits on items,
-estimated tokens, serialized bytes, and in-flight batches. A single oversized
-payload fails or splits deterministically; many ordinary payloads never exceed
-the high-water bounds. Every batch releases/reacquires its reservation so older
-waiters can run.
-
-- [ ] **Step 3: Replace document-status N+1 safely**
-
-Add a typed `axon-ledger` batch method. Validate source existence once, validate
-source items set-wise, chunk statements below SQLite bind limits, preserve
-`updated_at` conflict semantics, and use bounded transactions. Test statement
-counts and rollback when one item is missing mid-batch. Never hold a SQL
-connection/transaction across provider awaits.
-
-- [ ] **Step 4: Replace quadratic merge and unnecessary calls**
-
-Index status/manifest items by canonical key, preserve deterministic output
-ordering, and assert a linear comparison bound. Gate `ensure_collection` on
-`embed=true` for every family. Remove obsolete poisoned reservation state along
-with the Task 5 manager migration; no `expect("... mutex poisoned")` remains.
-
-- [ ] **Step 5: Eliminate repeated TEI identity probes**
-
-Cache embedding identity in the provider/runtime snapshot and invalidate it
-when endpoint, model, dimensions, or config snapshot changes. An interactive
-query performs the actual embedding call without two preliminary live probes.
-Test cache reuse and invalidation; a stale identity must not survive a provider
-change.
-
-- [ ] **Step 6: Resolve worker/SQLite concurrency explicitly**
-
-Measure pool acquire time, busy time, and transaction duration. Either size the
-pool from active DB-stage concurrency with a safe ceiling, cap DB stages to the
-pool, or introduce a bounded writer path. Add a load regression covering eight
-workers, a four-connection baseline, heartbeats/status writes, and later
-interactive work. Move blocking canonicalization/error-path filesystem work to
-`tokio::fs` or `spawn_blocking`.
-
-- [ ] **Step 7: Resolve dead knobs and Qdrant request policy**
-
-Choose one disposition for `qdrant-point-buffer`: wire it as the authoritative
-item/byte vector batch limit or delete it and the docs; do not retain it beside
-hard-coded `UPSERT_BATCH_SIZE`. Remove/document the dead crawl concurrency knob
-and other unconsumed config, then regenerate affected config references.
-
-Use operation-specific Qdrant connect/request/end-to-end deadlines rather than
-one shared 30-second budget. Add cold and warm query smokes that record provider
-time, scheduler wait, and total elapsed time.
-
-- [ ] **Step 8: Add remaining provider capacity classes**
-
-Using the one Task 5 registry, add fetch/render, then parse/graph/artifact in
-separate PRs at canonical service choke points. Define units, item/token/byte
-limits, deadlines, cooldown, and cancellation for each class. Do not create
-per-service or per-transport managers.
-
-- [ ] **Step 9: Run focused regression tests**
-
-```bash
-cargo test -p axon-ledger --lib --no-fail-fast
-cargo test -p axon-services source --no-fail-fast
-cargo test -p axon-services bounded_pipeline --no-fail-fast
-cargo test -p axon-jobs sqlite_contention --no-fail-fast
-cargo test -p axon-retrieval provider_identity --no-fail-fast
-cargo xtask schemas config --check
-```
-
-- [ ] **Step 10: Verify every grouped performance item**
-
-Map P10-P16 from `er3z7` and P17-P21 from `zb0k1` to a merged implementation,
-focused regression, and metric where applicable. Do not close either grouped
-bead on the strength of generic source tests.
-
-## Task 9: Replace Declaration-Only Tests with Execution Proof
-
-**Beads:** `axon_rust-yow0c`, `axon_rust-j5gry`
-
-**Files:**
-- Modify: `tests/cross_surface_operation_matrix.rs`
-- Modify: `tests/cross_surface_scope_matrix.rs`
-- Create focused root integration tests for source and retrieval parity
-- Modify: `crates/axon-adapters/src/fixture_tests.rs`
-- Add recorded adapter inputs beside existing fixture packs
-- Add public-API integration tests under selected `crates/*/tests/*.rs`
-- Modify CI path classifier/gates for the new integration targets
-
-**Interfaces:**
-- Consumes: fake service composition and canonical transport-neutral DTOs.
-- Produces: one reusable conformance harness proving logical request mapping,
-  stable result semantics, real auth middleware, serialization, and deployed
-  build identity across CLI, MCP, REST, and panel where applicable.
-
-**PR units:** request/result transport conformance; adapter goldens; Tier-5
-recovery/security matrix.
-
-- [ ] **Step 1: Define stable versus generated fields**
-
-For independent submissions, compare canonical `SourceRequest`, source
-identity, counts, warnings, visibility, redacted fields, phase sequence, and
-terminal semantics. Job ids, attempt ids, trace ids, timestamps, and generated
-artifact ids are expected to differ but must each remain internally consistent.
-If testing dedupe, submit one explicit idempotency key and separately assert all
-surfaces resolve to the same existing job.
-
-- [ ] **Step 2: Reuse the Task 3 observation harness**
-
-First prove CLI, MCP, and REST parsing map the same logical input to the same
-transport-neutral DTO. Then invoke the shared service and compare stable
-semantics using `PipelineObservation`; do not build a second trace structure or
-normalize away real mismatches.
-
-- [ ] **Step 3: Exercise real transport boundaries**
-
-Run requests through CLI parsing, MCP action schema/serialization, REST auth
-middleware/body limits/response filtering, and panel auth where applicable.
-Cover read, write, admin, execute, and local callers plus denial paths. Do not
-inject a prebuilt `CallerContext` after middleware.
-
-Add deployed REST and MCP smokes after restarting the actual service. Record and
-assert expected commit, version, config snapshot, and returned job/build
-identity. Use `--local` for the separately tested local binary so CLI proxying
-cannot create a false pass.
-
-- [ ] **Step 4: Add executable retrieval parity**
-
-Run query/retrieve with one fixed vector fixture through all three transports
-and assert equivalent citations, visibility filtering, content omission,
-requested/effective priority, and redacted errors. Generated trace ids may
-differ but must correlate within each response/event chain.
-
-- [ ] **Step 5: Convert adapter fixtures into golden outputs**
-
-For each `source_family_matrix()` entry, feed a recorded acquisition into the adapter and compare emitted `SourceDocument` metadata/payload to the committed fixture. The fixture may be regenerated only through an explicit xtask command.
-
-- [ ] **Step 6: Add public-caller integration targets**
-
-Create integration tests that import `axon-services`, `axon-adapters`, `axon-jobs`, and `axon-vectors` as external crates. They must use public APIs only and reproduce the canonical source lifecycle.
-
-- [ ] **Step 7: Implement the missing contract cases**
-
-Cover:
-
-- fresh-schema/reset/reindex cutover;
-- stalled interactive-lane watchdog;
-- reservation cancellation and expiry;
-- duplicate watch coalescing;
-- vector writes bounded separately from embedding;
-- committed-generation recovery idempotence;
-- interrupted pre-publish generation hidden after restart;
-- canonical stage-registry ordering plus intent-specific allowed skips;
-- bulk embedding cannot starve interactive query embedding.
-- crash injection after every mutating source stage with no pre-commit vector,
-  graph, status, artifact, or event visibility;
-- real auth/SSRF/redaction denial modes in the shared harness;
-- fake composition is offline-only and cannot reach live TEI/Qdrant.
-
-- [ ] **Step 8: Run parity and integration suites**
-
-```bash
-cargo test --test cross_surface_operation_matrix -- --nocapture
-cargo test --test cross_surface_scope_matrix -- --nocapture
-cargo test --workspace --tests --no-fail-fast
-cargo xtask check-public-api
-```
-
-- [ ] **Step 9: Merge in three units**
-
-Merge transport conformance, goldens, and Tier-5 cases separately. Close
-`axon_rust-yow0c` only after real parsing/auth/serialization parity merges, and
-`axon_rust-j5gry` only after every required integration case is present.
-
-## Task 10: Build the Contracted Documentation Generators and Reconcile the Packet
-
-**Beads:** `axon_rust-5iglz`, `axon_rust-ugvcq`, `axon_rust-vtdw0`, `axon_rust-beuzs`
-
-**Files:**
-- Refactor to the contracted roots: `xtask/src/docs/mod.rs`, `args.rs`, `artifact.rs`, `check.rs`, `markdown.rs`, `manifest.rs`, `render.rs`, and `examples.rs`
-- Add the 17 modules under `xtask/src/docs/families/`
-- Modify: `xtask/src/util/{diff,fs,markdown,paths}.rs` as required by the contract
-- Modify: generated references under `docs/reference/`
-- Modify: `docs/pipeline-unification/`
-- Modify: affected crate `CLAUDE.md` files
-
-**Interfaces:**
-- Consumes: the merged Task 2B generator engine plus live registries already
-  used by `cargo xtask schemas`.
-- Produces: `DocsFamilyGenerator`, `DocsArtifactSet`, and `GeneratedDocArtifact`
-  implementations with deterministic markdown/JSON whose checksums derive from
-  declared runtime inputs, not self-referential headers.
-
-- [ ] **Step 1: Reconcile the existing six families and enumerate all 17**
-
-Encode the exact contracted families—`cli`, `cli-help`, `openapi`, `mcp`,
-`api-dto`, `api-enums`, `errors`, `events`, `config`, `env`, `adapters`,
-`schema`, `memory`, `providers`, `presentation`, `schemas`, and `new-source`—as
-a typed registry with output path, renderer, and source-input manifest. Reuse
-the six Task 2B implementations; do not replace the engine. A family without a
-renderer must fail generation rather than stamp an empty file.
-
-- [ ] **Step 2: Add failing content-generation tests**
-
-For each formerly empty authoritative reference, assert required headings, at least one live registry row, and a source checksum that changes when the registry fixture changes.
-
-- [ ] **Step 3: Implement renderers by reusing schema registries**
-
-Render CLI, REST, MCP, config, database, jobs/events, adapters, vector payload, graph, memory, auth/security/redaction, observability, providers, pruning, presentation, and inventory references from their owning registries.
-Render/write artifacts one family at a time with bounded memory. Add a
-high-water test so aggregate generation does not retain all 17 documents and
-source manifests simultaneously.
-
-- [ ] **Step 4: Make `--check` compare regenerated content**
-
-Generate into memory or a temporary directory and byte-compare every expected output. Header-only differences cannot make an empty document pass.
-
-- [ ] **Step 5: Implement the exact CLI and validation contract**
-
-Support aggregate `generate`, `generate --check`, and `generate --print`, every
-per-family command, and the `--family`, `--json`, and CI-forbidden
-`--update-snapshots` flags with exit codes `0` through `4` as specified.
-
-- [ ] **Step 6: Reconcile historical/future-tense contracts**
-
-Mark dated delivery plans historical, update live contracts to present tense,
-correct module maps, remove residue naming, and ensure the closeout audit links
-the still-open epic until all children close. Reconcile the stale
-`runtime/job-contract.md` priority prose (`low/normal/high/interactive`) with
-the canonical five-value enum contract; the enum contract wins.
-
-- [ ] **Step 7: Run generator drift checks**
-
-```bash
-cargo xtask docs generate
-cargo xtask docs generate --check
-cargo xtask schemas all --check
-cargo xtask docs check
-cargo xtask check-public-api
-```
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add xtask docs crates/*/src/CLAUDE.md
-git commit -m "docs(pipeline): generate live unification references"
-```
-
-Split this work into the generator engine already merged in Task 2B, small
-family batches, and a final historical-prose reconciliation PR. Close
-`axon_rust-5iglz` only after all 17 family commands and aggregate check pass on
-the merged tree.
-
-## Task 11: Final Closure, Release, and Deployment
-
-**Beads:** `axon_rust-enbmu` and every remaining child
-
-**Files:**
-- Modify generated release/version files only through the repository’s supported commands
-- Modify the closeout audit and metaplan completion state
-- Add a final session/verification report under `docs/sessions/`
-
-**Interfaces:**
-- Consumes: all previous tasks merged to `main`.
-- Produces: zero open epic children, green gates, a released version, and matching host/container runtime.
-
-- [ ] **Step 1: Audit all 28 children against live code**
-
-```bash
-bd list --parent axon_rust-enbmu --status open --limit 0
-rg -n 'TODO\\(#298\\)|FIXME|WIP|XXX' crates xtask tests docs/pipeline-unification
-```
-
-Do not close a grouped bead until every sub-finding in its description has a test and implementation reference.
-For every completed task, verify its implementation against the alignment matrix
-above and cite the exact target-contract sections in the closeout audit.
-
-- [ ] **Step 2: Run the repository’s full pre-PR gate**
-
-```bash
-just precommit
-cargo xtask docs generate --check
-cargo xtask schemas all --check
-cargo xtask check-layering
-cargo xtask check-crate-contracts
-cargo xtask check-public-api
-```
-
-- [ ] **Step 3: Run live-provider smoke tests**
-
-Use the configured external Qdrant, TEI, Chrome, and LLM endpoints. Exercise one web, local, and git source; query while a bulk source job holds embedding capacity; verify the interactive request waits and completes rather than failing or starving.
-Run cold and warm Qdrant cases separately and record scheduler wait, provider
-latency, and end-to-end latency. Validate the local artifact with `--local`;
-then separately validate deployed REST and MCP after restart. Each result must
-report the expected merged commit/build identity, version, config snapshot, and
-job id.
-
-- [ ] **Step 4: Update the final audit**
-
-Record:
-
-- one executor path for all 12 families;
-- one job id through every phase;
-- real queued provider metrics;
-- all 23 crate contracts audited;
-- behavioral CLI/MCP/REST parity;
-- all contracted docs generated;
-- no open #298 TODO or bead.
-
-- [ ] **Step 5: Merge through normal branch protection**
-
-```bash
-git pull --rebase
-bd dolt push
-git push
-gh pr checks --watch
-```
-
-- [ ] **Step 6: Assess compatibility, then bump and release**
-
-Produce a compatibility checklist covering CLI syntax, REST/MCP schemas,
-configuration, job/database schema, auth/scope behavior, and source-result
-semantics. Select patch/minor/major from the actual merged changes and repository
-release policy; do not default to minor merely because transport/config files
-changed. Use the supported manual CLI command with the assessed level:
-
-```bash
-cargo xtask bump-version cli <patch|minor|major>
-```
-
-Run version, artifact, and release smoke gates before tagging.
-
-- [ ] **Step 7: Deploy from merged `main`**
-
-Repeat Task 1’s checksum, backup, atomic temp+rename, bounded health deadline,
-and rollback protocol from the exact merged commit. Build separate host and
-Bookworm-compatible artifacts; never copy the host build into Bookworm. Verify:
-
-```bash
-/home/jmagar/.local/bin/axon --version
-/home/jmagar/.local/bin/axon doctor
-incus exec axon -- /usr/local/bin/axon --version
-incus exec axon -- systemctl is-active axon-native.service
-# Then exercise deployed REST and MCP and assert build identity.
-```
-
-Any mixed-version or partial-health result triggers automatic restoration of
-both prior binaries/configs and verification of the previous runtime.
-
-- [ ] **Step 8: Close the epic**
-
-```bash
-bd list --parent axon_rust-enbmu --status open --limit 0
-bd close axon_rust-enbmu
-bd dolt push
-git status
-```
-
-Expected: no open children, no uncommitted files, branch up to date with origin, and host/container versions match the release.
-
-## Bead Coverage Matrix
-
-| Task | Beads closed |
+Expose it through the canonical status operation in local CLI, REST, and MCP.
+Derive Git SHA in `build.rs`. Replace placeholder config snapshot ids with
+content-derived ids for every tested operation.
+
+- [ ] Compare stable request/result behavior, not declarations.
+- [ ] Drive real CLI parsing, REST middleware/body limits, MCP schema and
+  serialization, and panel auth; do not inject a caller after middleware.
+- [ ] Exercise read, write, admin, local, and execute allow/deny matrices.
+- [ ] Verify direct service and intended production ingress separately.
+- [ ] Assert unauthenticated denial, Authorization/x-api-key forwarding, origin
+  policy, and no trust inferred from proxy source IP.
+- [ ] Assert commit, version, profile, schema epoch, and config snapshot through
+  every ingress before accepting behavior results.
+- [ ] Use `--local` for the local binary to prevent proxy false positives.
+- [ ] Add retrieval parity with fixed vectors and adapter golden outputs.
+- [ ] Add public external-crate tests and the Tier-5 crash/security matrix.
+- [ ] Run cross-surface tests and `cargo xtask check-public-api`.
+
+## Task 11: Generate All 17 Contract Families and Reconcile Prose
+
+**Beads:** `axon_rust-5iglz`, `axon_rust-ugvcq`,
+`axon_rust-vtdw0`, `axon_rust-beuzs`.
+
+**Files:** `xtask/src/docs.rs`, `xtask/src/docs/*`,
+`docs/reference/`, `docs/pipeline-unification/`, affected `CLAUDE.md` files.
+
+- [ ] Register exactly `cli`, `cli-help`, `openapi`, `mcp`, `api-dto`,
+  `api-enums`, `errors`, `events`, `config`, `env`, `adapters`, `schema`,
+  `memory`, `providers`, `presentation`, `schemas`, and `new-source`.
+- [ ] Give each family declared live inputs, renderer, output paths, and
+  deterministic ordering.
+- [ ] Make missing renderers/inputs, empty output, secret/path canaries, and byte
+  drift fail with contracted exit codes.
+- [ ] Render/write one family at a time and assert bounded high-water memory.
+- [ ] Support aggregate/per-family generate, check, print, JSON, and the
+  CI-forbidden snapshot-update mode required by contract.
+- [ ] Mark dated plans historical; rewrite live contracts in present tense.
+- [ ] Remove family-model naming/comment residue and the last `TODO(#298)`.
+- [ ] Run docs generation/check, schema drift, layering, crate contracts, and
+  public API checks.
+
+## Task 12: Audit, Release, Deploy, and Close
+
+**Beads:** every remaining child and epic `axon_rust-enbmu`.
+
+- [ ] Confirm every grouped subfinding below has a merged implementation and
+  focused test reference.
+- [ ] Run `just precommit`, all docs/schema checks, layering, crate contracts,
+  and public API checks.
+- [ ] Exercise web, local, and git sources against live Qdrant, TEI, Chrome, and
+  LLM providers.
+- [ ] Run cold/warm query plus bulk-ingest contention and record scheduler wait,
+  provider latency, end-to-end latency, build identity, and config snapshot.
+- [ ] Update the closeout audit with one runner, one job id, one scheduler
+  authority, publication epoch proof, transport parity, and all 17 docs.
+- [ ] Assess CLI/schema/config/auth compatibility and choose the actual
+  patch/minor/major bump; use `cargo xtask bump-version cli <level>`.
+- [ ] Release through normal branch protection.
+- [ ] Build separate host and Bookworm artifacts from merged `main`; back up,
+  install atomically, restart with a bounded deadline, and rollback both sides
+  on mixed identity or health.
+- [ ] Verify direct and production-ingress CLI/REST/MCP identity and behavior.
+- [ ] Verify `bd list --parent axon_rust-enbmu --status open --limit 0` is empty.
+- [ ] Close the epic, run `bd dolt push`, push Git, and confirm a clean
+  up-to-date `main`.
+
+## Bead Closure Matrix
+
+| Final task | Beads |
 |---|---|
-| 2 | `jc20j`; partial `a155h` |
-| 2B | prerequisite generator-engine portion of `5iglz` |
+| 2 | `jc20j`; prerequisites for `a155h`, `5iglz` |
 | 3 | `fts94`, `j801x` |
-| 4 | `yygrl`, `dkuqo`, `gpuz9`, `igp0i`, `bfsp5`; partial `upay4` |
-| 5 | `nl7au`, `uzy27`; reservation portions of `er3z7` |
-| 6 | `drahp`, `2wq1r`, remainder of `upay4`, remainder of `a155h` |
-| 7 | `9veac`, `cjxfw`, `4ygmz`, `0sgqz`, `a4t01`, `hf37r`; security portions of `zb0k1` |
-| 8 | remainder of `er3z7`, remainder of `zb0k1` |
-| 9 | `yow0c`, `j5gry` |
-| 10 | `5iglz`, `ugvcq`, `vtdw0`, `beuzs` |
+| 4 | `yygrl`, `dkuqo`, `gpuz9`, `igp0i`, `bfsp5`; prerequisite `upay4` |
+| 5–7 | `drahp`, `nl7au`, `uzy27`, `2wq1r`, `upay4`, `a155h` |
+| 8 | `9veac`, `cjxfw`, `4ygmz`, `0sgqz`, `a4t01`, `hf37r`; security `zb0k1` |
+| 9 | `er3z7`; remainder `zb0k1` |
+| 10 | `yow0c`, `j5gry` |
+| 11 | `5iglz`, `ugvcq`, `vtdw0`, `beuzs` |
 
-Every one of the 28 open children has exactly one final closure owner; partial
-rows identify prerequisite contributions without early closure.
+All 28 open implementation Beads have one final closure owner. Prerequisite
+work never closes a Bead early.
 
-## Grouped-Finding Closure Checklists
-
-Each row requires a merged implementation reference and focused test reference
-in the bead before closure.
+## Grouped-Finding Acceptance
 
 ### `axon_rust-er3z7`
 
-- [ ] P10: queued durable reservations and non-zero queue metrics.
-- [ ] P11: document-status N+1 replaced by bounded transactional batches.
-- [ ] P12: status/manifest merge reduced from quadratic to linear.
-- [ ] P13: oversized documents use the same bounded streaming path for every family.
-- [ ] P15: poisoned reservation mutex authority removed; panic cannot brick capacity.
-- [ ] P16: `embed=false` performs no collection ensure/create call.
+- [ ] P10 queued durable reservations and non-zero queue metrics.
+- [ ] P11 bounded transactional document-status writes.
+- [ ] P12 linear status/manifest merge.
+- [ ] P13 hard caps before all corpus-sized materialization.
+- [ ] P15 no poisoned in-memory reservation authority.
+- [ ] P16 `embed=false` makes zero collection ensure/create calls.
 
 ### `axon_rust-hf37r`
 
-- [ ] S-8: production issuance/policy for `axon:local` and `axon:execute` is explicit and tested.
-- [ ] S-10: panel has a caller context and `/api/panel/env` cannot return secrets.
-- [ ] S-11: synchronous and detached auth defaults are identical for the same trust context.
-- [ ] S-12: adapter detector lists are deleted and canonical Gitea/Reddit detection is complete.
+- [ ] S-8 Local/Execute issuance and policy are explicit.
+- [ ] S-10 panel context and environment response cannot broaden/leak.
+- [ ] S-11 synchronous/detached snapshots are identical for equal trust.
+- [ ] S-12 duplicate family detectors are removed.
 
 ### `axon_rust-a4t01`
 
-- [ ] S-4: router tool-execution policy is wired from operator/caller policy.
-- [ ] S-5: the shared SSRF policy is the real fetch/render boundary or is removed with a contract amendment.
-- [ ] S-9: `AffinityPolicy`/`SourceAccessDecision` is enforced for inline local/tool work or removed with a contract amendment.
+- [ ] S-4 route tool policy comes from operator/caller policy.
+- [ ] S-5 connect-time SSRF is enforced at real HTTP/browser boundaries.
+- [ ] S-9 one admission decision owns local/tool authorization.
 
 ### `axon_rust-zb0k1`
 
-- [ ] P17: interactive CLI does not issue two TEI identity probes per request.
-- [ ] P18: `qdrant-point-buffer` is wired as the sole batch limit or deleted.
-- [ ] P19: crawl/source worker concurrency is consumed and documented or removed.
-- [ ] P20: worker/SQLite pool concurrency has a measured bounded design.
-- [ ] P21: blocking filesystem canonicalization is absent from async worker paths.
-- [ ] S-13: shared redirects have hop, time, byte, and scheme bounds.
-- [ ] S-14: screenshot uses pinned connect-time DNS/SSRF enforcement.
-- [ ] S-15: release builds cannot enable a loopback test bypass.
-- [ ] S-16: watches never default to test-shaped auth.
-- [ ] S-17: CodeSearch never force-stamps public visibility.
-- [ ] S-18: `allow_tool_execution` is live or removed from config/docs.
+- [ ] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
+- [ ] P18 one live Qdrant point-buffer limit.
+- [ ] P19 concurrency knob is consumed or deleted.
+- [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.
+- [ ] P21 no blocking canonicalization on async worker paths.
+- [ ] S-13 redirects have hop, time, byte, scheme, proxy, and host bounds.
+- [ ] S-14 browser requests use pinned connect-time enforcement.
+- [ ] S-15 release builds cannot enable loopback bypass.
+- [ ] S-16 watches never default to test-shaped auth.
+- [ ] S-17 CodeSearch never force-stamps public visibility.
+- [ ] S-18 dead tool-execution configuration is removed.
 
-## Engineering Review Record
+## Authoritative Failure-Mode Matrix
 
-Lavra engineering review completed on 2026-07-25 with architecture,
-simplicity, security, and performance specialists. Raw review counts were:
+| Codepath | Failure | Required rescue | Required proof | Visibility |
+|---|---|---|---|---|
+| Scheduler authority | Two DBs grant the same provider capacity | Reject duplicate authority/proxy through one authority | Distinct-DB topology test | Startup/execution error and audit |
+| Grant wait | Cross-process release has no in-memory wakeup | Durable predicate polling | Two-process lost-wakeup test | Bounded blocked event |
+| Active lease | Expired live call overlaps a replacement | Renew, abort/join, then regrant; otherwise quarantine | Hung old future remains alive | Degraded metric/event |
+| Permit drop | Rust `Drop` cannot await terminal SQL | Explicit async terminal methods plus reconciler | Dropped permit and killed process | Cleanup-debt event |
+| Migration | Epoch-1 table lacks scheduler fields | Append-only migration and old-row disposition | Real epoch-1 fixture upgrade | Startup migration report |
+| Recovery | Old worker resumes after new attempt | New attempt and stale fence rejection | Split-brain resume | Redacted rejection event |
+| Publication | Qdrant data visible before ledger/graph commit | Epoch/watermark and ledger verification | Crash at every boundary plus direct read | No content before commit |
+| Graph/artifact | External or shared state diverges from generation | Same finalization transaction/registry fence | Mid-finalization crash | Cleanup debt; no public partial |
+| Acquire intent | Read-only path drifts from indexing prefix | Canonical runner with declared skips | Acquire-vs-Index parity | Same normalized content |
+| Adapter reuse | Shared adapter leaks request state | DTO-owned state | Concurrent same-instance test | Structured job failure if violated |
+| Auth snapshot | Retry/query/watch gains authority | Exact immutable clone | Multi-attempt/child tests | Auditable denial |
+| Browser SSRF | Chrome resolves or connects outside policy | Controlled pinned-connect gateway | Rebind/subresource/WebSocket tests | Redacted denial |
+| Local path | Rename/reparse race escapes root | Same-handle per-platform reads | Shipped-OS race suite | Redacted denial |
+| Redaction | Detector/audit failure leaks input | Constant-shape emergency event | Panic/error/sink canaries | Opaque correlation only |
+| Batching | Oversized encoded data exhausts memory | Actual-byte and item caps | Expansion/indivisible tests | Structured oversize error |
+| Qdrant timeout | Partial upsert retries duplicate/diverge | Idempotency and reconciliation | Timeout after partial side effect | Retriable job event |
+| TEI identity | Cold herd performs duplicate probes | Per-key singleflight cache | Concurrent cold/warm tests | Bounded latency metric |
+| SQLite load | Workers starve heartbeat/control | Reserved pool capacity and numeric thresholds | Mixed-load p95/busy assertions | Bounded metrics |
+| Transport | Direct smoke passes stale/broken ingress | Build/config identity through both paths | Direct plus production ingress | Explicit mismatch failure |
 
-| Discipline | Critical | Important/high | Medium/minor | Critical silent gaps before revision |
-|---|---:|---:|---:|---:|
-| Architecture | 4 | 7 | 5 | 6 |
-| Simplicity | 2 | 8 | 4 | 2 |
-| Security | 5 | 8 | 5 | 6 |
-| Performance | 6 | 12 | 4 | 2 |
+No critical row may merge with rescue absent, proof absent, and user-visible
+silence.
 
-After deduplication, 32 actionable recommendations were applied to this plan.
+## Explicit Deferrals
 
-### Consolidated strengths
+These do not weaken any deterministic acceptance criterion above:
 
-- The target contract, six-method adapter boundary, orchestration ownership, and
-  separate embedding/vector capacity classes were already correct.
-- Behavioral proof precedes deletion, and live-provider smokes remain outside
-  default CI.
-- All 28 children have closure owners.
+- Publication-epoch sharding/per-source parallel finalization.
+- Adaptive capacity autotuning.
+- A separate network scheduler service, only while deployment enforces one
+  SQLite authority or proxy topology.
+- Streaming provider-trait redesign; hard materialization caps and sliced
+  adapter calls land now.
+- Rich security/scheduler dashboards; bounded redacted events and metrics land
+  now.
+- Long-running soak, criterion, and external penetration campaigns.
+- Cryptographic signing of in-process reservation permits.
+- Real-time token revocation; enqueue-time snapshot monotonicity lands now.
+- Advanced chat slow-consumer buffering/deadline tuning after cancellation is
+  correctly propagated.
 
-### Consolidated concerns resolved by this revision
+## Plan Self-Review
 
-- Cross-process capacity now has one SQLite authority and multi-process proof.
-- Delivery now uses mergeable PR waves and post-merge bead closure.
-- Runner migration now has a stage, visibility, graph-order, and crash-recovery
-  contract.
-- Executable docs drift protection lands before contract-changing runtime work.
-- Auth, panel, SSRF, local containment, redaction, and priority admission have
-  explicit negative tests.
-- Performance acceptance includes worker admission, bounded streaming, SQLite
-  contention, provider identity, and cold/warm Qdrant behavior.
-
-### Revised failure-mode matrix
-
-| Codepath | Production failure | Rescue now specified? | Test now specified? | User-visible/logged? |
-|---|---|---:|---:|---|
-| Operational deployment | Mixed binaries or failed migration | yes, atomic rollback | yes, bounded health/build checks | outage prevented; journal/report |
-| Layering/facades | Alias bypass or stalled stream | yes, gate + bounded stream | yes | structured timeout/gate failure |
-| Observation harness | Fake wiring diverges from production | yes, shared constructor | yes, security modes | CI-visible |
-| Adapter registry | Missing/duplicate adapter | yes, startup fail | yes, full matrix | startup error |
-| Reservation kernel | Cross-process over-grant/replay/restart leak | yes, SQLite/fencing | yes, two schedulers + races | structured error + bounded metrics |
-| Worker admission | Source waiters consume all workers | yes, `blocked` admission | yes, mixed-job regression | dashboard/event |
-| Canonical runner | Partial vector/graph/status visibility | yes, commit fence/debt | yes, crash each mutating stage | job failure/degraded event |
-| Conditional reuse | 304 publishes empty content | yes, typed prior metadata | yes | job/event |
-| Security boundaries | scope escalation, panel leak, SSRF/path race | yes | yes, black-box negative suites | redacted denial/audit |
-| Bounded pipeline | Whole-run point/status materialization OOM | yes, streaming limits | yes, high-water counters | structured oversize/overload |
-| SQLite/status batch | bind overflow or partial batch | yes, bounded transactions | yes, rollback/count/load | job error + metrics |
-| Transport parity | Internal harness bypasses middleware/stale server | yes, black-box/deployed proof | yes, build identity + `--local` separation | report/event |
-| Docs generation | stale/secret/nondeterministic output | yes, early engine/manifests | yes, negative drift + canaries | CI-visible |
-| Final query smoke | cold Qdrant or stale proxy false pass | yes, operation budgets | yes, cold/warm local/deployed | timed report |
-
-No revised row remains both unrescued and untested while silent.
-
-### Not in the epic’s implementation critical path
-
-- Adaptive capacity autotuning: static explicit limits are sufficient for the
-  cutover.
-- A separate distributed scheduler service: SQLite transactions/fencing provide
-  host-local cross-process authority without another service.
-- Long-running criterion/soak benchmarks: deterministic liveness, complexity,
-  and high-water gates land first; soak work may receive a future performance
-  bead if those gates reveal a need.
-- Cache optimization beyond eliminating repeated TEI identity probes: no current
-  finding requires it.
-- Rich security dashboards: required redacted events/metrics land here; new UI
-  work is separate product scope.
-- Llama tuning and the v7.2 baseline deployment: retained as Wave O, independent
-  of the architectural dependency chain.
-
-## Self-Review Results
-
-- **Spec coverage:** all 28 open children appear in the coverage matrix; deployment of the already-merged v7.2.0 is Task 1; final release/deployment is Task 11.
-- **Placeholder scan:** no implementation step contains `TBD`, `TODO`, “implement later,” or an unspecified “write tests” instruction.
-- **Type consistency:** the plan keeps the canonical `SourceAdapter`,
-  `SourceExecutionContext`, `ProviderReservationContext`, `JobPriority`, and
-  `PipelinePhase` contracts. Current `ReusePolicy` and `MaterializedSource`
-  adapter escape hatches are treated as transitional implementation details and
-  removed from the public adapter boundary in Task 6.
-- **Isolation:** the unrelated llama compose diff and v7.2 deployment are an
-  independent operational lane and do not block architectural work.
-- **Ordering:** live gates and the docs drift engine precede contract-changing
-  runtime work; the observation harness and adapter/router normalization precede
-  the durable scheduler; the scheduler and visibility model precede family
-  ports; security/reliability and black-box parity follow; remaining docs, live
-  smokes, and release proof come last.
-- **Engineering review:** all 32 consolidated actionable recommendations are
-  represented in normative decisions, task steps, closure checklists, or
-  explicit out-of-scope decisions.
+- All 28 open implementation Beads appear in the closure matrix.
+- The stale compose landing work is removed; v7.2 deployment is independent.
+- The plan chooses one registry, stage model, queue algorithm, scheduler
+  authority, provider gate, validation seam, SSRF seam, DB concurrency design,
+  and Qdrant buffer.
+- Existing provider traits remain object-safe and unchanged.
+- Existing auth compatibility behavior is preserved; literal write checks guard
+  mutating search/research.
+- Progress events remain immediate; only generation-scoped content is fenced.
+- Cross-process wakeup, active-lease uncertainty, split-brain recovery,
+  epoch-1 migration, and deployed-build identity are implementable and tested.
+- Every critical failure mode has both a rescue and an observable test.
+- No implementation instruction contains an unresolved “choose one,” “wire or
+  remove,” “if retained,” or “where practical” branch.
