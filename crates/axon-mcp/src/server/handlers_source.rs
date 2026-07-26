@@ -40,7 +40,7 @@ use super::common::{
 use crate::schema::{AxonToolResponse, SourceRequest};
 use axon_api::source::{AuthScope, AuthSnapshot, SourceRequest as ApiSourceRequest};
 use axon_authz::required_scope_for_safety_class;
-use axon_services::source::classify::{classify_source_input, safety_class_for};
+use axon_services::source::routing::resolve_source_route;
 use rmcp::ErrorData;
 
 impl AxonMcpServer {
@@ -176,8 +176,9 @@ async fn enforce_source_safety_scope(
         return Ok(());
     };
 
-    let kind = classify_source_input(source).await;
-    let safety_class = safety_class_for(kind);
+    let safety_class = resolve_source_route(&ApiSourceRequest::new(source.to_string()))
+        .map(|routed| routed.route.safety_class)
+        .unwrap_or(axon_api::source::SafetyClass::PublicNetwork);
     let required_scope = required_scope_for_safety_class(safety_class);
     let Some(required) = AuthScope::from_scope_str(required_scope) else {
         // Unreachable in practice: `required_scope_for_safety_class` only ever

@@ -58,7 +58,9 @@ This is an honest in-progress ledger, not a completion claim.
   families, version drift, and capability/spec mismatches. Production
   composition wiring and the remaining adapter-boundary work remain. The
   registry/session metadata projection has also moved into the adapters, and
-  the shared runner no longer performs either family rewrite.
+  the shared runner no longer performs either family rewrite. REST and MCP
+  source authorization now consume the canonical route's safety class instead
+  of independently classifying raw input.
 - Tasks 5–12 have not started.
 
 ## Global Constraints

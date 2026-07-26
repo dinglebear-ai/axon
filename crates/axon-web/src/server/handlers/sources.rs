@@ -60,7 +60,7 @@ use axon_authz::VisibilityPolicy;
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
 use axon_authz::required_scope_for_safety_class as required_scope_for;
 use axon_error::ErrorStage;
-use axon_services::source::classify::{classify_source_input, safety_class_for};
+use axon_services::source::routing::resolve_source_route;
 use axum::{Extension, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
 use std::sync::Arc;
@@ -174,8 +174,9 @@ async fn authorize_source_request(
     request: &SourceRequest,
     auth: &AuthContext,
 ) -> Result<(), HttpError> {
-    let kind = classify_source_input(request.source.trim()).await;
-    let safety_class = safety_class_for(kind);
+    let safety_class = resolve_source_route(request)
+        .map(|routed| routed.route.safety_class)
+        .unwrap_or(SafetyClass::PublicNetwork);
     let required_scope = required_scope_for(safety_class);
 
     let policy = ScopeSecurityPolicy::new(required_scope);
