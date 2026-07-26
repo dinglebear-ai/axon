@@ -160,6 +160,18 @@ fn validate_generations(metadata: &MetadataMap) -> Result<(), VectorPayloadValid
             field: "committed_generation".to_string(),
         });
     }
+    for field in ["born_epoch", "retired_epoch"] {
+        let Some(value) = metadata.get(field) else {
+            return Err(VectorPayloadValidationError::InvalidGeneration {
+                field: field.to_string(),
+            });
+        };
+        if !value.is_null() && value.as_i64().is_none_or(|value| value < 0) {
+            return Err(VectorPayloadValidationError::InvalidGeneration {
+                field: field.to_string(),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -278,6 +290,8 @@ pub const VECTOR_REQUIRED_FIELDS: &[&str] = &[
     "embedding_profile",
     "embedded_at",
     "committed_generation",
+    "born_epoch",
+    "retired_epoch",
     "chunking_profile",
     "chunking_method",
 ];
@@ -303,6 +317,8 @@ pub const VECTOR_SHARED_FIELDS: &[&str] = &[
     "item_canonical_uri",
     "source_generation",
     "committed_generation",
+    "born_epoch",
+    "retired_epoch",
     "document_id",
     "chunk_id",
     "chunk_key",

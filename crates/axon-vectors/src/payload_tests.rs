@@ -49,6 +49,16 @@ fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
     metadata
         .entry("chunking_method".to_string())
         .or_insert_with(|| serde_json::json!("paragraph_windows"));
+    let generation = metadata
+        .get("source_generation")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!(0));
+    metadata
+        .entry("born_epoch".to_string())
+        .or_insert(generation);
+    metadata
+        .entry("retired_epoch".to_string())
+        .or_insert(serde_json::Value::Null);
     if let Some(content_kind) = metadata.get("content_kind").cloned() {
         metadata
             .entry("chunk_content_kind".to_string())
