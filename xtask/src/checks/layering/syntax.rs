@@ -14,9 +14,10 @@ use providers::{
 };
 use syn::visit::Visit;
 use syn::{
-    Arm, Block, ExprAssign, ExprClosure, ExprField, ExprForLoop, ExprIf, ExprMatch, ExprMethodCall,
-    ExprWhile, FieldPat, FieldValue, ImplItem, ImplItemFn, Item, ItemExternCrate, ItemFn, ItemMod,
-    ItemUse, Local, Macro, Member, ReturnType, TraitItem, TraitItemFn,
+    Arm, Block, ExprAssign, ExprAsync, ExprBinary, ExprClosure, ExprField, ExprForLoop, ExprIf,
+    ExprLoop, ExprMatch, ExprMethodCall, ExprWhile, FieldPat, FieldValue, ImplItem, ImplItemFn,
+    Item, ItemExternCrate, ItemFn, ItemMod, ItemUse, Local, Macro, Member, ReturnType, TraitItem,
+    TraitItemFn,
 };
 use tokens::TokenFinding;
 
@@ -255,6 +256,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
     }
 
     fn visit_expr_closure(&mut self, node: &'ast ExprClosure) {
+        let entry = self.bindings.checkpoint();
         self.bindings.push();
         for input in &node.inputs {
             self.bindings
@@ -265,10 +267,23 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
         }
         self.visit_expr(&node.body);
         self.bindings.pop();
+        let body_exit = self.bindings.checkpoint();
+        self.bindings.merge_control_flow(&[entry, body_exit]);
     }
 
     fn visit_expr_assign(&mut self, node: &'ast ExprAssign) {
         flow::visit_assign(self, node);
+    }
+
+    fn visit_expr_async(&mut self, node: &'ast ExprAsync) {
+        let entry = self.bindings.checkpoint();
+        syn::visit::visit_expr_async(self, node);
+        let body_exit = self.bindings.checkpoint();
+        self.bindings.merge_control_flow(&[entry, body_exit]);
+    }
+
+    fn visit_expr_binary(&mut self, node: &'ast ExprBinary) {
+        flow::visit_binary(self, node);
     }
 
     fn visit_expr_if(&mut self, node: &'ast ExprIf) {
@@ -281,6 +296,10 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 
     fn visit_expr_for_loop(&mut self, node: &'ast ExprForLoop) {
         flow::visit_for(self, node);
+    }
+
+    fn visit_expr_loop(&mut self, node: &'ast ExprLoop) {
+        flow::visit_loop(self, node);
     }
 
     fn visit_expr_match(&mut self, node: &'ast ExprMatch) {

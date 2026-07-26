@@ -983,11 +983,11 @@ pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
         "provider-method:delete",
         "provider-method:query",
         "provider-method:fetch",
+        "provider-method:get",
     ] {
         assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
     }
     assert!(!error.contains("[provider-method:render]"), "{error}");
-    assert!(!error.contains("[provider-method:get]"), "{error}");
 }
 
 #[test]
@@ -1008,6 +1008,297 @@ pub async fn run(provider: Store) {
     let error = check(temp.path()).unwrap_err().to_string();
     assert!(error.contains("provider-type:VectorStore"), "{error}");
     assert!(!error.contains("[provider-method:search]"), "{error}");
+}
+
+#[test]
+fn guarded_match_false_exit_flows_to_later_arms_without_laundering_body_overwrites() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, key: u8) {
+    let mut guarded = plain;
+    match key {
+        0 if {
+            guarded = std::sync::Arc::clone(&provider);
+            false
+        } => {
+            guarded = Plain::new();
+        }
+        _ => guarded.fetch(request()).await,
+    }
+    guarded.search(request()).await;
+
+    let mut cleared_by_every_arm = std::sync::Arc::clone(&provider);
+    match key {
+        0 => cleared_by_every_arm = Plain::new(),
+        _ => cleared_by_every_arm = Plain::new(),
+    }
+    cleared_by_every_arm.get(handle()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in ["provider-method:fetch", "provider-method:search"] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+    assert!(!error.contains("[provider-method:get]"), "{error}");
+}
+
+#[test]
+fn loop_heads_stabilize_without_duplicating_findings_and_abrupt_exits_keep_taint() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(
+    provider: Store,
+    plain: Plain,
+    condition: bool,
+    maybe: Option<u8>,
+    items: Vec<u8>,
+) {
+    let mut while_carried = plain;
+    while condition {
+        while_carried.search(request()).await;
+        while_carried = std::sync::Arc::clone(&provider);
+    }
+
+    let mut while_let_carried = plain;
+    while let Some(_) = maybe {
+        while_let_carried.fetch(request()).await;
+        while_let_carried = std::sync::Arc::clone(&provider);
+    }
+
+    let mut for_carried = plain;
+    for _ in items {
+        for_carried.query(request()).await;
+        for_carried = std::sync::Arc::clone(&provider);
+        continue;
+    }
+
+    let mut bare_carried = plain;
+    loop {
+        bare_carried.get(handle()).await;
+        bare_carried = std::sync::Arc::clone(&provider);
+        if condition {
+            continue;
+        }
+        break;
+    }
+
+    let mut breaking = plain;
+    while condition {
+        breaking = std::sync::Arc::clone(&provider);
+        if condition {
+            break;
+        }
+        breaking = Plain::new();
+    }
+    breaking.render(request()).await;
+
+    let mut continuing = plain;
+    while condition {
+        continuing = std::sync::Arc::clone(&provider);
+        if condition {
+            continue;
+        }
+        continuing = Plain::new();
+    }
+    continuing.delete(selector()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+        "provider-method:get",
+        "provider-method:render",
+        "provider-method:delete",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+}
+
+#[test]
+fn closure_and_async_outer_assignment_effects_are_optional_but_bodies_are_scanned() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain) {
+    let mut closure_cleared = std::sync::Arc::clone(&provider);
+    let _clear = || {
+        closure_cleared = Plain::new();
+    };
+    closure_cleared.search(request()).await;
+
+    let mut closure_injected = plain;
+    let _inject = || {
+        closure_injected = std::sync::Arc::clone(&provider);
+        closure_injected.query(request());
+    };
+    closure_injected.fetch(request()).await;
+
+    let mut async_cleared = std::sync::Arc::clone(&provider);
+    let _clear = async {
+        async_cleared = Plain::new();
+    };
+    async_cleared.render(request()).await;
+
+    let mut async_injected = plain;
+    let _inject = async {
+        async_injected = std::sync::Arc::clone(&provider);
+        async_injected.delete(selector()).await;
+    };
+    async_injected.get(handle()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:query",
+        "provider-method:fetch",
+        "provider-method:render",
+        "provider-method:delete",
+        "provider-method:get",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+}
+
+#[test]
+fn short_circuit_rhs_assignment_effects_merge_skipped_and_executed_paths() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, condition: bool) {
+    let mut and_cleared = std::sync::Arc::clone(&provider);
+    condition && { and_cleared = Plain::new(); true };
+    and_cleared.search(request()).await;
+
+    let mut or_cleared = std::sync::Arc::clone(&provider);
+    condition || { or_cleared = Plain::new(); false };
+    or_cleared.fetch(request()).await;
+
+    let mut and_injected = plain;
+    condition && {
+        and_injected = std::sync::Arc::clone(&provider);
+        true
+    };
+    and_injected.query(request()).await;
+
+    let mut or_injected = plain;
+    condition || {
+        or_injected = std::sync::Arc::clone(&provider);
+        false
+    };
+    or_injected.render(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+        "provider-method:render",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+}
+
+#[test]
+fn local_block_if_and_match_results_propagate_provider_shape() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
+    let from_block = { std::sync::Arc::clone(&provider) };
+    from_block.search(request()).await;
+
+    let from_if = if condition {
+        std::sync::Arc::clone(&provider)
+    } else {
+        Plain::new()
+    };
+    from_if.fetch(request()).await;
+
+    let from_match = match key {
+        0 => Plain::new(),
+        _ => std::sync::Arc::clone(&provider),
+    };
+    from_match.query(request()).await;
+
+    let mut reassigned = plain;
+    reassigned = if condition {
+        Plain::new()
+    } else {
+        std::sync::Arc::clone(&provider)
+    };
+    reassigned.render(request()).await;
+
+    let mut cleared = std::sync::Arc::clone(&provider);
+    cleared = { Plain::new() };
+    cleared.get(handle()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+        "provider-method:render",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+    assert!(!error.contains("[provider-method:get]"), "{error}");
+}
+
+#[test]
+fn direct_wrapper_deref_and_index_provider_receivers_are_tracked() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, providers: Vec<Store>, plain: Plain) {
+    std::sync::Arc::clone(&provider).search(request()).await;
+    provider.as_ref().fetch(request()).await;
+    (*provider).query(request()).await;
+    providers[0].render(request()).await;
+
+    plain.make_client().get(handle()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+        "provider-method:render",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+    assert!(!error.contains("[provider-method:get]"), "{error}");
 }
 
 #[test]

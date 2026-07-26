@@ -49,9 +49,18 @@ scopes (`if let`, `while let`, `for`, match arms, and closures). Collision-prone
 calls are therefore rejected only on proven provider receivers. Assignment
 tracking uses strong replacement in straight-line code, so a later proven
 non-provider assignment clears the binding's provider state. Branch and match
-exits merge their possible states, while `while` and `for` exits merge the loop
-entry with the analyzed body exit because the body may not run. Newly shadowed
-bindings remain isolated. Custom
+exits merge their possible states, including guard-false effects that can reach
+later match arms. Loop bodies use conservative monotonic assignment and a
+stabilized loop-head state so loop-carried values, abrupt exits, and bare
+`loop` expressions cannot clear possible provider state; `while` and `for`
+also merge the entry state because their bodies may not run. Closure body
+effects, async-block body effects, and short-circuit Boolean right-hand sides
+merge as optional while calls inside those bodies are still scanned. Newly
+shadowed bindings remain isolated. Syntax-visible block tails, `if` branch
+results, and match-arm results also propagate provider shape into local
+bindings and assignment targets. Wrapper calls, references/dereferences, and
+indexed provider-bearing values retain provider shape when used directly as
+method receivers. Custom
 interprocedural helper-return inference is intentionally outside this lexical
 gate's scope. `#[cfg(test)]` items and external modules reachable only through
 test declarations are excluded by transitive traversal from each crate root,

@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
-use syn::{Expr, FnArg, GenericArgument, Item, Member, Pat, PathArguments, Type, TypeParamBound};
+use syn::{
+    Block, Expr, FnArg, GenericArgument, Item, Member, Pat, PathArguments, Stmt, Type,
+    TypeParamBound, UnOp,
+};
 
 use super::aliases::AliasStack;
 use super::path_segments;
 use super::providers::{PROVIDER_HANDLES, is_provider_path};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ProviderShape {
     Scalar(bool),
     Tuple(Vec<Self>),
@@ -21,15 +24,16 @@ impl ProviderShape {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 struct BindingScope {
     values: BTreeMap<String, ProviderShape>,
     type_aliases: BTreeMap<String, bool>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub(super) struct ProviderBindings {
     scopes: Vec<BindingScope>,
+    conservative_assignments: usize,
 }
 
 impl ProviderBindings {
@@ -80,8 +84,29 @@ impl ProviderBindings {
             .rev()
             .find(|scope| scope.values.contains_key(name))
         {
-            scope.values.insert(name.to_owned(), shape);
+            if self.conservative_assignments == 0 {
+                scope.values.insert(name.to_owned(), shape);
+            } else {
+                let existing = scope
+                    .values
+                    .get(name)
+                    .expect("binding existence was checked");
+                scope
+                    .values
+                    .insert(name.to_owned(), merge_shapes(existing, &shape));
+            }
         }
+    }
+
+    pub fn begin_conservative_assignments(&mut self) {
+        self.conservative_assignments += 1;
+    }
+
+    pub fn end_conservative_assignments(&mut self) {
+        self.conservative_assignments = self
+            .conservative_assignments
+            .checked_sub(1)
+            .expect("conservative assignment scope must exist");
     }
 
     pub fn checkpoint(&self) -> Self {
@@ -188,6 +213,23 @@ impl ProviderBindings {
                 .value_shape(&path.path.segments[0].ident.to_string())
                 .cloned()
                 .unwrap_or_else(|| ProviderShape::Scalar(self.expr_is_provider(aliases, expr))),
+            Expr::Block(block) => self.block_result_shape(aliases, &block.block),
+            Expr::If(branch) => {
+                let then_shape = self.block_result_shape(aliases, &branch.then_branch);
+                let else_shape = branch
+                    .else_branch
+                    .as_ref()
+                    .map_or(ProviderShape::Scalar(false), |(_, otherwise)| {
+                        self.expr_shape(aliases, otherwise)
+                    });
+                merge_shapes(&then_shape, &else_shape)
+            }
+            Expr::Match(branch) => branch
+                .arms
+                .iter()
+                .map(|arm| self.expr_shape(aliases, &arm.body))
+                .reduce(|left, right| merge_shapes(&left, &right))
+                .unwrap_or(ProviderShape::Scalar(false)),
             _ => ProviderShape::Scalar(self.expr_is_provider(aliases, expr)),
         }
     }
@@ -217,7 +259,7 @@ impl ProviderBindings {
                     "clone" | "to_owned" | "as_ref"
                 ) =>
             {
-                self.receiver_is_provider(aliases, &call.receiver)
+                self.wrapper_method_source_is_provider(aliases, &call.receiver)
             }
             Expr::Reference(reference) => self.expr_is_provider(aliases, &reference.expr),
             Expr::Paren(paren) => self.expr_is_provider(aliases, &paren.expr),
@@ -229,6 +271,25 @@ impl ProviderBindings {
                     || self.type_is_provider(aliases, &cast.ty)
             }
             Expr::Struct(value) => self.path_names_provider(aliases, &path_segments(&value.path)),
+            Expr::Unary(unary) if matches!(unary.op, UnOp::Deref(_)) => {
+                self.expr_is_provider(aliases, &unary.expr)
+            }
+            Expr::Index(index) => self.expr_is_provider(aliases, &index.expr),
+            Expr::Block(_) | Expr::If(_) | Expr::Match(_) => {
+                self.expr_shape(aliases, expr).is_provider()
+            }
+            _ => false,
+        }
+    }
+
+    fn wrapper_method_source_is_provider(&self, aliases: &AliasStack, expr: &Expr) -> bool {
+        match expr {
+            Expr::Path(_)
+            | Expr::Reference(_)
+            | Expr::Paren(_)
+            | Expr::Group(_)
+            | Expr::Unary(_)
+            | Expr::Index(_) => self.receiver_is_provider(aliases, expr),
             _ => false,
         }
     }
@@ -244,6 +305,27 @@ impl ProviderBindings {
                 matches!(&field.member, Member::Named(member)
                     if PROVIDER_HANDLES.contains(&member.to_string().as_str()))
             }
+            Expr::Call(call) => {
+                self.call_constructs_provider(aliases, &call.func)
+                    && call_operation_is_constructor(&call.func)
+                    || wrapper_propagates_provider(&call.func)
+                        && call
+                            .args
+                            .iter()
+                            .any(|argument| self.expr_is_provider(aliases, argument))
+            }
+            Expr::MethodCall(call)
+                if matches!(
+                    call.method.to_string().as_str(),
+                    "clone" | "to_owned" | "as_ref"
+                ) =>
+            {
+                self.wrapper_method_source_is_provider(aliases, &call.receiver)
+            }
+            Expr::Unary(unary) if matches!(unary.op, UnOp::Deref(_)) => {
+                self.receiver_is_provider(aliases, &unary.expr)
+            }
+            Expr::Index(index) => self.receiver_is_provider(aliases, &index.expr),
             Expr::Reference(reference) => self.receiver_is_provider(aliases, &reference.expr),
             Expr::Paren(paren) => self.receiver_is_provider(aliases, &paren.expr),
             Expr::Group(group) => self.receiver_is_provider(aliases, &group.expr),
@@ -326,6 +408,13 @@ impl ProviderBindings {
     ) {
         for (index, pattern) in patterns.iter().enumerate() {
             self.bind_pat_shape(aliases, pattern, tuple_element(shape, index));
+        }
+    }
+
+    fn block_result_shape(&self, aliases: &AliasStack, block: &Block) -> ProviderShape {
+        match block.stmts.last() {
+            Some(Stmt::Expr(expr, None)) => self.expr_shape(aliases, expr),
+            _ => ProviderShape::Scalar(false),
         }
     }
 
@@ -417,4 +506,18 @@ fn wrapper_propagates_provider(expr: &Expr) -> bool {
     };
     matches!(wrapper, "Arc" | "Box" | "Rc")
         && matches!(operation, "new" | "clone" | "as_ref" | "from")
+}
+
+fn call_operation_is_constructor(expr: &Expr) -> bool {
+    let Expr::Path(path) = expr else {
+        return false;
+    };
+    matches!(
+        path.path.segments.last().map(|segment| segment.ident.to_string()),
+        Some(operation)
+            if matches!(
+                operation.as_str(),
+                "new" | "connect" | "from_config" | "from_env" | "open"
+            )
+    )
 }
