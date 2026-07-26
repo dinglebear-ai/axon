@@ -130,11 +130,12 @@ fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<M
             }
         };
         for (table_name, table) in dependency_tables(&parsed) {
-            for dependency in TRANSPORT_FORBIDDEN_DEPS {
-                if table.contains_key(*dependency) {
+            for (declared_name, declaration) in table {
+                let dependency = canonical_dependency_name(declared_name, declaration);
+                if TRANSPORT_FORBIDDEN_DEPS.contains(&dependency) {
                     findings.push(ManifestFinding {
                         path: (*manifest).to_owned(),
-                        dependency: (*dependency).to_owned(),
+                        dependency: dependency.to_owned(),
                         table: table_name.clone(),
                     });
                 }
@@ -142,6 +143,14 @@ fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<M
         }
     }
     findings
+}
+
+fn canonical_dependency_name<'a>(declared_name: &'a str, value: &'a toml::Value) -> &'a str {
+    value
+        .as_table()
+        .and_then(|table| table.get("package"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or(declared_name)
 }
 
 fn dependency_tables(parsed: &toml::Table) -> Vec<(String, &toml::Table)> {
@@ -225,7 +234,7 @@ fn collect_rust_findings(
             });
         }
 
-        let excluded_modules = cfg_test_external_module_paths(&parsed_files);
+        let excluded_modules = test_only_external_module_paths(&parsed_files);
         for file in parsed_files {
             if excluded_modules.contains(&file.path) {
                 continue;
@@ -240,8 +249,9 @@ fn collect_rust_findings(
     findings
 }
 
-fn cfg_test_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf> {
-    let mut excluded = BTreeSet::new();
+fn test_only_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf> {
+    let mut production = BTreeSet::new();
+    let mut test = BTreeSet::new();
     for file in files {
         let parent = file.path.parent().unwrap_or_else(|| Path::new(""));
         let stem = file
@@ -254,14 +264,19 @@ fn cfg_test_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf>
         } else {
             parent.join(stem)
         };
-        for (module, path_override) in syntax::cfg_test_external_modules(&file.syntax) {
-            excluded.insert(path_override.map_or_else(
-                || module_dir.join(format!("{module}.rs")),
+        for module in syntax::external_modules(&file.syntax) {
+            let path = module.path_override.map_or_else(
+                || module_dir.join(format!("{}.rs", module.name)),
                 |path| parent.join(path),
-            ));
+            );
+            if module.test_only {
+                test.insert(path);
+            } else {
+                production.insert(path);
+            }
         }
     }
-    excluded
+    test.difference(&production).cloned().collect()
 }
 
 fn check_with_exceptions(

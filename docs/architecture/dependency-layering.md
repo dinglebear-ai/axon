@@ -40,11 +40,14 @@ The check parses production `.rs` items under the three transport crates and
 `axon-services` with `syn`. Grouped, multiline, renamed, chained,
 block-scoped, and `extern crate` aliases are resolved before traversal with
 lexical shadowing and cycle protection. Provider-bearing macro tokens are
-inspected structurally while comments and string literals remain data.
-`#[cfg(test)]` items and externally declared test-only modules are excluded
-without excluding production items that share a file. An unreadable source
-tree/file, malformed Rust file, unreadable manifest, or malformed manifest
-fails closed.
+inspected structurally while comments, string literals, and bare macro metadata
+keys remain data. Provider-typed bindings and bindings initialized from known
+concrete provider implementations are tracked through references, clones, and
+lexical scopes, so collision-prone calls are rejected only on proven provider
+receivers. `#[cfg(test)]` items and external modules reachable only through
+test declarations are excluded; a production declaration of the same module
+path always keeps it in scope. An unreadable source tree/file, malformed Rust
+file, unreadable manifest, or malformed manifest fails closed.
 
 It rejects:
 
@@ -53,11 +56,15 @@ It rejects:
 - transport manifest dependencies on `axon-adapters`, `axon-embedding`,
   `axon-llm`, `axon-retrieval`, or `axon-vectors`, in normal, dev, or build
   dependency tables, including their target-specific
-  `[target.'cfg(...)'.*dependencies]` forms;
+  `[target.'cfg(...)'.*dependencies]` forms and renamed Cargo dependencies
+  whose `package` field names a forbidden crate;
 - raw `EmbeddingProvider`, `VectorStore`, `SearchProvider`, `FetchProvider`,
   `RenderProvider`, `NetworkCaptureProvider`, `GraphStore`, `ArtifactStore`,
-  and `LlmProvider` type/import/UFCS access, provider-bearing globs, named
-  handle destructuring, and low-collision provider method calls;
+  and `LlmProvider` type/import/UFCS access, known concrete provider
+  construction, provider-bearing domain-crate globs, named handle
+  destructuring, low-collision provider methods, and every method invoked on a
+  proven provider binding. The sanctioned `axon_services::*` facade glob is
+  not provider-bearing and remains allowed;
 - raw provider-handle member access outside the fixed
   `crates/axon-services/src/reserved_call.rs` scheduler facade.
 

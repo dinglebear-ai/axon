@@ -534,3 +534,161 @@ fn fixed_reserved_facade_allows_provider_access() {
     );
     check(temp.path()).unwrap();
 }
+
+#[test]
+fn concrete_provider_bindings_track_collision_prone_calls_and_propagation() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_vectors::QdrantVectorStore;\npub async fn run() {\n    let store = QdrantVectorStore::new(url(), id());\n    store.upsert(batch()).await;\n    store.upsert(batch()).await;\n    let borrowed = &store;\n    borrowed.delete(selector()).await;\n    let cloned = borrowed.clone();\n    cloned.query(request()).await;\n    { let borrowed = Unrelated::new(); borrowed.delete(selector()).await; }\n}\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-type:QdrantVectorStore",
+        "provider-op:QdrantVectorStore::new",
+        "provider-method:delete",
+        "provider-method:query",
+    ] {
+        assert!(error.contains(rule), "missing {rule}: {error}");
+    }
+    assert_eq!(
+        error.matches("[provider-method:upsert]").count(),
+        2,
+        "{error}"
+    );
+}
+
+#[test]
+fn provider_typed_parameters_and_known_fetch_render_artifact_implementations_are_tracked() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "use axon_vectors::VectorStore;\nuse axon_adapters::{HttpFetchProvider, ChromeRenderProvider};\nuse axon_core::FileArtifactStore;\npub async fn typed(store: &dyn VectorStore) { store.search(request()).await; }\npub async fn concrete() {\n let fetcher = HttpFetchProvider::new(config()); fetcher.fetch(request()).await;\n let renderer = ChromeRenderProvider::new(config()); renderer.render(request()).await;\n let artifacts = FileArtifactStore::new(root()); artifacts.get(handle()).await;\n}\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:render",
+        "provider-method:get",
+        "provider-type:HttpFetchProvider",
+        "provider-type:ChromeRenderProvider",
+        "provider-type:FileArtifactStore",
+    ] {
+        assert!(error.contains(rule), "missing {rule}: {error}");
+    }
+}
+
+#[test]
+fn provider_binding_second_call_drifts_exact_exception_count() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    let path = "crates/axon-services/src/lib.rs";
+    write(
+        &temp.path().join(path),
+        "pub async fn run(store: &dyn VectorStore) { store.upsert(batch()).await; store.upsert(batch()).await; }\n",
+    );
+    let exceptions = [
+        ReachException {
+            path,
+            rule: "provider-type:VectorStore",
+            owner: "axon_rust-test",
+            expected_count: 1,
+        },
+        ReachException {
+            path,
+            rule: "provider-method:upsert",
+            owner: "axon_rust-test",
+            expected_count: 1,
+        },
+    ];
+    let error = check_fixture_with_exceptions(temp.path(), &exceptions, &[])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("provider-method:upsert")
+            && error.contains("expected 1")
+            && error.contains("found 2"),
+        "{error}"
+    );
+}
+
+#[test]
+fn macro_metadata_keys_are_benign_but_real_bound_provider_calls_are_tracked() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "pub async fn run(store: &dyn VectorStore, runtime: Runtime) {\n tracing::info!(embedding_provider = \"tei\", artifact_store = ?id);\n tokio::select! { _ = store.upsert(batch()) => {}, _ = consume(runtime.vector_store) => {} }\n}\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert_eq!(
+        error.matches("[provider-method:upsert]").count(),
+        1,
+        "{error}"
+    );
+    assert_eq!(
+        error.matches("[provider-handle:vector_store]").count(),
+        1,
+        "{error}"
+    );
+    assert!(
+        !error.contains("provider-handle:embedding_provider"),
+        "{error}"
+    );
+    assert!(!error.contains("provider-handle:artifact_store"), "{error}");
+}
+
+#[test]
+fn production_module_reachability_wins_over_cfg_test_alias_to_same_path() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "#[path = \"shared.rs\"]\nmod production;\n#[cfg(test)]\n#[path = \"shared.rs\"]\nmod test_alias;\n",
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/shared.rs"),
+        "pub fn production(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
+}
+
+#[test]
+fn renamed_forbidden_cargo_packages_are_detected_in_normal_and_target_tables() {
+    for table in ["dependencies", "target.'cfg(unix)'.build-dependencies"] {
+        let temp = tempdir().unwrap();
+        write_surface_fixture(temp.path());
+        write(
+            &temp.path().join("crates/axon-cli/Cargo.toml"),
+            &format!(
+                "[package]\nname='axon-cli'\nversion='0.0.0'\n[{table}]\nvector-alias={{package='axon-vectors', path='../axon-vectors'}}\n"
+            ),
+        );
+        let error = check(temp.path()).unwrap_err().to_string();
+        assert!(error.contains(&format!("[{table}]")), "{error}");
+        assert!(error.contains("`axon-vectors`"), "{error}");
+        assert!(!error.contains("`vector-alias`"), "{error}");
+    }
+}
+
+#[test]
+fn axon_services_root_glob_is_allowed_while_provider_crate_glob_is_rejected() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-cli/src/lib.rs"),
+        "use axon_services::*;\npub fn run() {}\n",
+    );
+    check(temp.path()).unwrap();
+
+    write(
+        &temp.path().join("crates/axon-cli/src/lib.rs"),
+        "use axon_vectors::*;\npub fn run() {}\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-glob:axon_vectors"), "{error}");
+}
