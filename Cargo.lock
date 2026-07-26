@@ -9175,6 +9175,7 @@ dependencies = [
  "clap",
  "dotenvy",
  "jsonschema",
+ "proc-macro2",
  "regex",
  "reqwest 0.13.4",
  "schemars",

@@ -1,0 +1,364 @@
+mod expressions;
+
+use std::collections::BTreeMap;
+
+use syn::{
+    Block, Expr, FnArg, GenericArgument, Item, Member, Pat, PathArguments, Stmt, Type,
+    TypeParamBound,
+};
+
+use super::aliases::AliasStack;
+use super::path_segments;
+use super::providers::{PROVIDER_HANDLES, is_provider_path};
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ProviderShape {
+    Scalar(bool),
+    Tuple(Vec<Self>),
+}
+
+impl ProviderShape {
+    fn is_provider(&self) -> bool {
+        match self {
+            Self::Scalar(provider) => *provider,
+            Self::Tuple(elements) => elements.iter().any(Self::is_provider),
+        }
+    }
+
+    pub(super) fn merge(left: &Self, right: &Self) -> Self {
+        merge_shapes(left, right)
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+struct BindingScope {
+    values: BTreeMap<String, ProviderShape>,
+    type_aliases: BTreeMap<String, bool>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub(super) struct ProviderBindings {
+    scopes: Vec<BindingScope>,
+    conservative_assignments: usize,
+}
+
+impl ProviderBindings {
+    pub fn push_items(&mut self, aliases: &AliasStack, items: &[Item]) {
+        self.scopes.push(BindingScope::default());
+        let alias_types: Vec<_> = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Type(alias) => Some((alias.ident.to_string(), &*alias.ty)),
+                _ => None,
+            })
+            .collect();
+        for (name, _) in &alias_types {
+            self.bind_type_alias(name.clone(), false);
+        }
+        for _ in 0..alias_types.len() {
+            let mut changed = false;
+            for (name, ty) in &alias_types {
+                let provider = self.type_is_provider(aliases, ty);
+                changed |= self.bind_type_alias(name.clone(), provider);
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    pub fn push(&mut self) {
+        self.scopes.push(BindingScope::default());
+    }
+
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    pub fn bind(&mut self, name: String, shape: ProviderShape) {
+        self.scopes
+            .last_mut()
+            .expect("provider binding scope must exist")
+            .values
+            .insert(name, shape);
+    }
+
+    pub fn assign(&mut self, name: &str, shape: ProviderShape) {
+        if let Some(scope) = self
+            .scopes
+            .iter_mut()
+            .rev()
+            .find(|scope| scope.values.contains_key(name))
+        {
+            if self.conservative_assignments == 0 {
+                scope.values.insert(name.to_owned(), shape);
+            } else {
+                let existing = scope
+                    .values
+                    .get(name)
+                    .expect("binding existence was checked");
+                scope
+                    .values
+                    .insert(name.to_owned(), merge_shapes(existing, &shape));
+            }
+        }
+    }
+
+    pub fn begin_conservative_assignments(&mut self) {
+        self.conservative_assignments += 1;
+    }
+
+    pub fn end_conservative_assignments(&mut self) {
+        self.conservative_assignments = self
+            .conservative_assignments
+            .checked_sub(1)
+            .expect("conservative assignment scope must exist");
+    }
+
+    pub fn checkpoint(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn restore(&mut self, checkpoint: &Self) {
+        self.clone_from(checkpoint);
+    }
+
+    pub fn merge_control_flow(&mut self, exits: &[Self]) {
+        let Some((first, remaining)) = exits.split_first() else {
+            return;
+        };
+        self.clone_from(first);
+        for exit in remaining {
+            for (scope, exit_scope) in self.scopes.iter_mut().zip(&exit.scopes) {
+                for (name, shape) in &mut scope.values {
+                    if let Some(exit_shape) = exit_scope.values.get(name) {
+                        *shape = merge_shapes(shape, exit_shape);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn is_provider(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.values.get(name))
+            .is_some_and(ProviderShape::is_provider)
+    }
+
+    pub fn type_shape(&self, aliases: &AliasStack, ty: &Type) -> ProviderShape {
+        match ty {
+            Type::Tuple(tuple) => ProviderShape::Tuple(
+                tuple
+                    .elems
+                    .iter()
+                    .map(|ty| self.type_shape(aliases, ty))
+                    .collect(),
+            ),
+            _ => ProviderShape::Scalar(self.type_is_provider(aliases, ty)),
+        }
+    }
+
+    pub fn type_is_provider(&self, aliases: &AliasStack, ty: &Type) -> bool {
+        match ty {
+            Type::Path(path) => {
+                let segments = path_segments(&path.path);
+                self.path_names_provider(aliases, &segments)
+                    || path.path.segments.iter().any(|segment| {
+                        let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+                            return false;
+                        };
+                        arguments.args.iter().any(|argument| match argument {
+                            GenericArgument::Type(ty) => self.type_is_provider(aliases, ty),
+                            GenericArgument::AssocType(assoc) => {
+                                self.type_is_provider(aliases, &assoc.ty)
+                            }
+                            GenericArgument::Constraint(constraint) => {
+                                constraint.bounds.iter().any(|bound| {
+                                    matches!(bound, TypeParamBound::Trait(bound)
+                                    if self.path_names_provider(
+                                        aliases,
+                                        &path_segments(&bound.path)
+                                    ))
+                                })
+                            }
+                            _ => false,
+                        })
+                    })
+            }
+            Type::Reference(reference) => self.type_is_provider(aliases, &reference.elem),
+            Type::TraitObject(object) => object.bounds.iter().any(|bound| {
+                matches!(bound, TypeParamBound::Trait(bound)
+                    if self.path_names_provider(aliases, &path_segments(&bound.path)))
+            }),
+            Type::ImplTrait(object) => object.bounds.iter().any(|bound| {
+                matches!(bound, TypeParamBound::Trait(bound)
+                    if self.path_names_provider(aliases, &path_segments(&bound.path)))
+            }),
+            Type::Paren(paren) => self.type_is_provider(aliases, &paren.elem),
+            Type::Group(group) => self.type_is_provider(aliases, &group.elem),
+            Type::Tuple(tuple) => tuple
+                .elems
+                .iter()
+                .any(|ty| self.type_is_provider(aliases, ty)),
+            _ => false,
+        }
+    }
+
+    pub fn bind_pat_shape(&mut self, aliases: &AliasStack, pat: &Pat, shape: &ProviderShape) {
+        match pat {
+            Pat::Ident(ident) => {
+                self.bind(ident.ident.to_string(), shape.clone());
+                if let Some((_, subpat)) = &ident.subpat {
+                    self.bind_pat_shape(aliases, subpat, shape);
+                }
+            }
+            Pat::Type(typed) => {
+                let typed_shape = self.type_shape(aliases, &typed.ty);
+                self.bind_pat_shape(aliases, &typed.pat, &merge_shapes(shape, &typed_shape));
+            }
+            Pat::Reference(reference) => self.bind_pat_shape(aliases, &reference.pat, shape),
+            Pat::Paren(paren) => self.bind_pat_shape(aliases, &paren.pat, shape),
+            Pat::Tuple(tuple) => self.bind_positional(aliases, &tuple.elems, shape),
+            Pat::TupleStruct(tuple) => self.bind_positional(aliases, &tuple.elems, shape),
+            Pat::Struct(structure) => {
+                for field in &structure.fields {
+                    let field_provider = shape.is_provider()
+                        || matches!(&field.member, Member::Named(member)
+                            if PROVIDER_HANDLES.contains(&member.to_string().as_str()));
+                    self.bind_pat_shape(
+                        aliases,
+                        &field.pat,
+                        &ProviderShape::Scalar(field_provider),
+                    );
+                }
+            }
+            Pat::Slice(slice) => self.bind_positional(aliases, &slice.elems, shape),
+            Pat::Or(or) => {
+                for case in &or.cases {
+                    self.bind_pat_shape(aliases, case, shape);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub fn assign_expr_shape(&mut self, expr: &Expr, shape: &ProviderShape) {
+        match expr {
+            Expr::Path(path) if path.path.segments.len() == 1 => {
+                self.assign(&path.path.segments[0].ident.to_string(), shape.clone());
+            }
+            Expr::Tuple(tuple) => {
+                for (index, element) in tuple.elems.iter().enumerate() {
+                    self.assign_expr_shape(element, tuple_element(shape, index));
+                }
+            }
+            Expr::Paren(paren) => self.assign_expr_shape(&paren.expr, shape),
+            Expr::Group(group) => self.assign_expr_shape(&group.expr, shape),
+            _ => {}
+        }
+    }
+
+    pub fn bind_inputs<'a>(
+        &mut self,
+        aliases: &AliasStack,
+        inputs: impl IntoIterator<Item = &'a FnArg>,
+    ) {
+        for input in inputs {
+            if let FnArg::Typed(argument) = input {
+                let shape = self.type_shape(aliases, &argument.ty);
+                self.bind_pat_shape(aliases, &argument.pat, &shape);
+            }
+        }
+    }
+
+    fn bind_positional(
+        &mut self,
+        aliases: &AliasStack,
+        patterns: &syn::punctuated::Punctuated<Pat, syn::token::Comma>,
+        shape: &ProviderShape,
+    ) {
+        for (index, pattern) in patterns.iter().enumerate() {
+            self.bind_pat_shape(aliases, pattern, tuple_element(shape, index));
+        }
+    }
+
+    fn block_result_shape(&self, aliases: &AliasStack, block: &Block) -> ProviderShape {
+        match block.stmts.last() {
+            Some(Stmt::Expr(expr, None)) => self.expr_shape(aliases, expr),
+            _ => ProviderShape::Scalar(false),
+        }
+    }
+
+    fn bind_type_alias(&mut self, name: String, provider: bool) -> bool {
+        let previous = self
+            .scopes
+            .last_mut()
+            .expect("provider binding scope must exist")
+            .type_aliases
+            .insert(name, provider);
+        previous != Some(provider)
+    }
+
+    fn path_names_provider(&self, aliases: &AliasStack, path: &[String]) -> bool {
+        let resolved = aliases.resolve(path);
+        (resolved.len() == 1 && self.type_alias_is_provider(&resolved[0]))
+            || is_provider_path(&resolved)
+    }
+
+    fn call_constructs_provider(&self, aliases: &AliasStack, callable: &Expr) -> bool {
+        let Expr::Path(path) = callable else {
+            return false;
+        };
+        let mut owner = path_segments(&path.path);
+        owner.pop();
+        !owner.is_empty() && self.path_names_provider(aliases, &owner)
+    }
+
+    fn type_alias_is_provider(&self, name: &str) -> bool {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.type_aliases.get(name))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn value_shape(&self, name: &str) -> Option<&ProviderShape> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.values.get(name))
+    }
+}
+
+fn tuple_element(shape: &ProviderShape, index: usize) -> &ProviderShape {
+    static NOT_PROVIDER: ProviderShape = ProviderShape::Scalar(false);
+    match shape {
+        ProviderShape::Tuple(elements) => elements.get(index).unwrap_or(&NOT_PROVIDER),
+        ProviderShape::Scalar(_) => shape,
+    }
+}
+
+fn merge_shapes(left: &ProviderShape, right: &ProviderShape) -> ProviderShape {
+    match (left, right) {
+        (ProviderShape::Tuple(left), ProviderShape::Tuple(right)) => {
+            let length = left.len().max(right.len());
+            ProviderShape::Tuple(
+                (0..length)
+                    .map(|index| match (left.get(index), right.get(index)) {
+                        (Some(left), Some(right)) => merge_shapes(left, right),
+                        (Some(shape), None) | (None, Some(shape)) => shape.clone(),
+                        (None, None) => unreachable!("index is bounded by maximum tuple length"),
+                    })
+                    .collect(),
+            )
+        }
+        (ProviderShape::Scalar(false), ProviderShape::Tuple(elements))
+        | (ProviderShape::Tuple(elements), ProviderShape::Scalar(false)) => {
+            ProviderShape::Tuple(elements.clone())
+        }
+        _ => ProviderShape::Scalar(left.is_provider() || right.is_provider()),
+    }
+}
