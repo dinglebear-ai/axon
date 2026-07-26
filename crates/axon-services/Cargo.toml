@@ -1,5 +1,6 @@
 [package]
 name = "axon-services"
+build = "build.rs"
 version.workspace = true
 edition = "2024"
 rust-version = "1.94.0"

@@ -85,3 +85,12 @@ fn status_payload_omits_legacy_arrays_and_aliases() {
         assert!(value.get(removed).is_none(), "removed field {removed}");
     }
 }
+
+#[test]
+fn build_identity_is_complete_and_schema_versioned() {
+    let identity = build_identity();
+    assert_eq!(identity.version, env!("CARGO_PKG_VERSION"));
+    assert!(!identity.git_sha.is_empty());
+    assert!(!identity.build_profile.is_empty());
+    assert_eq!(identity.schema_epoch, 1);
+}
