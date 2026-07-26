@@ -52,6 +52,26 @@ pub(super) fn session_source_document(
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("redacted"));
+    // The session adapter owns its payload projection. Keep only the
+    // canonical source fields and the explicitly supported session metadata;
+    // the shared runner must not need a family-specific cleanup branch.
+    metadata.retain(|key, _| {
+        matches!(
+            key.as_str(),
+            "source_family"
+                | "source_kind"
+                | "source_adapter"
+                | "source_scope"
+                | "session_provider"
+                | "session_id"
+                | "session_turn_index"
+                | "session_tool_name"
+                | "session_skill_name"
+                | "committed_generation"
+                | "visibility"
+                | "redaction_status"
+        )
+    });
 
     SourceDocument {
         document_id: session_document_id(

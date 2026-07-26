@@ -46,8 +46,6 @@ pub(super) async fn run_created_generation(
             .ensure_collection(collection.clone())
             .await?;
     }
-    let sanitize_session_chunks = input.plan.route.source.source_kind == SourceKind::Session;
-
     let mut vectorized = vectorize::VectorizeResult::default();
     let mut artifacts = Vec::new();
     let mut warnings = Vec::new();
@@ -84,8 +82,6 @@ pub(super) async fn run_created_generation(
         let mut documents = normalized.data;
         apply_enrichments(&mut documents, &enrichments);
         let enrichment_graph = enrichment_graph_candidates(&enrichments);
-        metadata::sanitize_documents(input.plan.route.source.source_kind, &mut documents);
-
         record_running_phase(
             runtime,
             input,
@@ -99,7 +95,6 @@ pub(super) async fn run_created_generation(
             input,
             documents,
             &enrichment_graph,
-            sanitize_session_chunks,
             &generation.generation,
             collection.clone(),
             emitter,

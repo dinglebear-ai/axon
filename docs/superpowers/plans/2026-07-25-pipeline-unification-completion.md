@@ -56,7 +56,9 @@ This is an honest in-progress ledger, not a completion claim.
 - Task 4 has the router cleanup plus a local registry-validation slice: the
   shared adapter registry now rejects duplicate names, missing matrix
   families, version drift, and capability/spec mismatches. Production
-  composition wiring and the remaining adapter-boundary work remain.
+  composition wiring and the remaining adapter-boundary work remain. The
+  registry/session metadata projection has also moved into the adapters, and
+  the shared runner no longer performs either family rewrite.
 - Tasks 5–12 have not started.
 
 ## Global Constraints

@@ -122,18 +122,21 @@ async fn registry_adapter_acquires_and_normalizes_source_documents() {
     assert_eq!(
         document
             .metadata
-            .get("pkg_registry")
+            .get("package_ecosystem")
             .and_then(|v| v.as_str()),
         Some("npm")
     );
     assert_eq!(
-        document.metadata.get("pkg_name").and_then(|v| v.as_str()),
+        document
+            .metadata
+            .get("package_name")
+            .and_then(|v| v.as_str()),
         Some("lodash")
     );
     assert_eq!(
         document
             .metadata
-            .get("pkg_version")
+            .get("package_version")
             .and_then(|v| v.as_str()),
         Some("4.17.21")
     );
@@ -183,18 +186,21 @@ async fn registry_adapter_resolves_a_newly_added_ecosystem_end_to_end() {
     assert_eq!(
         document
             .metadata
-            .get("pkg_registry")
+            .get("package_ecosystem")
             .and_then(|v| v.as_str()),
         Some("huggingface")
     );
     assert_eq!(
-        document.metadata.get("pkg_name").and_then(|v| v.as_str()),
+        document
+            .metadata
+            .get("package_name")
+            .and_then(|v| v.as_str()),
         Some("bert-base-uncased")
     );
     assert_eq!(
         document
             .metadata
-            .get("pkg_version")
+            .get("package_version")
             .and_then(|v| v.as_str()),
         Some("main")
     );

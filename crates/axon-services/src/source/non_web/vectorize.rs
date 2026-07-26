@@ -28,19 +28,13 @@ pub(super) async fn prepare_embed_publish(
     input: &NonWebPipelineInput<'_>,
     documents: Vec<SourceDocument>,
     enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
-    sanitize_session_chunks: bool,
     generation: &SourceGenerationId,
     collection: CollectionSpec,
     emitter: &SourceEventEmitter,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
     for source_batch in documents.chunks(DOCUMENT_BATCH_SIZE) {
-        let prepared = prepare_documents(
-            source_batch,
-            generation,
-            enrichment_graph,
-            sanitize_session_chunks,
-        )?;
+        let prepared = prepare_documents(source_batch, generation, enrichment_graph)?;
         for batch in chunk_batches(prepared) {
             let result =
                 vectorize_batch(runtime, input, batch, collection.clone(), emitter).await?;
@@ -55,7 +49,6 @@ fn prepare_documents(
     documents: &[SourceDocument],
     generation: &SourceGenerationId,
     enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
-    sanitize_session_chunks: bool,
 ) -> anyhow::Result<Vec<PreparedDocument>> {
     let preparer = DocumentPreparer::default();
     documents
@@ -67,7 +60,7 @@ fn prepare_documents(
                 .get(&document.source_item_key)
                 .cloned()
                 .unwrap_or_default();
-            let mut prepared = preparer
+            let prepared = preparer
                 .prepare(PrepareSourceDocumentRequest {
                     document,
                     generation: generation.clone(),
@@ -79,9 +72,6 @@ fn prepare_documents(
                 })
                 .map_err(|error| anyhow::anyhow!("failed to prepare {item_key}: {error}"))?
                 .document;
-            if sanitize_session_chunks {
-                sanitize_session_chunk_metadata(&mut prepared);
-            }
             Ok(prepared)
         })
         .collect()
@@ -415,22 +405,6 @@ async fn record_reservation(
         })
         .await?;
     Ok(())
-}
-
-fn sanitize_session_chunk_metadata(document: &mut PreparedDocument) {
-    const ALLOWED: &[&str] = &[
-        "session_provider",
-        "session_id",
-        "session_turn_index",
-        "session_tool_name",
-        "session_skill_name",
-    ];
-    for chunk in &mut document.chunks {
-        chunk.metadata.retain(|key, _| {
-            axon_vectors::payload::VECTOR_SHARED_FIELDS.contains(&key.as_str())
-                || ALLOWED.contains(&key.as_str())
-        });
-    }
 }
 
 #[cfg(test)]
