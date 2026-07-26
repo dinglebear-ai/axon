@@ -31,7 +31,7 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
-pub use super::crate_contracts_spec::{CrateContract, all_crate_contracts};
+pub use super::crate_contracts_spec::{CrateContract, LIVE_CRATE_NAMES, all_crate_contracts};
 
 const ADAPTER_VERTICAL_DEPS: &[&str] = &["axon-extract", "axon-parse"];
 
@@ -43,6 +43,7 @@ pub fn check(root: &Path) -> Result<()> {
         check_modules(root, contract, &mut violations);
         check_forbidden_deps(root, contract, &mut violations);
     }
+    check_live_crate_inventory(root, &mut violations);
     check_adapter_vertical_boundary(root, &mut violations);
 
     if violations.is_empty() {
@@ -57,6 +58,43 @@ pub fn check(root: &Path) -> Result<()> {
         violations.len(),
         violations.join("\n")
     );
+}
+
+fn check_live_crate_inventory(root: &Path, violations: &mut Vec<String>) {
+    let expected = LIVE_CRATE_NAMES
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let contracted = all_crate_contracts()
+        .map(|contract| contract.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    if contracted != expected {
+        violations.push(format!(
+            "crate-contract inventory differs from the 23 live crates: expected {expected:?}, found {contracted:?}"
+        ));
+    }
+
+    let crates_dir = root.join("crates");
+    let Ok(entries) = std::fs::read_dir(&crates_dir) else {
+        violations.push(format!(
+            "failed to read live crate directory {crates_dir:?}"
+        ));
+        return;
+    };
+    let on_disk = entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join("Cargo.toml").is_file())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect::<std::collections::BTreeSet<_>>();
+    let on_disk = on_disk
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    if on_disk != expected {
+        violations.push(format!(
+            "workspace crate inventory differs from the 23 live crates: expected {expected:?}, found {on_disk:?}"
+        ));
+    }
 }
 
 fn check_adapter_vertical_boundary(root: &Path, violations: &mut Vec<String>) {

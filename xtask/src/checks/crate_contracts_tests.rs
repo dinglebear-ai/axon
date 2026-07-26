@@ -1,5 +1,4 @@
 use super::*;
-use crate::checks::crate_contracts_spec::LIVE_CRATE_NAMES;
 use std::fs;
 
 fn write_crate(root: &Path, name: &str, lib_rs: &str, modules: &[&str], cargo_deps: &str) {
