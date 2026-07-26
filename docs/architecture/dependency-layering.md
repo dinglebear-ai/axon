@@ -60,9 +60,11 @@ effects, async-block body effects, and short-circuit Boolean right-hand sides
 merge as optional while calls inside those bodies are still scanned. Newly
 shadowed bindings remain isolated. Syntax-visible block tails, `if` branch
 results, and match-arm results—including branch-local tail bindings—propagate
-provider shape into local bindings and assignment targets. Whitelisted wrapper
-call/method chains, references/dereferences, and indexed provider-bearing
-values retain provider shape when used directly as method receivers. Custom
+provider shape into local bindings and assignment targets. Direct match-arm
+tails retain arm-pattern binding shape before the pattern scope closes.
+Whitelisted wrapper call/method chains, references/dereferences, and indexed
+provider-bearing values retain provider shape when used directly as method
+receivers. Custom
 interprocedural helper-return inference is intentionally outside this lexical
 gate's scope. `#[cfg(test)]` items and external modules reachable only through
 test declarations are excluded by transitive traversal from each crate root,

@@ -1362,6 +1362,41 @@ pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
 }
 
 #[test]
+fn direct_match_pattern_tail_binding_propagates_result_shape() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(maybe: Option<Store>, plain: Plain) {
+    let selected = match maybe {
+        Some(inner) => inner,
+        None => plain,
+    };
+    selected.search(request()).await;
+}
+
+pub async fn stabilize(provider: Store, plain: Plain, condition: bool) {
+    let mut carried = plain;
+    while condition {
+        let selected = match condition {
+            true => carried,
+            false => Plain::new(),
+        };
+        selected.fetch(request()).await;
+        carried = std::sync::Arc::clone(&provider);
+    }
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in ["provider-method:search", "provider-method:fetch"] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+}
+
+#[test]
 fn rust_2024_let_chain_bindings_flow_through_if_and_while_conditions() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());

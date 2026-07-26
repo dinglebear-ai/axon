@@ -32,6 +32,7 @@ pub(super) fn scan(syntax: &syn::File, rel: &str, reach_rules: &[ReachRule]) -> 
         aliases: AliasStack::default(),
         bindings: ProviderBindings::default(),
         block_result_shapes: BTreeMap::new(),
+        expression_result_shapes: BTreeMap::new(),
         findings: Vec::new(),
     };
     scanner.visit_file(syntax);
@@ -44,11 +45,15 @@ struct Scanner<'a> {
     aliases: AliasStack,
     bindings: ProviderBindings,
     block_result_shapes: BTreeMap<usize, ProviderShape>,
+    expression_result_shapes: BTreeMap<usize, ProviderShape>,
     findings: Vec<Finding>,
 }
 
 impl Scanner<'_> {
     fn expr_shape(&self, expr: &syn::Expr) -> ProviderShape {
+        if let Some(shape) = self.expression_result_shapes.get(&expr_key(expr)) {
+            return shape.clone();
+        }
         match expr {
             syn::Expr::Block(block) => self
                 .block_result_shapes
@@ -77,6 +82,12 @@ impl Scanner<'_> {
                 .unwrap_or(ProviderShape::Scalar(false)),
             _ => self.bindings.expr_shape(&self.aliases, expr),
         }
+    }
+
+    fn cache_expr_shape(&mut self, expr: &syn::Expr) {
+        self.expression_result_shapes.remove(&expr_key(expr));
+        let shape = self.expr_shape(expr);
+        self.expression_result_shapes.insert(expr_key(expr), shape);
     }
 
     fn record(&mut self, rule: impl Into<String>, detail: impl Into<String>) {
@@ -403,6 +414,10 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
 
 fn block_key(block: &Block) -> usize {
     std::ptr::from_ref(block).addr()
+}
+
+fn expr_key(expr: &syn::Expr) -> usize {
+    std::ptr::from_ref(expr).addr()
 }
 
 fn path_segments(path: &syn::Path) -> Vec<String> {

@@ -152,6 +152,7 @@ fn visit_match_arm(
         None
     };
     scanner.visit_expr(&node.body);
+    scanner.cache_expr_shape(&node.body);
     scanner.bindings.pop();
     (scanner.bindings.checkpoint(), guard_false_exit)
 }
