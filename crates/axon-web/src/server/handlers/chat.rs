@@ -1,6 +1,4 @@
 use super::super::error::HttpError;
-use axon_core::config::Config;
-use axon_llm::{CompletionRequest, LlmModelPurpose};
 use axon_services::client_contract::{RestChatRequest, RestChatResponse};
 use axon_services::context::ServiceContext;
 use axon_services::service_traits::{AskService, AskServiceImpl};
@@ -19,12 +17,6 @@ pub(super) fn validate_chat_message(message: &str) -> Result<(), HttpError> {
         )));
     }
     Ok(())
-}
-
-pub(super) fn completion_request(cfg: &Config, message: &str, stream: bool) -> CompletionRequest {
-    CompletionRequest::new(message)
-        .backend_from_config_for(cfg, LlmModelPurpose::Chat)
-        .stream(stream)
 }
 
 #[utoipa::path(
