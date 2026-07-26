@@ -39,11 +39,19 @@ production-ingress tests close the loop.
 
 This is an honest in-progress ledger, not a completion claim.
 
-- Task 1 has not started.
+- Task 1 completed locally on 2026-07-26: PR #468 was verified on
+  `origin/main`; host and Bookworm container 7.2.2 binaries were backed up,
+  built, installed atomically, and smoke-tested through the systemd service,
+  REST, and MCP. The existing container config was validated with the
+  migration dry-run; it required no file writes.
 - Task 2A–2C were merged before this worktree run (PRs #471, #474, and #475).
-- Task 2D is implemented locally in `f04f9f66e` and has passed its focused
-  docs/test/clippy checks, but is not pushed or merged.
-- Task 3 has not started; its Beads were claimed only.
+- Task 2D is implemented locally in `f04f9f66e` plus the artifact-canary
+  hardening in this worktree; its focused docs tests, docs drift check, and
+  clippy pass (36 tests).
+- Task 3 is now in progress locally: the test-only observation harness covers
+  web, local, and session fixtures and its shared phase/content/job assertions
+  pass. Cancellation/error-mapping and the remaining characterization cases
+  are still open.
 - Task 4 has one locally committed item (`0f75d2386`): the dead
   `SourceRouter::validate_options` post-route echo was removed. All other Task
   4 work remains.
@@ -286,15 +294,16 @@ real transport/ingress proof
 `axon:/mnt/axon-data/config.toml`; install paths
 `/home/jmagar/.local/bin/axon` and `axon:/usr/local/bin/axon`.
 
-- [ ] Verify PR `#468` is on `origin/main`; do not create another compose PR.
-- [ ] Back up both binaries and the validated container config with checksums.
-- [ ] Build the host binary from merged `main`.
-- [ ] Build a separate Bookworm-compatible binary for the Incus container.
-- [ ] Install with temporary files plus atomic rename.
-- [ ] Apply the already-validated config migration.
-- [ ] Restart and enforce a bounded health deadline.
-- [ ] Smoke host CLI, container service, REST, and MCP.
-- [ ] On any mixed version or failed health check, restore both binaries and
+- [x] Verify PR `#468` is on `origin/main`; do not create another compose PR.
+- [x] Back up both binaries and the validated container config with checksums.
+- [x] Build the host binary from merged `main`.
+- [x] Build a separate Bookworm-compatible binary for the Incus container.
+- [x] Install with temporary files plus atomic rename.
+- [x] Validate the already-applied config migration; no file rewrite was
+  needed, and the clean-break rewrite command remains dry-run-only.
+- [x] Restart and enforce a bounded health deadline.
+- [x] Smoke host CLI, container service, REST, and MCP.
+- [x] On any mixed version or failed health check, restore both binaries and
   configs and verify `7.1.5` health.
 
 This operation must not block Tasks 2–5.
@@ -353,7 +362,7 @@ modules named by `delivery/docs-generator-contract.md`.
   `GeneratedDocArtifact`.
 - [x] Make `--check` render in memory and byte-compare declared outputs without
   writing.
-- [ ] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
+- [x] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
   and secret/path canaries.
 - [x] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
   `events`, `providers`, and `schema`.

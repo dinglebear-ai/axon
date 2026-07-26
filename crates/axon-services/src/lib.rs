@@ -83,6 +83,9 @@ mod client_contract_tests;
 #[path = "source_observability_tests.rs"]
 mod source_observability_tests;
 #[cfg(test)]
+#[path = "source_pipeline_differential_tests.rs"]
+mod source_pipeline_differential_tests;
+#[cfg(test)]
 #[path = "source_web_job_identity_tests.rs"]
 mod source_web_job_identity_tests;
 #[cfg(test)]
