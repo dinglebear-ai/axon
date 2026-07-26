@@ -2,9 +2,12 @@ use axon_api::source::{
     ApiError, ErrorStage, JobId, LifecycleStatus, PipelinePhase, Severity, SourceProgressEvent,
     StreamEvent,
 };
-use axon_core::config::Config;
-use axon_llm::{self as llm, CompletionRequest, CompletionResponse};
 use axon_services::client_contract::{RestChatRequest, RestChatResponse};
+use axon_services::context::ServiceContext;
+use axon_services::service_traits::{
+    AskService, AskServiceImpl,
+    ask_service::{ChatDeltaHandler, ChatRequest, ChatResult},
+};
 use axum::{
     Extension, Json,
     response::{
@@ -15,7 +18,6 @@ use axum::{
 use futures_util::Stream;
 use std::{
     convert::Infallible,
-    error::Error as StdError,
     future::Future,
     pin::Pin,
     sync::{
@@ -66,12 +68,8 @@ fn event_name(event: &StreamEvent) -> &'static str {
     }
 }
 
-type CompletionError = Box<dyn StdError + Send + Sync>;
-type DeltaHandler = Box<dyn FnMut(&str) -> Result<(), CompletionError> + Send>;
-type CompletionFuture =
-    Pin<Box<dyn Future<Output = Result<CompletionResponse, CompletionError>> + Send>>;
-type CompleteStreamingFn =
-    Box<dyn FnOnce(CompletionRequest, DeltaHandler) -> CompletionFuture + Send>;
+type ChatStreamingFuture = Pin<Box<dyn Future<Output = Result<ChatResult, String>> + Send>>;
+type ChatStreamingFn = Box<dyn FnOnce(ChatRequest, ChatDeltaHandler) -> ChatStreamingFuture + Send>;
 
 struct AbortOnDropStream {
     rx: mpsc::Receiver<Result<Event, Infallible>>,
@@ -115,23 +113,25 @@ fn sse_json(event: &StreamEvent) -> Event {
     tag = "rag"
 )]
 pub async fn v1_chat_stream(
-    Extension(cfg): Extension<Arc<Config>>,
+    Extension(context): Extension<Arc<ServiceContext>>,
     Json(req): Json<RestChatRequest>,
 ) -> Response {
     if let Err(err) = super::chat::validate_chat_message(&req.message) {
         return err.into_response();
     }
 
-    let complete_streaming: CompleteStreamingFn =
-        Box::new(|request, on_delta| Box::pin(llm::complete_streaming(request, on_delta)));
-    v1_chat_stream_response((*cfg).clone(), req, complete_streaming)
+    let chat_streaming: ChatStreamingFn = Box::new(move |request, on_delta| {
+        Box::pin(async move {
+            AskServiceImpl::new(context)
+                .chat_stream(request, on_delta)
+                .await
+                .map_err(|error| error.to_string())
+        })
+    });
+    v1_chat_stream_response(req, chat_streaming)
 }
 
-fn v1_chat_stream_response(
-    req_cfg: Config,
-    req: RestChatRequest,
-    complete_streaming: CompleteStreamingFn,
-) -> Response {
+fn v1_chat_stream_response(req: RestChatRequest, chat_streaming: ChatStreamingFn) -> Response {
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
     let job_id = JobId::new(uuid::Uuid::new_v4());
@@ -153,10 +153,8 @@ fn v1_chat_stream_response(
         let delta_disconnected = Arc::clone(&disconnected);
         let delta_tx = tx.clone();
         let delta_sequence = Arc::clone(&sequence);
-        let request = super::chat::completion_request(&req_cfg, &req.message, true);
-        let model = request.model.clone();
         let message = req.message.clone();
-        let on_delta: DeltaHandler = Box::new(move |text| {
+        let on_delta: ChatDeltaHandler = Box::new(move |text| {
             if delta_disconnected.load(Ordering::Relaxed) {
                 return Ok(());
             }
@@ -172,9 +170,14 @@ fn v1_chat_stream_response(
             }
             Ok(())
         });
-        let result = complete_streaming(request, on_delta)
-            .await
-            .map_err(|err| err.to_string());
+        let result = chat_streaming(
+            ChatRequest {
+                session_id: None,
+                message: req.message,
+            },
+            on_delta,
+        )
+        .await;
 
         if disconnected.load(Ordering::Relaxed) {
             return;
@@ -184,8 +187,8 @@ fn v1_chat_stream_response(
             Ok(completion) => {
                 let response = RestChatResponse {
                     message,
-                    answer: completion.text,
-                    model,
+                    answer: completion.reply,
+                    model: completion.model,
                 };
                 let event =
                     StreamEvent::final_event(sequence.next(), &response).with_job_id(job_id);
@@ -223,16 +226,30 @@ pub(super) fn bounded_stream_for_tests(
 #[cfg(test)]
 pub(super) async fn v1_chat_stream_test_response(body: serde_json::Value) -> Response {
     let req = serde_json::from_value::<RestChatRequest>(body).expect("valid chat request");
-    v1_chat_stream(Extension(Arc::new(Config::default())), Json(req)).await
+    if let Err(err) = super::chat::validate_chat_message(&req.message) {
+        return err.into_response();
+    }
+    v1_chat_stream_response(
+        req,
+        Box::new(|request, _on_delta| {
+            Box::pin(async move {
+                Ok(ChatResult {
+                    session_id: "test-session".to_string(),
+                    reply: request.message,
+                    model: Some("test-model".to_string()),
+                })
+            })
+        }),
+    )
 }
 
 #[cfg(test)]
-pub(super) async fn v1_chat_stream_test_response_with_completion(
+pub(super) async fn v1_chat_stream_test_response_with_service(
     body: serde_json::Value,
-    complete_streaming: CompleteStreamingFn,
+    chat_streaming: ChatStreamingFn,
 ) -> Response {
     let req = serde_json::from_value::<RestChatRequest>(body).expect("valid chat request");
-    v1_chat_stream_response(Config::default(), req, complete_streaming)
+    v1_chat_stream_response(req, chat_streaming)
 }
 
 #[cfg(test)]
