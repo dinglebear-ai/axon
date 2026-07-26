@@ -661,7 +661,7 @@ queries.
 
 - [ ] Replace per-document status writes with bounded multi-row transactions;
   prove rollback and bind-count limits.
-- [ ] Replace quadratic status/manifest merge with one indexed map/set pass;
+- [x] Replace quadratic status/manifest merge with one indexed map/set pass;
   assert comparison count is linear.
 - [ ] Enforce actual encoded bytes after serialization and before every channel,
   artifact, and Qdrant batch; cap sparse entries and status records.
