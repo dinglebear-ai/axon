@@ -1,6 +1,5 @@
 use super::exceptions::{ManifestException, ReachException};
 
-const TASK_2: &str = "axon_rust-jc20j (Task 2 transport cutover)";
 const TASK_6: &str = "axon_rust-nl7au (Task 6 scheduler cutover)";
 const TASK_7: &str = "axon_rust-drahp (Task 7 pipeline collapse)";
 
@@ -15,18 +14,10 @@ macro_rules! reach {
     };
 }
 
-pub(super) const MANIFEST_EXCEPTIONS: &[ManifestException] = &[ManifestException {
-    path: "crates/axon-web/Cargo.toml",
-    dependency: "axon-llm",
-    table: "dependencies",
-    owner: TASK_2,
-    expected_count: 1,
-}];
+pub(super) const MANIFEST_EXCEPTIONS: &[ManifestException] = &[];
 
 #[rustfmt::skip]
 pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[
-    reach!("crates/axon-web/src/server/handlers/chat.rs", "reach:axon_llm", TASK_2, 5),
-    reach!("crates/axon-web/src/server/handlers/chat_stream.rs", "reach:axon_llm", TASK_2, 6),
     reach!("crates/axon-services/src/scrape.rs", "reach:axon_adapters::web_engine", TASK_7, 3),
     reach!("crates/axon-services/src/screenshot.rs", "reach:axon_adapters::web_engine", TASK_7, 2),
     reach!("crates/axon-services/src/endpoints/capture.rs", "reach:axon_adapters::web_engine", TASK_7, 1),
@@ -43,7 +34,6 @@ pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[
     reach!("crates/axon-web/src/server/handlers/graph.rs", "provider-op:GraphStore::get_edge", TASK_6, 1),
     reach!("crates/axon-web/src/server/handlers/graph.rs", "provider-op:GraphStore::query", TASK_6, 1),
     reach!("crates/axon-web/src/server/handlers/graph.rs", "provider-op:GraphStore::resolve", TASK_6, 1),
-    reach!("crates/axon-web/src/server/handlers/chat_stream.rs", "provider-op:axon_llm::complete_streaming", TASK_2, 1),
     reach!("crates/axon-services/src/context.rs", "provider-type:ArtifactStore", TASK_6, 2),
     reach!("crates/axon-services/src/context.rs", "provider-type:EmbeddingProvider", TASK_6, 2),
     reach!("crates/axon-services/src/context.rs", "provider-type:FetchProvider", TASK_6, 2),
@@ -134,6 +124,7 @@ pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[
     reach!("crates/axon-services/src/source/prune.rs", "provider-type:VectorStore", TASK_6, 6),
     reach!("crates/axon-services/src/search/synthesis.rs", "provider-op:axon_llm::complete_streaming", TASK_6, 1),
     reach!("crates/axon-services/src/service_traits/ask_service.rs", "provider-op:axon_llm::complete_text", TASK_6, 1),
+    reach!("crates/axon-services/src/service_traits/ask_service.rs", "provider-op:axon_llm::complete_streaming", TASK_6, 1),
     reach!("crates/axon-services/src/summarize.rs", "provider-op:axon_llm::complete_streaming", TASK_6, 1),
     reach!("crates/axon-services/src/endpoints.rs", "provider-type:NetworkCaptureProvider", TASK_6, 3),
     reach!("crates/axon-services/src/uploads.rs", "provider-type:ArtifactStore", TASK_6, 1),

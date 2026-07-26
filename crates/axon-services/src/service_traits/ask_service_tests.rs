@@ -1,5 +1,21 @@
 use super::*;
 
+#[test]
+fn chat_completion_request_uses_chat_model_without_rag_prompt() {
+    let cfg = axon_core::config::Config {
+        llm_backend: axon_llm::LlmBackendKind::OpenAiCompat,
+        openai_model: "synthesis-model".to_string(),
+        openai_chat_model: "chat-model".to_string(),
+        ..axon_core::config::Config::default()
+    };
+    let request = chat_completion_request(&cfg, "hello", true);
+
+    assert_eq!(request.user_prompt, "hello");
+    assert!(request.system_prompt.is_none());
+    assert_eq!(request.model.as_deref(), Some("chat-model"));
+    assert!(request.stream);
+}
+
 #[tokio::test]
 async fn fake_ask_service_ask_returns_seeded_answer() {
     let fake = FakeAskService::new();
@@ -42,6 +58,32 @@ async fn fake_ask_service_chat_echoes_message() {
         .await
         .expect("chat should succeed");
     assert!(result.reply.contains("hello"));
+}
+
+#[tokio::test]
+async fn fake_ask_service_chat_stream_emits_delta_and_returns_result() {
+    let fake = FakeAskService::new();
+    let deltas = Arc::new(Mutex::new(Vec::new()));
+    let observed = Arc::clone(&deltas);
+
+    let result = fake
+        .chat_stream(
+            ChatRequest {
+                session_id: Some("session-1".to_string()),
+                message: "hello".to_string(),
+            },
+            Box::new(move |delta| {
+                observed.lock().unwrap().push(delta.to_string());
+                Ok(())
+            }),
+        )
+        .await
+        .expect("streaming chat should succeed");
+
+    assert_eq!(*deltas.lock().unwrap(), ["fake reply to: hello"]);
+    assert_eq!(result.session_id, "session-1");
+    assert_eq!(result.reply, "fake reply to: hello");
+    assert_eq!(result.model.as_deref(), Some("fake-chat-model"));
 }
 
 #[tokio::test]

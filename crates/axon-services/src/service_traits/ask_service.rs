@@ -15,7 +15,10 @@
 //! `chat` calls the configured chat-purpose LLM backend directly. Conversation
 //! persistence is intentionally outside this request/response operation.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    error::Error as StdError,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use axon_api::mcp_schema::AskRequest;
@@ -38,6 +41,18 @@ pub struct ChatResult {
     pub model: Option<String>,
 }
 
+/// Error returned by a chat delta consumer.
+///
+/// A callback may use this to stop provider streaming when its bounded
+/// transport buffer is full or closed.
+pub type ChatStreamError = Box<dyn StdError + Send + Sync>;
+/// Transport-neutral consumer for incremental chat text.
+///
+/// Returning an error stops the provider stream. Dropping the
+/// [`AskService::chat_stream`] future is the cancellation signal used when a
+/// transport disconnects.
+pub type ChatDeltaHandler = Box<dyn FnMut(&str) -> Result<(), ChatStreamError> + Send>;
+
 /// Minimal local DTO for `AskService::evaluate` — the contract's
 /// `EvaluationRequest` has no `axon-api` analog and would only ever carry
 /// this one field today. See the module doc comment for the DTO-rule
@@ -51,6 +66,17 @@ pub struct EvaluationRequest {
 pub trait AskService: Send + Sync {
     async fn ask(&self, request: AskRequest) -> anyhow::Result<AskResult>;
     async fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResult>;
+    /// Stream direct-chat deltas and return the same final result shape as
+    /// [`AskService::chat`].
+    ///
+    /// Callback errors stop provider work (for example on transport
+    /// backpressure). Transports cancel an in-flight call by dropping this
+    /// future, which releases the provider future and its reservation.
+    async fn chat_stream(
+        &self,
+        request: ChatRequest,
+        on_delta: ChatDeltaHandler,
+    ) -> anyhow::Result<ChatResult>;
     async fn evaluate(&self, request: EvaluationRequest) -> anyhow::Result<EvaluateResult>;
     async fn suggest(&self, request: SuggestRequest) -> anyhow::Result<SuggestResult>;
 }
@@ -63,6 +89,16 @@ impl AskServiceImpl {
     pub fn new(ctx: Arc<ServiceContext>) -> Self {
         Self { ctx }
     }
+}
+
+fn chat_completion_request(
+    cfg: &axon_core::config::Config,
+    message: &str,
+    stream: bool,
+) -> axon_llm::CompletionRequest {
+    axon_llm::CompletionRequest::new(message)
+        .backend_from_config_for(cfg, axon_llm::LlmModelPurpose::Chat)
+        .stream(stream)
 }
 
 #[async_trait]
@@ -102,11 +138,34 @@ impl AskService for AskServiceImpl {
         if message.is_empty() {
             anyhow::bail!("chat message is required");
         }
-        let completion_request = axon_llm::CompletionRequest::new(message)
-            .backend_from_config_for(self.ctx.cfg(), axon_llm::LlmModelPurpose::Chat)
-            .stream(false);
+        let completion_request = chat_completion_request(self.ctx.cfg(), message, false);
         let model = completion_request.model.clone();
         let completion = axon_llm::complete_text(completion_request)
+            .await
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        Ok(ChatResult {
+            session_id: request
+                .session_id
+                .unwrap_or_else(|| format!("chat_{}", uuid::Uuid::new_v4().simple())),
+            reply: completion.text,
+            model,
+        })
+    }
+
+    async fn chat_stream(
+        &self,
+        request: ChatRequest,
+        on_delta: ChatDeltaHandler,
+    ) -> anyhow::Result<ChatResult> {
+        if request.message.trim().is_empty() {
+            anyhow::bail!("chat message is required");
+        }
+        // The streaming REST route historically validated with `trim()` but
+        // passed the original message bytes to the provider. Preserve that
+        // behavior at the service boundary.
+        let completion_request = chat_completion_request(self.ctx.cfg(), &request.message, true);
+        let model = completion_request.model.clone();
+        let completion = axon_llm::complete_streaming(completion_request, on_delta)
             .await
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
         Ok(ChatResult {
@@ -205,6 +264,16 @@ impl AskService for FakeAskService {
             reply: format!("fake reply to: {}", request.message),
             model: Some("fake-chat-model".to_string()),
         })
+    }
+
+    async fn chat_stream(
+        &self,
+        request: ChatRequest,
+        mut on_delta: ChatDeltaHandler,
+    ) -> anyhow::Result<ChatResult> {
+        let result = self.chat(request).await?;
+        on_delta(&result.reply).map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        Ok(result)
     }
 
     async fn evaluate(&self, request: EvaluationRequest) -> anyhow::Result<EvaluateResult> {

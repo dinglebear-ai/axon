@@ -1,4 +1,4 @@
-use axon_llm::CompletionResponse;
+use axon_services::service_traits::ask_service::ChatResult;
 use axum::{body::to_bytes, http::StatusCode, response::sse::Event};
 use std::convert::Infallible;
 use std::sync::{
@@ -32,16 +32,17 @@ async fn v1_chat_stream_rejects_unknown_fields() {
 
 #[tokio::test]
 async fn v1_chat_stream_emits_meta_delta_done_sequence() {
-    let response = super::v1_chat_stream_test_response_with_completion(
+    let response = super::v1_chat_stream_test_response_with_service(
         serde_json::json!({
             "message": "hello"
         }),
-        Box::new(|_request, mut on_delta| {
+        Box::new(|request, mut on_delta| {
             Box::pin(async move {
-                on_delta("hello")?;
-                Ok(CompletionResponse {
-                    text: "hello".to_string(),
-                    usage: None,
+                on_delta("hello").map_err(|error| error.to_string())?;
+                Ok(ChatResult {
+                    session_id: "session-1".to_string(),
+                    reply: "hello".to_string(),
+                    model: Some(format!("model-for-{}", request.message)),
                 })
             })
         }),
@@ -59,6 +60,87 @@ async fn v1_chat_stream_emits_meta_delta_done_sequence() {
     let done = body.find("event: done").expect("done event");
     assert!(progress < delta, "{body}");
     assert!(delta < done, "{body}");
+}
+
+#[tokio::test]
+async fn chat_stream_preserves_raw_message_and_final_payload() {
+    let observed_message = Arc::new(std::sync::Mutex::new(None));
+    let service_message = Arc::clone(&observed_message);
+    let response = super::v1_chat_stream_test_response_with_service(
+        serde_json::json!({
+            "message": "  hello  "
+        }),
+        Box::new(move |request, _on_delta| {
+            *service_message.lock().unwrap() = Some(request.message);
+            Box::pin(async move {
+                Ok(ChatResult {
+                    session_id: "session-raw".to_string(),
+                    reply: "answer".to_string(),
+                    model: Some("chat-model".to_string()),
+                })
+            })
+        }),
+    )
+    .await;
+
+    let body = to_bytes(response.into_body(), 16 * 1024)
+        .await
+        .expect("SSE body");
+    let body = std::str::from_utf8(&body).expect("SSE body is utf8");
+
+    assert_eq!(
+        observed_message.lock().unwrap().as_deref(),
+        Some("  hello  ")
+    );
+    assert!(body.contains("\"message\":\"  hello  \""), "{body}");
+    assert!(body.contains("\"answer\":\"answer\""), "{body}");
+    assert!(body.contains("\"model\":\"chat-model\""), "{body}");
+}
+
+#[tokio::test]
+async fn dropping_response_cancels_in_flight_service_future() {
+    struct CancellationFlag(Arc<AtomicBool>);
+    impl Drop for CancellationFlag {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let started = Arc::new(AtomicBool::new(false));
+    let canceled = Arc::new(AtomicBool::new(false));
+    let service_started = Arc::clone(&started);
+    let service_canceled = Arc::clone(&canceled);
+    let response = super::v1_chat_stream_test_response_with_service(
+        serde_json::json!({
+            "message": "hello"
+        }),
+        Box::new(move |_request, _on_delta| {
+            Box::pin(async move {
+                let _cancellation_flag = CancellationFlag(service_canceled);
+                service_started.store(true, Ordering::SeqCst);
+                std::future::pending::<Result<ChatResult, String>>().await
+            })
+        }),
+    )
+    .await;
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while !started.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("service future should start");
+
+    drop(response);
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while !canceled.load(Ordering::SeqCst) {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("dropping transport response should cancel service future");
 }
 
 #[test]
