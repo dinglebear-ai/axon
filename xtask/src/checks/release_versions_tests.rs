@@ -83,6 +83,37 @@ version = "1.2.3"
 }
 
 #[test]
+fn package_lock_writer_updates_root_and_workspace_package_versions() {
+    let content = r#"{
+  "name": "@axon/admin-panel",
+  "version": "7.2.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "@axon/admin-panel",
+      "version": "7.2.0"
+    },
+    "node_modules/example": {
+      "version": "7.2.0"
+    }
+  }
+}"#;
+
+    let updated = replace_npm_package_lock_version(content, Some("@axon/admin-panel"), "7.2.1")
+        .expect("package-lock versions update");
+
+    assert_eq!(
+        read_npm_package_lock_version(&updated, Some("@axon/admin-panel")).expect("version"),
+        "7.2.1"
+    );
+    assert!(updated.contains(
+        r#""node_modules/example": {
+      "version": "7.2.0""#
+    ));
+}
+
+#[test]
 fn read_workspace_package_version_present_and_absent() {
     let with = r#"[workspace.package]
 version = "5.19.0"
