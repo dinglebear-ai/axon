@@ -17,12 +17,12 @@
 //! metadata already embedded in each family's generated JSON schema
 //! artifact.
 
+mod artifact;
 mod examples;
+mod families;
 mod generate;
-mod header;
 mod inventory;
 mod links;
-mod manifest;
 
 use std::path::Path;
 
@@ -37,10 +37,22 @@ pub struct DocsArgs {
 
 #[derive(Debug, Subcommand)]
 enum DocsCommand {
-    /// Rewrite generated-doc headers and (re)write the source-input manifest.
+    /// Render every implemented documentation family.
     Generate(DocsGenerateArgs),
-    /// Run docs drift/link/inventory checks without writing any files.
-    Check,
+    /// Validate generated documentation without writing any files.
+    Check(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    ApiDto(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    ApiEnums(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    Adapters(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    Events(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    Providers(DocsGenerateArgs),
+    /// Render one critical documentation family.
+    Schema(DocsGenerateArgs),
 }
 
 #[derive(Debug, Args, Clone, Default)]
@@ -51,13 +63,44 @@ pub struct DocsGenerateArgs {
     pub check: bool,
     /// Restrict to one family slug (e.g. `cli`, `openapi`, `mcp`).
     #[arg(long)]
-    pub family: Option<String>,
+    pub family: Option<families::DocsFamily>,
+    /// Print generated content rather than writing it.
+    #[arg(long)]
+    pub print: bool,
+    /// Emit a machine-readable generation/check report.
+    #[arg(long)]
+    pub json: bool,
+    /// Reserved for fixture maintenance; never permitted in CI.
+    #[arg(long)]
+    pub update_snapshots: bool,
 }
 
 pub fn run(root: &Path, args: DocsArgs) -> Result<()> {
     match args.command {
         DocsCommand::Generate(gen_args) => generate::run(root, &gen_args),
-        DocsCommand::Check => check(root),
+        DocsCommand::Check(mut args) => {
+            args.check = true;
+            generate::run(root, &args)?;
+            check(root)
+        }
+        DocsCommand::ApiDto(args) => {
+            generate::run_single(root, families::DocsFamily::ApiDto, &args)
+        }
+        DocsCommand::ApiEnums(args) => {
+            generate::run_single(root, families::DocsFamily::ApiEnums, &args)
+        }
+        DocsCommand::Adapters(args) => {
+            generate::run_single(root, families::DocsFamily::Adapters, &args)
+        }
+        DocsCommand::Events(args) => {
+            generate::run_single(root, families::DocsFamily::Events, &args)
+        }
+        DocsCommand::Providers(args) => {
+            generate::run_single(root, families::DocsFamily::Providers, &args)
+        }
+        DocsCommand::Schema(args) => {
+            generate::run_single(root, families::DocsFamily::Schema, &args)
+        }
     }
 }
 
