@@ -602,9 +602,9 @@ artifact registry/store owners, source crash/parity sidecars.
 
 ### Auth snapshot and panel
 
-- [ ] Preserve `axon_read_scope_satisfies_write_routes` compatibility coverage.
-- [ ] Preserve/add `explicit_scope_check_rejects_broad_widening`.
-- [ ] Require literal `axon:write` for mutating search/research in REST and MCP.
+- [x] Preserve `axon_read_scope_satisfies_write_routes` compatibility coverage.
+- [x] Preserve/add `explicit_scope_check_rejects_broad_widening`.
+- [x] Require literal `axon:write` for mutating search/research in REST and MCP.
 - [ ] Persist exact caller snapshots for search, query, ask, retrieve, retry,
   recovery, watch, and child jobs; add no-escalation tests across attempts.
 - [ ] Derive effective priority server-side and audit downgrades.
@@ -669,7 +669,7 @@ queries.
   buffers, vectors, statuses, graph candidates, and artifact metadata.
 - [ ] Reject an indivisible oversized item with a structured error; prove split
   logic always makes forward progress.
-- [ ] Make `embed=false` skip collection ensure/create.
+- [x] Make `embed=false` skip collection ensure/create.
 - [ ] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
   config with per-key singleflight, bounded TTL/negative behavior, and explicit
   invalidation.
