@@ -2,7 +2,7 @@
 //! the per-crate implementation contracts in
 //! `docs/pipeline-unification/crates/<name>/README.md`.
 //!
-//! Three assertions, derived from the README text and the completed vertical
+//! Four assertions, derived from the README text and the completed vertical
 //! ownership cutover (see
 //! `crate_contracts_spec.rs` for how each crate's data was extracted):
 //!
@@ -19,13 +19,12 @@
 //!    edges: `axon-adapters` depends on both `axon-extract` implementations and
 //!    `axon-parse` artifacts, while neither lower crate may depend back on
 //!    `axon-adapters`.
+//! 4. The static 23-crate contract inventory exactly matches both root
+//!    `[workspace].members` and Cargo manifests under `crates/`; duplicate
+//!    contract rows and count drift are rejected.
 //!
-//! This is a standalone check, not part of the `cargo xtask check` aggregate:
-//! unlike the other aggregate checks, it is expected to currently fail when a
-//! crate's real shape has drifted from its contract, and that failure is the
-//! point — it is a genuine implementation gap, not a false positive. Run it
-//! explicitly (`cargo xtask check-crate-contracts`) to see current alignment
-//! status.
+//! The check is also part of the `cargo xtask check` aggregate. Run it
+//! explicitly with `cargo xtask check-crate-contracts`.
 
 use std::path::Path;
 
@@ -61,38 +60,126 @@ pub fn check(root: &Path) -> Result<()> {
 }
 
 fn check_live_crate_inventory(root: &Path, violations: &mut Vec<String>) {
+    let contract_rows = all_crate_contracts()
+        .map(|contract| contract.name.to_owned())
+        .collect::<Vec<_>>();
+    let workspace_members = workspace_crate_members(root, violations);
+    let on_disk = on_disk_crates(root, violations);
+    compare_live_inventory(&contract_rows, &workspace_members, &on_disk, violations);
+}
+
+fn workspace_crate_members(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+    let manifest_path = root.join("Cargo.toml");
+    let text = match std::fs::read_to_string(&manifest_path) {
+        Ok(text) => text,
+        Err(error) => {
+            violations.push(format!("failed to read root Cargo.toml: {error}"));
+            return Vec::new();
+        }
+    };
+    let parsed = match toml::from_str::<toml::Table>(&text) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            violations.push(format!("failed to parse root Cargo.toml: {error}"));
+            return Vec::new();
+        }
+    };
+    let Some(members) = parsed
+        .get("workspace")
+        .and_then(toml::Value::as_table)
+        .and_then(|workspace| workspace.get("members"))
+        .and_then(toml::Value::as_array)
+    else {
+        violations.push("root Cargo.toml has no [workspace].members array".to_owned());
+        return Vec::new();
+    };
+    let mut crates = Vec::new();
+    for member in members {
+        let Some(member) = member.as_str() else {
+            violations.push("root [workspace].members contains a non-string entry".to_owned());
+            continue;
+        };
+        if let Some(name) = member.strip_prefix("crates/")
+            && !name.is_empty()
+            && !name.contains('/')
+        {
+            crates.push(name.to_owned());
+        }
+    }
+    crates
+}
+
+fn on_disk_crates(root: &Path, violations: &mut Vec<String>) -> Vec<String> {
+    let crates_dir = root.join("crates");
+    let entries = match std::fs::read_dir(&crates_dir) {
+        Ok(entries) => entries,
+        Err(error) => {
+            violations.push(format!(
+                "failed to read live crate directory {crates_dir:?}: {error}"
+            ));
+            return Vec::new();
+        }
+    };
+    let mut crates = Vec::new();
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                violations.push(format!("failed to read entry under crates/: {error}"));
+                continue;
+            }
+        };
+        if entry.path().join("Cargo.toml").is_file() {
+            match entry.file_name().into_string() {
+                Ok(name) => crates.push(name),
+                Err(_) => violations.push("crates/ contains a non-UTF-8 crate name".to_owned()),
+            }
+        }
+    }
+    crates
+}
+
+fn compare_live_inventory(
+    contract_rows: &[String],
+    workspace_members: &[String],
+    on_disk: &[String],
+    violations: &mut Vec<String>,
+) {
+    use std::collections::{BTreeMap, BTreeSet};
+
     let expected = LIVE_CRATE_NAMES
         .iter()
-        .copied()
-        .collect::<std::collections::BTreeSet<_>>();
-    let contracted = all_crate_contracts()
-        .map(|contract| contract.name)
-        .collect::<std::collections::BTreeSet<_>>();
-    if contracted != expected {
-        violations.push(format!(
-            "crate-contract inventory differs from the 23 live crates: expected {expected:?}, found {contracted:?}"
-        ));
+        .map(|name| (*name).to_owned())
+        .collect::<BTreeSet<_>>();
+    for (label, rows) in [
+        ("crate-contract", contract_rows),
+        ("workspace member", workspace_members),
+        ("on-disk crate", on_disk),
+    ] {
+        let mut counts = BTreeMap::new();
+        for row in rows {
+            *counts.entry(row).or_insert(0usize) += 1;
+        }
+        for (name, count) in counts.iter().filter(|(_, count)| **count > 1) {
+            violations.push(format!(
+                "{label} inventory has duplicate `{name}` ({count} rows)"
+            ));
+        }
+        let found = counts
+            .keys()
+            .map(|name| (*name).clone())
+            .collect::<BTreeSet<_>>();
+        if found != expected {
+            violations.push(format!(
+                "{label} inventory differs from the 23 live crates: expected {expected:?}, found {found:?}"
+            ));
+        }
     }
-
-    let crates_dir = root.join("crates");
-    let Ok(entries) = std::fs::read_dir(&crates_dir) else {
+    if contract_rows.len() != LIVE_CRATE_NAMES.len() {
         violations.push(format!(
-            "failed to read live crate directory {crates_dir:?}"
-        ));
-        return;
-    };
-    let on_disk = entries
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().join("Cargo.toml").is_file())
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect::<std::collections::BTreeSet<_>>();
-    let on_disk = on_disk
-        .iter()
-        .map(String::as_str)
-        .collect::<std::collections::BTreeSet<_>>();
-    if on_disk != expected {
-        violations.push(format!(
-            "workspace crate inventory differs from the 23 live crates: expected {expected:?}, found {on_disk:?}"
+            "crate-contract row count differs from the exact live inventory: expected {}, found {}",
+            LIVE_CRATE_NAMES.len(),
+            contract_rows.len()
         ));
     }
 }

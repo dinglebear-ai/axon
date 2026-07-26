@@ -1,6 +1,6 @@
 # Dependency Layering
 
-Last Modified: 2026-07-19
+Last Modified: 2026-07-25
 
 The Cargo workspace enforces a strict dependency direction: lower crates must
 not depend on higher ones, and transports must not reach into domain-crate
@@ -36,40 +36,33 @@ axon                  (root binary bootstrap)
 
 ## What `check-layering` enforces
 
-The check reads all non-test `.rs` files in `crates/axon-{cli,web,mcp}/src`
-(test files — `*/tests/*`, `*_tests.rs`, `*_test.rs` — are skipped) and fails
-on any `use`/reference to these forbidden domain-internal prefixes:
+The check parses all non-test `.rs` files under the three transport crates and
+`axon-services` with `syn`. Grouped, multiline, and renamed imports are
+resolved structurally; comments and string literals are not scanned as code.
+An unreadable source tree/file, malformed Rust file, unreadable manifest, or
+malformed manifest fails closed.
 
-- `axon_crawl::engine::`
-- `axon_extract::registry::`
-- `axon_extract::verticals::`
-- `axon_ingest::github::` / `axon_ingest::rss::` / `axon_ingest::youtube::`
-- `axon_vector::ops::`
+It rejects:
 
-These prefixes reference the legacy single-purpose crates that were folded
-into the unified pipeline. The forbidden list is retained as a guardrail so
-they cannot silently reappear.
+- transport access to `axon-adapters::web_engine`, `axon-llm`, private
+  `axon-services::source` execution modules, and selected domain internals;
+- transport manifest dependencies on `axon-adapters`, `axon-embedding`,
+  `axon-llm`, `axon-retrieval`, or `axon-vectors`, in normal, dev, or build
+  dependency tables;
+- raw `EmbeddingProvider`, `VectorStore`, `FetchProvider`, `RenderProvider`,
+  `GraphStore`, `ArtifactStore`, and `LlmProvider` type/import/UFCS access;
+- raw provider-handle member access outside the fixed
+  `crates/axon-services/src/reserved_call.rs` scheduler facade.
 
-### Grandfathered allowlist
+### Exact temporary exceptions
 
-A small, fixed set of pre-existing reaches are allowed (documented as
-transitional debt — **do not extend**):
-
-| File | Allowed prefix |
-|---|---|
-| `crates/axon-cli/src/commands/crawl/audit/sitemap.rs` | `axon_crawl::engine::` |
-| `crates/axon-cli/src/commands/scrape.rs` | `axon_crawl::engine::`, `axon_vector::ops::` |
-| `crates/axon-cli/src/commands/sources.rs`, `stats.rs` | `axon_vector::ops::` |
-| `crates/axon-mcp/src/server/artifacts/respond.rs` | `axon_crawl::engine::`, `axon_vector::ops::` |
-| `crates/axon-web/src/server/handlers/rest/sync_post.rs` | `axon_crawl::engine::`, `axon_vector::ops::` |
-
-### PR9 provider-crate surface ban
-
-The three "PR9 provider crates" — `axon-embedding`, `axon-vectors`,
-`axon-retrieval` — must NOT appear as a dependency (`[dependencies]`,
-`[dev-dependencies]`, or `[build-dependencies]`) of any transport manifest
-(`crates/axon-{cli,web,mcp}/Cargo.toml`). Transports reach vector/embedding/
-retrieval behavior through `axon-services`, never directly.
+Existing cutover debt is not a broad allowlist. Every exception records the
+exact path, structural rule, owning bead, and expected occurrence count.
+Manifest exceptions additionally record the exact dependency table. New or
+excess occurrences, removed/stale entries, duplicate exception rows, invalid
+owners, and table drift all fail the check. The table lives in
+`xtask/src/checks/layering/exception_table.rs`; do not widen or recalculate an
+entry merely to make a new reach pass.
 
 ## Invariants
 
@@ -103,9 +96,9 @@ cargo xtask check-layering     # the layering check alone
 cargo xtask check              # aggregate (layering + crate-contracts + others)
 ```
 
-The check currently passes clean. The grandfathered allowlist is the only
-remaining debt; each item is a candidate for a follow-up that routes the call
-through `axon-services` instead.
+The check currently passes with exact-count debt owned by the named pipeline
+cutover beads. Removing a raw reach requires reducing or deleting its matching
+exception in the same change.
 
 If the layering rules change, update this file and
 [`xtask/src/checks/layering.rs`](../../xtask/src/checks/layering.rs) in the
