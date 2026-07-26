@@ -3,3 +3,4 @@
 # Migrations are append-only once merged because SQLx stores checksums in
 # live SQLite databases. To change an applied migration, add a new migration instead.
 0001_ledger_lifecycle.sql 35bba474025d7b4f0609a90d8e8fdbab1a9fbff27e602e5d3a86d77f7337adec2dac887c44dae88551690988d5e26682
+0002_publication_state.sql 3e7392459d23131eb009211fc142b9bef408272c35931c89dd62ed749f0fe4e20138eeedab8b4605f5d562aac2f39268
