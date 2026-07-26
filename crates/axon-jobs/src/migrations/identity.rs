@@ -35,6 +35,7 @@ const CANONICAL_TABLES: &[&str] = &[
     "source_generations",
     "source_items",
     "source_manifests",
+    "source_publication_state",
     "sources",
 ];
 
@@ -147,6 +148,13 @@ const CANONICAL_FOREIGN_KEYS: &[(&str, &str, &str, &str, &str)] = &[
     ),
     (
         "source_generations",
+        "source_id",
+        "sources",
+        "source_id",
+        "CASCADE",
+    ),
+    (
+        "source_publication_state",
         "source_id",
         "sources",
         "source_id",

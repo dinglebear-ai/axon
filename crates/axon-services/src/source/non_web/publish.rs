@@ -67,6 +67,13 @@ pub(super) async fn publish(
     diff: &SourceManifestDiff,
     embed: bool,
 ) -> anyhow::Result<SourceGeneration> {
+    let published = ledger
+        .publish_generation(PublishGenerationRequest {
+            source_id: generation.source_id.clone(),
+            generation: generation.generation.clone(),
+            expected_previous_generation: generation.previous_generation.clone(),
+        })
+        .await?;
     if embed {
         vector_store
             .mark_generation_committed(
@@ -92,13 +99,7 @@ pub(super) async fn publish(
                 .await?;
         }
     }
-    Ok(ledger
-        .publish_generation(PublishGenerationRequest {
-            source_id: generation.source_id.clone(),
-            generation: generation.generation.clone(),
-            expected_previous_generation: generation.previous_generation.clone(),
-        })
-        .await?)
+    Ok(published)
 }
 
 pub(super) fn published_status(status: &DocumentStatus) -> DocumentStatus {
