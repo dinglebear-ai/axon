@@ -37,7 +37,8 @@ pub async fn stats(cfg: &Config) -> Result<StatsResult, Box<dyn Error>> {
 /// sample ([`qdrant_fetch::sample_indexed_token_stats`]), and SQLite job
 /// metrics ([`sqlite::collect_job_metrics`]). Ports legacy `stats_payload`.
 async fn stats_payload(cfg: &Config) -> Result<serde_json::Value, Box<dyn Error>> {
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let (info, points_count, docs_embedded) =
         qdrant_fetch::fetch_qdrant_snapshots(cfg, &store).await?;
 

@@ -130,7 +130,8 @@ pub async fn sources_for_domain(
         return Err(PayloadParseError::new("domain sources use cursor, not offset").into());
     }
     let limit = pagination.limit.clamp(1, DOMAIN_SOURCES_MAX_LIMIT);
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let (urls, next_cursor) = store
         .urls_for_domain_page(&cfg.collection, &normalized, limit, cursor)
         .await
@@ -184,7 +185,8 @@ pub async fn sources(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<SourcesResult, Box<dyn Error>> {
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let payload = sources_payload(&store, cfg, pagination.limit, pagination.offset).await?;
     Ok(map_sources_payload(&payload)?)
 }

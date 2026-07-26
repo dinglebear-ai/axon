@@ -76,15 +76,15 @@ fn chunked_upsert_batches_partition_sparse_vectors_once() {
 
 #[test]
 fn chunked_upsert_batches_scale_without_losing_or_reordering_points() {
-    let point_count = UPSERT_BATCH_SIZE * 8 + 17;
-    let chunks =
-        ChunkedUpsertBatches::new(batch(point_count), UPSERT_BATCH_SIZE).collect::<Vec<_>>();
+    let point_buffer = 512;
+    let point_count = point_buffer * 8 + 17;
+    let chunks = ChunkedUpsertBatches::new(batch(point_count), point_buffer).collect::<Vec<_>>();
 
     assert_eq!(chunks.len(), 9);
     assert!(
         chunks
             .iter()
-            .all(|chunk| chunk.points.len() <= UPSERT_BATCH_SIZE)
+            .all(|chunk| chunk.points.len() <= point_buffer)
     );
     let point_ids = chunks
         .iter()

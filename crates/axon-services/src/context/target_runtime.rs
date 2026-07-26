@@ -46,7 +46,8 @@ pub struct TargetReadStores {
 pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
     let identity = resolve_embedding_identity(cfg).await;
     let embedding_provider = build_tei_provider(cfg, &identity);
-    let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
     TargetReadStores {
         vector_store: Arc::new(vector_store),
         embedding_provider: Arc::new(embedding_provider),
@@ -200,7 +201,8 @@ impl TargetLocalSourceRuntime {
         let identity = resolve_embedding_identity(cfg).await;
         let embedding_provider = build_tei_provider(cfg, &identity);
 
-        let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+        let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+        axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);

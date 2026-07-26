@@ -452,7 +452,7 @@ characterization; no ignored red test lands.
 **Files:** existing `JobStagePlan`/`PipelinePhase` owners in `axon-api`,
 `axon-jobs`, `axon-observe`, and source service stage tests.
 
-- [ ] Extend the existing phase descriptor with stable id, applicability,
+- [x] Extend the existing phase descriptor with stable id, applicability,
   allowed skip, and transition rules.
 - [ ] Make every mutating stage accept `(job_id, attempt, stage_id, fence)`.
 - [ ] Make stale/process-crash recovery increment attempt; allow same-attempt
@@ -673,7 +673,7 @@ queries.
 - [ ] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
   config with per-key singleflight, bounded TTL/negative behavior, and explicit
   invalidation.
-- [ ] Wire `qdrant-point-buffer` as the only vector item limit and delete
+- [x] Wire `qdrant-point-buffer` as the only vector item limit and delete
   `UPSERT_BATCH_SIZE`.
 - [ ] Consume/document source concurrency or delete the dead knob.
 - [ ] Limit concurrent DB stages with a semaphore derived from pool size while

@@ -58,7 +58,7 @@ impl QdrantVectorStore {
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
             .await?;
-        upsert_batches_rest(&http, &spec, batch, stage).await
+        upsert_batches_rest(&http, &spec, batch, self.point_buffer, stage).await
     }
 
     pub(super) async fn delete_inner(
