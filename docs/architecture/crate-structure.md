@@ -1,10 +1,10 @@
 # Crate Structure
 
-Last Modified: 2026-07-19
+Last Modified: 2026-07-26
 
 Axon is a Cargo workspace: a thin root `axon` binary that delegates to
 `axon-cli`, plus 23 focused crates under `crates/`. All crates inherit the
-product version via `version.workspace = true` (currently 7.1.5, edition 2024,
+product version via `version.workspace = true` (currently 7.2.0, edition 2024,
 rust-version 1.94.0).
 
 > The contract target for this layout lives at
@@ -90,7 +90,7 @@ edges, read from each crate's `Cargo.toml`.
 |---|---|---|
 | `axon-mcp` | MCP transport: single `axon` tool, `action`/`subaction` routing | `axon-api`, `axon-authz`, `axon-core`, `axon-services` |
 | `axon-web` | REST/OpenAPI/panel transport (Axum) | `axon-api`, `axon-authz`, `axon-core`, `axon-error`, `axon-jobs`, `axon-llm`, `axon-services` |
-| `axon-cli` | CLI transport (clap parser, rendering) | `axon-adapters`, `axon-api`, `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web` |
+| `axon-cli` | CLI transport (clap parser, rendering) | `axon-api`, `axon-core`, `axon-jobs`, `axon-mcp`, `axon-services`, `axon-web` |
 
 ### Binary
 
