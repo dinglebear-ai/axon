@@ -499,6 +499,35 @@ async fn mark_generation_committed_updates_visibility_and_document_status() {
 }
 
 #[tokio::test]
+async fn retire_generation_marks_only_the_previous_epoch() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    store
+        .retire_generation(
+            "axon-test".to_string(),
+            SourceId::new("src-a"),
+            SourceGenerationId::new("gen_7"),
+            SourceGenerationId::new("gen_8"),
+        )
+        .await
+        .unwrap();
+
+    let points = store.points("axon-test").await;
+    let old = points
+        .iter()
+        .find(|point| point.point_id == VectorPointId::new("point-a"))
+        .unwrap();
+    let current = points
+        .iter()
+        .find(|point| point.point_id == VectorPointId::new("point-b"))
+        .unwrap();
+    assert_eq!(old.payload["retired_epoch"], json!(8));
+    assert!(current.payload["retired_epoch"].is_null());
+}
+
+#[tokio::test]
 async fn fake_vector_store_rejects_invalid_search_filter_shapes() {
     let store = FakeVectorStore::new("fake-vector");
     store.ensure_collection(collection()).await.unwrap();

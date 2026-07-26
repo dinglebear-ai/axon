@@ -98,6 +98,16 @@ pub(super) async fn publish(
                 )
                 .await?;
         }
+        if let Some(previous) = generation.previous_generation.clone() {
+            vector_store
+                .retire_generation(
+                    collection.collection.clone(),
+                    generation.source_id.clone(),
+                    previous,
+                    generation.generation.clone(),
+                )
+                .await?;
+        }
     }
     Ok(published)
 }

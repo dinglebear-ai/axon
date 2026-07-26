@@ -52,6 +52,7 @@ pub(super) const LOW_COLLISION_PROVIDER_METHODS: &[&str] = &[
     "ensure_collection",
     "mark_generation_committed",
     "mark_unchanged_items_committed",
+    "retire_generation",
     "upsert_candidates",
     "put_bytes",
     "complete_streaming",

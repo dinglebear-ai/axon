@@ -112,6 +112,7 @@ pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[
     reach!("crates/axon-services/src/source/non_web/publish.rs", "provider-type:VectorStore", TASK_6, 2),
     reach!("crates/axon-services/src/source/non_web/publish.rs", "provider-method:mark_generation_committed", TASK_6, 1),
     reach!("crates/axon-services/src/source/non_web/publish.rs", "provider-method:mark_unchanged_items_committed", TASK_6, 1),
+    reach!("crates/axon-services/src/source/non_web/publish.rs", "provider-method:retire_generation", TASK_6, 1),
     reach!("crates/axon-services/src/source/non_web/vectorize.rs", "provider-handle:embedding_provider", TASK_6, 1),
     reach!("crates/axon-services/src/source/non_web/vectorize.rs", "provider-handle:vector_store", TASK_6, 1),
     reach!("crates/axon-services/src/source/non_web/vectorize.rs", "provider-method:embed", TASK_6, 1),
