@@ -392,6 +392,19 @@ fn missing_manifest_and_source_tree_fail_closed() {
 }
 
 #[test]
+fn missing_crate_root_fails_closed_even_when_unreachable_rust_files_exist() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    fs::remove_file(temp.path().join("crates/axon-services/src/lib.rs")).unwrap();
+    write(
+        &temp.path().join("crates/axon-services/src/unreachable.rs"),
+        "pub const UNREACHABLE: bool = true;\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("no production crate root found"), "{error}");
+}
+
+#[test]
 fn cfg_test_items_and_test_only_external_modules_are_excluded() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());
@@ -754,7 +767,7 @@ pub async fn run(
         ("provider-method:search", 1),
         ("provider-method:fetch", 1),
         ("provider-method:get", 1),
-        ("provider-method:render", 1),
+        ("provider-method:render", 2),
         ("provider-method:query", 1),
     ] {
         assert_eq!(
@@ -908,4 +921,109 @@ mod outer {
         "pub fn test_only(runtime: Runtime) { consume(runtime.vector_store); }\n",
     );
     check(temp.path()).unwrap();
+}
+
+#[test]
+fn provider_assignment_taint_is_monotonic_across_branch_orders_matches_and_loops() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
+    let mut then_provider = plain;
+    if condition {
+        then_provider = std::sync::Arc::clone(&provider);
+    } else {
+        then_provider = Plain::new();
+    }
+    then_provider.search(request()).await;
+
+    let mut else_provider = plain;
+    if condition {
+        else_provider = Plain::new();
+    } else {
+        else_provider = std::sync::Arc::clone(&provider);
+    }
+    else_provider.delete(selector()).await;
+
+    let mut matched = plain;
+    match key {
+        0 => matched = std::sync::Arc::clone(&provider),
+        _ => matched = Plain::new(),
+    }
+    matched.query(request()).await;
+
+    let mut looped = plain;
+    while condition {
+        looped = std::sync::Arc::clone(&provider);
+        looped = Plain::new();
+    }
+    looped.fetch(request()).await;
+
+    let shadowed = plain;
+    {
+        let mut shadowed = Plain::new();
+        shadowed = std::sync::Arc::clone(&provider);
+    }
+    shadowed.render(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:delete",
+        "provider-method:query",
+        "provider-method:fetch",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+    assert!(!error.contains("[provider-method:render]"), "{error}");
+}
+
+#[test]
+fn external_test_parent_propagates_test_only_state_to_nested_children() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "#[cfg(test)]\nmod test_parent;\n",
+    );
+    write(
+        &temp.path().join("crates/axon-services/src/test_parent.rs"),
+        "mod child;\n",
+    );
+    write(
+        &temp
+            .path()
+            .join("crates/axon-services/src/test_parent/child.rs"),
+        "pub fn test_only(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    check(temp.path()).unwrap();
+}
+
+#[test]
+fn production_reachability_wins_over_test_only_external_ancestry() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        "mod production_parent;\n#[cfg(test)]\nmod test_parent;\n",
+    );
+    for parent in ["production_parent", "test_parent"] {
+        write(
+            &temp
+                .path()
+                .join(format!("crates/axon-services/src/{parent}.rs")),
+            "#[path = \"shared.rs\"]\nmod child;\n",
+        );
+    }
+    write(
+        &temp.path().join("crates/axon-services/src/shared.rs"),
+        "pub fn production(runtime: Runtime) { consume(runtime.vector_store); }\n",
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    assert!(error.contains("provider-handle:vector_store"), "{error}");
 }

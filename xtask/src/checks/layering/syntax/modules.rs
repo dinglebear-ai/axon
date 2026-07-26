@@ -9,7 +9,11 @@ pub(crate) struct ExternalModule {
     pub test_only: bool,
 }
 
-pub(crate) fn external_modules(syntax: &syn::File, source: &Path) -> Vec<ExternalModule> {
+pub(crate) fn external_modules(
+    syntax: &syn::File,
+    source: &Path,
+    inherited_test_only: bool,
+) -> Vec<ExternalModule> {
     let parent = source.parent().unwrap_or_else(|| Path::new(""));
     let stem = source
         .file_stem()
@@ -21,7 +25,13 @@ pub(crate) fn external_modules(syntax: &syn::File, source: &Path) -> Vec<Externa
         parent.join(stem)
     };
     let mut modules = Vec::new();
-    collect(&syntax.items, &module_dir, parent, false, &mut modules);
+    collect(
+        &syntax.items,
+        &module_dir,
+        parent,
+        inherited_test_only,
+        &mut modules,
+    );
     modules
 }
 

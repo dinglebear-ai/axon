@@ -14,7 +14,7 @@ mod exception_table;
 mod exceptions;
 mod syntax;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
@@ -323,9 +323,14 @@ fn collect_rust_findings(
             });
         }
 
-        let excluded_modules = test_only_external_module_paths(&parsed_files);
+        let production_modules = production_reachable_module_paths(&parsed_files, &dir);
+        if production_modules.is_empty() {
+            violations.push(format!(
+                "{src}: no production crate root found (expected lib.rs, main.rs, or src/bin root)"
+            ));
+        }
         for file in parsed_files {
-            if excluded_modules.contains(&file.path) {
+            if !production_modules.contains(&file.path) {
                 continue;
             }
             let mut file_findings = syntax::scan(&file.syntax, &file.rel, reach_rules);
@@ -338,20 +343,53 @@ fn collect_rust_findings(
     findings
 }
 
-fn test_only_external_module_paths(files: &[ParsedRustFile]) -> BTreeSet<PathBuf> {
+fn production_reachable_module_paths(
+    files: &[ParsedRustFile],
+    source_root: &Path,
+) -> BTreeSet<PathBuf> {
+    let by_path: BTreeMap<_, _> = files.iter().map(|file| (file.path.clone(), file)).collect();
     let mut production = BTreeSet::new();
-    let mut test = BTreeSet::new();
-    for file in files {
-        for module in syntax::external_modules(&file.syntax, &file.path) {
-            let path = module.path;
-            if module.test_only {
-                test.insert(path);
-            } else {
-                production.insert(path);
+    let mut visited = BTreeSet::new();
+    let mut queue = VecDeque::new();
+    for file in files
+        .iter()
+        .filter(|file| is_crate_root(&file.path, source_root))
+    {
+        queue.push_back((file.path.clone(), false));
+    }
+
+    while let Some((path, inherited_test_only)) = queue.pop_front() {
+        if !visited.insert((path.clone(), inherited_test_only)) {
+            continue;
+        }
+        if !inherited_test_only {
+            production.insert(path.clone());
+        }
+        let Some(file) = by_path.get(&path) else {
+            continue;
+        };
+        for module in syntax::external_modules(&file.syntax, &file.path, inherited_test_only) {
+            if by_path.contains_key(&module.path) {
+                queue.push_back((module.path, module.test_only));
             }
         }
     }
-    test.difference(&production).cloned().collect()
+    production
+}
+
+fn is_crate_root(path: &Path, source_root: &Path) -> bool {
+    path == source_root.join("lib.rs")
+        || path == source_root.join("main.rs")
+        || path
+            .strip_prefix(source_root.join("bin"))
+            .is_ok_and(|relative| {
+                relative
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    == Some("rs")
+                    && (relative.components().count() == 1
+                        || relative.file_name().and_then(|name| name.to_str()) == Some("main.rs"))
+            })
 }
 
 fn check_with_exceptions(

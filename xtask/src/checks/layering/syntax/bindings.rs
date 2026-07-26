@@ -80,7 +80,13 @@ impl ProviderBindings {
             .rev()
             .find(|scope| scope.values.contains_key(name))
         {
-            scope.values.insert(name.to_owned(), shape);
+            let existing = scope
+                .values
+                .get(name)
+                .expect("binding existence was checked");
+            scope
+                .values
+                .insert(name.to_owned(), merge_shapes(existing, &shape));
         }
     }
 
@@ -357,12 +363,22 @@ fn tuple_element(shape: &ProviderShape, index: usize) -> &ProviderShape {
 
 fn merge_shapes(left: &ProviderShape, right: &ProviderShape) -> ProviderShape {
     match (left, right) {
-        (ProviderShape::Tuple(left), ProviderShape::Tuple(right)) => ProviderShape::Tuple(
-            left.iter()
-                .zip(right)
-                .map(|(left, right)| merge_shapes(left, right))
-                .collect(),
-        ),
+        (ProviderShape::Tuple(left), ProviderShape::Tuple(right)) => {
+            let length = left.len().max(right.len());
+            ProviderShape::Tuple(
+                (0..length)
+                    .map(|index| match (left.get(index), right.get(index)) {
+                        (Some(left), Some(right)) => merge_shapes(left, right),
+                        (Some(shape), None) | (None, Some(shape)) => shape.clone(),
+                        (None, None) => unreachable!("index is bounded by maximum tuple length"),
+                    })
+                    .collect(),
+            )
+        }
+        (ProviderShape::Scalar(false), ProviderShape::Tuple(elements))
+        | (ProviderShape::Tuple(elements), ProviderShape::Scalar(false)) => {
+            ProviderShape::Tuple(elements.clone())
+        }
         _ => ProviderShape::Scalar(left.is_provider() || right.is_provider()),
     }
 }

@@ -46,13 +46,18 @@ bindings initialized from known or provider-module-owned concrete
 implementations are tracked through standard wrapper references/clones,
 positional tuple patterns, syntax-visible assignments, and lexical pattern
 scopes (`if let`, `while let`, `for`, match arms, and closures). Collision-prone
-calls are therefore rejected only on proven provider receivers. Custom
+calls are therefore rejected only on proven provider receivers. Assignment
+taint is monotonic within a lexical binding, conservatively preserving a
+possible provider value across branch, match-arm, and loop traversal while
+newly shadowed bindings remain isolated. Custom
 interprocedural helper-return inference is intentionally outside this lexical
 gate's scope. `#[cfg(test)]` items and external modules reachable only through
-test declarations are excluded recursively through inline module trees; a
-production declaration of the same normalized module path always keeps it in
-scope. An unreadable source tree/file, malformed Rust file, unreadable
-manifest, or malformed inherited workspace dependency fails closed.
+test declarations are excluded by transitive traversal from each crate root,
+carrying test-only ancestry through both external and inline module trees; a
+production route to the same normalized module path always keeps it in scope.
+Unreachable source files are not part of the compiled crate surface. An
+unreadable source tree/file, malformed Rust file, unreadable manifest, or
+malformed inherited workspace dependency fails closed.
 
 It rejects:
 
