@@ -199,6 +199,125 @@ fn every_contract_crate_exists_in_the_real_workspace() {
 }
 
 #[test]
+fn contract_table_exactly_covers_all_23_live_crates() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap();
+    let expected = LIVE_CRATE_NAMES
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let contracted = all_crate_contracts()
+        .map(|contract| contract.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut inventory_violations = Vec::new();
+    let workspace = workspace_crate_members(root, &mut inventory_violations);
+    let on_disk = std::fs::read_dir(root.join("crates"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().join("Cargo.toml").is_file())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect::<std::collections::BTreeSet<_>>();
+    let on_disk = on_disk
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(contracted, expected, "crate-contract inventory drift");
+    assert_eq!(on_disk, expected, "live workspace-crate inventory drift");
+    assert_eq!(
+        workspace
+            .iter()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        expected,
+        "root workspace member inventory drift"
+    );
+    assert!(inventory_violations.is_empty(), "{inventory_violations:?}");
+    assert_eq!(expected.len(), 23);
+}
+
+#[test]
+fn live_inventory_rejects_duplicate_contract_rows() {
+    let rows = LIVE_CRATE_NAMES
+        .iter()
+        .chain(std::iter::once(&LIVE_CRATE_NAMES[0]))
+        .map(|name| (*name).to_owned())
+        .collect::<Vec<_>>();
+    let exact = LIVE_CRATE_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect::<Vec<_>>();
+    let mut violations = Vec::new();
+    compare_live_inventory(&rows, &exact, &exact, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|value| value.contains("duplicate") && value.contains(LIVE_CRATE_NAMES[0])),
+        "{violations:?}"
+    );
+    assert!(
+        violations.iter().any(|value| value.contains("row count")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn live_inventory_rejects_workspace_membership_drift() {
+    let exact = LIVE_CRATE_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect::<Vec<_>>();
+    let mut workspace = exact.clone();
+    workspace.pop();
+    workspace.push("axon-retired".to_owned());
+    let mut violations = Vec::new();
+    compare_live_inventory(&exact, &workspace, &exact, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|value| value.contains("workspace member inventory differs")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn live_inventory_rejects_on_disk_crate_drift() {
+    let exact = LIVE_CRATE_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect::<Vec<_>>();
+    let mut on_disk = exact.clone();
+    on_disk.pop();
+    let mut violations = Vec::new();
+    compare_live_inventory(&exact, &exact, &on_disk, &mut violations);
+    assert!(
+        violations
+            .iter()
+            .any(|value| value.contains("on-disk crate inventory differs")),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn live_contracts_do_not_name_retired_crates_as_dependency_rows() {
+    for contract in all_crate_contracts() {
+        for retired in [
+            "axon-vector",
+            "axon-crawl",
+            "axon-ingest",
+            "axon-code-index",
+        ] {
+            assert!(
+                !contract.forbidden_axon_deps.contains(&retired),
+                "{} retains deleted-crate row {retired}",
+                contract.name
+            );
+        }
+    }
+}
+
+#[test]
 fn adapter_vertical_dependencies_are_required_and_one_way() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path();
