@@ -50,11 +50,13 @@ This is an honest in-progress ledger, not a completion claim.
   clippy pass (36 tests).
 - Task 3 is now in progress locally: the test-only observation harness covers
   web, local, and session fixtures and its shared phase/content/job assertions
-  pass. Cancellation/error-mapping and the remaining characterization cases
-  are still open.
-- Task 4 has one locally committed item (`0f75d2386`): the dead
-  `SourceRouter::validate_options` post-route echo was removed. All other Task
-  4 work remains.
+  pass. Cancellation and route-error mapping are covered by focused tests;
+  the requested integration-target command and the remaining canonical
+  characterization cases are still open.
+- Task 4 has the router cleanup plus a local registry-validation slice: the
+  shared adapter registry now rejects duplicate names, missing matrix
+  families, version drift, and capability/spec mismatches. Production
+  composition wiring and the remaining adapter-boundary work remain.
 - Tasks 5–12 have not started.
 
 ## Global Constraints
@@ -420,8 +422,8 @@ characterization; no ignored red test lands.
 
 - [ ] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
   `Arc<dyn SourceAdapter>` values.
-- [ ] Validate duplicate names, missing families, capability/spec mismatch, and
-  full family-matrix coverage once at startup.
+- [x] Add fail-closed validation for duplicate names, missing families,
+  capability/spec mismatch, and family-matrix coverage.
 - [ ] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
   normalized results.
 - [ ] Add sequential and concurrent same-instance tests proving no ETag,

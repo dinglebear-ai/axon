@@ -156,6 +156,36 @@ async fn source_adapter_registry_accepts_mixed_trait_objects() {
 }
 
 #[tokio::test]
+async fn source_adapter_registry_rejects_duplicate_names() {
+    let first = FakeSourceAdapter::new(AdapterRef {
+        name: "web".to_string(),
+        version: "1".to_string(),
+    });
+    let second = first.clone();
+    let registry = SourceAdapterRegistry::from_adapters(vec![first, second]);
+
+    let error = registry
+        .validate()
+        .await
+        .expect_err("duplicate names must fail");
+    assert_eq!(error.code, "adapter.registry.duplicate".into());
+}
+
+#[tokio::test]
+async fn source_adapter_registry_rejects_missing_matrix_families() {
+    let registry = SourceAdapterRegistry::from_adapters(vec![FakeSourceAdapter::new(AdapterRef {
+        name: "web".to_string(),
+        version: "1".to_string(),
+    })]);
+
+    let error = registry
+        .validate()
+        .await
+        .expect_err("missing families must fail");
+    assert_eq!(error.code, "adapter.registry.missing".into());
+}
+
+#[tokio::test]
 async fn fake_source_adapter_preserves_content_for_normalized_absolute_item_keys() {
     let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
     let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(
