@@ -11,9 +11,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
         modules: &[],
         // README: axon-jobs must not depend on axon-services (contradiction-review.md:
         // "axon-jobs may not depend on axon-services" — the composition layer injects
-        // worker functions instead). Legacy crates are intentionally NOT forbidden here:
-        // axon-jobs' worker runners currently wrap axon-crawl/axon-vector/axon-ingest/
-        // axon-extract behavior pre-cutover.
+        // worker functions instead).
         forbidden_axon_deps: &["axon-services", "axon-cli", "axon-mcp", "axon-web"],
     },
     CrateContract {
@@ -39,11 +37,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -66,11 +60,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -101,11 +91,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -130,11 +116,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -163,11 +145,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -190,11 +168,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -208,11 +182,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -236,11 +206,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -296,17 +262,8 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "youtube_target",
         ],
         // `axon-extract` stays a legitimate dependency (adapter-routed vertical
-        // extractors); the retired pipeline crates are forbidden so they cannot
-        // be reintroduced through the composition layer.
-        forbidden_axon_deps: &[
-            "axon-cli",
-            "axon-mcp",
-            "axon-web",
-            "axon-crawl",
-            "axon-vector",
-            "axon-ingest",
-            "axon-code-index",
-        ],
+        // extractors).
+        forbidden_axon_deps: &["axon-cli", "axon-mcp", "axon-web"],
     },
     CrateContract {
         name: "axon-vectors",
@@ -330,11 +287,7 @@ pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {

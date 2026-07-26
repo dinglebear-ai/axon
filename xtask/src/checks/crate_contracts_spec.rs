@@ -57,6 +57,34 @@ pub struct CrateContract {
     pub forbidden_axon_deps: &'static [&'static str],
 }
 
+/// Canonical live workspace-crate inventory after the clean-break removal of
+/// `axon-vector`, `axon-crawl`, `axon-ingest`, and `axon-code-index`.
+pub const LIVE_CRATE_NAMES: &[&str] = &[
+    "axon-adapters",
+    "axon-api",
+    "axon-authz",
+    "axon-cli",
+    "axon-core",
+    "axon-document",
+    "axon-embedding",
+    "axon-error",
+    "axon-extract",
+    "axon-graph",
+    "axon-jobs",
+    "axon-ledger",
+    "axon-llm",
+    "axon-mcp",
+    "axon-memory",
+    "axon-observe",
+    "axon-parse",
+    "axon-prune",
+    "axon-retrieval",
+    "axon-route",
+    "axon-services",
+    "axon-vectors",
+    "axon-web",
+];
+
 /// Iterates the full table (both halves) in no particular order.
 pub fn all_crate_contracts() -> impl Iterator<Item = &'static CrateContract> {
     CRATE_CONTRACTS
@@ -96,10 +124,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -143,11 +167,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-services",
             "axon-vectors",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -159,11 +179,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -182,11 +198,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -215,11 +227,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -241,11 +249,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -286,11 +290,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-services",
             "axon-vectors",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -315,10 +315,6 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
-            "axon-code-index",
         ],
     },
     CrateContract {
@@ -343,11 +339,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "axon-cli",
             "axon-mcp",
             "axon-web",
-            "axon-vector",
-            "axon-crawl",
-            "axon-ingest",
             "axon-extract",
-            "axon-code-index",
         ],
     },
 ];

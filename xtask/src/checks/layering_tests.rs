@@ -66,7 +66,9 @@ fn transport_crate_reaching_into_domain_internal_module_fails() {
     let err = check(temp.path()).unwrap_err().to_string();
 
     assert!(
-        err.contains("crates/axon-cli/src/lib.rs:1  reaches `axon_vectors::qdrant::`"),
+        err.contains(
+            "crates/axon-cli/src/lib.rs:1  reaches domain internal `axon_vectors::qdrant::`"
+        ),
         "{err}"
     );
 }
@@ -83,13 +85,72 @@ fn services_crate_reaching_into_web_engine_internals_fails() {
     let err = check(temp.path()).unwrap_err().to_string();
 
     assert!(
-        err.contains("crates/axon-services/src/lib.rs:1  reaches `axon_adapters::web_engine::`"),
+        err.contains(
+            "crates/axon-services/src/lib.rs:1  reaches domain internal `axon_adapters::web_engine::`"
+        ),
         "{err}"
     );
 }
 
 #[test]
-fn allowlisted_reach_does_not_fail_the_check() {
+fn transport_crate_importing_llm_provider_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-web/src/lib.rs"),
+        "use axon_llm::{self as llm, CompletionRequest};\n",
+    );
+
+    let err = check(temp.path()).unwrap_err().to_string();
+
+    assert!(
+        err.contains("crates/axon-web/src/lib.rs:1  reaches provider crate `axon_llm::`"),
+        "{err}"
+    );
+}
+
+#[test]
+fn transport_crate_reaching_into_source_internals_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-mcp/src/lib.rs"),
+        "use axon_services::source::execution::execute_source;\n",
+    );
+
+    let err = check(temp.path()).unwrap_err().to_string();
+
+    assert!(
+        err.contains(
+            "crates/axon-mcp/src/lib.rs:1  reaches service source internal `axon_services::source::execution::`"
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn services_raw_provider_call_outside_reserved_facade_fails() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp
+            .path()
+            .join("crates/axon-services/src/source/new_pipeline.rs"),
+        "let embeddings = embedding_provider.embed(batch).await?;\n",
+    );
+
+    let err = check(temp.path()).unwrap_err().to_string();
+
+    assert!(
+        err.contains(
+            "crates/axon-services/src/source/new_pipeline.rs:1  calls raw provider via `embedding_provider.embed(`"
+        ),
+        "{err}"
+    );
+}
+
+#[test]
+fn temporary_path_scoped_exception_does_not_hide_other_reaches() {
     let temp = tempdir().unwrap();
     write_surface_fixture(temp.path());
     write(
@@ -100,4 +161,14 @@ fn allowlisted_reach_does_not_fail_the_check() {
     );
 
     check(temp.path()).unwrap();
+
+    write(
+        &temp.path().join("crates/axon-cli/src/commands/other.rs"),
+        "pub(crate) use axon_adapters::web_engine::screenshot::url_to_screenshot_filename;\n",
+    );
+    let err = check(temp.path()).unwrap_err().to_string();
+    assert!(
+        err.contains("crates/axon-cli/src/commands/other.rs:1"),
+        "{err}"
+    );
 }
