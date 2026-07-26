@@ -6,6 +6,8 @@ mod modules;
 mod providers;
 mod tokens;
 
+use std::collections::BTreeMap;
+
 use aliases::{AliasStack, import_from_extern_crate, imports_from_use};
 use bindings::{ProviderBindings, ProviderShape};
 pub(super) use modules::external_modules;
@@ -29,6 +31,7 @@ pub(super) fn scan(syntax: &syn::File, rel: &str, reach_rules: &[ReachRule]) -> 
         reach_rules,
         aliases: AliasStack::default(),
         bindings: ProviderBindings::default(),
+        block_result_shapes: BTreeMap::new(),
         findings: Vec::new(),
     };
     scanner.visit_file(syntax);
@@ -40,10 +43,42 @@ struct Scanner<'a> {
     reach_rules: &'a [ReachRule],
     aliases: AliasStack,
     bindings: ProviderBindings,
+    block_result_shapes: BTreeMap<usize, ProviderShape>,
     findings: Vec<Finding>,
 }
 
 impl Scanner<'_> {
+    fn expr_shape(&self, expr: &syn::Expr) -> ProviderShape {
+        match expr {
+            syn::Expr::Block(block) => self
+                .block_result_shapes
+                .get(&block_key(&block.block))
+                .cloned()
+                .unwrap_or_else(|| self.bindings.expr_shape(&self.aliases, expr)),
+            syn::Expr::If(branch) => {
+                let then_shape = self
+                    .block_result_shapes
+                    .get(&block_key(&branch.then_branch))
+                    .cloned()
+                    .unwrap_or(ProviderShape::Scalar(false));
+                let else_shape = branch
+                    .else_branch
+                    .as_ref()
+                    .map_or(ProviderShape::Scalar(false), |(_, otherwise)| {
+                        self.expr_shape(otherwise)
+                    });
+                ProviderShape::merge(&then_shape, &else_shape)
+            }
+            syn::Expr::Match(branch) => branch
+                .arms
+                .iter()
+                .map(|arm| self.expr_shape(&arm.body))
+                .reduce(|left, right| ProviderShape::merge(&left, &right))
+                .unwrap_or(ProviderShape::Scalar(false)),
+            _ => self.bindings.expr_shape(&self.aliases, expr),
+        }
+    }
+
     fn record(&mut self, rule: impl Into<String>, detail: impl Into<String>) {
         self.findings.push(Finding {
             path: self.rel.to_owned(),
@@ -186,7 +221,7 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
                 .init
                 .as_ref()
                 .map_or(ProviderShape::Scalar(false), |init| {
-                    self.bindings.expr_shape(&self.aliases, &init.expr)
+                    self.expr_shape(&init.expr)
                 });
             self.bindings
                 .bind_pat_shape(&self.aliases, &node.pat, &shape);
@@ -225,6 +260,12 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
         for stmt in &node.stmts {
             self.visit_stmt(stmt);
         }
+        let result_shape = match node.stmts.last() {
+            Some(syn::Stmt::Expr(expr, None)) => self.expr_shape(expr),
+            _ => ProviderShape::Scalar(false),
+        };
+        self.block_result_shapes
+            .insert(block_key(node), result_shape);
         self.bindings.pop();
         self.aliases.pop();
     }
@@ -358,6 +399,10 @@ impl<'ast> Visit<'ast> for Scanner<'_> {
     fn visit_macro(&mut self, node: &'ast Macro) {
         self.inspect_macro(node);
     }
+}
+
+fn block_key(block: &Block) -> usize {
+    std::ptr::from_ref(block).addr()
 }
 
 fn path_segments(path: &syn::Path) -> Vec<String> {

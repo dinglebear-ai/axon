@@ -9,7 +9,7 @@ use super::bindings::{ProviderBindings, ProviderShape};
 pub(super) fn visit_assign(scanner: &mut Scanner<'_>, node: &ExprAssign) {
     scanner.visit_expr(&node.left);
     scanner.visit_expr(&node.right);
-    let shape = scanner.bindings.expr_shape(&scanner.aliases, &node.right);
+    let shape = scanner.expr_shape(&node.right);
     scanner.bindings.assign_expr_shape(&node.left, &shape);
 }
 
@@ -28,20 +28,18 @@ pub(super) fn visit_binary(scanner: &mut Scanner<'_>, node: &ExprBinary) {
 }
 
 pub(super) fn visit_if(scanner: &mut Scanner<'_>, node: &ExprIf) {
-    if let Expr::Let(binding) = &*node.cond {
-        scanner.visit_expr(&binding.expr);
-        scanner.visit_pat(&binding.pat);
-        let shape = scanner.bindings.expr_shape(&scanner.aliases, &binding.expr);
+    if condition_contains_let(&node.cond) {
         let entry = scanner.bindings.checkpoint();
-        scanner.bindings.restore(&entry);
         scanner.bindings.push();
-        scanner
-            .bindings
-            .bind_pat_shape(&scanner.aliases, &binding.pat, &shape);
+        let mut false_exits = Vec::new();
+        visit_let_chain_success(scanner, &node.cond, &mut false_exits);
         scanner.visit_block(&node.then_branch);
         scanner.bindings.pop();
         let then_exit = scanner.bindings.checkpoint();
-        scanner.bindings.restore(&entry);
+        if false_exits.is_empty() {
+            false_exits.push(entry);
+        }
+        scanner.bindings.merge_control_flow(&false_exits);
         if let Some((_, otherwise)) = &node.else_branch {
             scanner.visit_expr(otherwise);
         }
@@ -63,30 +61,36 @@ pub(super) fn visit_if(scanner: &mut Scanner<'_>, node: &ExprIf) {
 }
 
 pub(super) fn visit_while(scanner: &mut Scanner<'_>, node: &ExprWhile) {
-    if let Expr::Let(binding) = &*node.cond {
-        scanner.visit_expr(&binding.expr);
-        scanner.visit_pat(&binding.pat);
-        let shape = scanner.bindings.expr_shape(&scanner.aliases, &binding.expr);
+    if condition_contains_let(&node.cond) {
         let entry = scanner.bindings.checkpoint();
         stabilize_and_visit_loop(scanner, &entry, |scanner| {
             scanner.bindings.push();
-            scanner
-                .bindings
-                .bind_pat_shape(&scanner.aliases, &binding.pat, &shape);
+            let mut false_exits = Vec::new();
+            visit_let_chain_success(scanner, &node.cond, &mut false_exits);
+            let condition_success = scanner.bindings.checkpoint();
+            scanner.bindings.merge_control_flow(&false_exits);
+            let condition_false = scanner.bindings.checkpoint();
+            scanner.bindings.restore(&condition_success);
             scanner.visit_block(&node.body);
             scanner.bindings.pop();
+            let body_exit = scanner.bindings.checkpoint();
+            scanner
+                .bindings
+                .merge_control_flow(&[body_exit, condition_false]);
         });
     } else {
-        scanner.visit_expr(&node.cond);
         let entry = scanner.bindings.checkpoint();
-        stabilize_and_visit_loop(scanner, &entry, |scanner| scanner.visit_block(&node.body));
+        stabilize_and_visit_loop(scanner, &entry, |scanner| {
+            scanner.visit_expr(&node.cond);
+            scanner.visit_block(&node.body);
+        });
     }
 }
 
 pub(super) fn visit_for(scanner: &mut Scanner<'_>, node: &ExprForLoop) {
     scanner.visit_expr(&node.expr);
     scanner.visit_pat(&node.pat);
-    let shape = scanner.bindings.expr_shape(&scanner.aliases, &node.expr);
+    let shape = scanner.expr_shape(&node.expr);
     let entry = scanner.bindings.checkpoint();
     stabilize_and_visit_loop(scanner, &entry, |scanner| {
         scanner.bindings.push();
@@ -105,7 +109,7 @@ pub(super) fn visit_loop(scanner: &mut Scanner<'_>, node: &ExprLoop) {
 
 pub(super) fn visit_match(scanner: &mut Scanner<'_>, node: &ExprMatch) {
     scanner.visit_expr(&node.expr);
-    let shape = scanner.bindings.expr_shape(&scanner.aliases, &node.expr);
+    let shape = scanner.expr_shape(&node.expr);
     let entry = scanner.bindings.checkpoint();
     let mut exits = Vec::with_capacity(node.arms.len());
     let mut arm_entry = entry;
@@ -184,4 +188,52 @@ fn stabilize_and_visit_loop(
     scanner
         .bindings
         .merge_control_flow(&[entry.clone(), body_exit]);
+}
+
+fn condition_contains_let(expr: &Expr) -> bool {
+    match expr {
+        Expr::Let(_) => true,
+        Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+            condition_contains_let(&binary.left) || condition_contains_let(&binary.right)
+        }
+        Expr::Paren(paren) => condition_contains_let(&paren.expr),
+        Expr::Group(group) => condition_contains_let(&group.expr),
+        _ => false,
+    }
+}
+
+fn visit_let_chain_success(
+    scanner: &mut Scanner<'_>,
+    expr: &Expr,
+    false_exits: &mut Vec<ProviderBindings>,
+) {
+    match expr {
+        Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+            visit_let_chain_success(scanner, &binary.left, false_exits);
+            visit_let_chain_success(scanner, &binary.right, false_exits);
+        }
+        Expr::Paren(paren) => visit_let_chain_success(scanner, &paren.expr, false_exits),
+        Expr::Group(group) => visit_let_chain_success(scanner, &group.expr, false_exits),
+        Expr::Let(binding) => {
+            scanner.visit_expr(&binding.expr);
+            scanner.visit_pat(&binding.pat);
+            false_exits.push(without_condition_scope(scanner));
+            let shape = scanner.expr_shape(&binding.expr);
+            scanner
+                .bindings
+                .bind_pat_shape(&scanner.aliases, &binding.pat, &shape);
+        }
+        _ => {
+            scanner.visit_expr(expr);
+            false_exits.push(without_condition_scope(scanner));
+        }
+    }
+}
+
+fn without_condition_scope(scanner: &mut Scanner<'_>) -> ProviderBindings {
+    let scoped = scanner.bindings.checkpoint();
+    scanner.bindings.pop();
+    let outer = scanner.bindings.checkpoint();
+    scanner.bindings.restore(&scoped);
+    outer
 }

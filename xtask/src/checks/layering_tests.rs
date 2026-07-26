@@ -1284,8 +1284,69 @@ pub async fn run(provider: Store, providers: Vec<Store>, plain: Plain) {
     provider.as_ref().fetch(request()).await;
     (*provider).query(request()).await;
     providers[0].render(request()).await;
+    provider.clone().as_ref().delete(selector()).await;
+    std::sync::Arc::clone(&provider).as_ref().get(handle()).await;
 
-    plain.make_client().get(handle()).await;
+    plain.make_client().upsert(batch()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+        "provider-method:render",
+        "provider-method:delete",
+        "provider-method:get",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+    assert!(!error.contains("[provider-method:upsert]"), "{error}");
+}
+
+#[test]
+fn branch_local_tail_bindings_propagate_block_if_and_match_result_shapes() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, condition: bool, key: u8) {
+    let from_block = {
+        let inner = std::sync::Arc::clone(&provider);
+        inner
+    };
+    from_block.search(request()).await;
+
+    let from_if = if condition {
+        let inner = std::sync::Arc::clone(&provider);
+        inner
+    } else {
+        let inner = Plain::new();
+        inner
+    };
+    from_if.fetch(request()).await;
+
+    let from_match = match key {
+        0 => {
+            let inner = Plain::new();
+            inner
+        }
+        _ => {
+            let inner = std::sync::Arc::clone(&provider);
+            inner
+        }
+    };
+    from_match.query(request()).await;
+
+    let mut reassigned = plain;
+    reassigned = {
+        let inner = std::sync::Arc::clone(&provider);
+        inner
+    };
+    reassigned.render(request()).await;
 }
 "#,
     );
@@ -1298,7 +1359,79 @@ pub async fn run(provider: Store, providers: Vec<Store>, plain: Plain) {
     ] {
         assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
     }
-    assert!(!error.contains("[provider-method:get]"), "{error}");
+}
+
+#[test]
+fn rust_2024_let_chain_bindings_flow_through_if_and_while_conditions() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, maybe: Option<Store>, condition: bool) {
+    if let Some(inner) = maybe && inner.ready() {
+        inner.search(request()).await;
+    }
+
+    while let Some(inner) = maybe && inner.ready() {
+        inner.fetch(request()).await;
+        break;
+    }
+
+    let mut preserved = std::sync::Arc::clone(&provider);
+    if let Some(inner) = maybe && {
+        preserved = Plain::new();
+        inner.ready()
+    } {
+        preserved = Plain::new();
+    }
+    preserved.query(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in [
+        "provider-method:search",
+        "provider-method:fetch",
+        "provider-method:query",
+    ] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
+}
+
+#[test]
+fn while_condition_and_false_let_chain_exits_use_stabilized_state_once() {
+    let temp = tempdir().unwrap();
+    write_surface_fixture(temp.path());
+    write(
+        &temp.path().join("crates/axon-services/src/lib.rs"),
+        r#"
+type Store = std::sync::Arc<dyn VectorStore>;
+pub async fn run(provider: Store, plain: Plain, maybe: Option<Store>, condition: bool) {
+    let mut carried = plain;
+    while {
+        carried.search(request()).await;
+        condition
+    } {
+        carried = std::sync::Arc::clone(&provider);
+    }
+
+    let mut false_exit = plain;
+    while let Some(_) = maybe && {
+        false_exit = std::sync::Arc::clone(&provider);
+        false
+    } {
+        false_exit = Plain::new();
+    }
+    false_exit.fetch(request()).await;
+}
+"#,
+    );
+    let error = check(temp.path()).unwrap_err().to_string();
+    for rule in ["provider-method:search", "provider-method:fetch"] {
+        assert_eq!(error.matches(&format!("[{rule}]")).count(), 1, "{error}");
+    }
 }
 
 #[test]

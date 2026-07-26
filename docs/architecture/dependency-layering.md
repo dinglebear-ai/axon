@@ -52,15 +52,17 @@ non-provider assignment clears the binding's provider state. Branch and match
 exits merge their possible states, including guard-false effects that can reach
 later match arms. Loop bodies use conservative monotonic assignment and a
 stabilized loop-head state so loop-carried values, abrupt exits, and bare
-`loop` expressions cannot clear possible provider state; `while` and `for`
-also merge the entry state because their bodies may not run. Closure body
+`loop` expressions cannot clear possible provider state; `while` conditions
+are included in stabilization and `while`/`for` retain the entry state because
+their bodies may not run. Rust 2024 `if`/`while` let-chain bindings remain in
+scope through later `&&` operands and their successful body. Closure body
 effects, async-block body effects, and short-circuit Boolean right-hand sides
 merge as optional while calls inside those bodies are still scanned. Newly
 shadowed bindings remain isolated. Syntax-visible block tails, `if` branch
-results, and match-arm results also propagate provider shape into local
-bindings and assignment targets. Wrapper calls, references/dereferences, and
-indexed provider-bearing values retain provider shape when used directly as
-method receivers. Custom
+results, and match-arm results—including branch-local tail bindings—propagate
+provider shape into local bindings and assignment targets. Whitelisted wrapper
+call/method chains, references/dereferences, and indexed provider-bearing
+values retain provider shape when used directly as method receivers. Custom
 interprocedural helper-return inference is intentionally outside this lexical
 gate's scope. `#[cfg(test)]` items and external modules reachable only through
 test declarations are excluded by transitive traversal from each crate root,
