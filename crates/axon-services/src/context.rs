@@ -2,11 +2,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(test)]
 use axon_adapters::NoopSourceEnricher;
 use axon_adapters::SourceEnricher;
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(test)]
 use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
@@ -15,7 +15,7 @@ use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
-#[cfg(any(test, feature = "test-util"))]
+#[cfg(test)]
 use axon_embedding::reservation::ProviderReservationConfig;
 use axon_embedding::reservation::ProviderReservationManager;
 use axon_jobs::boundary::JobStore;
@@ -73,7 +73,7 @@ pub struct TargetLocalSourceRuntime {
 }
 
 impl TargetLocalSourceRuntime {
-    #[cfg(any(test, feature = "test-util"))]
+    #[cfg(test)]
     pub fn new(
         jobs: Arc<dyn JobStore>,
         ledger: Arc<dyn LedgerStore>,

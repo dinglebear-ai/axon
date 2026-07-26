@@ -404,7 +404,7 @@ counts. It does not add a production phase enum, counter model, or trace format.
 - [ ] Change the three tests that pin defective family behavior into failing
   canonical expectations.
 - [x] Run the harness against production composition with fake providers.
-- [x] Run `cargo test --features test-helpers --test source_pipeline_differential -- --nocapture`.
+- [x] Run `cargo test --test source_pipeline_differential -- --nocapture`.
 
 The PR reaching `main` includes the green implementation for each changed
 characterization; no ignored red test lands.
