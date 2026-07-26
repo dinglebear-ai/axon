@@ -15,22 +15,13 @@ macro_rules! reach {
     };
 }
 
-pub(super) const MANIFEST_EXCEPTIONS: &[ManifestException] = &[
-    ManifestException {
-        path: "crates/axon-cli/Cargo.toml",
-        dependency: "axon-adapters",
-        table: "dependencies",
-        owner: TASK_2,
-        expected_count: 1,
-    },
-    ManifestException {
-        path: "crates/axon-web/Cargo.toml",
-        dependency: "axon-llm",
-        table: "dependencies",
-        owner: TASK_2,
-        expected_count: 1,
-    },
-];
+pub(super) const MANIFEST_EXCEPTIONS: &[ManifestException] = &[ManifestException {
+    path: "crates/axon-web/Cargo.toml",
+    dependency: "axon-llm",
+    table: "dependencies",
+    owner: TASK_2,
+    expected_count: 1,
+}];
 
 #[rustfmt::skip]
 pub(super) const REACH_EXCEPTIONS: &[ReachException] = &[

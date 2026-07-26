@@ -48,7 +48,7 @@ version-bearing files.
 Release checklist:
 
 1. Identify changed components with `cargo xtask release-plan --base origin/main --head HEAD`.
-2. Bump only those components with `cargo xtask bump-version <component> patch|minor|major`.
+2. Bump only those components with `cargo xtask bump-version patch|minor|major --component <component>`.
 3. Run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
 4. Run `cargo xtask check`.
 
@@ -59,6 +59,7 @@ CLI version-bearing files must have the same version (see the root `CLAUDE.md`
 |------|-------|
 | `Cargo.toml` | `version = "X.Y.Z"` in `[package]` |
 | `apps/web/package.json` | `"version": "X.Y.Z"` |
+| `apps/web/package-lock.json` | Root package `"version": "X.Y.Z"` |
 | `apps/web/openapi/axon.json` | `"info.version": "X.Y.Z"` |
 | `README.md` | `Version: X.Y.Z` |
 | `CHANGELOG.md` | New entry under `## [X.Y.Z]` |

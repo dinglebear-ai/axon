@@ -661,7 +661,7 @@ core 17.6.0 and the current 17.10.2 as of 2026-07); no config flag
 (`release-type`, `extra-files`, `always-link-local`) works around it. `.` was
 therefore removed from `release-please-config.json` and
 `.release-please-manifest.json`. **`cli` is bumped manually with `cargo xtask
-bump-version cli patch|minor|major`** — see "Version bumping rules" below.
+bump-version patch|minor|major --component cli`** — see "Version bumping rules" below.
 `release/components.toml`'s `cli` entry sets `release_please_managed = false`
 to document this and exempt it from the manifest-consistency check that the
 other three components still get.
@@ -702,7 +702,7 @@ there (manual now, not a merged release-please PR).
   already exists), `cargo xtask check-release-versions --base origin/main --head
   HEAD --mode pr` fails before merge with a message naming the component —
   this still applies to `cli`, it just means "someone forgot to run `cargo
-  xtask bump-version cli`" instead of "release-please hasn't opened its PR
+  xtask bump-version patch --component cli`" instead of "release-please hasn't opened its PR
   yet".
 
 To cut a release manually (e.g. re-release or hotfix without a code change),
@@ -720,12 +720,12 @@ git tag chrome-ext-vX.Y.Z && git push origin chrome-ext-vX.Y.Z  # chrome
 Release-please is the release PR, version bump, changelog, tag, and GitHub
 Release path for `palette`/`android`/`chrome`. Do not run or reintroduce
 git-cliff-backed release bumping. `cli` is the one exception — bump it with
-`cargo xtask bump-version cli patch|minor|major`, choosing the level yourself
+`cargo xtask bump-version patch|minor|major --component cli`, choosing the level yourself
 (no commit-message parsing, since there's no release-please PR to compute it
 from):
 
 ```bash
-cargo xtask bump-version cli patch   # or minor / major
+cargo xtask bump-version patch --component cli   # or minor / major
 ```
 
 This writes every one of `cli`'s version-bearing files below in one shot
@@ -754,11 +754,12 @@ from conventional commits:
 For `cli`, pick the equivalent level yourself using the same rules when
 choosing `patch`/`minor`/`major`.
 
-**CLI component — all of these MUST move together (Cargo.toml is the source of truth; `cargo xtask bump-version cli` handles all of it):**
+**CLI component — all of these MUST move together (Cargo.toml is the source of truth; `cargo xtask bump-version patch --component cli` handles all of it):**
 - `Cargo.toml` — `version = "X.Y.Z"` in both `[package]` and `[workspace.package]` (Cargo.lock follows automatically)
 - `README.md` — version header (no longer carries the `x-release-please-version` marker — release-please doesn't touch this file anymore)
 - `CHANGELOG.md` — new entry under the bumped version
-- `apps/web/package.json` + `apps/web/openapi/axon.json` — `"version": "X.Y.Z"`
+- `apps/web/package.json` + `apps/web/package-lock.json` — root package `"version": "X.Y.Z"`
+- `apps/web/openapi/axon.json` — `"info.version": "X.Y.Z"`
 
 **Palette component — all three MUST move together (release-please-managed):**
 - `apps/palette-tauri/src-tauri/tauri.conf.json`, `apps/palette-tauri/package.json`,
@@ -780,7 +781,7 @@ to mirror Axon's old release-note shape: user-facing `feat`, `fix`, `perf`,
 and `refactor` entries are shown; routine maintenance types are hidden.
 Release PRs also carry release-please labels and a PR header/footer
 explaining that CI may append derived-file fixups before merge. For `cli`,
-`cargo xtask bump-version cli` inserts the dated heading itself (no
+`cargo xtask bump-version patch --component cli` inserts the dated heading itself (no
 generated commit-message-derived body — write the entry by hand if you want
 one beyond the heading).
 
@@ -809,7 +810,7 @@ Short release checklist:
   3. Run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
   4. Merge only after the release/version gate and CI are green.
 - **`cli`:**
-  1. Run `cargo xtask bump-version cli patch|minor|major` locally, picking the level yourself.
+  1. Run `cargo xtask bump-version patch|minor|major --component cli` locally, picking the level yourself.
   2. Review the diff — every file listed above should move together, nothing else.
   3. Include the bump in your PR (or a dedicated bump PR) and run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
   4. Merge; `.github/workflows/auto-tag.yml` — unaffected by any of this, since it's driven entirely by `release/components.toml`, not release-please's manifest — detects the bumped-but-untagged `cli` version, creates and pushes the `vX.Y.Z` tag once `CI` is green, and dispatches `release.yml` exactly as it always has.
