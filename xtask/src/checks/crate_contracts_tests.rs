@@ -1,4 +1,5 @@
 use super::*;
+use crate::checks::crate_contracts_spec::LIVE_CRATE_NAMES;
 use std::fs;
 
 fn write_crate(root: &Path, name: &str, lib_rs: &str, modules: &[&str], cargo_deps: &str) {
@@ -216,7 +217,10 @@ fn contract_table_exactly_covers_all_23_live_crates() {
         .filter(|entry| entry.path().join("Cargo.toml").is_file())
         .filter_map(|entry| entry.file_name().into_string().ok())
         .collect::<std::collections::BTreeSet<_>>();
-    let on_disk = on_disk.iter().map(String::as_str).collect();
+    let on_disk = on_disk
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
 
     assert_eq!(contracted, expected, "crate-contract inventory drift");
     assert_eq!(on_disk, expected, "live workspace-crate inventory drift");
