@@ -98,6 +98,12 @@ impl<K> ActiveReservationLease<K> {
             .complete(&self.reservation_id, &self.fence)
             .await
     }
+
+    pub async fn cancel(self) -> Result<(), SchedulerError> {
+        self.scheduler
+            .cancel(&self.reservation_id, &self.fence)
+            .await
+    }
 }
 
 /// Execute one provider operation only after the SQLite scheduler has granted
@@ -123,6 +129,9 @@ where
         fence,
         _kind: std::marker::PhantomData,
     };
+    scheduler
+        .activate(&lease.reservation_id, &lease.fence)
+        .await?;
     let value = operation(lease.clone())
         .await
         .map_err(ReservedCallError::Provider)?;
@@ -336,6 +345,42 @@ impl ProviderScheduler {
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'released', granted_units = 0,
              terminal_reason = 'completed', updated_at = datetime('now')
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status IN ('granted','active')",
+        )
+        .bind(reservation_id)
+        .bind(fence)
+        .bind(&self.domain.authority_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if changed == 0 {
+            return Err(SchedulerError::StaleFence);
+        }
+        Ok(())
+    }
+
+    async fn activate(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let changed = sqlx::query(
+            "UPDATE provider_reservations SET status = 'active', renewed_at = datetime('now'),
+             updated_at = datetime('now')
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'granted'",
+        )
+        .bind(reservation_id)
+        .bind(fence)
+        .bind(&self.domain.authority_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if changed == 0 {
+            return Err(SchedulerError::StaleFence);
+        }
+        Ok(())
+    }
+
+    async fn cancel(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let changed = sqlx::query(
+            "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
+             terminal_reason = 'caller_cancelled', updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status IN ('granted','active')",
         )
         .bind(reservation_id)
