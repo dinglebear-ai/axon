@@ -35,6 +35,20 @@ production-ingress tests close the loop.
   bead `axon_rust-enbmu.2` owns this plan review only.
 - `marketplace-no-mcp` remains the intentional protected marketplace variant.
 
+## Execution Status — 2026-07-26
+
+This is an honest in-progress ledger, not a completion claim.
+
+- Task 1 has not started.
+- Task 2A–2C were merged before this worktree run (PRs #471, #474, and #475).
+- Task 2D is implemented locally in `f04f9f66e` and has passed its focused
+  docs/test/clippy checks, but is not pushed or merged.
+- Task 3 has not started; its Beads were claimed only.
+- Task 4 has one locally committed item (`0f75d2386`): the dead
+  `SourceRouter::validate_options` post-route echo was removed. All other Task
+  4 work remains.
+- Tasks 5–12 have not started.
+
 ## Global Constraints
 
 - Treat `docs/pipeline-unification/` as normative. If live code and a current
@@ -297,14 +311,14 @@ This operation must not block Tasks 2–5.
 `xtask/src/checks/crate_contracts_spec.rs`,
 `xtask/src/checks/crate_contracts_spec_cont.rs`.
 
-- [ ] Add fixtures containing the known transport imports from
+- [x] Add fixtures containing the known transport imports from
   `axon-adapters`, `axon-llm`, and source internals.
-- [ ] Run `cargo test -p xtask layering -- --nocapture`; record the red result.
-- [ ] Replace deleted-crate prefixes and remove stale allowlist rows.
-- [ ] Audit all 23 live crates.
-- [ ] Add a rule rejecting raw provider calls from transports and
+- [x] Run `cargo test -p xtask layering -- --nocapture`; record the red result.
+- [x] Replace deleted-crate prefixes and remove stale allowlist rows.
+- [x] Audit all 23 live crates.
+- [x] Add a rule rejecting raw provider calls from transports and
   `axon-services` modules outside the reserved-call facade path.
-- [ ] Run `cargo xtask check-layering` and
+- [x] Run `cargo xtask check-layering` and
   `cargo xtask check-crate-contracts`.
 
 ### Task 2B — Screenshot helper
@@ -313,9 +327,9 @@ This operation must not block Tasks 2–5.
 `crates/axon-core/src/paths.rs`,
 `crates/axon-cli/src/commands/screenshot/util.rs` and sidecar tests.
 
-- [ ] Move only the pure filename/path helper to `axon-core`.
-- [ ] Remove the CLI production dependency on `axon-adapters` if unused.
-- [ ] Run `cargo test -p axon-cli screenshot --no-fail-fast`.
+- [x] Move only the pure filename/path helper to `axon-core`.
+- [x] Remove the CLI production dependency on `axon-adapters` if unused.
+- [x] Run `cargo test -p axon-cli screenshot --no-fail-fast`.
 
 ### Task 2C — Chat provider facade
 
@@ -323,11 +337,11 @@ This operation must not block Tasks 2–5.
 `crates/axon-web/src/server/handlers/chat_stream_tests.rs`, and the existing
 `axon-services` chat facade.
 
-- [ ] Move direct provider construction behind a typed service method without
+- [x] Move direct provider construction behind a typed service method without
   changing response semantics.
-- [ ] Propagate cancellation when the transport disconnects.
-- [ ] Run `cargo test -p axon-web chat_stream --no-fail-fast`.
-- [ ] File bounded slow-consumer/idle-total deadline tuning as a separate
+- [x] Propagate cancellation when the transport disconnects.
+- [x] Run `cargo test -p axon-web chat_stream --no-fail-fast`.
+- [x] File bounded slow-consumer/idle-total deadline tuning as a separate
   reliability Bead; it is not part of the layering PR.
 
 ### Task 2D — Documentation engine
@@ -335,15 +349,15 @@ This operation must not block Tasks 2–5.
 **Files:** `xtask/src/docs.rs`, existing `xtask/src/docs/*`, and new sibling
 modules named by `delivery/docs-generator-contract.md`.
 
-- [ ] Add `DocsFamilyGenerator`, `DocsArtifactSet`, and
+- [x] Add `DocsFamilyGenerator`, `DocsArtifactSet`, and
   `GeneratedDocArtifact`.
-- [ ] Make `--check` render in memory and byte-compare declared outputs without
+- [x] Make `--check` render in memory and byte-compare declared outputs without
   writing.
 - [ ] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
   and secret/path canaries.
-- [ ] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
+- [x] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
   `events`, `providers`, and `schema`.
-- [ ] Run `cargo test -p xtask docs -- --nocapture` and
+- [x] Run `cargo test -p xtask docs -- --nocapture` and
   `cargo xtask docs generate --check`.
 
 Close `axon_rust-jc20j` after 2A–2C merge. Keep contract exemptions and the docs
@@ -405,7 +419,7 @@ characterization; no ignored red test lands.
   request, auth, or output leakage.
 - [ ] Delete both family classifiers and route from canonical source
   identity/capabilities.
-- [ ] Remove `SourceRouter::validate_options`; validate exactly once during
+- [x] Remove `SourceRouter::validate_options`; validate exactly once during
   `RoutePlan` construction and remove its generator/contract references.
 - [ ] Route CodeSearch refresh through the normal source route instead of
   returning `None`.
