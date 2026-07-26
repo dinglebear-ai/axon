@@ -74,6 +74,17 @@ are bounded to 64 retained handles per adapter; the next discovery fails with
 `adapter.local.root_state_capacity`. Dropping the adapter releases all
 remaining descriptors.
 
+## Completeness map
+
+| Axis | Contract or implementation |
+|---|---|
+| Behavioral specification | This document defines caller modes, admission timing, descriptor reads, compatibility, lifecycle, and stable failures. |
+| Configuration and API contract | `Config::source_local_allowed_roots` is populated only from `AXON_SOURCE_LOCAL_ALLOWED_ROOTS`; MCP and REST apply it before detached enqueue, and worker execution rechecks the persisted caller snapshot. No request field or public transport schema changed. |
+| Typed model | `Vec<PathBuf>` carries configured roots; `LocalRootHandle` owns the opened descriptor; `LocalSourceAdapter` keys retained handles by `JobId`; `SourceAdapter::release` is the terminal cleanup hook. |
+| Persistence | No migration is required. Allowed roots are deployment configuration, descriptors are process-local capabilities that cannot be serialized, and durable jobs already persist the source request and authorization snapshot used for the execution-time recheck. |
+| Fixtures and tests | Tests create real temporary directories, files, symlinks, replacements, and more-than-one-batch corpora dynamically so each run exercises the host kernel rather than a mocked fixture tree. |
+| Developer and operator documentation | This reference is the developer contract; `docs/guides/configuration.md`, `docs/reference/runtime/security.md`, and `config.example.toml` define deployment and operations. |
+
 ## Stable errors
 
 | Code | Meaning | Retry |
@@ -99,7 +110,8 @@ or operating-system error string.
 - `source::enqueue::tests`: deny-before-create and accepted detached roots.
 - `local_tests`: item traversal, source/file/directory symlink swaps, forbidden
   followed symlinks, descriptor retention across pathname replacement,
-  overlapping `JobId` isolation, repeated failed-discovery cleanup, binary and
-  size policy, and error redaction.
+  overlapping `JobId` isolation, a 130-file multi-batch generation, 128
+  unchanged terminal-release cycles, repeated failed-discovery cleanup, binary
+  and size policy, and error redaction.
 - `source_runner_tests`: persisted caller snapshots are reused on execution and
   recovery rather than upgraded.
