@@ -1,171 +1,299 @@
-//! Layering guardrail: transport crates must not reach into a domain crate's
-//! internal modules. See `docs/architecture/crate-ownership.md` and
-//! `docs/architecture/crate-structure.md` for the current 23-crate layout.
+//! Fail-closed layering guardrail for the live pipeline.
 //!
-//! Transports (`axon-cli`, `axon-web`, `axon-mcp`) call a typed entry point
-//! (`axon-services`, or a domain crate's public `pub fn`/root re-export),
-//! never a domain crate's private implementation modules (the pattern that
-//! motivated this check: the CLI once imported the pre-unification
-//! `axon_vector::ops::qdrant`).
+//! Transport crates may not depend on provider/domain crates or reach private
+//! implementation modules. Transport and service code may not access raw
+//! provider traits, handles, or reserved operations outside the one fixed
+//! scheduler facade. Rust is parsed with `syn`, so grouped/multiline/renamed
+//! imports and UFCS paths are inspected while comments and strings are ignored.
 //!
-//! `axon-services` is not a transport — it is the composition facade and is
-//! expected to import domain crates freely for wiring — but it owes the same
-//! "public entry, not internal module" discipline for domain crates it
-//! doesn't otherwise compose concrete implementations of. It is scanned
-//! separately, against a narrower pattern list (see `SERVICES_FORBIDDEN`),
-//! so that deliberate composition-root patterns (e.g. `axon-services`
-//! constructing `axon_vectors::qdrant::QdrantVectorStore` directly to wire a
-//! `VectorStore` implementation) are not swept in as "debt" alongside real
-//! layering violations.
-//!
-//! Enforcement is allowlist-based: the files below already contain a reach and
-//! are grandfathered (pre-existing debt). The check fails when a **new** file
-//! introduces one — pay the debt down, don't extend it.
+//! Every temporary exception is an exact `(path, rule, owner, expected_count)`
+//! record (plus dependency table for Cargo exceptions). Count drift, stale
+//! exceptions, duplicate exceptions, and missing owners all fail the check.
+
+mod exception_table;
+mod exceptions;
+mod syntax;
+
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Result, bail};
-use std::path::Path;
+use exception_table::{MANIFEST_EXCEPTIONS, REACH_EXCEPTIONS};
+pub(crate) use exceptions::{ManifestException, ReachException};
+use exceptions::{apply_manifest_exceptions, apply_reach_exceptions};
 use walkdir::WalkDir;
 
-/// Domain-crate internal import prefixes that transport crates must not use
-/// directly. Each names a real, live module in a crate that exists in the
-/// current workspace (`ls crates/`) — verified against each crate's
-/// `src/lib.rs` module list and root `pub use` re-exports, not guessed.
-const FORBIDDEN: &[&str] = &[
-    // axon-adapters flattens acquisition/registry/spec/testing at its crate
-    // root (crates/axon-adapters/src/lib.rs) but does NOT re-export
-    // `web_engine` — the raw Chrome/CDP render+scrape+screenshot engine.
-    // Live violation today: crates/axon-cli/src/commands/screenshot/util.rs.
-    "axon_adapters::web_engine::",
-    // axon-vectors re-exports `QdrantVectorStore` at its root
-    // (`pub use qdrant::QdrantVectorStore;`) but not the `qdrant` module
-    // itself. Cited verbatim in crate-ownership.md as the canonical
-    // domain-internal reach to avoid. No live transport violation today —
-    // this guards the pattern going forward.
-    "axon_vectors::qdrant::",
-    // axon-prune re-exports `PruneExecutor`/`PruneTarget`/`StepExecution` at
-    // its root (crates/axon-prune/src/lib.rs) but not the `executor` module
-    // itself. Also cited verbatim in crate-ownership.md. No live transport
-    // violation today.
-    "axon_prune::executor::",
-    // axon-extract's per-site vertical extractor implementations
-    // (crates/axon-extract/src/lib.rs: "dispatch order and policy belong to
-    // axon-adapters::vertical_registry; this crate owns only extractor
-    // implementations"). No live violation today.
-    "axon_extract::verticals::",
+#[derive(Clone, Debug)]
+pub(super) struct Finding {
+    path: String,
+    rule: String,
+    detail: String,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ManifestFinding {
+    path: String,
+    dependency: String,
+    table: String,
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ReachRule {
+    prefix: &'static [&'static str],
+    kind: &'static str,
+}
+
+const TRANSPORT_REACH_RULES: &[ReachRule] = &[
+    ReachRule {
+        prefix: &["axon_adapters", "web_engine"],
+        kind: "domain internal",
+    },
+    ReachRule {
+        prefix: &["axon_llm"],
+        kind: "provider crate",
+    },
+    ReachRule {
+        prefix: &["axon_services", "source", "execution"],
+        kind: "service source internal",
+    },
+    ReachRule {
+        prefix: &["axon_services", "source", "events"],
+        kind: "service source internal",
+    },
+    ReachRule {
+        prefix: &["axon_services", "source", "progress"],
+        kind: "service source internal",
+    },
+    ReachRule {
+        prefix: &["axon_vectors", "qdrant"],
+        kind: "domain internal",
+    },
+    ReachRule {
+        prefix: &["axon_prune", "executor"],
+        kind: "domain internal",
+    },
+    ReachRule {
+        prefix: &["axon_extract", "verticals"],
+        kind: "domain internal",
+    },
 ];
 
-/// Transport crate `src` roots (repo-relative) scanned against `FORBIDDEN`.
+const SERVICES_REACH_RULES: &[ReachRule] = &[ReachRule {
+    prefix: &["axon_adapters", "web_engine"],
+    kind: "domain internal",
+}];
+
 const TRANSPORT_SRC: &[&str] = &[
     "crates/axon-cli/src",
     "crates/axon-web/src",
     "crates/axon-mcp/src",
 ];
-
-/// `axon-services/src`, scanned against the narrower `SERVICES_FORBIDDEN`
-/// list (see the module doc comment for why this isn't just `FORBIDDEN`).
 const SERVICES_SRC: &[&str] = &["crates/axon-services/src"];
-
-/// Reaches that are forbidden for `axon-services` specifically. Currently
-/// just the `web_engine` reach — services should call through whatever public
-/// scrape/screenshot/capture entry axon-adapters intends (none is flattened
-/// today), not its raw render-engine internals.
-const SERVICES_FORBIDDEN: &[&str] = &["axon_adapters::web_engine::"];
-
-/// Domain crates whose only sanctioned caller is `axon-services`. A direct
-/// Cargo dependency from a transport crate on any of these is a layering
-/// violation before a single `use` statement is even written — transports
-/// call these through the `axon-services` facade instead.
-const TRANSPORT_FORBIDDEN_DEPS: &[&str] = &["axon-embedding", "axon-vectors", "axon-retrieval"];
-
-/// Transport crate manifests checked against `TRANSPORT_FORBIDDEN_DEPS`.
 const SURFACE_MANIFESTS: &[&str] = &[
     "crates/axon-cli/Cargo.toml",
     "crates/axon-web/Cargo.toml",
     "crates/axon-mcp/Cargo.toml",
 ];
-
-/// Specific reaches that exist today. Grandfathered debt — do not add to this
-/// list without a deliberate decision, and always attach a TODO/bead in the
-/// nearby code, not just here. Matching by `(file, prefix)` prevents a whole
-/// allowed file from hiding new, unrelated reaches.
-const ALLOWLIST: &[(&str, &str)] = &[
-    // Test-only re-export (`#[cfg(test)]`); see the TODO in the source file.
-    // TODO(axon-realacq-replatform): fold into a public axon-adapters
-    // screenshot-filename helper instead of reaching into `web_engine`.
-    (
-        "crates/axon-cli/src/commands/screenshot/util.rs",
-        "axon_adapters::web_engine::",
-    ),
-    // TODO(axon-realacq-replatform): route through a public axon-adapters
-    // scrape entry point instead of `web_engine::scrape::*` directly.
-    (
-        "crates/axon-services/src/scrape.rs",
-        "axon_adapters::web_engine::",
-    ),
-    // TODO(axon-realacq-replatform): route through a public axon-adapters
-    // screenshot entry point instead of `web_engine::screenshot::*` directly.
-    (
-        "crates/axon-services/src/screenshot.rs",
-        "axon_adapters::web_engine::",
-    ),
-    // TODO(axon-realacq-replatform): route through a public axon-adapters
-    // CDP-resolution entry point instead of `web_engine::engine::*` directly.
-    (
-        "crates/axon-services/src/endpoints/capture.rs",
-        "axon_adapters::web_engine::",
-    ),
+const TRANSPORT_FORBIDDEN_DEPS: &[&str] = &[
+    "axon-adapters",
+    "axon-embedding",
+    "axon-llm",
+    "axon-retrieval",
+    "axon-vectors",
 ];
+
+const RESERVED_CALL_FACADE: &str = "crates/axon-services/src/reserved_call.rs";
 
 fn is_test_file(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
-    rel.split('/').any(|c| c == "tests")
+    rel.split('/').any(|component| component == "tests")
         || name.ends_with("_tests.rs")
         || name.ends_with("_test.rs")
 }
 
-fn check_surface_manifests(root: &Path, violations: &mut Vec<String>) {
+fn collect_manifest_findings(root: &Path, violations: &mut Vec<String>) -> Vec<ManifestFinding> {
+    let mut findings = Vec::new();
+    let workspace_dependencies = read_workspace_dependencies(root);
     for manifest in SURFACE_MANIFESTS {
         let path = root.join(manifest);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(parsed) = toml::from_str::<toml::Table>(&text) else {
-            continue;
-        };
-        for table_name in ["dependencies", "dev-dependencies", "build-dependencies"] {
-            let Some(table) = parsed.get(table_name).and_then(toml::Value::as_table) else {
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) => {
+                violations.push(format!("{manifest}: failed to read manifest: {error}"));
                 continue;
-            };
-            for krate in TRANSPORT_FORBIDDEN_DEPS {
-                if table.contains_key(*krate) {
-                    violations.push(format!(
-                        "{manifest} declares [{table_name}] dependency on `{krate}` — \
-                         transports must go through the axon-services facade, not depend on \
-                         this domain crate directly"
-                    ));
+            }
+        };
+        let parsed = match toml::from_str::<toml::Table>(&text) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                violations.push(format!("{manifest}: failed to parse manifest: {error}"));
+                continue;
+            }
+        };
+        for (table_name, table) in dependency_tables(&parsed) {
+            for (declared_name, declaration) in table {
+                let dependency = match canonical_dependency_name(
+                    declared_name,
+                    declaration,
+                    &workspace_dependencies,
+                ) {
+                    Ok(dependency) => dependency,
+                    Err(error) => {
+                        violations.push(format!(
+                            "{manifest}: failed to resolve [{table_name}] dependency \
+                             `{declared_name}`: {error}"
+                        ));
+                        continue;
+                    }
+                };
+                if TRANSPORT_FORBIDDEN_DEPS.contains(&dependency.as_str()) {
+                    findings.push(ManifestFinding {
+                        path: (*manifest).to_owned(),
+                        dependency,
+                        table: table_name.clone(),
+                    });
                 }
             }
         }
     }
+    findings
 }
 
-/// Scan every `.rs` file under each of `src_roots` for the first matching
-/// entry in `forbidden`, skipping test files and allowlisted `(file, prefix)`
-/// pairs, appending human-readable violation strings to `violations`.
-fn scan_reaches(root: &Path, src_roots: &[&str], forbidden: &[&str], violations: &mut Vec<String>) {
+fn read_workspace_dependencies(root: &Path) -> Result<toml::Table, String> {
+    let path = root.join("Cargo.toml");
+    let text = std::fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let parsed = toml::from_str::<toml::Table>(&text)
+        .map_err(|error| format!("failed to parse {}: {error}", path.display()))?;
+    Ok(parsed
+        .get("workspace")
+        .and_then(toml::Value::as_table)
+        .and_then(|workspace| workspace.get("dependencies"))
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .unwrap_or_default())
+}
+
+fn canonical_dependency_name(
+    declared_name: &str,
+    value: &toml::Value,
+    workspace_dependencies: &Result<toml::Table, String>,
+) -> Result<String, String> {
+    let Some(table) = value.as_table() else {
+        return Ok(declared_name.to_owned());
+    };
+    let inherited = match table.get("workspace") {
+        Some(value) => value.as_bool().ok_or_else(|| {
+            format!(
+                "`workspace` must be a boolean, found {}",
+                toml_value_kind(value)
+            )
+        })?,
+        None => false,
+    };
+    if !inherited {
+        return optional_package_name(table, declared_name);
+    }
+
+    let workspace_dependencies = workspace_dependencies
+        .as_ref()
+        .map_err(|error| format!("cannot load inherited workspace dependency: {error}"))?;
+    let inherited = workspace_dependencies.get(declared_name).ok_or_else(|| {
+        format!("workspace dependency `{declared_name}` is missing from [workspace.dependencies]")
+    })?;
+    if inherited.is_str() {
+        return Ok(declared_name.to_owned());
+    }
+    let inherited_table = inherited.as_table().ok_or_else(|| {
+        format!(
+            "workspace dependency `{declared_name}` must be a string or table, found {}",
+            toml_value_kind(inherited)
+        )
+    })?;
+    if inherited_table.get("workspace").is_some() {
+        return Err(format!(
+            "workspace dependency `{declared_name}` cannot itself use `workspace` inheritance"
+        ));
+    }
+    optional_package_name(inherited_table, declared_name)
+}
+
+fn optional_package_name(table: &toml::Table, declared_name: &str) -> Result<String, String> {
+    match table.get("package") {
+        Some(value) => value.as_str().map(str::to_owned).ok_or_else(|| {
+            format!(
+                "`package` must be a string, found {}",
+                toml_value_kind(value)
+            )
+        }),
+        None => Ok(declared_name.to_owned()),
+    }
+}
+
+fn toml_value_kind(value: &toml::Value) -> &'static str {
+    match value {
+        toml::Value::String(_) => "string",
+        toml::Value::Integer(_) => "integer",
+        toml::Value::Float(_) => "float",
+        toml::Value::Boolean(_) => "boolean",
+        toml::Value::Datetime(_) => "datetime",
+        toml::Value::Array(_) => "array",
+        toml::Value::Table(_) => "table",
+    }
+}
+
+fn dependency_tables(parsed: &toml::Table) -> Vec<(String, &toml::Table)> {
+    let mut tables = Vec::new();
+    for dependency_kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+        if let Some(table) = parsed.get(dependency_kind).and_then(toml::Value::as_table) {
+            tables.push((dependency_kind.to_owned(), table));
+        }
+    }
+    if let Some(targets) = parsed.get("target").and_then(toml::Value::as_table) {
+        for (target_name, target) in targets {
+            let Some(target) = target.as_table() else {
+                continue;
+            };
+            for dependency_kind in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                if let Some(table) = target.get(dependency_kind).and_then(toml::Value::as_table) {
+                    tables.push((format!("target.'{target_name}'.{dependency_kind}"), table));
+                }
+            }
+        }
+    }
+    tables
+}
+
+struct ParsedRustFile {
+    path: PathBuf,
+    rel: String,
+    syntax: syn::File,
+}
+
+fn collect_rust_findings(
+    root: &Path,
+    src_roots: &[&str],
+    reach_rules: &[ReachRule],
+    violations: &mut Vec<String>,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
     for src in src_roots {
         let dir = root.join(src);
-        for entry in WalkDir::new(&dir)
-            .into_iter()
-            .filter_map(std::result::Result::ok)
-        {
-            if !entry.file_type().is_file() {
+        let mut parsed_files = Vec::new();
+        for entry in WalkDir::new(&dir) {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    violations.push(format!("{src}: failed to walk source tree: {error}"));
+                    continue;
+                }
+            };
+            if !entry.file_type().is_file()
+                || entry.path().extension().and_then(|ext| ext.to_str()) != Some("rs")
+            {
                 continue;
             }
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
-            }
             let rel = path
                 .strip_prefix(root)
                 .unwrap_or(path)
@@ -174,50 +302,140 @@ fn scan_reaches(root: &Path, src_roots: &[&str], forbidden: &[&str], violations:
             if is_test_file(&rel) {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(path) else {
-                continue;
-            };
-            for (lineno, line) in text.lines().enumerate() {
-                if let Some(pat) = forbidden.iter().find(|p| line.contains(**p)) {
-                    if ALLOWLIST
-                        .iter()
-                        .any(|(allowed_rel, allowed_pat)| rel == *allowed_rel && pat == allowed_pat)
-                    {
-                        continue;
-                    }
-                    violations.push(format!("{rel}:{}  reaches `{pat}`", lineno + 1));
+            let text = match std::fs::read_to_string(path) {
+                Ok(text) => text,
+                Err(error) => {
+                    violations.push(format!("{rel}: failed to read Rust source: {error}"));
+                    continue;
                 }
+            };
+            let parsed = match syn::parse_file(&text) {
+                Ok(parsed) => parsed,
+                Err(error) => {
+                    violations.push(format!("{rel}: failed to parse Rust source: {error}"));
+                    continue;
+                }
+            };
+            parsed_files.push(ParsedRustFile {
+                path: path.to_owned(),
+                rel,
+                syntax: parsed,
+            });
+        }
+
+        let production_modules = production_reachable_module_paths(&parsed_files, &dir);
+        if production_modules.is_empty() {
+            violations.push(format!(
+                "{src}: no production crate root found (expected lib.rs, main.rs, or src/bin root)"
+            ));
+        }
+        for file in parsed_files {
+            if !production_modules.contains(&file.path) {
+                continue;
+            }
+            let mut file_findings = syntax::scan(&file.syntax, &file.rel, reach_rules);
+            if file.rel == RESERVED_CALL_FACADE {
+                file_findings.retain(|finding| !finding.rule.starts_with("provider-"));
+            }
+            findings.extend(file_findings);
+        }
+    }
+    findings
+}
+
+fn production_reachable_module_paths(
+    files: &[ParsedRustFile],
+    source_root: &Path,
+) -> BTreeSet<PathBuf> {
+    let by_path: BTreeMap<_, _> = files.iter().map(|file| (file.path.clone(), file)).collect();
+    let mut production = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut queue = VecDeque::new();
+    for file in files
+        .iter()
+        .filter(|file| is_crate_root(&file.path, source_root))
+    {
+        queue.push_back((file.path.clone(), false));
+    }
+
+    while let Some((path, inherited_test_only)) = queue.pop_front() {
+        if !visited.insert((path.clone(), inherited_test_only)) {
+            continue;
+        }
+        if !inherited_test_only {
+            production.insert(path.clone());
+        }
+        let Some(file) = by_path.get(&path) else {
+            continue;
+        };
+        for module in syntax::external_modules(&file.syntax, &file.path, inherited_test_only) {
+            if by_path.contains_key(&module.path) {
+                queue.push_back((module.path, module.test_only));
             }
         }
     }
+    production
+}
+
+fn is_crate_root(path: &Path, source_root: &Path) -> bool {
+    path == source_root.join("lib.rs")
+        || path == source_root.join("main.rs")
+        || path
+            .strip_prefix(source_root.join("bin"))
+            .is_ok_and(|relative| {
+                relative
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    == Some("rs")
+                    && (relative.components().count() == 1
+                        || relative.file_name().and_then(|name| name.to_str()) == Some("main.rs"))
+            })
+}
+
+fn check_with_exceptions(
+    root: &Path,
+    reach_exceptions: &[ReachException],
+    manifest_exceptions: &[ManifestException],
+) -> Result<()> {
+    let mut violations = Vec::new();
+    let manifest_findings = collect_manifest_findings(root, &mut violations);
+    apply_manifest_exceptions(manifest_findings, manifest_exceptions, &mut violations);
+
+    let mut rust_findings =
+        collect_rust_findings(root, TRANSPORT_SRC, TRANSPORT_REACH_RULES, &mut violations);
+    rust_findings.extend(collect_rust_findings(
+        root,
+        SERVICES_SRC,
+        SERVICES_REACH_RULES,
+        &mut violations,
+    ));
+    apply_reach_exceptions(rust_findings, reach_exceptions, &mut violations);
+
+    if violations.is_empty() {
+        println!("OK: live transport/domain layering and reserved-call gate pass.");
+        return Ok(());
+    }
+    bail!(
+        "layering violation: {} issue(s)\n{}",
+        violations.len(),
+        violations.join("\n")
+    )
 }
 
 pub fn check(root: &Path) -> Result<()> {
-    let mut violations: Vec<String> = Vec::new();
+    check_with_exceptions(root, REACH_EXCEPTIONS, MANIFEST_EXCEPTIONS)
+}
 
-    check_surface_manifests(root, &mut violations);
-    scan_reaches(root, TRANSPORT_SRC, FORBIDDEN, &mut violations);
-    scan_reaches(root, SERVICES_SRC, SERVICES_FORBIDDEN, &mut violations);
+#[cfg(test)]
+pub(super) fn check_fixture(root: &Path) -> Result<()> {
+    check_with_exceptions(root, &[], &[])
+}
 
-    if violations.is_empty() {
-        println!("OK: no new transport→domain-internal reaches.");
-        return Ok(());
-    }
-
-    eprintln!("ERROR: transport/services crates reach into domain-crate internals:");
-    for v in &violations {
-        eprintln!("  {v}");
-    }
-    eprintln!(
-        "\nTransports and axon-services must call a typed entry point (the axon-services\n\
-         facade or a domain crate's public `pub fn` / root re-export), not a domain\n\
-         crate's private implementation modules. See docs/architecture/crate-ownership.md.\n\
-         If this is a deliberate, reviewed exception, add the exact (file, prefix) reach\n\
-         to ALLOWLIST in xtask/src/checks/layering.rs with a TODO naming the follow-up."
-    );
-    bail!(
-        "layering violation: {} reach(es)\n{}",
-        violations.len(),
-        violations.join("\n")
-    );
+#[cfg(test)]
+pub(super) fn check_fixture_with_exceptions(
+    root: &Path,
+    reach_exceptions: &[ReachException],
+    manifest_exceptions: &[ManifestException],
+) -> Result<()> {
+    check_with_exceptions(root, reach_exceptions, manifest_exceptions)
 }
