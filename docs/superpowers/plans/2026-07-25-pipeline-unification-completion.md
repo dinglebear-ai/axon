@@ -477,15 +477,15 @@ characterization; no ignored red test lands.
 
 ### Schema and upgrade
 
-- [ ] Add append-only migration `0002_provider_scheduler.sql`; do not edit
+- [x] Add append-only migration `0002_provider_scheduler.sql`; do not edit
   epoch-1 history.
-- [ ] Add capacity-domain identity, enqueue sequence, requested/effective
+- [x] Add capacity-domain identity, enqueue sequence, requested/effective
   priority, queue/grant/lease deadlines, lease owner, attempt/stage fence,
   renewal, terminal reason, and quarantine state.
-- [ ] Add selection and expiry indexes used by the grant/reaper queries.
+- [x] Add selection and expiry indexes used by the grant/reaper queries.
 - [ ] Convert current heartbeat reservation writes into read-only projection in
   the same PR so there is one authority.
-- [ ] Define disposition for old `requested`, `queued`, `granted`, and `active`
+- [x] Define disposition for old `requested`, `queued`, `granted`, and `active`
   rows: nonterminal epoch-1 rows become terminal `migration_cancelled` and are
   safely retried under the new attempt.
 - [ ] Add a real epoch-1 fixture upgrade test and update migration identity and
@@ -493,12 +493,12 @@ characterization; no ignored red test lands.
 
 ### Atomic grant and wait
 
-- [ ] Implement queue/grant in one `BEGIN IMMEDIATE` transaction using the
+- [x] Implement queue/grant in one `BEGIN IMMEDIATE` transaction using the
   indexed head candidate from each lane.
 - [ ] Implement the fixed aging/FIFO algorithm and interactive reserve exactly
   as specified above.
-- [ ] Reject requests larger than declared capacity before queueing.
-- [ ] Enforce global/per-job entry and unit caps.
+- [x] Reject requests larger than declared capacity before queueing.
+- [x] Enforce global/per-job entry and unit caps.
 - [ ] Implement bounded jittered SQLite predicate polling; local notification
   is optional latency optimization only.
 - [ ] Add cross-process tests proving a waiter in process B observes a release

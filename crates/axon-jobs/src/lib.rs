@@ -8,6 +8,7 @@ mod fake_store;
 pub mod limits;
 pub mod migrations;
 pub mod runtime;
+pub mod scheduler;
 pub mod state_machine;
 pub mod status;
 pub mod store;
