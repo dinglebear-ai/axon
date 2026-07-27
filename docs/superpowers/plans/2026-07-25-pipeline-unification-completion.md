@@ -675,7 +675,7 @@ queries.
   invalidation.
 - [x] Wire `qdrant-point-buffer` as the only vector item limit and delete
   `UPSERT_BATCH_SIZE`.
-- [ ] Consume/document source concurrency or delete the dead knob.
+- [x] Consume/document source concurrency or delete the dead knob.
 - [ ] Limit concurrent DB stages with a semaphore derived from pool size while
   reserving one connection for heartbeat/control work.
 - [ ] Use operation-specific Qdrant deadlines, idempotency keys, cancellation,
@@ -813,7 +813,7 @@ work never closes a Bead early.
 
 - [x] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
 - [ ] P18 one live Qdrant point-buffer limit.
-- [ ] P19 concurrency knob is consumed or deleted.
+- [x] P19 concurrency knob is consumed or deleted.
 - [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.
 - [ ] P21 no blocking canonicalization on async worker paths.
 - [ ] S-13 redirects have hop, time, byte, scheme, proxy, and host bounds.
