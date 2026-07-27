@@ -105,6 +105,10 @@ async fn source_adapter_registry_routes_by_selected_adapter_and_reports_capabili
     let adapter = registry
         .adapter_for(&route)
         .expect("selected adapter is registered");
+    let same_adapter = registry
+        .adapter_for(&route)
+        .expect("selected adapter remains registered");
+    assert!(std::sync::Arc::ptr_eq(&adapter, &same_adapter));
     let capability = adapter.capabilities().await.unwrap();
 
     assert_eq!(capability.0.name, "web");
@@ -153,6 +157,65 @@ async fn source_adapter_registry_accepts_mixed_trait_objects() {
             .adapter_for(&route_plan("web", SourceKind::Web, SourceScope::Site))
             .is_some()
     );
+}
+
+#[tokio::test]
+async fn source_adapter_registry_maps_route_aliases_to_canonical_family_adapters() {
+    let registry = SourceAdapterRegistry::from_arc_adapters(vec![
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "local".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "upload".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "sessions".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "git".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "registry".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "cli_tool".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "mcp_tool".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+    ]);
+
+    for (route_name, kind, scope, expected_name) in [
+        ("local", SourceKind::Local, SourceScope::Directory, "local"),
+        ("upload", SourceKind::Upload, SourceScope::File, "upload"),
+        (
+            "session",
+            SourceKind::Session,
+            SourceScope::Thread,
+            "sessions",
+        ),
+        ("github", SourceKind::Git, SourceScope::Repo, "git"),
+        (
+            "crates",
+            SourceKind::Registry,
+            SourceScope::Package,
+            "registry",
+        ),
+        ("cli", SourceKind::CliTool, SourceScope::Tool, "cli_tool"),
+        ("mcp", SourceKind::McpTool, SourceScope::Tool, "mcp_tool"),
+    ] {
+        let adapter = registry
+            .adapter_for(&route_plan(route_name, kind, scope))
+            .expect("route alias should resolve to its canonical family adapter");
+        assert_eq!(adapter.name(), expected_name);
+    }
 }
 
 #[tokio::test]

@@ -62,10 +62,7 @@ pub(crate) async fn resolve_authorized_source_route(
     };
     let kind = routed.kind;
     let route = routed.route;
-    let adapter = AdapterRef {
-        name: route.adapter.name.clone(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
+    let adapter = route.adapter.clone();
     let event_emitter =
         event_emitter.with_route(route.source.source_kind, route.scope, adapter.clone());
     event_emitter

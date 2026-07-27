@@ -29,9 +29,10 @@
 //! retain a private local-source runner or relabel local code as public merely
 //! to satisfy its reader filter.
 
+use std::sync::Arc;
+
 use anyhow::Context as _;
-use axon_adapters::SourceAdapter as _;
-use axon_adapters::local::LocalSourceAdapter;
+use axon_adapters::SourceAdapter;
 use axon_api::source::{
     AdapterRef, AuthScope, AuthSnapshot, AuthorityLevel, ConfigSnapshotId, EffectiveLimits,
     MetadataMap, ResolvedSource, RoutePlan, SourceKind, SourceLimits, SourcePlan, SourceRequest,
@@ -52,6 +53,7 @@ const LOCAL_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Local-path source: dispatch through the shared non-web document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_local(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -70,11 +72,10 @@ pub(crate) async fn dispatch_local(
     enforce_local_source_policy(input, has_local_scope)?;
 
     let plan = local_source_plan(input, route, embed).await?;
-    let adapter = LocalSourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         plan,
         collection,
         owner_id,

@@ -20,6 +20,7 @@
 //! Non-web source acquisition is adapter-owned; services retain one
 //! transport-neutral prepare/embed/publish pipeline.
 
+pub(crate) mod adapter_registry;
 pub mod authorize;
 pub mod batch;
 pub mod dispatch;
@@ -42,6 +43,9 @@ pub use security::{
     redact_local_path_for_public_payload,
 };
 
+use std::sync::Arc;
+
+use axon_adapters::SourceAdapter;
 use axon_api::source::{
     AuthSnapshot, PipelinePhase, SourceKind, SourceRequest, SourceResult, SourceScope,
 };
@@ -310,6 +314,7 @@ async fn open_cleanup_debt_stores(
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_item_limited_kind(
     kind: SourceKind,
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -323,6 +328,7 @@ async fn dispatch_item_limited_kind(
     match kind {
         SourceKind::Feed => {
             dispatch::dispatch_feed(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -337,6 +343,7 @@ async fn dispatch_item_limited_kind(
         }
         SourceKind::Youtube => {
             dispatch::dispatch_youtube(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -351,6 +358,7 @@ async fn dispatch_item_limited_kind(
         }
         SourceKind::Reddit => {
             dispatch::dispatch_reddit(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -365,6 +373,7 @@ async fn dispatch_item_limited_kind(
         }
         SourceKind::Registry => {
             dispatch::dispatch_registry(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -385,6 +394,7 @@ async fn dispatch_item_limited_kind(
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_web_kind(
+    adapter: Arc<dyn SourceAdapter>,
     cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -399,6 +409,7 @@ async fn dispatch_web_kind(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     dispatch::dispatch_web(
+        adapter,
         cfg,
         runtime,
         input,

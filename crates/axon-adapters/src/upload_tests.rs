@@ -145,7 +145,6 @@ fn upload_identity_is_strict_and_canonical() {
 
 #[tokio::test]
 async fn upload_materialization_resolves_staged_content_without_path_trust() {
-    let adapter = UploadSourceAdapter::new();
     let mut plan = upload_plan(std::path::PathBuf::from("ignored"), SourceScope::File);
     plan.request.source = "upload:upl_abc".to_string();
     plan.route.source.canonical_uri = "upload://upl_abc".to_string();
@@ -163,22 +162,17 @@ async fn upload_materialization_resolves_staged_content_without_path_trust() {
         }),
         metadata,
     };
-    let materialized = adapter
-        .materialize(plan, Arc::new(StagedProvider(Some(staged))))
-        .await
-        .unwrap();
+    let adapter = UploadSourceAdapter::with_provider(Arc::new(StagedProvider(Some(staged))));
+    let materialized = adapter.materialize(plan).await.unwrap();
     assert_eq!(materialized.path().file_name().unwrap(), "notes.md");
     assert_eq!(fs::read_to_string(materialized.path()).unwrap(), "# staged");
 }
 
 #[tokio::test]
 async fn upload_materialization_fails_closed_when_staged_content_is_missing() {
-    let adapter = UploadSourceAdapter::new();
     let mut plan = upload_plan(std::path::PathBuf::from("ignored"), SourceScope::File);
     plan.route.source.canonical_uri = "upload://upl_missing".to_string();
-    let error = adapter
-        .materialize(plan, Arc::new(StagedProvider(None)))
-        .await
-        .unwrap_err();
+    let adapter = UploadSourceAdapter::with_provider(Arc::new(StagedProvider(None)));
+    let error = adapter.materialize(plan).await.unwrap_err();
     assert_eq!(error.code.0, "adapter.upload.not_found");
 }

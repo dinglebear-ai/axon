@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
+use axon_adapters::web::WebSourceAdapter;
 use axon_api::source::{
     AuthSnapshot, JobKind, JobListRequest, JobSummary, SourceGenerationId, SourceListRequest,
     SourceRequest, SourceSummary,
@@ -293,6 +294,12 @@ async fn build_source_job_identity_harness(
         8,
     );
     let providers = Arc::new(FakeAdapterProviders::new());
+    let web_fetch_provider = Arc::clone(&providers);
+    let web_render_provider = Arc::clone(&providers);
+    target.web_source_adapter = Arc::new(WebSourceAdapter::new(
+        web_fetch_provider,
+        web_render_provider,
+    ));
     target.fetch_provider = providers.clone();
     target.render_provider = providers;
 

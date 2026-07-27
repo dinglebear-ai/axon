@@ -1,3 +1,4 @@
+use axon_adapters::{cli_tool::CliToolSourceAdapter, mcp_tool::McpToolSourceAdapter};
 use axon_api::source::{ArtifactHandle, AuthScope, AuthSnapshot, ProviderId, SourceRequest};
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::FakeJobWatchStore;
@@ -46,6 +47,7 @@ async fn run_cli_tool(
 ) -> anyhow::Result<IndexCounts> {
     let execution = SourceExecutionContext::inline(SourceRequest::new(input), auth.cloned());
     dispatch_cli_tool(
+        Arc::new(CliToolSourceAdapter::new()),
         runtime,
         input,
         "axon-test",
@@ -68,6 +70,7 @@ async fn run_mcp_tool(
 ) -> anyhow::Result<IndexCounts> {
     let execution = SourceExecutionContext::inline(SourceRequest::new(input), auth.cloned());
     dispatch_mcp_tool(
+        Arc::new(McpToolSourceAdapter::new()),
         runtime,
         input,
         "axon-test",
@@ -146,6 +149,7 @@ async fn dispatch_cli_tool_threads_embed_through_canonical_pipeline() {
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("rg");
 
     let counts = dispatch_cli_tool(
+        Arc::new(CliToolSourceAdapter::new()),
         &runtime,
         "cli:rg --help",
         "axon-test",
@@ -510,6 +514,7 @@ async fn non_web_pipeline_failure_emits_one_structured_terminal_failure() {
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("rg");
 
     let error = dispatch_cli_tool(
+        Arc::new(CliToolSourceAdapter::new()),
         &runtime,
         "cli:rg --help",
         "axon-test",

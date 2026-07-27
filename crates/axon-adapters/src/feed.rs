@@ -45,7 +45,7 @@ impl SourceAdapter for FeedSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn materialize(
@@ -148,7 +148,8 @@ fn feed_capability(version: &str) -> AdapterCapability {
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    feed_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    feed_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let path = feed_path(plan)?;
     let feed = read_and_parse_feed(&path)?;

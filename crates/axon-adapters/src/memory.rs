@@ -97,7 +97,7 @@ impl SourceAdapter for MemorySourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn materialize(

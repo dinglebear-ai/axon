@@ -424,8 +424,10 @@ characterization; no ignored red test lands.
 `crates/axon-adapters/src/providers/http_fetch.rs`, route modules in
 `crates/axon-route/src/`, and sidecar tests.
 
-- [ ] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
-  `Arc<dyn SourceAdapter>` values.
+- [x] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
+  `Arc<dyn SourceAdapter>` values. Verified 2026-07-27 with strict matrix
+  validation, primary-family alias/overlap coverage, compiled adapter/service
+  test targets, and 54 focused registry and source-dispatch regressions.
 - [x] Add fail-closed validation for duplicate names, missing families,
   capability/spec mismatch, and family-matrix coverage.
 - [x] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and

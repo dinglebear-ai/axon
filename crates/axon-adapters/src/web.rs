@@ -56,7 +56,7 @@ impl SourceAdapter for WebSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -182,9 +182,9 @@ fn web_capability(version: &str) -> AdapterCapability {
             version: version.to_string(),
         },
         SourceKind::Web,
-        SourceScope::Site,
+        SourceScope::Page,
     )
-    .with_scope(SourceScope::Page)
+    .with_scope(SourceScope::Site)
     .with_scope(SourceScope::Docs)
     .with_scope(SourceScope::Map)
 }

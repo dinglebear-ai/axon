@@ -45,7 +45,7 @@ impl SourceAdapter for RedditSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn materialize(
@@ -127,13 +127,14 @@ fn reddit_capability(version: &str) -> AdapterCapability {
             version: version.to_string(),
         },
         SourceKind::Reddit,
-        SourceScope::Subreddit,
+        SourceScope::Thread,
     )
-    .with_scope(SourceScope::Thread)
+    .with_scope(SourceScope::Subreddit)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    reddit_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    reddit_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = reddit_target(plan)?;
     let dump_items = load_dump_items(plan)?;

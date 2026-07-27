@@ -37,7 +37,7 @@ impl SourceAdapter for CliToolSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> AdapterResult<SourceAdapterCapability> {
@@ -118,7 +118,8 @@ async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireR
 }
 
 async fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
-    cli_tool_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    cli_tool_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let resolved = resolve_metadata(plan).await?;
     let source = &resolved.source;

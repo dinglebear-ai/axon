@@ -47,7 +47,7 @@ impl SourceAdapter for GitSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -149,7 +149,8 @@ fn git_capability(version: &str) -> AdapterCapability {
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    git_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    git_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = git_target(plan)?;
     let root = repo_root(plan)?;

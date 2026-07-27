@@ -46,7 +46,7 @@ impl SourceAdapter for YoutubeSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn materialize(
@@ -138,11 +138,13 @@ fn youtube_capability(version: &str) -> AdapterCapability {
         SourceKind::Youtube,
         SourceScope::Video,
     )
+    .with_scope(SourceScope::Playlist)
     .with_scope(SourceScope::Channel)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    youtube_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    youtube_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let path = dump_path(plan)?;
     let videos = read_youtube_dump(&path)?;

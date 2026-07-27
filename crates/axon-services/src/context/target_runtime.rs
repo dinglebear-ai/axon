@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
+use axon_adapters::{NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
@@ -342,6 +342,14 @@ impl TargetLocalSourceRuntime {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
             default_timeout_ms: cfg.request_timeout_ms,
         });
+        let fetch_provider = Arc::new(fetch_provider);
+        let render_provider = Arc::new(render_provider);
+        let web_fetch_provider = Arc::clone(&fetch_provider);
+        let web_render_provider = Arc::clone(&render_provider);
+        let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
+            web_fetch_provider,
+            web_render_provider,
+        ));
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
         let document_cache = crate::web_source::InProcessWebDocumentCache::new();
 
@@ -367,10 +375,12 @@ impl TargetLocalSourceRuntime {
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
-            fetch_provider: Arc::new(fetch_provider),
-            render_provider: Arc::new(render_provider),
+            fetch_provider,
+            render_provider,
+            web_source_adapter,
             artifact_store: Arc::new(artifact_store),
             document_cache: Arc::new(document_cache),
+            source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }

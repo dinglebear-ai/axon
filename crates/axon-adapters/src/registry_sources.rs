@@ -41,7 +41,7 @@ impl SourceAdapter for RegistrySourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn materialize(
@@ -130,7 +130,8 @@ fn registry_capability(version: &str) -> AdapterCapability {
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    registry_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    registry_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let options = validate_options(&plan.route.validated_options)?;
     let dump = RegistryDump::load(&options.dump_path)?;

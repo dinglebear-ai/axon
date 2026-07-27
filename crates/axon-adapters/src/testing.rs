@@ -369,7 +369,7 @@ fn source_defaults(name: &str) -> (SourceKind, SourceScope) {
         "feed" => (SourceKind::Feed, SourceScope::Feed),
         "cli" => (SourceKind::CliTool, SourceScope::Tool),
         "mcp" => (SourceKind::McpTool, SourceScope::Tool),
-        "session" => (SourceKind::Session, SourceScope::Thread),
+        "session" | "sessions" => (SourceKind::Session, SourceScope::Thread),
         "upload" => (SourceKind::Upload, SourceScope::File),
         _ => (SourceKind::Registry, SourceScope::Package),
     }

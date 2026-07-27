@@ -43,7 +43,7 @@ pub use self::target::{SessionTarget, parse_session_target};
 
 pub const MODULE_NAME: &str = "sessions";
 
-const ADAPTER_NAME: &str = "session";
+const ADAPTER_NAME: &str = "sessions";
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionSourceAdapter;
@@ -92,7 +92,7 @@ impl SourceAdapter for SessionSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -169,13 +169,15 @@ fn session_capability(version: &str) -> AdapterCapability {
             version: version.to_string(),
         },
         SourceKind::Session,
-        SourceScope::Thread,
+        SourceScope::File,
     )
-    .with_scope(SourceScope::File)
+    .with_scope(SourceScope::Directory)
+    .with_scope(SourceScope::Thread)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    session_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    session_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = session_target(plan)?;
     let root = sessions_root(plan)?;

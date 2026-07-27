@@ -35,9 +35,23 @@ impl SourceAdapterRegistry {
     }
 
     pub fn adapter_for(&self, route: &RoutePlan) -> Option<Arc<dyn SourceAdapter>> {
-        self.adapters
+        self.adapter_for_source_kind(route.source.source_kind)
+    }
+
+    pub fn adapter_for_source_kind(
+        &self,
+        source_kind: SourceKind,
+    ) -> Option<Arc<dyn SourceAdapter>> {
+        crate::source_family_matrix()
             .iter()
-            .find(|adapter| adapter.name() == route.adapter.name)
+            .find(|spec| {
+                spec.is_source_adapter && spec.source_kinds.first().copied() == Some(source_kind)
+            })
+            .and_then(|spec| {
+                self.adapters
+                    .iter()
+                    .find(|adapter| adapter.name() == spec.adapter)
+            })
             .cloned()
     }
 

@@ -8,6 +8,7 @@
 //! subprocess, or a live public registry respectively — none mockable
 //! offline, so their materialization behavior is covered in `axon-adapters`.
 
+use axon_adapters::{feed::FeedSourceAdapter, local::LocalSourceAdapter};
 use axon_api::source::{AuthScope, AuthSnapshot, ProviderId, SourceRequest};
 use axon_core::http::LoopbackGuard;
 use axon_embedding::fake::FakeEmbeddingProvider;
@@ -104,6 +105,7 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
     snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
 
     let result = dispatch_local(
+        Arc::new(LocalSourceAdapter::new()),
         &runtime,
         "./.env",
         "axon-test",
@@ -264,6 +266,7 @@ async fn dispatch_feed_embed_false_writes_no_vectors() {
     let route = route_for(&source);
     let execution = test_execution(&source);
     let counts = dispatch_feed(
+        Arc::new(FeedSourceAdapter::new()),
         &runtime,
         &source,
         "axon-test",
@@ -304,6 +307,7 @@ async fn dispatch_feed_max_items_caps_documents_prepared() {
     let route = route_for(&source);
     let execution = test_execution(&source);
     let counts = dispatch_feed(
+        Arc::new(FeedSourceAdapter::new()),
         &runtime,
         &source,
         "axon-test",

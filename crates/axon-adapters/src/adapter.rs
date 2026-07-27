@@ -7,6 +7,10 @@ use crate::acquisition::MaterializedSource;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
+/// Version of the stable source-adapter contract described by the family matrix.
+/// This is independent from the Axon crate release version.
+pub const SOURCE_ADAPTER_CONTRACT_VERSION: &str = "1";
+
 /// How an adapter wants a family-level 304/conditional-request reuse to be
 /// handled by the shared runner. `None` (the default — what every non-web
 /// family and `local` already do) means the runner never overlays prior

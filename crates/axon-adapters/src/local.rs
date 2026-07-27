@@ -39,7 +39,7 @@ impl SourceAdapter for LocalSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -94,16 +94,16 @@ fn local_capability(version: &str) -> AdapterCapability {
             version: version.to_string(),
         },
         SourceKind::Local,
-        SourceScope::Directory,
+        SourceScope::File,
     )
-    .with_scope(SourceScope::File)
+    .with_scope(SourceScope::Directory)
     .with_scope(SourceScope::Workspace)
     .with_scope(SourceScope::Repo)
     .with_scope(SourceScope::Map)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    let capability = local_capability(env!("CARGO_PKG_VERSION"));
+    let capability = local_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION);
     capability.validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let options = validate_options(&plan.route.validated_options)?;

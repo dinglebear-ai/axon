@@ -89,8 +89,8 @@ fn session_plan(
         );
     }
     let adapter = AdapterRef {
-        name: "session".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        name: "sessions".to_string(),
+        version: crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION.to_string(),
     };
     SourcePlan {
         job_id: JobId::new(Uuid::from_u128(298298)),
@@ -117,7 +117,7 @@ fn session_plan(
             credential_requirements: Vec::new(),
             execution_affinity: ExecutionAffinity::Worker,
             safety_class: SafetyClass::LocalFilesystem,
-            option_schema_id: "adapter:session:options:v1".to_string(),
+            option_schema_id: "adapter:sessions:options:v1".to_string(),
             validated_options: AdapterOptions { values },
             chunking_hints: Vec::new(),
             parser_hints: Vec::new(),

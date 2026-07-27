@@ -72,10 +72,7 @@ pub async fn enqueue_source(
         return Ok(result_map::route_error_result(&input, err));
     }
     let auth_snapshot = auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("runtime"));
-    let adapter = AdapterRef {
-        name: routed.route.adapter.name.clone(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
+    let adapter = routed.route.adapter.clone();
     let source_kind = routed.route.source.source_kind;
     let scope = routed.route.scope;
     let canonical_uri = routed.route.source.canonical_uri.clone();
