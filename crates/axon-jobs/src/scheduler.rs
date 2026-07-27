@@ -93,6 +93,12 @@ impl<K> Clone for ActiveReservationLease<K> {
 }
 
 impl<K> ActiveReservationLease<K> {
+    pub async fn renew(&self) -> Result<(), SchedulerError> {
+        self.scheduler
+            .renew(&self.reservation_id, &self.fence)
+            .await
+    }
+
     pub async fn complete(self) -> Result<(), SchedulerError> {
         self.scheduler
             .complete(&self.reservation_id, &self.fence)
@@ -103,6 +109,10 @@ impl<K> ActiveReservationLease<K> {
         self.scheduler
             .cancel(&self.reservation_id, &self.fence)
             .await
+    }
+
+    pub async fn fail(self) -> Result<(), SchedulerError> {
+        self.scheduler.fail(&self.reservation_id, &self.fence).await
     }
 }
 
@@ -132,9 +142,13 @@ where
     scheduler
         .activate(&lease.reservation_id, &lease.fence)
         .await?;
-    let value = operation(lease.clone())
-        .await
-        .map_err(ReservedCallError::Provider)?;
+    let value = match operation(lease.clone()).await {
+        Ok(value) => value,
+        Err(error) => {
+            lease.fail().await?;
+            return Err(ReservedCallError::Provider(error));
+        }
+    };
     lease.complete().await?;
     Ok(value)
 }
@@ -364,6 +378,41 @@ impl ProviderScheduler {
             "UPDATE provider_reservations SET status = 'active', renewed_at = datetime('now'),
              updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'granted'",
+        )
+        .bind(reservation_id)
+        .bind(fence)
+        .bind(&self.domain.authority_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if changed == 0 {
+            return Err(SchedulerError::StaleFence);
+        }
+        Ok(())
+    }
+
+    async fn renew(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let changed = sqlx::query(
+            "UPDATE provider_reservations SET renewed_at = datetime('now'), updated_at = datetime('now')
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'active'",
+        )
+        .bind(reservation_id)
+        .bind(fence)
+        .bind(&self.domain.authority_id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if changed == 0 {
+            return Err(SchedulerError::StaleFence);
+        }
+        Ok(())
+    }
+
+    async fn fail(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let changed = sqlx::query(
+            "UPDATE provider_reservations SET status = 'released', granted_units = 0,
+             terminal_reason = 'provider_failed', updated_at = datetime('now')
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status IN ('granted','active')",
         )
         .bind(reservation_id)
         .bind(fence)
