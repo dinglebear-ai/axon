@@ -24,20 +24,58 @@ pub trait MemorySourceProvider: Send + Sync {
     async fn get(&self, memory_id: MemoryId) -> Result<Option<MemoryRecord>>;
 }
 
+const ACCESS_VISIBILITY_OPTION: &str = "_memory_visibility_ceiling";
+const ACCESS_ALLOW_SENSITIVE_OPTION: &str = "_memory_allow_sensitive";
+
 #[derive(Debug, Clone, Copy)]
 pub struct MemorySourceAccess {
     pub visibility_ceiling: Visibility,
     pub allow_sensitive: bool,
 }
 
+impl MemorySourceAccess {
+    /// Store caller-specific authorization on the execution plan, never on the
+    /// shared adapter instance. Missing or malformed values fail closed.
+    pub fn apply_to_plan(self, plan: &mut SourcePlan) {
+        plan.request.options.values.insert(
+            ACCESS_VISIBILITY_OPTION.to_string(),
+            json!(self.visibility_ceiling),
+        );
+        plan.request.options.values.insert(
+            ACCESS_ALLOW_SENSITIVE_OPTION.to_string(),
+            json!(self.allow_sensitive),
+        );
+    }
+
+    fn from_plan(plan: &SourcePlan) -> Self {
+        let visibility_ceiling = plan
+            .request
+            .options
+            .values
+            .get(ACCESS_VISIBILITY_OPTION)
+            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .unwrap_or(Visibility::Public);
+        let allow_sensitive = plan
+            .request
+            .options
+            .values
+            .get(ACCESS_ALLOW_SENSITIVE_OPTION)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        Self {
+            visibility_ceiling,
+            allow_sensitive,
+        }
+    }
+}
+
 pub struct MemorySourceAdapter {
     provider: Arc<dyn MemorySourceProvider>,
-    access: MemorySourceAccess,
 }
 
 impl MemorySourceAdapter {
-    pub fn new(provider: Arc<dyn MemorySourceProvider>, access: MemorySourceAccess) -> Self {
-        Self { provider, access }
+    pub fn new(provider: Arc<dyn MemorySourceProvider>) -> Self {
+        Self { provider }
     }
 
     async fn record(&self, plan: &SourcePlan) -> Result<MemoryRecord> {
@@ -47,7 +85,7 @@ impl MemorySourceAdapter {
             .get(memory_id.clone())
             .await?
             .ok_or_else(|| missing_memory(&memory_id))?;
-        authorize_record(&record, self.access)?;
+        authorize_record(&record, MemorySourceAccess::from_plan(plan))?;
         Ok(record)
     }
 }

@@ -68,17 +68,18 @@ pub(crate) async fn dispatch_memory(
                 || snapshot.granted_scopes.contains(&AuthScope::Admin)
         }),
     };
-    let adapter = Arc::new(MemorySourceAdapter::new(
-        Arc::new(ServiceMemorySourceProvider {
+    let adapter = Arc::new(MemorySourceAdapter::new(Arc::new(
+        ServiceMemorySourceProvider {
             store: crate::memory::memory_store(ctx).await?,
-        }),
-        access,
-    ));
+        },
+    )));
     let materializer = adapter.clone();
+    let mut plan = family_source_plan(input, route, embed, Some(1), None);
+    access.apply_to_plan(&mut plan);
     dispatch_materialized(
         runtime,
         adapter.as_ref(),
-        family_source_plan(input, route, embed, Some(1), None),
+        plan,
         collection,
         owner_id,
         auth_snapshot,
