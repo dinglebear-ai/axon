@@ -180,7 +180,7 @@ fn build_candidate_emits_container_and_document_skeleton() {
         ],
     );
 
-    let candidate = build_candidate(SourceInputKind::Web, &counts("src_web", "gen_1"), uri, &m);
+    let candidate = build_candidate(SourceKind::Web, &counts("src_web", "gen_1"), uri, &m);
 
     // One container node + one node per document.
     assert_eq!(candidate.nodes.len(), 3);
@@ -211,17 +211,14 @@ fn build_candidate_emits_container_and_document_skeleton() {
 
 #[test]
 fn document_and_edge_kinds_are_family_specific() {
-    assert_eq!(container_node_kind(SourceInputKind::Feed), "feed");
+    assert_eq!(container_node_kind(SourceKind::Feed), "feed");
     assert_eq!(
-        containment_edge_kind(SourceInputKind::Feed),
+        containment_edge_kind(SourceKind::Feed),
         "feed_contains_entry"
     );
+    assert_eq!(container_node_kind(SourceKind::Reddit), "reddit_subreddit");
     assert_eq!(
-        container_node_kind(SourceInputKind::Reddit),
-        "reddit_subreddit"
-    );
-    assert_eq!(
-        containment_edge_kind(SourceInputKind::Reddit),
+        containment_edge_kind(SourceKind::Reddit),
         "subreddit_has_thread"
     );
     let repo_item = manifest_item("s", "k", "u", ItemKind::RepoFile);
@@ -255,7 +252,7 @@ async fn write_baseline_graph_persists_nonempty_graph() {
 
     let pool = Arc::new(graph_pool().await);
     let summary = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool.clone()),
         &ledger,
         &counts("src_web", "gen_1"),
@@ -287,7 +284,7 @@ async fn write_baseline_graph_persists_nonempty_graph() {
 async fn write_baseline_graph_without_pool_is_degraded() {
     let ledger = FakeLedgerStore::new();
     let summary = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         None,
         &ledger,
         &counts("src_web", "gen_1"),
@@ -305,7 +302,7 @@ async fn write_baseline_graph_missing_manifest_is_degraded() {
     let ledger = FakeLedgerStore::new();
     let pool = Arc::new(graph_pool().await);
     let summary = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool),
         &ledger,
         &counts("src_missing", "gen_1"),
@@ -343,7 +340,7 @@ async fn parser_produced_candidates_reach_the_graph_store_for_web_and_git() {
 
     let web_candidate = dependency_candidate("src_web", "gc-web-1", "manifest");
     let summary = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool.clone()),
         &ledger,
         &counts("src_web", "gen_1"),
@@ -376,7 +373,7 @@ async fn parser_produced_candidates_reach_the_graph_store_for_web_and_git() {
     seed_web_source(&ledger, "src_git", git_uri).await;
     let git_candidate = dependency_candidate("src_git", "gc-git-1", "manifest");
     let git_summary = write_baseline_graph(
-        SourceInputKind::Git,
+        SourceKind::Git,
         Some(pool.clone()),
         &ledger,
         &counts("src_git", "gen_1"),
@@ -397,7 +394,7 @@ async fn invalid_graph_candidates_are_dropped_not_written() {
     let pool = Arc::new(graph_pool().await);
 
     let summary = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool.clone()),
         &ledger,
         &counts("src_web", "gen_1"),
@@ -434,7 +431,7 @@ async fn unchanged_item_reuse_does_not_double_write() {
     let candidate = dependency_candidate("src_web", "gc-web-1", "manifest");
 
     let first = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool.clone()),
         &ledger,
         &counts("src_web", "gen_1"),
@@ -445,7 +442,7 @@ async fn unchanged_item_reuse_does_not_double_write() {
     assert!(!first.degraded);
 
     let second = write_baseline_graph(
-        SourceInputKind::Web,
+        SourceKind::Web,
         Some(pool.clone()),
         &ledger,
         &counts("src_web", "gen_1"),

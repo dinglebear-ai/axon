@@ -191,9 +191,6 @@ fn authorize_watch_request(
         auth_snapshot,
     )
     .map_err(|err| Box::new(err) as Box<dyn Error>)?;
-    if routed.kind == crate::source::classify::SourceInputKind::Unsupported {
-        return Err("watch source kind is unsupported".into());
-    }
     Ok(routed)
 }
 
