@@ -125,3 +125,56 @@ async fn reserved_call_releases_capacity_after_provider_completion() {
     .expect("reserved call");
     assert_eq!(result, "ok");
 }
+
+#[tokio::test]
+async fn reserved_call_releases_capacity_after_provider_failure() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query("INSERT INTO sources (source_id, summary_json, created_at, updated_at) VALUES ('failed', '{}', '', '')")
+        .execute(&pool)
+        .await
+        .expect("source");
+    sqlx::query("INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at) VALUES ('00000000-0000-0000-0000-000000000009', 'source', 'queued', 'queued', 'normal', 'failed', '', '')")
+        .execute(&pool)
+        .await
+        .expect("job");
+    let scheduler = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei".into(),
+            authority_id: "a".into(),
+        },
+        SchedulerConfig {
+            capacity: 1,
+            interactive_reserve: 0,
+            max_entries: 4,
+            max_units: 4,
+        },
+    )
+    .expect("scheduler");
+    let error = call_reserved::<(), (), _, _, _>(
+        &scheduler,
+        ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(9)),
+            stage_id: None,
+            attempt: 1,
+            fence: "failure-fence".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        },
+        |_lease| async { Err::<(), _>("provider failed") },
+    )
+    .await
+    .expect_err("provider failure propagates");
+    assert!(matches!(
+        error,
+        ReservedCallError::Provider("provider failed")
+    ));
+    let row: (String, String) = sqlx::query_as(
+        "SELECT status, terminal_reason FROM provider_reservations WHERE fence = 'failure-fence'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("reservation row");
+    assert_eq!(row, ("released".to_string(), "provider_failed".to_string()));
+}
