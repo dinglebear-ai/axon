@@ -740,7 +740,7 @@ content-derived ids for every tested operation.
 - [x] Support aggregate/per-family generate, check, print, JSON, and the
   CI-forbidden snapshot-update mode required by contract.
 - [ ] Mark dated plans historical; rewrite live contracts in present tense.
-- [ ] Remove family-model naming/comment residue and the last `TODO(#298)`.
+- [x] Remove family-model naming/comment residue and the last `TODO(#298)`.
 - [ ] Run docs generation/check, schema drift, layering, crate contracts, and
   public API checks.
 
