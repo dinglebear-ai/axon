@@ -1,15 +1,15 @@
 //! Source-kind dispatch table for the unified source orchestrator.
 
-use axon_api::source::{AuthSnapshot, OutputPolicy, RoutePlan, SourceLimits, SourceScope};
-
-use super::classify::SourceInputKind;
 use super::result_map::IndexCounts;
 use super::{SourceExecutionContext, dispatch, dispatch_item_limited_kind, dispatch_web_kind};
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
+use axon_api::source::{
+    AuthSnapshot, OutputPolicy, RoutePlan, SourceKind, SourceLimits, SourceScope,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_kind(
-    kind: SourceInputKind,
+    kind: SourceKind,
     scope: SourceScope,
     ctx: &ServiceContext,
     cfg: &axon_core::config::Config,
@@ -26,7 +26,7 @@ pub(super) async fn dispatch_kind(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::Local | SourceInputKind::Git => {
+        SourceKind::Local | SourceKind::Git => {
             dispatch_local_or_git(
                 kind,
                 runtime,
@@ -40,7 +40,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Feed | SourceInputKind::Youtube | SourceInputKind::Reddit => {
+        SourceKind::Feed | SourceKind::Youtube | SourceKind::Reddit => {
             dispatch_item_limited_kind(
                 kind,
                 runtime,
@@ -55,7 +55,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Web => {
+        SourceKind::Web => {
             dispatch_web_kind(
                 cfg,
                 runtime,
@@ -72,7 +72,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Session => {
+        SourceKind::Session => {
             dispatch::dispatch_session(
                 runtime,
                 input,
@@ -87,7 +87,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Registry => {
+        SourceKind::Registry => {
             dispatch_item_limited_kind(
                 kind,
                 runtime,
@@ -102,11 +102,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::CliTool
-        | SourceInputKind::McpTool
-        | SourceInputKind::Memory
-        | SourceInputKind::Upload
-        | SourceInputKind::Unsupported => {
+        SourceKind::CliTool | SourceKind::McpTool | SourceKind::Memory | SourceKind::Upload => {
             dispatch_virtual_kind(
                 kind,
                 ctx,
@@ -126,7 +122,7 @@ pub(super) async fn dispatch_kind(
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_local_or_git(
-    kind: SourceInputKind,
+    kind: SourceKind,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -137,7 +133,7 @@ async fn dispatch_local_or_git(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::Local => {
+        SourceKind::Local => {
             dispatch::dispatch_local(
                 runtime,
                 input,
@@ -150,7 +146,7 @@ async fn dispatch_local_or_git(
             )
             .await
         }
-        SourceInputKind::Git => {
+        SourceKind::Git => {
             dispatch::dispatch_git(
                 runtime,
                 input,
@@ -169,7 +165,7 @@ async fn dispatch_local_or_git(
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_virtual_kind(
-    kind: SourceInputKind,
+    kind: SourceKind,
     ctx: &ServiceContext,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -181,7 +177,7 @@ async fn dispatch_virtual_kind(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::CliTool => {
+        SourceKind::CliTool => {
             let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
             dispatch::dispatch_cli_tool(
                 runtime,
@@ -196,7 +192,7 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::McpTool => {
+        SourceKind::McpTool => {
             let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
             dispatch::dispatch_mcp_tool(
                 runtime,
@@ -211,7 +207,7 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Memory => {
+        SourceKind::Memory => {
             dispatch::dispatch_memory(
                 ctx,
                 runtime,
@@ -225,7 +221,7 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Upload => {
+        SourceKind::Upload => {
             dispatch::dispatch_upload(
                 ctx,
                 runtime,
@@ -239,7 +235,8 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
-        _ => unreachable!("non-virtual source kind routed to virtual dispatcher"),
+        _ => Err(anyhow::anyhow!(
+            "non-virtual source kind routed to virtual dispatcher: {kind:?}"
+        )),
     }
 }

@@ -22,7 +22,6 @@
 
 pub mod authorize;
 pub mod batch;
-pub mod classify;
 pub mod dispatch;
 mod dispatch_kind;
 pub mod enqueue;
@@ -43,10 +42,11 @@ pub use security::{
     redact_local_path_for_public_payload,
 };
 
-use axon_api::source::{AuthSnapshot, PipelinePhase, SourceRequest, SourceResult, SourceScope};
+use axon_api::source::{
+    AuthSnapshot, PipelinePhase, SourceKind, SourceRequest, SourceResult, SourceScope,
+};
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
-use classify::SourceInputKind;
 pub(crate) use execution::SourceExecutionContext;
 use result_map::{IndexCounts, to_source_result_with_counts};
 
@@ -309,7 +309,7 @@ async fn open_cleanup_debt_stores(
 /// threaded to them.
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_item_limited_kind(
-    kind: SourceInputKind,
+    kind: SourceKind,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -321,7 +321,7 @@ async fn dispatch_item_limited_kind(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::Feed => {
+        SourceKind::Feed => {
             dispatch::dispatch_feed(
                 runtime,
                 input,
@@ -335,7 +335,7 @@ async fn dispatch_item_limited_kind(
             )
             .await
         }
-        SourceInputKind::Youtube => {
+        SourceKind::Youtube => {
             dispatch::dispatch_youtube(
                 runtime,
                 input,
@@ -349,7 +349,7 @@ async fn dispatch_item_limited_kind(
             )
             .await
         }
-        SourceInputKind::Reddit => {
+        SourceKind::Reddit => {
             dispatch::dispatch_reddit(
                 runtime,
                 input,
@@ -363,7 +363,7 @@ async fn dispatch_item_limited_kind(
             )
             .await
         }
-        SourceInputKind::Registry => {
+        SourceKind::Registry => {
             dispatch::dispatch_registry(
                 runtime,
                 input,
@@ -417,20 +417,19 @@ async fn dispatch_web_kind(
 }
 
 /// Adapter name reported on the result for each family.
-fn adapter_name_for(kind: SourceInputKind) -> &'static str {
+fn adapter_name_for(kind: SourceKind) -> &'static str {
     match kind {
-        SourceInputKind::Local => "local",
-        SourceInputKind::Git => "git",
-        SourceInputKind::Feed => "feed",
-        SourceInputKind::Youtube => "youtube",
-        SourceInputKind::Reddit => "reddit",
-        SourceInputKind::Web => "web",
-        SourceInputKind::Session => "sessions",
-        SourceInputKind::Registry => "registry",
-        SourceInputKind::CliTool => "cli_tool",
-        SourceInputKind::McpTool => "mcp_tool",
-        SourceInputKind::Memory => "memory",
-        SourceInputKind::Upload => "upload",
-        SourceInputKind::Unsupported => "unsupported",
+        SourceKind::Local => "local",
+        SourceKind::Git => "git",
+        SourceKind::Feed => "feed",
+        SourceKind::Youtube => "youtube",
+        SourceKind::Reddit => "reddit",
+        SourceKind::Web => "web",
+        SourceKind::Session => "sessions",
+        SourceKind::Registry => "registry",
+        SourceKind::CliTool => "cli_tool",
+        SourceKind::McpTool => "mcp_tool",
+        SourceKind::Memory => "memory",
+        SourceKind::Upload => "upload",
     }
 }

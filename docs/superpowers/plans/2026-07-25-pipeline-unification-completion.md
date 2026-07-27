@@ -432,8 +432,11 @@ characterization; no ignored red test lands.
   normalized results.
 - [ ] Add sequential and concurrent same-instance tests proving no ETag,
   request, auth, or output leakage.
-- [ ] Delete both family classifiers and route from canonical source
-  identity/capabilities.
+- [x] Delete both family classifiers and route from canonical source
+  identity/capabilities. Verified 2026-07-27 by compiling `axon-services`,
+  `axon-web`, and `axon-mcp`; running 133 source-focused transport/service tests
+  plus the execute-scope regression; and auditing runtime crates for the removed
+  classifier symbols.
 - [x] Remove `SourceRouter::validate_options`; validate exactly once during
   `RoutePlan` construction and remove its generator/contract references.
 - [x] Route CodeSearch refresh through the normal source route instead of

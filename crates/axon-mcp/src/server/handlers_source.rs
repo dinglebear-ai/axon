@@ -17,9 +17,9 @@
 //! [`enforce_source_safety_scope`] runs the equivalent *per-target*
 //! authorization boundary REST runs
 //! (`crates/axon-web/src/server/handlers/sources.rs::authorize_source_request`):
-//! it classifies `source` into a `SafetyClass` via the shared
-//! [`axon_services::source::classify::safety_class_for`] and requires the
-//! matching fine-grained scope (`axon:local` for local filesystem sources,
+//! it resolves `source` through the canonical router, reads the route's
+//! `SafetyClass`, and requires the matching fine-grained scope (`axon:local`
+//! for local filesystem sources,
 //! `axon:execute` for CLI/MCP tool sources) via
 //! `axon_authz::required_scope_for_safety_class`. Without this boundary, a
 //! caller holding only `axon:write` (explicitly NOT `axon:local` per the auth

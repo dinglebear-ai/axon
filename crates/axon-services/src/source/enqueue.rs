@@ -23,13 +23,12 @@
 
 use axon_api::source::{
     AdapterRef, AuthScope, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap,
-    SourceIntent, SourceRequest, SourceResult,
+    SourceIntent, SourceKind, SourceRequest, SourceResult,
 };
 use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
 
 use super::authorize;
-use super::classify::SourceInputKind;
 use super::result_map;
 use super::routing;
 
@@ -72,21 +71,6 @@ pub async fn enqueue_source(
     {
         return Ok(result_map::route_error_result(&input, err));
     }
-    if routed.kind == SourceInputKind::Unsupported {
-        return Ok(result_map::route_error_result(
-            &input,
-            ApiError::new(
-                "source.route.unsupported_dispatch",
-                ErrorStage::Routing,
-                "resolved source kind does not have a source dispatch implementation yet",
-            )
-            .with_context(
-                "source_kind",
-                format!("{:?}", routed.route.source.source_kind),
-            ),
-        ));
-    }
-
     let auth_snapshot = auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("runtime"));
     let adapter = AdapterRef {
         name: routed.route.adapter.name.clone(),
@@ -96,7 +80,7 @@ pub async fn enqueue_source(
     let scope = routed.route.scope;
     let canonical_uri = routed.route.source.canonical_uri.clone();
 
-    if routed.kind == SourceInputKind::CliTool {
+    if routed.kind == SourceKind::CliTool {
         axon_adapters::cli_tool::validate_persistable_cli_invocation(&request.source)
             .map_err(|error| ApiError::new(error.code, ErrorStage::Authorizing, error.message))?;
     }
@@ -116,10 +100,10 @@ pub async fn enqueue_source(
 
 fn authorize_detached_local_source_policy(
     input: &str,
-    kind: SourceInputKind,
+    kind: SourceKind,
     auth_snapshot: Option<&AuthSnapshot>,
 ) -> Result<(), ApiError> {
-    if kind != SourceInputKind::Local {
+    if kind != SourceKind::Local {
         return Ok(());
     }
     let has_local_scope = auth_snapshot
