@@ -438,7 +438,10 @@ characterization; no ignored red test lands.
   `RoutePlan` construction and remove its generator/contract references.
 - [x] Route CodeSearch refresh through the normal source route instead of
   returning `None`.
-- [ ] Inject `FetchProvider` into web discovery and remove direct network calls.
+- [x] Inject `FetchProvider` into web discovery and remove direct network calls.
+  Verified 2026-07-27 with `cargo check -p axon-adapters`, the focused Map
+  provider regression plus sitemap, `llms.txt`, and site-discovery test filters,
+  and a static audit showing no private HTTP helpers remain in those paths.
 - [ ] Put ledger-trusted ETag/Last-Modified and `CachePolicy::Revalidate` into
   each changed item’s typed `FetchPlan`; reject equivalent untrusted manifest
   metadata.

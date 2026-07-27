@@ -1,20 +1,25 @@
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Instant;
 
 use url::Url;
 
 use axon_core::config::Config;
 use axon_core::content::extract_anchor_hrefs;
-use axon_core::http::{fetch_html, http_client, normalize_url};
+use axon_core::http::normalize_url;
 use axon_core::logging::{log_info, log_warn};
 
-use super::super::sitemap::{SitemapDiscovery, discover_sitemap_urls, sitemap_url_limit};
+use super::super::sitemap::{
+    DISCOVERY_MAX_BODY_BYTES, SitemapDiscovery, discover_sitemap_urls, fetch_text,
+    sitemap_url_limit,
+};
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
     MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
     merge_map_candidate_urls, resolve_map_seed_url,
 };
+use crate::boundary::FetchProvider;
 
 fn effective_root_anchor_limit(cfg: &Config) -> usize {
     if cfg.max_pages == 0 {
@@ -28,23 +33,20 @@ async fn discover_root_anchors(
     cfg: &Config,
     scope_start_url: &str,
     scope: &MapScope,
+    fetch: Arc<dyn FetchProvider>,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    let client = match http_client() {
-        Ok(c) => c,
-        Err(e) => {
-            log_info(&format!("bounded-structure: http_client failed: {e}"));
-            return (
-                vec![],
-                Some("bounded-structure discovery: http client unavailable".to_string()),
-            );
-        }
-    };
-    let html = match fetch_html(client, scope_start_url).await {
-        Ok(h) => h,
-        Err(e) => {
+    let html = match fetch_text(
+        fetch.as_ref(),
+        scope_start_url,
+        Some(DISCOVERY_MAX_BODY_BYTES),
+    )
+    .await
+    {
+        Some(html) => html,
+        None => {
             log_info(&format!(
-                "bounded-structure: fetch failed for {scope_start_url}: {e}"
+                "bounded-structure: fetch failed for {scope_start_url}"
             ));
             return (
                 vec![],
@@ -115,18 +117,19 @@ fn build_discovery_map_result(
 pub async fn discover_site_urls(
     cfg: &Config,
     start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
 ) -> Result<MapResult, Box<dyn Error>> {
     let start = Instant::now();
 
     let (seed_result, sitemap_result, llms_urls) = tokio::join!(
         async {
-            resolve_map_seed_url(start_url)
+            resolve_map_seed_url(start_url, fetch.clone())
                 .await
                 .map_err(|e| e.to_string())
         },
         async {
             if cfg.discover_sitemaps {
-                discover_sitemap_urls(cfg, start_url)
+                discover_sitemap_urls(cfg, start_url, fetch.clone())
                     .await
                     .map_err(|e| e.to_string())
             } else {
@@ -136,7 +139,13 @@ pub async fn discover_site_urls(
         async {
             if cfg.discover_llms_txt {
                 // warn-and-continue: never fail the map call on llms.txt errors.
-                match crate::web_engine::engine::discover_llms_txt_urls(cfg, start_url).await {
+                match crate::web_engine::engine::discover_llms_txt_urls(
+                    cfg,
+                    start_url,
+                    fetch.clone(),
+                )
+                .await
+                {
                     Ok(urls) => urls,
                     Err(e) => {
                         log_warn(&format!(
@@ -223,7 +232,7 @@ pub async fn discover_site_urls(
         }
     }
 
-    let (urls, warning) = discover_root_anchors(cfg, &scope_start_url, &scope).await;
+    let (urls, warning) = discover_root_anchors(cfg, &scope_start_url, &scope, fetch).await;
     Ok(MapResult {
         summary: CrawlSummary {
             elapsed_ms: start.elapsed().as_millis(),

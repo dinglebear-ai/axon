@@ -71,7 +71,8 @@ impl SourceAdapter for WebSourceAdapter {
                 if plan.route.validated_options.values.contains_key("map_urls") {
                     (map_urls_manifest_items(plan)?, MetadataMap::new())
                 } else {
-                    let discovery = site_discovery::manifest_items(plan, false).await?;
+                    let discovery =
+                        site_discovery::manifest_items(plan, false, self.fetch.clone()).await?;
                     (discovery.items, discovery.metadata)
                 }
             }
@@ -80,7 +81,8 @@ impl SourceAdapter for WebSourceAdapter {
                 MetadataMap::new(),
             ),
             _ => {
-                let discovery = site_discovery::manifest_items(plan, true).await?;
+                let discovery =
+                    site_discovery::manifest_items(plan, true, self.fetch.clone()).await?;
                 (discovery.items, discovery.metadata)
             }
         };
