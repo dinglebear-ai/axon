@@ -4,7 +4,7 @@
 //! neutral [`MemorySourceProvider`] read boundary, then projects one authorized
 //! `MemoryRecord` into the normal source acquisition contract.
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -33,30 +33,22 @@ pub struct MemorySourceAccess {
 pub struct MemorySourceAdapter {
     provider: Arc<dyn MemorySourceProvider>,
     access: MemorySourceAccess,
-    materialized: RwLock<Option<MemoryRecord>>,
 }
 
 impl MemorySourceAdapter {
     pub fn new(provider: Arc<dyn MemorySourceProvider>, access: MemorySourceAccess) -> Self {
-        Self {
-            provider,
-            access,
-            materialized: RwLock::new(None),
-        }
+        Self { provider, access }
     }
 
-    fn record(&self) -> Result<MemoryRecord> {
-        self.materialized
-            .read()
-            .map_err(cache_error)?
-            .clone()
-            .ok_or_else(|| {
-                ApiError::new(
-                    "adapter.memory.not_materialized",
-                    axon_error::ErrorStage::Planning,
-                    "memory source must be materialized before acquisition",
-                )
-            })
+    async fn record(&self, plan: &SourcePlan) -> Result<MemoryRecord> {
+        let memory_id = memory_id_from_uri(&plan.route.source.canonical_uri)?;
+        let record = self
+            .provider
+            .get(memory_id.clone())
+            .await?
+            .ok_or_else(|| missing_memory(&memory_id))?;
+        authorize_record(&record, self.access)?;
+        Ok(record)
     }
 }
 
@@ -75,14 +67,11 @@ impl SourceAdapter for MemorySourceAdapter {
         plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_plan(&plan)?;
-        let memory_id = memory_id_from_uri(&plan.route.source.canonical_uri)?;
-        let record = self
-            .provider
-            .get(memory_id.clone())
-            .await?
-            .ok_or_else(|| missing_memory(&memory_id))?;
-        authorize_record(&record, self.access)?;
-        *self.materialized.write().map_err(cache_error)? = Some(record);
+        // Materialization deliberately proves existence and authorization but
+        // does not retain caller data on this shared adapter instance. The
+        // source runner can share one `Arc<dyn SourceAdapter>` safely; each
+        // following stage reloads the record for its own `SourcePlan`.
+        self.record(&plan).await?;
         Ok(crate::acquisition::MaterializedSource::virtual_source(plan))
     }
 
@@ -100,7 +89,7 @@ impl SourceAdapter for MemorySourceAdapter {
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
         validate_plan(plan)?;
-        let record = self.record()?;
+        let record = self.record(plan).await?;
         let items = if eligible_for_publication(record.status) {
             vec![manifest_item(plan, &record)?]
         } else {
@@ -123,7 +112,7 @@ impl SourceAdapter for MemorySourceAdapter {
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
         validate_plan(plan)?;
-        let record = self.record()?;
+        let record = self.record(plan).await?;
         let items = diff
             .added
             .iter()
@@ -133,20 +122,8 @@ impl SourceAdapter for MemorySourceAdapter {
         let fetched_items = items
             .iter()
             .cloned()
-            .map(|manifest_item| AcquiredSourceItem {
-                manifest_item,
-                fetch_status: LifecycleStatus::Completed,
-                content_ref: ContentRef::InlineText {
-                    text: record.body.clone(),
-                },
-                raw_artifact_id: None,
-                headers: RedactedHeaders {
-                    headers: Vec::new(),
-                },
-                fetched_at: timestamp(),
-                metadata: memory_metadata(&record),
-            })
-            .collect::<Vec<_>>();
+            .map(|manifest_item| acquired_memory_item(plan, &record, manifest_item))
+            .collect::<Result<Vec<_>>>()?;
         let manifest = SourceManifest {
             source_id: plan.route.source.source_id.clone(),
             generation: diff.next_generation.clone(),
@@ -179,11 +156,10 @@ impl SourceAdapter for MemorySourceAdapter {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_plan(plan)?;
-        let record = self.record()?;
         let documents = acquisition
             .fetched_items
             .iter()
-            .map(|item| memory_document(plan, &record, &acquisition, item))
+            .map(|item| memory_document(plan, &acquisition, item))
             .collect::<Result<Vec<_>>>()?;
         Ok(StageExecutionResult {
             header: stage_header(
@@ -195,6 +171,41 @@ impl SourceAdapter for MemorySourceAdapter {
             data: documents,
         })
     }
+}
+
+fn acquired_memory_item(
+    plan: &SourcePlan,
+    record: &MemoryRecord,
+    manifest_item: ManifestItem,
+) -> Result<AcquiredSourceItem> {
+    let mut metadata = memory_metadata(record);
+    metadata.insert("memory_title".to_string(), json!(record.title));
+    let item = AcquiredSourceItem {
+        manifest_item,
+        fetch_status: LifecycleStatus::Completed,
+        content_ref: ContentRef::InlineText {
+            text: record.body.clone(),
+        },
+        raw_artifact_id: None,
+        headers: RedactedHeaders {
+            headers: Vec::new(),
+        },
+        fetched_at: timestamp(),
+        metadata,
+    };
+    let candidates = graph::memory_graph_candidates(plan, record, &item);
+    let mut item = item;
+    item.metadata.insert(
+        axon_parse::vertical::VERTICAL_GRAPH_CANDIDATES_METADATA_KEY.to_string(),
+        serde_json::to_value(candidates).map_err(|error| {
+            ApiError::new(
+                "adapter.memory.graph_projection_failed",
+                axon_error::ErrorStage::Fetching,
+                error.to_string(),
+            )
+        })?,
+    );
+    Ok(item)
 }
 
 pub fn memory_id_from_uri(uri: &str) -> Result<MemoryId> {
@@ -243,31 +254,32 @@ fn manifest_item(plan: &SourcePlan, record: &MemoryRecord) -> Result<ManifestIte
 
 fn memory_document(
     plan: &SourcePlan,
-    record: &MemoryRecord,
     acquisition: &SourceAcquisition,
     item: &AcquiredSourceItem,
 ) -> Result<SourceDocument> {
-    let mut metadata = memory_metadata(record);
-    let candidates = graph::memory_graph_candidates(plan, record, item);
-    metadata.insert(
-        axon_parse::vertical::VERTICAL_GRAPH_CANDIDATES_METADATA_KEY.to_string(),
-        serde_json::to_value(candidates).map_err(|error| {
+    let metadata = item.metadata.clone();
+    let title = metadata
+        .get("memory_title")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|error| {
             ApiError::new(
-                "adapter.memory.graph_projection_failed",
+                "adapter.memory.title_invalid",
                 axon_error::ErrorStage::Normalizing,
                 error.to_string(),
             )
-        })?,
-    );
+        })?
+        .flatten();
     Ok(SourceDocument {
-        document_id: DocumentId::new(record.memory_id.0.clone()),
+        document_id: DocumentId::new(item.manifest_item.source_item_key.0.clone()),
         source_id: acquisition.source_id.clone(),
         source_item_key: item.manifest_item.source_item_key.clone(),
         canonical_uri: item.manifest_item.canonical_uri.clone(),
         content_kind: ContentKind::PlainText,
         content: item.content_ref.clone(),
         metadata,
-        title: record.title.clone(),
+        title,
         language: None,
         path: None,
         mime_type: Some("text/plain".to_string()),
@@ -394,14 +406,6 @@ fn missing_memory(memory_id: &MemoryId) -> ApiError {
         "memory source identity does not exist",
     )
     .with_context("memory_id", memory_id.0.clone())
-}
-
-fn cache_error<T>(_error: std::sync::PoisonError<T>) -> ApiError {
-    ApiError::new(
-        "adapter.memory.materialization_unavailable",
-        axon_error::ErrorStage::Fetching,
-        "memory materialization state is unavailable",
-    )
 }
 
 fn stage_header(

@@ -51,7 +51,7 @@ async fn package_metadata_stamps_expected_fields() {
 
     assert_eq!(
         metadata.get("source_family").and_then(|v| v.as_str()),
-        Some("registry")
+        Some("package")
     );
     assert_eq!(
         metadata.get("package_ecosystem").and_then(|v| v.as_str()),

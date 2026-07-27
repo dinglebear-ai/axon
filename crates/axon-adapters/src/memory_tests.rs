@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -14,6 +15,15 @@ struct Provider(Option<MemoryRecord>);
 impl MemorySourceProvider for Provider {
     async fn get(&self, _memory_id: MemoryId) -> crate::adapter::Result<Option<MemoryRecord>> {
         Ok(self.0.clone())
+    }
+}
+
+struct RecordsProvider(HashMap<String, MemoryRecord>);
+
+#[async_trait]
+impl MemorySourceProvider for RecordsProvider {
+    async fn get(&self, memory_id: MemoryId) -> crate::adapter::Result<Option<MemoryRecord>> {
+        Ok(self.0.get(&memory_id.0).cloned())
     }
 }
 
@@ -141,12 +151,82 @@ async fn terminal_memory_discovers_empty_manifest_for_ledger_cleanup() {
     );
 }
 
+#[tokio::test]
+async fn shared_adapter_keeps_concurrent_memory_records_in_their_own_plans() {
+    let first = record_for("mem_first", "first body");
+    let second = record_for("mem_second", "second body");
+    let adapter = Arc::new(MemorySourceAdapter::new(
+        Arc::new(RecordsProvider(HashMap::from([
+            (first.memory_id.0.clone(), first),
+            (second.memory_id.0.clone(), second),
+        ]))),
+        MemorySourceAccess {
+            visibility_ceiling: Visibility::Internal,
+            allow_sensitive: false,
+        },
+    ));
+
+    let (first, second) = tokio::join!(
+        project_body(Arc::clone(&adapter), plan_for("mem_first")),
+        project_body(adapter, plan_for("mem_second")),
+    );
+
+    assert_eq!(first.unwrap(), "first body");
+    assert_eq!(second.unwrap(), "second body");
+}
+
+async fn project_body(
+    adapter: Arc<MemorySourceAdapter>,
+    plan: SourcePlan,
+) -> crate::adapter::Result<String> {
+    let materialized = adapter.materialize(plan.clone()).await?;
+    let manifest = adapter.discover(&materialized.plan).await?;
+    let acquisition = adapter
+        .acquire(
+            &materialized.plan,
+            &SourceManifestDiff {
+                header: header(plan.job_id),
+                source_id: plan.route.source.source_id.clone(),
+                previous_generation: None,
+                next_generation: SourceGenerationId::new("gen_concurrent"),
+                added: manifest.items,
+                modified: Vec::new(),
+                removed: Vec::new(),
+                unchanged: Vec::new(),
+                skipped: Vec::new(),
+                failed: Vec::new(),
+                counts: DiffCounts {
+                    added: 1,
+                    modified: 0,
+                    removed: 0,
+                    unchanged: 0,
+                    skipped: 0,
+                    failed: 0,
+                },
+            },
+        )
+        .await?;
+    let documents = adapter
+        .normalize(&materialized.plan, acquisition)
+        .await?
+        .data;
+    match &documents[0].content {
+        ContentRef::InlineText { text } => Ok(text.clone()),
+        other => panic!("memory adapter returned unexpected content reference: {other:?}"),
+    }
+}
+
 fn plan() -> SourcePlan {
+    plan_for("mem_abc")
+}
+
+fn plan_for(memory_id: &str) -> SourcePlan {
     let job_id = JobId::new(uuid::Uuid::nil());
+    let uri = format!("memory://{memory_id}");
     let source = ResolvedSource {
-        source: "memory://mem_abc".to_string(),
-        canonical_uri: "memory://mem_abc".to_string(),
-        source_id: SourceId::new("src_memory_abc"),
+        source: uri.clone(),
+        canonical_uri: uri.clone(),
+        source_id: SourceId::new(format!("src_{memory_id}")),
         source_kind: SourceKind::Memory,
         adapter: AdapterRef {
             name: "memory".to_string(),
@@ -186,7 +266,7 @@ fn plan() -> SourcePlan {
     };
     SourcePlan {
         job_id,
-        request: SourceRequest::new("memory://mem_abc"),
+        request: SourceRequest::new(uri),
         route,
         stage_plan: Vec::new(),
         limits: EffectiveLimits {
@@ -201,11 +281,17 @@ fn plan() -> SourcePlan {
 }
 
 fn record(visibility: Visibility) -> MemoryRecord {
+    let mut record = record_for("mem_abc", "remember this");
+    record.visibility = visibility;
+    record
+}
+
+fn record_for(memory_id: &str, body: &str) -> MemoryRecord {
     MemoryRecord {
-        memory_id: MemoryId::new("mem_abc"),
+        memory_id: MemoryId::new(memory_id),
         memory_type: MemoryType::Fact,
         status: MemoryStatus::Active,
-        body: "remember this".to_string(),
+        body: body.to_string(),
         confidence: 0.9,
         salience: 0.8,
         scope: MemoryScope {
@@ -217,7 +303,7 @@ fn record(visibility: Visibility) -> MemoryRecord {
             message: "created".to_string(),
             timestamp: Timestamp::from(chrono::Utc::now()),
         }],
-        visibility,
+        visibility: Visibility::Internal,
         title: Some("Memory".to_string()),
         links: Vec::new(),
         decay: None,

@@ -428,7 +428,7 @@ characterization; no ignored red test lands.
   `Arc<dyn SourceAdapter>` values.
 - [x] Add fail-closed validation for duplicate names, missing families,
   capability/spec mismatch, and family-matrix coverage.
-- [ ] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
+- [x] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
   normalized results.
 - [ ] Add sequential and concurrent same-instance tests proving no ETag,
   request, auth, or output leakage.
