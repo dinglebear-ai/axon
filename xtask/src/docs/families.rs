@@ -37,13 +37,13 @@ impl DocsFamily {
         Self::ApiDto,
         Self::ApiEnums,
         Self::Errors,
-        Self::Adapters,
         Self::Events,
         Self::Config,
         Self::Env,
-        Self::Providers,
+        Self::Adapters,
         Self::Schema,
         Self::Memory,
+        Self::Providers,
         Self::Presentation,
         Self::Schemas,
         Self::NewSource,
@@ -279,3 +279,7 @@ fn value_shape(value: &serde_json::Value) -> String {
 pub fn generator_for(family: DocsFamily) -> Box<dyn DocsFamilyGenerator> {
     Box::new(JsonFamilyGenerator(family))
 }
+
+#[cfg(test)]
+#[path = "families_tests.rs"]
+mod tests;
