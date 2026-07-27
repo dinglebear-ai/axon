@@ -417,7 +417,7 @@ pub(crate) async fn resolve_code_search_root(
     let git_root = git_toplevel(&canonical_cwd).await?;
     reject_unsafe_code_root(&git_root)?;
     if matches!(caller, CodeSearchCaller::Mcp) {
-        let allowed = CodeSearchAllowedRoots::from_env()?;
+        let allowed = CodeSearchAllowedRoots::from_env().await?;
         if !allowed.contains(&git_root) {
             return Err(code_search_outside_allowed_roots_message().into());
         }
