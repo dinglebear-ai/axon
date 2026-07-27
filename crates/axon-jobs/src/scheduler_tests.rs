@@ -178,3 +178,81 @@ async fn reserved_call_releases_capacity_after_provider_failure() {
     .expect("reservation row");
     assert_eq!(row, ("released".to_string(), "provider_failed".to_string()));
 }
+
+#[tokio::test]
+async fn reconcile_cancels_expired_grants_and_quarantines_uncertain_calls() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query("INSERT INTO sources (source_id, summary_json, created_at, updated_at) VALUES ('reconcile', '{}', '', '')")
+        .execute(&pool)
+        .await
+        .expect("source");
+    sqlx::query("INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at) VALUES ('00000000-0000-0000-0000-00000000000a', 'source', 'queued', 'queued', 'normal', 'reconcile', '', '')")
+        .execute(&pool)
+        .await
+        .expect("job");
+    let scheduler = ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: "tei".into(),
+            authority_id: "a".into(),
+        },
+        SchedulerConfig {
+            capacity: 2,
+            interactive_reserve: 0,
+            max_entries: 4,
+            max_units: 4,
+        },
+    )
+    .expect("scheduler");
+    let grant = scheduler
+        .reserve(ReservationRequest {
+            job_id: JobId::new(Uuid::from_u128(10)),
+            stage_id: None,
+            attempt: 1,
+            fence: "grant-fence".into(),
+            priority: JobPriority::Normal,
+            units: 1,
+        })
+        .await
+        .expect("grant");
+    sqlx::query("UPDATE provider_reservations SET grant_deadline = datetime('now', '-1 second') WHERE reservation_id = ?")
+        .bind(&grant.reservation_id)
+        .execute(&pool)
+        .await
+        .expect("expire grant");
+    let active_id = "active-reservation";
+    sqlx::query(
+        "INSERT INTO provider_reservations (
+            reservation_id, job_id, provider_kind, priority, requested_units,
+            granted_units, status, updated_at, capacity_domain, instance_id,
+            authority_id, renewed_at, expires_at, fence
+         ) VALUES (?, '00000000-0000-0000-0000-00000000000a', 'embedding', 'normal',
+            1, 1, 'active', datetime('now'), 'embedding', 'tei', 'a',
+            datetime('now', '-61 seconds'), datetime('now', '+1 minute'), 'active-fence')",
+    )
+    .bind(active_id)
+    .execute(&pool)
+    .await
+    .expect("active reservation");
+
+    let result = scheduler.reconcile().await.expect("reconcile");
+    assert_eq!(result.expired_grants, 1);
+    assert_eq!(result.quarantined_active, 1);
+    let rows: Vec<(String, i64, String)> = sqlx::query_as(
+        "SELECT status, quarantined, terminal_reason FROM provider_reservations
+         WHERE reservation_id IN (?, ?) ORDER BY reservation_id",
+    )
+    .bind(active_id)
+    .bind(&grant.reservation_id)
+    .fetch_all(&pool)
+    .await
+    .expect("reconciled rows");
+    assert_eq!(
+        rows,
+        vec![
+            ("active".into(), 1, "active_lease_uncertain".into()),
+            ("canceled".into(), 0, "grant_expired".into()),
+        ]
+    );
+}

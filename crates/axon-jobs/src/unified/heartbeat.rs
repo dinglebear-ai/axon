@@ -35,8 +35,6 @@ impl SqliteUnifiedJobStore {
         self.upsert_heartbeat_history(&mut tx, &heartbeat).await?;
         self.upsert_attempt_from_heartbeat(&mut tx, &heartbeat)
             .await?;
-        self.upsert_provider_reservations(&mut tx, &heartbeat)
-            .await?;
         tx.commit().await.map_err(sql_error)?;
 
         // Supplement: mirror the heartbeat into the durable observability sink
@@ -155,54 +153,6 @@ impl SqliteUnifiedJobStore {
         .execute(&mut **tx)
         .await
         .map_err(sql_error)?;
-        Ok(())
-    }
-
-    async fn upsert_provider_reservations(
-        &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-        heartbeat: &JobHeartbeat,
-    ) -> Result<()> {
-        for reservation in &heartbeat.provider_reservations {
-            sqlx::query(
-                "INSERT INTO provider_reservations (
-                    reservation_id, job_id, stage_id, provider_kind, provider_id,
-                    priority, requested_units, granted_units, acquired_at, expires_at,
-                    status, queue_depth, cooling_json, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(reservation_id) DO UPDATE SET
-                    job_id = excluded.job_id,
-                    stage_id = excluded.stage_id,
-                    provider_kind = excluded.provider_kind,
-                    provider_id = excluded.provider_id,
-                    priority = excluded.priority,
-                    requested_units = excluded.requested_units,
-                    granted_units = excluded.granted_units,
-                    acquired_at = excluded.acquired_at,
-                    expires_at = excluded.expires_at,
-                    status = excluded.status,
-                    queue_depth = excluded.queue_depth,
-                    cooling_json = excluded.cooling_json,
-                    updated_at = excluded.updated_at",
-            )
-            .bind(reservation.reservation_id.0.as_str())
-            .bind(heartbeat.job_id.0.to_string())
-            .bind(heartbeat.stage_id.map(|id| id.0.to_string()))
-            .bind(enum_name(reservation.provider_kind)?)
-            .bind(reservation.provider_id.as_ref().map(|id| id.0.as_str()))
-            .bind(enum_name(reservation.priority)?)
-            .bind(reservation.requested_units as i64)
-            .bind(reservation.granted_units as i64)
-            .bind(reservation.acquired_at.as_ref().map(|ts| ts.0.as_str()))
-            .bind(reservation.expires_at.as_ref().map(|ts| ts.0.as_str()))
-            .bind(enum_name(reservation.status)?)
-            .bind(reservation.queue_depth.map(|depth| depth as i64))
-            .bind(optional_to_json(&reservation.cooling)?)
-            .bind(heartbeat.heartbeat_at.0.as_str())
-            .execute(&mut **tx)
-            .await
-            .map_err(sql_error)?;
-        }
         Ok(())
     }
 }

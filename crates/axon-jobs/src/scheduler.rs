@@ -44,6 +44,9 @@ pub struct ReservationGrant {
     pub units: u32,
 }
 
+mod reconcile;
+pub use reconcile::Reconciliation;
+
 #[derive(Debug, thiserror::Error)]
 pub enum SchedulerError {
     #[error("scheduler database error: {0}")]
@@ -254,7 +257,10 @@ impl ProviderScheduler {
         if active + candidate_units <= i64::from(limit) {
             sqlx::query(
                 "UPDATE provider_reservations SET status = 'granted', granted_units = ?,
-                 acquired_at = datetime('now'), lease_owner = ?, authority_id = ?, updated_at = datetime('now')
+                 acquired_at = datetime('now'),
+                 grant_deadline = datetime('now', '+30 seconds'),
+                 expires_at = datetime('now', '+300 seconds'),
+                 lease_owner = ?, authority_id = ?, updated_at = datetime('now')
                  WHERE reservation_id = ? AND status = 'queued'",
             )
             .bind(candidate_units)
@@ -377,7 +383,8 @@ impl ProviderScheduler {
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'active', renewed_at = datetime('now'),
              updated_at = datetime('now')
-             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'granted'",
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'granted'
+               AND (grant_deadline IS NULL OR grant_deadline > datetime('now'))",
         )
         .bind(reservation_id)
         .bind(fence)

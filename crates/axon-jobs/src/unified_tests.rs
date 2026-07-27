@@ -670,7 +670,7 @@ async fn progress_event_bounds_fail_before_persistence() {
 }
 
 #[tokio::test]
-async fn heartbeat_updates_latest_job_summary_and_history() {
+async fn heartbeat_updates_summary_without_overwriting_scheduler_reservations() {
     let store = store().await;
     let job = store.create(create_request()).await.expect("create job");
     let heartbeat = JobHeartbeat {
@@ -717,7 +717,7 @@ async fn heartbeat_updates_latest_job_summary_and_history() {
             .fetch_one(&store.pool)
             .await
             .expect("reservation count");
-    assert_eq!(reservation_count, 1);
+    assert_eq!(reservation_count, 0);
 }
 
 #[tokio::test]
