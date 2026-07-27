@@ -127,6 +127,10 @@ impl LedgerStore for SqliteLedgerStore {
         document::update_document_status(self, status).await
     }
 
+    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
+        document::update_document_statuses(self, statuses).await
+    }
+
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         cleanup::record_cleanup_debt(self, debt).await
     }

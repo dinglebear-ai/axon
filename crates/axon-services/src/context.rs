@@ -24,7 +24,9 @@ use axon_vectors::store::VectorStore;
 
 mod target_runtime;
 
-pub use target_runtime::{TargetReadStores, build_read_stores_from_config};
+pub use target_runtime::{
+    TargetReadStores, build_read_stores_from_config, invalidate_embedding_identity_cache,
+};
 
 #[derive(Clone)]
 pub struct ServiceContext {

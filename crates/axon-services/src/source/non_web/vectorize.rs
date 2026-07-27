@@ -4,7 +4,6 @@ use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_embedding::reservation::{ProviderReservation, ProviderReservationContext};
 use axon_ledger::store::LedgerStore;
 use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
-use futures_util::future::try_join_all;
 use uuid::Uuid;
 
 use super::{NonWebPipelineInput, SourceEventEmitter, TargetLocalSourceRuntime, timestamp};
@@ -244,13 +243,7 @@ pub(super) async fn write_document_statuses(
     statuses: &[DocumentStatus],
 ) -> anyhow::Result<()> {
     for batch in statuses.chunks(DOCUMENT_STATUS_BATCH_SIZE) {
-        try_join_all(
-            batch
-                .iter()
-                .cloned()
-                .map(|status| ledger.update_document_status(status)),
-        )
-        .await?;
+        ledger.update_document_statuses(batch.to_vec()).await?;
     }
     Ok(())
 }

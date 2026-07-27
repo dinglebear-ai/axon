@@ -659,7 +659,7 @@ artifact registry/store owners, source crash/parity sidecars.
 embedding identity cache, Qdrant writer/readers, worker admission, observability
 queries.
 
-- [ ] Replace per-document status writes with bounded multi-row transactions;
+- [x] Replace per-document status writes with bounded multi-row transactions;
   prove rollback and bind-count limits.
 - [x] Replace quadratic status/manifest merge with one indexed map/set pass;
   assert comparison count is linear.
@@ -812,7 +812,7 @@ work never closes a Bead early.
 ### `axon_rust-zb0k1`
 
 - [x] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
-- [ ] P18 one live Qdrant point-buffer limit.
+- [x] P18 one live Qdrant point-buffer limit.
 - [x] P19 concurrency knob is consumed or deleted.
 - [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.
 - [ ] P21 no blocking canonicalization on async worker paths.
