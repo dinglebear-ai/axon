@@ -483,7 +483,7 @@ characterization; no ignored red test lands.
   priority, queue/grant/lease deadlines, lease owner, attempt/stage fence,
   renewal, terminal reason, and quarantine state.
 - [x] Add selection and expiry indexes used by the grant/reaper queries.
-- [ ] Convert current heartbeat reservation writes into read-only projection in
+- [x] Convert current heartbeat reservation writes into read-only projection in
   the same PR so there is one authority.
 - [x] Define disposition for old `requested`, `queued`, `granted`, and `active`
   rows: nonterminal epoch-1 rows become terminal `migration_cancelled` and are
@@ -508,7 +508,7 @@ characterization; no ignored red test lands.
 
 ### Lease lifecycle
 
-- [ ] Implement explicit async activate, renew, complete, fail, cancel, and
+- [x] Implement explicit async activate, renew, complete, fail, cancel, and
   reconcile transitions.
 - [ ] Tie renewal to the owning attempt heartbeat and provider hard deadline.
 - [ ] Quarantine uncertain active units; regrant only after abort/join or
