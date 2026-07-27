@@ -69,6 +69,13 @@ fn preserves_url_with_long_slug_unchanged() {
 }
 
 #[test]
+fn preserves_absolute_local_source_path_with_generated_identifier() {
+    let subject = "/tmp/axon_it_3e54cc55f4c34e638afaa32754c7ec66.md";
+
+    assert_eq!(redact_status_subject(subject), subject);
+}
+
+#[test]
 fn preserves_url_that_merely_contains_token_substring() {
     // The exact class the old blunt redactor wholesale-[REDACTED]'d: a URL with
     // `access_token=` in the query must keep its structure, redacting only the
