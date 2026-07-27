@@ -670,7 +670,7 @@ queries.
 - [ ] Reject an indivisible oversized item with a structured error; prove split
   logic always makes forward progress.
 - [x] Make `embed=false` skip collection ensure/create.
-- [ ] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
+- [x] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
   config with per-key singleflight, bounded TTL/negative behavior, and explicit
   invalidation.
 - [x] Wire `qdrant-point-buffer` as the only vector item limit and delete
@@ -811,7 +811,7 @@ work never closes a Bead early.
 
 ### `axon_rust-zb0k1`
 
-- [ ] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
+- [x] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
 - [ ] P18 one live Qdrant point-buffer limit.
 - [ ] P19 concurrency knob is consumed or deleted.
 - [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.

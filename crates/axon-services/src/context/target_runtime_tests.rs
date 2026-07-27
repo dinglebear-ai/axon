@@ -1,10 +1,13 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axon_core::config::Config;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
+use httpmock::MockServer;
 use sqlx::sqlite::SqlitePoolOptions;
+use tokio::sync::Barrier;
 
-use super::tei_max_attempts;
+use super::{invalidate_embedding_identity_cache, resolve_embedding_identity, tei_max_attempts};
 use crate::context::TargetLocalSourceRuntime;
 
 /// `tei_max_attempts` is the one place `cfg.tei_max_retries` becomes the real
@@ -71,4 +74,59 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     // Fallback identity when the live provider cannot be reached.
     assert_eq!(runtime.embedding_model, "Qwen3-Embedding-0.6B");
     assert_eq!(runtime.embedding_dimensions, 1024);
+}
+
+#[tokio::test]
+async fn embedding_identity_cache_singleflights_cold_probes_and_can_be_invalidated() {
+    let server = MockServer::start_async().await;
+    let info = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/info");
+            then.status(200)
+                .delay(Duration::from_millis(100))
+                .json_body(serde_json::json!({ "model_id": "acme/embedding" }));
+        })
+        .await;
+    let embed = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32]]));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.tei_url = server.base_url();
+    cfg.tei_request_timeout_ms = 1_000;
+    invalidate_embedding_identity_cache(&cfg);
+
+    let callers = 8;
+    let barrier = Arc::new(Barrier::new(callers + 1));
+    let mut tasks = Vec::with_capacity(callers);
+    for _ in 0..callers {
+        let barrier = Arc::clone(&barrier);
+        let cfg = cfg.clone();
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            resolve_embedding_identity(&cfg).await
+        }));
+    }
+    barrier.wait().await;
+    for task in tasks {
+        let identity = task.await.expect("identity task");
+        assert_eq!(identity.model, "acme/embedding");
+        assert_eq!(identity.dimensions, 3);
+    }
+    info.assert_calls_async(1).await;
+    embed.assert_calls_async(1).await;
+
+    // A warm read is cache-only. Explicit invalidation makes the next caller
+    // reprobe immediately instead of waiting for the 30-second positive TTL.
+    let warm = resolve_embedding_identity(&cfg).await;
+    assert_eq!(warm.dimensions, 3);
+    info.assert_calls_async(1).await;
+    invalidate_embedding_identity_cache(&cfg);
+    let refreshed = resolve_embedding_identity(&cfg).await;
+    assert_eq!(refreshed.dimensions, 3);
+    info.assert_calls_async(2).await;
+    embed.assert_calls_async(2).await;
 }
