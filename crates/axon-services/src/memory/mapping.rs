@@ -10,7 +10,6 @@ use anyhow::{Result, bail};
 use axon_adapters::sessions::redact_session_text;
 use serde::{Deserialize, Serialize};
 
-use super::runtime_metadata::detect_runtime_memory_metadata;
 use axon_api::mcp_schema::{MemoryEdgeType, MemoryNodeType, MemoryRequest};
 use axon_api::source::{MemoryLink, MemoryRecord, MemoryScope, MemoryStatus, MemoryType};
 
@@ -90,9 +89,8 @@ pub(super) fn normalize_remember(req: MemoryRequest) -> Result<NormalizedMemory>
     if !(0.0..=1.0).contains(&confidence) {
         bail!("confidence must be between 0.0 and 1.0");
     }
-    let runtime = detect_runtime_memory_metadata();
-    let project = clean_opt(req.project).or(runtime.project);
-    let repo = clean_opt(req.repo).or(runtime.repo);
+    let project = clean_opt(req.project);
+    let repo = clean_opt(req.repo);
     let file = clean_opt(req.file);
     Ok(NormalizedMemory {
         memory_type,

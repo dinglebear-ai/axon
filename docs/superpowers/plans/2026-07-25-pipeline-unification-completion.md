@@ -640,7 +640,7 @@ artifact registry/store owners, source crash/parity sidecars.
 - [ ] Unify denylists for local source, CodeSearch, tool, and artifact roots.
 - [ ] Enforce the explicit hardlink policy.
 - [ ] Run the per-OS race suite; fail closed on unsupported platforms.
-- [ ] Remove blocking canonicalization from async worker paths.
+- [x] Remove blocking canonicalization from async worker paths.
 
 ### Redaction
 
@@ -815,7 +815,7 @@ work never closes a Bead early.
 - [x] P18 one live Qdrant point-buffer limit.
 - [x] P19 concurrency knob is consumed or deleted.
 - [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.
-- [ ] P21 no blocking canonicalization on async worker paths.
+- [x] P21 no blocking canonicalization on async worker paths.
 - [ ] S-13 redirects have hop, time, byte, scheme, proxy, and host bounds.
 - [ ] S-14 browser requests use pinned connect-time enforcement.
 - [ ] S-15 release builds cannot enable loopback bypass.
