@@ -25,13 +25,9 @@
 //! materialize step to do once this function has already resolved identity
 //! and scope.
 //!
-//! `code_search_refresh.rs`'s code-search auto-refresh caller is NOT routed
-//! through this function — it always owns its job outright (no routed
-//! `RoutePlan`, no `SourceExecutionContext`), and needs
-//! `LocalSourceSelectionPolicy::CodeSearch`-specific behavior (respect
-//! `.gitignore`, mark points `visibility: public`) that this unified dispatch
-//! path does not carry. It keeps using `crate::local_source::
-//! index_local_source_with_job`, which stays in place for that one caller.
+//! Code-search refresh enters this same route at `Repo` scope. It does not
+//! retain a private local-source runner or relabel local code as public merely
+//! to satisfy its reader filter.
 
 use anyhow::Context as _;
 use axon_adapters::SourceAdapter as _;

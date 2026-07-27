@@ -183,7 +183,9 @@ fn target_code_search_request(
             "committed_generation"
         )?),
     );
-    filters.insert("visibility".to_string(), json!("public"));
+    // Code-search indexes are local/internal data. The refresh path must not
+    // relabel them public merely to make this specialized reader work.
+    filters.insert("visibility".to_string(), json!("internal"));
     filters.insert("redaction_status".to_string(), json!("clean"));
     if let Some(prefix) = path_prefix {
         filters.insert("path_prefix".to_string(), json!(prefix));

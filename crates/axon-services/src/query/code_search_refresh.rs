@@ -1,13 +1,11 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use axon_api::source::JobId;
-use axon_api::source::{SourceGenerationId, SourceId};
+use axon_api::source::{LifecycleStatus, SourceGenerationId, SourceId, SourceRequest, SourceScope};
 
 use crate::context::ServiceContext;
-use crate::local_source::{
-    LocalSourceIndexInput, LocalSourceSelectionPolicy, index_local_source_with_job, local_source_id,
-};
+use crate::local_source::local_source_id;
+use crate::source::index_source;
 use crate::types::{CodeSearchCaller, CodeSearchFreshness};
 
 use super::{
@@ -73,49 +71,33 @@ async fn refresh_target_local_code_search_index_with_progress(
 ) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
     let root = resolve_code_search_root(cwd, caller).await?;
     let identity = code_search_identity(ctx.cfg(), root).await;
-    let Some(target) = ctx.target_local_source_runtime() else {
+    let Some(_) = ctx.target_local_source_runtime() else {
         return Ok(target_refresh_unavailable_result(identity));
     };
     let project_root = identity.project_root.clone();
     let project_key = identity.project_key.clone();
-    let input = LocalSourceIndexInput {
-        root: identity.project_root.clone(),
-        collection: ctx.cfg().collection.clone(),
-        owner_id: format!("code-search:{}", identity.project_key),
-        job_id: JobId::new(uuid::Uuid::new_v4()),
-        embedding_provider_id: target.embedding_provider_id.clone(),
-        vector_provider_id: target.vector_provider_id.clone(),
-        embedding_model: target.embedding_model.clone(),
-        embedding_dimensions: target.embedding_dimensions,
-        selection_policy: LocalSourceSelectionPolicy::CodeSearch,
-        embedding_reservations: Some(target.embedding_reservations.clone()),
-        vector_reservations: Some(target.vector_reservations.clone()),
-        auth_snapshot: None,
-        embed: true,
-        route: None,
-    };
+    let mut request = SourceRequest::local_path(project_root.to_string_lossy(), true);
+    request.scope = Some(SourceScope::Repo);
+    request.collection = Some(ctx.cfg().collection.clone());
     emit_target_progress_started(progress);
-    match index_local_source_with_job(
-        input,
-        target.jobs.as_ref(),
-        target.ledger.as_ref(),
-        target.embedding_provider.as_ref(),
-        target.vector_store.as_ref(),
-    )
-    .await
-    {
-        Ok(output) => {
+    match index_source(request, ctx).await {
+        Ok(output) if output.status == LifecycleStatus::Completed => {
             emit_target_progress_finished(progress);
+            let generation = output
+                .ledger
+                .committed_generation
+                .clone()
+                .unwrap_or(output.ledger.generation);
             let result = CodeSearchRefreshResult {
                 project_root: project_root.clone(),
                 project_key: project_key.clone(),
                 target_source_id: Some(output.source_id),
-                target_source_generation: Some(output.generation),
+                target_source_generation: Some(generation),
                 freshness: code_search_freshness(
                     "fresh",
                     None,
-                    usize::try_from(output.documents_prepared).unwrap_or(usize::MAX),
-                    usize::try_from(output.removed_files).unwrap_or(usize::MAX),
+                    usize::try_from(output.counts.documents_total).unwrap_or(usize::MAX),
+                    0,
                 ),
             };
             tracing::debug!(
@@ -125,26 +107,51 @@ async fn refresh_target_local_code_search_index_with_progress(
             );
             Ok(result)
         }
+        Ok(output) => {
+            let warning = output
+                .errors
+                .first()
+                .and_then(|error| error.cause.clone().or_else(|| Some(error.message.clone())))
+                .or_else(|| {
+                    output
+                        .warnings
+                        .first()
+                        .map(|warning| warning.message.clone())
+                })
+                .unwrap_or_else(|| format!("source refresh ended as {:?}", output.status));
+            target_refresh_failure(ctx, project_root, project_key, warning).await
+        }
         Err(err) => {
-            tracing::warn!(
-                project_key,
-                error = %err,
-                "target local source refresh failed"
-            );
-            let source_id = local_source_id(&project_root);
-            let committed_generation = target
-                .ledger
-                .committed_generation(source_id.clone())
-                .await?;
-            Ok(target_refresh_failed_result(
-                project_root,
-                project_key,
-                Some(source_id),
-                committed_generation,
-                err.to_string(),
-            ))
+            target_refresh_failure(ctx, project_root, project_key, format!("{err:#}")).await
         }
     }
+}
+
+async fn target_refresh_failure(
+    ctx: &ServiceContext,
+    project_root: PathBuf,
+    project_key: String,
+    error: String,
+) -> Result<CodeSearchRefreshResult, Box<dyn Error + Send + Sync>> {
+    tracing::warn!(
+        project_key,
+        error = %error,
+        "target local source refresh failed"
+    );
+    let source_id = local_source_id(&project_root);
+    let committed_generation = ctx
+        .target_local_source_runtime()
+        .expect("target runtime checked before canonical source refresh")
+        .ledger
+        .committed_generation(source_id.clone())
+        .await?;
+    Ok(target_refresh_failed_result(
+        project_root,
+        project_key,
+        Some(source_id),
+        committed_generation,
+        error,
+    ))
 }
 
 fn target_refresh_unavailable_result(identity: CodeIndexIdentity) -> CodeSearchRefreshResult {

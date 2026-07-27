@@ -20,7 +20,7 @@ const BATCH_ID: &str = "00000000-0000-0000-0000-000000000001";
 const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
 
 #[tokio::test]
-async fn target_code_search_keeps_unchanged_previous_generation_results_visible() {
+async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
     let repo = tempfile::tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
@@ -105,12 +105,13 @@ async fn target_code_search_keeps_unchanged_previous_generation_results_visible(
         .collect::<Vec<_>>();
     assert!(!stable_points.is_empty());
     assert!(stable_points.iter().any(|point| {
-        point.payload["source_generation"] == serde_json::json!(first_payload_generation)
-            && point.payload["committed_generation"] == serde_json::json!(first_payload_generation)
-    }));
-    assert!(stable_points.iter().any(|point| {
         point.payload["source_generation"] == serde_json::json!(second_payload_generation)
             && point.payload["committed_generation"] == serde_json::json!(second_payload_generation)
+            && point.payload["retired_epoch"].is_null()
+    }));
+    assert!(stable_points.iter().all(|point| {
+        point.payload["committed_generation"] != serde_json::json!(first_payload_generation)
+            || !point.payload["retired_epoch"].is_null()
     }));
 
     let third = refresh_code_search_index_with_progress(
@@ -215,7 +216,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
     );
     assert_eq!(
         visible_point.payload["visibility"],
-        serde_json::json!("public")
+        serde_json::json!("internal")
     );
     assert_eq!(
         visible_point.payload["redaction_status"],
@@ -236,7 +237,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         request.filters["committed_generation"],
         serde_json::json!(committed_payload_generation)
     );
-    assert_eq!(request.filters["visibility"], serde_json::json!("public"));
+    assert_eq!(request.filters["visibility"], serde_json::json!("internal"));
     assert_eq!(
         request.filters["redaction_status"],
         serde_json::json!("clean")
@@ -271,7 +272,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         .insert("retired_epoch".to_string(), serde_json::Value::Null);
     staged
         .payload
-        .insert("visibility".to_string(), serde_json::json!("public"));
+        .insert("visibility".to_string(), serde_json::json!("internal"));
     staged
         .payload
         .insert("redaction_status".to_string(), serde_json::json!("clean"));
@@ -316,7 +317,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         .insert("retired_epoch".to_string(), serde_json::Value::Null);
     redacted
         .payload
-        .insert("visibility".to_string(), serde_json::json!("public"));
+        .insert("visibility".to_string(), serde_json::json!("internal"));
     redacted.payload.insert(
         "redaction_status".to_string(),
         serde_json::json!("redacted"),

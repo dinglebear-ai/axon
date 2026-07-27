@@ -436,7 +436,7 @@ characterization; no ignored red test lands.
   identity/capabilities.
 - [x] Remove `SourceRouter::validate_options`; validate exactly once during
   `RoutePlan` construction and remove its generator/contract references.
-- [ ] Route CodeSearch refresh through the normal source route instead of
+- [x] Route CodeSearch refresh through the normal source route instead of
   returning `None`.
 - [ ] Inject `FetchProvider` into web discovery and remove direct network calls.
 - [ ] Put ledger-trusted ETag/Last-Modified and `CachePolicy::Revalidate` into
