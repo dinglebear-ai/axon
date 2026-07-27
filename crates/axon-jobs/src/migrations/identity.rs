@@ -20,6 +20,7 @@ const CANONICAL_TABLES: &[&str] = &[
     "graph_edges",
     "graph_evidence",
     "graph_nodes",
+    "graph_publication_state",
     "job_artifacts",
     "job_attempts",
     "job_events",
