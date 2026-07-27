@@ -218,7 +218,8 @@ impl TargetLocalSourceRuntime {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
             default_timeout_ms: cfg.request_timeout_ms,
         });
-        let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
+        let artifact_store =
+            FileArtifactStore::new(axon_core::paths::axon_data_base_dir().join("artifacts"));
         let document_cache = crate::web_source::InProcessWebDocumentCache::new();
 
         Ok(Self {
