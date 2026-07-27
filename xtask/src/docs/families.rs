@@ -9,64 +9,129 @@ use super::artifact::{DocsArtifactSet, GeneratedDocArtifact};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 #[value(rename_all = "kebab-case")]
 pub enum DocsFamily {
+    Cli,
+    CliHelp,
+    Openapi,
+    Mcp,
     ApiDto,
     ApiEnums,
+    Errors,
     Adapters,
     Events,
+    Config,
+    Env,
     Providers,
     Schema,
+    Memory,
+    Presentation,
+    Schemas,
+    NewSource,
 }
 
 impl DocsFamily {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 17] = [
+        Self::Cli,
+        Self::CliHelp,
+        Self::Openapi,
+        Self::Mcp,
         Self::ApiDto,
         Self::ApiEnums,
+        Self::Errors,
         Self::Adapters,
         Self::Events,
+        Self::Config,
+        Self::Env,
         Self::Providers,
         Self::Schema,
+        Self::Memory,
+        Self::Presentation,
+        Self::Schemas,
+        Self::NewSource,
     ];
 
     pub const fn slug(self) -> &'static str {
         match self {
+            Self::Cli => "cli",
+            Self::CliHelp => "cli-help",
+            Self::Openapi => "openapi",
+            Self::Mcp => "mcp",
             Self::ApiDto => "api-dto",
             Self::ApiEnums => "api-enums",
+            Self::Errors => "errors",
             Self::Adapters => "adapters",
             Self::Events => "events",
+            Self::Config => "config",
+            Self::Env => "env",
             Self::Providers => "providers",
             Self::Schema => "schema",
+            Self::Memory => "memory",
+            Self::Presentation => "presentation",
+            Self::Schemas => "schemas",
+            Self::NewSource => "new-source",
         }
     }
 
     const fn input_path(self) -> &'static str {
         match self {
+            Self::Cli | Self::CliHelp => "docs/reference/cli/commands.json",
+            Self::Openapi => "docs/reference/rest/openapi.json",
+            Self::Mcp => "docs/reference/mcp/tool-schema.json",
             Self::ApiDto | Self::ApiEnums => "docs/reference/api/schemas.json",
+            Self::Errors => "docs/reference/api/errors.schema.json",
             Self::Adapters => "docs/reference/sources/adapter-scopes.json",
             Self::Events => "docs/reference/runtime/events.schema.json",
+            Self::Config => "docs/reference/config/config.schema.json",
+            Self::Env => "docs/reference/config/env.schema.json",
             Self::Providers => "docs/reference/runtime/provider-capabilities.schema.json",
             Self::Schema => "docs/reference/runtime/database-schema.json",
+            Self::Memory => "docs/reference/runtime/database-schema.json",
+            Self::Presentation => "docs/reference/presentation/tokens.schema.json",
+            Self::Schemas => "docs/reference/api/schemas.json",
+            Self::NewSource => "docs/reference/sources/adapter-scopes.json",
         }
     }
 
     const fn output_path(self) -> &'static str {
         match self {
+            Self::Cli => "docs/reference/generated/cli.md",
+            Self::CliHelp => "docs/reference/generated/cli-help.md",
+            Self::Openapi => "docs/reference/generated/openapi.md",
+            Self::Mcp => "docs/reference/generated/mcp.md",
             Self::ApiDto => "docs/reference/api/dto.md",
             Self::ApiEnums => "docs/reference/api/enums.md",
+            Self::Errors => "docs/reference/generated/errors.md",
             Self::Adapters => "docs/reference/sources/adapter-scopes.md",
             Self::Events => "docs/reference/runtime/observability.md",
+            Self::Config => "docs/reference/generated/config.md",
+            Self::Env => "docs/reference/generated/env.md",
             Self::Providers => "docs/reference/runtime/providers.md",
             Self::Schema => "docs/reference/runtime/schema.md",
+            Self::Memory => "docs/reference/generated/memory.md",
+            Self::Presentation => "docs/reference/generated/presentation.md",
+            Self::Schemas => "docs/reference/generated/schemas.md",
+            Self::NewSource => "docs/reference/generated/new-source.md",
         }
     }
 
     const fn title(self) -> &'static str {
         match self {
+            Self::Cli => "CLI Command Reference",
+            Self::CliHelp => "CLI Help Reference",
+            Self::Openapi => "OpenAPI Reference",
+            Self::Mcp => "MCP Tool Reference",
             Self::ApiDto => "API DTO Reference",
             Self::ApiEnums => "API Enum Reference",
+            Self::Errors => "API Error Reference",
             Self::Adapters => "Source Adapter Reference",
             Self::Events => "Runtime Event Reference",
+            Self::Config => "Configuration Reference",
+            Self::Env => "Environment Reference",
             Self::Providers => "Provider Capability Reference",
             Self::Schema => "Runtime Database Schema",
+            Self::Memory => "Memory Reference",
+            Self::Presentation => "Presentation Reference",
+            Self::Schemas => "Schema Reference",
+            Self::NewSource => "New Source Reference",
         }
     }
 }

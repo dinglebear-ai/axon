@@ -729,10 +729,10 @@ content-derived ids for every tested operation.
 **Files:** `xtask/src/docs.rs`, `xtask/src/docs/*`,
 `docs/reference/`, `docs/pipeline-unification/`, affected `CLAUDE.md` files.
 
-- [ ] Register exactly `cli`, `cli-help`, `openapi`, `mcp`, `api-dto`,
+- [x] Register exactly `cli`, `cli-help`, `openapi`, `mcp`, `api-dto`,
   `api-enums`, `errors`, `events`, `config`, `env`, `adapters`, `schema`,
   `memory`, `providers`, `presentation`, `schemas`, and `new-source`.
-- [ ] Give each family declared live inputs, renderer, output paths, and
+- [x] Give each family declared live inputs, renderer, output paths, and
   deterministic ordering.
 - [ ] Make missing renderers/inputs, empty output, secret/path canaries, and byte
   drift fail with contracted exit codes.
