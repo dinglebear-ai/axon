@@ -737,7 +737,7 @@ content-derived ids for every tested operation.
 - [ ] Make missing renderers/inputs, empty output, secret/path canaries, and byte
   drift fail with contracted exit codes.
 - [ ] Render/write one family at a time and assert bounded high-water memory.
-- [ ] Support aggregate/per-family generate, check, print, JSON, and the
+- [x] Support aggregate/per-family generate, check, print, JSON, and the
   CI-forbidden snapshot-update mode required by contract.
 - [ ] Mark dated plans historical; rewrite live contracts in present tense.
 - [ ] Remove family-model naming/comment residue and the last `TODO(#298)`.
