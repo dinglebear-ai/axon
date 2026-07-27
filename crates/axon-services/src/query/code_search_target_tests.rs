@@ -265,6 +265,12 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         .insert("committed_generation".to_string(), serde_json::json!(999));
     staged
         .payload
+        .insert("born_epoch".to_string(), serde_json::json!(999));
+    staged
+        .payload
+        .insert("retired_epoch".to_string(), serde_json::Value::Null);
+    staged
+        .payload
         .insert("visibility".to_string(), serde_json::json!("public"));
     staged
         .payload
@@ -301,6 +307,13 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         "committed_generation".to_string(),
         serde_json::json!(committed_payload_generation),
     );
+    redacted.payload.insert(
+        "born_epoch".to_string(),
+        serde_json::json!(committed_payload_generation),
+    );
+    redacted
+        .payload
+        .insert("retired_epoch".to_string(), serde_json::Value::Null);
     redacted
         .payload
         .insert("visibility".to_string(), serde_json::json!("public"));

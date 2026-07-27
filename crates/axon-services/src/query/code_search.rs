@@ -411,8 +411,9 @@ pub(crate) async fn resolve_code_search_root(
             return Err("code_search MCP requests must provide cwd".into());
         }
     };
-    let canonical_cwd =
-        std::fs::canonicalize(&cwd).map_err(|_| "code_search cwd could not be resolved")?;
+    let canonical_cwd = tokio::fs::canonicalize(&cwd)
+        .await
+        .map_err(|_| "code_search cwd could not be resolved")?;
     let git_root = git_toplevel(&canonical_cwd).await?;
     reject_unsafe_code_root(&git_root)?;
     if matches!(caller, CodeSearchCaller::Mcp) {
@@ -453,7 +454,7 @@ async fn git_toplevel(cwd: &Path) -> Result<PathBuf, Box<dyn Error + Send + Sync
     if root.is_empty() {
         return Err("git rev-parse returned an empty repository root".into());
     }
-    std::fs::canonicalize(root).map_err(Into::into)
+    tokio::fs::canonicalize(root).await.map_err(Into::into)
 }
 
 fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Sync>> {

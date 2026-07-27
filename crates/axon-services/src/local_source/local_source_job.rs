@@ -240,12 +240,6 @@ fn redact_local_root(message: &str, root: &Path) -> String {
     if !root_display.is_empty() {
         redacted = redacted.replace(&root_display, "<local-source-root>");
     }
-    if let Ok(canonical) = std::fs::canonicalize(root) {
-        let canonical_display = canonical.display().to_string();
-        if !canonical_display.is_empty() {
-            redacted = redacted.replace(&canonical_display, "<local-source-root>");
-        }
-    }
     redacted
 }
 
