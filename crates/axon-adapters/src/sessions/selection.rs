@@ -159,6 +159,46 @@ pub fn validate_session_source_path(
     ))
 }
 
+/// Async equivalent of [`validate_session_source_path`] for source adapters.
+/// Keeping canonicalization and metadata reads on Tokio's filesystem boundary
+/// prevents a slow mount from blocking a unified worker thread.
+pub async fn validate_session_source_path_async(
+    roots: &SessionRoots,
+    provider: SessionProvider,
+    path: &Path,
+) -> Result<PathBuf> {
+    let link_meta = tokio::fs::symlink_metadata(path)
+        .await
+        .map_err(|error| anyhow!("unsupported session source: metadata failed: {error}"))?;
+    if link_meta.file_type().is_symlink() {
+        return Err(anyhow!("unsupported session source: symlink rejected"));
+    }
+    if !link_meta.is_file() && !link_meta.is_dir() {
+        return Err(anyhow!(
+            "unsupported session source: expected a regular file or directory"
+        ));
+    }
+
+    let canonical = tokio::fs::canonicalize(path)
+        .await
+        .map_err(|error| anyhow!("unsupported session source: canonicalize failed: {error}"))?;
+    reject_secret_components(&canonical)?;
+
+    for (root_provider, root) in canonical_provider_roots_async(roots).await {
+        if root_provider != provider || canonical.strip_prefix(&root).is_err() {
+            continue;
+        }
+        if link_meta.is_file() && !has_supported_session_extension(provider, &canonical) {
+            return Err(anyhow!("unsupported session source extension"));
+        }
+        return Ok(canonical);
+    }
+
+    Err(anyhow!(
+        "unsupported session source: outside provider roots"
+    ))
+}
+
 pub fn validate_event_path_missing_ok(
     roots: &SessionRoots,
     path: &Path,
@@ -194,6 +234,28 @@ fn canonical_provider_roots(roots: &SessionRoots) -> Vec<(SessionProvider, PathB
         root.canonicalize().ok().map(|path| (provider, path))
     })
     .collect()
+}
+
+async fn canonical_provider_roots_async(roots: &SessionRoots) -> Vec<(SessionProvider, PathBuf)> {
+    let candidates = [
+        (SessionProvider::Claude, &roots.claude_projects),
+        (SessionProvider::Codex, &roots.codex_sessions),
+        (SessionProvider::Gemini, &roots.gemini_history),
+        (SessionProvider::Gemini, &roots.gemini_tmp),
+    ];
+    let mut canonical = Vec::new();
+    for (provider, root) in candidates {
+        let Ok(meta) = tokio::fs::symlink_metadata(root).await else {
+            continue;
+        };
+        if meta.file_type().is_symlink() || !meta.is_dir() {
+            continue;
+        }
+        if let Ok(path) = tokio::fs::canonicalize(root).await {
+            canonical.push((provider, path));
+        }
+    }
+    canonical
 }
 
 fn reject_secret_components(path: &Path) -> Result<()> {

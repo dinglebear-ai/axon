@@ -37,6 +37,7 @@ use self::project_filter::matches_project_filter;
 pub use self::selection::{
     SessionProvider, SessionRoots, ValidatedSessionPath, has_supported_session_extension,
     validate_event_path_missing_ok, validate_session_file_path, validate_session_source_path,
+    validate_session_source_path_async,
 };
 pub use self::target::{SessionTarget, parse_session_target};
 
@@ -65,13 +66,15 @@ impl SessionSourceAdapter {
                 err.to_string(),
             )
         })?;
-        let path = validate_session_source_path(roots, provider, Path::new(&target.session_id))
-            .map_err(|err| {
-                crate::acquisition::materialization_error(
-                    "adapter.session.selection_denied",
-                    err.to_string(),
-                )
-            })?;
+        let path =
+            validate_session_source_path_async(roots, provider, Path::new(&target.session_id))
+                .await
+                .map_err(|err| {
+                    crate::acquisition::materialization_error(
+                        "adapter.session.selection_denied",
+                        err.to_string(),
+                    )
+                })?;
         plan.route
             .validated_options
             .values
