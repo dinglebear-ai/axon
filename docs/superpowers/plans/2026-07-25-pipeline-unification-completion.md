@@ -561,7 +561,7 @@ artifact registry/store owners, source crash/parity sidecars.
 
 - [x] Add append-only ledger/graph publication-state migrations and exact
   Qdrant payload fields `born_epoch` and `retired_epoch`.
-- [ ] Add a durable serialized publication lease with bounded takeover rules.
+- [x] Add a durable serialized publication lease with bounded takeover rules.
 - [ ] Add one SQLite finalization transaction covering graph mutations,
   document status, artifact registry, ledger CAS, authorization, and watermark.
 - [ ] Add retrieval watermark filtering and batched committed-ledger fence
