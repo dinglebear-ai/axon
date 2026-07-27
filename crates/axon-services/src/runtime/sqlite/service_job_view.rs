@@ -98,6 +98,19 @@ fn summary_to_service_job(
 ) -> ServiceJob {
     let (url, source_type, target, urls_json) =
         request_target_fields(summary.kind, request_json.as_ref());
+    let counts_json = summary
+        .counts
+        .as_ref()
+        .and_then(|counts| serde_json::to_value(counts).ok());
+    let terminal = matches!(
+        summary.status,
+        LifecycleStatus::Completed
+            | LifecycleStatus::CompletedDegraded
+            | LifecycleStatus::Failed
+            | LifecycleStatus::Expired
+            | LifecycleStatus::Canceled
+            | LifecycleStatus::Skipped
+    );
     ServiceJob {
         id: summary.job_id.0,
         status: service_status(summary.status),
@@ -111,11 +124,8 @@ fn summary_to_service_job(
         source_type,
         target,
         urls_json,
-        progress_json: summary
-            .counts
-            .as_ref()
-            .and_then(|counts| serde_json::to_value(counts).ok()),
-        result_json: None,
+        progress_json: (!terminal).then(|| counts_json.clone()).flatten(),
+        result_json: terminal.then_some(counts_json).flatten(),
         config_json: None,
         attempt_count: summary.attempt.max(1) as i64,
         active_attempt_id: None,
