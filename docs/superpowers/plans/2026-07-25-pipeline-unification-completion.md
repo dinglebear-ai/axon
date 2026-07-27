@@ -559,7 +559,7 @@ artifact registry/store owners, source crash/parity sidecars.
 
 ### Publication foundation
 
-- [ ] Add append-only ledger/graph publication-state migrations and exact
+- [x] Add append-only ledger/graph publication-state migrations and exact
   Qdrant payload fields `born_epoch` and `retired_epoch`.
 - [ ] Add a durable serialized publication lease with bounded takeover rules.
 - [ ] Add one SQLite finalization transaction covering graph mutations,
