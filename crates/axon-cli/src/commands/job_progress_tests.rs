@@ -7,6 +7,7 @@ fn service_job(status: &str, progress_json: Option<Value>) -> ServiceJob {
     ServiceJob {
         id: Uuid::from_u128(42),
         status: status.to_string(),
+        phase: axon_api::source::PipelinePhase::Fetching,
         created_at: now,
         updated_at: now,
         started_at: None,
@@ -64,4 +65,11 @@ fn source_progress_summary_uses_item_counts_when_documents_are_pending() {
         source_progress_summary(&job).as_deref(),
         Some("3/5 items · preparing")
     );
+}
+
+#[test]
+fn source_progress_summary_uses_the_shared_phase_before_counters_arrive() {
+    let job = service_job("running", Some(json!({})));
+
+    assert_eq!(source_progress_summary(&job).as_deref(), Some("fetching…"));
 }

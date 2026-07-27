@@ -5,6 +5,7 @@ fn job(id: &str, status: &str, progress: serde_json::Value) -> ServiceJob {
     ServiceJob {
         id: uuid::Uuid::parse_str(id).unwrap(),
         status: status.to_string(),
+        phase: axon_api::source::PipelinePhase::Fetching,
         created_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 0, 0).unwrap(),
         updated_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 1, 0).unwrap(),
         started_at: None,
@@ -66,6 +67,7 @@ fn status_payload_uses_unified_typed_job_collections() {
     assert_eq!(value["watches"][0]["kind"], "watch");
     assert_eq!(value["cleanup"]["jobs"][0]["kind"], "prune");
     assert_eq!(value["warnings"][0], "provider cooling");
+    assert_eq!(value["jobs"][0]["phase"], "fetching");
     assert_eq!(value["jobs"][0]["progress"]["phase"], "acquire");
     assert_eq!(value["jobs"][0]["result"]["documents"], 4);
 }

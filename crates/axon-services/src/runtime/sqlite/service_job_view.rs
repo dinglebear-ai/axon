@@ -101,6 +101,7 @@ fn summary_to_service_job(
     ServiceJob {
         id: summary.job_id.0,
         status: service_status(summary.status),
+        phase: summary.phase,
         created_at: parse_timestamp(&summary.created_at),
         updated_at: parse_timestamp(&summary.updated_at),
         started_at: summary.started_at.as_ref().map(parse_timestamp),

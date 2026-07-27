@@ -11,6 +11,7 @@ fn job(status: &str) -> ServiceJob {
     ServiceJob {
         id: Uuid::new_v4(),
         status: status.to_string(),
+        phase: axon_api::source::PipelinePhase::Fetching,
         created_at: now,
         updated_at: now,
         started_at: None,
