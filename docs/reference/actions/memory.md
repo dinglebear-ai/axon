@@ -64,21 +64,24 @@ axon memory context --project axon --query "memory storage architecture" --token
 `link` accepts `--type relates_to|supersedes`.
 `context` accepts `--query`, `--project`, `--repo`, `--file`, `--limit`, and `--token-budget`.
 
-## Claude Plugin SessionStart Recall
+## Session Recall Helper
 
-The Axon Claude plugin includes a best-effort SessionStart hook that runs:
+The Axon Claude plugin **no longer registers a SessionStart hook** (removed
+2026-07-27). The recall logic survives as a standalone, best-effort script,
+`plugins/axon/scripts/session-start-memory-context.sh`, which you can run
+yourself or wire into your own Claude settings hooks. It runs:
 
 ```bash
 axon memory context --project <git-root-name> --repo <owner/name> --token-budget 1200 --limit 6
 ```
 
-The hook infers the current git root from Claude hook environment variables, hook stdin when present, or `PWD`. It silently skips recall when `axon`, `git`, `timeout`, or a git repository are unavailable, and it suppresses command errors so session startup is not blocked by memory outages. Successful recall is printed inside an evidence-only `<axon_session_memory_context>` block.
+The script infers the current git root from Claude hook environment variables, hook stdin when present, or `PWD`. It silently skips recall when `axon`, `git`, `timeout`, or a git repository are unavailable, and it suppresses command errors so session startup is not blocked by memory outages. Successful recall is printed inside an evidence-only `<axon_session_memory_context>` block.
 
-Environment controls:
+Environment controls (read by the script, not by `axon memory context` itself):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `AXON_SESSION_MEMORY_CONTEXT` | `1` | Set `0`, `false`, `no`, or `off` to disable the hook. |
+| `AXON_SESSION_MEMORY_CONTEXT` | `1` | Set `0`, `false`, `no`, or `off` to disable recall. |
 | `AXON_SESSION_MEMORY_TIMEOUT_SECS` | `4` | Maximum time allowed for the memory recall CLI call. |
 | `AXON_SESSION_MEMORY_TOKEN_BUDGET` | `1200` | Token budget passed to `memory context`. |
 | `AXON_SESSION_MEMORY_LIMIT` | `6` | Maximum memory nodes requested. |
