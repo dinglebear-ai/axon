@@ -25,12 +25,15 @@ The current plugin prompt surface is intentionally small:
 
 Search providers, ingest credentials, Qdrant, TEI, Chrome, embedding, and LLM backend settings live in the shared Axon host configuration (`~/.axon/.env` and `~/.axon/config.toml`), not in plugin prompts.
 
-The plugin includes two narrow Claude hooks:
+**The plugin registers no Claude hooks.** The former `SessionStart` /
+`ConfigChange` hooks were removed on 2026-07-27, so nothing runs automatically
+when a session starts. The helper scripts remain in `scripts/` and can be
+invoked directly, or use the equivalent CLI commands:
 
-- `SessionStart` runs best-effort local setup, then recalls compact `axon memory context` for the current git project when Axon memory is available.
-- `ConfigChange` runs the same local setup helper after user settings change.
-
-The hooks are intentionally non-blocking. They do not deploy Docker services; stack provisioning stays explicit.
+```bash
+axon setup plugin-hook   # probe-only readiness check; never deploys
+axon memory context      # recall memories for the current git project
+```
 
 To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
 
@@ -38,8 +41,9 @@ No systemd unit is created. Docker Compose is the only production deployment tar
 
 ### Session Memory and Auto-Ingest
 
-The SessionStart hook is recall-only and prints best-effort `axon memory context`
-for the current git project. It does not scan or ingest transcript files during
+Memory recall is now explicit — run `axon memory context` yourself (or via
+`scripts/session-start-memory-context.sh`) to print compact recall for the
+current git project. Nothing scans or ingests transcript files automatically at
 session startup. Index transcripts with `axon sessions` or with explicit
 `session:<provider>:<path>` selectors through the unified source pipeline; the
 old prepared-session watcher service is not part of the plugin surface.
@@ -116,8 +120,6 @@ plugins/axon/
 │   └── axon-deploy.md
 ├── examples/
 │   └── workflow-output-templates.md
-├── hooks/
-│   └── hooks.json
 ├── references/
 │   ├── capture-recipes.md
 │   ├── workflow-authoring.md
