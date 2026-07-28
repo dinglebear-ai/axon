@@ -5,9 +5,13 @@ use std::path::Path;
 mod readme;
 mod writers;
 
+#[cfg(not(test))]
+use writers::replace_npm_package_lock_version;
+#[cfg(test)]
+pub(super) use writers::replace_npm_package_lock_version;
 use writers::{
     replace_cargo_package_version, replace_changelog_heading, replace_json_version,
-    replace_npm_package_lock_version, replace_workspace_package_version,
+    replace_workspace_package_version,
 };
 
 pub(super) const MAX_ANDROID_VERSION_CODE: u64 = 2_100_000_000;

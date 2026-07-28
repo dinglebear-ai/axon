@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.2] - 2026-07-26
+
+### Security
+- **Local source reads are contained to an explicit allowlist.** MCP and REST
+  local-source execution now enforce `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` before
+  durable enqueue and again during worker execution. Linux reads are confined
+  with allowed-root directory descriptors plus `openat2` `BENEATH`,
+  `NO_SYMLINKS`, `NO_MAGICLINKS`, and `NO_XDEV` resolution, held across
+  discovery and every acquisition batch and released on each terminal outcome.
+  Server callers fail closed when the allowlist is empty, the source is outside
+  it, a path component is symlinked, or descriptor containment is unavailable.
+  `follow_symlinks=true` is rejected for every local-source mode, and public
+  errors redact absolute paths and OS details. Trusted local CLI execution
+  remains explicit. See `docs/reference/runtime/local-source-containment.md`.
+
 ## [7.2.1] - 2026-07-26
 
 ## [7.2.0] - 2026-07-25

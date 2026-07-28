@@ -1,5 +1,5 @@
 # Service Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-07-26
 
 ## Contract
 
@@ -15,6 +15,8 @@ transport-specific input and do not reach into domain internals.
 - Services do not build vector payloads, parse documents, or fetch sources
   directly when a boundary trait exists.
 - Every service has fake-backed integration tests.
+- Streaming service futures are cancellation boundaries: transports drop the
+  future on disconnect so in-flight provider work and reservations are released.
 
 ## Required Service Traits
 
@@ -70,6 +72,11 @@ pub trait RetrieveService: Send + Sync {
 pub trait AskService: Send + Sync {
     async fn ask(&self, request: AskRequest) -> Result<AskResult>;
     async fn chat(&self, request: ChatRequest) -> Result<ChatResult>;
+    async fn chat_stream(
+        &self,
+        request: ChatRequest,
+        on_delta: ChatDeltaHandler,
+    ) -> Result<ChatResult>;
     async fn evaluate(&self, request: EvaluationRequest) -> Result<EvaluationResult>;
     async fn suggest(&self, request: SuggestRequest) -> Result<SuggestResult>;
 }

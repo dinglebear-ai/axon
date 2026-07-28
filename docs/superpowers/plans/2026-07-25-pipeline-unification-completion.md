@@ -730,7 +730,7 @@ content-derived ids for every tested operation.
 - [ ] Update the closeout audit with one runner, one job id, one scheduler
   authority, publication epoch proof, transport parity, and all 17 docs.
 - [ ] Assess CLI/schema/config/auth compatibility and choose the actual
-  patch/minor/major bump; use `cargo xtask bump-version cli <level>`.
+  patch/minor/major bump; use `cargo xtask bump-version <level> --component cli`.
 - [ ] Release through normal branch protection.
 - [ ] Build separate host and Bookworm artifacts from merged `main`; back up,
   install atomically, restart with a bounded deadline, and rollback both sides

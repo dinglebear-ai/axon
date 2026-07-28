@@ -1,6 +1,6 @@
 # Axon
 
-Version: 7.2.1
+Version: 7.2.2
 
 Axon is a self-hosted RAG stack: source acquisition, document preparation,
 embedding, hybrid retrieval, and LLM synthesis in one Rust binary, backed by
@@ -501,7 +501,7 @@ Required before a production release:
 
 Releases are per-component. Three of four (`palette`, `android`, `chrome`) are
 release-please-managed; `cli` is bumped manually with
-`cargo xtask bump-version cli patch|minor|major` (release-please can't handle
+`cargo xtask bump-version patch|minor|major --component cli` (release-please can't handle
 `version.workspace = true`). The PR gate is:
 
 ```bash

@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "axon-adapters"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -438,7 +438,6 @@ dependencies = [
  "pulldown-cmark",
  "reflink-copy",
  "reqwest 0.13.4",
- "rustix",
  "serde",
  "serde_json",
  "serial_test",
@@ -457,7 +456,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "axon-error",
  "chrono",
@@ -473,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -486,11 +485,10 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
- "axon-adapters",
  "axon-api",
  "axon-core",
  "axon-jobs",
@@ -527,7 +525,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -571,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "axon-document"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -585,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "axon-embedding"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -602,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "axon-error"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "chrono",
  "schemars",
@@ -615,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "axon-api",
  "axon-core",
@@ -640,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "axon-graph"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -657,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -696,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ledger"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -711,7 +709,7 @@ dependencies = [
 
 [[package]]
 name = "axon-llm"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -733,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -763,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "axon-memory"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -786,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "axon-observe"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -807,7 +805,7 @@ dependencies = [
 
 [[package]]
 name = "axon-parse"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "axon-api",
  "axon-graph",
@@ -825,7 +823,7 @@ dependencies = [
 
 [[package]]
 name = "axon-prune"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -836,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "axon-retrieval"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -851,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "axon-route"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -865,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -926,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vectors"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -948,7 +946,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "7.2.1"
+version = "7.2.2"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -956,7 +954,6 @@ dependencies = [
  "axon-core",
  "axon-error",
  "axon-jobs",
- "axon-llm",
  "axon-services",
  "axum 0.8.9",
  "base64",
@@ -9176,6 +9173,7 @@ dependencies = [
  "clap",
  "dotenvy",
  "jsonschema",
+ "proc-macro2",
  "regex",
  "reqwest 0.13.4",
  "schemars",
