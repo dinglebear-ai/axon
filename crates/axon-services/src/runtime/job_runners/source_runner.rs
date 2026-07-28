@@ -129,7 +129,12 @@ impl UnifiedJobRunner for SourceRunner {
         };
 
         match result {
-            Ok(source_result) => outcome_from_result(source_result),
+            Ok(source_result) => {
+                store
+                    .record_job_artifacts(claimed.job_id, &source_result.artifacts)
+                    .await?;
+                outcome_from_result(source_result)
+            }
             Err(error) => Err(source_error(error.to_string())),
         }
     }
