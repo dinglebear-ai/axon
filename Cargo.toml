@@ -50,7 +50,7 @@ license = "MIT"
 # build graph. sqlx-sqlite 0.8 pins libsqlite3-sys = "0.30.1", so using
 # rusqlite 0.32 here resolves to the same libsqlite3-sys version and eliminates
 # the conflict.
-[patch."https://github.com/jmagar/lab.git"]
+[patch."https://github.com/dinglebear-ai/labby.git"]
 lab-auth = { path = "vendor/lab-auth" }
 
 [package]
