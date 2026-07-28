@@ -7,6 +7,8 @@ use sqlx::SqlitePool;
 
 use crate::boundary::{JobDeleteResult, JobStore, Result};
 
+#[path = "unified/artifacts.rs"]
+mod artifacts;
 #[path = "unified/control.rs"]
 mod control;
 #[path = "unified/control_helpers.rs"]
@@ -21,6 +23,8 @@ mod observe;
 mod ops;
 #[path = "unified/pagination.rs"]
 pub(crate) mod pagination;
+#[path = "unified/recovery.rs"]
+mod recovery;
 #[path = "unified/request_read.rs"]
 mod request_read;
 #[path = "unified/retention.rs"]
