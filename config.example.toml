@@ -57,6 +57,8 @@
 # Put QDRANT_URL, TEI_URL, and AXON_CHROME_REMOTE_URL in ~/.axon/.env.
 # Local source requests from server transports are fail-closed unless their
 # resolved path is under AXON_SOURCE_LOCAL_ALLOWED_ROOTS (comma-separated).
+# Use a dedicated absolute read-only mount. Symlinked roots, nested mounts,
+# relative paths, and empty authenticated-server allowlists are rejected.
 
 [sources.code-search]
 # Foreground freshness TTL before checking whether a Git checkout changed.

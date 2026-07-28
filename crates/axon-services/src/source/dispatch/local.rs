@@ -37,10 +37,11 @@ use anyhow::Context as _;
 use axon_adapters::SourceAdapter as _;
 use axon_adapters::local::LocalSourceAdapter;
 use axon_api::source::{
-    AdapterRef, AuthScope, AuthSnapshot, AuthorityLevel, ConfigSnapshotId, EffectiveLimits,
-    MetadataMap, ResolvedSource, RoutePlan, SourceKind, SourceLimits, SourcePlan, SourceRequest,
-    SourceScope,
+    AdapterRef, AuthMode, AuthScope, AuthSnapshot, AuthorityLevel, ConfigSnapshotId,
+    EffectiveLimits, MetadataMap, ResolvedSource, RoutePlan, SourceKind, SourceLimits, SourcePlan,
+    SourceRequest, SourceScope,
 };
+use axon_core::config::Config;
 use axon_core::logging::log_info;
 
 use super::{dispatch_materialized, placeholder_job_id};
@@ -56,6 +57,7 @@ const LOCAL_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Local-path source: dispatch through the shared non-web document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_local(
+    cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -74,7 +76,17 @@ pub(crate) async fn dispatch_local(
     enforce_local_source_policy(input, has_local_scope)?;
 
     let plan = local_source_plan(input, route, embed).await?;
-    let adapter = LocalSourceAdapter::new();
+    let adapter =
+        if auth_snapshot.is_some_and(|snapshot| snapshot.auth_mode == AuthMode::TrustedLocal) {
+            LocalSourceAdapter::new()
+        } else {
+            LocalSourceAdapter::new_contained(
+                std::path::Path::new(&plan.request.source),
+                plan.route.scope,
+                &cfg.source_local_allowed_roots,
+            )
+            .map_err(anyhow::Error::new)?
+        };
     let materializer = adapter.clone();
     dispatch_materialized(
         runtime,
@@ -109,6 +121,7 @@ async fn local_source_plan(
     embed: bool,
 ) -> anyhow::Result<SourcePlan> {
     let raw_root = std::path::PathBuf::from(input);
+    reject_symlinked_source_root(&raw_root).await?;
     let root = tokio::fs::canonicalize(&raw_root)
         .await
         .with_context(|| format!("invalid local source root {}", public_path_hint(&raw_root)))?;
@@ -174,6 +187,19 @@ async fn local_source_plan(
         config_snapshot_id: ConfigSnapshotId::new("cfg_local_source"),
         provider_reservations: Vec::new(),
     })
+}
+
+async fn reject_symlinked_source_root(root: &std::path::Path) -> anyhow::Result<()> {
+    let metadata = tokio::fs::symlink_metadata(root)
+        .await
+        .with_context(|| format!("invalid local source root {}", public_path_hint(root)))?;
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!(
+            "unsafe local source root {}: symlinks are not allowed",
+            public_path_hint(root)
+        );
+    }
+    Ok(())
 }
 
 fn public_path_hint(path: &std::path::Path) -> String {
