@@ -7,7 +7,6 @@ use sqlx::SqlitePool;
 use tokio_util::sync::CancellationToken;
 
 use super::{WatchdogNotifies, starvation};
-use crate::boundary::JobStore;
 use crate::unified::SqliteUnifiedJobStore;
 use crate::unified::retention::RetentionCutoffs;
 
@@ -63,21 +62,25 @@ async fn run_unified_sweeps(
         chrono::Utc::now() - chrono::Duration::milliseconds(stale_threshold_ms.max(0)),
     );
     match unified_store
-        .recover(JobRecoveryRequest {
-            kind: None,
-            stale_before: Some(stale_before),
-            limit: None,
-            older_than_seconds: None,
-            dry_run: false,
-            allow_without_cutoff: false,
-        })
+        .recover_jobs_with_attempt_limit(
+            JobRecoveryRequest {
+                kind: None,
+                stale_before: Some(stale_before),
+                limit: None,
+                older_than_seconds: None,
+                dry_run: false,
+                allow_without_cutoff: false,
+            },
+            Some(cfg.max_job_attempts),
+        )
         .await
     {
-        Ok(result) if result.jobs_requeued > 0 => {
+        Ok(result) if result.jobs_requeued > 0 || result.jobs_failed > 0 => {
             tracing::info!(
                 requeued = result.jobs_requeued,
+                failed = result.jobs_failed,
                 scanned = result.jobs_scanned,
-                "watchdog: reclaimed stale unified jobs"
+                "watchdog: recovered stale unified jobs"
             );
             notifies.unified.notify_waiters();
         }

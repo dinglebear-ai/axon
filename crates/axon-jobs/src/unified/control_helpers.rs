@@ -190,6 +190,55 @@ pub(super) async fn reset_stale_job_for_recovery(
     Ok(true)
 }
 
+pub(super) async fn fail_stale_job_after_attempt_limit(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    job_id: JobId,
+    current_attempt: u32,
+    max_attempts: u32,
+) -> Result<bool> {
+    let now = now_timestamp();
+    let error = ApiError::new(
+        "job.recovery_attempt_limit_exhausted",
+        ErrorStage::Publishing,
+        format!("stale job exhausted its recovery attempt limit ({max_attempts})"),
+    );
+    let summary_error = SourceError {
+        code: error.code.to_string(),
+        severity: Severity::Failed,
+        message: error.message.clone(),
+        source_item_key: None,
+        retryable: false,
+        provider_id: None,
+        cause: None,
+    };
+    let result = sqlx::query(
+        "UPDATE jobs SET
+            status = 'failed',
+            phase = 'complete',
+            updated_at = ?,
+            finished_at = ?,
+            heartbeat_json = NULL,
+            last_error_json = ?,
+            cooldown_until = NULL
+         WHERE job_id = ?
+           AND attempt = ?
+           AND status IN ('running', 'waiting')",
+    )
+    .bind(now.0.as_str())
+    .bind(now.0.as_str())
+    .bind(optional_to_json(&Some(summary_error))?)
+    .bind(job_id.0.to_string())
+    .bind(current_attempt as i64)
+    .execute(&mut **tx)
+    .await
+    .map_err(sql_error)?;
+    if result.rows_affected() == 0 {
+        return Ok(false);
+    }
+    terminalize_active_children(tx, job_id, LifecycleStatus::Failed, &now, Some(error)).await?;
+    Ok(true)
+}
+
 pub(super) async fn terminalize_active_children(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     job_id: JobId,
