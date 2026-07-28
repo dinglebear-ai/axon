@@ -15,6 +15,7 @@ pub(super) struct LocalAdapterRun {
     pub source_id: SourceId,
     pub source_token: String,
     pub adapter: AdapterRef,
+    local_adapter: LocalSourceAdapter,
     pub scope: SourceScope,
     pub plan: SourcePlan,
 }
@@ -22,6 +23,7 @@ pub(super) struct LocalAdapterRun {
 pub(super) async fn resolve_adapter_run(
     input: &LocalSourceIndexInput,
 ) -> anyhow::Result<LocalAdapterRun> {
+    reject_symlinked_source_root(&input.root).await?;
     let root = tokio::fs::canonicalize(&input.root)
         .await
         .with_context(|| {
@@ -62,21 +64,36 @@ pub(super) async fn resolve_adapter_run(
         source_id,
         source_token,
         adapter,
+        local_adapter: LocalSourceAdapter::new(),
         scope,
         plan,
     })
 }
 
+async fn reject_symlinked_source_root(root: &Path) -> anyhow::Result<()> {
+    let metadata = tokio::fs::symlink_metadata(root)
+        .await
+        .with_context(|| format!("invalid local source root {}", public_path_hint(root)))?;
+    if metadata.file_type().is_symlink() {
+        anyhow::bail!(
+            "unsafe local source root {}: symlinks are not allowed",
+            public_path_hint(root)
+        );
+    }
+    Ok(())
+}
+
 pub(super) async fn discover_manifest(run: &LocalAdapterRun) -> anyhow::Result<SourceManifest> {
-    Ok(LocalSourceAdapter::new().discover(&run.plan).await?)
+    Ok(run.local_adapter.discover(&run.plan).await?)
 }
 
 pub(super) async fn normalize_changed_documents(
     run: &LocalAdapterRun,
     diff: &SourceManifestDiff,
 ) -> anyhow::Result<Vec<SourceDocument>> {
-    let acquisition = LocalSourceAdapter::new().acquire(&run.plan, diff).await?;
-    Ok(LocalSourceAdapter::new()
+    let acquisition = run.local_adapter.acquire(&run.plan, diff).await?;
+    Ok(run
+        .local_adapter
         .normalize(&run.plan, acquisition)
         .await?
         .data)

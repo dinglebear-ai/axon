@@ -118,10 +118,11 @@ pub(crate) async fn index_source(
     let want_async = request.execution.detached && request.execution.mode != ExecutionMode::Wait;
 
     if want_async && let Some(job_store) = state.service_context.job_store() {
-        let result = axon_services::source::enqueue::enqueue_source(
+        let result = axon_services::source::enqueue::enqueue_source_with_allowed_roots(
             request,
             job_store.as_ref(),
             auth_snapshot,
+            Some(&state.service_context.cfg().source_local_allowed_roots),
         )
         .await
         .map_err(|err| {
