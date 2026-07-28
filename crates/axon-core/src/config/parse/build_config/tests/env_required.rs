@@ -217,7 +217,7 @@ fn into_config_reads_canonical_source_local_roots() {
         );
         let cfg = into_config_via_args(&["status"]).expect("status config");
         assert_eq!(
-            cfg.mcp_embed_allowed_roots,
+            cfg.source_local_allowed_roots,
             vec![
                 std::path::PathBuf::from("/srv/axon/sources"),
                 std::path::PathBuf::from("/home/axon/projects"),

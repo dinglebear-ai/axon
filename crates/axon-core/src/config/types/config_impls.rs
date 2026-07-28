@@ -64,7 +64,7 @@ impl Default for Config {
             format: ScrapeFormat::Markdown,
             collection: "axon".to_string(),
             embed: true,
-            mcp_embed_allowed_roots: Vec::new(),
+            source_local_allowed_roots: Vec::new(),
             mcp_embed_max_local_bytes: 10 * 1024 * 1024,
             mcp_embed_max_local_depth: 16,
             mcp_embed_max_local_entries: 10_000,

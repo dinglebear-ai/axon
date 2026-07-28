@@ -205,6 +205,10 @@ impl SourceAdapter for AuditedToolAdapter<'_> {
             .normalize(&self.plan_with_policy(plan), acquisition)
             .await
     }
+
+    fn release(&self, plan: &SourcePlan) {
+        self.inner.release(&self.plan_with_policy(plan));
+    }
 }
 
 impl AuditedToolAdapter<'_> {

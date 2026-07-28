@@ -80,9 +80,13 @@ where
         .with_attempt(input.execution.attempt);
 
     let result = run_with_lease(runtime, &mut input, &emitter, materialize).await;
-    if owns_status {
-        record_terminal_status(runtime.jobs.as_ref(), &input, &result).await?;
-    }
+    let status_result = if owns_status {
+        record_terminal_status(runtime.jobs.as_ref(), &input, &result).await
+    } else {
+        Ok(())
+    };
+    input.adapter.release(&input.plan);
+    status_result?;
     result
 }
 
