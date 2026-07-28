@@ -17,7 +17,7 @@
 //! the legacy pipeline itself as the executable "pre-collapse" baseline —
 //! no scratch copy needed, since that code is still compiled and reachable.
 
-use axon_api::source::{AuthScope, AuthSnapshot, JobId, JobPriority, SourceRequest};
+use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRequest};
 
 use super::SourceExecutionContext;
 use super::dispatch_local;
@@ -35,9 +35,7 @@ fn route_for(source: &str) -> axon_api::source::RoutePlan {
 }
 
 fn local_auth_snapshot() -> AuthSnapshot {
-    let mut snapshot = AuthSnapshot::default();
-    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
-    snapshot
+    AuthSnapshot::trusted_cli("local-collapse-test")
 }
 
 fn legacy_input(
@@ -117,7 +115,9 @@ async fn dispatch_local_embed_false_skips_ensure_collection_unlike_legacy_path()
         .expect("unified target runtime");
     let snapshot = local_auth_snapshot();
     let route = route_for(&source);
+    let cfg = axon_core::config::Config::default();
     dispatch_local(
+        &cfg,
         unified_runtime,
         &source,
         "axon-unified-embed-false",
@@ -213,7 +213,9 @@ async fn dispatch_local_streams_oversized_document_unlike_legacy_path() {
         .expect("unified target runtime");
     let snapshot = local_auth_snapshot();
     let route = route_for(&source);
+    let cfg = axon_core::config::Config::default();
     dispatch_local(
+        &cfg,
         unified_runtime,
         &source,
         "axon-unified-oversized",

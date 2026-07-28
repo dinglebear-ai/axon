@@ -193,7 +193,7 @@ pub struct Config {
 
     /// Local filesystem roots allowed for source requests from server transports.
     /// Env: `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` (comma-separated).
-    pub mcp_embed_allowed_roots: Vec<PathBuf>,
+    pub source_local_allowed_roots: Vec<PathBuf>,
 
     /// Max bytes for one local file embedded through server surfaces.
     /// Env: `AXON_MCP_EMBED_MAX_LOCAL_BYTES`.
