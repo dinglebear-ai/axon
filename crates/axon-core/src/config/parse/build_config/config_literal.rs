@@ -149,7 +149,7 @@ fn populate_perf_and_credentials(
     let g = inputs.global;
     cfg.collection = inputs.collection.clone();
     cfg.embed = !g.skip_embed && !inputs.dispatched.scrape_no_embed;
-    cfg.mcp_embed_allowed_roots = env::var("AXON_SOURCE_LOCAL_ALLOWED_ROOTS")
+    cfg.source_local_allowed_roots = env::var("AXON_SOURCE_LOCAL_ALLOWED_ROOTS")
         .ok()
         .map(|raw| {
             raw.split(',')

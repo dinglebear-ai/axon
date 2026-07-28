@@ -384,6 +384,33 @@ under `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` and satisfy the byte/depth/entry limits.
 Missing path-like inputs such as `/data/missing.md` or `./missing.md` are
 rejected instead of being silently treated as raw text.
 
+Source creation uses the same fail-closed rule for authenticated server
+callers, both before a detached job is written and when a worker executes or
+recovers it. Configure absolute, existing roots only. Requested roots and their
+components must not be symlinks. On Linux, Axon opens discovered documents
+relative to a held root descriptor with `openat2` containment (`BENEATH`,
+`NO_SYMLINKS`, `NO_MAGICLINKS`, and `NO_XDEV`).
+Because local acquisition selects the no-symlink containment flow,
+`follow_symlinks=true` is rejected for every local caller, including trusted
+CLI use; copy or bind the intended real directory into the fixed root instead.
+
+For production indexing, expose a dedicated projection directory as a
+read-only mount at a fixed container path and allow only that path. Do not
+allow a broad data mount, a host workspace, `/proc`, or a mutable symlink:
+
+```bash
+AXON_SOURCE_LOCAL_ALLOWED_ROOTS=/srv/young-office-index/current
+```
+
+Promote `current` with an atomic directory rename while no indexing job owns
+the mount. Nested mounts and bind-mount crossings beneath the root are rejected.
+The configured allowed-root path and its ancestors are an operator trust
+boundary: they must be root-owned and not writable by the Axon service account.
+Axon acquires the allowed-root descriptor at source execution, resolves the
+requested source beneath it, and retains the resolved descriptor through
+discovery and acquisition; it does not retain a descriptor from config-load
+time.
+
 ### Ask cache
 
 The `[ask.cache]` section in `~/.axon/config.toml` controls the optional

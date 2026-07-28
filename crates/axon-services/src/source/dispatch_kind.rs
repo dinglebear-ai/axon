@@ -29,6 +29,7 @@ pub(super) async fn dispatch_kind(
         SourceInputKind::Local | SourceInputKind::Git => {
             dispatch_local_or_git(
                 kind,
+                cfg,
                 runtime,
                 input,
                 collection,
@@ -127,6 +128,7 @@ pub(super) async fn dispatch_kind(
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_local_or_git(
     kind: SourceInputKind,
+    cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -139,6 +141,7 @@ async fn dispatch_local_or_git(
     match kind {
         SourceInputKind::Local => {
             dispatch::dispatch_local(
+                cfg,
                 runtime,
                 input,
                 collection,

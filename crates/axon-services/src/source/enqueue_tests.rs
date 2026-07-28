@@ -138,6 +138,41 @@ async fn enqueue_source_local_path_denied_without_local_scope() {
 }
 
 #[tokio::test]
+async fn detached_server_local_source_requires_a_configured_allowed_root() {
+    let store = FakeJobWatchStore::new();
+    let root = tempfile::tempdir().expect("local source");
+    let request = SourceRequest::local_path(root.path().to_string_lossy(), true);
+    let mut auth = AuthSnapshot::default();
+    auth.granted_scopes = vec![
+        axon_api::source::AuthScope::Read,
+        axon_api::source::AuthScope::Write,
+        axon_api::source::AuthScope::Local,
+    ];
+
+    let denied =
+        enqueue_source_with_allowed_roots(request.clone(), &store, Some(auth.clone()), Some(&[]))
+            .await
+            .expect("deny result");
+    assert!(denied.job.is_none());
+    assert!(
+        denied
+            .warnings
+            .iter()
+            .any(|warning| warning.code == "security.local_root_denied")
+    );
+
+    let allowed = enqueue_source_with_allowed_roots(
+        request,
+        &store,
+        Some(auth),
+        Some(&[root.path().to_path_buf()]),
+    )
+    .await
+    .expect("allowed enqueue");
+    assert!(allowed.job.is_some());
+}
+
+#[tokio::test]
 async fn enqueue_source_tool_denied_without_execute_scope() {
     let store = FakeJobWatchStore::new();
     let request = SourceRequest::new("cli:rg --help").without_embedding();
