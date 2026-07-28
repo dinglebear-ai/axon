@@ -304,8 +304,7 @@ fn validate_manifest(manifest: &StoredArtifactManifest) -> Result<(), ApiError> 
 }
 
 fn artifact_root_for(ctx: &ServiceContext) -> PathBuf {
-    let _ = ctx;
-    axon_core::paths::axon_data_base_dir().join("artifacts")
+    ctx.cfg.output_dir.join("artifacts")
 }
 
 fn metadata_string(metadata: &MetadataMap, key: &str) -> Option<String> {
