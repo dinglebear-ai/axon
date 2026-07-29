@@ -1,6 +1,8 @@
 //! URL scope and content-type filtering shared by sitemap and llms.txt discovery.
 
-use crate::web_engine::engine::{canonicalize_url_for_dedupe, is_excluded_url_path};
+use crate::web_engine::engine::{
+    apex_host, canonicalize_url_for_dedupe, hosts_match, is_excluded_url_path,
+};
 use axon_core::config::Config;
 use spider::url::Url;
 
@@ -29,12 +31,16 @@ pub fn loc_in_scope(
 ) -> Option<String> {
     let u = Url::parse(loc).ok()?;
     let h = u.host_str()?;
+    // `www.` is stripped from both sides: a sitemap frequently lists only the
+    // apex form while the crawl was seeded from `www.` (or vice versa), and an
+    // exact compare silently discards every entry.
     let in_scope = if cfg.include_subdomains {
-        h == start_host
-            || h.strip_suffix(start_host)
+        hosts_match(h, start_host)
+            || apex_host(h)
+                .strip_suffix(apex_host(start_host))
                 .is_some_and(|rest| rest.ends_with('.'))
     } else {
-        h == start_host
+        hosts_match(h, start_host)
     };
     if !in_scope || is_excluded_url_path(loc, &cfg.exclude_path_prefix) {
         return None;

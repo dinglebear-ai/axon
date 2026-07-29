@@ -9,12 +9,56 @@ use super::{
 use axon_core::config::Config;
 use axon_core::content::{extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps};
 use axon_core::http::build_client;
-use axon_core::logging::log_info;
+use axon_core::logging::{log_info, log_warn};
 use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
 
 use crate::web_engine::engine::MAX_TRACKED_DISCOVERED_URLS;
+
+/// Bytes scanned for a sitemap's root element.
+///
+/// Generous enough to clear an XML prolog plus one or more
+/// `<?xml-stylesheet?>` processing instructions, which real sitemaps carry
+/// (www.lex-co.sc.gov emits both before `<urlset>`), while still avoiding a
+/// scan of a multi-megabyte body.
+const ROOT_ELEMENT_SCAN_BYTES: usize = 4096;
+
+/// What a fetched sitemap-candidate body actually turned out to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SitemapDocKind {
+    /// `<urlset>` — a leaf sitemap listing page URLs.
+    UrlSet,
+    /// `<sitemapindex>` — references further sitemap documents.
+    Index,
+    /// Neither root element present; an HTML soft-404 or unrelated document.
+    NotSitemap,
+}
+
+/// Classify a fetched body by its XML root element.
+///
+/// Case-insensitive and prefix-scoped: matches `<urlset` / `<sitemapindex`
+/// rather than the full tag so namespaced roots (`<urlset xmlns=...>`) and
+/// prefixed ones still classify correctly.
+fn classify_sitemap_document(xml: &str) -> SitemapDocKind {
+    let bytes = xml.as_bytes();
+    let head = bytes.get(..ROOT_ELEMENT_SCAN_BYTES).unwrap_or(bytes);
+    let contains = |needle: &[u8]| {
+        head.len() >= needle.len()
+            && head
+                .windows(needle.len())
+                .any(|w| w.eq_ignore_ascii_case(needle))
+    };
+    // Order matters: a <sitemapindex> body never contains <urlset, but check
+    // the index form first so the more specific root wins unambiguously.
+    if contains(b"<sitemapindex") {
+        SitemapDocKind::Index
+    } else if contains(b"<urlset") {
+        SitemapDocKind::UrlSet
+    } else {
+        SitemapDocKind::NotSitemap
+    }
+}
 
 /// Result of sitemap discovery including URLs and diagnostic stats.
 #[derive(Debug, Clone, Default)]
@@ -85,6 +129,9 @@ fn sitemap_seed_queue(parsed: &Url) -> VecDeque<String> {
         "/sitemap.xml",
         "/sitemap_index.xml",
         "/sitemap-index.xml",
+        "/sitemap1.xml",
+        "/sitemaps.xml",
+        "/sitemap/index.xml",
         "/wp-sitemap.xml",
         "/sitemap/sitemap-index.xml",
     ]
@@ -128,17 +175,26 @@ async fn process_sitemap_batch(
 
     let mut parsed = 0usize;
     while let Some(joined) = joins.join_next().await {
-        let Ok(Some((_sitemap_url, xml))) = joined else {
+        let Ok(Some((sitemap_url, xml))) = joined else {
             output.failed_fetches += 1;
             continue;
         };
+        // HTTP 200 is not proof of a sitemap: plenty of sites serve an HTML
+        // soft-404 at /sitemap.xml (www.charlestoncounty.gov does). Counting
+        // one as a parsed document makes discovery report success with zero
+        // URLs, which suppresses the caller's fallback. Classify by root
+        // element and skip anything that is not a sitemap.
+        let is_index = match classify_sitemap_document(&xml) {
+            SitemapDocKind::Index => true,
+            SitemapDocKind::UrlSet => false,
+            SitemapDocKind::NotSitemap => {
+                log_warn(&format!(
+                    "command=sitemap ignored non-sitemap body url={sitemap_url}"
+                ));
+                continue;
+            }
+        };
         parsed += 1;
-        // The <sitemapindex> root element always appears in the XML prolog
-        // (first ~200 bytes). Scanning the full multi-MB body is wasteful.
-        let head = xml.as_bytes().get(..512).unwrap_or(xml.as_bytes());
-        let is_index = head
-            .windows(b"<sitemapindex".len())
-            .any(|w| w.eq_ignore_ascii_case(b"<sitemapindex"));
         let since_days = cfg.sitemap_since_days;
         if !is_index && since_days > 0 {
             // Date-filtered path: use block-level parsing to get <lastmod> per URL.
@@ -322,3 +378,7 @@ pub async fn discover_sitemap_urls(
         failed_fetches,
     })
 }
+
+#[cfg(test)]
+#[path = "discover_tests.rs"]
+mod tests;

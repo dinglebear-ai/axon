@@ -27,6 +27,24 @@ pub fn canonicalize_url_for_dedupe(url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
+/// Strip a leading `www.` label, case-insensitively.
+///
+/// `www.example.com` and `example.com` are the same site in practice: hosts
+/// routinely 301 between the two, and a sitemap often lists only one form.
+/// Comparing them literally drops every URL served under the other form.
+pub(crate) fn apex_host(host: &str) -> &str {
+    match host.get(..4) {
+        Some(prefix) if prefix.eq_ignore_ascii_case("www.") => &host[4..],
+        _ => host,
+    }
+}
+
+/// True when two hosts denote the same site, ignoring ASCII case and a leading
+/// `www.` on either side.
+pub(crate) fn hosts_match(candidate: &str, scope_host: &str) -> bool {
+    apex_host(candidate).eq_ignore_ascii_case(apex_host(scope_host))
+}
+
 pub fn normalize_map_candidate_url(
     raw: &str,
     scope: &MapScope,
@@ -44,7 +62,7 @@ pub fn normalize_map_candidate_url(
     }
 
     let host = parsed.host_str()?;
-    if !host.eq_ignore_ascii_case(&scope.host) {
+    if !hosts_match(host, &scope.host) {
         return None;
     }
 
