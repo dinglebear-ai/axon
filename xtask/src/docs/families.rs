@@ -8,6 +8,10 @@ use super::artifact::{DocsArtifactSet, GeneratedDocArtifact};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
 #[value(rename_all = "kebab-case")]
+/// `adapter-scopes.{json,md}` are intentionally absent: the schemas generator
+/// owns both (`xtask/src/schemas/adapters.rs`). Declaring them here too made
+/// `schemas generate --check` and `docs generate --check` mutually
+/// unsatisfiable once adapter data changed. One owner per artifact path.
 pub enum DocsFamily {
     Cli,
     CliHelp,
@@ -16,7 +20,6 @@ pub enum DocsFamily {
     ApiDto,
     ApiEnums,
     Errors,
-    Adapters,
     Events,
     Config,
     Env,
@@ -29,7 +32,7 @@ pub enum DocsFamily {
 }
 
 impl DocsFamily {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 16] = [
         Self::Cli,
         Self::CliHelp,
         Self::Openapi,
@@ -40,7 +43,6 @@ impl DocsFamily {
         Self::Events,
         Self::Config,
         Self::Env,
-        Self::Adapters,
         Self::Schema,
         Self::Memory,
         Self::Providers,
@@ -58,7 +60,6 @@ impl DocsFamily {
             Self::ApiDto => "api-dto",
             Self::ApiEnums => "api-enums",
             Self::Errors => "errors",
-            Self::Adapters => "adapters",
             Self::Events => "events",
             Self::Config => "config",
             Self::Env => "env",
@@ -78,7 +79,6 @@ impl DocsFamily {
             Self::Mcp => "docs/reference/mcp/tool-schema.json",
             Self::ApiDto | Self::ApiEnums => "docs/reference/api/schemas.json",
             Self::Errors => "docs/reference/api/errors.schema.json",
-            Self::Adapters => "docs/reference/sources/adapter-scopes.json",
             Self::Events => "docs/reference/runtime/events.schema.json",
             Self::Config => "docs/reference/config/config.schema.json",
             Self::Env => "docs/reference/config/env.schema.json",
@@ -100,7 +100,6 @@ impl DocsFamily {
             Self::ApiDto => "docs/reference/api/dto.md",
             Self::ApiEnums => "docs/reference/api/enums.md",
             Self::Errors => "docs/reference/generated/errors.md",
-            Self::Adapters => "docs/reference/sources/adapter-scopes.md",
             Self::Events => "docs/reference/runtime/observability.md",
             Self::Config => "docs/reference/generated/config.md",
             Self::Env => "docs/reference/generated/env.md",
@@ -122,7 +121,6 @@ impl DocsFamily {
             Self::ApiDto => "API DTO Reference",
             Self::ApiEnums => "API Enum Reference",
             Self::Errors => "API Error Reference",
-            Self::Adapters => "Source Adapter Reference",
             Self::Events => "Runtime Event Reference",
             Self::Config => "Configuration Reference",
             Self::Env => "Environment Reference",

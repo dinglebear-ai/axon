@@ -16,7 +16,6 @@ fn docs_family_inventory_matches_the_contract() {
             "events",
             "config",
             "env",
-            "adapters",
             "schema",
             "memory",
             "providers",

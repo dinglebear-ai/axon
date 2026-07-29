@@ -46,7 +46,6 @@ enum DocsCommand {
     /// Render one critical documentation family.
     ApiEnums(DocsGenerateArgs),
     /// Render one critical documentation family.
-    Adapters(DocsGenerateArgs),
     /// Render one critical documentation family.
     Events(DocsGenerateArgs),
     /// Render one critical documentation family.
@@ -88,9 +87,6 @@ pub fn run(root: &Path, args: DocsArgs) -> Result<()> {
         }
         DocsCommand::ApiEnums(args) => {
             generate::run_single(root, families::DocsFamily::ApiEnums, &args)
-        }
-        DocsCommand::Adapters(args) => {
-            generate::run_single(root, families::DocsFamily::Adapters, &args)
         }
         DocsCommand::Events(args) => {
             generate::run_single(root, families::DocsFamily::Events, &args)

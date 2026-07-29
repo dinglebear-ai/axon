@@ -64,7 +64,11 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     .await
     .expect("target refresh");
 
-    assert_eq!(refreshed.freshness.status, "fresh");
+    assert_eq!(
+        refreshed.freshness.status, "fresh",
+        "refresh warning: {:?}",
+        refreshed.freshness.warning
+    );
     assert!(refreshed.freshness.warning.is_none());
     assert!(refreshed.target_source_id.is_some());
     assert!(refreshed.target_source_generation.is_some());
@@ -133,7 +137,11 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
     .await
     .expect("target refresh");
 
-    assert_eq!(refreshed.freshness.status, "fresh");
+    assert_eq!(
+        refreshed.freshness.status, "fresh",
+        "refresh warning: {:?}",
+        refreshed.freshness.warning
+    );
     let events = progress.events.lock().expect("progress lock").clone();
     assert!(matches!(
         events.first(),
@@ -192,7 +200,11 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     )
     .await
     .expect("target refresh");
-    assert_eq!(refreshed.freshness.status, "fresh");
+    assert_eq!(
+        refreshed.freshness.status, "fresh",
+        "refresh warning: {:?}",
+        refreshed.freshness.warning
+    );
     assert!(refreshed.freshness.warning.is_none());
     let mut stale_point = vectors
         .points(&cfg.collection)
