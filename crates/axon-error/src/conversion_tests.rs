@@ -25,10 +25,7 @@ fn into_api_error_projects_without_exposing_internals() {
         detail: "tcp connect timeout to 10.0.0.5:443".to_string(),
     };
     let api = project(err);
-    assert_eq!(
-        api.code,
-        crate::code::ErrorCode::from("provider.unavailable")
-    );
+    assert_eq!(api.code, ErrorCode::from("provider.unavailable"));
     assert!(api.retryable);
     assert!(!api.message.contains("10.0.0.5"));
 }

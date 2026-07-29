@@ -173,12 +173,8 @@ pub(crate) async fn capability_snapshot(store: &QdrantVectorStore) -> ProviderCa
             .cooling_snapshot()
             .await
             .map(|cooling| {
-                ApiError::new(
-                    "provider.cooling",
-                    axon_error::ErrorStage::Observing,
-                    cooling.reason,
-                )
-                .with_provider_id(store.provider_id().0.clone())
+                ApiError::new("provider.cooling", ErrorStage::Observing, cooling.reason)
+                    .with_provider_id(store.provider_id().0.clone())
             })
             .or(probe_error);
         (tracked_health, last_error)
@@ -250,7 +246,7 @@ async fn probe_health(store: &QdrantVectorStore) -> (HealthStatus, Option<ApiErr
     // `GET /` returns a small JSON envelope (`{"title":...,"version":...}`).
     let url = format!("{}/", http.endpoint().root());
     match http
-        .get_json(axon_error::ErrorStage::Observing, &url, "qdrant_health")
+        .get_json(ErrorStage::Observing, &url, "qdrant_health")
         .await
     {
         Ok(_) => (HealthStatus::Healthy, None),

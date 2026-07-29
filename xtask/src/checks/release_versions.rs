@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Path;
 
-type ReleaseResult<T> = std::result::Result<T, ReleaseVersionError>;
+type ReleaseResult<T> = Result<T, ReleaseVersionError>;
 
 macro_rules! release_bail {
     ($($arg:tt)*) => {

@@ -156,10 +156,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
             parent_key: None,
             size_bytes: Some(size_bytes),
             content_hash: None,
-            mtime: version
-                .published_at
-                .clone()
-                .map(axon_api::source::Timestamp),
+            mtime: version.published_at.clone().map(Timestamp),
             version: Some(version.version.clone()),
             fetch_plan: None,
             metadata: MetadataMap::new(),
@@ -195,14 +192,14 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
         let version = item.version.as_deref().ok_or_else(|| {
             ApiError::new(
                 "adapter.registry.item_version.missing",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 "registry manifest item is missing its version",
             )
         })?;
         let dump_version = dump.version(version).ok_or_else(|| {
             ApiError::new(
                 "adapter.registry.version.not_found",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 "registry dump does not contain the requested version",
             )
             .with_context("version", version.to_string())
@@ -258,7 +255,7 @@ fn selected_versions<'a>(
     let latest = dump.latest_version().ok_or_else(|| {
         ApiError::new(
             "adapter.registry.dump_invalid",
-            axon_error::ErrorStage::Discovering,
+            ErrorStage::Discovering,
             "registry dump has no versions to select",
         )
     })?;
@@ -274,14 +271,14 @@ fn registry_source_document(
     let version = item.manifest_item.version.as_deref().ok_or_else(|| {
         ApiError::new(
             "adapter.registry.item_version.missing",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "registry manifest item is missing its version",
         )
     })?;
     let dump_version = dump.version(version).ok_or_else(|| {
         ApiError::new(
             "adapter.registry.version.not_found",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "registry dump does not contain the requested version",
         )
         .with_context("version", version.to_string())
@@ -325,7 +322,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.registry.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a non-registry source kind",
     )
     .with_context("adapter", plan.route.adapter.name.clone())
@@ -347,7 +344,7 @@ fn public_base_uri(canonical_uri: &str, dump: &RegistryDump) -> String {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.registry.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

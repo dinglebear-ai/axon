@@ -60,5 +60,5 @@ impl MaterializedSource {
 }
 
 pub(crate) fn materialization_error(code: &'static str, message: impl Into<String>) -> ApiError {
-    ApiError::new(code, axon_error::ErrorStage::Fetching, message)
+    ApiError::new(code, ErrorStage::Fetching, message)
 }

@@ -81,7 +81,7 @@ impl FakeCredentialProvider {
         fake_provider_mode_error(
             self.mode_state(),
             "fake-credential-provider",
-            axon_error::ErrorStage::Authorizing,
+            ErrorStage::Authorizing,
             "credential provider",
         )
     }
@@ -99,7 +99,7 @@ impl FakeCredentialProvider {
         let mut state = fake_provider_capability_state(
             self.mode_state(),
             "fake-credential-provider",
-            axon_error::ErrorStage::Authorizing,
+            ErrorStage::Authorizing,
             "credential provider",
         );
         if self.health != HealthStatus::Healthy {

@@ -46,14 +46,8 @@ rmcp = { version = "1.7.0", features = [
 lab-auth = { git = "https://github.com/dinglebear-ai/labby.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
 url = "2"
 
-[lints.rust]
-unsafe_code = "deny"
-unused_import_braces = "warn"
-unused_qualifications = "warn"
-
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-module_inception = "allow"              # src/crawl.rs: acceptable module name
+[lints]
+workspace = true
 [features]
 test-util = []
 

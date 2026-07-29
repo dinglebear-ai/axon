@@ -109,7 +109,7 @@ impl SourceAdapter for YoutubeSourceAdapter {
                 let video = videos.get(&video_id).ok_or_else(|| {
                     ApiError::new(
                         "adapter.youtube.normalize.video_missing",
-                        axon_error::ErrorStage::Normalizing,
+                        ErrorStage::Normalizing,
                         "acquired item has no matching video in the youtube dump",
                     )
                     .with_context("video_id", video_id.clone())
@@ -208,7 +208,7 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
         let video = videos.get(&video_id).ok_or_else(|| {
             ApiError::new(
                 "adapter.youtube.acquire.video_missing",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 "manifest item has no matching video in the youtube dump",
             )
             .with_context("video_id", video_id.clone())
@@ -267,7 +267,7 @@ fn video_id_for_manifest_item(item: &ManifestItem) -> Result<String> {
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.youtube.video_id.missing",
-                axon_error::ErrorStage::Normalizing,
+                ErrorStage::Normalizing,
                 "manifest item is missing a youtube_video_id",
             )
         })
@@ -300,7 +300,7 @@ fn dump_path(plan: &SourcePlan) -> Result<PathBuf> {
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.youtube.youtube_dump_path.required",
-                axon_error::ErrorStage::Planning,
+                ErrorStage::Planning,
                 "youtube adapter requires a youtube_dump_path option pointing at a prepared metadata+transcript dump",
             )
         })
@@ -312,7 +312,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.youtube.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -321,7 +321,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.youtube.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

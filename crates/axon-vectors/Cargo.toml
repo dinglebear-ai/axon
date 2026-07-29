@@ -26,3 +26,6 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 [dev-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+
+[lints]
+workspace = true

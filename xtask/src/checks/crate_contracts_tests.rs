@@ -184,9 +184,7 @@ fn flags_forbidden_dependency_under_target_specific_table() {
 
 #[test]
 fn every_contract_crate_exists_in_the_real_workspace() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     for contract in all_crate_contracts() {
         let crate_dir = root.join("crates").join(contract.name);
         assert!(
@@ -200,9 +198,7 @@ fn every_contract_crate_exists_in_the_real_workspace() {
 
 #[test]
 fn contract_table_exactly_covers_all_23_live_crates() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let expected = LIVE_CRATE_NAMES
         .iter()
         .copied()
@@ -212,7 +208,7 @@ fn contract_table_exactly_covers_all_23_live_crates() {
         .collect::<std::collections::BTreeSet<_>>();
     let mut inventory_violations = Vec::new();
     let workspace = workspace_crate_members(root, &mut inventory_violations);
-    let on_disk = std::fs::read_dir(root.join("crates"))
+    let on_disk = fs::read_dir(root.join("crates"))
         .unwrap()
         .filter_map(Result::ok)
         .filter(|entry| entry.path().join("Cargo.toml").is_file())

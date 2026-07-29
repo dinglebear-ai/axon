@@ -22,7 +22,7 @@ pub(super) async fn upsert_batches_rest(
     http: &QdrantHttp,
     spec: &CollectionSpec,
     batch: VectorPointBatch,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<VectorStoreWriteResult> {
     validate_upsert_batch(spec, &batch, stage)?;
 

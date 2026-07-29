@@ -40,7 +40,7 @@ pub trait CompactionSynthesizer: Send + Sync {
 fn llm_unavailable(strategy: &str) -> ApiError {
     ApiError::new(
         "memory.llm_unavailable",
-        axon_error::ErrorStage::Validation,
+        ErrorStage::Validation,
         format!(
             "compact strategy {strategy:?} requires an injected CompactionSynthesizer; \
              none is configured for this store"
@@ -51,7 +51,7 @@ fn llm_unavailable(strategy: &str) -> ApiError {
 fn synthesis_failed(message: impl Into<String>) -> ApiError {
     ApiError::new(
         "memory.compaction_synthesis_failed",
-        axon_error::ErrorStage::Synthesizing,
+        ErrorStage::Synthesizing,
         message.into(),
     )
 }
@@ -73,7 +73,7 @@ pub async fn compact(
     if !SUPPORTED_STRATEGIES.contains(&request.strategy.as_str()) {
         return Err(ApiError::new(
             "memory.unsupported_strategy",
-            axon_error::ErrorStage::Validation,
+            ErrorStage::Validation,
             format!(
                 "compact strategy {:?} is not implemented; supported: {SUPPORTED_STRATEGIES:?}",
                 request.strategy

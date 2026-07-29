@@ -28,7 +28,7 @@ pub(super) trait ReleaseContext<T> {
     fn with_release_context(self, message: impl FnOnce() -> String) -> ReleaseResult<T>;
 }
 
-impl<T, E> ReleaseContext<T> for std::result::Result<T, E>
+impl<T, E> ReleaseContext<T> for Result<T, E>
 where
     E: fmt::Display,
 {

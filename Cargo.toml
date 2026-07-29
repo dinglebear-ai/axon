@@ -43,6 +43,21 @@ authors = ["jmagar"]
 description = "Self-hosted RAG stack for crawl, scrape, search, ingest, query, and ask workflows with Qdrant, TEI, MCP, CLI, REST, and Gemini."
 license = "MIT"
 
+# ── workspace lints ──────────────────────────────────────────────────────────
+# Single source of truth for the lint policy every crate previously repeated
+# verbatim in its own `[lints.rust]` / `[lints.clippy]` tables. Members inherit
+# with `[lints] workspace = true` — Cargo makes that all-or-nothing, so a member
+# cannot mix `workspace = true` with local lint entries.
+[workspace.lints.rust]
+unsafe_code = "deny"
+unused_import_braces = "warn"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+module_inception = "allow"              # src/crawl.rs: acceptable module name
+mod_module_files = "deny"               # forbid mod.rs — enforce foo.rs sibling to foo/ style
+
 # Override lab-auth from the git source with a local vendored copy that uses
 # rusqlite 0.32 (libsqlite3-sys 0.30) instead of rusqlite 0.39 (libsqlite3-sys
 # 0.37). Both libsqlite3-sys versions declare `links = "sqlite3"`, which Cargo
@@ -166,11 +181,5 @@ serial_test = "3"
 proptest = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[lints.rust]
-unsafe_code = "deny"
-unused_import_braces = "warn"
-unused_qualifications = "warn"
-
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-module_inception = "allow"              # src/crawl.rs: acceptable module name
+[lints]
+workspace = true

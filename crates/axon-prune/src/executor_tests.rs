@@ -17,7 +17,7 @@ fn source_sel() -> PruneSelector {
     }
 }
 
-fn cleanup_plan() -> axon_api::source::prune::PrunePlan {
+fn cleanup_plan() -> PrunePlan {
     PrunePlanner::new(FakeScopeSource::new(cleanup_debt_estimate())).resolve(&source_sel())
 }
 
@@ -153,7 +153,7 @@ async fn generation_fence_blocks_current_generation() {
     let out = executor.execute(&plan, &PruneAuthz::admin()).await;
     assert!(matches!(
         out,
-        Err(crate::safety::PruneDenied::CurrentGenerationFenced { .. })
+        Err(PruneDenied::CurrentGenerationFenced { .. })
     ));
 }
 
@@ -176,10 +176,7 @@ async fn fence_check_error_denies_without_apply() {
 
     let out = executor.execute(&plan, &PruneAuthz::admin()).await;
 
-    assert!(matches!(
-        out,
-        Err(crate::safety::PruneDenied::FenceCheckFailed { .. })
-    ));
+    assert!(matches!(out, Err(PruneDenied::FenceCheckFailed { .. })));
     assert!(!applied.load(Ordering::SeqCst), "apply must not run");
 }
 
@@ -263,10 +260,7 @@ async fn execute_rejects_admin_required_plan_without_admin_authz() {
 
     let out = executor.execute(&plan, &PruneAuthz::anonymous()).await;
 
-    assert!(matches!(
-        out,
-        Err(crate::safety::PruneDenied::AdminRequired)
-    ));
+    assert!(matches!(out, Err(PruneDenied::AdminRequired)));
 }
 
 #[tokio::test]
@@ -279,10 +273,7 @@ async fn execute_rejects_admin_required_plan_with_default_authz() {
 
     let out = executor.execute(&plan, &PruneAuthz::default()).await;
 
-    assert!(matches!(
-        out,
-        Err(crate::safety::PruneDenied::AdminRequired)
-    ));
+    assert!(matches!(out, Err(PruneDenied::AdminRequired)));
 }
 
 #[tokio::test]

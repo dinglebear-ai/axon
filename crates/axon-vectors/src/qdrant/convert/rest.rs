@@ -91,7 +91,7 @@ pub fn upsert_points_json(
     spec: &CollectionSpec,
     batch: &VectorPointBatch,
 ) -> Result<serde_json::Value> {
-    let batch_sparse = validate_upsert_batch(spec, batch, axon_error::ErrorStage::Upserting)?;
+    let batch_sparse = validate_upsert_batch(spec, batch, ErrorStage::Upserting)?;
     let points = batch
         .points
         .iter()

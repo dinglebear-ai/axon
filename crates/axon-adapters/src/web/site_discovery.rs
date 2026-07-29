@@ -36,7 +36,7 @@ pub(super) async fn manifest_items(
         .map_err(|err| {
             ApiError::new(
                 "adapter.web.discovery_failed",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 err.to_string(),
             )
         })?;

@@ -32,7 +32,7 @@ async fn require_collection_spec_uses_cached_spec_without_network() {
     let http = store.http().expect("http wrapper");
 
     let actual = store
-        .require_collection_spec(&http, "axon-cache", axon_error::ErrorStage::Retrieving)
+        .require_collection_spec(&http, "axon-cache", ErrorStage::Retrieving)
         .await
         .expect("cached collection spec");
 

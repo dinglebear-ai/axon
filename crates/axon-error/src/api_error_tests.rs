@@ -91,7 +91,7 @@ fn provider_cooling_present_only_when_cooldown_set() {
     let no_cool = ApiError::new("provider.unavailable", ErrorStage::Embedding, "x");
     assert!(no_cool.provider_cooling().is_none());
 
-    let until = chrono::Utc::now();
+    let until = Utc::now();
     let cooling = ApiError::new("provider.unavailable", ErrorStage::Embedding, "x")
         .with_provider_id("tei")
         .with_cooldown_until(until);
@@ -102,10 +102,10 @@ fn provider_cooling_present_only_when_cooldown_set() {
 
 #[test]
 fn builders_attach_retry_cooling_and_item_projection() {
-    let until = chrono::Utc::now();
+    let until = Utc::now();
     let err = ApiError::new("provider.cooling", ErrorStage::Embedding, "cooling")
         .with_retry_after_ms(30_000)
-        .with_provider_cooling(crate::ProviderCooling::new(until).with_provider("tei"))
+        .with_provider_cooling(ProviderCooling::new(until).with_provider("tei"))
         .with_context("safe_detail", "redacted");
 
     assert_eq!(err.retry_after_ms, Some(30_000));

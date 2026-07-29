@@ -108,7 +108,7 @@ pub trait MemoryStore: Send + Sync {
 pub(crate) fn unsupported_option(option: &str) -> ApiError {
     ApiError::new(
         "memory.unsupported_option",
-        axon_error::ErrorStage::Retrieving,
+        ErrorStage::Retrieving,
         format!("fake memory store does not implement option {option}"),
     )
 }

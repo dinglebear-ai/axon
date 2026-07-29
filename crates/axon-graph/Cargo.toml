@@ -21,3 +21,6 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 [dev-dependencies]
 axon-vectors = { path = "../axon-vectors" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+
+[lints]
+workspace = true
