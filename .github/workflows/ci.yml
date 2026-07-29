@@ -117,7 +117,7 @@ jobs:
       # written by another branch fails startup with
       # `startup.incompatible_store` once migrations differ. Give every job
       # its own data dir so no run inherits another branch's SQLite state.
-      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
+      AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
@@ -499,7 +499,7 @@ jobs:
       # written by another branch fails startup with
       # `startup.incompatible_store` once migrations differ. Give every job
       # its own data dir so no run inherits another branch's SQLite state.
-      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
+      AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -636,7 +636,7 @@ jobs:
       # actually running — this test exercises only the auth layer (/mcp 401).
       TEI_URL: http://127.0.0.1:52000
       # See the AXON_DATA_DIR note on shell-completions-smoke.
-      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
+      AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
       QDRANT_URL: http://127.0.0.1:53333
     steps:
       - uses: actions/checkout@v5
@@ -1209,7 +1209,7 @@ jobs:
       # written by another branch fails startup with
       # `startup.incompatible_store` once migrations differ. Give every job
       # its own data dir so no run inherits another branch's SQLite state.
-      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
+      AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes, release]
     if: ${{ needs.release.result == 'success' }}
