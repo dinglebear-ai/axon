@@ -67,7 +67,8 @@ pub async fn mcp_http_router(
                 hosts.sort();
                 hosts.dedup();
                 StreamableHttpServerConfig::default()
-                    .with_stateful_mode(true)
+                    // Renamed in rmcp 3.x: sessions are legacy-only per SEP-2567.
+                    .with_legacy_session_mode(true)
                     .with_allowed_hosts(hosts)
             },
         );

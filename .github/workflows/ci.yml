@@ -339,7 +339,7 @@ jobs:
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
           components: clippy, rustfmt
       - name: Install Tauri Linux system deps
         run: |
@@ -459,7 +459,7 @@ jobs:
         with:
           # Match rust-toolchain.toml so the Windows target is installed on
           # the same toolchain cargo uses under the repo override.
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           targets: x86_64-pc-windows-gnu
       - name: Install mingw-w64
         run: |
@@ -495,7 +495,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -558,7 +558,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - name: Enforce generated pipeline schema artifacts are in sync
         run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- schemas generate --check
       - name: Enforce generated reference documentation is in sync
@@ -577,7 +577,7 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - name: Enforce per-component release version parity
         run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
 
@@ -590,7 +590,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -628,7 +628,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -748,7 +748,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
           components: rustfmt
       - name: cargo fmt check
         run: cargo fmt --all -- --check
@@ -767,7 +767,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
           components: clippy
       - name: create web assets placeholder
         run: |
@@ -791,7 +791,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest@0.9.140
@@ -826,7 +826,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
@@ -893,7 +893,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: live-rag-pr
@@ -957,7 +957,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
 
       - uses: taiki-e/install-action@v2
         with:
@@ -1169,7 +1169,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-soldr
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: actions/setup-node@v5
         with:
           node-version: 22

@@ -74,11 +74,17 @@ Compact metadata fields: `path`, `bytes`, `line_count`, `sha256`, `preview`,
 
 ## Task support
 
-The server advertises RMCP task support for `tools/call`; the `axon` tool
-advertises `execution.taskSupport: "optional"`. **Task starts are supported for
-`extract.start` only.** Task IDs are stable aliases over Axon job IDs:
-`axon:<kind>:<job_uuid>`. `tasks/get`, `tasks/cancel`, and `tasks/result` are
-supported; poll interval ≥ 5000 ms.
+The server advertises the SEP-2663 `io.modelcontextprotocol/tasks` extension in
+its `extensions` capability map. Task support is **server-wide, not per-tool** —
+rmcp 3.x removed the `execution.taskSupport` tool field, so no tool advertises
+one. A client opts an individual `tools/call` into task mode by carrying the
+`io.modelcontextprotocol/tasks` key in the request `_meta` and declaring the
+tasks extension capability itself; without that key the call is served
+synchronously. **Task starts are supported for `extract.start` only.** Task IDs
+are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`. The lifecycle
+surface is `tasks/get` and `tasks/cancel` — SEP-2663 removed `tasks/result` and
+`tasks/list`, and `tasks/get` now inlines the terminal result (or error) in the
+returned `DetailedTask`. Poll interval ≥ 5000 ms.
 
 ## Resources
 
