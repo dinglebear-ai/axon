@@ -24,6 +24,17 @@ impl SqliteUnifiedJobStore {
         request: JobRecoveryRequest,
         max_attempts: Option<u32>,
     ) -> Result<JobRecoveryResult> {
+        super::retry_job_write("job recovery", || {
+            self.recover_jobs_with_attempt_limit_once(request.clone(), max_attempts)
+        })
+        .await
+    }
+
+    async fn recover_jobs_with_attempt_limit_once(
+        &self,
+        request: JobRecoveryRequest,
+        max_attempts: Option<u32>,
+    ) -> Result<JobRecoveryResult> {
         let cutoff = request.stale_before.clone().or_else(|| {
             request.older_than_seconds.map(|seconds| {
                 Timestamp::from(chrono::Utc::now() - chrono::Duration::seconds(seconds as i64))

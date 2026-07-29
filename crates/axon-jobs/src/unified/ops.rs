@@ -130,6 +130,8 @@ impl SqliteUnifiedJobStore {
             .map_err(sql_error)?
             .ok_or_else(|| missing_job(status.job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        #[cfg(test)]
+        super::snapshot_test_hook::pause_once_after_read().await;
         validate_transition(status.job_id, current, status.status)?;
         let now = now_timestamp();
         let job_started_at = (row.get::<Option<String>, _>("started_at").is_none()

@@ -10,6 +10,18 @@ One Incus system container (`axon-container-profile`) runs:
   builder/runtime stages, *not* as another nested-Docker service — see
   "Why axon is native, not nested-Docker" below.
 
+The container base is Ubuntu 26.04, matching dookie's glibc baseline. This is
+intentional: host-built Axon binaries can be deployed directly into the native
+service, rather than maintaining a second binary built against an older guest
+glibc.
+
+`bootstrap.sh` refuses to deploy to any other guest base. Recreate legacy
+instances deliberately (preserving the dedicated data mounts and scoped proxy
+devices), then rerun the bootstrap. It deploys the host's validated
+`target/release-fast/axon` artifact atomically by default; set
+`AXON_INCUS_BINARY` only when deliberately selecting another already-built
+host artifact. It does not build Axon inside the guest.
+
 See `docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md` for the
 (retained, harmless) Incus 6.3+/Zabbly upgrade this deployment builds on, and
 `axon_rust-4m749` (beads epic) for the full architecture history — including
