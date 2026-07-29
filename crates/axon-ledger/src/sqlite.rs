@@ -70,7 +70,17 @@ fn sqlite_max_connections(path: &str) -> u32 {
 #[async_trait]
 impl LedgerStore for SqliteLedgerStore {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()> {
-        source::upsert_source(self, source).await
+        // Single idempotent upsert, so re-running it is safe. This is the write
+        // that still failed with `(code: 5) database is locked` after the job
+        // store was made retry-aware — `busy_timeout` can expire under
+        // sustained multi-process write pressure, and the ledger upsert runs on
+        // every source acquisition.
+        axon_core::sqlite::retry_on(
+            "ledger upsert_source",
+            |e: &ApiError| axon_core::sqlite::message_is_retryable_busy(&e.to_string()),
+            || source::upsert_source(self, source.clone()),
+        )
+        .await
     }
 
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>> {

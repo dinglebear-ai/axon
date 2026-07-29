@@ -107,11 +107,29 @@ impl JobStore for SqliteUnifiedJobStore {
     }
 
     async fn append_event(&self, event: SourceProgressEvent) -> Result<()> {
-        self.append_job_event(event).await
+        // Same rationale as `heartbeat`: progress events are emitted on every
+        // pipeline phase transition, and were the other write observed failing
+        // with 517 once the container and host CLI shared jobs.db.
+        axon_core::sqlite::retry_on(
+            "job progress event",
+            |e: &ApiError| axon_core::sqlite::message_is_retryable_busy(&e.to_string()),
+            || self.append_job_event(event.clone()),
+        )
+        .await
     }
 
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()> {
-        self.record_heartbeat(heartbeat).await
+        // Retried on a transient busy condition. `record_heartbeat` opens and
+        // commits its own transaction, so re-running it is atomic. Heartbeats
+        // are the highest-frequency write in the store and were the first thing
+        // to fail with SQLITE_BUSY_SNAPSHOT (517) once a second process shared
+        // the database — and 517 is precisely what `busy_timeout` cannot cover.
+        axon_core::sqlite::retry_on(
+            "job heartbeat",
+            |e: &ApiError| axon_core::sqlite::message_is_retryable_busy(&e.to_string()),
+            || self.record_heartbeat(heartbeat.clone()),
+        )
+        .await
     }
 
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
