@@ -40,11 +40,23 @@ chain, policy decision, redacted headers.
 
 Requires `axon:local` scope or trusted CLI context. Env opt-in:
 `AXON_SOURCE_LOCAL_ALLOWED_ROOTS` (comma-separated allowed roots).
+The complete caller-mode, descriptor, lifecycle, API, and error contract is in
+[Local source containment](local-source-containment.md).
 
 Rules:
 
 - Public identity never exposes raw absolute local paths.
-- Symlinks are resolved before read when policy requires containment.
+- Authenticated server callers fail closed when the allowlist is empty.
+- Exact and nested component-safe paths are accepted; relative paths,
+  sibling-prefix paths, `..`, symlinked roots, procfs magic links, and nested
+  mount crossings are rejected.
+- Detached jobs are checked before creation and checked again during worker
+  execution/recovery.
+- Linux document reads are descriptor-relative and never reopen a
+  canonicalized pathname.
+- Configured allowed-root paths and their ancestors must be root-owned and
+  non-writable by the Axon service account. The descriptor is acquired at the
+  source execution boundary, not at config-load time.
 - Ignored/binary files follow adapter policy.
 - Secret-looking files are excluded unless explicitly allowed.
 - **Denylisted by default:** `.env`, private keys, token stores, browser

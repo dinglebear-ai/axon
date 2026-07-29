@@ -103,9 +103,11 @@ async fn dispatch_local_denies_secret_like_path_before_bridge() {
         crate::source::routing::resolve_source_route(&request).expect("local source should route");
     let mut snapshot = AuthSnapshot::default();
     snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+    let cfg = axon_core::config::Config::default();
 
     let result = dispatch_local(
         Arc::new(LocalSourceAdapter::new()),
+        &cfg,
         &runtime,
         "./.env",
         "axon-test",

@@ -48,6 +48,11 @@ pub trait SourceAdapter: Send + Sync {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>>;
 
+    /// Release adapter-owned state retained for this job after the pipeline
+    /// reaches a terminal outcome. The shared runner calls this on success
+    /// and failure; stateless adapters use the default no-op.
+    fn release(&self, _plan: &SourcePlan) {}
+
     /// Adapter-owned materialization, run once before `discover`/`acquire`/
     /// `normalize`. Most families need this to validate/prepare acquisition
     /// state ahead of the shared pipeline (e.g. a shallow git clone, a

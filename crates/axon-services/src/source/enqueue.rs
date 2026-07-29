@@ -27,6 +27,7 @@ use axon_api::source::{
 };
 use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
+use std::path::PathBuf;
 
 use super::authorize;
 use super::result_map;
@@ -44,6 +45,19 @@ pub async fn enqueue_source(
     request: SourceRequest,
     store: &dyn JobStore,
     auth_snapshot: Option<AuthSnapshot>,
+) -> anyhow::Result<SourceResult> {
+    enqueue_source_with_allowed_roots(request, store, auth_snapshot, None).await
+}
+
+/// Config-aware detached enqueue used by server transports. Local requests
+/// are rejected before a durable job is created unless they resolve beneath a
+/// configured allowed root. Trusted-local CLI/system snapshots intentionally
+/// retain their direct-filesystem behavior.
+pub async fn enqueue_source_with_allowed_roots(
+    request: SourceRequest,
+    store: &dyn JobStore,
+    auth_snapshot: Option<AuthSnapshot>,
+    allowed_roots: Option<&[PathBuf]>,
 ) -> anyhow::Result<SourceResult> {
     let input = request.source.trim().to_string();
     if input.is_empty() {
@@ -68,6 +82,16 @@ pub async fn enqueue_source(
     }
     if let Err(err) =
         authorize_detached_local_source_policy(&input, routed.kind, auth_snapshot.as_ref())
+    {
+        return Ok(result_map::route_error_result(&input, err));
+    }
+    if let Some(allowed_roots) = allowed_roots
+        && let Err(err) = super::security::authorize_local_source_allowed_roots(
+            &input,
+            routed.kind,
+            auth_snapshot.as_ref(),
+            allowed_roots,
+        )
     {
         return Ok(result_map::route_error_result(&input, err));
     }

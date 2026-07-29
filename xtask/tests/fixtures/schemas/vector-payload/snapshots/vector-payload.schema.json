@@ -8177,6 +8177,11 @@
       "minLength": 1,
       "type": "string"
     },
+    "born_epoch": {
+      "minimum": 0,
+      "type": "integer",
+      "x-qdrant-index": "integer"
+    },
     "channel": {
       "type": "string"
     },
@@ -8587,6 +8592,19 @@
     "reddit_upvote_ratio": {
       "type": "string"
     },
+    "retired_epoch": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer",
+          "x-qdrant-index": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "x-qdrant-index": "integer"
+    },
     "section_level": {
       "minLength": 1,
       "type": "string"
@@ -8842,6 +8860,8 @@
     "embedding_profile",
     "embedded_at",
     "committed_generation",
+    "born_epoch",
+    "retired_epoch",
     "chunking_profile",
     "chunking_method"
   ],
@@ -8868,6 +8888,7 @@
     "contract_version": "2026-07-01",
     "examples": [
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-code-0",
@@ -8938,6 +8959,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "code",
@@ -8970,6 +8992,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-feed-0",
@@ -9030,6 +9053,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "feed",
@@ -9062,6 +9086,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-social-0",
@@ -9129,6 +9154,7 @@
         "reddit_score": "reddit_score",
         "reddit_subreddit": "reddit_subreddit",
         "reddit_upvote_ratio": "reddit_upvote_ratio",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "social",
@@ -9160,6 +9186,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "channel": "channel",
         "channel_url": "channel_url",
         "chunk_content_kind": "chunk_content_kind",
@@ -9217,6 +9244,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "segment_kind": "segment_kind",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
@@ -9259,6 +9287,7 @@
         "yt_view_count": "yt_view_count"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-web-0",
@@ -9316,6 +9345,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "web",
@@ -9365,6 +9395,7 @@
         "web_url": "web_url"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-package-0",
@@ -9422,6 +9453,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "package",
@@ -9453,6 +9485,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-session-0",
@@ -9507,6 +9540,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "session_id": "session-session",
         "session_provider": "codex",
         "session_skill_name": "test-driven-development",
@@ -9543,6 +9577,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-graph-0",
@@ -9605,6 +9640,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "graph",
@@ -9636,6 +9672,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-memory-0",
@@ -9704,6 +9741,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "memory",
@@ -9735,6 +9773,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-local-0",
@@ -9793,6 +9832,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "local",
@@ -9824,6 +9864,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-tool-0",
@@ -9878,6 +9919,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "tool",
@@ -9913,6 +9955,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-docker-0",
@@ -9971,6 +10014,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "docker",
@@ -10002,6 +10046,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-env-0",
@@ -10058,6 +10103,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "env",
@@ -10089,6 +10135,7 @@
         "visibility": "internal"
       },
       {
+        "born_epoch": "born_epoch",
         "chunk_content_kind": "chunk_content_kind",
         "chunk_hash": "chunk_hash",
         "chunk_id": "chunk-upload-0",
@@ -10143,6 +10190,7 @@
         "redacted_field_count": 0,
         "redaction_status": "clean",
         "redaction_version": "2026-07-16",
+        "retired_epoch": "retired_epoch",
         "source_adapter": "source_adapter",
         "source_canonical_uri": "source_canonical_uri",
         "source_family": "upload",
@@ -10179,6 +10227,10 @@
     "index_plan": {
       "collection": "axon",
       "indexes": [
+        {
+          "field_name": "born_epoch",
+          "field_schema": "integer"
+        },
         {
           "field_name": "chunk_id",
           "field_schema": "keyword"
@@ -10242,6 +10294,10 @@
         {
           "field_name": "redaction_status",
           "field_schema": "keyword"
+        },
+        {
+          "field_name": "retired_epoch",
+          "field_schema": "integer"
         },
         {
           "field_name": "source_family",
@@ -10349,7 +10405,7 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:9f5f191b130145fb3c23435c2a468fe634623ae98f24fb66be8448aa391ccdf6",
+        "checksum": "sha256:f94bde7fcf24357c13f823f39d19ba44edfb5520f47a808d76b9196ab99f4c52",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload.rs"
       },

@@ -232,6 +232,21 @@ fn shared_field_schema(field: &str) -> Value {
             ],
             "x-qdrant-index": "integer"
         }),
+        // Epoch fields mirror the generation types: `born_epoch` is stamped
+        // from `source_generation` (always present), while `retired_epoch` is
+        // null until the point is superseded. Runtime validation in
+        // `axon_vectors::payload` accepts null-or-non-negative-integer for
+        // both, and the collection indexes them as `PayloadFieldSchema::Integer`.
+        "born_epoch" => {
+            json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
+        }
+        "retired_epoch" => json!({
+            "anyOf": [
+                { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+                { "type": "null" }
+            ],
+            "x-qdrant-index": "integer"
+        }),
         "embedding_dimensions" => {
             json!({ "type": "integer", "minimum": 1, "x-qdrant-index": "integer" })
         }

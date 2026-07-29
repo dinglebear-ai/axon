@@ -1,9 +1,10 @@
 //! Local filesystem source adapter.
 
 pub(crate) mod local_io;
+mod root_state;
 
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -18,20 +19,14 @@ use crate::capability::AdapterCapability;
 use crate::local_select::{LocalOptions, is_binary_path, validate_options};
 use crate::manifest::item_identity;
 
-use self::local_io::{content_fingerprint, fs_error, read_content_ref, safe_item_path};
+use self::local_io::{
+    LocalRootHandle, content_fingerprint_from_file, fs_error, read_content_ref_from_file,
+};
+pub use self::root_state::LocalSourceAdapter;
 
 pub const MODULE_NAME: &str = "local";
 
 const ADAPTER_NAME: &str = "local";
-#[derive(Debug, Clone, Default)]
-pub struct LocalSourceAdapter;
-
-impl LocalSourceAdapter {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 #[async_trait]
 impl SourceAdapter for LocalSourceAdapter {
     fn name(&self) -> &'static str {
@@ -47,10 +42,15 @@ impl SourceAdapter for LocalSourceAdapter {
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
+        let root_handle = self.root_for_discovery(plan)?;
+        let retained_handle = Arc::clone(&root_handle);
+        let job_id = plan.job_id;
         let plan = plan.clone();
-        tokio::task::spawn_blocking(move || discover_sync(&plan))
+        let manifest = tokio::task::spawn_blocking(move || discover_sync(&plan, &root_handle))
             .await
-            .map_err(blocking_join_error)?
+            .map_err(blocking_join_error)??;
+        self.retain_discovered_root(job_id, retained_handle)?;
+        Ok(manifest)
     }
 
     async fn acquire(
@@ -58,9 +58,10 @@ impl SourceAdapter for LocalSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
+        let root_handle = self.held_root_for_acquisition(plan)?;
         let plan = plan.clone();
         let diff = diff.clone();
-        tokio::task::spawn_blocking(move || acquire_sync(&plan, &diff))
+        tokio::task::spawn_blocking(move || acquire_sync(&plan, &diff, &root_handle))
             .await
             .map_err(blocking_join_error)?
     }
@@ -85,6 +86,10 @@ impl SourceAdapter for LocalSourceAdapter {
             data: documents,
         })
     }
+
+    fn release(&self, plan: &SourcePlan) {
+        self.release_root(plan.job_id);
+    }
 }
 
 fn local_capability(version: &str) -> AdapterCapability {
@@ -102,11 +107,18 @@ fn local_capability(version: &str) -> AdapterCapability {
     .with_scope(SourceScope::Map)
 }
 
-fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
+fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<SourceManifest> {
     let capability = local_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION);
     capability.validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let options = validate_options(&plan.route.validated_options)?;
+    if options.follow_symlinks {
+        return Err(ApiError::new(
+            "adapter.local.symlinks_unsupported",
+            axon_error::ErrorStage::Authorizing,
+            "contained local sources do not follow symlinks",
+        ));
+    }
 
     let root = PathBuf::from(&plan.request.source);
     let mut files = Vec::new();
@@ -134,9 +146,10 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         if !options.should_include_file(plan.route.scope, &key, &file) {
             continue;
         }
-        let safe_path = safe_item_path(root_for_keys, &key)?;
-        let metadata = fs::metadata(&safe_path)
-            .map_err(|err| fs_error("adapter.local.stat_failed", &safe_path, err))?;
+        let file_handle = root_handle.open_file(&key)?;
+        let metadata = file_handle
+            .metadata()
+            .map_err(|err| fs_error("adapter.local.stat_failed", &file, err))?;
         if let Some(max_file_bytes) = options.max_file_bytes
             && metadata.len() > max_file_bytes
         {
@@ -145,7 +158,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         if !metadata.is_file() {
             continue;
         }
-        let content_hash = content_fingerprint(&safe_path)?;
+        let content_hash = content_fingerprint_from_file(file_handle, &file)?;
         let identity = item_identity(SourceKind::Local, &base_uri, &key)?;
         items.push(ManifestItem {
             source_id: plan.route.source.source_id.clone(),
@@ -177,7 +190,11 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     })
 }
 
-fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {
+fn acquire_sync(
+    plan: &SourcePlan,
+    diff: &SourceManifestDiff,
+    root_handle: &LocalRootHandle,
+) -> Result<SourceAcquisition> {
     validate_adapter(plan)?;
     if plan.route.scope == SourceScope::Map {
         return Ok(SourceAcquisition {
@@ -215,11 +232,15 @@ fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAc
     let options = validate_options(&plan.route.validated_options)?;
     let mut fetched_items = Vec::with_capacity(manifest_items.len());
     for item in &manifest_items {
-        let path = safe_item_path(root_for_keys, &item.source_item_key.0)?;
+        let path = root_for_keys.join(&item.source_item_key.0);
         if !options.fetches_body(&path) {
             continue;
         }
-        let content_ref = read_content_ref(&path, &options)?;
+        let content_ref = read_content_ref_from_file(
+            root_handle.open_file(&item.source_item_key.0)?,
+            &path,
+            &options,
+        )?;
         fetched_items.push(AcquiredSourceItem {
             manifest_item: item.clone(),
             fetch_status: LifecycleStatus::Completed,

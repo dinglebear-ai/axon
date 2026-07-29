@@ -39,8 +39,8 @@ pub mod security;
 pub mod tool_policy;
 pub use batch::{SourcePipelineBatch, plan_source_pipeline_batches};
 pub use security::{
-    SourceSecurityError, enforce_local_source_policy, enforce_network_source_policy,
-    redact_local_path_for_public_payload,
+    SourceSecurityError, enforce_local_source_allowed_roots, enforce_local_source_policy,
+    enforce_network_source_policy, redact_local_path_for_public_payload,
 };
 
 use std::sync::Arc;
@@ -69,7 +69,15 @@ pub async fn index_source(
     request: SourceRequest,
     ctx: &ServiceContext,
 ) -> anyhow::Result<SourceResult> {
-    index_source_with_auth(request, ctx, None).await
+    // This entrypoint is reserved for in-process CLI/system callers. Make its
+    // trusted-local identity explicit so server transports cannot accidentally
+    // inherit the historical `None`-means-local convention.
+    index_source_with_auth(
+        request,
+        ctx,
+        Some(AuthSnapshot::trusted_cli(env!("CARGO_PKG_VERSION"))),
+    )
+    .await
 }
 
 pub(crate) async fn index_source_with_execution(
@@ -94,14 +102,10 @@ async fn index_source_inner(
     ctx: &ServiceContext,
     execution: SourceExecutionContext,
 ) -> anyhow::Result<SourceResult> {
-    let input = request.source.trim().to_string();
-    if input.is_empty() {
-        return Ok(result_map::unsupported_result(
-            &request.source,
-            "source request requires a non-empty local path, git URL, feed URL, youtube target, \
-             reddit target, web URL, session selector, or registry target",
-        ));
-    }
+    let input = match validated_source_input(&request) {
+        Ok(input) => input,
+        Err(result) => return Ok(result),
+    };
 
     let routed = match routing::resolve_authorized_source_route(
         &request,
@@ -120,6 +124,18 @@ async fn index_source_inner(
     let adapter = routed.adapter;
     let event_emitter = routed.event_emitter;
 
+    if let Some(denied) = local_root_denial_result(
+        &input,
+        kind,
+        execution.auth_snapshot.as_ref(),
+        &ctx.cfg().source_local_allowed_roots,
+        &event_emitter,
+    )
+    .await
+    {
+        return Ok(denied);
+    }
+
     let Some(runtime) = ctx.target_local_source_runtime() else {
         event_emitter
             .failed(
@@ -135,10 +151,7 @@ async fn index_source_inner(
         ));
     };
 
-    let collection = request
-        .collection
-        .clone()
-        .unwrap_or_else(|| ctx.cfg().collection.clone());
+    let collection = source_collection(&request, ctx);
     let owner_id = DEFAULT_OWNER_ID;
 
     let counts = dispatch_kind::dispatch_kind(
@@ -232,6 +245,44 @@ async fn index_source_inner(
         graph,
         source_counts,
     ))
+}
+
+fn validated_source_input(request: &SourceRequest) -> Result<String, SourceResult> {
+    let input = request.source.trim().to_string();
+    if !input.is_empty() {
+        return Ok(input);
+    }
+    Err(result_map::unsupported_result(
+        &request.source,
+        "source request requires a non-empty local path, git URL, feed URL, youtube target, \
+         reddit target, web URL, session selector, or registry target",
+    ))
+}
+
+fn source_collection(request: &SourceRequest, ctx: &ServiceContext) -> String {
+    request
+        .collection
+        .clone()
+        .unwrap_or_else(|| ctx.cfg().collection.clone())
+}
+
+async fn local_root_denial_result(
+    input: &str,
+    kind: SourceKind,
+    auth_snapshot: Option<&AuthSnapshot>,
+    allowed_roots: &[std::path::PathBuf],
+    event_emitter: &events::SourceEventEmitter,
+) -> Option<SourceResult> {
+    let err =
+        security::authorize_local_source_allowed_roots(input, kind, auth_snapshot, allowed_roots)
+            .err()?;
+    event_emitter
+        .failed(
+            PipelinePhase::Authorizing,
+            "local source allowed-root authorization failed",
+        )
+        .await;
+    Some(result_map::route_error_result(input, err))
 }
 
 async fn drain_source_cleanup_debt(

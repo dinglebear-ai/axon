@@ -38,6 +38,7 @@ pub(super) async fn dispatch_kind(
             dispatch_local_or_git(
                 kind,
                 adapter,
+                cfg,
                 runtime,
                 input,
                 collection,
@@ -164,6 +165,7 @@ async fn canonical_registry_selection(
 async fn dispatch_local_or_git(
     kind: SourceKind,
     adapter: Arc<dyn SourceAdapter>,
+    cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -177,6 +179,7 @@ async fn dispatch_local_or_git(
         SourceKind::Local => {
             dispatch::dispatch_local(
                 adapter,
+                cfg,
                 runtime,
                 input,
                 collection,

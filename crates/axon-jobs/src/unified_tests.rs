@@ -840,6 +840,54 @@ async fn recovery_honors_staleness_cutoff() {
 }
 
 #[tokio::test]
+async fn recovery_fails_stale_job_when_attempt_limit_is_exhausted() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            source_id: None,
+            job_id: job.job_id,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("running");
+    let stale = Timestamp::from(chrono::Utc::now() - chrono::Duration::hours(1));
+    sqlx::query("UPDATE jobs SET updated_at = ? WHERE job_id = ?")
+        .bind(stale.0.as_str())
+        .bind(job.job_id.0.to_string())
+        .execute(store.pool_for_tests())
+        .await
+        .expect("make stale");
+
+    let recovery = store
+        .recover_jobs_with_attempt_limit(
+            JobRecoveryRequest {
+                kind: None,
+                stale_before: Some(Timestamp::from(chrono::Utc::now())),
+                limit: None,
+                older_than_seconds: None,
+                dry_run: false,
+                allow_without_cutoff: false,
+            },
+            Some(1),
+        )
+        .await
+        .expect("recover");
+
+    assert_eq!(recovery.jobs_requeued, 0);
+    assert_eq!(recovery.jobs_failed, 1);
+    let summary = store.get(job.job_id).await.expect("get").expect("job");
+    assert_eq!(summary.status, LifecycleStatus::Failed);
+    assert_eq!(summary.attempt, 1);
+}
+
+#[tokio::test]
 async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     let store = store().await;
     let queued = store
