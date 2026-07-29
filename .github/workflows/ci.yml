@@ -459,7 +459,7 @@ jobs:
         with:
           # Match rust-toolchain.toml so the Windows target is installed on
           # the same toolchain cargo uses under the repo override.
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           targets: x86_64-pc-windows-gnu
       - name: Install mingw-w64
         run: |
