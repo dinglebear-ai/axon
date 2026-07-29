@@ -8,7 +8,7 @@ use crate::web_engine::engine::CrawlSummary;
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
 use axon_core::content::{build_selector_config, to_markdown, url_to_stable_filename};
-use axon_core::http::build_client;
+use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::log_info;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -148,7 +148,7 @@ pub async fn append_candidate_backfill(
             )
         })?;
 
-    let client = build_client(request_timeout_secs(cfg), None)
+    let client = build_client(request_timeout_secs(cfg), Some(axon_ua()))
         .map_err(|e| format!("failed to build HTTP client for backfill: {e}"))?;
     let mut manifest = open_append_manifest(&manifest_path).await.map_err(|e| {
         format!(

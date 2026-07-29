@@ -31,10 +31,12 @@ pre-commit:
           if [ -x "./target/debug/xtask" ]; then
             ./target/debug/xtask check-no-mod-rs;
             ./target/debug/xtask check-layering;
+            ./target/debug/xtask check-fetch-divergence;
             ./target/debug/xtask check-claude-symlinks;
           else
             cargo xtask check-no-mod-rs;
             cargo xtask check-layering;
+            cargo xtask check-fetch-divergence;
             cargo xtask check-claude-symlinks;
           fi
         '
@@ -92,10 +94,12 @@ pre-push:
           if [ -x "./target/debug/xtask" ]; then
             ./target/debug/xtask check-no-mod-rs;
             ./target/debug/xtask check-layering;
+            ./target/debug/xtask check-fetch-divergence;
             ./target/debug/xtask check-claude-symlinks;
           else
             cargo xtask check-no-mod-rs;
             cargo xtask check-layering;
+            cargo xtask check-fetch-divergence;
             cargo xtask check-claude-symlinks;
           fi
         '

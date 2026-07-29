@@ -8,7 +8,7 @@ use super::{
 };
 use axon_core::config::Config;
 use axon_core::content::{extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps};
-use axon_core::http::build_client;
+use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::{log_info, log_warn};
 use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
@@ -300,7 +300,7 @@ pub async fn discover_sitemap_urls(
     queue.truncate(sitemap_fetch_limit);
     let seeded_default_sitemaps = queue.len();
 
-    let client = build_client(request_timeout_secs(cfg), None).map_err(|e| {
+    let client = build_client(request_timeout_secs(cfg), Some(axon_ua())).map_err(|e| {
         format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
     })?;
     let robots_declared_sitemaps =

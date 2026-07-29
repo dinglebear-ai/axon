@@ -6,18 +6,19 @@
 //! for connect-time SSRF checks; use [`validate_url_with_dns()`] before handing
 //! URLs to non-reqwest fetchers.
 
-mod antibot;
+mod acquire;
+pub(crate) mod antibot;
 mod cdp;
-mod client;
+pub(crate) mod client;
 mod conditional;
-mod error;
+pub(crate) mod error;
 mod headers;
 #[cfg(feature = "tls-fingerprinting")]
-mod impersonate;
-mod normalize;
+pub(crate) mod impersonate;
+pub(crate) mod normalize;
 #[cfg(test)]
 mod proptest_tests;
-mod ssrf;
+pub(crate) mod ssrf;
 #[cfg(test)]
 #[path = "http_tests.rs"]
 mod tests;
@@ -25,6 +26,10 @@ mod ua;
 mod url_path;
 
 // Re-export the full public API so downstream `use crate::http::*` continues to work.
+pub use acquire::{
+    DEFAULT_CHALLENGE_SCAN_BYTES, FetchError, FetchWebOptions, WebDocKind, WebDocument, fetch_web,
+    fetch_web_html, is_block_like_status,
+};
 pub use antibot::{ChallengeDetection, detect_challenge};
 pub use client::build_client_no_redirect;
 pub use client::build_ssrf_guarded_client_builder;

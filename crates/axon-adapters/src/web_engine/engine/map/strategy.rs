@@ -5,7 +5,7 @@ use url::Url;
 
 use axon_core::config::Config;
 use axon_core::content::extract_anchor_hrefs;
-use axon_core::http::{fetch_html, http_client, normalize_url};
+use axon_core::http::{FetchWebOptions, fetch_web, normalize_url};
 use axon_core::logging::{log_info, log_warn};
 
 use super::super::sitemap::{SitemapDiscovery, discover_sitemap_urls, sitemap_url_limit};
@@ -36,75 +36,40 @@ fn effective_root_anchor_limit(cfg: &Config) -> usize {
     }
 }
 
-/// Retry a failed root fetch through the browser-impersonating client.
-///
-/// Some WAFs (Akamai Bot Manager) reject `reqwest`+`rustls` at the TLS/HTTP2
-/// fingerprint layer regardless of headers, so the plain fetch returns 403 and
-/// the map comes back empty. When the `tls-fingerprinting` feature is compiled
-/// in, one retry through the BoringSSL-backed client recovers those sites.
-///
-/// Returns `None` when the feature is off or the retry also failed, in which
-/// case the caller reports the original failure.
-#[cfg(feature = "tls-fingerprinting")]
-async fn impersonated_retry(scope_start_url: &str, original: &anyhow::Error) -> Option<String> {
-    log_info(&format!(
-        "bounded-structure: plain fetch failed for {scope_start_url} ({original}); \
-         retrying with browser TLS fingerprint"
-    ));
-    match axon_core::http::fetch_html_impersonated(scope_start_url).await {
-        Ok(html) => {
-            log_info(&format!(
-                "bounded-structure: impersonated fetch succeeded for {scope_start_url}"
-            ));
-            Some(html)
-        }
-        Err(e) => {
-            log_info(&format!(
-                "bounded-structure: impersonated fetch also failed for {scope_start_url}: {e}"
-            ));
-            None
-        }
-    }
-}
-
-#[cfg(not(feature = "tls-fingerprinting"))]
-async fn impersonated_retry(_scope_start_url: &str, _original: &anyhow::Error) -> Option<String> {
-    None
-}
-
 async fn discover_root_anchors(
     cfg: &Config,
     scope_start_url: &str,
     scope: &MapScope,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    let client = match http_client() {
-        Ok(c) => c,
+    // Shared acquisition ladder: plain fetch -> wall classification -> browser
+    // TLS impersonation -> re-classification. Escalation policy is NOT decided
+    // here; every acquisition surface gets the same behaviour from one place.
+    let html = match fetch_web(
+        scope_start_url,
+        &FetchWebOptions::html().with_scan_bytes(cfg.antibot_max_body_scan_bytes),
+    )
+    .await
+    {
+        Ok(doc) => {
+            if doc.escalated {
+                log_info(&format!(
+                    "bounded-structure: {scope_start_url} required browser TLS impersonation"
+                ));
+            }
+            doc.body
+        }
         Err(e) => {
-            log_info(&format!("bounded-structure: http_client failed: {e}"));
+            log_info(&format!(
+                "bounded-structure: fetch failed for {scope_start_url}: {e}"
+            ));
             return (
                 vec![],
-                Some("bounded-structure discovery: http client unavailable".to_string()),
+                Some(format!(
+                    "bounded-structure discovery failed to fetch {scope_start_url}: {e}"
+                )),
             );
         }
-    };
-    let html = match fetch_html(client, scope_start_url).await {
-        Ok(h) => h,
-        Err(e) => match impersonated_retry(scope_start_url, &e).await {
-            Some(html) => html,
-            None => {
-                log_info(&format!(
-                    "bounded-structure: fetch failed for {scope_start_url}: {e}"
-                ));
-                return (
-                    vec![],
-                    Some(format!(
-                        "bounded-structure discovery failed to fetch {scope_start_url}; \
-                         dynamic navigation may not be discoverable"
-                    )),
-                );
-            }
-        },
     };
 
     let anchor_urls = extract_anchor_hrefs(scope_start_url, &html, root_anchor_limit);

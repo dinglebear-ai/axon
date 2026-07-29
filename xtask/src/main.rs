@@ -38,6 +38,8 @@ enum Command {
     CheckEnvStaged,
     /// Warn about newly staged unwrap/expect calls.
     CheckUnwraps,
+    /// Enforce that web acquisition goes through the shared fetch ladder.
+    CheckFetchDivergence,
     /// Verify AGENTS.md/GEMINI.md symlinks next to CLAUDE.md files.
     CheckClaudeSymlinks,
     /// Verify target pipeline crate skeleton structure.
@@ -173,6 +175,7 @@ fn main() -> Result<()> {
         Command::CheckAuditIgnoreSync => checks::audit_ignore_sync::check(&root),
         Command::CheckEnvStaged => checks::env_staged::check(&root),
         Command::CheckUnwraps => checks::unwraps::check(&root),
+        Command::CheckFetchDivergence => checks::fetch_divergence::check(&root),
         Command::CheckClaudeSymlinks => checks::claude_symlinks::check(&root),
         Command::CheckRepoStructure => checks::repo_structure::check(&root),
         Command::CheckCrateContracts => checks::crate_contracts::check(&root),
