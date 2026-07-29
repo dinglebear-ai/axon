@@ -80,8 +80,13 @@ pub(crate) fn build_client_without_ssrf_resolver(
 
 /// Maximum redirect hops followed by the shared clients.
 ///
-/// Matches reqwest's own default (10) so capping restores the behaviour that
+/// Matches reqwest's own default so capping restores the behaviour that
 /// `Policy::custom` silently removed, rather than tightening it.
+///
+/// The `>` comparison is deliberate and matches reqwest's own
+/// (`redirect.rs`: `if attempt.previous.len() > max`): `previous` includes the
+/// initial URL, so `> 10` permits 10 actual redirects. Using `>=` here would
+/// allow only 9 and would silently disagree with the impersonating client.
 const MAX_REDIRECT_HOPS: usize = 10;
 
 fn build_client_with_options(
@@ -98,7 +103,7 @@ fn build_client_with_options(
             // layer on top of it. Without this check a redirect loop is followed
             // forever, pinning a connection and a task. Cap first, then revalidate
             // SSRF on every surviving hop.
-            if attempt.previous().len() >= MAX_REDIRECT_HOPS {
+            if attempt.previous().len() > MAX_REDIRECT_HOPS {
                 return attempt.error(std::io::Error::other(format!(
                     "too many redirects (>{MAX_REDIRECT_HOPS})"
                 )));

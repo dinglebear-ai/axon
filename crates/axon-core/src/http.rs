@@ -27,8 +27,8 @@ mod url_path;
 
 // Re-export the full public API so downstream `use crate::http::*` continues to work.
 pub use acquire::{
-    DEFAULT_CHALLENGE_SCAN_BYTES, FetchError, FetchWebOptions, WebDocKind, WebDocument, fetch_web,
-    fetch_web_html, is_block_like_status,
+    DEFAULT_CHALLENGE_SCAN_BYTES, EscalationOutcome, FetchError, FetchWebOptions, WebDocument,
+    fetch_web, fetch_web_html, is_block_like_status,
 };
 pub use antibot::{ChallengeDetection, detect_challenge};
 pub use client::build_client_no_redirect;

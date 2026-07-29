@@ -34,6 +34,8 @@ use crate::http::client::http_client;
 use crate::http::error::HttpError;
 use crate::http::normalize::normalize_url;
 use crate::http::ssrf::validate_url;
+#[cfg(feature = "tls-fingerprinting")]
+use crate::logging::log_warn;
 
 /// Default body budget for challenge fingerprint scanning.
 ///
@@ -41,37 +43,19 @@ use crate::http::ssrf::validate_url;
 /// `Config` in scope still classify identically to those that do.
 pub const DEFAULT_CHALLENGE_SCAN_BYTES: usize = 150 * 1024;
 
-/// What kind of document a caller expects, which decides whether the body is
-/// worth scanning for a bot-challenge fingerprint.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WebDocKind {
-    /// An HTML page. Challenge fingerprints are HTML, so these are scanned.
-    Html,
-    /// A non-HTML support document (robots.txt, sitemap.xml, llms.txt).
-    ///
-    /// Still escalated on a block-like *status*, but the body is not
-    /// fingerprint-scanned: these formats have their own structural validation
-    /// (a sitemap must have a `<urlset>` root, llms.txt a leading heading) and
-    /// scanning them would only add false positives.
-    Support,
-}
-
 /// Tuning for a single [`fetch_web`] call.
 #[derive(Debug, Clone)]
 pub struct FetchWebOptions {
-    pub kind: WebDocKind,
     /// Body budget for challenge scanning. Callers holding a `Config` should
     /// pass `cfg.antibot_max_body_scan_bytes`.
     pub challenge_scan_bytes: usize,
-    /// Allow escalation to the impersonating client. Off for callers that must
-    /// not pay the extra request (e.g. liveness probes).
+    /// Allow escalation to the impersonating client.
     pub allow_escalation: bool,
 }
 
 impl Default for FetchWebOptions {
     fn default() -> Self {
         Self {
-            kind: WebDocKind::Html,
             challenge_scan_bytes: DEFAULT_CHALLENGE_SCAN_BYTES,
             allow_escalation: true,
         }
@@ -83,20 +67,8 @@ impl FetchWebOptions {
         Self::default()
     }
 
-    pub fn support() -> Self {
-        Self {
-            kind: WebDocKind::Support,
-            ..Self::default()
-        }
-    }
-
     pub fn with_scan_bytes(mut self, bytes: usize) -> Self {
         self.challenge_scan_bytes = bytes;
-        self
-    }
-
-    pub fn without_escalation(mut self) -> Self {
-        self.allow_escalation = false;
         self
     }
 }
@@ -107,57 +79,69 @@ pub struct WebDocument {
     pub body: String,
     pub status: u16,
     /// URL after redirects.
+    ///
+    /// Load-bearing for provenance, not a convenience: on the escalated path a
+    /// redirect can move the request to a different origin, and attributing
+    /// those bytes to the original URL is exactly what would hide an SSRF.
     pub final_url: String,
-    /// Whether the impersonating client was needed to get this body. Surfaced
-    /// so callers can log/measure how often the plain client is walled off.
+    /// Whether the impersonating client was needed to get this body.
     pub escalated: bool,
 }
 
-/// Why an acquisition fetch failed.
-#[derive(Debug)]
-pub enum FetchError {
-    /// A bot wall that survived every available escalation. Distinct from
-    /// `Http` so callers never mistake a denial page for thin content.
-    Challenge {
-        url: String,
-        status: u16,
-        detection: Option<ChallengeDetection>,
-    },
-    /// Ordinary transport/validation failure.
-    Http(HttpError),
-    /// Non-success status that is not a bot wall (404, 500, …).
-    Status { url: String, status: u16 },
+/// What happened when a wall was hit, so an operator can tell a permanent block
+/// from a transient failure or a missing build feature.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EscalationOutcome {
+    /// Impersonation ran and the wall was still there. This is a real block.
+    StillWalled,
+    /// Impersonation ran and broke (DNS, TLS, timeout, SSRF block). The site is
+    /// NOT known to be permanently walled — retrying is reasonable.
+    Failed(String),
+    /// Impersonation was unavailable: the `tls-fingerprinting` feature is not
+    /// compiled in, or the caller disabled it. Nothing is known about whether
+    /// the wall would survive a browser-fingerprinted request.
+    Unavailable,
 }
 
-impl std::fmt::Display for FetchError {
+impl std::fmt::Display for EscalationOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Challenge {
-                url,
-                status,
-                detection,
-            } => {
-                let vendor = detection
-                    .as_ref()
-                    .map(|d| d.vendor.as_str())
-                    .unwrap_or("unknown");
-                write!(
-                    f,
-                    "bot challenge from {vendor} blocked {url} (HTTP {status})"
-                )
-            }
-            Self::Http(e) => write!(f, "{e}"),
-            Self::Status { url, status } => write!(f, "{url} returned HTTP {status}"),
+            Self::StillWalled => write!(f, "wall survived browser TLS impersonation"),
+            Self::Failed(reason) => write!(f, "impersonated retry failed: {reason}"),
+            Self::Unavailable => write!(
+                f,
+                "impersonation unavailable (build without the `tls-fingerprinting` feature)"
+            ),
         }
     }
 }
 
-impl std::error::Error for FetchError {}
+/// Why an acquisition fetch failed.
+#[derive(Debug, thiserror::Error)]
+pub enum FetchError {
+    /// A bot wall. `escalation` records what the ladder was able to do about
+    /// it, so a transient escalation fault is never reported as a permanent
+    /// block — that misdiagnosis makes an operator abandon a working domain.
+    #[error("bot wall blocked {url} (HTTP {status}, vendor {}): {escalation}", describe_vendor(.detection))]
+    Challenge {
+        url: String,
+        status: u16,
+        detection: Option<ChallengeDetection>,
+        escalation: EscalationOutcome,
+    },
+    /// Ordinary transport/validation failure.
+    #[error(transparent)]
+    Http(#[from] HttpError),
+    /// Non-success status that is not a bot wall (404, 500, ...).
+    #[error("{url} returned HTTP {status}")]
+    Status { url: String, status: u16 },
+}
 
-impl From<HttpError> for FetchError {
-    fn from(e: HttpError) -> Self {
-        Self::Http(e)
-    }
+fn describe_vendor(detection: &Option<ChallengeDetection>) -> &'static str {
+    detection
+        .as_ref()
+        .map(|d| d.vendor.as_str())
+        .unwrap_or("unknown")
 }
 
 /// Statuses that commonly front a bot wall rather than a genuine absence.
@@ -188,7 +172,7 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
     let final_url = response.url().to_string();
     let body = response.text().await.map_err(HttpError::from)?;
 
-    let detection = classify(&body, status, opts);
+    let detection = classify(&body, opts);
     let walled = is_block_like_status(status) || detection.is_some();
 
     if !walled {
@@ -196,22 +180,32 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
     }
 
     match escalate(url, opts).await {
-        Some(Ok(doc)) => {
-            let redetected = classify(&doc.body, doc.status, opts);
+        Escalation::Fetched(doc) => {
+            let redetected = classify(&doc.body, opts);
             if is_block_like_status(doc.status) || redetected.is_some() {
                 return Err(FetchError::Challenge {
-                    url: url.to_string(),
+                    url: doc.final_url,
                     status: doc.status,
                     detection: redetected,
+                    escalation: EscalationOutcome::StillWalled,
                 });
             }
-            Ok(doc)
+            finish(doc.body, doc.status, doc.final_url, true, url)
         }
-        // Escalation unavailable or itself failed: report the original wall.
-        _ => Err(FetchError::Challenge {
+        // Escalation ran and broke: do NOT present that as a permanent wall.
+        // An operator told "bot challenge" gives up on the domain; told
+        // "escalation failed: dns timeout" they retry.
+        Escalation::Failed(reason) => Err(FetchError::Challenge {
             url: url.to_string(),
             status,
             detection,
+            escalation: EscalationOutcome::Failed(reason),
+        }),
+        Escalation::Unavailable => Err(FetchError::Challenge {
+            url: url.to_string(),
+            status,
+            detection,
+            escalation: EscalationOutcome::Unavailable,
         }),
     }
 }
@@ -223,11 +217,11 @@ pub async fn fetch_web_html(url: &str) -> Result<String, FetchError> {
         .map(|d| d.body)
 }
 
-fn classify(body: &str, status: u16, opts: &FetchWebOptions) -> Option<ChallengeDetection> {
-    if opts.kind != WebDocKind::Html {
-        return None;
-    }
-    let _ = status;
+/// Fingerprint-scan a body for a WAF challenge.
+///
+/// Deliberately status-independent: Cloudflare and DataDome serve challenge
+/// pages with HTTP 200, so gating this on status would miss them entirely.
+fn classify(body: &str, opts: &FetchWebOptions) -> Option<ChallengeDetection> {
     detect_challenge(body, |_| None, opts.challenge_scan_bytes)
 }
 
@@ -252,25 +246,50 @@ fn finish(
     })
 }
 
+/// Outcome of attempting the impersonated retry.
+#[cfg_attr(
+    not(feature = "tls-fingerprinting"),
+    allow(
+        dead_code,
+        reason = "only Unavailable is constructed without the feature"
+    )
+)]
+enum Escalation {
+    /// The impersonating client returned a response.
+    Fetched(WebDocument),
+    /// Escalation ran and failed for an infrastructure reason (DNS, TLS,
+    /// timeout, SSRF block). Distinct from `Unavailable` so a transient network
+    /// fault is never reported to an operator as a permanent bot wall.
+    Failed(String),
+    /// The `tls-fingerprinting` feature is not compiled in, or the caller
+    /// disabled escalation.
+    Unavailable,
+}
+
 #[cfg(feature = "tls-fingerprinting")]
-async fn escalate(url: &str, opts: &FetchWebOptions) -> Option<Result<WebDocument, FetchError>> {
+async fn escalate(url: &str, opts: &FetchWebOptions) -> Escalation {
     if !opts.allow_escalation {
-        return None;
+        return Escalation::Unavailable;
     }
     match crate::http::impersonate::fetch_html_impersonated(url).await {
-        Ok(body) => Some(Ok(WebDocument {
-            body,
-            status: 200,
-            final_url: url.to_string(),
+        Ok(resp) => Escalation::Fetched(WebDocument {
+            body: resp.body,
+            status: resp.status,
+            final_url: resp.final_url,
             escalated: true,
-        })),
-        Err(_) => None,
+        }),
+        Err(e) => {
+            log_warn(&format!(
+                "acquire: impersonated retry failed for {url}: {e}"
+            ));
+            Escalation::Failed(e.to_string())
+        }
     }
 }
 
 #[cfg(not(feature = "tls-fingerprinting"))]
-async fn escalate(_url: &str, _opts: &FetchWebOptions) -> Option<Result<WebDocument, FetchError>> {
-    None
+async fn escalate(_url: &str, _opts: &FetchWebOptions) -> Escalation {
+    Escalation::Unavailable
 }
 
 #[cfg(test)]

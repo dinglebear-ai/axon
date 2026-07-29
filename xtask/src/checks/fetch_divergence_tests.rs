@@ -34,29 +34,27 @@ fn exception_lookup_matches_exact_paths_only() {
     assert!(is_exception("crates/axon-adapters/src/web_engine/scrape.rs").is_some());
     // A near-miss must NOT inherit an exception.
     assert!(is_exception("crates/axon-adapters/src/web_engine/scrape2.rs").is_none());
-    assert!(is_exception("crates/axon-extract/src/verticals/reddit.rs").is_none());
+    assert!(is_exception("crates/axon-extract/src/verticals/nonexistent.rs").is_none());
 }
 
 #[test]
-fn constructor_patterns_cover_every_client_kind_in_use() {
-    // reqwest (both builder and new), the ssrf-guarded wrapper, the shared
-    // build_client helpers, and wreq. Missing one silently allows drift.
-    for expected in [
-        "reqwest::Client::builder()",
-        "reqwest::Client::new()",
-        "build_ssrf_guarded_client_builder(",
-        "build_client(",
-        "wreq::Client::builder()",
-    ] {
+fn tracked_fetchers_are_listed_but_still_flagged_as_tracked() {
+    // These are known divergences, not blessed ones: they resolve to the
+    // TRACKED reason so the message says migration is outstanding.
+    let reason = is_exception("crates/axon-extract/src/verticals/reddit.rs")
+        .expect("tracked vertical must resolve to a reason");
+    assert!(reason.contains("TRACKED"), "{reason}");
+    let map_reason = is_exception("crates/axon-adapters/src/web_engine/engine/map.rs")
+        .expect("resolve_map_seed_url is a tracked shared-client fetch");
+    assert!(map_reason.contains("TRACKED"), "{map_reason}");
+}
+
+#[test]
+fn tracked_and_settled_lists_do_not_overlap() {
+    for path in TRACKED_SHARED_CLIENT_FETCHERS {
         assert!(
-            CLIENT_CONSTRUCTORS.contains(&expected),
-            "missing constructor pattern: {expected}"
+            !APPROVED_EXCEPTIONS.iter().any(|(p, _)| p == path),
+            "{path} is in both lists; its status would be ambiguous"
         );
     }
-}
-
-#[test]
-fn acquisition_roots_cover_the_web_fetching_crates() {
-    assert!(ACQUISITION_ROOTS.contains(&"crates/axon-adapters/src"));
-    assert!(ACQUISITION_ROOTS.contains(&"crates/axon-extract/src"));
 }

@@ -42,21 +42,11 @@ fn akamai_denial_body_has_no_fingerprint_so_status_must_carry_it() {
 }
 
 #[test]
-fn support_documents_are_not_fingerprint_scanned() {
-    // A sitemap or llms.txt is validated structurally by its own module; body
-    // scanning it would only add false positives.
-    let opts = FetchWebOptions::support();
-    assert_eq!(opts.kind, WebDocKind::Support);
-    assert!(classify("<html>whatever</html>", 200, &opts).is_none());
-}
-
-#[test]
-fn html_documents_are_fingerprint_scanned() {
-    let opts = FetchWebOptions::html();
-    assert_eq!(opts.kind, WebDocKind::Html);
+fn html_bodies_are_fingerprint_scanned() {
     // The Akamai Bot Manager sensor token is the canonical fingerprint.
     let challenge = "<html><script>bazadebezolkohpepadr=1</script></html>";
-    assert!(classify(challenge, 200, &opts).is_some());
+    assert!(classify(challenge, &FetchWebOptions::html()).is_some());
+    assert!(classify("<html>ordinary page</html>", &FetchWebOptions::html()).is_none());
 }
 
 #[test]
@@ -95,6 +85,7 @@ fn challenge_error_names_the_vendor() {
         url: "https://example.gov/".into(),
         status: 403,
         detection: None,
+        escalation: EscalationOutcome::StillWalled,
     };
     let rendered = err.to_string();
     assert!(rendered.contains("https://example.gov/"), "{rendered}");
@@ -102,13 +93,7 @@ fn challenge_error_names_the_vendor() {
 }
 
 #[test]
-fn options_builders_are_coherent() {
-    assert!(FetchWebOptions::html().allow_escalation);
-    assert!(
-        !FetchWebOptions::html()
-            .without_escalation()
-            .allow_escalation
-    );
+fn scan_budget_is_configurable_and_defaulted() {
     assert_eq!(
         FetchWebOptions::html()
             .with_scan_bytes(42)
@@ -118,6 +103,36 @@ fn options_builders_are_coherent() {
     assert_eq!(
         FetchWebOptions::default().challenge_scan_bytes,
         DEFAULT_CHALLENGE_SCAN_BYTES
+    );
+}
+
+#[test]
+fn escalation_outcome_distinguishes_a_real_block_from_a_broken_retry() {
+    // The whole point: an operator told "bot challenge" abandons the domain.
+    // A transient escalation fault must not read the same way.
+    let walled = FetchError::Challenge {
+        url: "https://example.gov/".into(),
+        status: 403,
+        detection: None,
+        escalation: EscalationOutcome::StillWalled,
+    };
+    let broke = FetchError::Challenge {
+        url: "https://example.gov/".into(),
+        status: 403,
+        detection: None,
+        escalation: EscalationOutcome::Failed("dns timeout".into()),
+    };
+    let missing = FetchError::Challenge {
+        url: "https://example.gov/".into(),
+        status: 403,
+        detection: None,
+        escalation: EscalationOutcome::Unavailable,
+    };
+    assert!(walled.to_string().contains("survived"), "{walled}");
+    assert!(broke.to_string().contains("dns timeout"), "{broke}");
+    assert!(
+        missing.to_string().contains("tls-fingerprinting"),
+        "operator must be told the feature is absent: {missing}"
     );
 }
 

@@ -33,8 +33,15 @@ use std::path::Path;
 /// here must go through the shared ladder.
 const ACQUISITION_ROOTS: &[&str] = &["crates/axon-adapters/src", "crates/axon-extract/src"];
 
-/// Source patterns that construct an HTTP client.
+/// Source patterns that obtain an HTTP client for a direct fetch.
+///
+/// `http_client()` is included deliberately. An earlier version of this check
+/// matched only *construction*, which made it blind to the ~25 call sites that
+/// take the shared singleton and then do their own `.get().send()` with no wall
+/// handling — the single largest class of real divergence in the tree, sitting
+/// inside the roots this check already scanned.
 const CLIENT_CONSTRUCTORS: &[&str] = &[
+    "http_client()",
     "reqwest::Client::builder()",
     "reqwest::Client::new()",
     "build_ssrf_guarded_client_builder(",
@@ -104,7 +111,49 @@ const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Vertical extractors that take the shared `http_client()` singleton and do
+/// their own `.get().send()`.
+///
+/// All target FIXED, known hosts (not arbitrary user-supplied URLs), which is
+/// why they are tolerable today. But several scrape HTML from hosts that
+/// actively bot-wall, and none of them classify a wall: `ebay.rs` already
+/// reimplements a narrower, worse check (`403 | 503` status only, no body
+/// fingerprint, no escalation), which is direct evidence the need is real and
+/// that leaving these unmigrated invites more one-off copies.
+///
+/// TRACKED for migration under `axon_rust-w612x`. Listed individually rather
+/// than by glob so the inventory stays explicit and a NEW vertical fails the
+/// check until someone decides which side it belongs on.
+const TRACKED_SHARED_CLIENT_FETCHERS: &[&str] = &[
+    "crates/axon-adapters/src/web_engine/engine/map.rs",
+    "crates/axon-adapters/src/web_engine/engine/runtime.rs",
+    "crates/axon-extract/src/verticals/amazon.rs",
+    "crates/axon-extract/src/verticals/arxiv.rs",
+    "crates/axon-extract/src/verticals/crates_io.rs",
+    "crates/axon-extract/src/verticals/dev_to.rs",
+    "crates/axon-extract/src/verticals/docker_hub.rs",
+    "crates/axon-extract/src/verticals/docs_rs.rs",
+    "crates/axon-extract/src/verticals/ebay.rs",
+    "crates/axon-extract/src/verticals/github_issue.rs",
+    "crates/axon-extract/src/verticals/github_pr.rs",
+    "crates/axon-extract/src/verticals/github_release.rs",
+    "crates/axon-extract/src/verticals/github_repo.rs",
+    "crates/axon-extract/src/verticals/hackernews.rs",
+    "crates/axon-extract/src/verticals/huggingface_model.rs",
+    "crates/axon-extract/src/verticals/npm.rs",
+    "crates/axon-extract/src/verticals/pypi.rs",
+    "crates/axon-extract/src/verticals/reddit.rs",
+    "crates/axon-extract/src/verticals/shopify.rs",
+    "crates/axon-extract/src/verticals/stackoverflow.rs",
+];
+
+const TRACKED_REASON: &str = "Fixed-host vertical/engine fetch on the shared client with no wall \
+     classification. TRACKED for migration under axon_rust-w612x.";
+
 fn is_exception(rel: &str) -> Option<&'static str> {
+    if TRACKED_SHARED_CLIENT_FETCHERS.contains(&rel) {
+        return Some(TRACKED_REASON);
+    }
     APPROVED_EXCEPTIONS
         .iter()
         .find(|(path, _)| *path == rel)
@@ -180,14 +229,17 @@ pub fn check(root: &Path) -> Result<()> {
     let stale: Vec<&str> = APPROVED_EXCEPTIONS
         .iter()
         .map(|(p, _)| *p)
+        .chain(TRACKED_SHARED_CLIENT_FETCHERS.iter().copied())
         .filter(|p| !used_exceptions.contains(p))
         .filter(|p| root.join(p).exists())
         .collect();
 
     if violations.is_empty() && stale.is_empty() {
         println!(
-            "OK: web acquisition is unified — {} approved exception(s), no unsanctioned clients.",
-            APPROVED_EXCEPTIONS.len()
+            "OK: {} settled exception(s), {} tracked-for-migration fetcher(s), \
+             no unlisted acquisition clients.",
+            APPROVED_EXCEPTIONS.len(),
+            TRACKED_SHARED_CLIENT_FETCHERS.len()
         );
         return Ok(());
     }

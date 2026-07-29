@@ -185,12 +185,24 @@ impl wreq::dns::Resolve for SsrfWreqResolver {
                 .map_err(|e| Box::new(e) as DnsError)?
                 .collect();
 
-            validate_resolved_ips(&host, addrs.iter().map(|addr| addr.ip())).map_err(|e| {
-                Box::new(std::io::Error::new(
+            // Partition rather than short-circuit so the denial can be audited
+            // with the offending addresses, exactly as SsrfBlockingResolver does.
+            let (allowed, blocked): (Vec<_>, Vec<_>) = addrs
+                .into_iter()
+                .partition(|addr| validate_resolved_ips(&host, [addr.ip()]).is_ok());
+
+            if !blocked.is_empty() {
+                crate::http::ssrf::record_resolver_denial(
+                    &host,
+                    blocked.iter().map(|addr| addr.ip()).collect(),
+                );
+                let err: DnsError = Box::new(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
-                    e.to_string(),
-                )) as DnsError
-            })?;
+                    format!("SSRF: DNS response for '{host}' contains blocked IP ranges"),
+                ));
+                return Err(err);
+            }
+            let addrs = allowed;
 
             if addrs.is_empty() {
                 let err: DnsError = Box::new(std::io::Error::new(
@@ -205,8 +217,44 @@ impl wreq::dns::Resolve for SsrfWreqResolver {
     }
 }
 
-/// Maximum redirect hops, matching the shared `reqwest` client's cap.
+/// Maximum redirect hops.
+///
+/// Uses the same `>` comparison as both `reqwest` and `wreq` apply internally
+/// (`previous` includes the initial URI, so `> N` permits N redirects), so this
+/// client and the shared `reqwest` client follow the same number of hops.
 const MAX_REDIRECT_HOPS: usize = 10;
+
+/// SSRF-revalidating redirect policy.
+///
+/// **This is the load-bearing SSRF control on this path, not the resolver.**
+/// `wreq::redirect::Policy::limited` is purely count-based, and wreq's
+/// per-hop validation checks only the URI *scheme*. Worse, wreq's connector
+/// skips DNS resolution entirely when the host is already an IP literal
+/// ("skip resolving the dns and start connecting right away"), so
+/// [`SsrfWreqResolver`] is never consulted for `http://169.254.169.254/` or
+/// `http://127.0.0.1:6333/`.
+///
+/// Without this policy an attacker who controls a site axon was asked to fetch
+/// can answer the escalated request with `302 Location: http://169.254.169.254/…`
+/// and read internal endpoints. The shared `reqwest` client avoids this only
+/// because it revalidates every hop; this mirrors that.
+fn ssrf_revalidating_redirect_policy() -> wreq::redirect::Policy {
+    wreq::redirect::Policy::custom(|attempt| {
+        if attempt.previous.len() > MAX_REDIRECT_HOPS {
+            return attempt.error(std::io::Error::other(format!(
+                "too many redirects (>{MAX_REDIRECT_HOPS})"
+            )));
+        }
+        let next = attempt.uri.to_string();
+        match validate_url(&next) {
+            Ok(()) => attempt.follow(),
+            Err(e) => attempt.error(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("SSRF: impersonated redirect to blocked URL rejected: {e}"),
+            )),
+        }
+    })
+}
 
 fn build_impersonating_client() -> Result<Client, String> {
     let mut headers = wreq::header::HeaderMap::with_capacity(CHROME_HEADERS.len());
@@ -228,10 +276,13 @@ fn build_impersonating_client() -> Result<Client, String> {
 
     Client::builder()
         .emulation(emulation)
-        // Cookie jar retained so an Akamai `_abck`/`bm_sz` cookie issued on a
-        // first hit is replayed on subsequent requests to the same host.
-        .cookie_store(true)
-        .redirect(wreq::redirect::Policy::limited(MAX_REDIRECT_HOPS))
+        // Per-client jar rather than `cookie_store(true)` on a process-wide
+        // singleton. wreq's jar does not validate a `Set-Cookie` `Domain=`
+        // attribute against the responding host and has no public-suffix list,
+        // so a shared global jar lets one fetched host inject cookies that ride
+        // along on requests to unrelated hosts.
+        .cookie_provider(std::sync::Arc::new(wreq::cookie::Jar::default()))
+        .redirect(ssrf_revalidating_redirect_policy())
         .dns_resolver(SsrfWreqResolver)
         .timeout(Duration::from_secs(30))
         .build()
@@ -248,11 +299,22 @@ pub fn impersonating_client() -> Result<&'static Client, HttpError> {
         .map_err(|e| HttpError::Impersonation(e.clone()))
 }
 
+/// A response from the browser-impersonating client.
+///
+/// Carries the observed status and post-redirect URL rather than synthesising
+/// them, so callers can classify and attribute the result accurately.
+#[derive(Debug, Clone)]
+pub struct ImpersonatedResponse {
+    pub body: String,
+    pub status: u16,
+    pub final_url: String,
+}
+
 /// Fetch `url` as HTML through the browser-impersonating client.
 ///
 /// Applies the same parse-time SSRF validation as [`super::fetch_html`]; the
 /// connect-time guard is enforced by [`SsrfWreqResolver`].
-pub async fn fetch_html_impersonated(url: &str) -> Result<String, HttpError> {
+pub async fn fetch_html_impersonated(url: &str) -> Result<ImpersonatedResponse, HttpError> {
     let normalized = normalize_url(url);
     validate_url(&normalized)?;
     let client = impersonating_client()?;
@@ -263,17 +325,21 @@ pub async fn fetch_html_impersonated(url: &str) -> Result<String, HttpError> {
         .await
         .map_err(|e| HttpError::Impersonation(e.to_string()))?;
 
-    let status = response.status();
-    if !status.is_success() {
-        return Err(HttpError::Impersonation(format!(
-            "impersonated fetch of {normalized} returned HTTP {status}"
-        )));
-    }
-
-    response
+    let status = response.status().as_u16();
+    // Capture the POST-redirect URL. Losing it would attribute bytes fetched from
+    // a redirect target to the original request URL — which, on a path that can
+    // be redirected, destroys the provenance needed to notice an SSRF.
+    let final_url = response.uri().to_string();
+    let body = response
         .text()
         .await
-        .map_err(|e| HttpError::Impersonation(e.to_string()))
+        .map_err(|e| HttpError::Impersonation(e.to_string()))?;
+
+    Ok(ImpersonatedResponse {
+        body,
+        status,
+        final_url,
+    })
 }
 
 #[cfg(test)]
