@@ -102,7 +102,7 @@ async fn discover_llms_txt_urls_caps_at_max() {
     };
     let providers =
         std::sync::Arc::new(crate::boundary::FakeAdapterProviders::new().with_fetch_text(body));
-    let urls = discover_llms_txt_urls(&cfg, &base, providers)
+    let urls = discover_llms_txt_urls(&cfg, base, providers)
         .await
         .expect("discover");
     assert_eq!(

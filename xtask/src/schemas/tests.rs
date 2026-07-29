@@ -218,6 +218,8 @@ fn valid_fixture_for(family: SchemaFamily) -> &'static str {
   "source_item_key": "code-item",
   "item_canonical_uri": "item_canonical_uri",
   "source_generation": 7,
+  "born_epoch": 7,
+  "retired_epoch": null,
   "document_id": "doc-code",
   "chunk_id": "chunk-code-0",
   "chunk_index": 0,

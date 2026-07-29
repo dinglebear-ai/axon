@@ -112,6 +112,12 @@ jobs:
 
   mcp-transport-modes:
     name: mcp-transport-modes
+    env:
+      # Self-hosted runners persist $HOME/.axon between jobs, so a jobs.db
+      # written by another branch fails startup with
+      # `startup.incompatible_store` once migrations differ. Give every job
+      # its own data dir so no run inherits another branch's SQLite state.
+      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
@@ -488,6 +494,12 @@ jobs:
 
   shell-completions-smoke:
     name: shell-completions-smoke
+    env:
+      # Self-hosted runners persist $HOME/.axon between jobs, so a jobs.db
+      # written by another branch fails startup with
+      # `startup.incompatible_store` once migrations differ. Give every job
+      # its own data dir so no run inherits another branch's SQLite state.
+      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -623,6 +635,8 @@ jobs:
       # TEI_URL must be set to pass startup validation even though TEI is not
       # actually running — this test exercises only the auth layer (/mcp 401).
       TEI_URL: http://127.0.0.1:52000
+      # See the AXON_DATA_DIR note on shell-completions-smoke.
+      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
       QDRANT_URL: http://127.0.0.1:53333
     steps:
       - uses: actions/checkout@v5
@@ -1190,6 +1204,12 @@ jobs:
 
   release-smoke:
     name: release-smoke
+    env:
+      # Self-hosted runners persist $HOME/.axon between jobs, so a jobs.db
+      # written by another branch fails startup with
+      # `startup.incompatible_store` once migrations differ. Give every job
+      # its own data dir so no run inherits another branch's SQLite state.
+      AXON_DATA_DIR: ${{ runner.temp }}/axon-data-${{ github.run_id }}-${{ github.job }}
     runs-on: [self-hosted, unraid]
     needs: [changes, release]
     if: ${{ needs.release.result == 'success' }}

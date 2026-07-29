@@ -413,6 +413,13 @@ fn required_example_value(field: &str, family: &str) -> Value {
         // Null until a publisher commits the generation (never the string
         // "uncommitted" -- see `axon_vectors::payload::validate_generations`).
         "committed_generation" => Value::Null,
+        // Epoch fields mirror the generation types and are validated by
+        // `axon_vectors::payload::validate_generations` as non-negative
+        // integer or null -- never the field-name string the `_` arm would
+        // otherwise produce. `born_epoch` is stamped from `source_generation`
+        // at publish; `retired_epoch` stays null until the point is superseded.
+        "born_epoch" => json!(7),
+        "retired_epoch" => Value::Null,
         "document_id" => json!(format!("doc-{family}")),
         "chunk_id" => json!(format!("chunk-{family}-0")),
         "chunk_locator" => json!({
