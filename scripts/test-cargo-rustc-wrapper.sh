@@ -68,6 +68,15 @@ out="$tmp/target/debug/deps/axon-123"
   src/main.rs \
   -o "$out"
 
+if ! command -v cargo-bin-artifact-wrapper >/dev/null 2>&1 &&
+  [ ! -x /home/jmagar/.local/bin/cargo-bin-artifact-wrapper ]; then
+  test -x "$out"
+  test ! -e "$HOME/.local/bin/axon"
+  test ! -e "$AXON_ARTIFACT_BIN_DIR/axon-debug"
+  echo "cargo rustc wrapper passthrough behavior ok (artifact helper unavailable)"
+  exit 0
+fi
+
 cmp "$out" "$HOME/.local/bin/axon"
 cmp "$out" "$AXON_ARTIFACT_BIN_DIR/axon-debug"
 
