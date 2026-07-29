@@ -5,10 +5,16 @@ repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+grep -q 'command -v kache' "$repo/scripts/cargo-rustc-wrapper"
+if grep -Eqi 'soldr|zccache|sccache' "$repo/scripts/cargo-rustc-wrapper"; then
+  echo "retired compiler cache reference remains in cargo-rustc-wrapper" >&2
+  exit 1
+fi
+
 export HOME="$tmp/home"
 export AXON_RUSTC_WRAPPER_LOCAL_BIN="$HOME/.local/bin/axon"
 export AXON_ARTIFACT_BIN_DIR="$tmp/bin"
-export AXON_RUSTC_WRAPPER_NO_SCCACHE=1
+export AXON_RUSTC_WRAPPER_NO_KACHE=1
 mkdir -p "$HOME/.local/bin" "$AXON_ARTIFACT_BIN_DIR" "$tmp/target/debug/deps"
 
 fake_rustc="$tmp/fake-rustc"

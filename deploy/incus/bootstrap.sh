@@ -299,7 +299,7 @@ fi
 ### stream on stdin rather than pushing the whole repo tree to a persistent
 ### path first — avoids managing a stale source checkout inside the
 ### container between runs. This is genuinely slow on a cold nested-Docker
-### build-cache (large workspace, no sccache inside the container) — expect
+### build-cache (large workspace, no compiler cache inside the container) — expect
 ### several minutes on the very first run; subsequent runs reuse Docker's
 ### layer/BuildKit cache as long as the container itself isn't recreated.
 log "building axon runtime image inside the container (this can take a while on a cold cache)"

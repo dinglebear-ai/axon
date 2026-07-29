@@ -29,8 +29,9 @@ Build performance depends on `~/.cargo/config.toml` on the developer's
 machine. See
 [rmcp-template/docs/contributing/rust.md](https://github.com/jmagar/rmcp-template/blob/main/docs/contributing/rust.md)
 for the expected config (mold linker, dev profile tuning). Compile caching is
-owned by soldr/zccache at the process boundary via the `~/.local/bin/cargo`
-front door — no in-process `rustc-wrapper` is set.
+provided by the mise-managed `kache`, configured as the global
+`rustc-wrapper`. Use `KACHE_DISABLED=1` or `RUSTC_WRAPPER=""` to bypass it for
+diagnostics.
 
 ### Local `.cargo/config.toml`
 

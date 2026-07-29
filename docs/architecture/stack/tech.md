@@ -119,7 +119,7 @@ LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fa
 |------|---------|
 | just | Task runner (30+ recipes) |
 | lefthook | Git hooks |
-| sccache | Compilation cache (auto-detected) |
+| kache | Compilation cache (mise-managed global `rustc-wrapper`) |
 | mold | Fast linker (auto-detected) |
 | cargo-nextest | Parallel test runner |
 | cargo-deny | Dependency auditing |

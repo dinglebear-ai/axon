@@ -4,9 +4,8 @@
 # WHY THIS EXISTS
 # kache never fails a build on a cache problem (0.12.0 PR #600, "never fail a
 # build on remote config"). A dead daemon, an unreachable remote, or a
-# mis-normalized cache key all present as a green, slow build. soldr degraded
-# exactly this way for a full day before anyone noticed. This gate converts
-# those into a red job.
+# mis-normalized cache key all present as a green, slow build. This gate
+# converts those silent cache failures into a red job.
 #
 # WHY BASELINE-AND-DIFF INSTEAD OF `--since`
 # `kache report --since` does NOT bound the event window in 0.12.0. Measured
