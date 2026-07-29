@@ -61,7 +61,7 @@ impl SqliteWatchStore {
             .fetch_optional(&mut *transaction)
             .await
             .map_err(sqlite_err)?
-            .ok_or_else(|| super::rows::missing_job(job_id.clone()))?;
+            .ok_or_else(|| super::rows::missing_job(*job_id))?;
         let status: String = job_row.get("status");
         let now = now_ms();
         sqlx::query(
@@ -110,7 +110,7 @@ impl SqliteWatchStore {
         }
         let enabled: i64 = request
             .enabled
-            .map(|v| i64::from(v))
+            .map(i64::from)
             .unwrap_or_else(|| existing.get("enabled"));
         let embed: i64 = request
             .embed

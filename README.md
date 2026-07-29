@@ -1,6 +1,6 @@
 # Axon
 
-Version: 7.2.2
+Version: 7.2.4
 
 Axon is a self-hosted RAG stack: source acquisition, document preparation,
 embedding, hybrid retrieval, and LLM synthesis in one Rust binary, backed by
