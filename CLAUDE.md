@@ -694,7 +694,6 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
-
 ## Release Pipeline
 
 ### How releases work
@@ -877,12 +876,3 @@ The compatibility command `cargo xtask check-version-sync` still enforces
 `plugins/axon/.claude-plugin/plugin.json` has no `version` key. The full
 multi-component gate is `cargo xtask check-release-versions`.
 
-<!-- OPENWIKI:START -->
-
-## OpenWiki
-
-This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
-
-The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
-
-<!-- OPENWIKI:END -->
