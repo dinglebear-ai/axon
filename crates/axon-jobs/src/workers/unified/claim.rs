@@ -7,6 +7,7 @@ use sqlx::{Row, SqlitePool};
 
 use super::UnifiedClaimedJob;
 use super::helpers::{json_error, parse_enum, parse_uuid, sql_error};
+use crate::unified::retry_job_write;
 
 /// Test-only entry point: production code claims via the poll loop in
 /// [`super::unified_worker_loop`]; tests use this to claim+run one job
@@ -17,7 +18,10 @@ use super::helpers::{json_error, parse_enum, parse_uuid, sql_error};
 pub(crate) async fn claim_next_unified_job(
     pool: &SqlitePool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
-    claim_next_unified_job_unchecked(pool, true).await
+    retry_job_write("unified worker claim", || {
+        claim_next_unified_job_unchecked(pool, true)
+    })
+    .await
 }
 
 /// Claim the next eligible job. When `allow_source` is `false`, `Source`-kind

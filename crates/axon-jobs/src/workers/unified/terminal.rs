@@ -10,7 +10,7 @@ use axon_api::source::{
 use sqlx::SqlitePool;
 
 use crate::boundary::JobStore;
-use crate::unified::SqliteUnifiedJobStore;
+use crate::unified::{SqliteUnifiedJobStore, retry_job_write};
 
 use super::UnifiedClaimedJob;
 use super::helpers::{empty_counts, enum_name, json_error, source_error_from_api, sql_error};
@@ -150,6 +150,19 @@ pub(super) async fn mark_canceled(
 }
 
 pub(super) async fn mark_terminal(
+    pool: &SqlitePool,
+    claimed: &UnifiedClaimedJob,
+    status: LifecycleStatus,
+    phase: PipelinePhase,
+    error: Option<ApiError>,
+) -> Result<(), ApiError> {
+    retry_job_write("unified worker terminal transition", || {
+        mark_terminal_once(pool, claimed, status, phase, error.clone())
+    })
+    .await
+}
+
+async fn mark_terminal_once(
     pool: &SqlitePool,
     claimed: &UnifiedClaimedJob,
     status: LifecycleStatus,

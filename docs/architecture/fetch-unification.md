@@ -6,16 +6,18 @@ Last verified: 2026-07-29
 > found this document previously overstated the result — see
 > [Honest scope](#honest-scope) before relying on any claim here.
 
-## The rule
+## Target rule
 
-Everything that pulls bytes off the public web for acquisition goes through
-**`axon_core::http::fetch_web`** ([`crates/axon-core/src/http/acquire.rs`](../../crates/axon-core/src/http/acquire.rs)).
+The target architecture is for every public-web acquisition caller to use
+**`axon_core::http::fetch_web`** ([`crates/axon-core/src/http/acquire.rs`](../../crates/axon-core/src/http/acquire.rs)). Today, only the
+`map/strategy.rs` `discover_root_anchors` caller has migrated; see
+[Honest scope](#honest-scope) for every known divergence.
 
 Enforced by `cargo xtask check-fetch-divergence`, wired into the lefthook
 pre-commit/pre-push hooks and `just verify`. The check fails the build when an
-acquisition crate constructs an HTTP client outside the allowlist, **and** when
-an allowlist entry goes stale — so this document cannot quietly drift out of
-sync with the code.
+tracked acquisition crate constructs an HTTP client outside the allowlist, **and**
+when an allowlist entry goes stale. It guards the migration inventory; it does
+not prove complete unification.
 
 ## Why this exists
 
@@ -38,8 +40,8 @@ One fix, applied once, reached exactly one of eight paths.
 
 ## The escalation ladder
 
-`fetch_web` owns the whole sequence, so adding a capability reaches every
-surface at once:
+`fetch_web` owns the whole sequence for migrated callers, so adding a
+capability reaches those callers at once:
 
 1. Fetch with the shared SSRF-guarded client — browser UA, 10-hop redirect cap
    with per-hop SSRF revalidation, connect-time DNS-rebinding guard.

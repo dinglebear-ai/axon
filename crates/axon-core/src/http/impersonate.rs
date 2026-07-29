@@ -34,7 +34,6 @@
 //! the connect-time SSRF guard that [`super::ssrf::SsrfBlockingResolver`]
 //! provides for `reqwest` is preserved here rather than bypassed.
 
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use wreq::http2::{
@@ -276,11 +275,11 @@ fn build_impersonating_client() -> Result<Client, String> {
 
     Client::builder()
         .emulation(emulation)
-        // Per-client jar rather than `cookie_store(true)` on a process-wide
-        // singleton. wreq's jar does not validate a `Set-Cookie` `Domain=`
+        // A new client (and therefore a new jar) is built for each escalated
+        // acquisition. wreq's jar does not validate a `Set-Cookie` `Domain=`
         // attribute against the responding host and has no public-suffix list,
-        // so a shared global jar lets one fetched host inject cookies that ride
-        // along on requests to unrelated hosts.
+        // so sharing a jar across arbitrary fetched hosts would let one host
+        // inject cookies that ride along on an unrelated later request.
         .cookie_provider(std::sync::Arc::new(wreq::cookie::Jar::default()))
         .redirect(ssrf_revalidating_redirect_policy())
         .dns_resolver(SsrfWreqResolver)
@@ -289,14 +288,14 @@ fn build_impersonating_client() -> Result<Client, String> {
         .map_err(|e| e.to_string())
 }
 
-static IMPERSONATING_CLIENT: LazyLock<Result<Client, String>> =
-    LazyLock::new(build_impersonating_client);
-
-/// Shared browser-impersonating HTTP client.
-pub fn impersonating_client() -> Result<&'static Client, HttpError> {
-    IMPERSONATING_CLIENT
-        .as_ref()
-        .map_err(|e| HttpError::Impersonation(e.clone()))
+/// Browser-impersonating HTTP client with request-scoped cookie state.
+///
+/// The client is intentionally not cached: these requests target arbitrary
+/// user-supplied hosts, and `wreq`'s cookie jar cannot safely be shared among
+/// them. This path is only used after a bot-wall classification, so the small
+/// client-construction cost does not affect ordinary acquisition requests.
+pub fn impersonating_client() -> Result<Client, HttpError> {
+    build_impersonating_client().map_err(HttpError::Impersonation)
 }
 
 /// A response from the browser-impersonating client.

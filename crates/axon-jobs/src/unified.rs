@@ -217,7 +217,7 @@ impl JobStore for SqliteUnifiedJobStore {
 /// whole boundary operation discards a stale WAL snapshot instead of trying to
 /// continue it. Keep this wrapper here rather than at individual SQL calls so
 /// new write paths cannot silently miss `SQLITE_BUSY_SNAPSHOT` coverage.
-async fn retry_job_write<T, F, Fut>(what: &str, op: F) -> Result<T>
+pub(crate) async fn retry_job_write<T, F, Fut>(what: &str, op: F) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T>>,

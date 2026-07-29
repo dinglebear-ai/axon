@@ -103,15 +103,15 @@ done
 
 # A base-image change only takes effect when the instance is created.  Never
 # silently continue on an older guest: doing so reintroduces the glibc ABI
-# mismatch this deployment exists to remove. Recreate legacy instances through
-# the documented migration procedure, which preserves the dedicated mounts and
-# host-side proxy configuration deliberately rather than deleting them here.
+# mismatch this deployment exists to remove. See deploy/incus/README.md's
+# "Migrating a legacy guest to Ubuntu 26.04" procedure; it snapshots and
+# retains the legacy instance rather than deleting its data or devices here.
 guest_os="$(incus exec "$CONTAINER_NAME" -- sh -c '. /etc/os-release; printf "%s:%s" "$ID" "$VERSION_ID"')"
 [ "$guest_os" = "ubuntu:26.04" ] || fatal "${CONTAINER_NAME} is ${guest_os}, not ubuntu:26.04; recreate it with the documented Incus migration before deploying a host-built binary"
 
 ### 5. Install Docker inside the container if missing (idempotent). Needed
-### for the nested qdrant/tei/chrome services (and to build axon's own
-### binary via the repo's Dockerfile builder stage — see step 15).
+### for the nested qdrant/tei/chrome services. Axon's native binary is pushed
+### from the host in step 15 and is not built inside this guest.
 if ! incus exec "$CONTAINER_NAME" -- sh -c 'command -v docker' >/dev/null 2>&1; then
   log "Docker not found inside container, installing..."
   incus exec "$CONTAINER_NAME" -- sh -c '

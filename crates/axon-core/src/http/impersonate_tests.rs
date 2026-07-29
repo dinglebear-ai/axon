@@ -18,6 +18,17 @@ fn impersonating_client_builds() {
 }
 
 #[test]
+fn impersonating_clients_are_request_scoped() {
+    let first = impersonating_client().expect("first impersonating client");
+    let second = impersonating_client().expect("second impersonating client");
+
+    assert!(
+        !std::ptr::eq(&first, &second),
+        "arbitrary-host escalations must not share a cookie jar"
+    );
+}
+
+#[test]
 fn chrome_headers_are_all_valid_header_pairs() {
     for (name, value) in CHROME_HEADERS {
         assert!(

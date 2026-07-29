@@ -110,6 +110,33 @@ fn record_integrity_probe(db_path: &str) {
     let _ = std::fs::write(integrity_marker_path(db_path), b"ok");
 }
 
+/// Run SQLite's integrity probe and distinguish an unhealthy database from a
+/// probe that could not run at all. Callers must only advance the marker after
+/// a successful `ok` result: treating a busy/I/O failure as clean would hide a
+/// later corruption check for the entire probe interval.
+async fn quick_check_is_clean(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
+        .fetch_optional(pool)
+        .await?;
+    Ok(matches!(result.as_deref(), Some("ok")))
+}
+
+/// Apply a completed integrity probe without ever advancing the marker for an
+/// inconclusive probe. Returns whether corruption was positively detected.
+fn finish_integrity_probe(db_path: &str, result: Result<bool, sqlx::Error>) -> bool {
+    match result {
+        Ok(true) => {
+            record_integrity_probe(db_path);
+            false
+        }
+        Ok(false) => true,
+        Err(error) => {
+            tracing::warn!(error = %error, "jobs: quick_check could not run; leaving integrity probe due");
+            false
+        }
+    }
+}
+
 /// Like `open_sqlite_pool`, but recovers automatically if the database is
 /// corrupted (`SQLITE_CORRUPT` / code 11).
 ///
@@ -136,17 +163,7 @@ pub async fn open_sqlite_pool_or_recover(path: &str) -> Result<SqlitePool, sqlx:
             // seconds apart, so a periodic probe keeps the guarantee that
             // matters at a fraction of the contention cost.
             let corrupt = if should_run_integrity_probe(path) {
-                let result = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
-                    .fetch_optional(&pool)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|s| s != "ok")
-                    .unwrap_or(false);
-                if !result {
-                    record_integrity_probe(path);
-                }
-                result
+                finish_integrity_probe(path, quick_check_is_clean(&pool).await)
             } else {
                 false
             };
@@ -196,3 +213,7 @@ pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
     let _ = sqlite_path;
     0
 }
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;
