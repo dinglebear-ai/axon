@@ -29,6 +29,24 @@ use crate::runtime::{RuntimeResult, ServiceJobRuntime};
 #[derive(Default)]
 pub(crate) struct NoopServiceRuntime;
 
+pub(crate) struct SqliteTestRuntime {
+    _tmp: tempfile::TempDir,
+    pub(crate) runtime: Arc<dyn ServiceJobRuntime>,
+}
+
+pub(crate) async fn sqlite_test_runtime() -> anyhow::Result<SqliteTestRuntime> {
+    let tmp = tempfile::tempdir()?;
+    let mut cfg = Config::test_default();
+    cfg.sqlite_path = tmp.path().join("jobs.db");
+    let cfg = Arc::new(cfg);
+    let backend = SqliteJobBackend::new(Arc::clone(&cfg))
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let runtime: Arc<dyn ServiceJobRuntime> =
+        Arc::new(SqliteServiceRuntime::new_for_backend(cfg, backend));
+    Ok(SqliteTestRuntime { _tmp: tmp, runtime })
+}
+
 pub(crate) fn committed_generation_payload(generation: &SourceGenerationId) -> Value {
     json!(
         generation_payload_i64(generation, "committed_generation")

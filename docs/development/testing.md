@@ -254,7 +254,7 @@ just llvm-cov-install
 ```
 
 Optional performance helpers already auto-detected by `just` recipes:
-- `sccache`
+- `kache`
 - `mold`
 
 ## Coverage (branch-level)

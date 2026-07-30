@@ -24,7 +24,7 @@ env:
 jobs:
   changes:
     name: changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -103,7 +103,7 @@ jobs:
 
   analyze:
     name: analyze (${{ matrix.language }})
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-latest
     needs: [changes]
     permissions:
       security-events: write
@@ -183,7 +183,7 @@ jobs:
 
   codeql-gate:
     name: codeql-gate
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-latest
     if: always()
     needs:
       - changes

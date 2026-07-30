@@ -12,9 +12,9 @@ LLM provider.
 | Remote | `git@github.com:dinglebear-ai/axon.git` (the `jmagar/axon` name only resolves via GitHub's transfer redirect) |
 | Default branch | `main` |
 | Workspace | 25 Cargo packages: root `axon` binary + `xtask` + 23 crates under `crates/` |
-| Edition / toolchain | edition 2024, `rust-version = "1.94.0"`, `rust-toolchain.toml` pins channel `1.96.0` |
+| Edition / toolchain | edition 2024, `rust-version = "1.97.1"`, `rust-toolchain.toml` pins channel `1.97.1` |
 | Product version | `7.2.2` in `[workspace.package]`, inherited by every crate via `version.workspace = true` |
-| MCP runtime | `rmcp = "1.7.0"` (1.7+ is required — see the comment above the dep in `Cargo.toml`) |
+| MCP runtime | `rmcp = "=3.0.0-beta.2"` — exact pin, agrees with `Cargo.lock` |
 
 There are no long-lived variant branches. The former `marketplace-no-mcp`
 marketplace variant, its sync/drift workflows, and its `plugins/scripts/`
@@ -875,4 +875,3 @@ The compatibility command `cargo xtask check-version-sync` still enforces
 `apps/web/package.json`, and `apps/web/openapi/axon.json`, and checks that
 `plugins/axon/.claude-plugin/plugin.json` has no `version` key. The full
 multi-component gate is `cargo xtask check-release-versions`.
-

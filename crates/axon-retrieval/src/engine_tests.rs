@@ -906,6 +906,8 @@ fn point_with_filters(
         .expect("test fixture generation must be numeric");
     payload.insert("source_generation".to_string(), json!(generation_number));
     payload.insert("committed_generation".to_string(), json!(generation_number));
+    payload.insert("born_epoch".to_string(), json!(generation_number));
+    payload.insert("retired_epoch".to_string(), serde_json::Value::Null);
     payload.insert("vector_point_id".to_string(), json!(point_id));
     payload.insert("document_id".to_string(), json!(format!("doc-{chunk_id}")));
     payload.insert("chunk_id".to_string(), json!(chunk_id));

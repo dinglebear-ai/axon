@@ -1,8 +1,8 @@
 [package]
 name = "axon-api"
 version.workspace = true
-edition = "2024"
-rust-version = "1.94.0"
+edition.workspace = true
+rust-version.workspace = true
 description = "Axon transport-neutral API contract and result DTOs shared across CLI, MCP, HTTP, and generated clients"
 license = "MIT"
 

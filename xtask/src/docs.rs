@@ -46,7 +46,6 @@ enum DocsCommand {
     /// Render one critical documentation family.
     ApiEnums(DocsGenerateArgs),
     /// Render one critical documentation family.
-    /// Render one critical documentation family.
     Events(DocsGenerateArgs),
     /// Render one critical documentation family.
     Providers(DocsGenerateArgs),

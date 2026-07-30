@@ -28780,7 +28780,7 @@
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:24ac23de2fa64aed9089ec59ab2f8e0706af67aaaadbd3a41fa6b7328760aee6",
+        "checksum": "sha256:72f433cbcaa5df4d2d072288af00fe77dcd2c8c18ef10f010f85dac2dc29a118",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },

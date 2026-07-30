@@ -6,10 +6,9 @@ use axon_services::system;
 use rmcp::{
     ErrorData, RoleServer,
     model::{
-        AnnotateAble, ExtensionCapabilities, InitializeRequestParams, InitializeResult,
-        ListResourcesResult, Meta, PaginatedRequestParams, RawResource, ReadResourceRequestParams,
-        ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo,
-        TasksCapability,
+        ExtensionCapabilities, InitializeRequestParams, InitializeResult, ListResourcesResult,
+        Meta, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, Resource,
+        ResourceContents, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
 };
@@ -69,8 +68,13 @@ pub(crate) fn mcp_apps_server_capabilities() -> ServerCapabilities {
     ServerCapabilities::builder()
         .enable_tools()
         .enable_resources()
-        .enable_tasks_with(TasksCapability::server_default())
         .enable_extensions_with(extensions)
+        // SEP-2663 declares tasks through the SAME `extensions` map (the old
+        // standalone `tasks` capability and `enable_tasks_with` are gone), and
+        // `enable_extensions_with` REPLACES that map wholesale. This call must
+        // therefore stay after it — inverting the order silently drops the
+        // tasks capability and every task-augmented `tools/call` is rejected.
+        .enable_tasks()
         .build()
 }
 
@@ -126,7 +130,7 @@ pub(super) fn get_info(_server: &AxonMcpServer) -> ServerInfo {
         "- MCP Apps enabled — exposes `ui://axon/status-dashboard` for live queue status widgets\n",
         "\n",
         "The `extract` async operation returns a job_id. Poll with `action=jobs`, `subaction=get`, and the returned `job_id`.\n",
-        "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/result`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows."
+        "Task-augmented calls are also supported for `extract.start`; use `tasks/get`, `tasks/cancel`, and `_meta.progressToken` for protocol-level task flows. Per SEP-2663 the terminal result is returned inline by `tasks/get` — there is no separate `tasks/result` or `tasks/list`."
     ).into());
     info.capabilities = mcp_apps_server_capabilities();
     info
@@ -138,40 +142,25 @@ pub(super) async fn list_resources(
     _context: RequestContext<RoleServer>,
 ) -> Result<ListResourcesResult, ErrorData> {
     tracing::info!("mcp_app list_resources called");
-    let schema_resource: Resource = RawResource {
-        uri: MCP_TOOL_SCHEMA_URI.to_string(),
-        name: "mcp-tool-schema".to_string(),
-        title: Some("Axon MCP Tool Schema".to_string()),
-        description: Some(
-            "Source-of-truth schema and routing contract for the unified axon tool".to_string(),
-        ),
-        mime_type: Some("text/markdown".to_string()),
-        size: None,
-        icons: None,
-        meta: None,
-    }
-    .no_annotation();
+    // `RawResource` + `AnnotateAble::no_annotation()` are gone in rmcp 3.x;
+    // `Resource` is now built directly with its own builder methods.
+    let schema_resource = Resource::new(MCP_TOOL_SCHEMA_URI, "mcp-tool-schema")
+        .with_title("Axon MCP Tool Schema")
+        .with_description("Source-of-truth schema and routing contract for the unified axon tool")
+        .with_mime_type("text/markdown");
 
-    let dashboard_resource: Resource = RawResource {
-        uri: STATUS_DASHBOARD_URI.to_string(),
-        name: "status-dashboard".to_string(),
-        title: Some("Axon Status Dashboard".to_string()),
-        description: Some(
-            "Interactive MCP App widget showing live job queue status for all Axon workers"
-                .to_string(),
-        ),
-        mime_type: Some(MCP_APP_MIME_TYPE.to_string()),
-        size: None,
-        icons: None,
-        meta: Some(status_dashboard_resource_meta()),
-    }
-    .no_annotation();
+    let dashboard_resource = Resource::new(STATUS_DASHBOARD_URI, "status-dashboard")
+        .with_title("Axon Status Dashboard")
+        .with_description(
+            "Interactive MCP App widget showing live job queue status for all Axon workers",
+        )
+        .with_mime_type(MCP_APP_MIME_TYPE)
+        .with_meta(status_dashboard_resource_meta());
 
-    Ok(ListResourcesResult {
-        meta: None,
-        resources: vec![schema_resource, dashboard_resource],
-        next_cursor: None,
-    })
+    Ok(ListResourcesResult::with_all_items(vec![
+        schema_resource,
+        dashboard_resource,
+    ]))
 }
 
 pub(super) async fn read_resource(

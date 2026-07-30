@@ -94,6 +94,8 @@ pub fn test_clean_point(spec: TestPointSpec<'_>) -> VectorPoint {
     );
     payload.insert("source_generation".to_string(), json!(7));
     payload.insert("committed_generation".to_string(), json!(7));
+    payload.insert("born_epoch".to_string(), json!(7));
+    payload.insert("retired_epoch".to_string(), serde_json::Value::Null);
     payload.insert(
         "document_id".to_string(),
         json!(format!("doc-{}", spec.chunk_id)),

@@ -1,6 +1,6 @@
 use super::*;
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
-use crate::test_support::NoopServiceRuntime;
+use crate::test_support::{NoopServiceRuntime, sqlite_test_runtime};
 use crate::types::{CodeSearchCaller, CodeSearchFreshness, CodeSearchResult};
 use axon_api::source::*;
 use axon_core::config::Config;
@@ -39,12 +39,12 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
     .expect("source file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg.clone(), service_jobs)
+    let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs.clone(),
             ledger,
@@ -110,13 +110,13 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
     .expect("source file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg, service_jobs).with_target_local_source_runtime(
-        TargetLocalSourceRuntime::new(
+    let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
+        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
             embedder,
@@ -124,8 +124,7 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
-        ),
-    );
+        ));
     let progress = RecordingReindexProgress::default();
 
     let refreshed = refresh_code_search_index_with_progress(
@@ -176,12 +175,12 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
     .expect("docs file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg.clone(), service_jobs)
+    let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
@@ -312,13 +311,13 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
     .expect("source file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg, service_jobs).with_target_local_source_runtime(
-        TargetLocalSourceRuntime::new(
+    let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
+        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
             embedder,
@@ -326,8 +325,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
-        ),
-    );
+        ));
 
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await

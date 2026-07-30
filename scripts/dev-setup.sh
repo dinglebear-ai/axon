@@ -211,7 +211,12 @@ fi
 
 cargo_install_if_missing cargo-nextest
 cargo_install_if_missing cargo-watch
-cargo_install_if_missing sccache
+
+if command -v kache >/dev/null 2>&1; then
+  ok "kache $(kache --version)"
+else
+  warn "kache not found (optional compiler cache) — install the mise-managed toolchain with: mise install"
+fi
 
 if command -v mold >/dev/null 2>&1; then
   ok "mold $(mold --version | head -1)"

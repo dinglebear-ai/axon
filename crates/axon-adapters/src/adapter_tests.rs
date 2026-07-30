@@ -341,7 +341,7 @@ fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
     assert_eq!(
         names,
         vec![
-            "web", "git", "feed", "session", "youtube", "reddit", "local", "registry", "cli_tool",
+            "web", "git", "feed", "sessions", "youtube", "reddit", "local", "registry", "cli_tool",
             "mcp_tool", "fake",
         ]
     );
