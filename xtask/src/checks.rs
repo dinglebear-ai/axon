@@ -13,6 +13,7 @@ pub mod dep_graph;
 pub mod doc_contracts;
 pub mod doc_links;
 pub mod env_staged;
+pub mod fetch_divergence;
 pub mod layering;
 pub mod mcp_http;
 pub mod no_mod_rs;

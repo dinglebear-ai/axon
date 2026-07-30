@@ -7,6 +7,9 @@
 //! the jobs migrations after calling [`open_pool`]). This lets read-only callers
 //! (stats) open an existing database without depending on the jobs crate.
 
+mod busy_retry;
+pub use busy_retry::{is_retryable_busy, message_is_retryable_busy, retry_on, with_busy_retry};
+
 use sqlx::sqlite::SqliteConnection;
 use sqlx::{
     SqlitePool,

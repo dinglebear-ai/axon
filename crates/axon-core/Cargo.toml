@@ -7,11 +7,20 @@ description = "Axon shared infrastructure: config, HTTP/SSRF, content transforms
 license = "MIT"
 
 [features]
+# Browser TLS/HTTP2 fingerprint impersonation via wreq (BoringSSL).
+# OFF by default: pulls BoringSSL (cmake/clang/perl/go, +8-12 min cold CI build).
+tls-fingerprinting = ["dep:wreq"]
 # Exposes #[cfg(test)] helpers (Config::test_default, LoopbackGuard, allow_loopback)
 # to downstream crates' test builds. Enabled by the axon crate's dev-dependency.
 test-util = []
 
 [dependencies]
+wreq = { version = "=6.0.0-rc.28", optional = true, default-features = false, features = [
+  "cookies",
+  "gzip",
+  "brotli",
+  "deflate",
+] }
 anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"

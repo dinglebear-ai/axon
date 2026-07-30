@@ -3,7 +3,7 @@ use super::sitemap::{
     request_timeout_secs,
 };
 use axon_core::config::Config;
-use axon_core::http::build_client;
+use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::log_info;
 use pulldown_cmark::{Event, Parser, Tag};
 use spider::url::Url;
@@ -69,7 +69,7 @@ pub async fn discover_llms_txt_urls(
     let llms_url = join_origin_path(&parsed, "/llms.txt")?;
 
     // SSRF-guarded client (redirect revalidation + DNS-rebind guard live here).
-    let client = build_client(request_timeout_secs(cfg), None)
+    let client = build_client(request_timeout_secs(cfg), Some(axon_ua()))
         .map_err(|e| format!("failed to build HTTP client for llms.txt discovery: {e}"))?;
 
     let Some(body) = fetch_text_with_retry(

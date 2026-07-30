@@ -263,6 +263,11 @@ lint-all:
 legacy-runtime-check:
     ./scripts/check_legacy_runtime_terms.sh
 
+# Web acquisition must go through axon_core::http::fetch_web (one ladder,
+# one place to fix). Fails on a new client built outside the allowlist.
+fetch-divergence-check:
+    cargo xtask check-fetch-divergence
+
 # TEST-M2 / PERF-C1: fail if block_on/block_in_place appears in the ask/retrieval hot path.
 blocking-async-check:
     ./scripts/check_no_blocking_async.sh
@@ -301,6 +306,7 @@ runtime-current:
 
 verify:
     just legacy-runtime-check
+    just fetch-divergence-check
     just blocking-async-check
     just primitive-inventory-check
     just validate-plugin
@@ -318,6 +324,7 @@ precommit:
     python3 scripts/check_compose_port_bindings.py --staged
     python3 scripts/enforce_no_legacy_symbols.py
     just legacy-runtime-check
+    just fetch-divergence-check
     just primitive-inventory-check
     if [ -f "$HOME/.claude/hooks/enforce_monoliths.py" ]; then python3 "$HOME/.claude/hooks/enforce_monoliths.py" --staged; elif [ -f "scripts/enforce_monoliths.py" ]; then python3 scripts/enforce_monoliths.py --staged; else echo "ERROR: enforce_monoliths.py not found" && exit 1; fi
     just fmt-check

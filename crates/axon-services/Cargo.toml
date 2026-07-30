@@ -98,6 +98,7 @@ libc = "0.2"
 workspace = true
 [features]
 test-util = []
+tls-fingerprinting = ["axon-adapters/tls-fingerprinting"]
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }

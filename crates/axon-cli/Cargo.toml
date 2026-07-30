@@ -74,6 +74,7 @@ url = "2"
 workspace = true
 [features]
 test-util = []
+tls-fingerprinting = ["axon-services/tls-fingerprinting"]
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
