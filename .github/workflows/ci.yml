@@ -138,6 +138,7 @@ jobs:
       - name: Repository and transport contracts
         run: |
           ./scripts/test-cargo-rustc-wrapper.sh
+          ./scripts/test-incus-bootstrap.sh
           retired='sol''dr|zc''cache|sc''cache'
           if rg -ni "$retired" \
             .github scripts/cargo-rustc-wrapper scripts/dev-setup.sh \
