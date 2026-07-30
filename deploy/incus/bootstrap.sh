@@ -209,9 +209,14 @@ done
 env_file_on_host="${AXON_ENV_FILE:-$HOME/.axon/.env}"
 [ -f "$env_file_on_host" ] || fatal "env file not found at $env_file_on_host"
 container_data_path="$(incus profile device get "$PROFILE_NAME" axon-data path 2>/dev/null || true)"
+container_data_source="$(incus profile device get "$PROFILE_NAME" axon-data source 2>/dev/null || true)"
 case "$container_data_path" in
   /*) ;;
   *) fatal "profile $PROFILE_NAME must define an absolute path for the axon-data device" ;;
+esac
+case "$container_data_source" in
+  /*) ;;
+  *) fatal "profile $PROFILE_NAME must define an absolute source for the axon-data device" ;;
 esac
 case "$container_data_path" in
   *[!A-Za-z0-9_./-]*) fatal "axon-data path contains unsupported characters: $container_data_path" ;;
@@ -277,7 +282,13 @@ fi
 ### profile keeps a migrated deployment compatible when its retained data is
 ### mounted at a different absolute path than a fresh profile.
 incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$DEPLOY_PATH/.env"
-incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
+host_env_canonical="$(readlink -f "$env_file_on_host")"
+mounted_env_canonical="$(readlink -f "$container_data_source/.env")"
+if [ "$host_env_canonical" = "$mounted_env_canonical" ]; then
+  log "native env already shares the host source; skipping a self-copy"
+else
+  incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
+fi
 
 ### 13. Bring up ONLY the nested-Docker services — qdrant (default mode)/tei/
 ### chrome, never axon itself (see split-model rationale at the top of this

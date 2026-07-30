@@ -92,7 +92,9 @@ delete them after the new deployment has been observed stable.
 `profile.yaml` in this directory is the source of truth for a fresh
 deployment. Existing profiles are intentionally not overwritten by the
 bootstrap; it reads their live `axon-data` device path before installing the
-native service. To apply the committed profile fresh:
+native service. When that device already exposes the host env file at the
+native path, the bootstrap detects the shared source and does not copy the
+file onto itself. To apply the committed profile fresh:
 
 ```bash
 incus profile create axon-container-profile
