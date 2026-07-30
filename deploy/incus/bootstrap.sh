@@ -84,7 +84,11 @@ else
 fi
 
 ### 3. Ensure running.
-state="$(incus list "$CONTAINER_NAME" --format csv -c s 2>/dev/null || echo "")"
+# `incus list <name>` treats the name as a filter, so a retained rollback
+# instance such as `axon-bookworm-*` also matches `axon`. Query the exact
+# instance instead or the combined RUNNING/STOPPED output causes an erroneous
+# attempt to start an already-running container.
+state="$(incus info "$CONTAINER_NAME" 2>/dev/null | awk -F': ' '$1 == "Status" { status=$2 } END { print status }')"
 if [ "$state" != "RUNNING" ]; then
   log "starting container (was: ${state:-absent})"
   incus start "$CONTAINER_NAME"
@@ -204,6 +208,19 @@ done
 ### axon-native systemd unit (16), and the actual push (13).
 env_file_on_host="${AXON_ENV_FILE:-$HOME/.axon/.env}"
 [ -f "$env_file_on_host" ] || fatal "env file not found at $env_file_on_host"
+container_data_path="$(incus profile device get "$PROFILE_NAME" axon-data path 2>/dev/null || true)"
+container_data_source="$(incus profile device get "$PROFILE_NAME" axon-data source 2>/dev/null || true)"
+case "$container_data_path" in
+  /*) ;;
+  *) fatal "profile $PROFILE_NAME must define an absolute path for the axon-data device" ;;
+esac
+case "$container_data_source" in
+  /*) ;;
+  *) fatal "profile $PROFILE_NAME must define an absolute source for the axon-data device" ;;
+esac
+case "$container_data_path" in
+  *[!A-Za-z0-9_./-]*) fatal "axon-data path contains unsupported characters: $container_data_path" ;;
+esac
 
 ### 9. Sync deploy artifacts (compose files + config/) into the container.
 ### Only used for the nested qdrant/tei/chrome services now — axon itself is
@@ -260,11 +277,18 @@ fi
 ### file at incus file push's default mode for the window between the two
 ### commands, readable by anything else in the same container in the
 ### meantime. Two copies are needed: $DEPLOY_PATH/.env for the nested-Docker
-### compose services, and /mnt/axon-data/.env for the native axon-native
-### systemd unit (step 16) — same secrets file, two paths each consumer reads
-### it from.
+### compose services, and the profile's live axon-data mount for the native
+### axon-native systemd unit (step 16). Reading the mount path from the
+### profile keeps a migrated deployment compatible when its retained data is
+### mounted at a different absolute path than a fresh profile.
 incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$DEPLOY_PATH/.env"
-incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME/mnt/axon-data/.env"
+host_env_canonical="$(readlink -f "$env_file_on_host")"
+mounted_env_canonical="$(readlink -f "$container_data_source/.env")"
+if [ "$host_env_canonical" = "$mounted_env_canonical" ]; then
+  log "native env already shares the host source; skipping a self-copy"
+else
+  incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
+fi
 
 ### 13. Bring up ONLY the nested-Docker services — qdrant (default mode)/tei/
 ### chrome, never axon itself (see split-model rationale at the top of this
@@ -332,7 +356,7 @@ incus exec "$CONTAINER_NAME" -- sh -c 'chmod 755 /usr/local/bin/axon.new && mv -
 ### in every case — a native axon-native unit inside this container always
 ### needs to listen on all interfaces to be reachable from the host/SWAG.
 log "installing axon-native systemd unit"
-cat > /tmp/axon-native.service <<'UNIT'
+cat > /tmp/axon-native.service <<UNIT
 [Unit]
 Description=Axon unified server (native binary, Incus-hosted)
 After=network-online.target docker.service
@@ -340,11 +364,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=/mnt/axon-data/.env
-Environment=AXON_HOME=/mnt/axon-data
-Environment=AXON_DATA_DIR=/mnt/axon-data
+EnvironmentFile=$container_data_path/.env
+Environment=AXON_HOME=$container_data_path
+Environment=AXON_DATA_DIR=$container_data_path
 Environment=AXON_HTTP_HOST=0.0.0.0
-WorkingDirectory=/mnt/axon-data
+WorkingDirectory=$container_data_path
 ExecStart=/usr/local/bin/axon serve
 Restart=always
 RestartSec=5
