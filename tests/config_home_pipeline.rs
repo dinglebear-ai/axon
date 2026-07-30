@@ -18,6 +18,7 @@ fn config_home_env_and_toml_are_loaded_before_command_parse() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("HOME", home.path())
+        .env_remove("AXON_DATA_DIR")
         .env_remove("AXON_ENV_FILE")
         .env_remove("AXON_CONFIG_PATH")
         .env_remove("QDRANT_URL")
@@ -50,6 +51,7 @@ fn symlinked_config_home_env_exits_before_repo_env_fallback() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("HOME", home.path())
+        .env_remove("AXON_DATA_DIR")
         .env_remove("AXON_ENV_FILE")
         .arg("status")
         .arg("--json")
@@ -78,6 +80,7 @@ fn unreadable_config_home_env_exits_before_repo_env_fallback() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_axon"))
         .env("HOME", home.path())
+        .env_remove("AXON_DATA_DIR")
         .env_remove("AXON_ENV_FILE")
         .arg("status")
         .arg("--json")

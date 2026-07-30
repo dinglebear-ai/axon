@@ -32,7 +32,6 @@ pub trait SourceResolver: Send + Sync {
 #[async_trait]
 pub trait SourceRouter: Send + Sync {
     async fn route(&self, source: ResolvedSource, request: &SourceRequest) -> Result<RoutePlan>;
-    async fn validate_options(&self, plan: &RoutePlan) -> Result<ValidatedOptions>;
     async fn capabilities(&self) -> Result<SourceRouterCapability>;
 }
 
@@ -158,16 +157,6 @@ impl SourceRouter for FakeSourceRouter {
             }
             FakeSourceRouteMode::Failure(error) => Err(error.clone()),
         }
-    }
-
-    async fn validate_options(&self, plan: &RoutePlan) -> Result<ValidatedOptions> {
-        if let FakeSourceRouteMode::Failure(error) = &self.mode {
-            return Err(error.clone());
-        }
-        Ok(ValidatedOptions {
-            values: plan.validated_options.values.clone(),
-            warnings: Vec::new(),
-        })
     }
 
     async fn capabilities(&self) -> Result<SourceRouterCapability> {

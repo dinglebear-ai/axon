@@ -38,8 +38,8 @@ use std::sync::Arc;
 use axon_api::source::{
     EnrichmentKind, EnrichmentStatus, GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate,
     GraphEvidence, GraphNodeCandidate, GraphWriteSummary, ItemKind, ManifestItem, MetadataMap,
-    ParserHint, PipelinePhase, SourceEnrichment, SourceId, SourceItemKey, SourceManifest,
-    StageCounts, StageId, StageResultHeader, Timestamp,
+    ParserHint, PipelinePhase, SourceEnrichment, SourceId, SourceItemKey, SourceKind,
+    SourceManifest, StageCounts, StageId, StageResultHeader, Timestamp,
 };
 use axon_graph::candidate::validate_candidate;
 use axon_graph::sqlite::SqliteGraphStore;
@@ -47,7 +47,6 @@ use axon_graph::store::GraphStore;
 use axon_ledger::store::LedgerStore;
 use sqlx::SqlitePool;
 
-use super::classify::SourceInputKind;
 use super::result_map::IndexCounts;
 
 /// Confidence stamped on baseline skeleton nodes/edges. These are structural
@@ -72,7 +71,7 @@ const PRODUCER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// summary (with `degraded = true`) rather than failing the index — the source
 /// is already acquired and published by the time this runs.
 pub async fn write_baseline_graph(
-    kind: SourceInputKind,
+    kind: SourceKind,
     pool: Option<Arc<SqlitePool>>,
     ledger: &dyn LedgerStore,
     counts: &IndexCounts,
@@ -253,7 +252,7 @@ fn degraded_summary() -> GraphWriteSummary {
 
 /// Assemble the baseline container + document skeleton for one source.
 fn build_candidate(
-    kind: SourceInputKind,
+    kind: SourceKind,
     counts: &IndexCounts,
     canonical_uri: &str,
     manifest: &SourceManifest,
@@ -374,20 +373,19 @@ fn document_stable_key(item: &ManifestItem) -> String {
 
 /// Registry node kind for the source container, chosen per acquisition family.
 /// Every returned name is a closed [`axon_graph::node::GraphNodeKind`] variant.
-fn container_node_kind(kind: SourceInputKind) -> &'static str {
+fn container_node_kind(kind: SourceKind) -> &'static str {
     match kind {
-        SourceInputKind::Web => "web_origin",
-        SourceInputKind::Git => "repo",
-        SourceInputKind::Local => "local_checkout",
-        SourceInputKind::Feed => "feed",
-        SourceInputKind::Reddit => "reddit_subreddit",
-        SourceInputKind::Youtube => "youtube_channel",
-        SourceInputKind::Session => "session",
-        SourceInputKind::Registry => "package",
-        SourceInputKind::CliTool | SourceInputKind::McpTool => "artifact",
-        SourceInputKind::Memory => "source",
-        SourceInputKind::Upload => "derived_source",
-        SourceInputKind::Unsupported => "source",
+        SourceKind::Web => "web_origin",
+        SourceKind::Git => "repo",
+        SourceKind::Local => "local_checkout",
+        SourceKind::Feed => "feed",
+        SourceKind::Reddit => "reddit_subreddit",
+        SourceKind::Youtube => "youtube_channel",
+        SourceKind::Session => "session",
+        SourceKind::Registry => "package",
+        SourceKind::CliTool | SourceKind::McpTool => "artifact",
+        SourceKind::Memory => "source",
+        SourceKind::Upload => "derived_source",
     }
 }
 
@@ -411,19 +409,18 @@ fn document_node_kind(item: &ManifestItem) -> &'static str {
 
 /// Registry containment edge kind (container → document) per family. Every
 /// returned name is a closed [`axon_graph::edge::GraphEdgeKind`] variant.
-fn containment_edge_kind(kind: SourceInputKind) -> &'static str {
+fn containment_edge_kind(kind: SourceKind) -> &'static str {
     match kind {
-        SourceInputKind::Web => "docs_site_contains_page",
-        SourceInputKind::Git => "commit_contains_file",
-        SourceInputKind::Local => "commit_contains_file",
-        SourceInputKind::Feed => "feed_contains_entry",
-        SourceInputKind::Reddit => "subreddit_has_thread",
-        SourceInputKind::Youtube => "youtube_channel_has_video",
-        SourceInputKind::Session => "session_has_turn",
-        SourceInputKind::Registry => "package_has_version",
-        SourceInputKind::CliTool | SourceInputKind::McpTool => "source_produced_artifact",
-        SourceInputKind::Memory | SourceInputKind::Upload => "source_indexed_as",
-        SourceInputKind::Unsupported => "source_produced_artifact",
+        SourceKind::Web => "docs_site_contains_page",
+        SourceKind::Git => "commit_contains_file",
+        SourceKind::Local => "commit_contains_file",
+        SourceKind::Feed => "feed_contains_entry",
+        SourceKind::Reddit => "subreddit_has_thread",
+        SourceKind::Youtube => "youtube_channel_has_video",
+        SourceKind::Session => "session_has_turn",
+        SourceKind::Registry => "package_has_version",
+        SourceKind::CliTool | SourceKind::McpTool => "source_produced_artifact",
+        SourceKind::Memory | SourceKind::Upload => "source_indexed_as",
     }
 }
 

@@ -1,6 +1,6 @@
 //! Markdown rendering and `SourceDocument` construction for registry
-//! packages — mirrors the shape of `pkg_*` fields the legacy npm/pypi
-//! vertical extractors emitted (`crates/axon-extract/src/verticals/{npm,pypi}.rs`).
+//! packages. The adapter emits the canonical package metadata shape directly;
+//! the shared pipeline does not rewrite registry documents after normalize.
 
 use axon_api::source::*;
 use serde_json::json;
@@ -46,24 +46,24 @@ pub(super) fn package_metadata(
     version: &RegistryDumpVersion,
 ) -> MetadataMap {
     let mut metadata = MetadataMap::new();
-    metadata.insert("source_family".to_string(), json!("registry"));
+    metadata.insert("source_family".to_string(), json!("package"));
     metadata.insert("source_kind".to_string(), json!("registry"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
-    metadata.insert("pkg_registry".to_string(), json!(dump.registry));
-    metadata.insert("pkg_name".to_string(), json!(dump.package));
-    metadata.insert("pkg_version".to_string(), json!(version.version));
+    metadata.insert("package_ecosystem".to_string(), json!(dump.registry));
+    metadata.insert("package_name".to_string(), json!(dump.package));
+    metadata.insert("package_version".to_string(), json!(version.version));
     if let Some(license) = dump.license.as_deref().filter(|value| !value.is_empty()) {
-        metadata.insert("pkg_license".to_string(), json!(license));
+        metadata.insert("package_license".to_string(), json!(license));
     }
     if let Some(author) = dump.author.as_deref().filter(|value| !value.is_empty()) {
-        metadata.insert("pkg_author".to_string(), json!(author));
+        metadata.insert("package_author".to_string(), json!(author));
     }
     if !dump.keywords.is_empty() {
-        metadata.insert("pkg_keywords".to_string(), json!(dump.keywords));
+        metadata.insert("package_keywords".to_string(), json!(dump.keywords));
     }
     if let Some(homepage) = dump.homepage.as_deref().filter(|value| !value.is_empty()) {
-        metadata.insert("pkg_homepage".to_string(), json!(homepage));
+        metadata.insert("package_homepage".to_string(), json!(homepage));
     }
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));

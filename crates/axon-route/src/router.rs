@@ -3,7 +3,7 @@
 use axon_api::{
     AdapterOptions, CapabilityBase, ChunkHint, ChunkProfile, ExecutionAffinity, HealthStatus,
     MetadataMap, ProviderRequirement, ResolvedSource, RoutePlan, SafetyClass, SourceKind,
-    SourceRequest, SourceRouterCapability, ValidatedOptions,
+    SourceRequest, SourceRouterCapability,
 };
 use axon_error::{ApiError, ErrorStage};
 
@@ -223,21 +223,6 @@ impl boundary::SourceRouter for SourceRouter {
         request: &SourceRequest,
     ) -> boundary::Result<RoutePlan> {
         self.route(request, source)
-    }
-
-    // TODO(#298): this is a pass-through echo, not a real re-validation. A
-    // `RoutePlan` cannot yield an invalid state (`route()` above already
-    // errors before constructing one), and `RoutePlan` doesn't carry the
-    // `RouteSecurityPolicy`/`AdapterDefinition` needed to re-run the real
-    // option-key/tool-execution checks performed by the private
-    // `validate_options` gate above. Flagged for the pipeline-unification
-    // cutover to decide whether this method should become a genuine
-    // idempotent re-check or be dropped from the contract.
-    async fn validate_options(&self, plan: &RoutePlan) -> boundary::Result<ValidatedOptions> {
-        Ok(ValidatedOptions {
-            values: plan.validated_options.values.clone(),
-            warnings: Vec::new(),
-        })
     }
 
     async fn capabilities(&self) -> boundary::Result<SourceRouterCapability> {

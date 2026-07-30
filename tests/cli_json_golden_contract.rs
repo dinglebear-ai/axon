@@ -3,8 +3,8 @@
 //!
 //! Each test runs the freshly built `axon` binary against an isolated,
 //! throwaway `HOME`/`AXON_DATA_DIR` so output is deterministic and does not
-//! depend on the operator's real `~/.axon` state. The only non-deterministic
-//! substring is the tempdir path itself, which is normalized to `<TMPDIR>`
+//! depend on the operator's real `~/.axon` state. The tempdir path and
+//! build-identity values that change on every commit or release are normalized
 //! before comparing against the checked-in fixture.
 //!
 //! To intentionally update a fixture after reviewing a real contract change,
@@ -72,9 +72,23 @@ fn run_json_isolated(args: &[&str], extra_envs: &[(&str, &str)]) -> String {
 fn assert_json_snapshot(args: &[&str], extra_envs: &[(&str, &str)], fixture: &str) {
     let actual = run_json_isolated(args, extra_envs);
     let expected = json_fixture(fixture);
-    let actual_value: serde_json::Value = serde_json::from_str(actual.trim()).unwrap_or_else(|e| {
-        panic!("actual stdout for args={args:?} is not valid JSON: {e}\nstdout={actual}")
-    });
+    let mut actual_value: serde_json::Value =
+        serde_json::from_str(actual.trim()).unwrap_or_else(|e| {
+            panic!("actual stdout for args={args:?} is not valid JSON: {e}\nstdout={actual}")
+        });
+    if let Some(identity) = actual_value
+        .get_mut("build_identity")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        identity.insert(
+            "git_sha".to_owned(),
+            serde_json::Value::String("<GIT_SHA>".to_owned()),
+        );
+        identity.insert(
+            "version".to_owned(),
+            serde_json::Value::String("<VERSION>".to_owned()),
+        );
+    }
     let expected_value: serde_json::Value = serde_json::from_str(&expected)
         .unwrap_or_else(|e| panic!("fixture {fixture} is not valid JSON: {e}"));
     assert_eq!(

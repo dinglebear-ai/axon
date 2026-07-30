@@ -209,7 +209,8 @@ async fn sqlite_migration_creates_required_ledger_tables() {
             'source_manifests',
             'document_status',
             'cleanup_debt',
-            'leases'
+            'leases',
+            'source_publication_state'
           )
         ORDER BY name
         "#,
@@ -227,6 +228,7 @@ async fn sqlite_migration_creates_required_ledger_tables() {
             "source_generations",
             "source_items",
             "source_manifests",
+            "source_publication_state",
             "sources",
         ]
     );

@@ -9,7 +9,8 @@ use axon_api::source::*;
 
 use super::helpers::*;
 use super::{
-    ACQUIRE_BATCH_SIZE, NonWebPipelineInput, SourceEventEmitter, metadata, publish, vectorize,
+    ACQUIRE_BATCH_SIZE, NonWebPipelineInput, SOURCE_LEASE_TTL_SECONDS, SourceEventEmitter,
+    metadata, publish, vectorize,
 };
 use crate::context::TargetLocalSourceRuntime;
 use crate::source::progress;
@@ -46,8 +47,6 @@ pub(super) async fn run_created_generation(
             .ensure_collection(collection.clone())
             .await?;
     }
-    let sanitize_session_chunks = input.plan.route.source.source_kind == SourceKind::Session;
-
     let mut vectorized = vectorize::VectorizeResult::default();
     let mut artifacts = Vec::new();
     let mut warnings = Vec::new();
@@ -84,8 +83,6 @@ pub(super) async fn run_created_generation(
         let mut documents = normalized.data;
         apply_enrichments(&mut documents, &enrichments);
         let enrichment_graph = enrichment_graph_candidates(&enrichments);
-        metadata::sanitize_documents(input.plan.route.source.source_kind, &mut documents);
-
         record_running_phase(
             runtime,
             input,
@@ -99,7 +96,6 @@ pub(super) async fn run_created_generation(
             input,
             documents,
             &enrichment_graph,
-            sanitize_session_chunks,
             &generation.generation,
             collection.clone(),
             emitter,
@@ -122,6 +118,50 @@ pub(super) async fn run_created_generation(
 
 #[allow(clippy::too_many_arguments)]
 async fn publish_created_generation(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    lease: &LeaseGuard,
+    manifest: SourceManifest,
+    diff: SourceManifestDiff,
+    generation: SourceGeneration,
+    previous: Option<SourceSummary>,
+    collection: CollectionSpec,
+    vectorized: vectorize::VectorizeResult,
+    artifacts: Vec<ArtifactRef>,
+) -> anyhow::Result<IndexCounts> {
+    let finalizer = runtime
+        .ledger
+        .acquire_lease(LeaseRequest {
+            lease_key: format!("publication:{}", generation.source_id.0),
+            owner_id: input.owner_id.to_string(),
+            ttl_seconds: SOURCE_LEASE_TTL_SECONDS,
+            job_id: Some(input.plan.job_id),
+            metadata: MetadataMap::new(),
+        })
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("source publication finalizer is already leased"))?;
+    let result = publish_created_generation_under_finalizer(
+        runtime, input, emitter, lease, manifest, diff, generation, previous, collection,
+        vectorized, artifacts,
+    )
+    .await;
+    let release = runtime
+        .ledger
+        .release_lease(finalizer.lease_id, input.owner_id.to_string())
+        .await;
+    match (result, release) {
+        (Ok(counts), Ok(())) => Ok(counts),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(_), Err(err)) => Err(err.into()),
+        (Err(err), Err(release_err)) => Err(err.context(format!(
+            "source publication finalizer release also failed: {release_err}"
+        ))),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn publish_created_generation_under_finalizer(
     runtime: &TargetLocalSourceRuntime,
     input: &NonWebPipelineInput<'_>,
     emitter: &SourceEventEmitter,

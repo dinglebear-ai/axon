@@ -5,9 +5,12 @@
 //! into canonical manifest items; crawl output directories and
 //! `manifest.jsonl` are not part of this contract.
 
+use std::sync::Arc;
+
 use axon_api::source::*;
 
 use crate::adapter::Result;
+use crate::boundary::FetchProvider;
 
 use super::manifest_items::web_manifest_item;
 use super::options::build_discovery_config;
@@ -28,10 +31,11 @@ fn finalize_items(mut items: Vec<ManifestItem>, limit: usize) -> Vec<ManifestIte
 pub(super) async fn manifest_items(
     plan: &SourcePlan,
     refresh_content: bool,
+    fetch: Arc<dyn FetchProvider>,
 ) -> Result<ManifestDiscovery> {
     let start_url = plan.route.source.canonical_uri.clone();
     let cfg = build_discovery_config(plan);
-    let result = crate::web_engine::engine::discover_site_urls(&cfg, &start_url)
+    let result = crate::web_engine::engine::discover_site_urls(&cfg, &start_url, fetch)
         .await
         .map_err(|err| {
             ApiError::new(

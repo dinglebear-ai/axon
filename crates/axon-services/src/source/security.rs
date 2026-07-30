@@ -1,11 +1,9 @@
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
-use axon_api::source::{AuthMode, AuthScope, AuthSnapshot};
+use axon_api::source::{AuthMode, AuthScope, AuthSnapshot, SourceKind};
 use axon_core::http::validate_url;
 use axon_error::{ApiError, ErrorStage};
-
-use super::classify::SourceInputKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceSecurityError {
@@ -94,10 +92,10 @@ pub fn redact_local_path_for_public_payload(path: &str) -> String {
 
 pub(crate) fn authorize_local_source_policy(
     input: &str,
-    kind: SourceInputKind,
+    kind: SourceKind,
     auth_snapshot: Option<&AuthSnapshot>,
 ) -> Result<(), ApiError> {
-    if kind != SourceInputKind::Local {
+    if kind != SourceKind::Local {
         return Ok(());
     }
     let has_local_scope = auth_snapshot
@@ -108,11 +106,11 @@ pub(crate) fn authorize_local_source_policy(
 
 pub(crate) fn authorize_local_source_allowed_roots(
     input: &str,
-    kind: SourceInputKind,
+    kind: SourceKind,
     auth_snapshot: Option<&AuthSnapshot>,
     allowed_roots: &[PathBuf],
 ) -> Result<(), ApiError> {
-    if kind != SourceInputKind::Local
+    if kind != SourceKind::Local
         || auth_snapshot.is_some_and(|snapshot| snapshot.auth_mode == AuthMode::TrustedLocal)
     {
         return Ok(());

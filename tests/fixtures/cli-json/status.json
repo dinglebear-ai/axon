@@ -1,4 +1,10 @@
 {
+  "build_identity": {
+    "build_profile": "debug",
+    "git_sha": "<GIT_SHA>",
+    "schema_epoch": 1,
+    "version": "<VERSION>"
+  },
   "degraded": false,
   "warnings": [],
   "jobs": [],

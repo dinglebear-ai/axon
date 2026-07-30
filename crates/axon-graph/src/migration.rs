@@ -25,11 +25,18 @@ pub const MIGRATION_NAMESPACE: &str = "graph";
 /// (`CREATE ... IF NOT EXISTS`). The standalone `SqliteGraphStore::connect`
 /// path still calls [`ensure_schema`], but the production runtime shares one
 /// SQLite pool and gets these tables from the unified runner in `axon-jobs`.
-pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
-    version: 1,
-    name: "0001_create_graph_tables",
-    sql: include_str!("migrations/0001_create_graph_tables.sql"),
-}];
+pub const MIGRATIONS: &[SqlMigration] = &[
+    SqlMigration {
+        version: 1,
+        name: "0001_create_graph_tables",
+        sql: include_str!("migrations/0001_create_graph_tables.sql"),
+    },
+    SqlMigration {
+        version: 2,
+        name: "0002_publication_state",
+        sql: include_str!("migrations/0002_publication_state.sql"),
+    },
+];
 
 /// The graph [`MigrationSet`] for composition into the unified runner.
 pub fn migration_set() -> MigrationSet {
@@ -119,6 +126,17 @@ const SCHEMA: &[&str] = &[
     )",
     "CREATE INDEX IF NOT EXISTS idx_graph_conflicts_target
         ON graph_conflicts (target_kind, target_id)",
+    "CREATE TABLE IF NOT EXISTS graph_publication_state (
+        source_id            TEXT PRIMARY KEY NOT NULL,
+        committed_epoch      INTEGER NOT NULL DEFAULT 0,
+        previous_epoch       INTEGER,
+        finalizer_lease_id   TEXT,
+        finalizer_owner_id   TEXT,
+        finalizer_expires_at TEXT,
+        updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+    )",
+    "CREATE INDEX IF NOT EXISTS idx_graph_publication_state_finalizer_expiry
+        ON graph_publication_state (finalizer_expires_at)",
 ];
 
 /// Create the graph schema if it does not already exist, and enable foreign

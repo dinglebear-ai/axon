@@ -37,12 +37,13 @@ use self::project_filter::matches_project_filter;
 pub use self::selection::{
     SessionProvider, SessionRoots, ValidatedSessionPath, has_supported_session_extension,
     validate_event_path_missing_ok, validate_session_file_path, validate_session_source_path,
+    validate_session_source_path_async,
 };
 pub use self::target::{SessionTarget, parse_session_target};
 
 pub const MODULE_NAME: &str = "sessions";
 
-const ADAPTER_NAME: &str = "session";
+const ADAPTER_NAME: &str = "sessions";
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionSourceAdapter;
@@ -65,13 +66,15 @@ impl SessionSourceAdapter {
                 err.to_string(),
             )
         })?;
-        let path = validate_session_source_path(roots, provider, Path::new(&target.session_id))
-            .map_err(|err| {
-                crate::acquisition::materialization_error(
-                    "adapter.session.selection_denied",
-                    err.to_string(),
-                )
-            })?;
+        let path =
+            validate_session_source_path_async(roots, provider, Path::new(&target.session_id))
+                .await
+                .map_err(|err| {
+                    crate::acquisition::materialization_error(
+                        "adapter.session.selection_denied",
+                        err.to_string(),
+                    )
+                })?;
         plan.route
             .validated_options
             .values
@@ -89,7 +92,7 @@ impl SourceAdapter for SessionSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -166,13 +169,15 @@ fn session_capability(version: &str) -> AdapterCapability {
             version: version.to_string(),
         },
         SourceKind::Session,
-        SourceScope::Thread,
+        SourceScope::File,
     )
-    .with_scope(SourceScope::File)
+    .with_scope(SourceScope::Directory)
+    .with_scope(SourceScope::Thread)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    session_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    session_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = session_target(plan)?;
     let root = sessions_root(plan)?;

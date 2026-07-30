@@ -12,9 +12,9 @@ use super::local_source_progress::{LocalSourceProgress, source_error_from_api_er
 use super::{LocalSourceIndexInput, LocalSourceIndexOutput, index_local_source_with_progress};
 
 /// Create a source job row, index the local source under it, and record
-/// terminal job status. Used by callers that always own the job outright —
-/// no worker has already claimed one for this run (e.g. code-search
-/// auto-refresh, `query/code_search_refresh.rs`).
+/// terminal job status. This legacy helper is retained for focused migration
+/// characterization; production code-search refresh uses the canonical source
+/// route instead.
 pub async fn index_local_source_with_job(
     mut input: LocalSourceIndexInput,
     jobs: &dyn JobStore,
@@ -63,10 +63,9 @@ async fn reject_symlinked_source_root(root: &Path) -> anyhow::Result<()> {
 }
 
 /// Shared indexing + terminal-status bookkeeping, used by
-/// `index_local_source_with_job` above (the sole remaining caller —
-/// `code_search_refresh.rs`'s code-search auto-refresh, which always owns
-/// its job outright). The unified `source::dispatch::dispatch_local` path no
-/// longer has a counterpart entry point here: it routes through the shared
+/// `index_local_source_with_job` above. The unified
+/// `source::dispatch::dispatch_local` path no longer has a counterpart entry
+/// point here: it routes through the shared
 /// `non_web` runner instead (finding C1;
 /// `source/dispatch/local.rs`), which already has its own
 /// `owns_status`-equivalent handling of a worker-claimed parent job id via
@@ -253,12 +252,6 @@ fn redact_local_root(message: &str, root: &Path) -> String {
     let root_display = root.display().to_string();
     if !root_display.is_empty() {
         redacted = redacted.replace(&root_display, "<local-source-root>");
-    }
-    if let Ok(canonical) = std::fs::canonicalize(root) {
-        let canonical_display = canonical.display().to_string();
-        if !canonical_display.is_empty() {
-            redacted = redacted.replace(&canonical_display, "<local-source-root>");
-        }
     }
     redacted
 }

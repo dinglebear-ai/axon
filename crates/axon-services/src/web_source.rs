@@ -96,6 +96,15 @@ pub struct WebSourceIndexInput {
     pub vector_reservations: Arc<ProviderReservationManager>,
 }
 
+impl WebSourceIndexInput {
+    pub(crate) fn source_adapter(&self) -> Arc<dyn SourceAdapter> {
+        Arc::new(WebSourceAdapter::new(
+            Arc::clone(&self.fetch_provider),
+            Arc::clone(&self.render_provider),
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct WebSourceIndexOutput {
     pub job_id: JobId,
@@ -121,6 +130,17 @@ pub async fn index_web_source(
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
 ) -> anyhow::Result<WebSourceIndexOutput> {
+    let adapter = input.source_adapter();
+    index_web_source_with_adapter(input, adapter, ledger, embedding_provider, vector_store).await
+}
+
+pub(crate) async fn index_web_source_with_adapter(
+    input: WebSourceIndexInput,
+    adapter: Arc<dyn SourceAdapter>,
+    ledger: &dyn LedgerStore,
+    embedding_provider: &dyn EmbeddingProvider,
+    vector_store: &dyn VectorStore,
+) -> anyhow::Result<WebSourceIndexOutput> {
     let run = resolve_web_run(&input)?;
     let previous_source = ledger.get_source(run.source_id.clone()).await?;
     ledger.upsert_source(source_summary(&input, &run)).await?;
@@ -136,16 +156,28 @@ pub async fn index_web_source(
         .ok_or_else(|| {
             anyhow::anyhow!("web source refresh already running for {}", run.source_id.0)
         })?;
-    let result = index_web_source_with_lease(
+    let events = crate::source::events::SourceEventEmitter::for_web(
+        input.event_store.clone(),
+        input.job_id,
+        input.scope,
+    )
+    .with_source(run.source_id.clone(), run.canonical_uri.clone())
+    .with_attempt(input.attempt);
+    let result = run_web_pipeline(
         &input,
+        adapter,
         ledger,
         embedding_provider,
         vector_store,
         previous_source,
         run,
         &lease,
+        &events,
     )
     .await;
+    if let Err(error) = &result {
+        crate::source::progress::pipeline_failed(&events, error).await;
+    }
     let release = ledger.release_lease(lease.lease_id, input.owner_id).await;
     match (result, release) {
         (Ok(output), Ok(())) => Ok(output),
@@ -159,42 +191,10 @@ pub async fn index_web_source(
     }
 }
 
-async fn index_web_source_with_lease(
-    input: &WebSourceIndexInput,
-    ledger: &dyn LedgerStore,
-    embedding_provider: &dyn EmbeddingProvider,
-    vector_store: &dyn VectorStore,
-    previous_source: Option<SourceSummary>,
-    run: WebAdapterRun,
-    lease: &LeaseGuard,
-) -> anyhow::Result<WebSourceIndexOutput> {
-    let events = crate::source::events::SourceEventEmitter::for_web(
-        input.event_store.clone(),
-        input.job_id,
-        input.scope,
-    )
-    .with_source(run.source_id.clone(), run.canonical_uri.clone())
-    .with_attempt(input.attempt);
-    let result = run_web_pipeline(
-        input,
-        ledger,
-        embedding_provider,
-        vector_store,
-        previous_source,
-        run,
-        lease,
-        &events,
-    )
-    .await;
-    if let Err(error) = &result {
-        crate::source::progress::pipeline_failed(&events, error).await;
-    }
-    result
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn run_web_pipeline(
     input: &WebSourceIndexInput,
+    adapter: Arc<dyn SourceAdapter>,
     ledger: &dyn LedgerStore,
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
@@ -205,10 +205,6 @@ async fn run_web_pipeline(
 ) -> anyhow::Result<WebSourceIndexOutput> {
     use crate::source::progress;
 
-    let adapter = WebSourceAdapter::new(
-        Arc::clone(&input.fetch_provider),
-        Arc::clone(&input.render_provider),
-    );
     events
         .running(PipelinePhase::Discovering, "discovering web source items")
         .await;

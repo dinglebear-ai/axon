@@ -5,7 +5,6 @@ use serde_json::{Value, json};
 
 use super::SchemaFamily;
 use super::artifact::SchemaArtifact;
-use super::registry::CANONICAL_ENUMS;
 use super::rel;
 use super::schema_json::{json_string, schema_defs};
 use super::source_input::source_inputs;
@@ -40,9 +39,7 @@ mod vector_payload;
 use super::removed;
 use bundles::registry_schema_bundle;
 pub(super) use bundles::{enum_defs, schema_bundle, schema_id};
-use markdown_render::{
-    api_markdown, enum_markdown, markdown, registry_markdown, registry_projection_markdown,
-};
+use markdown_render::{markdown, registry_markdown, registry_projection_markdown};
 
 pub trait FamilyGenerator {
     fn generate(&self, root: &Path) -> Result<Vec<SchemaArtifact>>;
@@ -177,8 +174,12 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             rel("docs/reference/api/schemas.json"),
             json_string(&schema)?,
         ),
-        SchemaArtifact::new(rel("docs/reference/api/dto.md"), api_markdown(&inputs)),
-        SchemaArtifact::new(rel("docs/reference/api/enums.md"), enum_markdown()),
+        // docs/reference/api/dto.md and api/enums.md are owned by the docs
+        // generator (`cargo xtask docs generate --family api`), which emits the
+        // substantive human reference rather than the skeleton this family
+        // produced. Declaring them here too made `schemas generate --check` and
+        // `docs generate --check` mutually unsatisfiable as soon as the API
+        // types changed. One owner per artifact path.
     ])
 }
 

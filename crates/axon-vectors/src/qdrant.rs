@@ -52,6 +52,7 @@ pub const MODULE_NAME: &str = "qdrant";
 /// generously — it exists purely to fold live write/delete/search outcomes
 /// into `capabilities()`, not to gate concurrency.
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
+const DEFAULT_POINT_BUFFER: usize = 1024;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 
@@ -68,6 +69,7 @@ static COLLECTION_SPEC_CACHE_EPOCHS: OnceLock<Mutex<HashMap<String, u64>>> = Onc
 pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
+    point_buffer: usize,
     health: ProviderReservationManager,
     collection_specs: Arc<RwLock<HashMap<String, (u64, CollectionSpec)>>>,
 }
@@ -75,6 +77,17 @@ pub struct QdrantVectorStore {
 impl QdrantVectorStore {
     /// Build a store for the Qdrant instance at `url`.
     pub fn new(url: impl Into<String>, provider_id: impl Into<String>) -> Self {
+        Self::new_with_point_buffer(url, provider_id, DEFAULT_POINT_BUFFER)
+    }
+
+    /// Build a store using the configured point-buffer limit for each REST
+    /// upsert. Keeping the limit on the store makes the runtime configuration
+    /// the sole source of truth instead of duplicating it in the writer.
+    pub fn new_with_point_buffer(
+        url: impl Into<String>,
+        provider_id: impl Into<String>,
+        point_buffer: usize,
+    ) -> Self {
         let provider_id = ProviderId::new(provider_id);
         let health = ProviderReservationManager::new(ProviderReservationConfig {
             provider_id: provider_id.clone(),
@@ -87,9 +100,14 @@ impl QdrantVectorStore {
         Self {
             url: url.into(),
             provider_id,
+            point_buffer: point_buffer.max(1),
             health,
             collection_specs: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    pub fn point_buffer(&self) -> usize {
+        self.point_buffer
     }
 
     /// The configured Qdrant URL (may embed credentials — do not log).
@@ -139,6 +157,12 @@ impl QdrantVectorStore {
         }
         result
     }
+}
+
+/// Apply the runtime point-buffer setting without exposing another provider
+/// construction/method operation to orchestration-layer callers.
+pub fn configure_point_buffer(store: &mut QdrantVectorStore, point_buffer: usize) {
+    store.point_buffer = point_buffer.max(1);
 }
 
 fn collection_spec_cache_epochs() -> &'static Mutex<HashMap<String, u64>> {

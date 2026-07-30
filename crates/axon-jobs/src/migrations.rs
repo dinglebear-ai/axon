@@ -33,11 +33,18 @@ mod identity;
 ///
 /// The clean-break jobs schema is a single canonical baseline. Older stores
 /// are rejected by the cutover audit and must be reset instead of migrated.
-pub const JOBS_MIGRATIONS: &[SqlMigration] = &[SqlMigration {
-    version: 1,
-    name: "0001_canonical_jobs",
-    sql: include_str!("migrations/0001_canonical_jobs.sql"),
-}];
+pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
+    SqlMigration {
+        version: 1,
+        name: "0001_canonical_jobs",
+        sql: include_str!("migrations/0001_canonical_jobs.sql"),
+    },
+    SqlMigration {
+        version: 2,
+        name: "0002_provider_scheduler",
+        sql: include_str!("migrations/0002_provider_scheduler.sql"),
+    },
+];
 
 /// Namespace under which the composed runner tracks jobs migrations.
 pub const JOBS_NAMESPACE: &str = "jobs";

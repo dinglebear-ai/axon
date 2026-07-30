@@ -232,6 +232,21 @@ fn shared_field_schema(field: &str) -> Value {
             ],
             "x-qdrant-index": "integer"
         }),
+        // Epoch fields mirror the generation types: `born_epoch` is stamped
+        // from `source_generation` (always present), while `retired_epoch` is
+        // null until the point is superseded. Runtime validation in
+        // `axon_vectors::payload` accepts null-or-non-negative-integer for
+        // both, and the collection indexes them as `PayloadFieldSchema::Integer`.
+        "born_epoch" => {
+            json!({ "type": "integer", "minimum": 0, "x-qdrant-index": "integer" })
+        }
+        "retired_epoch" => json!({
+            "anyOf": [
+                { "type": "integer", "minimum": 0, "x-qdrant-index": "integer" },
+                { "type": "null" }
+            ],
+            "x-qdrant-index": "integer"
+        }),
         "embedding_dimensions" => {
             json!({ "type": "integer", "minimum": 1, "x-qdrant-index": "integer" })
         }
@@ -398,6 +413,13 @@ fn required_example_value(field: &str, family: &str) -> Value {
         // Null until a publisher commits the generation (never the string
         // "uncommitted" -- see `axon_vectors::payload::validate_generations`).
         "committed_generation" => Value::Null,
+        // Epoch fields mirror the generation types and are validated by
+        // `axon_vectors::payload::validate_generations` as non-negative
+        // integer or null -- never the field-name string the `_` arm would
+        // otherwise produce. `born_epoch` is stamped from `source_generation`
+        // at publish; `retired_epoch` stays null until the point is superseded.
+        "born_epoch" => json!(7),
+        "retired_epoch" => Value::Null,
         "document_id" => json!(format!("doc-{family}")),
         "chunk_id" => json!(format!("chunk-{family}-0")),
         "chunk_locator" => json!({

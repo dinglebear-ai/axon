@@ -13,8 +13,8 @@ use axon_services::system::{
     map_doctor_payload, map_domains_payload, map_sources_payload, map_stats_payload,
 };
 use axon_services::types::{
-    DoctorResult, DomainFacet, DomainsResult, Pagination, SourcesResult, StatsResult, StatusResult,
-    StatusTotals,
+    BuildIdentity, DoctorResult, DomainFacet, DomainsResult, Pagination, SourcesResult,
+    StatsResult, StatusResult, StatusTotals,
 };
 
 // ── SourcesResult shape ───────────────────────────────────────────────────────
@@ -154,6 +154,12 @@ fn status_result_payload_and_text_are_both_present() {
     });
     let text = "Axon Status\nsource jobs:  0\nextract jobs: 0".to_string();
     let result = StatusResult {
+        build_identity: BuildIdentity {
+            version: "0.0.0-test".to_string(),
+            git_sha: "unknown".to_string(),
+            build_profile: "test".to_string(),
+            schema_epoch: 1,
+        },
         payload: payload.clone(),
         text: text.clone(),
         totals: StatusTotals::default(),

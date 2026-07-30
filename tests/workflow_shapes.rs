@@ -495,6 +495,19 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 }
 
 #[test]
+fn live_rag_uses_a_dynamic_tei_host_port() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let live_rag = workflow_job_block(workflow, "live-rag-pr");
+    assert!(live_rag.contains("-p 127.0.0.1::80"));
+    assert!(live_rag.contains("docker port axon-tei 80/tcp"));
+    assert!(live_rag.contains("echo \"TEI_URL=http://127.0.0.1:$tei_port\""));
+    assert!(
+        !live_rag.contains("-p 52000:80"),
+        "hosted runners must not assume the production TEI port is free"
+    );
+}
+
+#[test]
 fn ci_runs_docs_and_chrome_contract_checks() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let contracts = workflow_job_block(workflow, "rust-contracts");

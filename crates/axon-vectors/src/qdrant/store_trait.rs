@@ -3,7 +3,9 @@ use axon_api::source::*;
 
 use super::QdrantVectorStore;
 use super::capability_snapshot;
-use super::commit::{mark_generation_committed_rest, mark_unchanged_items_committed_rest};
+use super::commit::{
+    mark_generation_committed_rest, mark_unchanged_items_committed_rest, retire_generation_rest,
+};
 use crate::store::{Result, VectorStore};
 
 #[async_trait]
@@ -47,6 +49,28 @@ impl VectorStore for QdrantVectorStore {
                 previous_generation,
                 committed_generation,
                 source_item_keys,
+            )
+            .await,
+        )
+        .await
+    }
+
+    async fn retire_generation(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        retired_epoch: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        let http = self.http()?;
+        self.track(
+            retire_generation_rest(
+                self,
+                &http,
+                collection,
+                source_id,
+                generation,
+                retired_epoch,
             )
             .await,
         )

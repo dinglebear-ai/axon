@@ -72,6 +72,9 @@ fn retrieve_visibility_filter_adds_must_not() {
             { "key": "redaction_status", "match": { "value": "failed" } }
         ])
     );
+    assert!(filter["must"].as_array().is_some_and(|conditions| {
+        conditions.contains(&json!({ "is_null": { "key": "retired_epoch" } }))
+    }));
 }
 
 #[test]

@@ -44,9 +44,6 @@ fn tracked_fetchers_are_listed_but_still_flagged_as_tracked() {
     let reason = is_exception("crates/axon-extract/src/verticals/reddit.rs")
         .expect("tracked vertical must resolve to a reason");
     assert!(reason.contains("TRACKED"), "{reason}");
-    let map_reason = is_exception("crates/axon-adapters/src/web_engine/engine/map.rs")
-        .expect("resolve_map_seed_url is a tracked shared-client fetch");
-    assert!(map_reason.contains("TRACKED"), "{map_reason}");
 }
 
 #[test]

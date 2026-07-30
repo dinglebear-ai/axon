@@ -284,7 +284,8 @@ async fn build_suggest_prompt_context(
     let index_dedup_limit =
         axon_core::env::env_usize_clamped("AXON_SUGGEST_INDEX_LIMIT", 50_000, 100, 500_000);
 
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), SUGGEST_VECTOR_PROVIDER_ID);
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), SUGGEST_VECTOR_PROVIDER_ID);
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
 
     // Fetch indexed URLs for duplicate filtering first. The domain facet is only
     // fallback context, so it must not delay a required scan failure.

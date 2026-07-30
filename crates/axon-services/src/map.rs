@@ -1,12 +1,11 @@
 use crate::context::ServiceContext;
 use crate::events::{LogLevel, ServiceEvent, emit};
-use crate::source::classify::SourceInputKind;
 use crate::source::dispatch::web_options::web_crawl_options;
 use crate::source::routing::resolve_source_route;
 use crate::types::{MapOptions, MapResult};
 use axon_api::source::{
-    LifecycleStatus, MetadataMap, SourceIntent, SourceManifest, SourceRequest, SourceResult,
-    SourceScope,
+    LifecycleStatus, MetadataMap, SourceIntent, SourceKind, SourceManifest, SourceRequest,
+    SourceResult, SourceScope,
 };
 use axon_core::config::Config;
 use std::error::Error;
@@ -39,7 +38,7 @@ pub async fn discover_with_context(
             ));
         }
     };
-    if routed.kind != SourceInputKind::Web {
+    if routed.kind != SourceKind::Web {
         emit_unsupported_kind(&tx, url, routed.kind).await;
         return Ok(unsupported_map_result(
             url,
@@ -136,7 +135,7 @@ async fn route_map_request(
 async fn emit_unsupported_kind(
     tx: &Option<mpsc::Sender<ServiceEvent>>,
     url: &str,
-    kind: SourceInputKind,
+    kind: SourceKind,
 ) {
     emit(
         tx,

@@ -183,7 +183,9 @@ fn target_code_search_request(
             "committed_generation"
         )?),
     );
-    filters.insert("visibility".to_string(), json!("public"));
+    // Code-search indexes are local/internal data. The refresh path must not
+    // relabel them public merely to make this specialized reader work.
+    filters.insert("visibility".to_string(), json!("internal"));
     filters.insert("redaction_status".to_string(), json!("clean"));
     if let Some(prefix) = path_prefix {
         filters.insert("path_prefix".to_string(), json!(prefix));
@@ -411,12 +413,13 @@ pub(crate) async fn resolve_code_search_root(
             return Err("code_search MCP requests must provide cwd".into());
         }
     };
-    let canonical_cwd =
-        std::fs::canonicalize(&cwd).map_err(|_| "code_search cwd could not be resolved")?;
+    let canonical_cwd = tokio::fs::canonicalize(&cwd)
+        .await
+        .map_err(|_| "code_search cwd could not be resolved")?;
     let git_root = git_toplevel(&canonical_cwd).await?;
     reject_unsafe_code_root(&git_root)?;
     if matches!(caller, CodeSearchCaller::Mcp) {
-        let allowed = CodeSearchAllowedRoots::from_env()?;
+        let allowed = CodeSearchAllowedRoots::from_env().await?;
         if !allowed.contains(&git_root) {
             return Err(code_search_outside_allowed_roots_message().into());
         }
@@ -453,7 +456,7 @@ async fn git_toplevel(cwd: &Path) -> Result<PathBuf, Box<dyn Error + Send + Sync
     if root.is_empty() {
         return Err("git rev-parse returned an empty repository root".into());
     }
-    std::fs::canonicalize(root).map_err(Into::into)
+    tokio::fs::canonicalize(root).await.map_err(Into::into)
 }
 
 fn reject_unsafe_code_root(root: &Path) -> Result<(), Box<dyn Error + Send + Sync>> {

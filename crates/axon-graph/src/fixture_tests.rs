@@ -17,7 +17,7 @@ fn ledger_vector_graph_fixture_shares_source_generation_lineage() {
     let chunk_id = ChunkId::from("chunk_Dockerfile_1");
     let job_id = JobId::new(Uuid::from_u128(7));
 
-    let vector_payload = VectorPayload::try_from_metadata(metadata(serde_json::json!({
+    let mut vector_metadata = metadata(serde_json::json!({
         "payload_contract_version": "2026-07-01",
         "collection": "axon",
         "vector_point_id": "point_1",
@@ -65,8 +65,11 @@ fn ledger_vector_graph_fixture_shares_source_generation_lineage() {
         "embedding_profile": "test",
         "embedded_at": "2026-07-04T00:00:00Z",
         "local_checkout": "local://src_local_repo"
-    })))
-    .expect("vector payload validates through production validator");
+    }));
+    vector_metadata.insert("born_epoch".to_string(), serde_json::json!(generation));
+    vector_metadata.insert("retired_epoch".to_string(), serde_json::Value::Null);
+    let vector_payload = VectorPayload::try_from_metadata(vector_metadata)
+        .expect("vector payload validates through production validator");
 
     assert_eq!(vector_payload.metadata()["source_id"], source_id.0);
     assert_eq!(vector_payload.metadata()["source_generation"], generation);

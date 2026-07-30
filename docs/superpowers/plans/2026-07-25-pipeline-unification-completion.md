@@ -35,6 +35,34 @@ production-ingress tests close the loop.
   bead `axon_rust-enbmu.2` owns this plan review only.
 - `marketplace-no-mcp` remains the intentional protected marketplace variant.
 
+## Execution Status — 2026-07-26
+
+This is an honest in-progress ledger, not a completion claim.
+
+- Task 1 completed locally on 2026-07-26: PR #468 was verified on
+  `origin/main`; host and Bookworm container 7.2.2 binaries were backed up,
+  built, installed atomically, and smoke-tested through the systemd service,
+  REST, and MCP. The existing container config was validated with the
+  migration dry-run; it required no file writes.
+- Task 2A–2C were merged before this worktree run (PRs #471, #474, and #475).
+- Task 2D is implemented locally in `f04f9f66e` plus the artifact-canary
+  hardening in this worktree; its focused docs tests, docs drift check, and
+  clippy pass (36 tests).
+- Task 3 is now in progress locally: the test-only observation harness covers
+  web, local, and session fixtures and its shared phase/content/job assertions
+  pass. Cancellation and route-error mapping are covered by focused tests;
+  the requested integration-target command and the remaining canonical
+  characterization cases are still open.
+- Task 4 has the router cleanup plus a local registry-validation slice: the
+  shared adapter registry now rejects duplicate names, missing matrix
+  families, version drift, and capability/spec mismatches. Production
+  composition wiring and the remaining adapter-boundary work remain. The
+  registry/session metadata projection has also moved into the adapters, and
+  the shared runner no longer performs either family rewrite. REST and MCP
+  source authorization now consume the canonical route's safety class instead
+  of independently classifying raw input.
+- Tasks 5–12 have not started.
+
 ## Global Constraints
 
 - Treat `docs/pipeline-unification/` as normative. If live code and a current
@@ -272,15 +300,16 @@ real transport/ingress proof
 `axon:/mnt/axon-data/config.toml`; install paths
 `/home/jmagar/.local/bin/axon` and `axon:/usr/local/bin/axon`.
 
-- [ ] Verify PR `#468` is on `origin/main`; do not create another compose PR.
-- [ ] Back up both binaries and the validated container config with checksums.
-- [ ] Build the host binary from merged `main`.
-- [ ] Build a separate Bookworm-compatible binary for the Incus container.
-- [ ] Install with temporary files plus atomic rename.
-- [ ] Apply the already-validated config migration.
-- [ ] Restart and enforce a bounded health deadline.
-- [ ] Smoke host CLI, container service, REST, and MCP.
-- [ ] On any mixed version or failed health check, restore both binaries and
+- [x] Verify PR `#468` is on `origin/main`; do not create another compose PR.
+- [x] Back up both binaries and the validated container config with checksums.
+- [x] Build the host binary from merged `main`.
+- [x] Build a separate Bookworm-compatible binary for the Incus container.
+- [x] Install with temporary files plus atomic rename.
+- [x] Validate the already-applied config migration; no file rewrite was
+  needed, and the clean-break rewrite command remains dry-run-only.
+- [x] Restart and enforce a bounded health deadline.
+- [x] Smoke host CLI, container service, REST, and MCP.
+- [x] On any mixed version or failed health check, restore both binaries and
   configs and verify `7.1.5` health.
 
 This operation must not block Tasks 2–5.
@@ -297,14 +326,14 @@ This operation must not block Tasks 2–5.
 `xtask/src/checks/crate_contracts_spec.rs`,
 `xtask/src/checks/crate_contracts_spec_cont.rs`.
 
-- [ ] Add fixtures containing the known transport imports from
+- [x] Add fixtures containing the known transport imports from
   `axon-adapters`, `axon-llm`, and source internals.
-- [ ] Run `cargo test -p xtask layering -- --nocapture`; record the red result.
-- [ ] Replace deleted-crate prefixes and remove stale allowlist rows.
-- [ ] Audit all 23 live crates.
-- [ ] Add a rule rejecting raw provider calls from transports and
+- [x] Run `cargo test -p xtask layering -- --nocapture`; record the red result.
+- [x] Replace deleted-crate prefixes and remove stale allowlist rows.
+- [x] Audit all 23 live crates.
+- [x] Add a rule rejecting raw provider calls from transports and
   `axon-services` modules outside the reserved-call facade path.
-- [ ] Run `cargo xtask check-layering` and
+- [x] Run `cargo xtask check-layering` and
   `cargo xtask check-crate-contracts`.
 
 ### Task 2B — Screenshot helper
@@ -313,9 +342,9 @@ This operation must not block Tasks 2–5.
 `crates/axon-core/src/paths.rs`,
 `crates/axon-cli/src/commands/screenshot/util.rs` and sidecar tests.
 
-- [ ] Move only the pure filename/path helper to `axon-core`.
-- [ ] Remove the CLI production dependency on `axon-adapters` if unused.
-- [ ] Run `cargo test -p axon-cli screenshot --no-fail-fast`.
+- [x] Move only the pure filename/path helper to `axon-core`.
+- [x] Remove the CLI production dependency on `axon-adapters` if unused.
+- [x] Run `cargo test -p axon-cli screenshot --no-fail-fast`.
 
 ### Task 2C — Chat provider facade
 
@@ -323,11 +352,11 @@ This operation must not block Tasks 2–5.
 `crates/axon-web/src/server/handlers/chat_stream_tests.rs`, and the existing
 `axon-services` chat facade.
 
-- [ ] Move direct provider construction behind a typed service method without
+- [x] Move direct provider construction behind a typed service method without
   changing response semantics.
-- [ ] Propagate cancellation when the transport disconnects.
-- [ ] Run `cargo test -p axon-web chat_stream --no-fail-fast`.
-- [ ] File bounded slow-consumer/idle-total deadline tuning as a separate
+- [x] Propagate cancellation when the transport disconnects.
+- [x] Run `cargo test -p axon-web chat_stream --no-fail-fast`.
+- [x] File bounded slow-consumer/idle-total deadline tuning as a separate
   reliability Bead; it is not part of the layering PR.
 
 ### Task 2D — Documentation engine
@@ -335,15 +364,15 @@ This operation must not block Tasks 2–5.
 **Files:** `xtask/src/docs.rs`, existing `xtask/src/docs/*`, and new sibling
 modules named by `delivery/docs-generator-contract.md`.
 
-- [ ] Add `DocsFamilyGenerator`, `DocsArtifactSet`, and
+- [x] Add `DocsFamilyGenerator`, `DocsArtifactSet`, and
   `GeneratedDocArtifact`.
-- [ ] Make `--check` render in memory and byte-compare declared outputs without
+- [x] Make `--check` render in memory and byte-compare declared outputs without
   writing.
-- [ ] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
+- [x] Fail missing inputs, empty/header-only outputs, nondeterministic ordering,
   and secret/path canaries.
-- [ ] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
+- [x] Land the six critical families: `api-dto`, `api-enums`, `adapters`,
   `events`, `providers`, and `schema`.
-- [ ] Run `cargo test -p xtask docs -- --nocapture` and
+- [x] Run `cargo test -p xtask docs -- --nocapture` and
   `cargo xtask docs generate --check`.
 
 Close `axon_rust-jc20j` after 2A–2C merge. Keep contract exemptions and the docs
@@ -371,15 +400,15 @@ pub struct PipelineObservation {
 It derives phases from existing events/stage rows and adds fake-only call
 counts. It does not add a production phase enum, counter model, or trace format.
 
-- [ ] Add equivalent web, local, and non-web fixture requests.
+- [x] Add equivalent web, local, and non-web fixture requests.
 - [ ] Assert identical route, stage order, normalized shape, publication
   semantics, one-job identity, cancellation, and error mapping.
-- [ ] Assert progress is visible before publication but contains no document
+- [x] Assert progress is visible before publication but contains no document
   content.
 - [ ] Change the three tests that pin defective family behavior into failing
   canonical expectations.
-- [ ] Run the harness against production composition with fake providers.
-- [ ] Run `cargo test --test source_pipeline_differential -- --nocapture`.
+- [x] Run the harness against production composition with fake providers.
+- [x] Run `cargo test --test source_pipeline_differential -- --nocapture`.
 
 The PR reaching `main` includes the green implementation for each changed
 characterization; no ignored red test lands.
@@ -395,21 +424,29 @@ characterization; no ignored red test lands.
 `crates/axon-adapters/src/providers/http_fetch.rs`, route modules in
 `crates/axon-route/src/`, and sidecar tests.
 
-- [ ] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
-  `Arc<dyn SourceAdapter>` values.
-- [ ] Validate duplicate names, missing families, capability/spec mismatch, and
-  full family-matrix coverage once at startup.
-- [ ] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
+- [x] Rehabilitate `SourceAdapterRegistry` as the single registry of shared
+  `Arc<dyn SourceAdapter>` values. Verified 2026-07-27 with strict matrix
+  validation, primary-family alias/overlap coverage, compiled adapter/service
+  test targets, and 54 focused registry and source-dispatch regressions.
+- [x] Add fail-closed validation for duplicate names, missing families,
+  capability/spec mismatch, and family-matrix coverage.
+- [x] Keep per-execution state only in `SourcePlan`, `SourceAcquisition`, and
   normalized results.
 - [ ] Add sequential and concurrent same-instance tests proving no ETag,
   request, auth, or output leakage.
-- [ ] Delete both family classifiers and route from canonical source
-  identity/capabilities.
-- [ ] Remove `SourceRouter::validate_options`; validate exactly once during
+- [x] Delete both family classifiers and route from canonical source
+  identity/capabilities. Verified 2026-07-27 by compiling `axon-services`,
+  `axon-web`, and `axon-mcp`; running 133 source-focused transport/service tests
+  plus the execute-scope regression; and auditing runtime crates for the removed
+  classifier symbols.
+- [x] Remove `SourceRouter::validate_options`; validate exactly once during
   `RoutePlan` construction and remove its generator/contract references.
-- [ ] Route CodeSearch refresh through the normal source route instead of
+- [x] Route CodeSearch refresh through the normal source route instead of
   returning `None`.
-- [ ] Inject `FetchProvider` into web discovery and remove direct network calls.
+- [x] Inject `FetchProvider` into web discovery and remove direct network calls.
+  Verified 2026-07-27 with `cargo check -p axon-adapters`, the focused Map
+  provider regression plus sitemap, `llms.txt`, and site-discovery test filters,
+  and a static audit showing no private HTTP helpers remain in those paths.
 - [ ] Put ledger-trusted ETag/Last-Modified and `CachePolicy::Revalidate` into
   each changed item’s typed `FetchPlan`; reject equivalent untrusted manifest
   metadata.
@@ -423,7 +460,7 @@ characterization; no ignored red test lands.
 **Files:** existing `JobStagePlan`/`PipelinePhase` owners in `axon-api`,
 `axon-jobs`, `axon-observe`, and source service stage tests.
 
-- [ ] Extend the existing phase descriptor with stable id, applicability,
+- [x] Extend the existing phase descriptor with stable id, applicability,
   allowed skip, and transition rules.
 - [ ] Make every mutating stage accept `(job_id, attempt, stage_id, fence)`.
 - [ ] Make stale/process-crash recovery increment attempt; allow same-attempt
@@ -448,15 +485,15 @@ characterization; no ignored red test lands.
 
 ### Schema and upgrade
 
-- [ ] Add append-only migration `0002_provider_scheduler.sql`; do not edit
+- [x] Add append-only migration `0002_provider_scheduler.sql`; do not edit
   epoch-1 history.
-- [ ] Add capacity-domain identity, enqueue sequence, requested/effective
+- [x] Add capacity-domain identity, enqueue sequence, requested/effective
   priority, queue/grant/lease deadlines, lease owner, attempt/stage fence,
   renewal, terminal reason, and quarantine state.
-- [ ] Add selection and expiry indexes used by the grant/reaper queries.
-- [ ] Convert current heartbeat reservation writes into read-only projection in
+- [x] Add selection and expiry indexes used by the grant/reaper queries.
+- [x] Convert current heartbeat reservation writes into read-only projection in
   the same PR so there is one authority.
-- [ ] Define disposition for old `requested`, `queued`, `granted`, and `active`
+- [x] Define disposition for old `requested`, `queued`, `granted`, and `active`
   rows: nonterminal epoch-1 rows become terminal `migration_cancelled` and are
   safely retried under the new attempt.
 - [ ] Add a real epoch-1 fixture upgrade test and update migration identity and
@@ -464,12 +501,12 @@ characterization; no ignored red test lands.
 
 ### Atomic grant and wait
 
-- [ ] Implement queue/grant in one `BEGIN IMMEDIATE` transaction using the
+- [x] Implement queue/grant in one `BEGIN IMMEDIATE` transaction using the
   indexed head candidate from each lane.
 - [ ] Implement the fixed aging/FIFO algorithm and interactive reserve exactly
   as specified above.
-- [ ] Reject requests larger than declared capacity before queueing.
-- [ ] Enforce global/per-job entry and unit caps.
+- [x] Reject requests larger than declared capacity before queueing.
+- [x] Enforce global/per-job entry and unit caps.
 - [ ] Implement bounded jittered SQLite predicate polling; local notification
   is optional latency optimization only.
 - [ ] Add cross-process tests proving a waiter in process B observes a release
@@ -479,7 +516,7 @@ characterization; no ignored red test lands.
 
 ### Lease lifecycle
 
-- [ ] Implement explicit async activate, renew, complete, fail, cancel, and
+- [x] Implement explicit async activate, renew, complete, fail, cancel, and
   reconcile transitions.
 - [ ] Tie renewal to the owning attempt heartbeat and provider hard deadline.
 - [ ] Quarantine uncertain active units; regrant only after abort/join or
@@ -490,7 +527,7 @@ characterization; no ignored red test lands.
 
 ### Call gate and all lanes
 
-- [ ] Implement `call_reserved` over unchanged provider traits.
+- [x] Implement `call_reserved` over unchanged provider traits.
 - [ ] Remove/de-authorize
   `axon-observe::ProviderReservationManager`; observation reads durable state.
 - [ ] Route source embedding, interactive query/ask/retrieve embedding, vector
@@ -530,9 +567,9 @@ artifact registry/store owners, source crash/parity sidecars.
 
 ### Publication foundation
 
-- [ ] Add append-only ledger/graph publication-state migrations and exact
+- [x] Add append-only ledger/graph publication-state migrations and exact
   Qdrant payload fields `born_epoch` and `retired_epoch`.
-- [ ] Add a durable serialized publication lease with bounded takeover rules.
+- [x] Add a durable serialized publication lease with bounded takeover rules.
 - [ ] Add one SQLite finalization transaction covering graph mutations,
   document status, artifact registry, ledger CAS, authorization, and watermark.
 - [ ] Add retrieval watermark filtering and batched committed-ledger fence
@@ -573,9 +610,9 @@ artifact registry/store owners, source crash/parity sidecars.
 
 ### Auth snapshot and panel
 
-- [ ] Preserve `axon_read_scope_satisfies_write_routes` compatibility coverage.
-- [ ] Preserve/add `explicit_scope_check_rejects_broad_widening`.
-- [ ] Require literal `axon:write` for mutating search/research in REST and MCP.
+- [x] Preserve `axon_read_scope_satisfies_write_routes` compatibility coverage.
+- [x] Preserve/add `explicit_scope_check_rejects_broad_widening`.
+- [x] Require literal `axon:write` for mutating search/research in REST and MCP.
 - [ ] Persist exact caller snapshots for search, query, ask, retrieve, retry,
   recovery, watch, and child jobs; add no-escalation tests across attempts.
 - [ ] Derive effective priority server-side and audit downgrades.
@@ -611,7 +648,7 @@ artifact registry/store owners, source crash/parity sidecars.
 - [ ] Unify denylists for local source, CodeSearch, tool, and artifact roots.
 - [ ] Enforce the explicit hardlink policy.
 - [ ] Run the per-OS race suite; fail closed on unsupported platforms.
-- [ ] Remove blocking canonicalization from async worker paths.
+- [x] Remove blocking canonicalization from async worker paths.
 
 ### Redaction
 
@@ -630,9 +667,9 @@ artifact registry/store owners, source crash/parity sidecars.
 embedding identity cache, Qdrant writer/readers, worker admission, observability
 queries.
 
-- [ ] Replace per-document status writes with bounded multi-row transactions;
+- [x] Replace per-document status writes with bounded multi-row transactions;
   prove rollback and bind-count limits.
-- [ ] Replace quadratic status/manifest merge with one indexed map/set pass;
+- [x] Replace quadratic status/manifest merge with one indexed map/set pass;
   assert comparison count is linear.
 - [ ] Enforce actual encoded bytes after serialization and before every channel,
   artifact, and Qdrant batch; cap sparse entries and status records.
@@ -640,13 +677,13 @@ queries.
   buffers, vectors, statuses, graph candidates, and artifact metadata.
 - [ ] Reject an indivisible oversized item with a structured error; prove split
   logic always makes forward progress.
-- [ ] Make `embed=false` skip collection ensure/create.
-- [ ] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
+- [x] Make `embed=false` skip collection ensure/create.
+- [x] Add TEI identity cache keyed by endpoint, model, dimension, and relevant
   config with per-key singleflight, bounded TTL/negative behavior, and explicit
   invalidation.
-- [ ] Wire `qdrant-point-buffer` as the only vector item limit and delete
+- [x] Wire `qdrant-point-buffer` as the only vector item limit and delete
   `UPSERT_BATCH_SIZE`.
-- [ ] Consume/document source concurrency or delete the dead knob.
+- [x] Consume/document source concurrency or delete the dead knob.
 - [ ] Limit concurrent DB stages with a semaphore derived from pool size while
   reserving one connection for heartbeat/control work.
 - [ ] Use operation-specific Qdrant deadlines, idempotency keys, cancellation,
@@ -700,18 +737,18 @@ content-derived ids for every tested operation.
 **Files:** `xtask/src/docs.rs`, `xtask/src/docs/*`,
 `docs/reference/`, `docs/pipeline-unification/`, affected `CLAUDE.md` files.
 
-- [ ] Register exactly `cli`, `cli-help`, `openapi`, `mcp`, `api-dto`,
+- [x] Register exactly `cli`, `cli-help`, `openapi`, `mcp`, `api-dto`,
   `api-enums`, `errors`, `events`, `config`, `env`, `adapters`, `schema`,
   `memory`, `providers`, `presentation`, `schemas`, and `new-source`.
-- [ ] Give each family declared live inputs, renderer, output paths, and
+- [x] Give each family declared live inputs, renderer, output paths, and
   deterministic ordering.
 - [ ] Make missing renderers/inputs, empty output, secret/path canaries, and byte
   drift fail with contracted exit codes.
 - [ ] Render/write one family at a time and assert bounded high-water memory.
-- [ ] Support aggregate/per-family generate, check, print, JSON, and the
+- [x] Support aggregate/per-family generate, check, print, JSON, and the
   CI-forbidden snapshot-update mode required by contract.
 - [ ] Mark dated plans historical; rewrite live contracts in present tense.
-- [ ] Remove family-model naming/comment residue and the last `TODO(#298)`.
+- [x] Remove family-model naming/comment residue and the last `TODO(#298)`.
 - [ ] Run docs generation/check, schema drift, layering, crate contracts, and
   public API checks.
 
@@ -782,11 +819,11 @@ work never closes a Bead early.
 
 ### `axon_rust-zb0k1`
 
-- [ ] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
-- [ ] P18 one live Qdrant point-buffer limit.
-- [ ] P19 concurrency knob is consumed or deleted.
+- [x] P17 no duplicate TEI identity probes; cache is singleflight and keyed.
+- [x] P18 one live Qdrant point-buffer limit.
+- [x] P19 concurrency knob is consumed or deleted.
 - [ ] P20 DB-stage concurrency preserves heartbeat/control capacity.
-- [ ] P21 no blocking canonicalization on async worker paths.
+- [x] P21 no blocking canonicalization on async worker paths.
 - [ ] S-13 redirects have hop, time, byte, scheme, proxy, and host bounds.
 - [ ] S-14 browser requests use pinned connect-time enforcement.
 - [ ] S-15 release builds cannot enable loopback bypass.

@@ -18,7 +18,7 @@ async fn local_adapter_declares_task1_scopes_and_accepts_options() {
     );
     assert_eq!(
         capability.0.limits.0.get("default_scope"),
-        Some(&serde_json::json!(SourceScope::Directory))
+        Some(&serde_json::json!(SourceScope::File))
     );
     for scope in [
         SourceScope::File,

@@ -179,7 +179,7 @@ fn render_status_jobs_from_slices(
         "Prune",
         None,
         prune_jobs,
-        format_subject,
+        |job| job.target.clone().unwrap_or_else(|| "cleanup".to_string()),
         source_progress_summary,
     );
     out
@@ -222,6 +222,12 @@ fn is_sensitive_query_key(lower_key: &str) -> bool {
 /// blunt whole-string redactor this URL-aware path deliberately avoids for URLs
 /// (it would wholesale-redact any URL merely *containing* `token=`/`secret=`).
 fn redact_status_subject(subject: &str) -> String {
+    // Source paths are identifiers, not free-text payloads. In particular,
+    // Axon's generated local filenames contain UUID-shaped components that
+    // trigger the entropy fallback despite not being credentials.
+    if std::path::Path::new(subject).is_absolute() {
+        return subject.to_string();
+    }
     let Ok(mut url) = url::Url::parse(subject) else {
         return redact_secrets(subject);
     };

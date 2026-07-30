@@ -12,13 +12,10 @@ mod virtual_sources;
 mod web;
 pub(crate) mod web_options;
 
+use std::sync::Arc;
+
 use anyhow::Context as _;
-use axon_adapters::feed::FeedSourceAdapter;
-use axon_adapters::git::GitSourceAdapter;
-use axon_adapters::reddit::RedditSourceAdapter;
-use axon_adapters::registry_sources::RegistrySourceAdapter;
 use axon_adapters::sessions::{SessionRoots, SessionSourceAdapter};
-use axon_adapters::youtube::YoutubeSourceAdapter;
 use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
     AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, SourceLimits, SourcePlan, SourceRequest,
@@ -88,6 +85,7 @@ fn family_source_plan(
 /// non-web document pipeline. The checkout guard stays alive through publish.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_git(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -100,11 +98,10 @@ pub(crate) async fn dispatch_git(
     log_info(&format!(
         "command=source collection={collection} kind=git embed={embed}"
     ));
-    let adapter = GitSourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         family_source_plan(input, route, embed, None, None),
         collection,
         owner_id,
@@ -125,6 +122,7 @@ pub(crate) async fn dispatch_git(
 /// pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_feed(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -138,11 +136,10 @@ pub(crate) async fn dispatch_feed(
     log_info(&format!(
         "command=source collection={collection} kind=feed embed={embed} max_items={max_items:?}"
     ));
-    let adapter = FeedSourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
@@ -163,6 +160,7 @@ pub(crate) async fn dispatch_feed(
 /// shared document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_reddit(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -176,11 +174,10 @@ pub(crate) async fn dispatch_reddit(
     log_info(&format!(
         "command=source collection={collection} kind=reddit embed={embed} max_items={max_items:?}"
     ));
-    let adapter = RedditSourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
@@ -201,6 +198,7 @@ pub(crate) async fn dispatch_reddit(
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_youtube(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -214,11 +212,10 @@ pub(crate) async fn dispatch_youtube(
     log_info(&format!(
         "command=source collection={collection} kind=youtube embed={embed} max_items={max_items:?}"
     ));
-    let adapter = YoutubeSourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
@@ -239,6 +236,7 @@ pub(crate) async fn dispatch_youtube(
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_registry(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -252,11 +250,10 @@ pub(crate) async fn dispatch_registry(
     log_info(&format!(
         "command=source collection={collection} kind=registry embed={embed} max_items={max_items:?}"
     ));
-    let adapter = RegistrySourceAdapter::new();
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         family_source_plan(input, route, embed, max_items, None),
         collection,
         owner_id,
@@ -277,6 +274,7 @@ pub(crate) async fn dispatch_registry(
 /// document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_session(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -288,23 +286,30 @@ pub(crate) async fn dispatch_session(
     route: &axon_api::source::RoutePlan,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
-    let roots = SessionRoots::from_home_env()?;
-    dispatch_session_with_roots(
+    log_info(&format!(
+        "command=source collection={collection} kind=session embed={embed} max_items={max_items:?}"
+    ));
+    let materializer = Arc::clone(&adapter);
+    dispatch_materialized(
         runtime,
-        input,
+        adapter.as_ref(),
+        family_source_plan(input, route, embed, max_items, project_filter),
         collection,
         owner_id,
         auth_snapshot,
-        embed,
-        max_items,
-        project_filter,
-        route,
-        &roots,
         execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
     )
     .await
+    .context("session source indexing failed")
 }
 
+#[cfg(test)]
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_session_with_roots(
     runtime: &TargetLocalSourceRuntime,
@@ -325,10 +330,17 @@ async fn dispatch_session_with_roots(
     let adapter = SessionSourceAdapter::new();
     let materializer = adapter.clone();
     let roots = roots.clone();
+    let mut canonical_route = route.clone();
+    let adapter_ref = axon_api::source::AdapterRef {
+        name: adapter.name().to_string(),
+        version: adapter.version().to_string(),
+    };
+    canonical_route.adapter = adapter_ref.clone();
+    canonical_route.source.adapter = adapter_ref;
     dispatch_materialized(
         runtime,
         &adapter,
-        family_source_plan(input, route, embed, max_items, project_filter),
+        family_source_plan(input, &canonical_route, embed, max_items, project_filter),
         collection,
         owner_id,
         auth_snapshot,

@@ -3,7 +3,7 @@
 use crate::context::ServiceContext;
 use crate::jobs as job_service;
 use crate::system::watchdog::{include_status_job, include_status_view};
-use crate::types::{ServiceJob, StatusResult, StatusTotals};
+use crate::types::{BuildIdentity, ServiceJob, StatusResult, StatusTotals};
 use axon_api::service_job::StatusJob;
 use axon_api::source::JobKind;
 use axon_core::config::Config;
@@ -48,12 +48,28 @@ pub async fn full_status(service_context: &ServiceContext) -> Result<StatusResul
         ));
     }
     Ok(StatusResult {
+        build_identity: build_identity(),
         payload,
         text: text.join("\n"),
         totals,
         degraded: !errors.is_empty(),
         warnings: errors,
     })
+}
+
+fn build_identity() -> BuildIdentity {
+    BuildIdentity {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        git_sha: option_env!("AXON_BUILD_GIT_SHA")
+            .unwrap_or("unknown")
+            .to_string(),
+        build_profile: option_env!("AXON_BUILD_PROFILE")
+            .unwrap_or("unknown")
+            .to_string(),
+        schema_epoch: option_env!("AXON_SCHEMA_EPOCH")
+            .and_then(|epoch| epoch.parse().ok())
+            .unwrap_or(1),
+    }
 }
 
 pub fn sqlite_status_error(sqlite: &serde_json::Value) -> Option<String> {
@@ -255,6 +271,7 @@ pub fn build_status_payload_with_errors_and_sqlite(
         .chain(status_jobs(JobKind::Extract, extract_jobs))
         .collect();
     let payload = StatusPayload {
+        build_identity: build_identity(),
         jobs,
         watches: status_jobs(JobKind::Watch, watch_jobs),
         cleanup: StatusCleanup {
@@ -271,6 +288,7 @@ pub fn build_status_payload_with_errors_and_sqlite(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StatusPayload {
+    build_identity: BuildIdentity,
     jobs: Vec<StatusJob>,
     watches: Vec<StatusJob>,
     cleanup: StatusCleanup,

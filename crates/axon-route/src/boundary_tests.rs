@@ -101,23 +101,15 @@ async fn fake_source_router_success_records_calls_and_returns_plan() {
     assert_eq!(routed.adapter.name, plan.adapter.name);
     assert_eq!(fake.calls().await, vec![(source, request)]);
 
-    let validated = SourceRouter::validate_options(&fake, &plan).await.unwrap();
-    assert_eq!(validated.values, plan.validated_options.values);
-
     let capability = SourceRouter::capabilities(&fake).await.unwrap();
     assert_eq!(capability.0.health, HealthStatus::Healthy);
 }
 
 #[tokio::test]
-async fn fake_source_router_failure_mode_returns_error_for_route_and_validate() {
+async fn fake_source_router_failure_mode_returns_error_for_route() {
     let fake = FakeSourceRouter::new(FakeSourceRouteMode::Failure(sample_error()));
 
     let err = SourceRouter::route(&fake, sample_resolved_source(), &sample_request())
-        .await
-        .unwrap_err();
-    assert_eq!(err.code.to_string(), "test.failure");
-
-    let err = SourceRouter::validate_options(&fake, &sample_route_plan())
         .await
         .unwrap_err();
     assert_eq!(err.code.to_string(), "test.failure");
@@ -153,9 +145,6 @@ async fn concrete_source_router_satisfies_boundary_trait_via_dyn() {
     let request = sample_request();
     let plan = router.route(source.clone(), &request).await.unwrap();
     assert_eq!(plan.adapter.name, source.adapter.name);
-
-    let validated = router.validate_options(&plan).await.unwrap();
-    assert_eq!(validated.values, plan.validated_options.values);
 
     let capability = router.capabilities().await.unwrap();
     assert_eq!(capability.0.owner_crate, "axon-route");

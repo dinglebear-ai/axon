@@ -1,6 +1,9 @@
 {
+  "born_epoch": 7,
+  "chunk_content_kind": "source",
   "chunk_hash": "chunk_hash",
   "chunk_id": "chunk-code-0",
+  "chunk_index": 0,
   "chunk_key": "code-chunk-key",
   "chunk_locator": {
     "canonical_uri": "https://example.com/code",
@@ -29,7 +32,8 @@
     "symbol": null
   },
   "chunk_text": "chunk_text",
-  "chunk_content_kind": "source",
+  "chunking_method": "heading_sections",
+  "chunking_profile": "markdown_sections",
   "code_file_type": "source",
   "code_language": "rust",
   "code_symbol_kind": "struct",
@@ -38,8 +42,11 @@
   "committed_generation": null,
   "content_hash": "sha256:codehash",
   "content_kind": "content_kind",
+  "detector_count": 0,
+  "detector_names": [],
   "document_id": "doc-code",
   "document_status": "prepared",
+  "dropped_field_count": 0,
   "embedded_at": "2026-06-30T00:00:00Z",
   "embedding_dimensions": 768,
   "embedding_model": "text-embedding-test",
@@ -54,12 +61,10 @@
   "job_id": "job-code",
   "manifest": true,
   "payload_contract_version": "2026-07-01",
+  "redacted_field_count": 0,
   "redaction_status": "clean",
   "redaction_version": "2026-07-16",
-  "redacted_field_count": 0,
-  "dropped_field_count": 0,
-  "detector_count": 0,
-  "detector_names": [],
+  "retired_epoch": null,
   "source_adapter": "source_adapter",
   "source_canonical_uri": "source_canonical_uri",
   "source_family": "code",
@@ -88,8 +93,5 @@
   "source_scope": "source_scope",
   "vector_namespace": "vector_namespace",
   "vector_point_id": "vector_point_id",
-  "visibility": "internal",
-  "chunk_index": 0,
-  "chunking_profile": "markdown_sections",
-  "chunking_method": "heading_sections"
+  "visibility": "internal"
 }

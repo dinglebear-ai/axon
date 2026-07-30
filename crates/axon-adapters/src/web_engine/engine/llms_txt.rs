@@ -1,14 +1,13 @@
-use super::sitemap::{
-    DISCOVERY_MAX_BODY_BYTES, fetch_text_with_retry, join_origin_path, loc_in_scope,
-    request_timeout_secs,
-};
+use super::sitemap::{DISCOVERY_MAX_BODY_BYTES, fetch_text, join_origin_path, loc_in_scope};
 use axon_core::config::Config;
-use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::log_info;
 use pulldown_cmark::{Event, Parser, Tag};
 use spider::url::Url;
 use std::collections::HashSet;
 use std::error::Error;
+use std::sync::Arc;
+
+use crate::boundary::FetchProvider;
 
 /// Strip a leading UTF-8 BOM and check for a markdown H1 — a cheap soft-404 guard.
 /// Many CMS hosts serve an HTML "not found" page at /llms.txt with HTTP 200.
@@ -57,6 +56,7 @@ pub(crate) fn extract_llms_txt_links(body: &str, base_url: &str) -> Vec<String> 
 pub async fn discover_llms_txt_urls(
     cfg: &Config,
     start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let parsed = Url::parse(start_url)
         .map_err(|e| format!("invalid start URL for llms.txt discovery {start_url}: {e}"))?;
@@ -68,18 +68,7 @@ pub async fn discover_llms_txt_urls(
     // `format!("{host}:{port}")` would produce an invalid authority for IPv6 hosts.
     let llms_url = join_origin_path(&parsed, "/llms.txt")?;
 
-    // SSRF-guarded client (redirect revalidation + DNS-rebind guard live here).
-    let client = build_client(request_timeout_secs(cfg), Some(axon_ua()))
-        .map_err(|e| format!("failed to build HTTP client for llms.txt discovery: {e}"))?;
-
-    let Some(body) = fetch_text_with_retry(
-        &client,
-        &llms_url,
-        cfg.fetch_retries,
-        cfg.retry_backoff_ms,
-        Some(DISCOVERY_MAX_BODY_BYTES),
-    )
-    .await
+    let Some(body) = fetch_text(fetch.as_ref(), &llms_url, Some(DISCOVERY_MAX_BODY_BYTES)).await
     else {
         return Ok(Vec::new());
     };

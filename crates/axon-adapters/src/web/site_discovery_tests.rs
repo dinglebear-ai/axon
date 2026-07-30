@@ -57,3 +57,40 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
         "https://example.com/docs/m"
     );
 }
+
+#[tokio::test]
+async fn map_discovery_uses_the_injected_fetch_provider() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = httpmock::MockServer::start();
+    let providers = crate::boundary::FakeAdapterProviders::new()
+        .with_fetch_text("<a href=\"/docs/provider-only\">provider result</a>");
+    let providers_for_adapter = Arc::new(providers.clone());
+    let adapter =
+        crate::web::WebSourceAdapter::new(providers_for_adapter.clone(), providers_for_adapter);
+    let mut plan = crate::web_tests::web_plan(&server.url("/docs"), SourceScope::Map);
+    plan.route
+        .validated_options
+        .values
+        .insert("discover_sitemaps".to_string(), serde_json::json!(false));
+    plan.route
+        .validated_options
+        .values
+        .insert("discover_llms_txt".to_string(), serde_json::json!(false));
+
+    let manifest = crate::SourceAdapter::discover(&adapter, &plan)
+        .await
+        .unwrap();
+
+    assert_eq!(manifest.scope, SourceScope::Map);
+    assert!(
+        manifest
+            .items
+            .iter()
+            .any(|item| item.canonical_uri.ends_with("/provider-only")),
+        "Map discovery must consume content returned by the injected FetchProvider"
+    );
+    assert!(
+        providers.calls().await.contains(&"fetch"),
+        "Map discovery must use the adapter's FetchProvider rather than a private HTTP client"
+    );
+}

@@ -1,16 +1,21 @@
 use super::*;
-use axon_services::source::classify::SourceInputKind;
 
 #[test]
 fn local_source_maps_to_local_filesystem_and_local_scope() {
-    let class = safety_class_for(SourceInputKind::Local);
+    let class = resolve_source_route(&SourceRequest::local_path("/tmp/source", true))
+        .expect("local source should resolve")
+        .route
+        .safety_class;
     assert_eq!(class, SafetyClass::LocalFilesystem);
     assert_eq!(required_scope_for(class), axon_authz::AXON_LOCAL_SCOPE);
 }
 
 #[test]
 fn web_source_maps_to_public_network_and_write_scope() {
-    let class = safety_class_for(SourceInputKind::Web);
+    let class = resolve_source_route(&SourceRequest::new("https://example.com"))
+        .expect("web source should resolve")
+        .route
+        .safety_class;
     assert_eq!(class, SafetyClass::PublicNetwork);
     assert_eq!(required_scope_for(class), axon_authz::AXON_WRITE_SCOPE);
 }
@@ -18,11 +23,17 @@ fn web_source_maps_to_public_network_and_write_scope() {
 #[test]
 fn git_and_registry_sources_are_network_class() {
     assert_eq!(
-        safety_class_for(SourceInputKind::Git),
+        resolve_source_route(&SourceRequest::new("https://github.com/example/repo.git"))
+            .expect("git source should resolve")
+            .route
+            .safety_class,
         SafetyClass::PublicNetwork
     );
     assert_eq!(
-        safety_class_for(SourceInputKind::Registry),
+        resolve_source_route(&SourceRequest::new("crates:serde"))
+            .expect("registry source should resolve")
+            .route
+            .safety_class,
         SafetyClass::PublicNetwork
     );
 }

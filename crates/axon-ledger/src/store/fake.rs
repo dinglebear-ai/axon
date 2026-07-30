@@ -288,6 +288,27 @@ impl LedgerStore for FakeLedgerStore {
         Ok(())
     }
 
+    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
+        let mut state = self.state.lock().await;
+        for status in &statuses {
+            if !state.sources.contains_key(&status.source_id) {
+                return Err(source_missing_error(&status.source_id));
+            }
+        }
+        for status in statuses {
+            if state
+                .document_statuses
+                .get(&status.document_id)
+                .is_none_or(|existing| existing.updated_at.0 <= status.updated_at.0)
+            {
+                state
+                    .document_statuses
+                    .insert(status.document_id.clone(), status);
+            }
+        }
+        Ok(())
+    }
+
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         validate_cleanup_debt(&debt)?;
         let mut state = self.state.lock().await;

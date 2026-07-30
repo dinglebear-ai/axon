@@ -115,3 +115,36 @@ or operating-system error string.
   and size policy, and error redaction.
 - `source_runner_tests`: persisted caller snapshots are reused on execution and
   recovery rather than upgraded.
+
+## Adapter construction and the shared adapter registry
+
+Containment state is **per request**, so the local source adapter cannot be a
+single shared instance the way every other source family can.
+
+`LocalSourceAdapter::new_contained` pins a `LocalRootHandle` to one
+`(source path, scope)` pair, and `root_for_discovery` rejects any plan whose
+source or scope does not match the pinned root. That pinning is what makes the
+descriptor boundary meaningful — the handle is opened against *this* request's
+root, not against configuration in general.
+
+`dispatch_local` therefore takes both the shared `Arc<dyn SourceAdapter>` from
+the adapter registry and `&Config`:
+
+- **Trusted local execution** (`AuthMode::TrustedLocal`) reuses the shared
+  registry instance unchanged. There is no containment to key, so there is
+  nothing per-request to build.
+- **Every other caller** gets a freshly constructed contained adapter for that
+  request, built from `cfg.source_local_allowed_roots`.
+
+A registry-built instance cannot carry per-request containment roots, and the
+plan types (`SourcePlan` / `RoutePlan`) carry no caller-trust signal —
+`ExecutionAffinity` describes *where* work runs, not who asked for it. Making
+the shared instance sufficient would require either adding a resolved
+containment decision to `SourcePlan` (a persisted, schema-bearing DTO) or
+demoting the decision from per-request auth mode to per-process configuration.
+Both are real options, but neither is a refactor detail: they change either the
+persisted job shape or the security semantics, so they belong in their own
+change rather than in adapter-registry plumbing.
+
+Keep this split when touching `dispatch_local`. Collapsing it to a single
+shared adapter silently drops containment for untrusted callers.
