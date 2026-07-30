@@ -37,6 +37,7 @@ runs:
         need_install=false
         command -v cc >/dev/null 2>&1 || need_install=true
         command -v pkg-config >/dev/null 2>&1 || need_install=true
+        command -v rg >/dev/null 2>&1 || need_install=true
         pkg-config --exists openssl 2>/dev/null || need_install=true
         pkg-config --exists dbus-1 2>/dev/null || need_install=true
         if [ "${{ inputs.install-tauri-deps }}" = "true" ]; then
@@ -53,7 +54,7 @@ runs:
         if [ "$need_install" = false ]; then
           exit 0
         fi
-        packages="build-essential pkg-config libssl-dev libdbus-1-dev"
+        packages="build-essential pkg-config ripgrep libssl-dev libdbus-1-dev"
         if [ "${{ inputs.install-tauri-deps }}" = "true" ]; then
           packages="$packages curl file libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf wget"
         fi
@@ -205,12 +206,18 @@ runs:
         # artifacts and the ONLY path that performs remote lookups — and kache
         # is fail-open, so wrappers that race daemon initialization silently
         # skip the remote and compile. Wait until it answers.
-        kache daemon status >/dev/null 2>&1 || kache daemon start
+        daemon_is_running() {
+          kache daemon status 2>&1 | grep -q 'running'
+        }
+        # `kache daemon status` exits zero even when it prints "not running".
+        # Check the reported state, and use restart so stale lock files left by
+        # the Actions orphan-process reaper cannot poison later cache restores.
+        daemon_is_running || kache daemon restart
         for _ in $(seq 1 30); do
-          kache daemon status >/dev/null 2>&1 && break
+          daemon_is_running && break
           sleep 1
         done
-        kache daemon status >/dev/null 2>&1 || { echo "::error::kache daemon is not answering"; exit 1; }
+        daemon_is_running || { echo "::error::kache daemon is not answering"; kache daemon status; exit 1; }
         kache daemon
 
     - name: Print cache evidence
