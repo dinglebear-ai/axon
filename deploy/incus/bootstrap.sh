@@ -88,7 +88,7 @@ fi
 # instance such as `axon-bookworm-*` also matches `axon`. Query the exact
 # instance instead or the combined RUNNING/STOPPED output causes an erroneous
 # attempt to start an already-running container.
-state="$(incus info "$CONTAINER_NAME" 2>/dev/null | awk -F': ' '$1 == "Status" { print $2; exit }')"
+state="$(incus info "$CONTAINER_NAME" 2>/dev/null | awk -F': ' '$1 == "Status" { status=$2 } END { print status }')"
 if [ "$state" != "RUNNING" ]; then
   log "starting container (was: ${state:-absent})"
   incus start "$CONTAINER_NAME"
