@@ -424,12 +424,8 @@ fn report_field_and_detector_counts_are_bounded() {
         fields.insert(format!("field_{index}_token"), json!("opaque"));
     }
 
-    let write = redact_public_write(
-        serde_json::Value::Object(fields),
-        &ctx(),
-        &DefaultRedactor::new(),
-    )
-    .expect("bounded report succeeds");
+    let write = redact_public_write(Value::Object(fields), &ctx(), &DefaultRedactor::new())
+        .expect("bounded report succeeds");
 
     assert_eq!(write.redaction.redacted_field_count, 256);
     assert_eq!(write.redaction.dropped_field_count, 256);

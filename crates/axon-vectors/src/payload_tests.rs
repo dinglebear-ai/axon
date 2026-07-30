@@ -58,7 +58,7 @@ fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
         .or_insert(generation);
     metadata
         .entry("retired_epoch".to_string())
-        .or_insert(serde_json::Value::Null);
+        .or_insert(Value::Null);
     if let Some(content_kind) = metadata.get("content_kind").cloned() {
         metadata
             .entry("chunk_content_kind".to_string())
@@ -82,7 +82,7 @@ fn apply_shared_lineage_fixture_defaults(metadata: &mut MetadataMap) {
 
     let Some(source_family) = metadata
         .get("source_family")
-        .and_then(serde_json::Value::as_str)
+        .and_then(Value::as_str)
         .map(str::to_string)
     else {
         return;
@@ -150,7 +150,7 @@ fn payload_target_required_fields() {
 fn payload_generation_fields_are_integer_or_null() {
     let mut metadata = fixture("web.valid.json");
     metadata.insert("source_generation".to_string(), serde_json::json!(7));
-    metadata.insert("committed_generation".to_string(), serde_json::Value::Null);
+    metadata.insert("committed_generation".to_string(), Value::Null);
     VectorPayload::try_from_metadata(metadata.clone())
         .expect("null committed_generation is valid before publish");
 

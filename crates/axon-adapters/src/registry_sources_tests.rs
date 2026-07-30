@@ -38,7 +38,7 @@ async fn registry_adapter_rejects_unknown_options() {
         .expect_err("unknown registry options should fail validation");
 
     assert_eq!(err.code.0, "adapter.registry.option.invalid");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 #[tokio::test]
@@ -265,7 +265,7 @@ async fn registry_adapter_rejects_non_registry_source_kind() {
         .expect_err("non-registry source kind should be rejected");
 
     assert_eq!(err.code.0, "adapter.registry.mismatch");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 /// Regression: the resolver routes package targets to registry-family adapters

@@ -17,7 +17,7 @@ See the family contract for declared output paths.
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:f94bde7fcf24357c13f823f39d19ba44edfb5520f47a808d76b9196ab99f4c52` |
 | `crates/axon-vectors/src/payload_families.rs` | `sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e` |
-| `crates/axon-vectors/src/point.rs` | `sha256:f54a5d4bfb55b42073fae50303585633f843178698d224d8b56726d8423aaa87` |
+| `crates/axon-vectors/src/point.rs` | `sha256:f10723828d703802ad6f592d2093f92f87a6e5017ff35b15b0a4b1f722998939` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |

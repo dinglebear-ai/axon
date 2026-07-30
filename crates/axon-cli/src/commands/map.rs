@@ -65,6 +65,10 @@ pub async fn run_map(
 }
 
 #[cfg(test)]
+mod map_fallback_tests;
+#[cfg(test)]
 mod map_migration_tests;
 #[cfg(test)]
 mod map_sitemap_tests;
+#[cfg(test)]
+mod map_test_support;

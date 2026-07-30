@@ -110,7 +110,9 @@ async fn web_map_scope_discovers_urls_without_caller_supplied_map_urls() {
     let diff = manifest_diff(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
 
-    root.assert();
+    // The seed is resolved once, then thin sitemap discovery is augmented by
+    // one bounded root-anchor fetch.
+    root.assert_calls(2);
     sitemap.assert();
     let urls = manifest
         .items
@@ -168,12 +170,13 @@ async fn web_site_scope_hands_in_memory_manifest_candidates_to_acquisition() {
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
 
     sitemap.assert();
-    docs.assert_calls(2);
+    // Seed resolution + thin-sitemap anchor discovery + page acquisition.
+    docs.assert_calls(3);
     intro.assert();
     api.assert();
     assert_eq!(manifest.items.len(), 3);
     assert!(manifest.items.iter().all(|item| item.version.is_some()));
-    assert_eq!(manifest.metadata["map_source"], "sitemap");
+    assert_eq!(manifest.metadata["map_source"], "sitemap+bounded-structure");
     assert_eq!(acquisition.fetched_items.len(), 3);
 }
 

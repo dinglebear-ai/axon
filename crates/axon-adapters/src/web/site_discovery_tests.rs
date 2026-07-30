@@ -64,7 +64,7 @@ async fn map_discovery_uses_the_injected_fetch_provider() {
     let server = httpmock::MockServer::start();
     let providers = crate::boundary::FakeAdapterProviders::new()
         .with_fetch_text("<a href=\"/docs/provider-only\">provider result</a>");
-    let providers_for_adapter = std::sync::Arc::new(providers.clone());
+    let providers_for_adapter = Arc::new(providers.clone());
     let adapter =
         crate::web::WebSourceAdapter::new(providers_for_adapter.clone(), providers_for_adapter);
     let mut plan = crate::web_tests::web_plan(&server.url("/docs"), SourceScope::Map);

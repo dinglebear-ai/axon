@@ -7,6 +7,9 @@
 //! the jobs migrations after calling [`open_pool`]). This lets read-only callers
 //! (stats) open an existing database without depending on the jobs crate.
 
+mod busy_retry;
+pub use busy_retry::{is_retryable_busy, message_is_retryable_busy, retry_on, with_busy_retry};
+
 use sqlx::sqlite::SqliteConnection;
 use sqlx::{
     SqlitePool,
@@ -351,7 +354,7 @@ pub async fn open_pool(path: &str) -> Result<SqlitePool, sqlx::Error> {
 
 pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
     if path != ":memory:"
-        && let Some(parent) = std::path::Path::new(path).parent()
+        && let Some(parent) = Path::new(path).parent()
         && !parent.as_os_str().is_empty()
     {
         // Use ensure_private_dir (mode 0o700) so SQLite WAL/SHM files —
@@ -393,7 +396,7 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
     #[cfg(unix)]
     if path != ":memory:" {
         use std::os::unix::fs::OpenOptionsExt;
-        if let Err(e) = std::fs::OpenOptions::new()
+        if let Err(e) = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)

@@ -6,7 +6,7 @@ use url::Url;
 
 use axon_core::config::Config;
 use axon_core::content::extract_anchor_hrefs;
-use axon_core::http::normalize_url;
+use axon_core::http::{FetchWebOptions, fetch_web, normalize_url};
 use axon_core::logging::{log_info, log_warn};
 
 use super::super::sitemap::{
@@ -20,6 +20,18 @@ use super::{
     merge_map_candidate_urls, resolve_map_seed_url,
 };
 use crate::boundary::FetchProvider;
+
+/// URL count at or above which sitemap/llms discovery is considered sufficient
+/// on its own and anchor discovery is skipped.
+///
+/// Mirrors webclaw's `MapOptions::min_sitemap_urls` default. Below this the
+/// layers are merged rather than the sitemap result being returned alone — a
+/// site with a rich sitemap skips the extra fetch entirely, while a thin or
+/// out-of-scope one still gets anchors.
+const MIN_DISCOVERY_URLS: usize = 200;
+
+/// Merged-result count below which the map is reported as possibly incomplete.
+const MIN_HEALTHY_MAP_URLS: usize = 5;
 
 fn effective_root_anchor_limit(cfg: &Config) -> usize {
     if cfg.max_pages == 0 {
@@ -36,25 +48,43 @@ async fn discover_root_anchors(
     fetch: Arc<dyn FetchProvider>,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    let html = match fetch_text(
+    let html = if let Some(html) = fetch_text(
         fetch.as_ref(),
         scope_start_url,
         Some(DISCOVERY_MAX_BODY_BYTES),
     )
     .await
     {
-        Some(html) => html,
-        None => {
-            log_info(&format!(
-                "bounded-structure: fetch failed for {scope_start_url}"
-            ));
-            return (
-                vec![],
-                Some(format!(
-                    "bounded-structure discovery failed to fetch {scope_start_url}; \
-                     dynamic navigation may not be discoverable"
-                )),
-            );
+        html
+    } else {
+        // Preserve the provider boundary for deterministic tests and normal
+        // acquisition, then use the unified anti-bot ladder as the production
+        // fallback for sites that reject the plain provider request.
+        match fetch_web(
+            scope_start_url,
+            &FetchWebOptions::html().with_scan_bytes(cfg.antibot_max_body_scan_bytes),
+        )
+        .await
+        {
+            Ok(doc) => {
+                if doc.escalated {
+                    log_info(&format!(
+                        "bounded-structure: {scope_start_url} required browser TLS impersonation"
+                    ));
+                }
+                doc.body
+            }
+            Err(error) => {
+                log_info(&format!(
+                    "bounded-structure: fetch failed for {scope_start_url}: {error}"
+                ));
+                return (
+                    vec![],
+                    Some(format!(
+                        "bounded-structure discovery failed to fetch {scope_start_url}: {error}"
+                    )),
+                );
+            }
         }
     };
 
@@ -66,17 +96,10 @@ async fn discover_root_anchors(
         .collect();
     urls.sort();
 
-    let warning = if urls.len() < 5 {
-        Some(format!(
-            "bounded-structure discovery returned {} URL(s); \
-             dynamic navigation may not be discoverable",
-            urls.len()
-        ))
-    } else {
-        None
-    };
-
-    (urls, warning)
+    // Thinness is judged by the caller on the MERGED result — anchors may be
+    // sparse while the sitemap layer supplied plenty. Only hard failures (no
+    // client, no fetch) are reported from here.
+    (urls, None)
 }
 
 /// Merge `candidates` into the map scope, then drop scope/locale-excluded URLs.
@@ -112,15 +135,22 @@ fn build_discovery_map_result(
         warning: None,
     }
 }
+/// Outcome of the three discovery probes run concurrently before scoping.
+struct DiscoveryProbes {
+    resolved_start_url: String,
+    sitemap: SitemapDiscovery,
+    llms_urls: Vec<String>,
+}
 
-/// Discover canonical in-scope URLs without crawling or writing page content.
-pub async fn discover_site_urls(
+/// Resolve the seed URL, discover sitemaps, and read `llms.txt` concurrently.
+///
+/// Each probe degrades independently: a failure warns and yields an empty
+/// result rather than failing the whole map.
+async fn run_discovery_probes(
     cfg: &Config,
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
-) -> Result<MapResult, Box<dyn Error>> {
-    let start = Instant::now();
-
+) -> DiscoveryProbes {
     let (seed_result, sitemap_result, llms_urls) = tokio::join!(
         async {
             resolve_map_seed_url(start_url, fetch.clone())
@@ -162,6 +192,43 @@ pub async fn discover_site_urls(
 
     let resolved_start_url = seed_result.unwrap_or_else(|_| normalize_url(start_url).into_owned());
 
+    let sitemap: SitemapDiscovery = match sitemap_result {
+        Ok(d) => d,
+        Err(e) => {
+            log_warn(&format!(
+                "command=sitemap map discovery failed url={start_url}: {e}"
+            ));
+            SitemapDiscovery::default()
+        }
+    };
+    if sitemap.failed_fetches > 0 {
+        log_warn(&format!(
+            "command=sitemap map discovery failed_fetches={} discovered_urls={} url={start_url}",
+            sitemap.failed_fetches, sitemap.discovered_urls
+        ));
+    }
+
+    DiscoveryProbes {
+        resolved_start_url,
+        sitemap,
+        llms_urls,
+    }
+}
+
+/// Discover canonical in-scope URLs without crawling or writing page content.
+pub async fn discover_site_urls(
+    cfg: &Config,
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+) -> Result<MapResult, Box<dyn Error>> {
+    let start = Instant::now();
+
+    let DiscoveryProbes {
+        resolved_start_url,
+        sitemap: sitemap_discovery,
+        llms_urls,
+    } = run_discovery_probes(cfg, start_url, fetch.clone()).await;
+
     let scope_base = {
         let start_host = Url::parse(&normalize_url(start_url))
             .ok()
@@ -180,59 +247,64 @@ pub async fn discover_site_urls(
     let scope_start_url =
         derive_map_scope_url(start_url, &scope_base).unwrap_or_else(|| resolved_start_url.clone());
 
-    let sitemap_discovery: SitemapDiscovery = match sitemap_result {
-        Ok(d) => d,
-        Err(e) => {
-            log_warn(&format!(
-                "command=sitemap map discovery failed url={start_url}: {e}"
-            ));
-            SitemapDiscovery::default()
-        }
-    };
-    if sitemap_discovery.failed_fetches > 0 {
-        log_warn(&format!(
-            "command=sitemap map discovery failed_fetches={} discovered_urls={} url={start_url}",
-            sitemap_discovery.failed_fetches, sitemap_discovery.discovered_urls
-        ));
-    }
     let raw_sitemap_count = sitemap_discovery.discovered_urls;
-
     log_info(&format!(
         "map sitemap_docs={} sitemap_urls={} url={}",
         sitemap_discovery.parsed_sitemap_documents, raw_sitemap_count, start_url
     ));
 
-    if sitemap_discovery.parsed_sitemap_documents > 0 {
-        let mut combined = sitemap_discovery.urls;
-        combined.extend(llms_urls.iter().cloned());
-        let urls = scope_and_filter_map_urls(cfg, combined, &scope);
-        let map_source = if llms_urls.is_empty() {
-            "sitemap"
-        } else {
-            "sitemap+llms"
-        };
+    let discovery_source = match (
+        sitemap_discovery.parsed_sitemap_documents > 0,
+        llms_urls.is_empty(),
+    ) {
+        (true, true) => Some("sitemap"),
+        (true, false) => Some("sitemap+llms"),
+        (false, false) => Some("llms"),
+        (false, true) => None,
+    };
+
+    let mut combined = sitemap_discovery.urls;
+    combined.extend(llms_urls);
+    let discovery_urls = scope_and_filter_map_urls(cfg, combined, &scope);
+
+    // A sitemap that parsed successfully but yielded few in-scope URLs is not a
+    // usable map — a stale sitemap, a thin one listing only section roots, or one
+    // whose entries all fell outside scope. Gate on the RESULTING URL count, not
+    // on how many documents parsed, so those cases still reach anchor discovery.
+    if let Some(source) = discovery_source
+        && discovery_urls.len() >= MIN_DISCOVERY_URLS
+    {
         return Ok(build_discovery_map_result(
-            urls,
+            discovery_urls,
             raw_sitemap_count,
-            map_source,
+            source,
             start.elapsed().as_millis(),
         ));
     }
 
-    // No sitemap, but a curated llms.txt: use it before root-anchor discovery.
-    if !llms_urls.is_empty() {
-        let urls = scope_and_filter_map_urls(cfg, llms_urls, &scope);
-        if !urls.is_empty() {
-            return Ok(build_discovery_map_result(
-                urls,
-                raw_sitemap_count,
-                "llms",
-                start.elapsed().as_millis(),
-            ));
-        }
-    }
+    let (anchor_urls, fetch_warning) =
+        discover_root_anchors(cfg, &scope_start_url, &scope, fetch).await;
+    let anchors_found = !anchor_urls.is_empty();
 
-    let (urls, warning) = discover_root_anchors(cfg, &scope_start_url, &scope, fetch).await;
+    // Layers are additive: discovery entries keep priority, anchors fill in the
+    // rest, deduplicated through the same normalization the map already uses.
+    let urls = merge_map_candidate_urls(discovery_urls, anchor_urls, &scope, true);
+
+    let map_source = match (discovery_source, anchors_found) {
+        (Some(source), true) => format!("{source}+bounded-structure"),
+        (Some(source), false) => source.to_string(),
+        (None, _) => "bounded-structure".to_string(),
+    };
+
+    let warning = fetch_warning.or_else(|| {
+        (urls.len() < MIN_HEALTHY_MAP_URLS).then(|| {
+            format!(
+                "map discovery returned {} URL(s); dynamic navigation may not be discoverable",
+                urls.len()
+            )
+        })
+    });
+
     Ok(MapResult {
         summary: CrawlSummary {
             elapsed_ms: start.elapsed().as_millis(),
@@ -240,7 +312,7 @@ pub async fn discover_site_urls(
         },
         sitemap_urls: raw_sitemap_count,
         urls,
-        map_source: "bounded-structure".to_string(),
+        map_source,
         warning,
     })
 }

@@ -261,7 +261,7 @@ fn dump_path(plan: &SourcePlan) -> Result<PathBuf> {
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.reddit.dump_path.required",
-                axon_error::ErrorStage::Planning,
+                ErrorStage::Planning,
                 "reddit adapter requires a reddit_dump_path option pointing at a prepared JSON dump",
             )
         })
@@ -272,7 +272,7 @@ fn load_dump_items(plan: &SourcePlan) -> Result<Vec<RedditDumpItem>> {
     let bytes = fs::read(&path).map_err(|err| {
         ApiError::new(
             "adapter.reddit.dump_read_failed",
-            axon_error::ErrorStage::Discovering,
+            ErrorStage::Discovering,
             err.to_string(),
         )
         .with_context("path", path.display().to_string())
@@ -286,7 +286,7 @@ fn item_key_for(item: &RedditDumpItem) -> Result<String> {
     if trimmed.is_empty() {
         return Err(ApiError::new(
             "adapter.reddit.item_key.invalid",
-            axon_error::ErrorStage::Discovering,
+            ErrorStage::Discovering,
             "reddit dump item is missing a permalink",
         ));
     }
@@ -311,7 +311,7 @@ fn dump_item_for<'a>(
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.reddit.item_missing",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 "reddit manifest item has no matching dump entry",
             )
             .with_context("key", key)
@@ -322,7 +322,7 @@ fn content_fingerprint(item: &RedditDumpItem) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(item.render_content().as_bytes());
-    self::metadata::hex_prefix(&hasher.finalize(), 16)
+    metadata::hex_prefix(&hasher.finalize(), 16)
 }
 
 fn reddit_target(plan: &SourcePlan) -> Result<RedditTarget> {
@@ -335,7 +335,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.reddit.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -344,7 +344,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.reddit.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

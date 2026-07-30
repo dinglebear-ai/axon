@@ -43,7 +43,7 @@ pub async fn qdrant_search(
     spec: &CollectionSpec,
     request: &VectorSearchRequest,
 ) -> Result<VectorSearchResult, ApiError> {
-    let stage = axon_error::ErrorStage::Retrieving;
+    let stage = ErrorStage::Retrieving;
     let dense = request.dense_vector.as_deref().ok_or_else(|| {
         ApiError::new(
             "vector.missing_query_vector",

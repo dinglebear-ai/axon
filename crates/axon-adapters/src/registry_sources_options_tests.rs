@@ -39,7 +39,7 @@ fn rejects_missing_dump_path() {
     let err = validate_options(&options).expect_err("missing dump path should fail");
 
     assert_eq!(err.code.0, "adapter.registry.option.invalid");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 #[test]

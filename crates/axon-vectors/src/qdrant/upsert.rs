@@ -17,7 +17,7 @@ pub(super) async fn upsert_batches_rest(
     spec: &CollectionSpec,
     batch: VectorPointBatch,
     point_buffer: usize,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<VectorStoreWriteResult> {
     validate_upsert_batch(spec, &batch, stage)?;
 

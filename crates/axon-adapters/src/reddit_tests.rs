@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 const TARGET_SUBREDDIT: &str = "rust";
 
-fn sample_dump() -> serde_json::Value {
+fn sample_dump() -> Value {
     serde_json::json!([
         {
             "title": "Rust chunking",
@@ -47,7 +47,7 @@ fn sample_dump() -> serde_json::Value {
     ])
 }
 
-fn write_dump(dir: &Path, value: &serde_json::Value) -> PathBuf {
+fn write_dump(dir: &Path, value: &Value) -> PathBuf {
     let path = dir.join("dump.json");
     fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
     path

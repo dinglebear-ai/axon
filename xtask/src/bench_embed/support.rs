@@ -18,6 +18,9 @@ pub(super) fn load_dotenv_if_present() -> Result<()> {
         if std::env::var_os(&key).is_none() {
             // SAFETY: xtask is single-threaded here and mutates process env
             // before any worker threads are spawned.
+            // `allow` needed because xtask now inherits the workspace
+            // `unsafe_code = "deny"` lint; `set_var` is `unsafe` in Rust 2024.
+            #[allow(unsafe_code)]
             unsafe {
                 std::env::set_var(key, value);
             }

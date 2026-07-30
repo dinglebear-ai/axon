@@ -281,7 +281,7 @@ fn repo_root(plan: &SourcePlan) -> Result<PathBuf> {
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.git.repo_root.required",
-                axon_error::ErrorStage::Planning,
+                ErrorStage::Planning,
                 "git adapter requires a repo_root option pointing at a checked-out clone",
             )
         })
@@ -303,7 +303,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.git.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a non-git source kind",
     )
     .with_context("adapter", plan.route.adapter.name.clone())
@@ -327,7 +327,7 @@ fn collect_files(root: &Path) -> Result<Vec<PathBuf>> {
         let entry = entry.map_err(|err| {
             ApiError::new(
                 "adapter.git.walk_failed",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 err.to_string(),
             )
         })?;
@@ -356,7 +356,7 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
     if key.is_empty() {
         return Err(ApiError::new(
             "adapter.git.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "git item key must not be empty",
         ));
     }
@@ -367,7 +367,7 @@ fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
     if Path::new(key).is_absolute() || key.split('/').any(|part| part == "..") {
         return Err(ApiError::new(
             "adapter.git.path.escape",
-            axon_error::ErrorStage::Fetching,
+            ErrorStage::Fetching,
             "git item key must stay inside the repo root",
         )
         .with_context("key", key.to_string()));
@@ -399,7 +399,7 @@ fn content_kind_for(path: &Path) -> ContentKind {
 fn fs_error(code: &str, path: &Path, err: std::io::Error) -> ApiError {
     ApiError::new(
         format!("adapter.git.{code}"),
-        axon_error::ErrorStage::Fetching,
+        ErrorStage::Fetching,
         err.to_string(),
     )
     .with_context("path", path.display().to_string())
@@ -408,7 +408,7 @@ fn fs_error(code: &str, path: &Path, err: std::io::Error) -> ApiError {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.git.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

@@ -100,8 +100,7 @@ async fn discover_llms_txt_urls_caps_at_max() {
         request_timeout_ms: Some(5_000),
         ..Config::default()
     };
-    let providers =
-        std::sync::Arc::new(crate::boundary::FakeAdapterProviders::new().with_fetch_text(body));
+    let providers = Arc::new(crate::boundary::FakeAdapterProviders::new().with_fetch_text(body));
     let urls = discover_llms_txt_urls(&cfg, base, providers)
         .await
         .expect("discover");

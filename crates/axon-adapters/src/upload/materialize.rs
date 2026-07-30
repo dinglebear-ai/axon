@@ -32,7 +32,7 @@ impl UploadSourceAdapter {
         let content = staged.content.ok_or_else(|| {
             ApiError::new(
                 "adapter.upload.content_missing",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 "staged upload has no readable content",
             )
             .with_context("source_identity", source_identity.to_string())
@@ -40,7 +40,7 @@ impl UploadSourceAdapter {
         let temporary = tempfile::tempdir().map_err(|error| {
             ApiError::new(
                 "adapter.upload.materialize_failed",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 error.to_string(),
             )
         })?;
@@ -54,7 +54,7 @@ impl UploadSourceAdapter {
             .map_err(|error| {
                 ApiError::new(
                     "adapter.upload.materialize_failed",
-                    axon_error::ErrorStage::Fetching,
+                    ErrorStage::Fetching,
                     error.to_string(),
                 )
                 .with_context("source_identity", source_identity.to_string())
@@ -93,14 +93,14 @@ fn upload_bytes(content: ContentRef, source_identity: &str) -> Result<Vec<u8>> {
             .map_err(|error| {
                 ApiError::new(
                     "adapter.upload.content_invalid",
-                    axon_error::ErrorStage::Fetching,
+                    ErrorStage::Fetching,
                     error.to_string(),
                 )
                 .with_context("source_identity", source_identity.to_string())
             }),
         ContentRef::Artifact { .. } | ContentRef::External { .. } => Err(ApiError::new(
             "adapter.upload.content_unresolved",
-            axon_error::ErrorStage::Fetching,
+            ErrorStage::Fetching,
             "staged upload content must be resolved before adapter materialization",
         )
         .with_context("source_identity", source_identity.to_string())),
@@ -132,7 +132,7 @@ fn extension_for(content_type: &str) -> &'static str {
 fn invalid_upload_uri(uri: &str) -> ApiError {
     ApiError::new(
         "adapter.upload.identity_invalid",
-        axon_error::ErrorStage::Resolving,
+        ErrorStage::Resolving,
         "upload source must be exactly upload://upl_<id> or artifact://art_<id>",
     )
     .with_context("canonical_uri", uri.to_string())
@@ -141,7 +141,7 @@ fn invalid_upload_uri(uri: &str) -> ApiError {
 fn missing_upload(source_identity: &str) -> ApiError {
     ApiError::new(
         "adapter.upload.not_found",
-        axon_error::ErrorStage::Fetching,
+        ErrorStage::Fetching,
         "staged upload identity does not exist",
     )
     .with_context("source_identity", source_identity.to_string())

@@ -240,18 +240,14 @@ fn read_and_parse_feed(path: &std::path::Path) -> Result<Feed> {
     let bytes = fs::read(path).map_err(|err| {
         ApiError::new(
             "adapter.feed.read_failed",
-            axon_error::ErrorStage::Fetching,
+            ErrorStage::Fetching,
             err.to_string(),
         )
         .with_context("path", path.display().to_string())
     })?;
     parse_feed_bytes(&bytes).map_err(|err| {
-        ApiError::new(
-            "adapter.feed.parse_failed",
-            axon_error::ErrorStage::Discovering,
-            err,
-        )
-        .with_context("path", path.display().to_string())
+        ApiError::new("adapter.feed.parse_failed", ErrorStage::Discovering, err)
+            .with_context("path", path.display().to_string())
     })
 }
 
@@ -315,7 +311,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.feed.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -324,7 +320,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.feed.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

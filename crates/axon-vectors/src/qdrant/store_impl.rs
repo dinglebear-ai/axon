@@ -20,7 +20,7 @@ use crate::store_helpers::delete_result;
 
 impl QdrantVectorStore {
     pub(super) async fn ensure_collection_inner(&self, spec: CollectionSpec) -> Result<()> {
-        let stage = axon_error::ErrorStage::Upserting;
+        let stage = ErrorStage::Upserting;
         let http = self.http()?;
         let spec = normalize_collection_spec(spec);
         validate_collection_spec(&spec)?;
@@ -53,7 +53,7 @@ impl QdrantVectorStore {
         &self,
         batch: VectorPointBatch,
     ) -> Result<VectorStoreWriteResult> {
-        let stage = axon_error::ErrorStage::Upserting;
+        let stage = ErrorStage::Upserting;
         let http = self.http()?;
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
@@ -65,7 +65,7 @@ impl QdrantVectorStore {
         &self,
         selector: VectorDeleteSelector,
     ) -> Result<VectorStoreDeleteResult> {
-        let stage = axon_error::ErrorStage::Cleaning;
+        let stage = ErrorStage::Cleaning;
         let http = self.http()?;
         validate_delete_selector(&selector)?;
         let collection = selector_collection(&selector).to_string();
@@ -93,7 +93,7 @@ impl QdrantVectorStore {
         &self,
         request: VectorSearchRequest,
     ) -> Result<VectorSearchResult> {
-        let stage = axon_error::ErrorStage::Retrieving;
+        let stage = ErrorStage::Retrieving;
         let http = self.http()?;
         let spec = self
             .require_collection_spec(&http, &request.collection, stage)
@@ -110,7 +110,7 @@ impl QdrantVectorStore {
     pub async fn count_collection_points(
         &self,
         collection: &str,
-        stage: axon_error::ErrorStage,
+        stage: ErrorStage,
     ) -> Result<u64> {
         let http = self.http()?;
         count_all_points(&http, collection, stage).await
@@ -122,7 +122,7 @@ impl QdrantVectorStore {
         &self,
         http: &QdrantHttp,
         spec: &CollectionSpec,
-        stage: axon_error::ErrorStage,
+        stage: ErrorStage,
     ) -> Result<()> {
         let url = http
             .endpoint()
@@ -170,7 +170,7 @@ async fn delete_generation_points_server_side(
     http: &QdrantHttp,
     collection: &str,
     selector: &VectorDeleteSelector,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<VectorStoreDeleteResult> {
     let VectorDeleteSelector::Generation {
         source_id,
@@ -208,11 +208,7 @@ async fn delete_generation_points_server_side(
 }
 
 /// Count every point in `collection`, no filter (exact server-side count).
-async fn count_all_points(
-    http: &QdrantHttp,
-    collection: &str,
-    stage: axon_error::ErrorStage,
-) -> Result<u64> {
+async fn count_all_points(http: &QdrantHttp, collection: &str, stage: ErrorStage) -> Result<u64> {
     let url = http.endpoint().collection_path(collection, "points/count");
     let body = serde_json::json!({ "exact": true });
     let response: CountResponse = http
@@ -234,7 +230,7 @@ async fn delete_collection_points_by_scroll(
     store: &QdrantVectorStore,
     http: &QdrantHttp,
     collection: &str,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<VectorStoreDeleteResult> {
     let url = http
         .endpoint()

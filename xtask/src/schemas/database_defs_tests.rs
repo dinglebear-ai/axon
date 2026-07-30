@@ -1,6 +1,6 @@
 use super::*;
 
-fn workspace_root() -> std::path::PathBuf {
+fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask has a workspace parent")

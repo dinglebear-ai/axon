@@ -61,7 +61,7 @@ async fn local_adapter_rejects_unknown_options() {
         .expect_err("unknown local options should fail validation");
 
     assert_eq!(err.code.0, "adapter.local.option.unsupported");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 #[tokio::test]

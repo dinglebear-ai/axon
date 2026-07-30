@@ -98,7 +98,7 @@ mod tests {
     fn matches_project_in_file_content() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("rollout.jsonl");
-        std::fs::write(
+        fs::write(
             &file,
             r#"{"type":"session_meta","payload":{"cwd":"/home/me/workspace/axon"}}"#,
         )

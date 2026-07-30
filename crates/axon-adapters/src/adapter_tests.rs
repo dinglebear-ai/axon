@@ -108,7 +108,7 @@ async fn source_adapter_registry_routes_by_selected_adapter_and_reports_capabili
     let same_adapter = registry
         .adapter_for(&route)
         .expect("selected adapter remains registered");
-    assert!(std::sync::Arc::ptr_eq(&adapter, &same_adapter));
+    assert!(Arc::ptr_eq(&adapter, &same_adapter));
     let capability = adapter.capabilities().await.unwrap();
 
     assert_eq!(capability.0.name, "web");
@@ -139,8 +139,8 @@ async fn source_adapter_registry_accepts_mixed_trait_objects() {
         version: "test".to_string(),
     });
     let registry = SourceAdapterRegistry::from_arc_adapters(vec![
-        std::sync::Arc::new(local) as std::sync::Arc<dyn SourceAdapter>,
-        std::sync::Arc::new(web) as std::sync::Arc<dyn SourceAdapter>,
+        Arc::new(local) as Arc<dyn SourceAdapter>,
+        Arc::new(web) as Arc<dyn SourceAdapter>,
     ]);
 
     assert!(
@@ -311,7 +311,7 @@ fn adapter_capability_rejects_unsupported_scope_before_acquisition() {
         .expect_err("unsupported scope fails before acquisition");
 
     assert_eq!(err.code.0, "adapter.scope.unsupported");
-    assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+    assert_eq!(err.stage, ErrorStage::Routing);
 }
 
 /// Every production `SourceAdapter` implementor coerces to `Arc<dyn

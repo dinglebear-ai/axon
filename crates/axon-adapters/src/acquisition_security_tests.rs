@@ -53,7 +53,7 @@ async fn the_underlying_ssrf_check_result_is_unchanged_by_auditing() {
 async fn a_sink_failure_blocks_acquisition() {
     struct FailingSink;
     #[async_trait::async_trait]
-    impl axon_observe::collector::ObservabilitySink for FailingSink {
+    impl ObservabilitySink for FailingSink {
         async fn emit(
             &self,
             _event: axon_api::source::SourceProgressEvent,

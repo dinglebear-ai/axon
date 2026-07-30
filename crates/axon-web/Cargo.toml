@@ -50,14 +50,8 @@ libc = "0.2"
 mime_guess = "2"
 rust-embed = "8"
 
-[lints.rust]
-unsafe_code = "deny"
-unused_import_braces = "warn"
-unused_qualifications = "warn"
-
-[lints.clippy]
-all = { level = "warn", priority = -1 }
-module_inception = "allow"              # src/crawl.rs: acceptable module name
+[lints]
+workspace = true
 [features]
 test-util = []
 

@@ -5,7 +5,7 @@ fn service_job() -> ServiceJob {
     ServiceJob {
         id: uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap(),
         status: "running".to_string(),
-        phase: crate::source::PipelinePhase::Fetching,
+        phase: PipelinePhase::Fetching,
         created_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 0, 0).unwrap(),
         updated_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 1, 0).unwrap(),
         started_at: Some(Utc.with_ymd_and_hms(2026, 7, 16, 12, 0, 10).unwrap()),

@@ -18,7 +18,7 @@ impl FakeVectorStore {
     ) -> Result<VectorStoreWriteResult> {
         let mut state = self.state.lock().await;
         state.calls.push("retire_generation");
-        state.collection_spec(&collection, axon_error::ErrorStage::Publishing)?;
+        state.collection_spec(&collection, ErrorStage::Publishing)?;
         let retired = generation_payload_i64(&retired_epoch, "retired_epoch")?;
         let points = state.points.entry(collection.clone()).or_default();
         let mut points_written = 0;
@@ -60,15 +60,15 @@ impl FakeVectorStore {
         if self.mode == FakeVectorMode::CommitFailure {
             return Err(ApiError::new(
                 "provider.commit_failed",
-                axon_error::ErrorStage::Publishing,
+                ErrorStage::Publishing,
                 "vector store failed to mark unchanged items committed",
             )
             .with_provider_id(&self.provider_id.0));
         }
-        if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Publishing) {
+        if let Some(err) = self.mode_error_for(ErrorStage::Publishing) {
             return Err(err);
         }
-        state.collection_spec(&collection, axon_error::ErrorStage::Publishing)?;
+        state.collection_spec(&collection, ErrorStage::Publishing)?;
         let live_keys = source_item_keys
             .into_iter()
             .map(|key| key.0)
@@ -124,7 +124,7 @@ impl FakeVectorStore {
         if partial_failure {
             return Err(ApiError::new(
                 "provider.partial_commit_failure",
-                axon_error::ErrorStage::Publishing,
+                ErrorStage::Publishing,
                 format!(
                     "fake vector store copied {points_written} of {points_attempted} unchanged points"
                 ),

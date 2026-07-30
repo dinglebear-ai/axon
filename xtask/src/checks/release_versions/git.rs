@@ -268,7 +268,7 @@ pub(super) fn check_gradle_version_code_increased(
     else {
         return Ok(());
     };
-    let current_content = std::fs::read_to_string(root.join(&file.path))
+    let current_content = fs::read_to_string(root.join(&file.path))
         .with_release_context(|| format!("failed to read {}", file.path))?;
     let current = read_gradle_version_code(&current_content)?;
     let previous_content = git_show(root, compare_ref, &file.path)

@@ -28,7 +28,7 @@ pub async fn mark_generation_committed_rest(
     source_id: SourceId,
     generation: SourceGenerationId,
 ) -> Result<VectorStoreWriteResult> {
-    let stage = axon_error::ErrorStage::Publishing;
+    let stage = ErrorStage::Publishing;
     store
         .require_collection_spec(http, &collection, stage)
         .await?;
@@ -74,7 +74,7 @@ pub async fn retire_generation_rest(
     generation: SourceGenerationId,
     retired_epoch: SourceGenerationId,
 ) -> Result<VectorStoreWriteResult> {
-    let stage = axon_error::ErrorStage::Publishing;
+    let stage = ErrorStage::Publishing;
     store
         .require_collection_spec(http, &collection, stage)
         .await?;
@@ -120,7 +120,7 @@ pub async fn mark_unchanged_items_committed_rest(
     committed_generation: SourceGenerationId,
     source_item_keys: Vec<SourceItemKey>,
 ) -> Result<VectorStoreWriteResult> {
-    let stage = axon_error::ErrorStage::Publishing;
+    let stage = ErrorStage::Publishing;
     store
         .require_collection_spec(http, &collection, stage)
         .await?;
@@ -223,7 +223,7 @@ async fn count_points(
     http: &QdrantHttp,
     collection: &str,
     filter: &serde_json::Value,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<u64> {
     let url = http.endpoint().collection_path(collection, "points/count");
     let body = serde_json::json!({ "filter": filter, "exact": true });
@@ -257,7 +257,7 @@ async fn scroll_points(
     http: &QdrantHttp,
     collection: &str,
     filter: &serde_json::Value,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<Vec<ScrollPoint>> {
     let url = http.endpoint().collection_path(collection, "points/scroll");
     let mut offset: Option<serde_json::Value> = None;

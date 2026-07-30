@@ -87,7 +87,7 @@ async fn resolve_metadata(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResu
         &CliToolExecutionConfig::default(),
     )
     .await
-    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
+    .map_err(|err| ApiError::new(err.code, ErrorStage::Planning, err.message))
 }
 
 async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireResult> {
@@ -114,7 +114,7 @@ async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<CliToolAcquireR
         &config,
     )
     .await
-    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
+    .map_err(|err| ApiError::new(err.code, ErrorStage::Authorizing, err.message))
 }
 
 async fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
@@ -352,7 +352,7 @@ fn validate_adapter(plan: &SourcePlan) -> AdapterResult<()> {
     }
     Err(ApiError::new(
         "adapter.cli_tool.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))

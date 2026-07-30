@@ -124,11 +124,7 @@ pub fn required_retrieval_payload_indexes() -> Vec<PayloadIndexSpec> {
 }
 
 fn collection_drift(message: String) -> ApiError {
-    ApiError::new(
-        "vector.collection_drift",
-        axon_error::ErrorStage::Upserting,
-        message,
-    )
+    ApiError::new("vector.collection_drift", ErrorStage::Upserting, message)
 }
 
 type Result<T> = std::result::Result<T, ApiError>;
