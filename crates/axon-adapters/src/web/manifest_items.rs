@@ -29,7 +29,7 @@ pub(super) fn map_urls_manifest_items(plan: &SourcePlan) -> Result<Vec<ManifestI
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.web.map_urls.required",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 "web map scope requires map_urls acquisition results",
             )
         })?;
@@ -38,7 +38,7 @@ pub(super) fn map_urls_manifest_items(plan: &SourcePlan) -> Result<Vec<ManifestI
         let raw = url.as_str().ok_or_else(|| {
             ApiError::new(
                 "adapter.web.map_url.invalid",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 "map_urls entries must be strings",
             )
         })?;

@@ -53,7 +53,7 @@ impl MemorySourceAdapter {
             .ok_or_else(|| {
                 ApiError::new(
                     "adapter.memory.not_materialized",
-                    axon_error::ErrorStage::Planning,
+                    ErrorStage::Planning,
                     "memory source must be materialized before acquisition",
                 )
             })
@@ -217,7 +217,7 @@ fn manifest_item(plan: &SourcePlan, record: &MemoryRecord) -> Result<ManifestIte
     let encoded = serde_json::to_vec(record).map_err(|error| {
         ApiError::new(
             "adapter.memory.fingerprint_failed",
-            axon_error::ErrorStage::Discovering,
+            ErrorStage::Discovering,
             error.to_string(),
         )
     })?;
@@ -254,7 +254,7 @@ fn memory_document(
         serde_json::to_value(candidates).map_err(|error| {
             ApiError::new(
                 "adapter.memory.graph_projection_failed",
-                axon_error::ErrorStage::Normalizing,
+                ErrorStage::Normalizing,
                 error.to_string(),
             )
         })?,
@@ -349,7 +349,7 @@ fn authorize_record(record: &MemoryRecord, access: MemorySourceAccess) -> Result
     }
     Err(ApiError::new(
         "adapter.memory.visibility_denied",
-        axon_error::ErrorStage::Authorizing,
+        ErrorStage::Authorizing,
         "caller is not authorized to acquire this memory",
     )
     .with_context("memory_id", record.memory_id.0.clone()))
@@ -371,7 +371,7 @@ fn validate_plan(plan: &SourcePlan) -> Result<()> {
     {
         return Err(ApiError::new(
             "adapter.memory.mismatch",
-            axon_error::ErrorStage::Routing,
+            ErrorStage::Routing,
             "route selected a different source adapter",
         ));
     }
@@ -381,7 +381,7 @@ fn validate_plan(plan: &SourcePlan) -> Result<()> {
 fn invalid_uri(uri: &str) -> ApiError {
     ApiError::new(
         "adapter.memory.identity_invalid",
-        axon_error::ErrorStage::Resolving,
+        ErrorStage::Resolving,
         "memory source must be exactly memory://mem_<id>",
     )
     .with_context("canonical_uri", uri.to_string())
@@ -390,7 +390,7 @@ fn invalid_uri(uri: &str) -> ApiError {
 fn missing_memory(memory_id: &MemoryId) -> ApiError {
     ApiError::new(
         "adapter.memory.not_found",
-        axon_error::ErrorStage::Fetching,
+        ErrorStage::Fetching,
         "memory source identity does not exist",
     )
     .with_context("memory_id", memory_id.0.clone())
@@ -399,7 +399,7 @@ fn missing_memory(memory_id: &MemoryId) -> ApiError {
 fn cache_error<T>(_error: std::sync::PoisonError<T>) -> ApiError {
     ApiError::new(
         "adapter.memory.materialization_unavailable",
-        axon_error::ErrorStage::Fetching,
+        ErrorStage::Fetching,
         "memory materialization state is unavailable",
     )
 }

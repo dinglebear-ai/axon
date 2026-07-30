@@ -25,7 +25,7 @@ fn trusted_local_caller_gets_internal_ceiling() {
 #[test]
 fn admin_scoped_caller_gets_internal_ceiling() {
     let policy = VisibilityPolicy::new();
-    let ceiling = policy.ceiling_for(&caller(false, vec![crate::AXON_ADMIN_SCOPE.to_string()]));
+    let ceiling = policy.ceiling_for(&caller(false, vec![AXON_ADMIN_SCOPE.to_string()]));
     assert_eq!(ceiling, Visibility::Internal);
 }
 

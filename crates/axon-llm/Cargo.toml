@@ -35,3 +35,6 @@ axon-core = { path = "../axon-core", features = ["test-util"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 httpmock = "0.8"
 toml = { version = "1.1", default-features = false, features = ["parse", "serde"] }
+
+[lints]
+workspace = true

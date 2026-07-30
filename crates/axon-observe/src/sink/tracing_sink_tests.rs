@@ -83,9 +83,9 @@ async fn heartbeat_and_metric_and_flush_succeed() {
 
 #[tokio::test]
 async fn shared_registry_keeps_sinks_in_lockstep() {
-    let seq = std::sync::Arc::new(crate::sequence::SequenceRegistry::new());
-    let a = TracingObservabilitySink::with_sequences(std::sync::Arc::clone(&seq));
-    let b = TracingObservabilitySink::with_sequences(std::sync::Arc::clone(&seq));
+    let seq = Arc::new(SequenceRegistry::new());
+    let a = TracingObservabilitySink::with_sequences(Arc::clone(&seq));
+    let b = TracingObservabilitySink::with_sequences(Arc::clone(&seq));
     let job = JobId(uuid::Uuid::new_v4());
 
     a.emit(crate::event::stage_started(

@@ -51,7 +51,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<RegistryOptio
 fn option_invalid(key: &str, message: &str) -> ApiError {
     ApiError::new(
         "adapter.registry.option.invalid",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         message,
     )
     .with_context("option", key.to_string())

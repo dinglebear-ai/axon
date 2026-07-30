@@ -12,7 +12,7 @@ impl TextCompleter for NoopCompleter {
     async fn complete_text(
         &self,
         _req: CompletionRequest,
-    ) -> Result<CompletionResponse, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<CompletionResponse, Box<dyn Error + Send + Sync>> {
         Err("noop completer".into())
     }
 }

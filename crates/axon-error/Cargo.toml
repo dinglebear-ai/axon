@@ -15,3 +15,6 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 schemars = { version = "1", features = ["chrono04", "uuid1"] }
 utoipa = { version = "5", features = ["chrono", "uuid"] }
+
+[lints]
+workspace = true

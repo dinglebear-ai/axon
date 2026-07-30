@@ -207,7 +207,9 @@ runs:
         # is fail-open, so wrappers that race daemon initialization silently
         # skip the remote and compile. Wait until it answers.
         daemon_is_running() {
-          kache daemon status 2>&1 | grep -q 'running'
+          local status
+          status="$(kache daemon status 2>&1)"
+          grep -q 'running' <<< "$status"
         }
         # `kache daemon status` exits zero even when it prints "not running".
         # Check the reported state, and use restart so stale lock files left by

@@ -86,7 +86,7 @@ impl MemoryGraphMirror for BatchRecordingMirror {
         if self.fail_batch == Some(sizes.len()) {
             return Err(ApiError::new(
                 "graph.fake_failure",
-                axon_error::ErrorStage::Graphing,
+                ErrorStage::Graphing,
                 "forced graph transaction failure",
             ));
         }

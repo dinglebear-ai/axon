@@ -65,7 +65,7 @@ tokio::task_local! {
 /// Run `fut` with `priority` applied to any LLM reservation acquired within it
 /// via [`reserve`]. Not nestable in a way that layers priorities — the
 /// innermost `with_priority` scope wins for reservations acquired inside it.
-pub async fn with_priority<F: std::future::Future>(priority: JobPriority, fut: F) -> F::Output {
+pub async fn with_priority<F: Future>(priority: JobPriority, fut: F) -> F::Output {
     PRIORITY.scope(priority, fut).await
 }
 

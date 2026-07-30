@@ -988,12 +988,12 @@ fn release_please_dispatch_plan_uses_manifest_metadata() {
     assert_eq!(
         items,
         vec![
-            release_please::ReleasePleaseDispatchItem {
+            ReleasePleaseDispatchItem {
                 id: "cli".to_owned(),
                 workflow: "release.yml".to_owned(),
                 tag: "v1.0.0".to_owned(),
             },
-            release_please::ReleasePleaseDispatchItem {
+            ReleasePleaseDispatchItem {
                 id: "palette".to_owned(),
                 workflow: "palette-release.yml".to_owned(),
                 tag: "palette-v5.10.2".to_owned(),
@@ -1027,15 +1027,15 @@ fn release_please_fixup_plan_uses_component_manifest() {
     assert_eq!(
         items,
         vec![
-            release_please::ReleasePleaseFixupItem {
+            ReleasePleaseFixupItem {
                 id: "palette".to_owned(),
                 version: "5.10.2".to_owned(),
             },
-            release_please::ReleasePleaseFixupItem {
+            ReleasePleaseFixupItem {
                 id: "android".to_owned(),
                 version: "1.3.2".to_owned(),
             },
-            release_please::ReleasePleaseFixupItem {
+            ReleasePleaseFixupItem {
                 id: "chrome".to_owned(),
                 version: "0.2.0".to_owned(),
             },
