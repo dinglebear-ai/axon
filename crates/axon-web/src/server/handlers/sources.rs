@@ -22,9 +22,8 @@
 //! trust boundary); the per-source boundary is skipped there, matching the
 //! router's decision to skip scope layers for loopback.
 //!
-//! The classifier (input kind -> [`SafetyClass`]) lives in
-//! [`axon_services::source::classify::safety_class_for`] and the scope mapping
-//! ([`SafetyClass`] -> required scope) lives in
+//! The canonical resolver attaches a [`SafetyClass`] to the resulting route
+//! plan, and the scope mapping ([`SafetyClass`] -> required scope) lives in
 //! `axon_authz::required_scope_for_safety_class` — both shared with the MCP
 //! `source` action (`crates/axon-mcp/src/server/handlers_source.rs`), which
 //! runs the equivalent boundary against `AuthSnapshot::granted_scopes` so a
@@ -60,7 +59,7 @@ use axon_authz::VisibilityPolicy;
 use axon_authz::policy::{ScopeSecurityPolicy, SecurityPolicy};
 use axon_authz::required_scope_for_safety_class as required_scope_for;
 use axon_error::ErrorStage;
-use axon_services::source::classify::{classify_source_input, safety_class_for};
+use axon_services::source::routing::resolve_source_route;
 use axum::{Extension, extract::State, http::StatusCode};
 use lab_auth::AuthContext;
 use std::sync::Arc;
@@ -175,8 +174,9 @@ async fn authorize_source_request(
     request: &SourceRequest,
     auth: &AuthContext,
 ) -> Result<(), HttpError> {
-    let kind = classify_source_input(request.source.trim()).await;
-    let safety_class = safety_class_for(kind);
+    let safety_class = resolve_source_route(request)
+        .map(|routed| routed.route.safety_class)
+        .unwrap_or(SafetyClass::PublicNetwork);
     let required_scope = required_scope_for(safety_class);
 
     let policy = ScopeSecurityPolicy::new(required_scope);
@@ -230,13 +230,12 @@ fn caller_context_from_auth(auth: &AuthContext) -> CallerContext {
     caller
 }
 
-// `safety_class_for` (input kind -> `SafetyClass`) and `required_scope_for`
+// The canonical route plan supplies the source `SafetyClass`; `required_scope_for`
 // (`SafetyClass` -> required scope, aliased above from
-// `axon_authz::required_scope_for_safety_class`) both now live in shared
-// crates so REST and MCP (`crates/axon-mcp/src/server/handlers_source.rs`)
-// authorize a source with the exact same classifier and scope mapping — see
-// `axon_services::source::classify::safety_class_for`'s doc comment for why
-// that matters.
+// `axon_authz::required_scope_for_safety_class`) supplies the shared scope
+// mapping. REST and MCP (`crates/axon-mcp/src/server/handlers_source.rs`)
+// therefore authorize the same resolved source identity rather than carrying a
+// transport-specific classifier.
 
 fn safety_class_str(safety_class: SafetyClass) -> &'static str {
     match safety_class {

@@ -55,6 +55,20 @@ pub trait VectorStore: Send + Sync {
         committed_generation: SourceGenerationId,
         source_item_keys: Vec<SourceItemKey>,
     ) -> Result<VectorStoreWriteResult>;
+    async fn retire_generation(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        retired_epoch: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        let _ = (collection, source_id, generation, retired_epoch);
+        Err(ApiError::new(
+            "vector.retirement_unsupported",
+            ErrorStage::Publishing,
+            "vector store does not support epoch retirement",
+        ))
+    }
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult>;
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult>;
     async fn capabilities(&self) -> Result<ProviderCapability>;
@@ -388,6 +402,17 @@ impl VectorStore for FakeVectorStore {
             source_item_keys,
         )
         .await
+    }
+
+    async fn retire_generation(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        retired_epoch: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        self.retire_generation_inner(collection, source_id, generation, retired_epoch)
+            .await
     }
 
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {

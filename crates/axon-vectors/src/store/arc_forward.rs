@@ -48,6 +48,17 @@ impl VectorStore for Arc<dyn VectorStore> {
             )
             .await
     }
+    async fn retire_generation(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        retired_epoch: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        (**self)
+            .retire_generation(collection, source_id, generation, retired_epoch)
+            .await
+    }
     async fn delete(&self, selector: VectorDeleteSelector) -> Result<VectorStoreDeleteResult> {
         (**self).delete(selector).await
     }

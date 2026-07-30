@@ -31,6 +31,7 @@ fn make_job_with_status(
     ServiceJob {
         id: Uuid::nil(),
         status: status.to_string(),
+        phase: axon_api::source::PipelinePhase::Fetching,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
         started_at: None,

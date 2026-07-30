@@ -4,13 +4,16 @@ pub use strategy::discover_site_urls;
 
 use std::collections::HashSet;
 use std::error::Error;
+use std::sync::Arc;
 
 use url::Url;
 
-use axon_core::http::{http_client, normalize_url, validate_url};
+use axon_api::source::{FetchRequest, MetadataMap, RedactedHeaders};
+use axon_core::http::normalize_url;
 
 use super::is_excluded_url_path;
 use super::url_utils::{MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url};
+use crate::boundary::FetchProvider;
 
 /// The unified result of a `map` operation.
 #[derive(Debug, Default)]
@@ -82,32 +85,34 @@ pub fn merge_map_candidate_urls(
     merged
 }
 
-pub(crate) async fn resolve_map_seed_url(start_url: &str) -> Result<String, Box<dyn Error>> {
+pub(crate) async fn resolve_map_seed_url(
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+) -> Result<String, Box<dyn Error>> {
     let normalized = normalize_url(start_url);
-    validate_url(&normalized).map_err(|e| format!("invalid map seed URL {normalized}: {e}"))?;
-    let client =
-        http_client().map_err(|e| format!("http client init for map seed {normalized}: {e}"))?;
-
-    if let Ok(response) = client.head(normalized.as_ref()).send().await
-        && response.status().is_success()
-    {
-        let final_url = response.url().to_string();
-        validate_url(&final_url)
-            .map_err(|e| format!("map seed redirect target blocked: {final_url}: {e}"))?;
-        return Ok(final_url);
-    }
-
-    let response = client
-        .get(normalized.as_ref())
-        .send()
+    let response = fetch
+        .fetch(FetchRequest {
+            uri: normalized.into_owned(),
+            method: "GET".to_string(),
+            headers: RedactedHeaders {
+                headers: Vec::new(),
+            },
+            body: None,
+            timeout_ms: None,
+            max_bytes: Some(512 * 1024),
+            credential_refs: Vec::new(),
+            metadata: MetadataMap::new(),
+        })
         .await
-        .map_err(|e| format!("GET failed resolving map seed {normalized}: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("non-success status resolving map seed {normalized}: {e}"))?;
-    let final_url = response.url().to_string();
-    validate_url(&final_url)
-        .map_err(|e| format!("map seed redirect target blocked: {final_url}: {e}"))?;
-    Ok(final_url)
+        .map_err(|error| format!("GET failed resolving map seed {start_url}: {error}"))?;
+    if !(200..300).contains(&response.status) {
+        return Err(format!(
+            "non-success status resolving map seed {start_url}: {}",
+            response.status
+        )
+        .into());
+    }
+    Ok(response.final_uri)
 }
 
 fn derive_map_scope_url(requested_url: &str, resolved_url: &str) -> Option<String> {

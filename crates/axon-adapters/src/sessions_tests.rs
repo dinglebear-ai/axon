@@ -89,8 +89,8 @@ fn session_plan(
         );
     }
     let adapter = AdapterRef {
-        name: "session".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        name: "sessions".to_string(),
+        version: crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION.to_string(),
     };
     SourcePlan {
         job_id: JobId::new(Uuid::from_u128(298298)),
@@ -117,7 +117,7 @@ fn session_plan(
             credential_requirements: Vec::new(),
             execution_affinity: ExecutionAffinity::Worker,
             safety_class: SafetyClass::LocalFilesystem,
-            option_schema_id: "adapter:session:options:v1".to_string(),
+            option_schema_id: "adapter:sessions:options:v1".to_string(),
             validated_options: AdapterOptions { values },
             chunking_hints: Vec::new(),
             parser_hints: Vec::new(),
@@ -326,16 +326,8 @@ async fn acquire_then_normalize_claude_session_stamps_metadata() {
         doc.metadata.get("session_id").and_then(|v| v.as_str()),
         Some("abc123")
     );
-    assert_eq!(
-        doc.metadata
-            .get("session_turn_count")
-            .and_then(|v| v.as_u64()),
-        Some(1)
-    );
-    assert_eq!(
-        doc.metadata.get("session_model").and_then(|v| v.as_str()),
-        Some("claude-x")
-    );
+    assert!(!doc.metadata.contains_key("session_turn_count"));
+    assert!(!doc.metadata.contains_key("session_model"));
     assert_eq!(doc.content_kind, ContentKind::Transcript);
     fs::remove_dir_all(&root).ok();
 }
@@ -360,16 +352,8 @@ async fn acquire_then_normalize_codex_session_stamps_metadata() {
             .and_then(|v| v.as_str()),
         Some("codex")
     );
-    assert_eq!(
-        doc.metadata.get("session_model").and_then(|v| v.as_str()),
-        Some("gpt-5-codex")
-    );
-    assert_eq!(
-        doc.metadata
-            .get("session_workspace_path")
-            .and_then(|v| v.as_str()),
-        Some("/home/j/proj")
-    );
+    assert!(!doc.metadata.contains_key("session_model"));
+    assert!(!doc.metadata.contains_key("session_workspace_path"));
     fs::remove_dir_all(&root).ok();
 }
 
@@ -415,12 +399,7 @@ async fn normalize_degraded_claude_file_still_produces_a_document() {
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
     assert_eq!(normalized.data.len(), 1);
     let doc = &normalized.data[0];
-    assert_eq!(
-        doc.metadata
-            .get("session_turn_count")
-            .and_then(|v| v.as_u64()),
-        Some(0)
-    );
+    assert!(!doc.metadata.contains_key("session_turn_count"));
     fs::remove_dir_all(&root).ok();
 }
 

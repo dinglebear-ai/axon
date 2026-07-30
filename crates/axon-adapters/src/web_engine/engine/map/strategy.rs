@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Instant;
 
 use url::Url;
@@ -8,13 +9,17 @@ use axon_core::content::extract_anchor_hrefs;
 use axon_core::http::{FetchWebOptions, fetch_web, normalize_url};
 use axon_core::logging::{log_info, log_warn};
 
-use super::super::sitemap::{SitemapDiscovery, discover_sitemap_urls, sitemap_url_limit};
+use super::super::sitemap::{
+    DISCOVERY_MAX_BODY_BYTES, SitemapDiscovery, discover_sitemap_urls, fetch_text,
+    sitemap_url_limit,
+};
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
     MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
     merge_map_candidate_urls, resolve_map_seed_url,
 };
+use crate::boundary::FetchProvider;
 
 /// URL count at or above which sitemap/llms discovery is considered sufficient
 /// on its own and anchor discovery is skipped.
@@ -40,35 +45,46 @@ async fn discover_root_anchors(
     cfg: &Config,
     scope_start_url: &str,
     scope: &MapScope,
+    fetch: Arc<dyn FetchProvider>,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    // Shared acquisition ladder: plain fetch -> wall classification -> browser
-    // TLS impersonation -> re-classification. Escalation policy is NOT decided
-    // here; every acquisition surface gets the same behaviour from one place.
-    let html = match fetch_web(
+    let html = if let Some(html) = fetch_text(
+        fetch.as_ref(),
         scope_start_url,
-        &FetchWebOptions::html().with_scan_bytes(cfg.antibot_max_body_scan_bytes),
+        Some(DISCOVERY_MAX_BODY_BYTES),
     )
     .await
     {
-        Ok(doc) => {
-            if doc.escalated {
-                log_info(&format!(
-                    "bounded-structure: {scope_start_url} required browser TLS impersonation"
-                ));
+        html
+    } else {
+        // Preserve the provider boundary for deterministic tests and normal
+        // acquisition, then use the unified anti-bot ladder as the production
+        // fallback for sites that reject the plain provider request.
+        match fetch_web(
+            scope_start_url,
+            &FetchWebOptions::html().with_scan_bytes(cfg.antibot_max_body_scan_bytes),
+        )
+        .await
+        {
+            Ok(doc) => {
+                if doc.escalated {
+                    log_info(&format!(
+                        "bounded-structure: {scope_start_url} required browser TLS impersonation"
+                    ));
+                }
+                doc.body
             }
-            doc.body
-        }
-        Err(e) => {
-            log_info(&format!(
-                "bounded-structure: fetch failed for {scope_start_url}: {e}"
-            ));
-            return (
-                vec![],
-                Some(format!(
-                    "bounded-structure discovery failed to fetch {scope_start_url}: {e}"
-                )),
-            );
+            Err(error) => {
+                log_info(&format!(
+                    "bounded-structure: fetch failed for {scope_start_url}: {error}"
+                ));
+                return (
+                    vec![],
+                    Some(format!(
+                        "bounded-structure discovery failed to fetch {scope_start_url}: {error}"
+                    )),
+                );
+            }
         }
     };
 
@@ -130,16 +146,20 @@ struct DiscoveryProbes {
 ///
 /// Each probe degrades independently: a failure warns and yields an empty
 /// result rather than failing the whole map.
-async fn run_discovery_probes(cfg: &Config, start_url: &str) -> DiscoveryProbes {
+async fn run_discovery_probes(
+    cfg: &Config,
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+) -> DiscoveryProbes {
     let (seed_result, sitemap_result, llms_urls) = tokio::join!(
         async {
-            resolve_map_seed_url(start_url)
+            resolve_map_seed_url(start_url, fetch.clone())
                 .await
                 .map_err(|e| e.to_string())
         },
         async {
             if cfg.discover_sitemaps {
-                discover_sitemap_urls(cfg, start_url)
+                discover_sitemap_urls(cfg, start_url, fetch.clone())
                     .await
                     .map_err(|e| e.to_string())
             } else {
@@ -149,7 +169,13 @@ async fn run_discovery_probes(cfg: &Config, start_url: &str) -> DiscoveryProbes 
         async {
             if cfg.discover_llms_txt {
                 // warn-and-continue: never fail the map call on llms.txt errors.
-                match crate::web_engine::engine::discover_llms_txt_urls(cfg, start_url).await {
+                match crate::web_engine::engine::discover_llms_txt_urls(
+                    cfg,
+                    start_url,
+                    fetch.clone(),
+                )
+                .await
+                {
                     Ok(urls) => urls,
                     Err(e) => {
                         log_warn(&format!(
@@ -193,6 +219,7 @@ async fn run_discovery_probes(cfg: &Config, start_url: &str) -> DiscoveryProbes 
 pub async fn discover_site_urls(
     cfg: &Config,
     start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
 ) -> Result<MapResult, Box<dyn Error>> {
     let start = Instant::now();
 
@@ -200,7 +227,7 @@ pub async fn discover_site_urls(
         resolved_start_url,
         sitemap: sitemap_discovery,
         llms_urls,
-    } = run_discovery_probes(cfg, start_url).await;
+    } = run_discovery_probes(cfg, start_url, fetch.clone()).await;
 
     let scope_base = {
         let start_host = Url::parse(&normalize_url(start_url))
@@ -255,7 +282,8 @@ pub async fn discover_site_urls(
         ));
     }
 
-    let (anchor_urls, fetch_warning) = discover_root_anchors(cfg, &scope_start_url, &scope).await;
+    let (anchor_urls, fetch_warning) =
+        discover_root_anchors(cfg, &scope_start_url, &scope, fetch).await;
     let anchors_found = !anchor_urls.is_empty();
 
     // Layers are additive: discovery entries keep priority, anchors fill in the

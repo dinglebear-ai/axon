@@ -30,11 +30,13 @@ fn passes_when_links_resolve_across_the_repo() {
 #[test]
 fn skips_noise_directories() {
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir_all(dir.path().join("target/doc")).unwrap();
-    fs::write(
-        dir.path().join("target/doc/broken.md"),
-        "[missing](./nope.md)",
-    )
-    .unwrap();
+    for noise_dir in ["target/doc", ".cargo/registry/src/example-crate"] {
+        fs::create_dir_all(dir.path().join(noise_dir)).unwrap();
+        fs::write(
+            dir.path().join(noise_dir).join("broken.md"),
+            "[missing](./nope.md)",
+        )
+        .unwrap();
+    }
     check_repo_wide(dir.path()).unwrap();
 }

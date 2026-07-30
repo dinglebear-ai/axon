@@ -9,6 +9,44 @@ use crate::store_helpers::{payload_string, stage_header};
 use super::{FakeVectorMode, FakeVectorStore, Result};
 
 impl FakeVectorStore {
+    pub(super) async fn retire_generation_inner(
+        &self,
+        collection: String,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        retired_epoch: SourceGenerationId,
+    ) -> Result<VectorStoreWriteResult> {
+        let mut state = self.state.lock().await;
+        state.calls.push("retire_generation");
+        state.collection_spec(&collection, ErrorStage::Publishing)?;
+        let retired = generation_payload_i64(&retired_epoch, "retired_epoch")?;
+        let points = state.points.entry(collection.clone()).or_default();
+        let mut points_written = 0;
+        for point in points.values_mut() {
+            if payload_string(&point.payload, "source_id").as_deref() == Some(source_id.0.as_str())
+                && payload_generation_matches(&point.payload, "committed_generation", &generation)
+            {
+                point
+                    .payload
+                    .insert("retired_epoch".to_string(), json!(retired));
+                points_written += 1;
+            }
+        }
+        Ok(VectorStoreWriteResult {
+            header: stage_header(PipelinePhase::Publishing),
+            collection,
+            points_attempted: points_written,
+            points_written,
+            payload_indexes_created: Vec::new(),
+            usage: ProviderUsage {
+                input_tokens: None,
+                output_tokens: None,
+                requests: 1,
+                duration_ms: 0,
+            },
+        })
+    }
+
     pub(super) async fn mark_unchanged_items_committed_inner(
         &self,
         collection: String,

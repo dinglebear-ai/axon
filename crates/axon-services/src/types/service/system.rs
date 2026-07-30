@@ -80,8 +80,17 @@ pub struct StatusTotals {
     pub prune: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BuildIdentity {
+    pub version: String,
+    pub git_sha: String,
+    pub build_profile: String,
+    pub schema_epoch: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatusResult {
+    pub build_identity: BuildIdentity,
     pub payload: serde_json::Value,
     pub text: String,
     pub totals: StatusTotals,

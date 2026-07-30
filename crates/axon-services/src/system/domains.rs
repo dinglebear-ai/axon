@@ -112,7 +112,8 @@ pub async fn domains(
     cfg: &Config,
     pagination: Pagination,
 ) -> Result<DomainsResult, Box<dyn Error>> {
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let payload = domains_payload(&store, cfg, pagination.limit, pagination.offset).await?;
     Ok(map_domains_payload(&payload)?)
 }
@@ -123,7 +124,8 @@ pub async fn domain_indexed(
     domain: &str,
 ) -> Result<DomainIndexedResult, Box<dyn Error>> {
     let normalized = normalize_domain_query(domain)?;
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let indexed = store
         .domain_has_indexed_url(&cfg.collection, &normalized)
         .await
@@ -178,7 +180,8 @@ pub async fn detailed_domains(cfg: &Config) -> Result<DetailedDomainsResult, Box
     // spiking memory on large collections.
     let mut by_domain: HashMap<String, (usize, HashSet<String>)> = HashMap::new();
     let mut count = 0usize;
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     // Selective payload: only fetch domain + canonical URI fields. Avoids
     // transferring multi-KB chunk_text per point — the detailed domains scan
     // only aggregates domain membership and item URI sets.

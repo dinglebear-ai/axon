@@ -66,6 +66,45 @@ pub async fn mark_generation_committed_rest(
     })
 }
 
+pub async fn retire_generation_rest(
+    store: &QdrantVectorStore,
+    http: &QdrantHttp,
+    collection: String,
+    source_id: SourceId,
+    generation: SourceGenerationId,
+    retired_epoch: SourceGenerationId,
+) -> Result<VectorStoreWriteResult> {
+    let stage = ErrorStage::Publishing;
+    store
+        .require_collection_spec(http, &collection, stage)
+        .await?;
+    let generation_value = generation_payload_i64(&generation, "committed_generation")?;
+    let retired_value = generation_payload_i64(&retired_epoch, "retired_epoch")?;
+    let filter = super::convert::eq2_filter_json(
+        "source_id",
+        &source_id.0,
+        "committed_generation",
+        generation_value,
+    );
+    let matched = count_points(http, &collection, &filter, stage).await?;
+    let body =
+        serde_json::json!({ "payload": { "retired_epoch": retired_value }, "filter": filter });
+    let url = http
+        .endpoint()
+        .collection_path(&collection, "points/payload?wait=true");
+    let _ack: SimpleAck = http
+        .post_json(stage, &url, &body, "qdrant_retire_generation")
+        .await?;
+    Ok(VectorStoreWriteResult {
+        header: stage_header(PipelinePhase::Publishing),
+        collection,
+        points_attempted: matched,
+        points_written: matched,
+        payload_indexes_created: Vec::new(),
+        usage: request_usage(2),
+    })
+}
+
 /// Copy unchanged carried-forward points into the newly committed generation.
 ///
 /// Scrolls every point whose `source_id` + `committed_generation` match the

@@ -28705,7 +28705,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:b7b052cc006cd67e140f52d68bdd9500f197b0d73ca7be937caaef5f420ff9e8",
+        "checksum": "sha256:dba63291e2f0e9724d7939ebb06bb57c72bf4701ebabc378fdad1ec05b134a4c",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
@@ -28780,7 +28780,7 @@
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:dc589f2eacd4e9bb59318a1155946651aeaec8607184e74b45295ccd8a6f79f3",
+        "checksum": "sha256:72f433cbcaa5df4d2d072288af00fe77dcd2c8c18ef10f010f85dac2dc29a118",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },

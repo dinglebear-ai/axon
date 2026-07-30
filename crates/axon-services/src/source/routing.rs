@@ -10,18 +10,17 @@ use axon_route::{
 };
 use std::sync::OnceLock;
 
-use super::classify::SourceInputKind;
 use super::events::SourceEventEmitter;
 use super::security::authorize_local_source_policy;
 
 #[derive(Debug, Clone)]
 pub struct RoutedSource {
-    pub kind: SourceInputKind,
+    pub kind: SourceKind,
     pub route: RoutePlan,
 }
 
 pub(crate) struct AuthorizedSourceRoute {
-    pub kind: SourceInputKind,
+    pub kind: SourceKind,
     pub route: RoutePlan,
     pub adapter: AdapterRef,
     pub(crate) event_emitter: SourceEventEmitter,
@@ -35,7 +34,7 @@ pub fn resolve_source_route(request: &SourceRequest) -> Result<RoutedSource, Api
         resolved,
         RouteSecurityPolicy::trusted_tool_execution(),
     )?;
-    let kind = source_kind_to_dispatch_kind(route.source.source_kind);
+    let kind = route.source.source_kind;
 
     Ok(RoutedSource { kind, route })
 }
@@ -63,10 +62,7 @@ pub(crate) async fn resolve_authorized_source_route(
     };
     let kind = routed.kind;
     let route = routed.route;
-    let adapter = AdapterRef {
-        name: route.adapter.name.clone(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
+    let adapter = route.adapter.clone();
     let event_emitter =
         event_emitter.with_route(route.source.source_kind, route.scope, adapter.clone());
     event_emitter
@@ -87,7 +83,7 @@ pub(crate) async fn resolve_authorized_source_route(
 async fn authorize_route_plan(
     route: &RoutePlan,
     input: &str,
-    kind: SourceInputKind,
+    kind: SourceKind,
     auth_snapshot: Option<&AuthSnapshot>,
     event_emitter: &SourceEventEmitter,
 ) -> Result<(), ApiError> {
@@ -118,17 +114,6 @@ async fn authorize_route_plan(
             .await;
         return Err(err);
     }
-    if kind == SourceInputKind::Unsupported {
-        event_emitter
-            .failed(PipelinePhase::Routing, "source kind is unsupported")
-            .await;
-        return Err(ApiError::new(
-            "source.route.unsupported_dispatch",
-            ErrorStage::Routing,
-            "resolved source kind does not have a source dispatch implementation yet",
-        )
-        .with_context("source_kind", format!("{:?}", route.source.source_kind)));
-    }
     Ok(())
 }
 
@@ -145,21 +130,4 @@ fn route_components() -> &'static RouteComponents {
         let router = SourceRouter::new(registry);
         RouteComponents { resolver, router }
     })
-}
-
-fn source_kind_to_dispatch_kind(kind: SourceKind) -> SourceInputKind {
-    match kind {
-        SourceKind::Local => SourceInputKind::Local,
-        SourceKind::Git => SourceInputKind::Git,
-        SourceKind::Feed => SourceInputKind::Feed,
-        SourceKind::Youtube => SourceInputKind::Youtube,
-        SourceKind::Reddit => SourceInputKind::Reddit,
-        SourceKind::Web => SourceInputKind::Web,
-        SourceKind::Session => SourceInputKind::Session,
-        SourceKind::Registry => SourceInputKind::Registry,
-        SourceKind::CliTool => SourceInputKind::CliTool,
-        SourceKind::McpTool => SourceInputKind::McpTool,
-        SourceKind::Memory => SourceInputKind::Memory,
-        SourceKind::Upload => SourceInputKind::Upload,
-    }
 }

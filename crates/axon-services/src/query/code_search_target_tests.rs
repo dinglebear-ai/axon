@@ -13,14 +13,14 @@ use axon_vectors::testing::{TestPointSpec, test_clean_point};
 
 use super::*;
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
-use crate::test_support::NoopServiceRuntime;
+use crate::test_support::{NoopServiceRuntime, sqlite_test_runtime};
 use crate::types::CodeSearchCaller;
 
 const BATCH_ID: &str = "00000000-0000-0000-0000-000000000001";
 const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
 
 #[tokio::test]
-async fn target_code_search_keeps_unchanged_previous_generation_results_visible() {
+async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
     let repo = tempfile::tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
@@ -40,12 +40,12 @@ async fn target_code_search_keeps_unchanged_previous_generation_results_visible(
     .expect("stable file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg.clone(), service_jobs)
+    let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
@@ -105,12 +105,13 @@ async fn target_code_search_keeps_unchanged_previous_generation_results_visible(
         .collect::<Vec<_>>();
     assert!(!stable_points.is_empty());
     assert!(stable_points.iter().any(|point| {
-        point.payload["source_generation"] == serde_json::json!(first_payload_generation)
-            && point.payload["committed_generation"] == serde_json::json!(first_payload_generation)
-    }));
-    assert!(stable_points.iter().any(|point| {
         point.payload["source_generation"] == serde_json::json!(second_payload_generation)
             && point.payload["committed_generation"] == serde_json::json!(second_payload_generation)
+            && point.payload["retired_epoch"].is_null()
+    }));
+    assert!(stable_points.iter().all(|point| {
+        point.payload["committed_generation"] != serde_json::json!(first_payload_generation)
+            || !point.payload["retired_epoch"].is_null()
     }));
 
     let third = refresh_code_search_index_with_progress(
@@ -167,12 +168,12 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
     .expect("visible file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg.clone(), service_jobs)
+    let ctx = ServiceContext::from_runtime(cfg.clone(), service_runtime.runtime.clone())
         .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
@@ -215,7 +216,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
     );
     assert_eq!(
         visible_point.payload["visibility"],
-        serde_json::json!("public")
+        serde_json::json!("internal")
     );
     assert_eq!(
         visible_point.payload["redaction_status"],
@@ -236,7 +237,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         request.filters["committed_generation"],
         serde_json::json!(committed_payload_generation)
     );
-    assert_eq!(request.filters["visibility"], serde_json::json!("public"));
+    assert_eq!(request.filters["visibility"], serde_json::json!("internal"));
     assert_eq!(
         request.filters["redaction_status"],
         serde_json::json!("clean")
@@ -265,7 +266,13 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         .insert("committed_generation".to_string(), serde_json::json!(999));
     staged
         .payload
-        .insert("visibility".to_string(), serde_json::json!("public"));
+        .insert("born_epoch".to_string(), serde_json::json!(999));
+    staged
+        .payload
+        .insert("retired_epoch".to_string(), serde_json::Value::Null);
+    staged
+        .payload
+        .insert("visibility".to_string(), serde_json::json!("internal"));
     staged
         .payload
         .insert("redaction_status".to_string(), serde_json::json!("clean"));
@@ -301,9 +308,16 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
         "committed_generation".to_string(),
         serde_json::json!(committed_payload_generation),
     );
+    redacted.payload.insert(
+        "born_epoch".to_string(),
+        serde_json::json!(committed_payload_generation),
+    );
     redacted
         .payload
-        .insert("visibility".to_string(), serde_json::json!("public"));
+        .insert("retired_epoch".to_string(), serde_json::Value::Null);
+    redacted
+        .payload
+        .insert("visibility".to_string(), serde_json::json!("internal"));
     redacted.payload.insert(
         "redaction_status".to_string(),
         serde_json::json!("redacted"),
@@ -384,13 +398,13 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
     .expect("source file");
 
     let cfg = Arc::new(Config::test_default());
-    let service_jobs = Arc::new(NoopServiceRuntime);
+    let service_runtime = sqlite_test_runtime().await.expect("sqlite runtime");
     let source_jobs = Arc::new(FakeJobWatchStore::new());
     let ledger = Arc::new(FakeLedgerStore::new());
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
-    let ctx = ServiceContext::from_runtime(cfg, service_jobs).with_target_local_source_runtime(
-        TargetLocalSourceRuntime::new(
+    let ctx = ServiceContext::from_runtime(cfg, service_runtime.runtime.clone())
+        .with_target_local_source_runtime(TargetLocalSourceRuntime::new(
             source_jobs,
             ledger,
             embedder,
@@ -398,8 +412,7 @@ async fn target_code_search_fails_refresh_but_can_query_last_committed_generatio
             ProviderId::new("fake-embedding"),
             "fake-embedding",
             8,
-        ),
-    );
+        ));
 
     refresh_code_search_index_with_progress(&ctx, Some(repo.path()), CodeSearchCaller::Cli, None)
         .await

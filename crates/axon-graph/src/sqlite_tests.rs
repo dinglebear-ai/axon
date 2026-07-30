@@ -11,6 +11,18 @@ async fn store() -> SqliteGraphStore {
     SqliteGraphStore::connect(":memory:").await.unwrap()
 }
 
+#[tokio::test]
+async fn standalone_schema_includes_publication_state() {
+    let store = store().await;
+    let table: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'graph_publication_state'",
+    )
+    .fetch_optional(store.pool())
+    .await
+    .expect("inspect graph schema");
+    assert_eq!(table.as_deref(), Some("graph_publication_state"));
+}
+
 fn ev(id: &str, kind: &str, confidence: f32) -> GraphEvidence {
     GraphEvidence {
         evidence_id: id.to_string(),

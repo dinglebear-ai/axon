@@ -491,6 +491,17 @@
       ],
       "references_table": "source_generations",
       "table": "source_manifests"
+    },
+    {
+      "columns": [
+        "source_id"
+      ],
+      "on_delete": "CASCADE",
+      "references_columns": [
+        "source_id"
+      ],
+      "references_table": "sources",
+      "table": "source_publication_state"
     }
   ],
   "indexes": [
@@ -724,6 +735,15 @@
     },
     {
       "columns": [
+        "finalizer_expires_at"
+      ],
+      "name": "idx_graph_publication_state_finalizer_expiry",
+      "table": "graph_publication_state",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "lease_key",
         "expires_at"
       ],
@@ -886,6 +906,15 @@
       ],
       "name": "idx_source_items_key_generation",
       "table": "source_items",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "finalizer_expires_at"
+      ],
+      "name": "idx_source_publication_state_finalizer_expiry",
+      "table": "source_publication_state",
       "unique": false,
       "where": null
     },
@@ -1160,6 +1189,42 @@
     },
     {
       "columns": [
+        "status",
+        "grant_deadline",
+        "expires_at"
+      ],
+      "name": "provider_reservations_scheduler_expiry_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "capacity_domain",
+        "status",
+        "quarantined",
+        "effective_priority",
+        "enqueue_sequence",
+        "reservation_id"
+      ],
+      "name": "provider_reservations_scheduler_head_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
+        "authority_id",
+        "lease_owner",
+        "status"
+      ],
+      "name": "provider_reservations_scheduler_owner_idx",
+      "table": "provider_reservations",
+      "unique": false,
+      "where": null
+    },
+    {
+      "columns": [
         "stage_id"
       ],
       "name": "provider_reservations_stage_id_idx",
@@ -1188,6 +1253,18 @@
       "version": 1
     },
     {
+      "checksum": "7c0c0fcafb7231e6d8ba1b1eafb1816559fc5d06f5a4d1d52947fb208a3e9308",
+      "file": "crates/axon-ledger/src/migrations/0002_publication_state.sql",
+      "name": "0002_publication_state",
+      "owner_crate": "axon-ledger",
+      "runtime_namespace": "ledger",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "source_publication_state"
+      ],
+      "version": 2
+    },
+    {
       "checksum": "51b238e740621b42a5b1bc53f4f0aab0c97fa19e70168d1597742290202551bf",
       "file": "crates/axon-jobs/src/migrations/0001_canonical_jobs.sql",
       "name": "0001_canonical_jobs",
@@ -1207,6 +1284,18 @@
         "provider_reservations"
       ],
       "version": 1
+    },
+    {
+      "checksum": "41a9120f9cc01385daa0d39739d693ae4e35340b346ed4ab9b1c3b7bef4b22a1",
+      "file": "crates/axon-jobs/src/migrations/0002_provider_scheduler.sql",
+      "name": "0002_provider_scheduler",
+      "owner_crate": "axon-jobs",
+      "runtime_namespace": "jobs",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "provider_reservations"
+      ],
+      "version": 2
     },
     {
       "checksum": "1a76f2350e0178842585fa6f8262bb8f61d31e0e51af5d8dbf5d84e0e0bbb7f1",
@@ -1237,6 +1326,18 @@
         "graph_nodes"
       ],
       "version": 1
+    },
+    {
+      "checksum": "965cde73f7b398124e877edec6d27fc3b334ecb9d1609e9bc6d390030ea0b100",
+      "file": "crates/axon-graph/src/migrations/0002_publication_state.sql",
+      "name": "0002_publication_state",
+      "owner_crate": "axon-graph",
+      "runtime_namespace": "graph",
+      "schema_epoch": 1,
+      "tables_touched": [
+        "graph_publication_state"
+      ],
+      "version": 2
     },
     {
       "checksum": "27e05f7d3e3cbd4a909d4682d41605b24a3ca14fb89021d9e1ae5be31c8071f3",
@@ -2200,6 +2301,59 @@
       "owner_crate": "axon-graph",
       "primary_key": [
         "node_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
+          "name": "committed_epoch",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "previous_epoch",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finalizer_lease_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finalizer_owner_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finalizer_expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [],
+      "introduced_in": "crates/axon-graph/src/migrations/0002_publication_state.sql",
+      "name": "graph_publication_state",
+      "owner_crate": "axon-graph",
+      "primary_key": [
+        "source_id"
       ]
     },
     {
@@ -3256,6 +3410,90 @@
           "nullable": false,
           "primary_key": false,
           "type": "text"
+        },
+        {
+          "name": "capacity_domain",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "instance_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "authority_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "enqueue_sequence",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "requested_priority",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "effective_priority",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "queue_deadline",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "grant_deadline",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "lease_owner",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "attempt",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "fence",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "renewed_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "terminal_reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "quarantined",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
         }
       ],
       "foreign_keys": [
@@ -3490,6 +3728,70 @@
           "type": "text"
         },
         {
+          "name": "committed_epoch",
+          "nullable": false,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "previous_epoch",
+          "nullable": true,
+          "primary_key": false,
+          "type": "integer"
+        },
+        {
+          "name": "finalizer_lease_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finalizer_owner_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "finalizer_expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "text"
+        },
+        {
+          "name": "updated_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "text"
+        }
+      ],
+      "foreign_keys": [
+        {
+          "columns": [
+            "source_id"
+          ],
+          "on_delete": "CASCADE",
+          "references_columns": [
+            "source_id"
+          ],
+          "references_table": "sources"
+        }
+      ],
+      "introduced_in": "crates/axon-ledger/src/migrations/0002_publication_state.sql",
+      "name": "source_publication_state",
+      "owner_crate": "axon-ledger",
+      "primary_key": [
+        "source_id"
+      ]
+    },
+    {
+      "columns": [
+        {
+          "name": "source_id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "text"
+        },
+        {
           "name": "committed_generation",
           "nullable": true,
           "primary_key": false,
@@ -3539,17 +3841,17 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:0386be31730c916c31e940f4257a03380562634f67f634a96df4e71c2d5edc3b",
+        "checksum": "sha256:d48f6524ebda76d77e5e3dbc8a0195eac896edbe1108b2fca40ca9c442a2a5bf",
         "kind": "sql_migration_directory",
         "path": "crates/axon-graph/src/migrations"
       },
       {
-        "checksum": "sha256:9e3f41be96e7af63e3d066027047303a27880f72cf6e0fc2dc3084b61be5746f",
+        "checksum": "sha256:1f80f21dfff605db0a46d961e71b00e79e57f0fa7c1ecefb1cf7ac66f583dfc9",
         "kind": "sql_migration_directory",
         "path": "crates/axon-jobs/src/migrations"
       },
       {
-        "checksum": "sha256:5c0c9f475a14a4a0af3eacbe6f3cf029612170b3ab5b91c5c1b1c5fe88d0b285",
+        "checksum": "sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8",
         "kind": "sql_migration_directory",
         "path": "crates/axon-ledger/src/migrations"
       },

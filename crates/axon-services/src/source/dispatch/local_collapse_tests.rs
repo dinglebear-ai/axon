@@ -17,6 +17,9 @@
 //! the legacy pipeline itself as the executable "pre-collapse" baseline —
 //! no scratch copy needed, since that code is still compiled and reachable.
 
+use std::sync::Arc;
+
+use axon_adapters::local::LocalSourceAdapter;
 use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRequest};
 
 use super::SourceExecutionContext;
@@ -117,6 +120,7 @@ async fn dispatch_local_embed_false_skips_ensure_collection_unlike_legacy_path()
     let route = route_for(&source);
     let cfg = axon_core::config::Config::default();
     dispatch_local(
+        Arc::new(LocalSourceAdapter::new()),
         &cfg,
         unified_runtime,
         &source,
@@ -215,6 +219,7 @@ async fn dispatch_local_streams_oversized_document_unlike_legacy_path() {
     let route = route_for(&source);
     let cfg = axon_core::config::Config::default();
     dispatch_local(
+        Arc::new(LocalSourceAdapter::new()),
         &cfg,
         unified_runtime,
         &source,

@@ -27,7 +27,6 @@ pub trait SourceResolver: Send + Sync {
 #[async_trait]
 pub trait SourceRouter: Send + Sync {
     async fn route(&self, source: ResolvedSource, request: &SourceRequest) -> Result<RoutePlan>;
-    async fn validate_options(&self, plan: &RoutePlan) -> Result<ValidatedOptions>;
     async fn capabilities(&self) -> Result<SourceRouterCapability>;
 }
 
@@ -48,6 +47,10 @@ Adapters do not resolve raw source strings and do not choose execution plans.
 `SourceResolver` resolves identity, `SourceRouter` selects adapter/scope/provider
 requirements, and `SourceAdapter` discovers, acquires, and normalizes items for
 the selected `SourcePlan`.
+
+`SourceRouter::route` is the single option-validation boundary: a `RoutePlan`
+contains only options accepted while that plan was constructed. There is no
+post-route validation echo.
 
 ## Document and Parse Traits
 

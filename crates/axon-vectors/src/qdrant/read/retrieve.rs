@@ -206,6 +206,12 @@ fn retrieve_visibility_filter(mut base: serde_json::Value) -> serde_json::Value 
     ]);
     if let Some(object) = base.as_object_mut() {
         object.insert("must_not".to_string(), must_not);
+        let mut must = object
+            .remove("must")
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
+        must.push(serde_json::json!({ "is_null": { "key": "retired_epoch" } }));
+        object.insert("must".to_string(), serde_json::Value::Array(must));
     }
     base
 }

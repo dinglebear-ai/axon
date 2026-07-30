@@ -23,6 +23,22 @@ pub struct PhaseDescriptor {
     pub meaning: &'static str,
 }
 
+impl PhaseDescriptor {
+    /// Stable wire identity for the phase. This is deliberately derived from
+    /// the canonical enum, rather than from display text, so changing prose
+    /// cannot silently rename a persisted stage.
+    pub const fn stable_id(self) -> &'static str {
+        phase_id(self.phase)
+    }
+
+    /// Whether moving directly to `target` is an allowed skip in the
+    /// canonical ordered stage plan. A retry may remain on the same phase;
+    /// backward transitions are never valid.
+    pub fn allows_skip_to(self, target: PipelinePhase) -> bool {
+        transition_allowed(self.phase, target)
+    }
+}
+
 /// Canonical phase registry, in the exact order required by
 /// `schemas/event-schema.md` ("Required Phase Enum Values"). `degraded` and
 /// `failed` are statuses/severities, not phases, and are intentionally absent.
@@ -178,6 +194,55 @@ pub fn label(phase: PipelinePhase) -> String {
         .ok()
         .and_then(|value| value.as_str().map(ToOwned::to_owned))
         .unwrap_or_else(|| format!("{phase:?}").to_ascii_lowercase())
+}
+
+/// Stable identifiers used by durable stage rows and external diagnostics.
+pub const fn phase_id(phase: PipelinePhase) -> &'static str {
+    match phase {
+        PipelinePhase::Queued => "queued",
+        PipelinePhase::Requested => "requested",
+        PipelinePhase::Resolving => "resolving",
+        PipelinePhase::Routing => "routing",
+        PipelinePhase::Authorizing => "authorizing",
+        PipelinePhase::Planning => "planning",
+        PipelinePhase::Leasing => "leasing",
+        PipelinePhase::Discovering => "discovering",
+        PipelinePhase::Diffing => "diffing",
+        PipelinePhase::Fetching => "fetching",
+        PipelinePhase::Rendering => "rendering",
+        PipelinePhase::Enriching => "enriching",
+        PipelinePhase::Normalizing => "normalizing",
+        PipelinePhase::Parsing => "parsing",
+        PipelinePhase::Graphing => "graphing",
+        PipelinePhase::Preparing => "preparing",
+        PipelinePhase::Batching => "batching",
+        PipelinePhase::Embedding => "embedding",
+        PipelinePhase::Vectorizing => "vectorizing",
+        PipelinePhase::Upserting => "upserting",
+        PipelinePhase::Retrieving => "retrieving",
+        PipelinePhase::Synthesizing => "synthesizing",
+        PipelinePhase::Evaluating => "evaluating",
+        PipelinePhase::Publishing => "publishing",
+        PipelinePhase::Cleaning => "cleaning",
+        PipelinePhase::Complete => "complete",
+        PipelinePhase::Canceled => "canceled",
+    }
+}
+
+/// Validate a stage transition against the one canonical phase order.
+pub fn transition_allowed(from: PipelinePhase, to: PipelinePhase) -> bool {
+    if from == to || to == PipelinePhase::Canceled {
+        return true;
+    }
+    let from = PHASE_REGISTRY
+        .iter()
+        .position(|entry| entry.phase == from)
+        .unwrap_or_default();
+    let to = PHASE_REGISTRY
+        .iter()
+        .position(|entry| entry.phase == to)
+        .unwrap_or_default();
+    to > from
 }
 
 /// The human-readable meaning for `phase` (contract's "Meaning" column).

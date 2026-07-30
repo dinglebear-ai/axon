@@ -8,6 +8,7 @@ fn job(id: Uuid, status: &str, target: &str, result_json: serde_json::Value) -> 
     ServiceJob {
         id,
         status: status.to_string(),
+        phase: axon_api::source::PipelinePhase::Fetching,
         created_at: Utc.with_ymd_and_hms(2026, 5, 24, 12, 0, 0).unwrap(),
         updated_at: Utc.with_ymd_and_hms(2026, 5, 24, 12, 1, 0).unwrap(),
         started_at: Some(Utc.with_ymd_and_hms(2026, 5, 24, 12, 0, 10).unwrap()),

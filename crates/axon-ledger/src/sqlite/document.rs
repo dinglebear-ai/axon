@@ -1,5 +1,5 @@
 use axon_api::source::*;
-use sqlx::Row;
+use sqlx::{Row, Sqlite, Transaction};
 
 use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
@@ -7,19 +7,45 @@ use crate::sqlite::util::{enum_wire_value, json_error};
 use crate::store::Result;
 use crate::validation::source_missing_error;
 
+/// Seven bind parameters per status keep each SQLite statement comfortably
+/// below the default 999-variable ceiling while still amortizing a pipeline
+/// stage into a bounded transaction.
+const DOCUMENT_STATUS_TX_BATCH_SIZE: usize = 100;
+
 pub(super) async fn update_document_status(
     store: &SqliteLedgerStore,
     status: DocumentStatus,
 ) -> Result<()> {
+    update_document_statuses(store, vec![status]).await
+}
+
+pub(super) async fn update_document_statuses(
+    store: &SqliteLedgerStore,
+    statuses: Vec<DocumentStatus>,
+) -> Result<()> {
+    for statuses in statuses.chunks(DOCUMENT_STATUS_TX_BATCH_SIZE) {
+        let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+        for status in statuses {
+            update_document_status_in_tx(&mut tx, status).await?;
+        }
+        tx.commit().await.map_err(sqlite_error)?;
+    }
+    Ok(())
+}
+
+async fn update_document_status_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    status: &DocumentStatus,
+) -> Result<()> {
     let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
         .bind(&status.source_id.0)
-        .fetch_optional(&store.pool)
+        .fetch_optional(&mut **tx)
         .await
         .map_err(sqlite_error)?;
     if exists.is_none() {
         return Err(source_missing_error(&status.source_id));
     }
-    let generation = status.generation.clone().ok_or_else(|| {
+    let generation = status.generation.as_ref().ok_or_else(|| {
         ApiError::new(
             "source.ledger.generation_required",
             ErrorStage::Planning,
@@ -37,7 +63,7 @@ pub(super) async fn update_document_status(
     .bind(&status.source_id.0)
     .bind(&generation.0)
     .bind(&status.source_item_key.0)
-    .fetch_optional(&store.pool)
+    .fetch_optional(&mut **tx)
     .await
     .map_err(sqlite_error)?;
     if item_exists.is_none() {
@@ -81,7 +107,7 @@ pub(super) async fn update_document_status(
     .bind(enum_wire_value(status.status)?)
     .bind(status_json)
     .bind(&status.updated_at.0)
-    .execute(&store.pool)
+    .execute(&mut **tx)
     .await
     .map_err(sqlite_error)?;
     Ok(())

@@ -5,6 +5,7 @@ fn service_job() -> ServiceJob {
     ServiceJob {
         id: uuid::Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap(),
         status: "running".to_string(),
+        phase: PipelinePhase::Fetching,
         created_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 0, 0).unwrap(),
         updated_at: Utc.with_ymd_and_hms(2026, 7, 16, 12, 1, 0).unwrap(),
         started_at: Some(Utc.with_ymd_and_hms(2026, 7, 16, 12, 0, 10).unwrap()),
@@ -31,6 +32,7 @@ fn status_job_serializes_canonical_fields_without_wire_aliases() {
 
     assert_eq!(value["job_id"], "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     assert_eq!(value["kind"], "source");
+    assert_eq!(value["phase"], "fetching");
     assert_eq!(value["progress"]["phase"], "acquire");
     assert_eq!(value["result"]["documents"], 2);
     for removed in [
@@ -43,4 +45,14 @@ fn status_job_serializes_canonical_fields_without_wire_aliases() {
     ] {
         assert!(value.get(removed).is_none(), "removed field {removed}");
     }
+}
+
+#[test]
+fn status_job_exposes_the_durable_phase_without_progress_counters() {
+    let mut job = service_job();
+    job.progress_json = Some(serde_json::json!({}));
+
+    let value = serde_json::to_value(StatusJob::from_service_job(JobKind::Source, &job)).unwrap();
+
+    assert_eq!(value["phase"], "fetching");
 }

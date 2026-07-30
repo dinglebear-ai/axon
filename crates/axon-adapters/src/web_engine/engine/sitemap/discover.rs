@@ -2,18 +2,16 @@
 //! fetching of sitemap documents (following `<sitemapindex>` references).
 
 use super::filter::{lastmod_is_recent, loc_in_scope};
-use super::{
-    DISCOVERY_MAX_BODY_BYTES, SITEMAP_MAX_BODY_BYTES, fetch_text_with_retry, join_origin_path,
-    request_timeout_secs,
-};
+use super::{DISCOVERY_MAX_BODY_BYTES, SITEMAP_MAX_BODY_BYTES, fetch_text, join_origin_path};
 use axon_core::config::Config;
 use axon_core::content::{extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps};
-use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::{log_info, log_warn};
 use spider::url::Url;
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
+use std::sync::Arc;
 
+use crate::boundary::FetchProvider;
 use crate::web_engine::engine::MAX_TRACKED_DISCOVERED_URLS;
 
 /// Bytes scanned for a sitemap's root element.
@@ -142,40 +140,24 @@ fn sitemap_seed_queue(parsed: &Url) -> VecDeque<String> {
 
 async fn process_sitemap_batch(
     cfg: &Config,
-    client: &reqwest::Client,
+    fetch: Arc<dyn FetchProvider>,
     batch: Vec<String>,
     scope: &SitemapScope<'_>,
     output: &mut SitemapBatchOutput<'_>,
 ) -> usize {
-    // In test builds, propagate the thread-local SSRF loopback bypass flag
-    // into spawned tasks so httpmock servers on 127.0.0.1 are reachable.
-    #[cfg(test)]
-    let loopback_flag = axon_core::http::get_allow_loopback();
-
-    let mut joins = tokio::task::JoinSet::new();
-    for sitemap_url in batch {
-        let http = client.clone();
-        let retries = cfg.fetch_retries;
-        let backoff = cfg.retry_backoff_ms;
-        joins.spawn(async move {
-            #[cfg(test)]
-            axon_core::http::set_allow_loopback(loopback_flag);
-
-            fetch_text_with_retry(
-                &http,
-                &sitemap_url,
-                retries,
-                backoff,
-                Some(SITEMAP_MAX_BODY_BYTES),
-            )
-            .await
-            .map(|xml| (sitemap_url, xml))
-        });
-    }
+    let fetched = futures_util::future::join_all(batch.into_iter().map(|sitemap_url| {
+        let fetch = fetch.clone();
+        async move {
+            fetch_text(fetch.as_ref(), &sitemap_url, Some(SITEMAP_MAX_BODY_BYTES))
+                .await
+                .map(|xml| (sitemap_url, xml))
+        }
+    }))
+    .await;
 
     let mut parsed = 0usize;
-    while let Some(joined) = joins.join_next().await {
-        let Ok(Some((sitemap_url, xml))) = joined else {
+    for result in fetched {
+        let Some((sitemap_url, xml)) = result else {
             output.failed_fetches += 1;
             continue;
         };
@@ -245,23 +227,15 @@ async fn process_sitemap_batch(
 /// Fetch `robots.txt` for `scheme://host/robots.txt` and enqueue any `Sitemap:` directives
 /// into `queue`. Returns the count of declared sitemaps found.
 async fn enqueue_robots_sitemaps(
-    client: &reqwest::Client,
+    fetch: &dyn FetchProvider,
     parsed: &Url,
-    cfg: &Config,
     queue: &mut VecDeque<String>,
     sitemap_fetch_limit: usize,
 ) -> usize {
     let Ok(robots_url) = join_origin_path(parsed, "/robots.txt") else {
         return 0;
     };
-    let Some(robots_txt) = fetch_text_with_retry(
-        client,
-        &robots_url,
-        cfg.fetch_retries,
-        cfg.retry_backoff_ms,
-        Some(DISCOVERY_MAX_BODY_BYTES),
-    )
-    .await
+    let Some(robots_txt) = fetch_text(fetch, &robots_url, Some(DISCOVERY_MAX_BODY_BYTES)).await
     else {
         return 0;
     };
@@ -278,13 +252,14 @@ async fn enqueue_robots_sitemaps(
 /// Discover sitemap URLs with robots.txt parsing and batched concurrent fetching.
 ///
 /// Seeds the queue with default sitemap paths plus any sitemaps declared in
-/// robots.txt. Processes sitemap documents in concurrent batches using JoinSet,
+/// robots.txt. Processes sitemap documents in concurrent provider-backed batches,
 /// following sitemap index references recursively.
 ///
 /// Returns a [`SitemapDiscovery`] with sorted, deduplicated URLs and diagnostic stats.
 pub async fn discover_sitemap_urls(
     cfg: &Config,
     start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
 ) -> Result<SitemapDiscovery, Box<dyn Error>> {
     let parsed = Url::parse(start_url)
         .map_err(|e| format!("invalid start URL for sitemap discovery {start_url}: {e}"))?;
@@ -300,11 +275,8 @@ pub async fn discover_sitemap_urls(
     queue.truncate(sitemap_fetch_limit);
     let seeded_default_sitemaps = queue.len();
 
-    let client = build_client(request_timeout_secs(cfg), Some(axon_ua())).map_err(|e| {
-        format!("failed to build HTTP client for sitemap discovery of {start_url}: {e}")
-    })?;
     let robots_declared_sitemaps =
-        enqueue_robots_sitemaps(&client, &parsed, cfg, &mut queue, sitemap_fetch_limit).await;
+        enqueue_robots_sitemaps(fetch.as_ref(), &parsed, &mut queue, sitemap_fetch_limit).await;
 
     let mut seen_sitemaps = HashSet::new();
     let mut out = HashSet::new();
@@ -354,7 +326,8 @@ pub async fn discover_sitemap_urls(
             url_limit,
             failed_fetches: 0,
         };
-        parsed_sitemaps += process_sitemap_batch(cfg, &client, batch, &scope, &mut output).await;
+        parsed_sitemaps +=
+            process_sitemap_batch(cfg, fetch.clone(), batch, &scope, &mut output).await;
         failed_fetches += output.failed_fetches;
         if parsed_sitemaps.is_multiple_of(64) {
             log_info(&format!(

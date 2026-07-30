@@ -14,11 +14,18 @@ pub const MIGRATION_NAMESPACE: &str = "ledger";
 /// `source_generations`, `source_manifests`, `source_items`, `document_status`,
 /// `cleanup_debt`, `leases`) per the schema contract, so this is the SOLE
 /// creator of them in the unified pool.
-pub const MIGRATIONS: &[SqlMigration] = &[SqlMigration {
-    version: 1,
-    name: "0001_ledger_lifecycle",
-    sql: include_str!("migrations/0001_ledger_lifecycle.sql"),
-}];
+pub const MIGRATIONS: &[SqlMigration] = &[
+    SqlMigration {
+        version: 1,
+        name: "0001_ledger_lifecycle",
+        sql: include_str!("migrations/0001_ledger_lifecycle.sql"),
+    },
+    SqlMigration {
+        version: 2,
+        name: "0002_publication_state",
+        sql: include_str!("migrations/0002_publication_state.sql"),
+    },
+];
 
 /// The ledger's [`MigrationSet`] for composition into the unified runner.
 pub fn migration_set() -> MigrationSet {

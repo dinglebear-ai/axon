@@ -55,6 +55,7 @@ use mapping::{
     item_from_record, node_type_name, normalize_remember, parse_memory_type, required_text,
     scope_for, status_matches,
 };
+use runtime_metadata::detect_runtime_memory_metadata;
 
 const DEFAULT_LIMIT: usize = 10;
 const MAX_LIMIT: usize = 100;
@@ -182,7 +183,14 @@ pub async fn list(ctx: &ServiceContext, req: MemoryRequest) -> Result<Vec<Memory
 
 pub async fn remember(ctx: &ServiceContext, req: MemoryRequest) -> Result<MemoryItem> {
     let store = memory_store(ctx).await?;
-    let memory = normalize_remember(req)?;
+    let mut memory = normalize_remember(req)?;
+    if memory.project.is_none() || memory.repo.is_none() {
+        let runtime = tokio::task::spawn_blocking(detect_runtime_memory_metadata)
+            .await
+            .unwrap_or_default();
+        memory.project = memory.project.or(runtime.project);
+        memory.repo = memory.repo.or(runtime.repo);
+    }
     let request = axon_api::source::MemoryRequest {
         memory_type: parse_memory_type(&memory.memory_type),
         body: memory.body.clone(),

@@ -12,16 +12,11 @@ use crate::store::Result;
 use crate::store_helpers::stage_header;
 use crate::validation::validate_upsert_batch;
 
-/// Points per Qdrant upsert request.
-///
-/// This keeps large source writes from creating unbounded JSON bodies while
-/// still staying large enough to avoid excessive HTTP overhead for normal jobs.
-const UPSERT_BATCH_SIZE: usize = 512;
-
 pub(super) async fn upsert_batches_rest(
     http: &QdrantHttp,
     spec: &CollectionSpec,
     batch: VectorPointBatch,
+    point_buffer: usize,
     stage: ErrorStage,
 ) -> Result<VectorStoreWriteResult> {
     validate_upsert_batch(spec, &batch, stage)?;
@@ -38,7 +33,7 @@ pub(super) async fn upsert_batches_rest(
         .collection_path(&batch.collection, "points?wait=true");
 
     let mut requests = 0u64;
-    for chunk in ChunkedUpsertBatches::new(batch, UPSERT_BATCH_SIZE) {
+    for chunk in ChunkedUpsertBatches::new(batch, point_buffer) {
         let body = upsert_points_json(spec, &chunk)?;
         http.put_json(stage, &url, &body, "qdrant_upsert").await?;
         requests += 1;

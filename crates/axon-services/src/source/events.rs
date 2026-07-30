@@ -43,7 +43,7 @@ impl SourceEventEmitter {
             scope,
             AdapterRef {
                 name: "web".to_string(),
-                version: env!("CARGO_PKG_VERSION").to_string(),
+                version: axon_adapters::SOURCE_ADAPTER_CONTRACT_VERSION.to_string(),
             },
         )
     }
