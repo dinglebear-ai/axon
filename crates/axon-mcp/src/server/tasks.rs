@@ -3,23 +3,18 @@ use super::common::{invalid_params, logged_internal_error, validate_mcp_urls};
 use super::server_authz;
 use super::task_id::{parse_task_id, task_id_for};
 use super::task_progress;
-use super::task_status::{task_from_job, task_meta_from_job, task_result_payload};
+use super::task_status::{detailed_task_from_job, task_from_job, task_meta_from_job};
 use crate::schema::{AxonRequest, ExtractSubaction, parse_axon_request};
 use axon_api::source::JobKind;
-use axon_core::config::{ConfigOverrides, parse::tuning};
+use axon_core::config::ConfigOverrides;
 use axon_services::extract as extract_svc;
 use axon_services::types::ServiceJob;
 use rmcp::model::{
-    CallToolRequestParams, CancelTaskParams, CancelTaskResult, CreateTaskResult, GetTaskInfoParams,
-    GetTaskPayloadResult, GetTaskResult, GetTaskResultParams, ListTasksResult,
-    PaginatedRequestParams,
+    CallToolRequestParams, CancelTaskParams, CreateTaskResult, GetTaskParams, GetTaskResult,
 };
 use rmcp::{ErrorData, RoleServer, service::RequestContext};
 use serde_json::{Map, Value};
 use uuid::Uuid;
-
-const TASK_LIST_LIMIT: usize = 20;
-const TASK_LIST_MAX_OFFSET: usize = 200;
 
 pub(super) async fn enqueue_task(
     server: &AxonMcpServer,
@@ -59,89 +54,31 @@ pub(super) async fn enqueue_task(
     Ok(CreateTaskResult::new(task_from_job(kind, &job)))
 }
 
-pub(super) async fn list_tasks(
+/// SEP-2663 `tasks/get`.
+///
+/// Subsumes rmcp 1.x's `tasks/get` + `tasks/result` pair: `DetailedTask`
+/// inlines the terminal payload, so a completed job's result is returned here
+/// instead of from a separate blocking `tasks/result` call.
+pub(super) async fn get_task(
     server: &AxonMcpServer,
-    request: Option<PaginatedRequestParams>,
-    context: RequestContext<RoleServer>,
-) -> Result<ListTasksResult, ErrorData> {
-    authorize_task_lifecycle(server, &context, "tasks/list")?;
-    let offset = parse_cursor_offset(request.and_then(|params| params.cursor))?;
-    let fetch_limit = offset + TASK_LIST_LIMIT + 1;
-    let ctx = server
-        .base_service_context()
-        .await
-        .map_err(|e| logged_internal_error("tasks.list.context", e.as_ref()))?;
-    let mut tasks = Vec::new();
-    for kind in JobKind::all() {
-        let jobs = ctx
-            .jobs
-            .list_jobs(*kind, fetch_limit as i64, 0)
-            .await
-            .map_err(|e| logged_internal_error("tasks.list", e.as_ref()))?;
-        tasks.extend(jobs.into_iter().map(|job| (*kind, job)));
-    }
-    tasks.sort_by(|(_, left), (_, right)| {
-        right
-            .updated_at
-            .cmp(&left.updated_at)
-            .then_with(|| right.created_at.cmp(&left.created_at))
-            .then_with(|| right.id.cmp(&left.id))
-    });
-
-    let next_offset = offset + TASK_LIST_LIMIT;
-    let next_cursor = (tasks.len() > next_offset && next_offset <= TASK_LIST_MAX_OFFSET)
-        .then(|| next_offset.to_string());
-    let page = tasks
-        .into_iter()
-        .skip(offset)
-        .take(TASK_LIST_LIMIT)
-        .map(|(kind, job)| task_from_job(kind, &job))
-        .collect();
-    let mut result = ListTasksResult::new(page);
-    result.next_cursor = next_cursor;
-    Ok(result)
-}
-
-pub(super) async fn get_task_info(
-    server: &AxonMcpServer,
-    request: GetTaskInfoParams,
+    request: GetTaskParams,
     context: RequestContext<RoleServer>,
 ) -> Result<GetTaskResult, ErrorData> {
     authorize_task_lifecycle(server, &context, "tasks/get")?;
     let (kind, job_id) = parse_task_id(&request.task_id)?;
     let job = load_job(server, kind, job_id).await?;
-    Ok(GetTaskResult {
-        meta: task_meta_from_job(kind, &job),
-        task: task_from_job(kind, &job),
-    })
+    let mut result = GetTaskResult::new(detailed_task_from_job(kind, &job));
+    result.meta = task_meta_from_job(kind, &job);
+    Ok(result)
 }
 
-pub(super) async fn get_task_result(
-    server: &AxonMcpServer,
-    request: GetTaskResultParams,
-    context: RequestContext<RoleServer>,
-) -> Result<GetTaskPayloadResult, ErrorData> {
-    authorize_task_lifecycle(server, &context, "tasks/result")?;
-    let (kind, job_id) = parse_task_id(&request.task_id)?;
-    let job = tokio::time::timeout(
-        task_result_wait_timeout(),
-        wait_for_terminal_job(server, kind, job_id),
-    )
-    .await
-    .map_err(|_| {
-        invalid_params(format!(
-            "task result timed out before terminal state: {}",
-            task_id_for(kind, job_id)
-        ))
-    })??;
-    Ok(task_result_payload(kind, &job))
-}
-
+/// SEP-2663 `tasks/cancel`. The ack is empty now — the post-cancel task state
+/// is observed through the next `tasks/get` rather than returned inline.
 pub(super) async fn cancel_task(
     server: &AxonMcpServer,
     request: CancelTaskParams,
     context: RequestContext<RoleServer>,
-) -> Result<CancelTaskResult, ErrorData> {
+) -> Result<(), ErrorData> {
     authorize_task_lifecycle(server, &context, "tasks/cancel")?;
     let (kind, job_id) = parse_task_id(&request.task_id)?;
     let ctx = server
@@ -159,11 +96,7 @@ pub(super) async fn cancel_task(
             task_id_for(kind, job_id)
         )));
     }
-    let job = load_job(server, kind, job_id).await?;
-    Ok(CancelTaskResult {
-        meta: task_meta_from_job(kind, &job),
-        task: task_from_job(kind, &job),
-    })
+    Ok(())
 }
 
 /// Enforces scope for the in-flight task tool call and returns the resolved
@@ -329,45 +262,9 @@ async fn load_job(
         .ok_or_else(|| invalid_params(format!("task not found: {}", task_id_for(kind, job_id))))
 }
 
-async fn wait_for_terminal_job(
-    server: &AxonMcpServer,
-    kind: JobKind,
-    job_id: Uuid,
-) -> Result<ServiceJob, ErrorData> {
-    loop {
-        let job = load_job(server, kind, job_id).await?;
-        if !job.status_enum().is_active() {
-            return Ok(job);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(
-            super::task_status::TASK_POLL_INTERVAL_MS,
-        ))
-        .await;
-    }
-}
-
 fn parse_uuid(raw: &str) -> Result<Uuid, ErrorData> {
     Uuid::parse_str(raw)
         .map_err(|e| ErrorData::internal_error(format!("invalid queued job id: {e}"), None))
-}
-
-fn task_result_wait_timeout() -> std::time::Duration {
-    std::time::Duration::from_secs(tuning::mcp_task_result_wait_timeout_secs())
-}
-
-fn parse_cursor_offset(cursor: Option<String>) -> Result<usize, ErrorData> {
-    let Some(cursor) = cursor else {
-        return Ok(0);
-    };
-    let offset = cursor
-        .parse::<usize>()
-        .map_err(|_| invalid_params("tasks/list cursor must be a numeric offset"))?;
-    if offset > TASK_LIST_MAX_OFFSET {
-        return Err(invalid_params(format!(
-            "tasks/list cursor must be <= {TASK_LIST_MAX_OFFSET}"
-        )));
-    }
-    Ok(offset)
 }
 
 fn unsupported_task_request(request: &AxonRequest) -> ErrorData {

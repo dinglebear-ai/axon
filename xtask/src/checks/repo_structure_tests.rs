@@ -48,7 +48,7 @@ fn complete_fixture() -> Fixture {
     write(
         &root.join("Cargo.toml"),
         &format!(
-            "[workspace]\nmembers = [\n{members_toml}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
+            "[workspace]\nmembers = [\n{members_toml}\n]\n\n[workspace.package]\nrust-version = \"1.97.1\"\n"
         ),
     );
     write(
@@ -218,7 +218,7 @@ fn missing_required_workspace_member_fails() {
     write(
         &fixture.root.join("Cargo.toml"),
         &format!(
-            "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n"
+            "[workspace]\nmembers = [\n{members}\n]\n\n[workspace.package]\nrust-version = \"1.97.1\"\n"
         ),
     );
 
@@ -235,7 +235,7 @@ fn unexpected_workspace_member_fails() {
     fs::create_dir_all(fixture.root.join("crates/axon-surprise")).unwrap();
     write(
         &fixture.root.join("Cargo.toml"),
-        "[workspace]\nmembers = [\n    \"xtask\",\n    \"crates/axon-api\",\n    \"crates/axon-authz\",\n    \"crates/axon-core\",\n    \"crates/axon-crawl\",\n    \"crates/axon-vector\",\n    \"crates/axon-ingest\",\n    \"crates/axon-extract\",\n    \"crates/axon-jobs\",\n    \"crates/axon-code-index\",\n    \"crates/axon-services\",\n    \"crates/axon-mcp\",\n    \"crates/axon-web\",\n    \"crates/axon-cli\",\n    \"crates/axon-error\",\n    \"crates/axon-observe\",\n    \"crates/axon-route\",\n    \"crates/axon-adapters\",\n    \"crates/axon-ledger\",\n    \"crates/axon-parse\",\n    \"crates/axon-graph\",\n    \"crates/axon-memory\",\n    \"crates/axon-document\",\n    \"crates/axon-embedding\",\n    \"crates/axon-vectors\",\n    \"crates/axon-retrieval\",\n    \"crates/axon-llm\",\n    \"crates/axon-prune\",\n    \"crates/axon-surprise\",\n]\n\n[workspace.package]\nrust-version = \"1.94.0\"\n",
+        "[workspace]\nmembers = [\n    \"xtask\",\n    \"crates/axon-api\",\n    \"crates/axon-authz\",\n    \"crates/axon-core\",\n    \"crates/axon-crawl\",\n    \"crates/axon-vector\",\n    \"crates/axon-ingest\",\n    \"crates/axon-extract\",\n    \"crates/axon-jobs\",\n    \"crates/axon-code-index\",\n    \"crates/axon-services\",\n    \"crates/axon-mcp\",\n    \"crates/axon-web\",\n    \"crates/axon-cli\",\n    \"crates/axon-error\",\n    \"crates/axon-observe\",\n    \"crates/axon-route\",\n    \"crates/axon-adapters\",\n    \"crates/axon-ledger\",\n    \"crates/axon-parse\",\n    \"crates/axon-graph\",\n    \"crates/axon-memory\",\n    \"crates/axon-document\",\n    \"crates/axon-embedding\",\n    \"crates/axon-vectors\",\n    \"crates/axon-retrieval\",\n    \"crates/axon-llm\",\n    \"crates/axon-prune\",\n    \"crates/axon-surprise\",\n]\n\n[workspace.package]\nrust-version = \"1.97.1\"\n",
     );
 
     let err = check_root(&fixture.root).unwrap_err();
@@ -261,7 +261,7 @@ fn missing_workspace_rust_version_fails() {
 
     let err = check_root(&fixture.root).unwrap_err();
     assert!(
-        err.contains("root Cargo.toml must set workspace.package.rust-version = \"1.94.0\""),
+        err.contains("root Cargo.toml must set workspace.package.rust-version = \"1.97.1\""),
         "{err}"
     );
 }

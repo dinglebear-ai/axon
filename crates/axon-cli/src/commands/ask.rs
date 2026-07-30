@@ -41,7 +41,7 @@ pub async fn run_ask(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn E
 
     if ask_cfg.ask_stream && !ask_cfg.json_output && !ask_cfg.ask_explain {
         println!("{}", primary("Conversation"));
-        println!("  {} {}", primary("You:"), &query);
+        println!("  {} {}", primary("You:"), query);
         println!("  {}", primary("Assistant:"));
     }
 

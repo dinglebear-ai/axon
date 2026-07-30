@@ -13,7 +13,9 @@ export CARGO_BIN_ARTIFACT_LOCAL_BIN="${AXON_RUSTC_WRAPPER_LOCAL_BIN:-$HOME/.loca
 
 helper="${CARGO_BIN_ARTIFACT_WRAPPER_HELPER:-}"
 if [ -z "$helper" ]; then
-  if command -v cargo-bin-artifact-wrapper >/dev/null 2>&1; then
+  if [ -x "$repo/scripts/cargo-bin-artifact-wrapper" ]; then
+    helper="$repo/scripts/cargo-bin-artifact-wrapper"
+  elif command -v cargo-bin-artifact-wrapper >/dev/null 2>&1; then
     helper="$(command -v cargo-bin-artifact-wrapper)"
   elif [ -x /home/jmagar/.local/bin/cargo-bin-artifact-wrapper ]; then
     helper=/home/jmagar/.local/bin/cargo-bin-artifact-wrapper
@@ -34,10 +36,8 @@ shift
 
 if [ -n "${AXON_RUSTC_WRAPPER_DELEGATE:-}" ]; then
   exec "$AXON_RUSTC_WRAPPER_DELEGATE" "$rustc" "$@"
-elif [ "${AXON_RUSTC_WRAPPER_NO_SCCACHE:-0}" != "1" ] && command -v sccache-wrapper >/dev/null 2>&1; then
-  exec sccache-wrapper "$rustc" "$@"
-elif [ "${AXON_RUSTC_WRAPPER_NO_SCCACHE:-0}" != "1" ] && command -v sccache >/dev/null 2>&1; then
-  exec sccache "$rustc" "$@"
+elif [ "${AXON_RUSTC_WRAPPER_NO_KACHE:-0}" != "1" ] && command -v kache >/dev/null 2>&1; then
+  exec kache "$rustc" "$@"
 else
   exec "$rustc" "$@"
 fi

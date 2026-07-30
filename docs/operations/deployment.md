@@ -55,7 +55,7 @@ It is idempotent — safe to re-run. What it does:
 2. Checks for Docker and the Compose v2 plugin.
 3. Installs `rustup` and the pinned Rust toolchain (from `rust-toolchain.toml`) if missing.
 4. Installs `just` (task runner) using a prebuilt binary for x86\_64/aarch64 Linux, or Homebrew on macOS.
-5. Installs `lefthook` (git hooks) and optional dev tools (`cargo-nextest`, `cargo-watch`, `sccache`).
+5. Installs `lefthook` (git hooks) and optional dev tools (`cargo-nextest`, `cargo-watch`), and detects the mise-managed `kache`.
 6. Checks Node.js ≥ v24 and npm.
 7. Runs `npm ci` for `apps/web` using `apps/web/package-lock.json`.
 8. Creates `~/.axon/.env` from `.env.example` if it does not exist, then backfills missing entries on reruns.

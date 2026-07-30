@@ -125,15 +125,15 @@ fn ci_uses_guard_for_named_cargo_test_filters() {
 #[test]
 fn ci_runs_release_version_gate_before_merge() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let version_sync = workflow_job_block(workflow, "version-sync");
+    let contracts = workflow_job_block(workflow, "rust-contracts");
     assert!(
-        version_sync.contains(
+        contracts.contains(
             "cargo xtask check-release-versions --base origin/main --head HEAD --mode pr"
         ),
         "CI must run the multi-component release version gate on pull requests"
     );
     assert!(
-        version_sync.contains("fetch-depth: 0"),
+        contracts.contains("fetch-depth: 0"),
         "release version gate needs tags and history"
     );
     for path in [
@@ -145,8 +145,8 @@ fn ci_runs_release_version_gate_before_merge() {
         "migrations",
     ] {
         assert!(
-            sparse_checkout_covers(version_sync, path),
-            "version-sync checkout must include {path}"
+            sparse_checkout_covers(contracts, path),
+            "rust-contracts checkout must include {path}"
         );
     }
 }
@@ -197,24 +197,24 @@ fn windows_xtask_check_avoids_duplicate_repository_scans() {
     );
     assert!(
         !job.contains("cargo xtask check-no-mod-rs"),
-        "check-no-mod-rs already runs in the Linux no-mod-rs job and has hung on Windows"
+        "check-no-mod-rs already runs in rust-contracts and has hung on Windows"
     );
 }
 
 #[test]
 fn rest_api_parity_checkout_covers_openapi_drift_inputs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let job = workflow_job_block(workflow, "rest-api-parity");
+    let job = workflow_job_block(workflow, "rust-contracts");
 
     assert!(
         job.contains("cargo xtask check-openapi-drift"),
-        "rest-api-parity must run the generated OpenAPI drift guard"
+        "rust-contracts must run the generated OpenAPI drift guard"
     );
 
     for path in ["apps/web", "apps/palette-tauri", "apps/android"] {
         assert!(
             sparse_checkout_covers(job, path),
-            "rest-api-parity runs check-openapi-drift and must checkout {path}"
+            "rust-contracts runs check-openapi-drift and must checkout {path}"
         );
     }
 }
@@ -222,7 +222,7 @@ fn rest_api_parity_checkout_covers_openapi_drift_inputs() {
 #[test]
 fn ci_runs_android_generated_openapi_client_tests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let job = workflow_job_block(workflow, "android-openapi-client");
+    let job = workflow_job_block(workflow, "android");
 
     assert!(
         sparse_checkout_covers(job, "apps/android"),
@@ -351,6 +351,78 @@ fn auto_tag_uses_validated_xtask_release_plan() {
 }
 
 #[test]
+fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let smoke = workflow_job_block(workflow, "smoke-binary");
+    assert!(smoke.contains("github.event_name == 'pull_request'"));
+    assert!(smoke.contains("cargo build --locked --bin axon"));
+    assert!(!smoke.contains("cargo build --release"));
+
+    let release = workflow_job_block(workflow, "release");
+    let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
+    let windows_check = workflow_job_block(workflow, "windows-check");
+    let windows_build = workflow_job_block(workflow, "windows-build");
+    assert!(release.contains("github.event_name != 'pull_request'"));
+    assert!(release.contains("needs.changes.outputs.release == 'true'"));
+    assert!(release.contains("'ci:full'"));
+    assert!(mcp_smoke.contains("'ci:full'"));
+    assert!(windows_check.contains("github.event_name == 'pull_request'"));
+    assert!(windows_build.contains("'ci:full'"));
+}
+
+#[test]
+fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let web = workflow_job_block(workflow, "web-panel");
+    let release = workflow_job_block(workflow, "release");
+    let windows = workflow_job_block(workflow, "windows-build");
+
+    assert!(web.contains("npm --prefix apps/web run build"));
+    assert!(web.contains("name: axon-web-assets"));
+    for (name, job) in [("release", release), ("windows-build", windows)] {
+        assert!(
+            job.contains("uses: actions/download-artifact@v5")
+                && job.contains("name: axon-web-assets"),
+            "{name} must reuse the web-panel artifact"
+        );
+        assert!(
+            !job.contains("npm ci --prefix apps/web"),
+            "{name} must not reinstall web dependencies"
+        );
+    }
+}
+
+#[test]
+fn rust_ci_uses_the_repository_toolchain_pin() {
+    let toolchain = include_str!("../rust-toolchain.toml");
+    let channel = toolchain
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("channel = \""))
+        .and_then(|value| value.strip_suffix('"'))
+        .expect("rust-toolchain.toml channel");
+    let setup = include_str!("../.github/actions/setup-rust-kache/action.yml");
+    assert!(
+        setup.contains(&format!("default: \"{channel}\"")),
+        "the shared Rust action must default to rust-toolchain.toml's channel"
+    );
+    for workflow in [
+        include_str!("../.github/workflows/ci.yml"),
+        include_str!("../.github/workflows/release.yml"),
+        include_str!("../.github/workflows/palette-release.yml"),
+    ] {
+        for line in workflow
+            .lines()
+            .filter(|line| line.trim_start().starts_with("toolchain:"))
+        {
+            assert!(
+                line.contains(channel),
+                "explicit CI toolchain must match {channel}: {line}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ci_has_changed_path_classifier_and_stable_gate() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     assert!(
@@ -373,27 +445,17 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let gate = workflow_job_block(workflow, "ci-gate");
     for job in [
-        "mcp-transport-modes",
-        "version-sync",
+        "rust-contracts",
         "aurora-primitive-inventory",
         "android",
-        "android-openapi-client",
-        "no-mod-rs",
         "toml-fmt",
         "lefthook-pre-commit-speed",
         "palette-tauri",
         "windows-check",
         "windows-build",
-        "shell-completions-smoke",
+        "smoke-binary",
         "web-panel",
         "chrome-extension",
-        "mcp-schema-doc-sync",
-        "rest-api-parity",
-        "mcp-oauth-smoke",
-        "advisory-lock-policy",
-        "ban-skip-validation",
-        "monolith",
-        "fmt",
         "clippy",
         "test",
         "security",
@@ -422,16 +484,15 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 #[test]
 fn ci_runs_docs_and_chrome_contract_checks() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let schema = workflow_job_block(workflow, "schema-contract-sync");
-    assert!(schema.contains("docs generate --check"));
-    assert!(schema.contains("docs check"));
+    let contracts = workflow_job_block(workflow, "rust-contracts");
+    assert!(contracts.contains("docs generate --check"));
+    assert!(contracts.contains("docs check"));
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
-    let version = workflow_job_block(workflow, "version-sync");
-    assert!(version.contains("needs.changes.outputs.version_files == 'true'"));
+    assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
 }
 
 #[test]
@@ -443,6 +504,10 @@ fn required_codeql_is_not_variable_gated() {
     assert!(!codeql.contains("TEMP(refactor)"));
     assert!(codeql.contains("require_success analyze"));
     assert!(!codeql.contains("success|skipped"));
+    assert!(
+        !codeql.contains("runs-on: [self-hosted, unraid]"),
+        "CodeQL must not consume the self-hosted Rust runner pool"
+    );
 }
 
 #[test]
@@ -507,7 +572,7 @@ fn ci_workflow_runs_changed_path_classifier_from_trusted_base_when_available() {
 }
 
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
-    let marker = format!("  {job_name}:");
+    let marker = format!("\n  {job_name}:\n");
     let start = workflow
         .find(&marker)
         .unwrap_or_else(|| panic!("missing workflow job {job_name}"));
@@ -519,7 +584,6 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
             *offset += line.len() + 1;
             Some((line_start, line))
         })
-        .skip(1)
         .find_map(|(offset, line)| {
             if line.starts_with("  ") && !line.starts_with("    ") {
                 Some(offset)

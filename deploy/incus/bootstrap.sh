@@ -320,7 +320,7 @@ incus exec "$CONTAINER_NAME" -- sh -c 'chmod 755 /usr/local/bin/axon.new && mv -
 
 ### 16. Install/refresh the axon-native systemd unit and (re)start it — always
 ### restart, even if the unit already existed, so a re-run of this script
-### picks up a freshly built binary. AXON_HOME/AXON_DATA_DIR are forced to
+### picks up a freshly deployed binary. AXON_HOME/AXON_DATA_DIR are forced to
 ### the Incus-internal mount path (the shared env file's own values are
 ### bare-host paths, not valid inside this container — same reasoning as the
 ### compose AXON_HOME override this replaced). AXON_HTTP_HOST is forced to
