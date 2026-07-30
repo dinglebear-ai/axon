@@ -88,7 +88,7 @@
   "notes": [
     "Fixture corpus is hand-crafted license-clean HTML representing thin (<200 word) error/login/landing pages, medium (200-1000 word) blog/doc pages with sidebars, and dense (>1000 word) long-form articles.",
     "Criterion's measured wall-clock numbers and our aggregate-Instant numbers differ slightly because criterion auto-adjusts iteration count per sample while the aggregate runs a fixed 200 iterations per fixture; both are debug-free release-profile measurements with single-pass DOM extraction (bytes_to_markdown).",
-    "Run on a multi-tenant dev box with sccache enabled; expect noise on highly variable per-fixture numbers (e.g. medium_02, dense_01).",
+    "Run on a multi-tenant dev box with kache enabled; expect noise on highly variable per-fixture numbers (e.g. medium_02, dense_01).",
     "Bead 1jto walker scope decision uses docs/perf/thin-page-rate.md, not this file."
   ]
 }

@@ -51,7 +51,8 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
     );
     assert_eq!(out["docs"], "true");
     // Prose-only docs (guides, session logs) must NOT drag in the release-version
-    // gate, which recompiles xtask (~5min). version-sync keys off version_files.
+    // gate inside rust-contracts, which compiles xtask. The step keys off
+    // version_files rather than the broad docs category.
     assert_eq!(out["version_files"], "false");
     assert_eq!(out["rust"], "false");
     assert_eq!(out["android"], "false");
@@ -97,27 +98,27 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
 }
 
 #[test]
-fn version_bearing_root_docs_trigger_version_sync() {
+fn version_bearing_root_docs_trigger_release_contracts() {
     for file in ["README.md", "CHANGELOG.md"] {
         let out = classify("pull_request", &[file]);
         assert_eq!(
             out["version_files"], "true",
-            "{file} must still trigger version-sync"
+            "{file} must still trigger release version checks"
         );
         assert_eq!(out["docs"], "true", "{file} is still a docs change");
         assert_eq!(out["rust"], "false", "{file} alone is not a rust change");
         assert_eq!(
-            out["release"], "false",
-            "{file} alone is not a release change"
+            out["release"], "true",
+            "{file} is a version-bearing release change"
         );
     }
 }
 
 #[test]
-fn rust_core_changes_enable_runtime_release_mcp_and_rust_codeql() {
+fn rust_core_changes_skip_pr_release_but_enable_runtime_and_codeql() {
     let out = classify("pull_request", &["src/vector/ops/query.rs"]);
     assert_eq!(out["rust"], "true");
-    assert_eq!(out["release"], "true");
+    assert_eq!(out["release"], "false");
     assert_eq!(out["mcp"], "false");
     assert_eq!(out["security"], "true");
     assert_eq!(out["codeql_rust"], "true");
@@ -129,7 +130,7 @@ fn mcp_changes_enable_mcp_schema_and_runtime_checks() {
     let out = classify("pull_request", &["src/mcp/server/tool_schema.rs"]);
     assert_eq!(out["rust"], "true");
     assert_eq!(out["mcp"], "true");
-    assert_eq!(out["release"], "true");
+    assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "true");
 }
 
@@ -137,7 +138,7 @@ fn mcp_changes_enable_mcp_schema_and_runtime_checks() {
 fn workspace_crate_changes_enable_rust_runtime_gates() {
     let out = classify("pull_request", &["crates/axon-core/src/config.rs"]);
     assert_eq!(out["rust"], "true");
-    assert_eq!(out["release"], "true");
+    assert_eq!(out["release"], "false");
     assert_eq!(out["security"], "true");
     assert_eq!(out["docker"], "true");
     assert_eq!(out["codeql_rust"], "true");
@@ -151,7 +152,7 @@ fn axon_mcp_crate_changes_enable_mcp_schema_and_runtime_checks() {
     );
     assert_eq!(out["rust"], "true");
     assert_eq!(out["mcp"], "true");
-    assert_eq!(out["release"], "true");
+    assert_eq!(out["release"], "false");
     assert_eq!(out["codeql_rust"], "true");
 }
 
@@ -346,8 +347,8 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true", "{file} should enable rust jobs");
         assert_eq!(
-            out["release"], "true",
-            "{file} should enable release-version checks that compile xtask"
+            out["release"], "false",
+            "{file} should use the debug smoke lane rather than a release build"
         );
         assert_eq!(
             out["security"], "true",

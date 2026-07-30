@@ -3,8 +3,8 @@ use super::task_progress::structured_source_progress;
 use axon_api::{job_status::JobStatus, source::JobKind};
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_services::types::ServiceJob;
-use rmcp::model::{GetTaskPayloadResult, Meta, Task, TaskStatus};
-use serde_json::{Value, json};
+use rmcp::model::{DetailedTask, Meta, Task, TaskPayload, TaskStatus};
+use serde_json::{Map, Value, json};
 
 const RESULT_JSON_MAX_BYTES: usize = 64 * 1024;
 
@@ -17,7 +17,7 @@ pub(super) fn task_from_job(kind: JobKind, job: &ServiceJob) -> Task {
         job.created_at.to_rfc3339(),
         job.updated_at.to_rfc3339(),
     )
-    .with_poll_interval(TASK_POLL_INTERVAL_MS);
+    .with_poll_interval_ms(TASK_POLL_INTERVAL_MS);
 
     if let Some(message) = status_message(&job.status_enum()) {
         task = task.with_status_message(message);
@@ -25,9 +25,30 @@ pub(super) fn task_from_job(kind: JobKind, job: &ServiceJob) -> Task {
     task
 }
 
-pub(super) fn task_result_payload(kind: JobKind, job: &ServiceJob) -> GetTaskPayloadResult {
+/// Build the SEP-2663 [`DetailedTask`] for a job.
+///
+/// rmcp 3.x folds the old `tasks/result` payload into the task itself: a
+/// terminal job carries its result (or error) inline in [`TaskPayload`],
+/// so [`task_result_payload`] is now the body of the `completed`/`failed`
+/// variants rather than a separate `tasks/result` response.
+pub(super) fn detailed_task_from_job(kind: JobKind, job: &ServiceJob) -> DetailedTask {
+    let task = task_from_job(kind, job);
+    let payload = match job.status_enum() {
+        JobStatus::Pending | JobStatus::Running => TaskPayload::Working,
+        JobStatus::Canceled => TaskPayload::Cancelled,
+        JobStatus::Completed => TaskPayload::Completed {
+            result: task_result_payload(kind, job),
+        },
+        JobStatus::Failed | JobStatus::Unknown(_) => TaskPayload::Failed {
+            error: task_result_payload(kind, job),
+        },
+    };
+    DetailedTask::new(task, payload)
+}
+
+fn task_result_payload(kind: JobKind, job: &ServiceJob) -> Map<String, Value> {
     let progress = task_progress_value(kind, job);
-    GetTaskPayloadResult::new(json!({
+    let payload = json!({
         "task_id": task_id_for(kind, job.id),
         "job_id": job.id,
         "kind": super::task_id::kind_name(kind),
@@ -43,7 +64,16 @@ pub(super) fn task_result_payload(kind: JobKind, job: &ServiceJob) -> GetTaskPay
         "updated_at": job.updated_at,
         "started_at": job.started_at,
         "finished_at": job.finished_at,
-    }))
+    });
+    match payload {
+        Value::Object(map) => map,
+        // `json!` with an object literal is always an object.
+        other => {
+            let mut map = Map::new();
+            map.insert("payload".to_string(), other);
+            map
+        }
+    }
 }
 
 pub(super) fn task_meta_from_job(kind: JobKind, job: &ServiceJob) -> Option<Meta> {

@@ -12,9 +12,9 @@ LLM provider.
 | Remote | `git@github.com:dinglebear-ai/axon.git` (the `jmagar/axon` name only resolves via GitHub's transfer redirect) |
 | Default branch | `main` |
 | Workspace | 25 Cargo packages: root `axon` binary + `xtask` + 23 crates under `crates/` |
-| Edition / toolchain | edition 2024, `rust-version = "1.94.0"`, `rust-toolchain.toml` pins channel `1.96.0` |
+| Edition / toolchain | edition 2024, `rust-version = "1.97.1"`, `rust-toolchain.toml` pins channel `1.97.1` |
 | Product version | `7.2.2` in `[workspace.package]`, inherited by every crate via `version.workspace = true` |
-| MCP runtime | `rmcp = "1.7.0"` (1.7+ is required — see the comment above the dep in `Cargo.toml`) |
+| MCP runtime | `rmcp = "=3.0.0-beta.2"` — exact pin, agrees with `Cargo.lock` |
 
 There are no long-lived variant branches. The former `marketplace-no-mcp`
 marketplace variant, its sync/drift workflows, and its `plugins/scripts/`
@@ -694,7 +694,6 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
-
 ## Release Pipeline
 
 ### How releases work
@@ -877,12 +876,3 @@ The compatibility command `cargo xtask check-version-sync` still enforces
 `plugins/axon/.claude-plugin/plugin.json` has no `version` key. The full
 multi-component gate is `cargo xtask check-release-versions`.
 
-<!-- OPENWIKI:START -->
-
-## OpenWiki
-
-This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
-
-The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
-
-<!-- OPENWIKI:END -->

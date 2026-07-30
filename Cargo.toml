@@ -33,9 +33,9 @@ resolver = "2"
 # `axon` package keeps an explicit `version` too (the release checker reads it as
 # a string); `cargo xtask bump-version patch --component cli` moves both in lockstep.
 [workspace.package]
-version = "7.2.2"
+version = "7.2.3"
 edition = "2024"
-rust-version = "1.94.0"
+rust-version = "1.97.1"
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
 repository = "https://github.com/jmagar/axon"
 homepage = "https://github.com/jmagar/axon#readme"
@@ -70,9 +70,9 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "7.2.2"
-edition = "2024"
-rust-version = "1.94.0"
+version = "7.2.3"
+edition.workspace = true
+rust-version.workspace = true
 categories = ["command-line-utilities", "development-tools"]
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
 repository = "https://github.com/jmagar/axon"
@@ -111,11 +111,12 @@ tokio = { version = "1", features = [
 ] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 dotenvy = "0.15"
-# rmcp 1.7+ is required: 1.5 introduced the HTTP Parts injection into
-# RequestContext::extensions that our OAuth scope check relies on
-# (ctx.extensions.get::<http::request::Parts>()), and 1.7 adds MCP task
+# rmcp is pinned EXACTLY (`=`): a caret range is how this workspace silently
+# drifted off its declared version before. 3.0.0-beta.2 keeps the HTTP Parts
+# injection into RequestContext::extensions that our OAuth scope check relies on
+# (ctx.extensions.get::<http::request::Parts>()), plus the MCP task
 # support/progress APIs needed for long-running job-backed tool calls.
-rmcp = { version = "1.7.0", features = [
+rmcp = { version = "=3.0.0-beta.2", features = [
   "server",
   "macros",
   "transport-io",
