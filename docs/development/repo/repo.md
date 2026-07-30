@@ -61,7 +61,7 @@ axon/
 ├── lefthook.yml                     # Git hooks
 ├── deny.toml                        # cargo-deny config
 ├── renovate.json                    # Dependency update bot
-├── rust-toolchain.toml              # Rust 1.94.0 pinned toolchain
+├── rust-toolchain.toml              # Rust 1.97.1 pinned toolchain
 │
 ├── docker-compose.prod.yaml         # Axon server + infrastructure services
 ├── docker-compose.yaml              # Local development stack

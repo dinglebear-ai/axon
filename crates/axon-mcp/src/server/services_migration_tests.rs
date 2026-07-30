@@ -98,52 +98,39 @@ fn mcp_apps_ui_metadata_is_on_dedicated_dashboard_tool_only() {
     );
 }
 
+// SEP-2663 moved task support from a per-tool `execution.taskSupport` field
+// (rmcp 1.x) to a single server-level extension capability. There is no
+// per-tool declaration left to assert, so these pin the capability instead —
+// plus the fact that no tool re-grows a stale `execution` block.
 #[test]
-fn routed_axon_tool_advertises_optional_task_support() {
-    let tools = super::AxonMcpServer::tool_router().list_all();
-
-    let axon = tools
-        .iter()
-        .find(|tool| tool.name == "axon")
-        .expect("axon tool must be registered");
-    assert_eq!(
-        axon.execution
-            .as_ref()
-            .and_then(|execution| execution.task_support),
-        Some(rmcp::model::TaskSupport::Optional),
-        "routed axon tool must support task-augmented calls without requiring them"
-    );
-    assert_eq!(
-        axon.task_support(),
-        rmcp::model::TaskSupport::Optional,
-        "rmcp must allow normal non-task calls for optional task tools"
+fn server_advertises_the_tasks_extension_capability() {
+    let capabilities = super::handler_meta::mcp_apps_server_capabilities();
+    assert!(
+        capabilities.supports_tasks(),
+        "task-augmented tools/call requires the server to declare the \
+         io.modelcontextprotocol/tasks extension"
     );
 
-    let serialized = serde_json::to_value(axon).expect("serialize axon tool metadata");
-    assert_eq!(
-        serialized["execution"]["taskSupport"],
-        serde_json::json!("optional")
+    let serialized = serde_json::to_value(&capabilities).expect("serialize server capabilities");
+    assert!(
+        serialized["extensions"]
+            .get(rmcp::model::TASKS_EXTENSION_ID)
+            .is_some(),
+        "tasks capability must serialize under the extensions map: {serialized}"
     );
 }
 
 #[test]
-fn status_dashboard_tool_does_not_advertise_task_support() {
+fn no_tool_advertises_a_stale_per_tool_execution_block() {
     let tools = super::AxonMcpServer::tool_router().list_all();
-
-    let dashboard = tools
-        .iter()
-        .find(|tool| tool.name == "axon_status_dashboard")
-        .expect("dashboard tool must be registered");
-    assert!(
-        dashboard.execution.is_none(),
-        "dashboard tool renders an MCP App widget and must not advertise task support"
-    );
-
-    let serialized = serde_json::to_value(dashboard).expect("serialize dashboard tool metadata");
-    assert!(
-        serialized.get("execution").is_none(),
-        "dashboard tool metadata must not include execution.taskSupport"
-    );
+    for tool in &tools {
+        let serialized = serde_json::to_value(tool).expect("serialize tool metadata");
+        assert!(
+            serialized.get("execution").is_none(),
+            "tool `{}` must not carry the removed execution.taskSupport field",
+            tool.name
+        );
+    }
 }
 
 #[test]
@@ -170,32 +157,26 @@ fn mcp_apps_capabilities_advertise_html_app_mime_type() {
     );
 }
 
-#[test]
-fn mcp_capabilities_advertise_task_augmented_tool_calls() {
-    let capabilities = serde_json::to_value(super::handler_meta::mcp_apps_server_capabilities())
-        .expect("serialize caps");
-    assert_eq!(
-        capabilities["tasks"]["requests"]["tools"]["call"],
-        serde_json::json!({})
-    );
-    assert_eq!(capabilities["tasks"]["list"], serde_json::json!({}));
-    assert_eq!(capabilities["tasks"]["cancel"], serde_json::json!({}));
-}
+// The rmcp 1.x `tasks` capability object (`tasks.requests.tools.call`,
+// `tasks.list`, `tasks.cancel`) no longer exists — SEP-2663 replaced it with a
+// single key in the `extensions` map. See
+// `server_advertises_the_tasks_extension_capability` above, which also guards
+// the ordering trap where `enable_extensions_with` overwrites `enable_tasks`.
 
 #[test]
 fn dedicated_dashboard_tool_requires_read_scope() {
     assert_eq!(
-        super::required_scope_for_tool("axon_status_dashboard", "", ""),
+        super::server_authz::required_scope_for_tool("axon_status_dashboard", "", ""),
         Some("axon:read")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "source", ""),
+        super::server_authz::required_scope_for_tool("axon", "source", ""),
         Some("axon:write")
     );
     // Removed indexing actions are no longer in the allow-list — they resolve to
     // the deny sentinel at the MCP boundary.
     assert_eq!(
-        super::required_scope_for_tool("axon", "crawl", ""),
+        super::server_authz::required_scope_for_tool("axon", "crawl", ""),
         Some("__deny__")
     );
 }
@@ -203,19 +184,19 @@ fn dedicated_dashboard_tool_requires_read_scope() {
 #[test]
 fn jobs_subactions_use_read_write_admin_scope_split() {
     assert_eq!(
-        super::required_scope_for_tool("axon", "jobs", "events"),
+        super::server_authz::required_scope_for_tool("axon", "jobs", "events"),
         Some("axon:read")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "jobs", "cancel"),
+        super::server_authz::required_scope_for_tool("axon", "jobs", "cancel"),
         Some("axon:write")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "jobs", "cleanup"),
+        super::server_authz::required_scope_for_tool("axon", "jobs", "cleanup"),
         Some("axon:admin")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "jobs", "unknown"),
+        super::server_authz::required_scope_for_tool("axon", "jobs", "unknown"),
         Some("__deny__")
     );
 }
@@ -230,11 +211,11 @@ fn jobs_subactions_use_read_write_admin_scope_split() {
 #[test]
 fn prune_action_requires_admin_scope_not_just_write() {
     assert_eq!(
-        super::required_scope_for_tool("axon", "prune", "plan"),
+        super::server_authz::required_scope_for_tool("axon", "prune", "plan"),
         Some("axon:admin")
     );
     assert_eq!(
-        super::required_scope_for_tool("axon", "prune", "exec"),
+        super::server_authz::required_scope_for_tool("axon", "prune", "exec"),
         Some("axon:admin")
     );
 

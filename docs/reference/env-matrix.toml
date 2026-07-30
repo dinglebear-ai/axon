@@ -3935,7 +3935,7 @@ compatibility = "advanced"
 reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
 
 [[env]]
-key = "AXON_RUSTC_WRAPPER_NO_SCCACHE"
+key = "AXON_RUSTC_WRAPPER_NO_KACHE"
 classification = "external/test-only"
 runtime_placement = "not-runtime"
 surfaces = ["scripts"]
