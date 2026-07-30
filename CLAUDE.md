@@ -875,4 +875,3 @@ The compatibility command `cargo xtask check-version-sync` still enforces
 `apps/web/package.json`, and `apps/web/openapi/axon.json`, and checks that
 `plugins/axon/.claude-plugin/plugin.json` has no `version` key. The full
 multi-component gate is `cargo xtask check-release-versions`.
-

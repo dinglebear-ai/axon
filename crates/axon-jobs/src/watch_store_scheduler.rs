@@ -1,6 +1,7 @@
 use axon_api::source::{AuthSnapshot, SourceId, WatchId, WatchRequest};
 use sqlx::{Row, sqlite::SqliteRow};
 
+use super::mutations::retry_watch_write;
 use super::rows::{row_to_auth_snapshot, row_to_request, sqlite_err};
 use super::{Result, SqliteWatchStore};
 use crate::store::now_ms;
@@ -21,6 +22,18 @@ impl SqliteWatchStore {
     /// enqueueing a duplicate while a previous source job for the same watch is
     /// still live.
     pub(crate) async fn lease_due(
+        &self,
+        now: i64,
+        lease_ttl_ms: i64,
+        limit: i64,
+    ) -> Result<Vec<LeasedSourceWatch>> {
+        retry_watch_write("watch lease due", || {
+            self.lease_due_once(now, lease_ttl_ms, limit)
+        })
+        .await
+    }
+
+    async fn lease_due_once(
         &self,
         now: i64,
         lease_ttl_ms: i64,
@@ -79,6 +92,10 @@ impl SqliteWatchStore {
     /// time, so this avoids a tight retry loop while still allowing the next
     /// scheduled interval to run.
     pub(crate) async fn release_lease(&self, watch_id: &WatchId) -> Result<()> {
+        retry_watch_write("watch release lease", || self.release_lease_once(watch_id)).await
+    }
+
+    async fn release_lease_once(&self, watch_id: &WatchId) -> Result<()> {
         let now = now_ms();
         sqlx::query(
             "UPDATE axon_source_watches SET lease_expires_at = NULL, updated_at = ? \

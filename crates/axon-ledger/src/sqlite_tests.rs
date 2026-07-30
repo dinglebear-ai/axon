@@ -1,7 +1,82 @@
 use axon_api::source::*;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::sqlite::SqliteLedgerStore;
 use crate::store::LedgerStore;
+
+fn snapshot_test_db_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("axon-ledger-snapshot-{}.db", uuid::Uuid::new_v4()))
+}
+
+#[tokio::test]
+async fn public_create_generation_retries_real_wal_stale_snapshot_exactly_once() {
+    let path = snapshot_test_db_path();
+    let path_string = path.to_string_lossy().to_string();
+    let store = Arc::new(
+        SqliteLedgerStore::connect(&format!("sqlite://{}?mode=rwc", path.display()))
+            .await
+            .expect("open ledger store"),
+    );
+    store.upsert_source(source()).await.expect("seed source");
+    let writer = axon_core::sqlite::open_pool_unlocked(&path_string)
+        .await
+        .expect("open independent writer pool");
+    let (entered, resume) = crate::sqlite::snapshot_test_hook::install();
+    let entered_wait = entered.notified();
+    let creating_store = Arc::clone(&store);
+    let creating = tokio::spawn(async move {
+        creating_store
+            .create_generation(SourceId::new("src_sqlite"))
+            .await
+    });
+
+    entered_wait.await;
+    sqlx::query("UPDATE sources SET updated_at = updated_at WHERE source_id = 'src_sqlite'")
+        .execute(&writer)
+        .await
+        .expect("writer commits after reader snapshot");
+    resume.notify_one();
+
+    let generation = creating
+        .await
+        .expect("generation task joins")
+        .expect("public LedgerStore retry recovers SQLITE_BUSY_SNAPSHOT");
+    assert_eq!(generation.generation.0, "gen_1");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM source_generations WHERE source_id = 'src_sqlite'",
+    )
+    .fetch_one(store.pool_for_tests())
+    .await
+    .expect("count generations");
+    assert_eq!(count, 1, "retry must not duplicate the generation");
+
+    writer.close().await;
+    std::fs::remove_file(path).expect("remove snapshot test database");
+}
+
+#[tokio::test]
+async fn ledger_store_write_boundary_restarts_busy_snapshot_operation() {
+    let calls = AtomicUsize::new(0);
+    let result = crate::sqlite::retry_ledger_write("test ledger mutation", || {
+        let call = calls.fetch_add(1, Ordering::SeqCst);
+        async move {
+            if call == 0 {
+                Err(ApiError::new(
+                    "source.ledger.sqlite",
+                    ErrorStage::Upserting,
+                    "ledger SQLite operation failed: (code: 517) database is locked",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
 
 fn ts() -> Timestamp {
     Timestamp("2026-07-01T00:00:00Z".to_string())

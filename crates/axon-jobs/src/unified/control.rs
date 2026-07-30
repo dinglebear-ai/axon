@@ -4,8 +4,8 @@ use axon_api::source::*;
 use axon_error::cooling::ProviderCooling;
 use sqlx::Row;
 
-use super::SqliteUnifiedJobStore;
 use super::control_helpers::*;
+use super::{SqliteUnifiedJobStore, retry_job_write};
 use crate::boundary::{JobDeleteResult, Result};
 use crate::limits::clamp_page_limit;
 use crate::state_machine::validate_transition;
@@ -35,6 +35,17 @@ impl SqliteUnifiedJobStore {
         job_id: JobId,
         cooling: ProviderCooling,
     ) -> Result<()> {
+        retry_job_write("job provider cooling", || {
+            self.apply_provider_cooling_once(job_id, cooling.clone())
+        })
+        .await
+    }
+
+    async fn apply_provider_cooling_once(
+        &self,
+        job_id: JobId,
+        cooling: ProviderCooling,
+    ) -> Result<()> {
         // The status check and the cooldown write must be atomic: without a
         // shared transaction and a status-scoped UPDATE, a concurrent writer
         // (claim, update_job_status, heartbeat, cancel_job — all of which
@@ -51,6 +62,8 @@ impl SqliteUnifiedJobStore {
             .map_err(sql_error)?
             .ok_or_else(|| missing_job(job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
+        #[cfg(test)]
+        super::snapshot_test_hook::pause_once_after_read().await;
         if current != LifecycleStatus::Waiting {
             return Err(ApiError::new(
                 "job_cooling.not_waiting",

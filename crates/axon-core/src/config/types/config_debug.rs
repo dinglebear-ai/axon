@@ -29,7 +29,12 @@ impl fmt::Debug for Config {
             .field("automation_script", &self.automation_script)
             .field("render_mode", &self.render_mode)
             .field("chrome_remote_url", &self.chrome_remote_url)
-            .field("chrome_proxy", &self.chrome_proxy)
+            // Proxy URLs carry `user:pass@` credentials — never Debug them raw.
+            // Presence is preserved (Some/None) so config diagnostics stay useful.
+            .field(
+                "chrome_proxy",
+                &self.chrome_proxy.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("user_agent", &self.user_agent)
             .field("chrome_user_agent", &self.chrome_user_agent)
             .field(

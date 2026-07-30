@@ -161,3 +161,74 @@ fn normalize_map_candidate_url_drops_query_when_requested() {
         Some("https://example.github.io/project/docs")
     );
 }
+
+#[test]
+fn apex_host_strips_leading_www_case_insensitively() {
+    assert_eq!(apex_host("www.example.com"), "example.com");
+    assert_eq!(apex_host("WWW.Example.com"), "Example.com");
+    assert_eq!(apex_host("example.com"), "example.com");
+}
+
+#[test]
+fn apex_host_does_not_strip_non_label_prefixes() {
+    // "wwwfoo.com" merely starts with the letters, and "www." alone has no
+    // remainder to strip down to.
+    assert_eq!(apex_host("wwwfoo.com"), "wwwfoo.com");
+    assert_eq!(apex_host("www.www.example.com"), "www.example.com");
+}
+
+#[test]
+fn hosts_match_treats_www_and_apex_as_one_site() {
+    assert!(hosts_match("www.lex-co.sc.gov", "lex-co.sc.gov"));
+    assert!(hosts_match("lex-co.sc.gov", "www.lex-co.sc.gov"));
+    assert!(hosts_match("WWW.Lex-Co.SC.gov", "lex-co.sc.gov"));
+    assert!(hosts_match("example.com", "example.com"));
+}
+
+#[test]
+fn hosts_match_still_rejects_different_sites() {
+    assert!(!hosts_match("evil.com", "example.com"));
+    assert!(!hosts_match("www.evil.com", "example.com"));
+    // A subdomain is NOT the apex — only a literal leading "www." is stripped.
+    assert!(!hosts_match("docs.example.com", "example.com"));
+}
+
+#[test]
+fn normalize_map_candidate_url_accepts_apex_when_scope_is_www() {
+    // Regression: www.lex-co.sc.gov's sitemap lists only the apex form, and an
+    // exact host compare discarded every entry, mapping 0 URLs.
+    let scope = MapScope {
+        host: "www.lex-co.sc.gov".to_string(),
+        path_prefix: None,
+    };
+
+    assert_eq!(
+        normalize_map_candidate_url("https://lex-co.sc.gov/departments", &scope, true).as_deref(),
+        Some("https://lex-co.sc.gov/departments")
+    );
+}
+
+#[test]
+fn normalize_map_candidate_url_accepts_www_when_scope_is_apex() {
+    let scope = MapScope {
+        host: "chestercountysc.gov".to_string(),
+        path_prefix: None,
+    };
+
+    assert_eq!(
+        normalize_map_candidate_url("https://www.chestercountysc.gov/council", &scope, true)
+            .as_deref(),
+        Some("https://www.chestercountysc.gov/council")
+    );
+}
+
+#[test]
+fn normalize_map_candidate_url_still_rejects_foreign_hosts() {
+    let scope = MapScope {
+        host: "www.example.com".to_string(),
+        path_prefix: None,
+    };
+
+    assert!(normalize_map_candidate_url("https://evil.com/x", &scope, true).is_none());
+    assert!(normalize_map_candidate_url("https://www.evil.com/x", &scope, true).is_none());
+}

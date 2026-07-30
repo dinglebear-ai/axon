@@ -20,11 +20,14 @@ use crate::unified::pagination::{
 mod scheduler;
 pub(crate) use scheduler::LeasedSourceWatch;
 
+#[path = "watch_store/mutations.rs"]
+mod mutations;
+use mutations::retry_watch_write;
 #[path = "watch_store_rows.rs"]
 mod rows;
 use rows::{
-    json_err, missing_job, missing_watch, row_to_auth_snapshot, row_to_request, row_to_result,
-    row_to_summary, scope_to_str, sqlite_err, synth_descriptor, validate_source_watch_interval,
+    json_err, missing_watch, row_to_auth_snapshot, row_to_request, row_to_result, row_to_summary,
+    scope_to_str, sqlite_err, synth_descriptor, validate_source_watch_interval,
 };
 
 /// SQLite-backed [`WatchStore`]. Cheap to clone (wraps a pooled connection
@@ -106,13 +109,7 @@ impl SqliteWatchStore {
     /// Hard-delete a watch and its run history (`ON DELETE CASCADE`).
     /// Returns `true` if a row was deleted, `false` if the watch didn't exist.
     pub async fn delete(&self, watch_id: WatchId) -> Result<bool> {
-        let deleted = sqlx::query("DELETE FROM axon_source_watches WHERE watch_id = ?")
-            .bind(&watch_id.0)
-            .execute(&self.pool)
-            .await
-            .map_err(sqlite_err)?
-            .rows_affected();
-        Ok(deleted > 0)
+        retry_watch_write("watch delete", || self.delete_once(&watch_id)).await
     }
 }
 
@@ -153,36 +150,41 @@ impl SqliteWatchStore {
         let now = now_ms();
         let next_run_at = now + every_seconds * 1000;
 
-        sqlx::query(
-            "INSERT INTO axon_source_watches \
+        retry_watch_write("watch create", || async {
+            sqlx::query(
+                "INSERT INTO axon_source_watches \
              (watch_id, source, source_id, canonical_uri, adapter_name, adapter_version, \
               scope, embed, options_json, collection, enabled, every_seconds, cron, timezone, \
               next_run_at, last_job_id, last_status, created_at, updated_at, auth_snapshot_json) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&watch_id.0)
-        .bind(&request.source)
-        .bind(&source_id.0)
-        .bind(&canonical_uri)
-        .bind(&adapter.name)
-        .bind(&adapter.version)
-        .bind(scope_to_str(scope))
-        .bind(request.embed)
-        .bind(&options_json)
-        .bind(&request.collection)
-        .bind(enabled)
-        .bind(every_seconds)
-        .bind(&request.schedule.cron)
-        .bind(&request.schedule.timezone)
-        .bind(next_run_at)
-        .bind(None::<String>)
-        .bind(None::<String>)
-        .bind(now)
-        .bind(now)
-        .bind(&auth_snapshot_json)
-        .execute(&self.pool)
-        .await
-        .map_err(sqlite_err)?;
+            )
+            .bind(&watch_id.0)
+            .bind(&request.source)
+            .bind(&source_id.0)
+            .bind(&canonical_uri)
+            .bind(&adapter.name)
+            .bind(&adapter.version)
+            .bind(scope_to_str(scope))
+            .bind(request.embed)
+            .bind(&options_json)
+            .bind(&request.collection)
+            .bind(enabled)
+            .bind(every_seconds)
+            .bind(&request.schedule.cron)
+            .bind(&request.schedule.timezone)
+            .bind(next_run_at)
+            .bind(None::<String>)
+            .bind(None::<String>)
+            .bind(now)
+            .bind(now)
+            .bind(&auth_snapshot_json)
+            .execute(&self.pool)
+            .await
+            .map_err(sqlite_err)?;
+
+            Ok(())
+        })
+        .await?;
 
         Ok(WatchResult {
             watch_id,
@@ -206,83 +208,12 @@ impl WatchStore for SqliteWatchStore {
     }
 
     async fn update(&self, watch_id: WatchId, request: WatchUpdateRequest) -> Result<WatchResult> {
-        let existing = sqlx::query("SELECT * FROM axon_source_watches WHERE watch_id = ?")
-            .bind(&watch_id.0)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(sqlite_err)?
-            .ok_or_else(|| missing_watch(&watch_id))?;
-
-        let mut every_seconds: i64 = existing.get("every_seconds");
-        let mut cron: Option<String> = existing.get("cron");
-        let mut timezone: Option<String> = existing.get("timezone");
-        if let Some(schedule) = &request.schedule {
-            every_seconds = validate_source_watch_interval(schedule.every_seconds)?;
-            cron = schedule.cron.clone();
-            timezone = schedule.timezone.clone();
-        }
-
-        let enabled: i64 = request
-            .enabled
-            .map(|value| if value { 1 } else { 0 })
-            .unwrap_or_else(|| existing.get("enabled"));
-
-        let embed: i64 = match request.embed {
-            Some(value) => {
-                if value {
-                    1
-                } else {
-                    0
-                }
-            }
-            None => existing.get::<i64, _>("embed"),
-        };
-
-        let options_json: String = match &request.options {
-            Some(options) => serde_json::to_string(options).map_err(json_err)?,
-            None => existing.get("options_json"),
-        };
-
-        let collection: Option<String> = request
-            .collection
-            .clone()
-            .or_else(|| existing.get::<Option<String>, _>("collection"));
-
-        let scope: String = match request.scope {
-            Some(scope) => scope_to_str(scope),
-            None => existing.get("scope"),
-        };
-
-        let now = now_ms();
-        let next_run_at: i64 = if request.schedule.is_some() {
-            now + every_seconds * 1000
-        } else {
-            existing.get("next_run_at")
-        };
-        sqlx::query(
-            "UPDATE axon_source_watches \
-             SET enabled = ?, every_seconds = ?, cron = ?, timezone = ?, embed = ?, \
-                 options_json = ?, collection = ?, scope = ?, next_run_at = ?, updated_at = ? \
-             WHERE watch_id = ?",
+        axon_core::sqlite::retry_on(
+            "watch update",
+            |error: &ApiError| axon_core::sqlite::message_is_retryable_busy(&error.to_string()),
+            || self.update_once(watch_id.clone(), request.clone()),
         )
-        .bind(enabled)
-        .bind(every_seconds)
-        .bind(&cron)
-        .bind(&timezone)
-        .bind(embed)
-        .bind(&options_json)
-        .bind(&collection)
-        .bind(&scope)
-        .bind(next_run_at)
-        .bind(now)
-        .bind(&watch_id.0)
-        .execute(&self.pool)
         .await
-        .map_err(sqlite_err)?;
-
-        self.get(watch_id.clone())
-            .await?
-            .ok_or_else(|| missing_watch(&watch_id))
     }
 
     async fn get(&self, watch_id: WatchId) -> Result<Option<WatchResult>> {
@@ -388,50 +319,10 @@ impl WatchStore for SqliteWatchStore {
     }
 
     async fn record_run(&self, watch_id: WatchId, job_id: JobId) -> Result<()> {
-        let watch_exists =
-            sqlx::query_scalar::<_, i64>("SELECT 1 FROM axon_source_watches WHERE watch_id = ?")
-                .bind(&watch_id.0)
-                .fetch_optional(&self.pool)
-                .await
-                .map_err(sqlite_err)?
-                .is_some();
-        if !watch_exists {
-            return Err(missing_watch(&watch_id));
-        }
-
-        let job_row = sqlx::query("SELECT kind, status FROM jobs WHERE job_id = ?")
-            .bind(job_id.0.to_string())
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(sqlite_err)?
-            .ok_or_else(|| missing_job(job_id))?;
-        let status: String = job_row.get("status");
-
-        let now = now_ms();
-        sqlx::query(
-            "INSERT INTO axon_source_watch_runs (watch_id, job_id, created_at) VALUES (?, ?, ?)",
-        )
-        .bind(&watch_id.0)
-        .bind(job_id.0.to_string())
-        .bind(now)
-        .execute(&self.pool)
+        retry_watch_write("watch record run", || {
+            self.record_run_once(&watch_id, &job_id)
+        })
         .await
-        .map_err(sqlite_err)?;
-
-        sqlx::query(
-            "UPDATE axon_source_watches \
-             SET last_job_id = ?, last_status = ?, lease_expires_at = NULL, updated_at = ? \
-             WHERE watch_id = ?",
-        )
-        .bind(job_id.0.to_string())
-        .bind(&status)
-        .bind(now)
-        .bind(&watch_id.0)
-        .execute(&self.pool)
-        .await
-        .map_err(sqlite_err)?;
-
-        Ok(())
     }
 
     async fn history(&self, request: WatchHistoryRequest) -> Result<WatchHistoryResult> {
@@ -519,11 +410,7 @@ impl WatchStore for SqliteWatchStore {
     }
 
     async fn reset(&self) -> Result<()> {
-        sqlx::query("DELETE FROM axon_source_watches")
-            .execute(&self.pool)
-            .await
-            .map_err(sqlite_err)?;
-        Ok(())
+        retry_watch_write("watch reset", || self.reset_once()).await
     }
 
     async fn capabilities(&self) -> Result<WatchStoreCapability> {

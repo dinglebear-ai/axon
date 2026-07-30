@@ -10,6 +10,44 @@ mod util;
 
 use std::str::FromStr;
 
+#[cfg(test)]
+pub(crate) mod snapshot_test_hook {
+    use std::sync::{Arc, Mutex, OnceLock};
+    use tokio::sync::Notify;
+
+    pub(crate) struct Hook {
+        pub entered: Arc<Notify>,
+        pub resume: Arc<Notify>,
+    }
+
+    static HOOK: OnceLock<Mutex<Option<Hook>>> = OnceLock::new();
+
+    pub(crate) fn install() -> (Arc<Notify>, Arc<Notify>) {
+        let entered = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        *HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("hook lock") = Some(Hook {
+            entered: Arc::clone(&entered),
+            resume: Arc::clone(&resume),
+        });
+        (entered, resume)
+    }
+
+    pub(crate) async fn pause_once_after_read() {
+        let hook = HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("hook lock")
+            .take();
+        if let Some(hook) = hook {
+            hook.entered.notify_one();
+            hook.resume.notified().await;
+        }
+    }
+}
+
 use async_trait::async_trait;
 use axon_api::source::*;
 use sqlx::SqlitePool;
@@ -57,6 +95,11 @@ impl SqliteLedgerStore {
     pub async fn in_memory() -> Result<Self> {
         Self::connect("sqlite::memory:").await
     }
+
+    #[cfg(test)]
+    pub(crate) fn pool_for_tests(&self) -> &SqlitePool {
+        &self.pool
+    }
 }
 
 fn sqlite_max_connections(path: &str) -> u32 {
@@ -70,7 +113,15 @@ fn sqlite_max_connections(path: &str) -> u32 {
 #[async_trait]
 impl LedgerStore for SqliteLedgerStore {
     async fn upsert_source(&self, source: SourceSummary) -> Result<()> {
-        source::upsert_source(self, source).await
+        // Single idempotent upsert, so re-running it is safe. This is the write
+        // that still failed with `(code: 5) database is locked` after the job
+        // store was made retry-aware — `busy_timeout` can expire under
+        // sustained multi-process write pressure, and the ledger upsert runs on
+        // every source acquisition.
+        retry_ledger_write("ledger upsert_source", || {
+            source::upsert_source(self, source.clone())
+        })
+        .await
     }
 
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>> {
@@ -82,7 +133,10 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
-        manifest::put_manifest(self, manifest).await
+        retry_ledger_write("ledger put manifest", || {
+            manifest::put_manifest(self, manifest.clone())
+        })
+        .await
     }
 
     async fn get_manifest(
@@ -98,7 +152,10 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration> {
-        generation::create_generation(self, source_id).await
+        retry_ledger_write("ledger create generation", || {
+            generation::create_generation(self, source_id.clone())
+        })
+        .await
     }
 
     async fn committed_generation(
@@ -109,26 +166,41 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn complete_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
-        generation::complete_generation(self, generation).await
+        retry_ledger_write("ledger complete generation", || {
+            generation::complete_generation(self, generation.clone())
+        })
+        .await
     }
 
     async fn fail_generation(&self, generation: SourceGeneration) -> Result<SourceGeneration> {
-        generation::fail_generation(self, generation).await
+        retry_ledger_write("ledger fail generation", || {
+            generation::fail_generation(self, generation.clone())
+        })
+        .await
     }
 
     async fn publish_generation(
         &self,
         request: PublishGenerationRequest,
     ) -> Result<SourceGeneration> {
-        generation::publish_generation(self, request).await
+        retry_ledger_write("ledger publish generation", || {
+            generation::publish_generation(self, request.clone())
+        })
+        .await
     }
 
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()> {
-        document::update_document_status(self, status).await
+        retry_ledger_write("ledger document status", || {
+            document::update_document_status(self, status.clone())
+        })
+        .await
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
-        cleanup::record_cleanup_debt(self, debt).await
+        retry_ledger_write("ledger record cleanup debt", || {
+            cleanup::record_cleanup_debt(self, debt.clone())
+        })
+        .await
     }
 
     async fn list_pending_cleanup_debt(&self, source_id: SourceId) -> Result<Vec<CleanupDebt>> {
@@ -136,7 +208,10 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()> {
-        cleanup::resolve_cleanup_debt(self, &debt_id).await
+        retry_ledger_write("ledger resolve cleanup debt", || {
+            cleanup::resolve_cleanup_debt(self, &debt_id)
+        })
+        .await
     }
 
     async fn delete_generation(
@@ -144,15 +219,24 @@ impl LedgerStore for SqliteLedgerStore {
         source_id: SourceId,
         generation: SourceGenerationId,
     ) -> Result<u64> {
-        cleanup::delete_generation(self, &source_id, &generation).await
+        retry_ledger_write("ledger delete generation", || {
+            cleanup::delete_generation(self, &source_id, &generation)
+        })
+        .await
     }
 
     async fn acquire_lease(&self, request: LeaseRequest) -> Result<Option<LeaseGuard>> {
-        lease::acquire_lease(self, request).await
+        retry_ledger_write("ledger acquire lease", || {
+            lease::acquire_lease(self, request.clone())
+        })
+        .await
     }
 
     async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()> {
-        lease::release_lease(self, lease_id, owner_id).await
+        retry_ledger_write("ledger release lease", || {
+            lease::release_lease(self, lease_id.clone(), owner_id.clone())
+        })
+        .await
     }
 
     async fn heartbeat_lease(
@@ -161,11 +245,14 @@ impl LedgerStore for SqliteLedgerStore {
         owner_id: String,
         ttl_seconds: u64,
     ) -> Result<Option<LeaseGuard>> {
-        lease::heartbeat_lease(self, lease_id, owner_id, ttl_seconds).await
+        retry_ledger_write("ledger heartbeat lease", || {
+            lease::heartbeat_lease(self, lease_id.clone(), owner_id.clone(), ttl_seconds)
+        })
+        .await
     }
 
     async fn reset(&self) -> Result<()> {
-        clear_ledger(&self.pool).await
+        retry_ledger_write("ledger reset", || clear_ledger(&self.pool)).await
     }
 
     async fn capabilities(&self) -> Result<LedgerStoreCapability> {
@@ -187,6 +274,22 @@ impl LedgerStore for SqliteLedgerStore {
         }
         .into())
     }
+}
+
+/// Retry every `LedgerStore` mutation at the public store boundary. Ledger
+/// operations are atomic transactions or idempotent writes, so a retried busy
+/// snapshot starts from a new SQLite read view without duplicating effects.
+pub(crate) async fn retry_ledger_write<T, F, Fut>(what: &str, op: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    axon_core::sqlite::retry_on(
+        what,
+        |e: &ApiError| axon_core::sqlite::message_is_retryable_busy(&e.to_string()),
+        op,
+    )
+    .await
 }
 
 impl SqliteLedgerStore {

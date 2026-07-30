@@ -102,8 +102,22 @@ where
         });
     }
 
-    // ── Cloudflare: chl_opt / challenge-platform are CF's own tokens ─────
-    if scan_window.contains("_cf_chl_opt") || scan_window.contains("challenge-platform") {
+    // ── Cloudflare: the challenge-options blob, or the orchestrate path ──
+    //
+    // `challenge-platform` on its own is NOT a challenge signal. Cloudflare
+    // injects `/cdn-cgi/challenge-platform/scripts/jsd/main.js` into ORDINARY
+    // served pages as a passive JS-detection beacon, so matching the bare
+    // substring flagged any Cloudflare-fronted site as walled. Measured
+    // 2026-07-29: townofpageland.com returns HTTP 200 with 43 links and none
+    // of the five real challenge markers, yet was reported as
+    // "bot wall blocked (HTTP 200, vendor cloudflare)" with 0 URLs mapped —
+    // and because the beacon is on every response, the impersonated retry
+    // "confirmed" the false wall.
+    //
+    // `_cf_chl_opt` is the challenge-options object and only appears on a real
+    // interstitial; `challenge-platform/h/` is the orchestrate path, as opposed
+    // to the `/scripts/jsd/` beacon.
+    if scan_window.contains("_cf_chl_opt") || scan_window.contains("challenge-platform/h/") {
         return Some(ChallengeDetection {
             vendor: ChallengeVendor::Cloudflare,
             akamai_warmup_recoverable: false,

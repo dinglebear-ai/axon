@@ -1,11 +1,95 @@
 use axon_api::source::*;
 use axon_core::redact::{MAX_REDACTABLE_TEXT_BYTES, REDACTION_VERSION};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_util::sync::CancellationToken;
 
 use crate::boundary::{JobDeleteResult, JobStore};
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;
+
+fn snapshot_test_db_path() -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("axon-jobs-snapshot-{}.db", uuid::Uuid::new_v4()))
+}
+
+#[tokio::test]
+async fn public_status_update_retries_a_real_wal_stale_snapshot() {
+    let path = snapshot_test_db_path();
+    let path_string = path.to_string_lossy().to_string();
+    let pool = open_sqlite_pool(&path_string).await.expect("open job pool");
+    seed_source(&pool).await;
+    let store = Arc::new(SqliteUnifiedJobStore::new(pool));
+    let job = store.create(create_request()).await.expect("create job");
+    let writer = axon_core::sqlite::open_pool_unlocked(&path_string)
+        .await
+        .expect("open independent writer pool");
+    let (entered, resume) = super::snapshot_test_hook::install();
+    let entered_wait = entered.notified();
+    let updating_store = Arc::clone(&store);
+    let updating = tokio::spawn(async move {
+        updating_store
+            .update_status(JobStatusUpdate {
+                job_id: job.job_id,
+                source_id: None,
+                status: LifecycleStatus::Running,
+                phase: PipelinePhase::Leasing,
+                stage_id: None,
+                counts: None,
+                current: None,
+                message: Some("start".to_string()),
+                error: None,
+            })
+            .await
+    });
+
+    entered_wait.await;
+    sqlx::query("UPDATE jobs SET updated_at = updated_at WHERE job_id = ?")
+        .bind(job.job_id.0.to_string())
+        .execute(&writer)
+        .await
+        .expect("writer commits after reader snapshot");
+    resume.notify_one();
+
+    updating
+        .await
+        .expect("status task joins")
+        .expect("public JobStore retry recovers SQLITE_BUSY_SNAPSHOT");
+    assert_eq!(
+        store
+            .get(job.job_id)
+            .await
+            .expect("read job")
+            .expect("job")
+            .status,
+        LifecycleStatus::Running
+    );
+
+    writer.close().await;
+    std::fs::remove_file(path).expect("remove snapshot test database");
+}
+
+#[tokio::test]
+async fn job_store_write_boundary_restarts_busy_snapshot_operation() {
+    let calls = AtomicUsize::new(0);
+    let result = super::retry_job_write("test job mutation", || {
+        let call = calls.fetch_add(1, Ordering::SeqCst);
+        async move {
+            if call == 0 {
+                Err(ApiError::new(
+                    "job.sqlite_error",
+                    ErrorStage::Publishing,
+                    "error returned from database: (code: 517) database is locked",
+                ))
+            } else {
+                Ok(())
+            }
+        }
+    })
+    .await;
+
+    assert!(result.is_ok());
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
 
 async fn store() -> SqliteUnifiedJobStore {
     let pool = open_sqlite_pool(":memory:").await.expect("open sqlite");
