@@ -57,23 +57,6 @@ const CLIENT_CONSTRUCTORS: &[&str] = &[
 /// not one.
 const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
     (
-        "crates/axon-adapters/src/web_engine/engine/sitemap/discover.rs",
-        "Builds the client handed to fetch_text_with_retry, a byte-capped \
-         streaming reader (50 MB cap, mid-stream abort) that the String-returning \
-         shared ladder cannot express. Passes axon_ua() and inherits the shared \
-         10-hop SSRF-revalidating redirect policy.",
-    ),
-    (
-        "crates/axon-adapters/src/web_engine/engine/sitemap/backfill.rs",
-        "Builds the client handed to fetch_text_with_retry (byte-capped streaming \
-         reader). Passes axon_ua() and inherits the shared redirect/SSRF policy.",
-    ),
-    (
-        "crates/axon-adapters/src/web_engine/engine/llms_txt.rs",
-        "Builds the client handed to fetch_text_with_retry (byte-capped streaming \
-         reader). Passes axon_ua() and inherits the shared redirect/SSRF policy.",
-    ),
-    (
         "crates/axon-adapters/src/providers/http_fetch.rs",
         "FetchProvider: the acquire-lane provider boundary. Owns per-request \
          header/proxy configuration the shared ladder deliberately does not \
@@ -125,7 +108,6 @@ const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
 /// than by glob so the inventory stays explicit and a NEW vertical fails the
 /// check until someone decides which side it belongs on.
 const TRACKED_SHARED_CLIENT_FETCHERS: &[&str] = &[
-    "crates/axon-adapters/src/web_engine/engine/map.rs",
     "crates/axon-adapters/src/web_engine/engine/runtime.rs",
     "crates/axon-extract/src/verticals/amazon.rs",
     "crates/axon-extract/src/verticals/arxiv.rs",
