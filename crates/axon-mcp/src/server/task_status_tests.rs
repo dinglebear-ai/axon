@@ -51,7 +51,9 @@ fn maps_axon_job_statuses_to_rmcp_task_statuses() {
 #[test]
 fn task_objects_discourage_hot_polling() {
     let task = task_from_job(JobKind::Source, &job("running"));
-    let poll_interval = task.poll_interval.expect("task should set poll interval");
+    let poll_interval = task
+        .poll_interval_ms
+        .expect("task should set poll interval");
     assert_eq!(poll_interval, TASK_POLL_INTERVAL_MS);
     assert!(poll_interval >= 5_000);
 }

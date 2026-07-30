@@ -25,15 +25,10 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Self-hosted Rust jobs build through soldr/zccache (setup-rust-soldr).
-  # Incremental must be off under a compile wrapper; the zccache store persists
-  # per-runner on local disk.
+  # Self-hosted Rust jobs build through kache (setup-rust-kache).
+  # Incremental must be off under a compile wrapper; the local kache store
+  # persists per runner and shares content through the filesystem remote.
   CARGO_INCREMENTAL: "0"
-  SOLDR_CACHE_DIR: ${{ github.workspace }}/../.soldr-cache
-  # soldr wraps CC/CXX for C caching, but its embedded daemon fails to run
-  # the C compiler here (libgit2-sys/libssh2-sys cc-rs builds error os#2).
-  # Disable ONLY native (C) caching; rustc/zccache caching stays on.
-  SOLDR_NATIVE_CACHE: "0"
 
 jobs:
   axon-linux:
@@ -51,9 +46,9 @@ jobs:
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-soldr
+      - uses: ./.github/actions/setup-rust-kache
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
@@ -116,7 +111,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-windows

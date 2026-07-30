@@ -17,7 +17,7 @@ Optional but recommended:
 
 | Tool | Purpose |
 |------|---------|
-| sccache | Compilation cache (auto-detected by Justfile) |
+| kache | Compilation cache (mise-managed global `rustc-wrapper`) |
 | mold | Fast linker (auto-detected by Justfile) |
 | cargo-nextest | Faster parallel test runner |
 

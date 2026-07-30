@@ -64,6 +64,26 @@ DOC_CI_HELPER_SCRIPTS = {
     "scripts/check_aurora_primitive_inventory.py",
 }
 
+VERSION_FILES = {
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md",
+    "CHANGELOG.md",
+    "apps/web/package.json",
+    "apps/web/package-lock.json",
+    "apps/web/openapi/axon.json",
+    "apps/palette-tauri/src-tauri/tauri.conf.json",
+    "apps/palette-tauri/package.json",
+    "apps/palette-tauri/src-tauri/Cargo.toml",
+    "apps/palette-tauri/src-tauri/Cargo.lock",
+    "apps/palette-tauri/CHANGELOG.md",
+    "apps/android/app/build.gradle.kts",
+    "apps/android/CHANGELOG.md",
+    "apps/chrome-extension/manifest.json",
+    "apps/chrome-extension/package.json",
+    "apps/chrome-extension/CHANGELOG.md",
+}
+
 
 def classify(event: str, paths: list[str]) -> dict[str, bool]:
     if event in {"schedule", "workflow_dispatch"}:
@@ -89,12 +109,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         or p in {"README.md", "CHANGELOG.md"}
         or p in DOC_CI_HELPER_SCRIPTS,
     )
-    # Version-bearing root docs only. version-sync (which recompiles xtask, ~5min)
-    # keys off this rather than the broad `docs` signal, so prose-only doc changes
-    # (e.g. docs/sessions/* logs) skip the release-version gate instead of dragging
-    # in the full check. ci-gate permits that skip only when version_files and
-    # every runtime component category are false.
-    version_files = any_match(paths, lambda p: p in {"README.md", "CHANGELOG.md"})
+    # Release builds are reserved for component version changes, explicit
+    # release configuration, main, scheduled runs, or a full-CI PR label.
+    version_files = any_match(paths, lambda p: p in VERSION_FILES)
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
     web = any_match(paths, lambda p: starts(p, "apps/web/", "assets/")) or openapi
     android = any_match(paths, lambda p: starts(p, "apps/android/")) or openapi
@@ -130,7 +147,11 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         or p in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"}
         or p in RUST_CI_HELPER_SCRIPTS,
     )
-    release = rust or web or any_match(paths, lambda p: starts(p, "release/"))
+    release = version_files or any_match(
+        paths,
+        lambda p: starts(p, "release/")
+        or p in {"release-please-config.json", ".release-please-manifest.json"},
+    )
     compose = any_match(
         paths,
         lambda p: starts(p, "config/", "scripts/")

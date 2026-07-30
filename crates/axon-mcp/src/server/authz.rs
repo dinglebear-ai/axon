@@ -488,3 +488,63 @@ pub fn required_scope_with_mutates_if(
         Some(_) => mutates_if_upgrade(action).or(base),
     }
 }
+
+/// Enforce the dispatch-time scope gate for a `tools/call`.
+///
+/// Extracted verbatim from `ServerHandler::call_tool` so that function stays
+/// under the repo's 120-line monolith limit — the rmcp 3.0 migration pushed it
+/// to 126. The logic is unchanged; only its location moved.
+///
+/// `auth` is `None` under `AuthPolicy::LoopbackDev`, which is locally-trusted
+/// and enforces nothing.
+pub(super) fn enforce_call_tool_scope(
+    auth: Option<&AuthContext>,
+    tool_name: &str,
+    action: &str,
+    subaction: &str,
+) -> Result<(), ErrorData> {
+    // mutates_if (axon #298 follow-up): actions such as `search`/
+    // `research` are documented as `axon:read` query surfaces but
+    // unconditionally enqueue a background job today — upgrade the
+    // dispatch-time requirement to `axon:write` regardless of what the
+    // nominal action-class lookup reports. See
+    // `mutates_if_upgrade` for the predicate and why only
+    // these two actions are covered right now.
+    let base_required_scope = required_scope_for_tool(tool_name, action, subaction);
+    let required_scope = required_scope_with_mutates_if(action, base_required_scope);
+    // CWE-863 fix: when `mutates_if_upgrade` actually elevated the
+    // requirement (i.e. this action is `search`/`research`), gate with
+    // `check_scope_explicit` instead of `check_scope`. `check_scope`
+    // calls `axon_authz::scope_satisfies`, which deliberately treats
+    // `axon:read`/`axon:write` as interchangeable for ordinary broad
+    // routes — reusing it here made the elevation a silent no-op (a
+    // caller holding only `axon:read` already "satisfied" `axon:write`).
+    // See `check_scope_explicit`'s doc comment.
+    let is_elevated = mutates_if_upgrade(action).is_some();
+    match (auth, required_scope) {
+        // Deny: sentinel returned for unknown actions — even with a valid
+        // token, we refuse rather than accidentally granting access.
+        (Some(_), Some("__deny__")) => {
+            tracing::warn!(
+                action = %action,
+                "MCP tool invocation denied: unknown action (fail-conservative)"
+            );
+            return Err(ErrorData::invalid_request(
+                format!("forbidden: unknown action `{action}`"),
+                None,
+            ));
+        }
+        // No scope required (e.g. "help") — allowed through when authenticated.
+        (Some(_), None) => {}
+        // Scope check required.
+        (Some(auth_ctx), Some(required_scope)) if is_elevated => {
+            check_scope_explicit(auth_ctx, required_scope, action)?;
+        }
+        (Some(auth_ctx), Some(required_scope)) => {
+            check_scope(auth_ctx, required_scope, action)?;
+        }
+        // LoopbackDev — no enforcement.
+        (None, _) => {}
+    }
+    Ok(())
+}
