@@ -100,12 +100,14 @@ def _emit_contract(emit) -> None:
 def _emit_task_augmented_calls(emit) -> None:
     emit("## Task-Augmented Calls")
     emit()
-    emit("- Server capabilities advertise RMCP task support for `tools/call`.")
     emit(
-        "- The routed `axon` tool advertises `execution.taskSupport: \"optional\"`; clients may use normal calls or task-augmented calls."
+        "- Server capabilities advertise the SEP-2663 `io.modelcontextprotocol/tasks` extension in the `extensions` capability map."
     )
     emit(
-        "- `axon_status_dashboard` does not advertise task support. It is an MCP Apps widget tool, not a durable job task."
+        "- Task support is server-wide, not per-tool. The rmcp 1.x `execution.taskSupport` tool field was removed in rmcp 3.x; no tool advertises it."
+    )
+    emit(
+        "- A client opts a single call into task mode by carrying the `io.modelcontextprotocol/tasks` key in the `tools/call` request `_meta`, and must itself declare the tasks extension capability. Without the `_meta` key the call is served synchronously."
     )
     emit(
         "- Normal calls still return Axon's canonical JSON success envelope with `job_id` or `job_ids` fields for async starts."
@@ -123,10 +125,10 @@ def _emit_task_augmented_calls(emit) -> None:
         "- Task IDs are stable aliases over Axon job IDs: `axon:<kind>:<job_uuid>`."
     )
     emit(
-        "- `tasks/get` and `tasks/cancel` return Task fields at top level; `tasks/result` waits until the job is terminal, then returns a compact sanitized payload instead of a raw `ServiceJob` row."
+        "- The lifecycle surface is `tasks/get` and `tasks/cancel`. SEP-2663 removed `tasks/result` and `tasks/list`: `tasks/get` returns a `DetailedTask` that inlines the compact sanitized payload under `result` once the job completes (or under `error` when it failed), instead of a raw `ServiceJob` row, and `tasks/cancel` acknowledges with an empty result."
     )
     emit(
-        "- Task objects include `pollInterval` of at least 5000 ms. Clients should not hot-poll SQLite-backed task status."
+        "- Task objects include `pollIntervalMs` of at least 5000 ms. Clients should not hot-poll SQLite-backed task status."
     )
     emit(
         "- If `_meta.progressToken` is supplied on a task call, Axon sends allowlisted `notifications/progress` updates from persisted job progress and stops on terminal status or send failure."
@@ -153,7 +155,7 @@ def _emit_task_augmented_calls(emit) -> None:
         "- [Repository guide](../../development/repo/repo.md) for source layout and testing policy."
     )
     emit(
-        "- [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `tasks/result`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details."
+        "- [This tool-schema reference](tool-schema.md#task-augmented-calls) for `tasks/get`, `tasks/cancel`, `_meta.progressToken`, and `axon:<kind>:<job_uuid>` wire details."
     )
     emit()
 

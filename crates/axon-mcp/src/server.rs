@@ -60,17 +60,15 @@ use rmcp::{
     ErrorData, RoleServer, ServerHandler,
     handler::server::wrapper::Parameters,
     model::{
-        CallToolRequestParams, CallToolResult, CancelTaskParams, CancelTaskResult,
-        CreateTaskResult, GetTaskInfoParams, GetTaskPayloadResult, GetTaskResult,
-        GetTaskResultParams, InitializeRequestParams, InitializeResult, ListResourcesResult,
-        ListTasksResult, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult,
-        ServerInfo,
+        CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, GetTaskParams,
+        GetTaskResult, InitializeRequestParams, InitializeResult, ListResourcesResult,
+        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ServerInfo,
+        TASKS_EXTENSION_ID, UpdateTaskParams,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
 };
 use serde_json::Value;
-use server_authz::required_scope_for_tool;
 pub use server_authz::{mutates_if_upgrade, required_scope_for, required_scope_with_mutates_if};
 use std::{collections::HashMap, sync::Arc};
 pub use stdio_runner::run_stdio_server;
@@ -141,8 +139,7 @@ impl AxonMcpServer {
     #[tool(
         name = "axon",
         description = "Unified Axon MCP tool. Use action/subaction routing. Actions: help, status, jobs, doctor, source, query, retrieve, resolve, capabilities, providers, search, map, prune, collections, reset, ask, chat, evaluate, suggest, research, screenshot, brand, diff, extract, memory, summarize, endpoints, watch, graph, uploads, artifacts. Valid subactions are published in this tool inputSchema and mirrored in the enriched schema resource at axon://schema/mcp-tool. Uploads use distinct upl_* staging IDs and art_* artifact IDs. The `source` action indexes any supported source through the unified pipeline.",
-        input_schema = tool_schema::axon_tool_input_schema(),
-        execution(task_support = "optional")
+        input_schema = tool_schema::axon_tool_input_schema()
     )]
     async fn axon<'a>(
         &'a self,
@@ -278,7 +275,34 @@ impl ServerHandler for AxonMcpServer {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResponse, ErrorData> {
+        // SEP-2663: rmcp 3.x removed the dedicated `ServerHandler::enqueue_task`
+        // hook and the typed `CallToolRequestParams::task` field that rmcp 1.x
+        // used to route task-augmented `tools/call` requests. Task augmentation
+        // is now opt-in through the request's `_meta` extension key, and the
+        // server materializes the task by returning `CallToolResponse::Task`
+        // from `call_tool` itself. `tasks::enqueue_task` runs its own authz
+        // (`authorize_task_tool_call`), exactly as it did when the SDK routed
+        // to it directly, so this branch stays ahead of the synchronous gate.
+        if is_task_augmented(&request) {
+            // The SDK rejects a `CallToolResponse::Task` outright when the
+            // client never declared the tasks extension. Check first so a
+            // capability-less client is refused *before* a job is enqueued
+            // rather than after the side effect has already landed.
+            if !context
+                .client_capabilities()
+                .is_some_and(|caps| caps.supports_tasks())
+            {
+                return Err(invalid_params(
+                    "task-augmented tools/call requires the client to declare the \
+                     `io.modelcontextprotocol/tasks` extension capability",
+                ));
+            }
+            return tasks::enqueue_task(self, request, context)
+                .await
+                .map(Into::into);
+        }
+
         // Extract action and subaction for scope check before any processing.
         let action: String = request
             .arguments
@@ -298,50 +322,7 @@ impl ServerHandler for AxonMcpServer {
         // Fail-closed auth check: require AuthContext when Mounted, then scope.
         // LoopbackDev returns None — no scope enforcement applies.
         let auth = server_authz::require_auth_context(&self.auth_policy, &context)?;
-        // mutates_if (axon #298 follow-up): actions such as `search`/
-        // `research` are documented as `axon:read` query surfaces but
-        // unconditionally enqueue a background job today — upgrade the
-        // dispatch-time requirement to `axon:write` regardless of what the
-        // nominal action-class lookup reports. See
-        // `server_authz::mutates_if_upgrade` for the predicate and why only
-        // these two actions are covered right now.
-        let base_required_scope =
-            required_scope_for_tool(request.name.as_ref(), &action, &subaction);
-        let required_scope = required_scope_with_mutates_if(&action, base_required_scope);
-        // CWE-863 fix: when `mutates_if_upgrade` actually elevated the
-        // requirement (i.e. this action is `search`/`research`), gate with
-        // `check_scope_explicit` instead of `check_scope`. `check_scope`
-        // calls `axon_authz::scope_satisfies`, which deliberately treats
-        // `axon:read`/`axon:write` as interchangeable for ordinary broad
-        // routes — reusing it here made the elevation a silent no-op (a
-        // caller holding only `axon:read` already "satisfied" `axon:write`).
-        // See `server_authz::check_scope_explicit`'s doc comment.
-        let is_elevated = mutates_if_upgrade(&action).is_some();
-        match (auth, required_scope) {
-            // Deny: sentinel returned for unknown actions — even with a valid
-            // token, we refuse rather than accidentally granting access.
-            (Some(_), Some("__deny__")) => {
-                tracing::warn!(
-                    action = %action,
-                    "MCP tool invocation denied: unknown action (fail-conservative)"
-                );
-                return Err(ErrorData::invalid_request(
-                    format!("forbidden: unknown action `{action}`"),
-                    None,
-                ));
-            }
-            // No scope required (e.g. "help") — allowed through when authenticated.
-            (Some(_), None) => {}
-            // Scope check required.
-            (Some(auth_ctx), Some(required_scope)) if is_elevated => {
-                server_authz::check_scope_explicit(auth_ctx, required_scope, &action)?;
-            }
-            (Some(auth_ctx), Some(required_scope)) => {
-                server_authz::check_scope(auth_ctx, required_scope, &action)?;
-            }
-            // LoopbackDev — no enforcement.
-            (None, _) => {}
-        }
+        server_authz::enforce_call_tool_scope(auth, request.name.as_ref(), &action, &subaction)?;
 
         // `prune` needs a real PruneAuthz derived from the caller's resolved
         // scopes, never hardcoded. By the time we reach this point the scope
@@ -443,43 +424,36 @@ impl ServerHandler for AxonMcpServer {
             .await
     }
 
-    async fn enqueue_task(
+    /// SEP-2663 `tasks/get`. Replaces rmcp 1.x's split `get_task_info`
+    /// (`tasks/get`) + `get_task_result` (`tasks/result`) pair: the terminal
+    /// result is now inlined in the returned [`rmcp::model::DetailedTask`]
+    /// payload, so there is no separate result method to implement.
+    async fn get_task(
         &self,
-        request: CallToolRequestParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<CreateTaskResult, ErrorData> {
-        tasks::enqueue_task(self, request, context).await
-    }
-
-    async fn list_tasks(
-        &self,
-        request: Option<PaginatedRequestParams>,
-        context: RequestContext<RoleServer>,
-    ) -> Result<ListTasksResult, ErrorData> {
-        tasks::list_tasks(self, request, context).await
-    }
-
-    async fn get_task_info(
-        &self,
-        request: GetTaskInfoParams,
+        request: GetTaskParams,
         context: RequestContext<RoleServer>,
     ) -> Result<GetTaskResult, ErrorData> {
-        tasks::get_task_info(self, request, context).await
+        tasks::get_task(self, request, context).await
     }
 
-    async fn get_task_result(
+    /// SEP-2663 `tasks/update`. Axon's tasks are backed by durable jobs and
+    /// never raise in-task server-to-client input requests, so there is
+    /// nothing for a client to respond to.
+    async fn update_task(
         &self,
-        request: GetTaskResultParams,
-        context: RequestContext<RoleServer>,
-    ) -> Result<GetTaskPayloadResult, ErrorData> {
-        tasks::get_task_result(self, request, context).await
+        _request: UpdateTaskParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<(), ErrorData> {
+        Err(invalid_params(
+            "axon tasks never issue in-task input requests; tasks/update is not supported",
+        ))
     }
 
     async fn cancel_task(
         &self,
         request: CancelTaskParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CancelTaskResult, ErrorData> {
+    ) -> Result<(), ErrorData> {
         tasks::cancel_task(self, request, context).await
     }
 
@@ -507,7 +481,25 @@ impl ServerHandler for AxonMcpServer {
         &self,
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
-        handler_meta::read_resource(self, request, context).await
+    ) -> Result<ReadResourceResponse, ErrorData> {
+        handler_meta::read_resource(self, request, context)
+            .await
+            .map(Into::into)
     }
+}
+
+/// True when the caller opted this `tools/call` into SEP-2663 task
+/// augmentation by carrying the tasks extension key in the request `_meta`.
+///
+/// rmcp 3.0.0-beta.2 does not surface this as a typed field (rmcp 1.x had
+/// `CallToolRequestParams::task`), so the raw `_meta` key is the only
+/// per-request signal available. Gating on the key — rather than on the
+/// client's advertised capability alone — keeps the rmcp 1.x semantics where a
+/// tasks-capable client still gets a synchronous result unless it explicitly
+/// asked for a task.
+fn is_task_augmented(request: &CallToolRequestParams) -> bool {
+    request
+        .meta
+        .as_ref()
+        .is_some_and(|meta| meta.contains_key(TASKS_EXTENSION_ID))
 }

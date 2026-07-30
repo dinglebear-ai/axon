@@ -1,8 +1,8 @@
 [package]
 name = "axon-mcp"
 version.workspace = true
-edition = "2024"
-rust-version = "1.94.0"
+edition.workspace = true
+rust-version.workspace = true
 description = "Axon MCP server: single action/subaction-routed tool over rmcp stdio + streamable HTTP, lab-auth OAuth/bearer"
 license = "MIT"
 
@@ -35,7 +35,7 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 sha2 = "0.11"
 hex = "0.4"
-rmcp = { version = "1.7.0", features = [
+rmcp = { version = "=3.0.0-beta.2", features = [
   "server",
   "macros",
   "transport-io",

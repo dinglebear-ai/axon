@@ -45,7 +45,7 @@ This installs: Rust toolchain components and cargo tools, then runs `npm ci` for
 
 | Tool | Install | Purpose |
 |------|---------|---------|
-| sccache | `cargo install sccache` | Compilation cache (auto-detected by Justfile) |
+| kache | `mise install` | Compilation cache (global `rustc-wrapper`) |
 | mold | System package manager | Fast linker (auto-detected by Justfile) |
 | cargo-nextest | `cargo install cargo-nextest` | Faster parallel test runner |
 | cargo-deny | `cargo install cargo-deny` | Dependency auditing |
