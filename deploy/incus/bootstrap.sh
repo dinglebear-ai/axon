@@ -84,7 +84,11 @@ else
 fi
 
 ### 3. Ensure running.
-state="$(incus list "$CONTAINER_NAME" --format csv -c s 2>/dev/null || echo "")"
+# `incus list <name>` treats the name as a filter, so a retained rollback
+# instance such as `axon-bookworm-*` also matches `axon`. Query the exact
+# instance instead or the combined RUNNING/STOPPED output causes an erroneous
+# attempt to start an already-running container.
+state="$(incus info "$CONTAINER_NAME" 2>/dev/null | awk -F': ' '$1 == "Status" { print $2; exit }')"
 if [ "$state" != "RUNNING" ]; then
   log "starting container (was: ${state:-absent})"
   incus start "$CONTAINER_NAME"
