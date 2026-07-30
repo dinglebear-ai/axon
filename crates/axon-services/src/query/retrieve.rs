@@ -151,7 +151,8 @@ async fn resolve_qdrant_document(
     url: &str,
     max_points: Option<usize>,
 ) -> Result<Option<ResolvedDocument>, Box<dyn Error + Send + Sync>> {
-    let store = QdrantVectorStore::new(cfg.qdrant_url.clone(), RETRIEVE_VECTOR_PROVIDER_ID);
+    let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), RETRIEVE_VECTOR_PROVIDER_ID);
+    axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
     let doc = retrieve_document(&store, &cfg.collection, url, max_points)
         .await
         .map_err(|e| -> Box<dyn Error + Send + Sync> {

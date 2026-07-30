@@ -1,15 +1,19 @@
 //! Source-kind dispatch table for the unified source orchestrator.
 
-use axon_api::source::{AuthSnapshot, OutputPolicy, RoutePlan, SourceLimits, SourceScope};
+use std::sync::Arc;
 
-use super::classify::SourceInputKind;
+use axon_adapters::SourceAdapter;
+
 use super::result_map::IndexCounts;
 use super::{SourceExecutionContext, dispatch, dispatch_item_limited_kind, dispatch_web_kind};
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
+use axon_api::source::{
+    AuthSnapshot, OutputPolicy, RoutePlan, SourceKind, SourceLimits, SourceScope,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_kind(
-    kind: SourceInputKind,
+    kind: SourceKind,
     scope: SourceScope,
     ctx: &ServiceContext,
     cfg: &axon_core::config::Config,
@@ -25,10 +29,15 @@ pub(super) async fn dispatch_kind(
     project_filter: Option<&str>,
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
+    let (adapter, canonical_route) =
+        canonical_registry_selection(kind, ctx, runtime, route).await?;
+    let route = &canonical_route;
+
     match kind {
-        SourceInputKind::Local | SourceInputKind::Git => {
+        SourceKind::Local | SourceKind::Git => {
             dispatch_local_or_git(
                 kind,
+                adapter,
                 cfg,
                 runtime,
                 input,
@@ -41,9 +50,10 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Feed | SourceInputKind::Youtube | SourceInputKind::Reddit => {
+        SourceKind::Feed | SourceKind::Youtube | SourceKind::Reddit => {
             dispatch_item_limited_kind(
                 kind,
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -56,8 +66,9 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Web => {
+        SourceKind::Web => {
             dispatch_web_kind(
+                adapter,
                 cfg,
                 runtime,
                 input,
@@ -73,8 +84,9 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Session => {
+        SourceKind::Session => {
             dispatch::dispatch_session(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -88,9 +100,10 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::Registry => {
+        SourceKind::Registry => {
             dispatch_item_limited_kind(
                 kind,
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -103,14 +116,10 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceInputKind::CliTool
-        | SourceInputKind::McpTool
-        | SourceInputKind::Memory
-        | SourceInputKind::Upload
-        | SourceInputKind::Unsupported => {
+        SourceKind::CliTool | SourceKind::McpTool | SourceKind::Memory | SourceKind::Upload => {
             dispatch_virtual_kind(
                 kind,
-                ctx,
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -125,9 +134,37 @@ pub(super) async fn dispatch_kind(
     }
 }
 
+async fn canonical_registry_selection(
+    kind: SourceKind,
+    ctx: &ServiceContext,
+    runtime: &TargetLocalSourceRuntime,
+    route: &RoutePlan,
+) -> anyhow::Result<(Arc<dyn SourceAdapter>, RoutePlan)> {
+    let adapter = runtime
+        .source_adapter_registry(ctx)
+        .await?
+        .adapter_for_source_kind(kind)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no source adapter registered for source kind {kind:?} (route adapter {})",
+                route.adapter.name
+            )
+        })?;
+    let adapter_ref = axon_api::source::AdapterRef {
+        name: adapter.name().to_string(),
+        version: adapter.version().to_string(),
+    };
+    let mut canonical_route = route.clone();
+    canonical_route.adapter = adapter_ref.clone();
+    canonical_route.source.adapter = adapter_ref;
+    canonical_route.source.source_kind = kind;
+    Ok((adapter, canonical_route))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_local_or_git(
-    kind: SourceInputKind,
+    kind: SourceKind,
+    adapter: Arc<dyn SourceAdapter>,
     cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -139,8 +176,9 @@ async fn dispatch_local_or_git(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::Local => {
+        SourceKind::Local => {
             dispatch::dispatch_local(
+                adapter,
                 cfg,
                 runtime,
                 input,
@@ -153,8 +191,9 @@ async fn dispatch_local_or_git(
             )
             .await
         }
-        SourceInputKind::Git => {
+        SourceKind::Git => {
             dispatch::dispatch_git(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -172,8 +211,8 @@ async fn dispatch_local_or_git(
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_virtual_kind(
-    kind: SourceInputKind,
-    ctx: &ServiceContext,
+    kind: SourceKind,
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -184,9 +223,10 @@ async fn dispatch_virtual_kind(
     execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     match kind {
-        SourceInputKind::CliTool => {
+        SourceKind::CliTool => {
             let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
             dispatch::dispatch_cli_tool(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -199,9 +239,10 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::McpTool => {
+        SourceKind::McpTool => {
             let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
             dispatch::dispatch_mcp_tool(
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -214,9 +255,9 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Memory => {
+        SourceKind::Memory => {
             dispatch::dispatch_memory(
-                ctx,
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -228,9 +269,9 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Upload => {
+        SourceKind::Upload => {
             dispatch::dispatch_upload(
-                ctx,
+                adapter,
                 runtime,
                 input,
                 collection,
@@ -242,7 +283,8 @@ async fn dispatch_virtual_kind(
             )
             .await
         }
-        SourceInputKind::Unsupported => Err(anyhow::anyhow!("unsupported source input: {input}")),
-        _ => unreachable!("non-virtual source kind routed to virtual dispatcher"),
+        _ => Err(anyhow::anyhow!(
+            "non-virtual source kind routed to virtual dispatcher: {kind:?}"
+        )),
     }
 }

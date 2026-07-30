@@ -93,21 +93,22 @@ pub(super) struct CodeSearchAllowedRoots {
 }
 
 impl CodeSearchAllowedRoots {
-    pub(super) fn from_env() -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub(super) async fn from_env() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let raw = std::env::var("AXON_CODE_SEARCH_ALLOWED_ROOTS").unwrap_or_default();
         Self::from_root_strings(
             raw.split([':', ','])
                 .map(str::trim)
                 .filter(|part| !part.is_empty()),
         )
+        .await
     }
 
-    fn from_root_strings<'a>(
+    async fn from_root_strings<'a>(
         parts: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mut roots = Vec::new();
         for part in parts {
-            roots.push(validate_allowed_root(part)?);
+            roots.push(validate_allowed_root(part).await?);
         }
         Ok(Self { roots })
     }
@@ -117,8 +118,8 @@ impl CodeSearchAllowedRoots {
     }
 }
 
-fn validate_allowed_root(part: &str) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
-    let canonical = std::fs::canonicalize(part)?;
+async fn validate_allowed_root(part: &str) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
+    let canonical = tokio::fs::canonicalize(part).await?;
     let home = std::env::var_os("HOME").map(PathBuf::from);
     if canonical == Path::new("/") || home.as_deref() == Some(canonical.as_path()) {
         return Err(format!(

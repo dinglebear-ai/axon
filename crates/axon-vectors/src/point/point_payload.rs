@@ -102,6 +102,9 @@ fn source_metadata(
         ),
     );
     metadata.insert("committed_generation".to_string(), serde_json::Value::Null);
+    let born_epoch = metadata["source_generation"].clone();
+    metadata.insert("born_epoch".to_string(), born_epoch);
+    metadata.insert("retired_epoch".to_string(), serde_json::Value::Null);
     metadata.insert("document_id".to_string(), json!(document.document_id.0));
     Ok(metadata)
 }

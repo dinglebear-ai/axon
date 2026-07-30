@@ -38,6 +38,9 @@ env:
   # local store and shares content through the filesystem remote, avoiding a
   # GitHub-cache round trip.
   CARGO_INCREMENTAL: "0"
+  # Self-hosted runners persist $HOME/.axon between jobs. Isolate every job's
+  # SQLite state so a different branch or migration epoch cannot poison startup.
+  AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
   AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
@@ -721,18 +724,27 @@ jobs:
       - name: Start TEI (CPU)
         run: |
           mkdir -p .cache/huggingface
-          docker run -d --name axon-tei -p 52000:80 \
+          docker run -d --name axon-tei -p 127.0.0.1::80 \
             -v "$PWD/.cache/huggingface:/hf-cache" \
             -e HF_HOME=/hf-cache \
             -e HF_HUB_CACHE=/hf-cache/hub \
             ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
             --model-id BAAI/bge-small-en-v1.5
+          tei_port="$(docker port axon-tei 80/tcp | awk -F: 'END { print $NF }')"
+          case "$tei_port" in
+            ''|*[!0-9]*)
+              echo "Could not resolve dynamically published TEI port: $tei_port" >&2
+              exit 1
+              ;;
+          esac
+          echo "TEI_URL=http://127.0.0.1:$tei_port" >> "$GITHUB_ENV"
+          echo "AXON_TEST_TEI_URL=http://127.0.0.1:$tei_port" >> "$GITHUB_ENV"
 
       - name: Wait for Qdrant and TEI
         run: |
           for _ in {1..90}; do
             if curl -fsS http://127.0.0.1:6333/healthz >/dev/null 2>&1 && \
-               curl -fsS http://127.0.0.1:52000/health >/dev/null 2>&1; then
+               curl -fsS "$TEI_URL/health" >/dev/null 2>&1; then
               echo "Qdrant + TEI ready."
               exit 0
             fi

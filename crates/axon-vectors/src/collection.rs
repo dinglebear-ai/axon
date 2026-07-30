@@ -99,6 +99,8 @@ pub fn required_retrieval_payload_indexes() -> Vec<PayloadIndexSpec> {
         ("item_canonical_uri", PayloadFieldSchema::Keyword),
         ("source_generation", PayloadFieldSchema::Integer),
         ("committed_generation", PayloadFieldSchema::Integer),
+        ("born_epoch", PayloadFieldSchema::Integer),
+        ("retired_epoch", PayloadFieldSchema::Integer),
         ("document_id", PayloadFieldSchema::Keyword),
         ("chunk_id", PayloadFieldSchema::Keyword),
         ("job_id", PayloadFieldSchema::Keyword),

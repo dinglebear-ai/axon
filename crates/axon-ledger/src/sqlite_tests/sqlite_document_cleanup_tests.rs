@@ -121,6 +121,43 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
 }
 
 #[tokio::test]
+async fn sqlite_document_status_batch_rolls_back_the_entire_invalid_transaction() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = seed_item_generation(&store, "src/lib.rs").await;
+    let valid = DocumentStatus {
+        document_id: DocumentId::new("doc-batch-valid"),
+        source_id: SourceId::new("src_sqlite"),
+        source_item_key: SourceItemKey::new("src/lib.rs"),
+        generation: Some(generation.clone()),
+        status: DocumentLifecycleStatus::Prepared,
+        updated_at: ts(),
+        chunk_count: 0,
+        vector_point_count: 0,
+        error: None,
+        cleanup_status: None,
+    };
+    let invalid = DocumentStatus {
+        document_id: DocumentId::new("doc-batch-invalid"),
+        source_id: SourceId::new("missing-source"),
+        ..valid.clone()
+    };
+
+    let err = store
+        .update_document_statuses(vec![valid.clone(), invalid])
+        .await
+        .expect_err("invalid status rejects its batch");
+    assert_eq!(err.code.to_string(), "source.ledger.source_missing");
+    assert!(
+        store
+            .document_status(&valid.document_id)
+            .await
+            .expect("read status")
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn sqlite_document_status_ignores_stale_updates() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

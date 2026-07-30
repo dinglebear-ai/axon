@@ -44,6 +44,8 @@ fn prepared_document_and_embeddings_build_validated_points() {
     // `committed_generation` is null until a later publish step commits it
     // (see `axon_vectors::point`'s point builder).
     assert_eq!(batch.points[0].payload["source_generation"], json!(7));
+    assert_eq!(batch.points[0].payload["born_epoch"], json!(7));
+    assert!(batch.points[0].payload["retired_epoch"].is_null());
     assert_eq!(
         batch.points[0].payload["committed_generation"],
         serde_json::Value::Null

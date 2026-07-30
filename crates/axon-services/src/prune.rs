@@ -116,7 +116,9 @@ pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) 
 /// `NullScopeSource`/`estimate_from_ledger` report elsewhere in this module,
 /// rather than erroring a dry-run plan.
 async fn estimate_collection_points(ctx: &ServiceContext, collection: &str) -> PruneEstimate {
-    let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    let mut vector_store =
+        QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, ctx.cfg().qdrant_point_buffer);
     match vector_store
         .count_collection_points(collection, axon_error::ErrorStage::Planning)
         .await
@@ -245,7 +247,9 @@ pub async fn prune_execute(
         });
     }
 
-    let vector_store = QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    let mut vector_store =
+        QdrantVectorStore::new(ctx.cfg().qdrant_url.clone(), "qdrant".to_string());
+    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, ctx.cfg().qdrant_point_buffer);
     // Thread the target-local ledger (when this `ServiceContext` has one) so
     // `current_generation()` can report the real committed generation and the
     // executor's generation-fence actually fences. A `ServiceContext` with no

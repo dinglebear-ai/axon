@@ -1,10 +1,9 @@
 //! CLI/MCP tool dispatch through the canonical non-web source pipeline.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use axon_adapters::{
-    SourceAdapter, acquisition::MaterializedSource, cli_tool::CliToolSourceAdapter,
-    mcp_tool::McpToolSourceAdapter,
-};
+use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
     AdapterRef, AuthSnapshot, ConfigSnapshotId, EffectiveLimits, LifecycleStatus, PipelinePhase,
     Severity, SourceAcquisition, SourceAdapterCapability, SourceKind, SourceLimits, SourceManifest,
@@ -25,6 +24,7 @@ use crate::source::result_map::IndexCounts;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_cli_tool(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -47,7 +47,7 @@ pub(crate) async fn dispatch_cli_tool(
         execution,
         SourceKind::CliTool,
         "cli_tool",
-        &CliToolSourceAdapter::new(),
+        adapter,
         authorization,
     )
     .await
@@ -55,6 +55,7 @@ pub(crate) async fn dispatch_cli_tool(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_mcp_tool(
+    adapter: Arc<dyn SourceAdapter>,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -77,7 +78,7 @@ pub(crate) async fn dispatch_mcp_tool(
         execution,
         SourceKind::McpTool,
         "mcp_tool",
-        &McpToolSourceAdapter::new(),
+        adapter,
         authorization,
     )
     .await
@@ -95,7 +96,7 @@ async fn dispatch_tool_adapter(
     execution: &SourceExecutionContext,
     source_kind: SourceKind,
     adapter_name: &'static str,
-    adapter: &dyn SourceAdapter,
+    adapter: Arc<dyn SourceAdapter>,
     authorization: AuthorizedToolExecution,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
@@ -107,7 +108,11 @@ async fn dispatch_tool_adapter(
         },
         redacted_target_id(input)
     ));
-    let plan = tool_plan(route, source_kind, adapter_name, embed, &authorization);
+    let adapter_ref = AdapterRef {
+        name: adapter.name().to_string(),
+        version: adapter.version().to_string(),
+    };
+    let plan = tool_plan(route, source_kind, adapter_ref, embed, &authorization);
     let audited = AuditedToolAdapter {
         inner: adapter,
         runtime,
@@ -129,7 +134,7 @@ async fn dispatch_tool_adapter(
 }
 
 struct AuditedToolAdapter<'a> {
-    inner: &'a dyn SourceAdapter,
+    inner: Arc<dyn SourceAdapter>,
     runtime: &'a TargetLocalSourceRuntime,
     authorization: AuthorizedToolExecution,
     caller_id: Option<String>,
@@ -226,22 +231,18 @@ impl AuditedToolAdapter<'_> {
 fn tool_plan(
     routed: &axon_api::source::RoutePlan,
     source_kind: SourceKind,
-    adapter_name: &'static str,
+    adapter: AdapterRef,
     embed: bool,
     authorization: &AuthorizedToolExecution,
 ) -> SourcePlan {
-    let adapter = AdapterRef {
-        name: adapter_name.to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
     let mut route = routed.clone();
     route.adapter = adapter.clone();
-    route.source.adapter = adapter;
+    route.source.adapter = adapter.clone();
     route.source.source_kind = source_kind;
 
     let mut request = SourceRequest::new(route.source.canonical_uri.clone());
     request.scope = Some(route.scope);
-    request.adapter = Some(adapter_name.to_string());
+    request.adapter = Some(adapter.name.clone());
     request.embed = embed;
     request.options = invocation_options(routed);
     request.metadata.insert(

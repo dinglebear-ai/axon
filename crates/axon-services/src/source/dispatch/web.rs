@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use anyhow::Context as _;
+use axon_adapters::SourceAdapter;
 use axon_api::source::{AuthSnapshot, MetadataMap, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
@@ -17,6 +20,7 @@ use crate::web_source::{
 /// pipeline directly — no legacy crawl-to-disk handoff.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_web(
+    adapter: Arc<dyn SourceAdapter>,
     cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -74,6 +78,7 @@ pub(crate) async fn dispatch_web(
         };
         index_web_source_with_execution(
             index_input,
+            Arc::clone(&adapter),
             execution,
             runtime.jobs.as_ref(),
             runtime.ledger.as_ref(),
@@ -97,6 +102,7 @@ pub(crate) async fn dispatch_web(
         };
         index_web_source_with_execution(
             index_input,
+            Arc::clone(&adapter),
             execution,
             runtime.jobs.as_ref(),
             runtime.ledger.as_ref(),

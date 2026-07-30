@@ -75,3 +75,29 @@ fn only_complete_and_canceled_are_terminal() {
     assert!(!is_terminal(PipelinePhase::Embedding));
     assert!(!is_terminal(PipelinePhase::Queued));
 }
+
+#[test]
+fn phase_ids_are_stable_and_transitions_are_forward_only() {
+    assert_eq!(phase_id(PipelinePhase::Embedding), "embedding");
+    assert_eq!(
+        describe(PipelinePhase::Fetching).unwrap().stable_id(),
+        "fetching"
+    );
+    assert!(transition_allowed(
+        PipelinePhase::Fetching,
+        PipelinePhase::Normalizing
+    ));
+    assert!(transition_allowed(
+        PipelinePhase::Fetching,
+        PipelinePhase::Canceled
+    ));
+    assert!(!transition_allowed(
+        PipelinePhase::Normalizing,
+        PipelinePhase::Fetching
+    ));
+    assert!(
+        describe(PipelinePhase::Fetching)
+            .unwrap()
+            .allows_skip_to(PipelinePhase::Publishing)
+    );
+}

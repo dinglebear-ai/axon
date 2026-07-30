@@ -34,13 +34,14 @@ fn with_env_restored<F: FnOnce()>(keys: &[&str], f: F) {
 #[test]
 fn load_dotenv_loads_axon_home_env_when_present() {
     let key = "AXON_TEST_HOME_ENV_VAR_LOADED";
-    with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+    with_env_restored(&["HOME", "AXON_DATA_DIR", "AXON_ENV_FILE", key], || {
         let tmp = tempfile::tempdir().expect("tempdir");
         let axon_dir = tmp.path().join(".axon");
         fs::create_dir_all(&axon_dir).expect("mkdir .axon");
         fs::write(axon_dir.join(".env"), format!("{key}=from_axon_home\n")).expect("write .env");
         unsafe {
             std::env::set_var("HOME", tmp.path());
+            std::env::remove_var("AXON_DATA_DIR");
             std::env::remove_var("AXON_ENV_FILE");
             std::env::remove_var(key);
         }
@@ -57,11 +58,12 @@ fn load_dotenv_falls_through_when_axon_home_env_absent() {
     // probe key. (Verifying repo-root .env loading is environment-dependent;
     // the contract we care about is "no early return / no panic".)
     let key = "AXON_TEST_FALLTHROUGH_PROBE_VAR";
-    with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+    with_env_restored(&["HOME", "AXON_DATA_DIR", "AXON_ENV_FILE", key], || {
         let tmp = tempfile::tempdir().expect("tempdir");
         // Note: no .axon/.env created
         unsafe {
             std::env::set_var("HOME", tmp.path());
+            std::env::remove_var("AXON_DATA_DIR");
             std::env::remove_var("AXON_ENV_FILE");
             std::env::remove_var(key);
         }
@@ -76,7 +78,7 @@ fn load_dotenv_falls_through_when_axon_home_env_absent() {
 #[test]
 fn load_dotenv_axon_env_file_wins_over_axon_home() {
     let key = "AXON_TEST_PRECEDENCE_VAR";
-    with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+    with_env_restored(&["HOME", "AXON_DATA_DIR", "AXON_ENV_FILE", key], || {
         let tmp = tempfile::tempdir().expect("tempdir");
         let axon_dir = tmp.path().join(".axon");
         fs::create_dir_all(&axon_dir).expect("mkdir .axon");
@@ -86,6 +88,7 @@ fn load_dotenv_axon_env_file_wins_over_axon_home() {
         fs::write(&explicit, format!("{key}=from_explicit\n")).expect("write explicit env");
         unsafe {
             std::env::set_var("HOME", tmp.path());
+            std::env::remove_var("AXON_DATA_DIR");
             std::env::set_var("AXON_ENV_FILE", &explicit);
             std::env::remove_var(key);
         }
@@ -99,9 +102,10 @@ fn load_dotenv_axon_env_file_wins_over_axon_home() {
 #[test]
 fn load_dotenv_silent_fall_through_when_home_unset() {
     let key = "AXON_TEST_HOME_UNSET_PROBE";
-    with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+    with_env_restored(&["HOME", "AXON_DATA_DIR", "AXON_ENV_FILE", key], || {
         unsafe {
             std::env::remove_var("HOME");
+            std::env::remove_var("AXON_DATA_DIR");
             std::env::remove_var("AXON_ENV_FILE");
             std::env::remove_var(key);
         }
@@ -121,7 +125,7 @@ fn load_dotenv_detects_symlinked_axon_home_env_before_opening() {
     // symlink (security: prevents a local attacker from redirecting
     // env loading via a symlink under a permissive ~/.axon/).
     let key = "AXON_TEST_SYMLINK_REJECT_PROBE";
-    with_env_restored(&["HOME", "AXON_ENV_FILE", key], || {
+    with_env_restored(&["HOME", "AXON_DATA_DIR", "AXON_ENV_FILE", key], || {
         let tmp = tempfile::tempdir().expect("tempdir");
         let axon_dir = tmp.path().join(".axon");
         fs::create_dir_all(&axon_dir).expect("mkdir .axon");
@@ -130,6 +134,7 @@ fn load_dotenv_detects_symlinked_axon_home_env_before_opening() {
         std::os::unix::fs::symlink(&target, axon_dir.join(".env")).expect("symlink");
         unsafe {
             std::env::set_var("HOME", tmp.path());
+            std::env::remove_var("AXON_DATA_DIR");
             std::env::remove_var("AXON_ENV_FILE");
             std::env::remove_var(key);
         }

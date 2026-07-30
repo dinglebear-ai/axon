@@ -6,12 +6,13 @@
 //! [`Config`] so long-lived processes (`serve`, `mcp`) carry a working target
 //! local-source runtime.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
-use axon_adapters::NoopSourceEnricher;
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
+use axon_adapters::{NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
@@ -23,6 +24,7 @@ use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
+use tokio::sync::watch;
 
 use super::TargetLocalSourceRuntime;
 
@@ -46,7 +48,8 @@ pub struct TargetReadStores {
 pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
     let identity = resolve_embedding_identity(cfg).await;
     let embedding_provider = build_tei_provider(cfg, &identity);
-    let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
     TargetReadStores {
         vector_store: Arc::new(vector_store),
         embedding_provider: Arc::new(embedding_provider),
@@ -96,10 +99,27 @@ fn query_instruction_support(cfg: &Config) -> InstructionSupport {
 
 /// Resolved embedding model + dimensions used to size the collection, seed the
 /// provider, and stamp vector payloads.
+#[derive(Debug, Clone)]
 struct EmbeddingIdentity {
     model: String,
     dimensions: u32,
 }
+
+#[derive(Debug, Clone)]
+struct CachedEmbeddingIdentity {
+    identity: EmbeddingIdentity,
+    expires_at: Instant,
+}
+
+#[derive(Default)]
+struct EmbeddingIdentityCache {
+    entries: HashMap<String, CachedEmbeddingIdentity>,
+    in_flight: HashMap<String, watch::Sender<Option<EmbeddingIdentity>>>,
+}
+
+static EMBEDDING_IDENTITY_CACHE: OnceLock<Mutex<EmbeddingIdentityCache>> = OnceLock::new();
+const EMBEDDING_IDENTITY_CACHE_TTL: Duration = Duration::from_secs(30);
+const EMBEDDING_IDENTITY_FALLBACK_TTL: Duration = Duration::from_secs(5);
 
 /// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
 /// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
@@ -107,6 +127,89 @@ struct EmbeddingIdentity {
 /// back to the configured defaults when the provider is unreachable, so a
 /// fire-and-forget CLI enqueue or an offline TEI never blocks store construction.
 async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
+    let cache_key = embedding_identity_cache_key(cfg);
+    let receiver = match claim_embedding_identity_resolution(&cache_key, cfg.clone()) {
+        IdentityResolutionClaim::Cached(identity) => return identity,
+        IdentityResolutionClaim::Wait(receiver) => receiver,
+    };
+    wait_for_embedding_identity(receiver).await
+}
+
+/// Invalidate the cached identity and any negative result for this exact TEI
+/// configuration. Configuration reload callers can use this after changing a
+/// model or endpoint instead of waiting for the bounded TTL to elapse.
+pub fn invalidate_embedding_identity_cache(cfg: &Config) {
+    let key = embedding_identity_cache_key(cfg);
+    if let Ok(mut cache) = embedding_identity_cache().lock() {
+        cache.entries.remove(&key);
+    }
+}
+
+enum IdentityResolutionClaim {
+    Cached(EmbeddingIdentity),
+    Wait(watch::Receiver<Option<EmbeddingIdentity>>),
+}
+
+/// Atomically return a cached identity or join/create the one probe currently
+/// allowed for a configuration key. The actual probe is detached from callers:
+/// cancelling one query cannot strand the other callers behind its request.
+fn claim_embedding_identity_resolution(key: &str, cfg: Config) -> IdentityResolutionClaim {
+    let mut cache = embedding_identity_cache()
+        .lock()
+        .expect("embedding identity cache mutex poisoned");
+    if let Some(entry) = cache.entries.get(key) {
+        if entry.expires_at > Instant::now() {
+            return IdentityResolutionClaim::Cached(entry.identity.clone());
+        }
+    }
+    cache.entries.remove(key);
+    if let Some(sender) = cache.in_flight.get(key) {
+        return IdentityResolutionClaim::Wait(sender.subscribe());
+    }
+
+    let (sender, receiver) = watch::channel(None);
+    cache.in_flight.insert(key.to_string(), sender);
+    spawn_embedding_identity_probe(key.to_string(), cfg);
+    IdentityResolutionClaim::Wait(receiver)
+}
+
+fn spawn_embedding_identity_probe(cache_key: String, cfg: Config) {
+    tokio::spawn(async move {
+        let (identity, ttl) = derive_embedding_identity(&cfg).await;
+        let sender = {
+            let mut cache = embedding_identity_cache()
+                .lock()
+                .expect("embedding identity cache mutex poisoned");
+            cache.entries.insert(
+                cache_key.clone(),
+                CachedEmbeddingIdentity {
+                    identity: identity.clone(),
+                    expires_at: Instant::now() + ttl,
+                },
+            );
+            cache.in_flight.remove(&cache_key)
+        };
+        if let Some(sender) = sender {
+            sender.send_replace(Some(identity));
+        }
+    });
+}
+
+async fn wait_for_embedding_identity(
+    mut receiver: watch::Receiver<Option<EmbeddingIdentity>>,
+) -> EmbeddingIdentity {
+    loop {
+        if let Some(identity) = receiver.borrow().clone() {
+            return identity;
+        }
+        receiver
+            .changed()
+            .await
+            .expect("embedding identity probe sender dropped before publishing a result");
+    }
+}
+
+async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration) {
     let probe = TeiEmbeddingProvider::new(TeiEmbeddingConfig {
         endpoint: cfg.tei_url.clone(),
         model: EMBEDDING_MODEL_FALLBACK.to_string(),
@@ -126,10 +229,11 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
                 dimensions = derived.dimensions,
                 "derived embedding model/dimensions from TEI provider"
             );
-            EmbeddingIdentity {
+            let identity = EmbeddingIdentity {
                 model: derived.model,
                 dimensions: derived.dimensions,
-            }
+            };
+            (identity, EMBEDDING_IDENTITY_CACHE_TTL)
         }
         Err(err) => {
             tracing::warn!(
@@ -138,12 +242,31 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
                 fallback_dimensions = EMBEDDING_DIMENSIONS_FALLBACK,
                 "could not derive embedding identity from TEI provider; using config/default fallback"
             );
-            EmbeddingIdentity {
+            let identity = EmbeddingIdentity {
                 model: EMBEDDING_MODEL_FALLBACK.to_string(),
                 dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
-            }
+            };
+            (identity, EMBEDDING_IDENTITY_FALLBACK_TTL)
         }
     }
+}
+
+fn embedding_identity_cache_key(cfg: &Config) -> String {
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}|{}",
+        cfg.tei_url,
+        EMBEDDING_MODEL_FALLBACK,
+        EMBEDDING_DIMENSIONS_FALLBACK,
+        cfg.tei_request_timeout_ms,
+        cfg.tei_max_client_batch_size,
+        cfg.embed_tei_query_instruction_enabled,
+        cfg.embed_tei_retry_backoff_ms,
+        cfg.tei_max_retries,
+    )
+}
+
+fn embedding_identity_cache() -> &'static Mutex<EmbeddingIdentityCache> {
+    EMBEDDING_IDENTITY_CACHE.get_or_init(|| Mutex::new(EmbeddingIdentityCache::default()))
 }
 
 /// Provider id for the target local-source embedding provider.
@@ -200,7 +323,8 @@ impl TargetLocalSourceRuntime {
         let identity = resolve_embedding_identity(cfg).await;
         let embedding_provider = build_tei_provider(cfg, &identity);
 
-        let vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+        let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
+        axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
@@ -218,6 +342,14 @@ impl TargetLocalSourceRuntime {
             chrome_remote_url: cfg.chrome_remote_url.clone(),
             default_timeout_ms: cfg.request_timeout_ms,
         });
+        let fetch_provider = Arc::new(fetch_provider);
+        let render_provider = Arc::new(render_provider);
+        let web_fetch_provider = Arc::clone(&fetch_provider);
+        let web_render_provider = Arc::clone(&render_provider);
+        let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
+            web_fetch_provider,
+            web_render_provider,
+        ));
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
         let document_cache = crate::web_source::InProcessWebDocumentCache::new();
 
@@ -243,10 +375,12 @@ impl TargetLocalSourceRuntime {
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
-            fetch_provider: Arc::new(fetch_provider),
-            render_provider: Arc::new(render_provider),
+            fetch_provider,
+            render_provider,
+            web_source_adapter,
             artifact_store: Arc::new(artifact_store),
             document_cache: Arc::new(document_cache),
+            source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
     }

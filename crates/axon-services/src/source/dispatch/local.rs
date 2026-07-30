@@ -25,16 +25,14 @@
 //! materialize step to do once this function has already resolved identity
 //! and scope.
 //!
-//! `code_search_refresh.rs`'s code-search auto-refresh caller is NOT routed
-//! through this function — it always owns its job outright (no routed
-//! `RoutePlan`, no `SourceExecutionContext`), and needs
-//! `LocalSourceSelectionPolicy::CodeSearch`-specific behavior (respect
-//! `.gitignore`, mark points `visibility: public`) that this unified dispatch
-//! path does not carry. It keeps using `crate::local_source::
-//! index_local_source_with_job`, which stays in place for that one caller.
+//! Code-search refresh enters this same route at `Repo` scope. It does not
+//! retain a private local-source runner or relabel local code as public merely
+//! to satisfy its reader filter.
+
+use std::sync::Arc;
 
 use anyhow::Context as _;
-use axon_adapters::SourceAdapter as _;
+use axon_adapters::SourceAdapter;
 use axon_adapters::local::LocalSourceAdapter;
 use axon_api::source::{
     AdapterRef, AuthMode, AuthScope, AuthSnapshot, AuthorityLevel, ConfigSnapshotId,
@@ -57,6 +55,7 @@ const LOCAL_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Local-path source: dispatch through the shared non-web document pipeline.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_local(
+    adapter: Arc<dyn SourceAdapter>,
     cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -76,21 +75,26 @@ pub(crate) async fn dispatch_local(
     enforce_local_source_policy(input, has_local_scope)?;
 
     let plan = local_source_plan(input, route, embed).await?;
-    let adapter =
+    // Trusted local execution uses the shared registry adapter as-is. Every
+    // other caller gets a per-request contained instance: containment is keyed
+    // to this request's path and scope, which a shared instance cannot carry.
+    let adapter: Arc<dyn SourceAdapter> =
         if auth_snapshot.is_some_and(|snapshot| snapshot.auth_mode == AuthMode::TrustedLocal) {
-            LocalSourceAdapter::new()
+            adapter
         } else {
-            LocalSourceAdapter::new_contained(
-                std::path::Path::new(&plan.request.source),
-                plan.route.scope,
-                &cfg.source_local_allowed_roots,
+            Arc::new(
+                LocalSourceAdapter::new_contained(
+                    std::path::Path::new(&plan.request.source),
+                    plan.route.scope,
+                    &cfg.source_local_allowed_roots,
+                )
+                .map_err(anyhow::Error::new)?,
             )
-            .map_err(anyhow::Error::new)?
         };
-    let materializer = adapter.clone();
+    let materializer = Arc::clone(&adapter);
     dispatch_materialized(
         runtime,
-        &adapter,
+        adapter.as_ref(),
         plan,
         collection,
         owner_id,

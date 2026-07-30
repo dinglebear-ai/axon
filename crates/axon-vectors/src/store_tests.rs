@@ -17,6 +17,8 @@ fn collection() -> CollectionSpec {
             payload_index("source_id", PayloadFieldSchema::Keyword),
             payload_index("source_generation", PayloadFieldSchema::Integer),
             payload_index("committed_generation", PayloadFieldSchema::Integer),
+            payload_index("born_epoch", PayloadFieldSchema::Integer),
+            payload_index("retired_epoch", PayloadFieldSchema::Integer),
             payload_index("document_id", PayloadFieldSchema::Keyword),
             payload_index("chunk_id", PayloadFieldSchema::Keyword),
             payload_index("vector_namespace", PayloadFieldSchema::Keyword),
@@ -120,6 +122,8 @@ fn payload(
             ("source_item_key".to_string(), json!(url)),
             ("source_generation".to_string(), json!(generation)),
             ("committed_generation".to_string(), json!(generation)),
+            ("born_epoch".to_string(), json!(generation)),
+            ("retired_epoch".to_string(), serde_json::Value::Null),
             ("document_id".to_string(), json!(document_id)),
             ("chunk_id".to_string(), json!(chunk_id)),
             ("chunk_index".to_string(), json!(0)),
@@ -492,6 +496,35 @@ async fn mark_generation_committed_updates_visibility_and_document_status() {
     assert_eq!(result.results.len(), 1);
     assert_eq!(result.results[0].payload["committed_generation"], json!(7));
     assert_eq!(result.results[0].payload["document_status"], "published");
+}
+
+#[tokio::test]
+async fn retire_generation_marks_only_the_previous_epoch() {
+    let store = FakeVectorStore::new("fake-vector");
+    store.ensure_collection(collection()).await.unwrap();
+    store.upsert(batch()).await.unwrap();
+
+    store
+        .retire_generation(
+            "axon-test".to_string(),
+            SourceId::new("src-a"),
+            SourceGenerationId::new("gen_7"),
+            SourceGenerationId::new("gen_8"),
+        )
+        .await
+        .unwrap();
+
+    let points = store.points("axon-test").await;
+    let old = points
+        .iter()
+        .find(|point| point.point_id == VectorPointId::new("point-a"))
+        .unwrap();
+    let current = points
+        .iter()
+        .find(|point| point.point_id == VectorPointId::new("point-b"))
+        .unwrap();
+    assert_eq!(old.payload["retired_epoch"], json!(8));
+    assert!(current.payload["retired_epoch"].is_null());
 }
 
 #[tokio::test]

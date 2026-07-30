@@ -13,10 +13,12 @@ use crate::validation::{
 mod graph_prune;
 mod ledger_prune;
 mod manifest_items;
+mod publication_state;
 mod stale_cleanup;
 
 use graph_prune::graph_prune_cleanup_debt_in_tx;
 use ledger_prune::ledger_prune_cleanup_debt_in_tx;
+use publication_state::record_committed_epoch;
 use stale_cleanup::stale_item_cleanup_debt_in_tx;
 
 pub(super) async fn create_generation(
@@ -246,6 +248,7 @@ pub(super) async fn publish_generation(
         )
         .with_source_id(committed_generation.source_id.0));
     }
+    record_committed_epoch(&mut tx, &committed_generation).await?;
     tx.commit().await.map_err(sqlite_error)?;
     Ok(committed_generation)
 }

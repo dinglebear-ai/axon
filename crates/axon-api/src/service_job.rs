@@ -7,12 +7,13 @@
 //! types are local.
 
 use crate::job_status::JobStatus;
-use crate::source::JobKind;
+use crate::source::{JobKind, PipelinePhase};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceJob {
     pub id: uuid::Uuid,
     pub status: String,
+    pub phase: PipelinePhase,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -48,6 +49,7 @@ pub struct StatusJob {
     pub job_id: uuid::Uuid,
     pub kind: JobKind,
     pub status: String,
+    pub phase: PipelinePhase,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -77,6 +79,7 @@ impl StatusJob {
             job_id: job.id,
             kind,
             status: job.status.clone(),
+            phase: job.phase,
             created_at: job.created_at,
             updated_at: job.updated_at,
             started_at: job.started_at,

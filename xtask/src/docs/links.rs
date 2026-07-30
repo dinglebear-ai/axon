@@ -16,6 +16,7 @@ use crate::checks::doc_links::extract_relative_link_targets;
 const SKIP_DIRS: &[&str] = &[
     ".git",
     ".claude",
+    ".cargo",
     ".worktrees",
     "target",
     "node_modules",

@@ -41,7 +41,7 @@ fn package_markdown_omits_absent_optional_sections() {
 }
 
 #[tokio::test]
-async fn package_metadata_stamps_expected_pkg_fields() {
+async fn package_metadata_stamps_expected_fields() {
     let dump = RegistryDump::parse(valid_dump_json()).unwrap();
     let version = dump.version("4.17.21").unwrap();
     let dump_path = write_dump(valid_dump_json());
@@ -51,37 +51,37 @@ async fn package_metadata_stamps_expected_pkg_fields() {
 
     assert_eq!(
         metadata.get("source_family").and_then(|v| v.as_str()),
-        Some("registry")
+        Some("package")
     );
     assert_eq!(
-        metadata.get("pkg_registry").and_then(|v| v.as_str()),
+        metadata.get("package_ecosystem").and_then(|v| v.as_str()),
         Some("npm")
     );
     assert_eq!(
-        metadata.get("pkg_name").and_then(|v| v.as_str()),
+        metadata.get("package_name").and_then(|v| v.as_str()),
         Some("lodash")
     );
     assert_eq!(
-        metadata.get("pkg_version").and_then(|v| v.as_str()),
+        metadata.get("package_version").and_then(|v| v.as_str()),
         Some("4.17.21")
     );
     assert_eq!(
-        metadata.get("pkg_license").and_then(|v| v.as_str()),
+        metadata.get("package_license").and_then(|v| v.as_str()),
         Some("MIT")
     );
     assert_eq!(
-        metadata.get("pkg_author").and_then(|v| v.as_str()),
+        metadata.get("package_author").and_then(|v| v.as_str()),
         Some("jdd")
     );
     assert_eq!(
-        metadata.get("pkg_homepage").and_then(|v| v.as_str()),
+        metadata.get("package_homepage").and_then(|v| v.as_str()),
         Some("https://lodash.com")
     );
-    assert!(metadata.get("pkg_keywords").is_some());
+    assert!(metadata.get("package_keywords").is_some());
 }
 
 #[tokio::test]
-async fn package_metadata_omits_absent_optional_pkg_fields() {
+async fn package_metadata_omits_absent_optional_fields() {
     let json = r#"{"registry": "npm", "package": "tiny", "versions": [{"version": "1.0.0"}]}"#;
     let dump = RegistryDump::parse(json).unwrap();
     let version = dump.version("1.0.0").unwrap();
@@ -90,10 +90,10 @@ async fn package_metadata_omits_absent_optional_pkg_fields() {
 
     let metadata = package_metadata(&plan, &dump, version);
 
-    assert!(metadata.get("pkg_license").is_none());
-    assert!(metadata.get("pkg_author").is_none());
-    assert!(metadata.get("pkg_keywords").is_none());
-    assert!(metadata.get("pkg_homepage").is_none());
+    assert!(metadata.get("package_license").is_none());
+    assert!(metadata.get("package_author").is_none());
+    assert!(metadata.get("package_keywords").is_none());
+    assert!(metadata.get("package_homepage").is_none());
 }
 
 #[test]

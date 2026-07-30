@@ -8,11 +8,19 @@ use uuid::Uuid;
 
 use crate::SourceAdapter;
 use crate::boundary::FakeAdapterProviders;
+use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 use crate::web::WebSourceAdapter;
 
 fn adapter(providers: FakeAdapterProviders) -> WebSourceAdapter {
     let providers = Arc::new(providers);
     WebSourceAdapter::new(providers.clone(), providers)
+}
+
+fn http_adapter() -> WebSourceAdapter {
+    WebSourceAdapter::new(
+        Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
+        Arc::new(FakeAdapterProviders::new()),
+    )
 }
 
 #[tokio::test]
@@ -28,7 +36,7 @@ async fn web_adapter_declares_page_site_docs_and_map_scopes() {
     );
     assert_eq!(
         capability.0.limits.0.get("default_scope"),
-        Some(&serde_json::json!(SourceScope::Site))
+        Some(&serde_json::json!(SourceScope::Page))
     );
     for scope in [
         SourceScope::Page,
@@ -78,7 +86,7 @@ async fn web_map_scope_discovers_urls_without_caller_supplied_map_urls() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start();
     let root = server.mock(|when, then| {
-        when.method("HEAD").path("/docs");
+        when.method(GET).path("/docs");
         then.status(200);
     });
     let sitemap = server.mock(|when, then| {
@@ -95,14 +103,16 @@ async fn web_map_scope_discovers_urls_without_caller_supplied_map_urls() {
                 server.base_url()
             ));
     });
-    let adapter = adapter(FakeAdapterProviders::new());
+    let adapter = http_adapter();
     let plan = web_plan(&server.url("/docs"), SourceScope::Map);
 
     let manifest = adapter.discover(&plan).await.unwrap();
     let diff = manifest_diff(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
 
-    root.assert();
+    // The seed is resolved once, then thin sitemap discovery is augmented by
+    // one bounded root-anchor fetch.
+    root.assert_calls(2);
     sitemap.assert();
     let urls = manifest
         .items
@@ -122,10 +132,6 @@ async fn web_map_scope_discovers_urls_without_caller_supplied_map_urls() {
 async fn web_site_scope_hands_in_memory_manifest_candidates_to_acquisition() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start();
-    let root = server.mock(|when, then| {
-        when.method("HEAD").path("/docs");
-        then.status(200);
-    });
     let sitemap = server.mock(|when, then| {
         when.method(GET).path("/sitemap.xml");
         then.status(200)
@@ -140,8 +146,19 @@ async fn web_site_scope_hands_in_memory_manifest_candidates_to_acquisition() {
                 server.base_url()
             ));
     });
-    let providers = FakeAdapterProviders::new();
-    let adapter = adapter(providers.clone());
+    let docs = server.mock(|when, then| {
+        when.method(GET).path("/docs");
+        then.status(200).body("<a href=\"/docs/intro\">intro</a>");
+    });
+    let intro = server.mock(|when, then| {
+        when.method(GET).path("/docs/intro");
+        then.status(200).body("<h1>Intro</h1>");
+    });
+    let api = server.mock(|when, then| {
+        when.method(GET).path("/docs/api");
+        then.status(200).body("<h1>API</h1>");
+    });
+    let adapter = http_adapter();
     let mut plan = web_plan(&server.url("/docs"), SourceScope::Site);
     plan.route
         .validated_options
@@ -152,13 +169,15 @@ async fn web_site_scope_hands_in_memory_manifest_candidates_to_acquisition() {
     let diff = manifest_diff(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
 
-    root.assert();
     sitemap.assert();
+    // Seed resolution + thin-sitemap anchor discovery + page acquisition.
+    docs.assert_calls(3);
+    intro.assert();
+    api.assert();
     assert_eq!(manifest.items.len(), 3);
     assert!(manifest.items.iter().all(|item| item.version.is_some()));
-    assert_eq!(manifest.metadata["map_source"], "sitemap");
+    assert_eq!(manifest.metadata["map_source"], "sitemap+bounded-structure");
     assert_eq!(acquisition.fetched_items.len(), 3);
-    assert_eq!(providers.calls().await, vec!["fetch", "fetch", "fetch"]);
 }
 
 #[tokio::test]

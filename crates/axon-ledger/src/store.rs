@@ -41,6 +41,15 @@ pub trait LedgerStore: Send + Sync {
         request: PublishGenerationRequest,
     ) -> Result<SourceGeneration>;
     async fn update_document_status(&self, status: DocumentStatus) -> Result<()>;
+    /// Persist status transitions in bounded atomic batches. Implementations
+    /// must roll back the current batch when any status is invalid, rather than
+    /// leaving a prefix of a pipeline stage visible.
+    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
+        for status in statuses {
+            self.update_document_status(status).await?;
+        }
+        Ok(())
+    }
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
     /// List every not-yet-resolved cleanup-debt entry for a source, oldest
     /// first. Used by `axon-prune` to drain superseded-generation debt after a

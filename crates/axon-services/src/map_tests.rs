@@ -1,7 +1,6 @@
 use super::{
     build_map_request, parse_map_result, source_result_map_failure, unsupported_map_result,
 };
-use crate::source::classify::SourceInputKind;
 use crate::source::result_map::{adapter_ref, degraded_no_data_plane};
 use crate::source::routing::resolve_source_route;
 use crate::types::MapOptions;
@@ -182,7 +181,7 @@ fn plain_web_url_routes_through_resolver_and_router_as_web_kind() {
     let request = build_map_request("https://example.com/docs");
     let routed = resolve_source_route(&request).expect("plain web url routes");
 
-    assert_eq!(routed.kind, SourceInputKind::Web);
+    assert_eq!(routed.kind, SourceKind::Web);
     assert_eq!(routed.route.scope, SourceScope::Map);
 }
 

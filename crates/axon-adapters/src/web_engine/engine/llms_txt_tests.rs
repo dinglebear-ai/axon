@@ -1,5 +1,4 @@
 use super::*;
-use axon_core::http::LoopbackGuard;
 
 const FIXTURE: &str = "\u{feff}# Example Docs\n\n> A short summary.\n\nSome intro prose with an inline [ignored-in-prose-too](https://example.com/intro.md) link.\n\n## Docs\n\n- [Getting Started](/docs/start.md#h): the basics\n- [Guide](guide.md)\n- [External](https://other.com/x.md)\n- [Email](mailto:hi@example.com)\n- [Anchor](#section)\n\n## Optional\n\n- [Extra](/docs/extra.md)\n";
 
@@ -87,19 +86,13 @@ fn scope_drops_offhost_and_caps() {
 /// fan-out bound) even when the `/llms.txt` lists far more same-host links. This exercises
 /// the truncate at llms_txt.rs which is otherwise unexercised end-to-end.
 #[tokio::test]
-#[serial_test::serial]
 async fn discover_llms_txt_urls_caps_at_max() {
-    let server = httpmock::MockServer::start();
-    let base = server.base_url();
+    let base = "https://example.test";
     // 20 same-host links; cap will be 5.
     let mut body = String::from("# Docs\n\n> summary\n\n## Pages\n\n");
     for i in 0..20 {
         body.push_str(&format!("- [p{i}]({base}/page-{i}.md)\n"));
     }
-    let m = server.mock(|when, then| {
-        when.method(httpmock::Method::GET).path("/llms.txt");
-        then.status(200).body(&body);
-    });
     let cfg = Config {
         max_llms_txt_urls: 5,
         fetch_retries: 0,
@@ -107,9 +100,10 @@ async fn discover_llms_txt_urls_caps_at_max() {
         request_timeout_ms: Some(5_000),
         ..Config::default()
     };
-    let _loopback = LoopbackGuard::allow();
-    let urls = discover_llms_txt_urls(&cfg, &base).await.expect("discover");
-    m.assert();
+    let providers = Arc::new(crate::boundary::FakeAdapterProviders::new().with_fetch_text(body));
+    let urls = discover_llms_txt_urls(&cfg, base, providers)
+        .await
+        .expect("discover");
     assert_eq!(
         urls.len(),
         5,

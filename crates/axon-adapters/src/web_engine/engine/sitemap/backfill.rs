@@ -2,18 +2,19 @@
 //! missed, convert to markdown, and append to the crawl manifest.
 
 use super::discover::discover_sitemap_urls;
+use super::fetch_text;
 use super::filter::is_already_markdown;
-use super::{fetch_text_with_retry, request_timeout_secs};
+use crate::boundary::FetchProvider;
 use crate::web_engine::engine::CrawlSummary;
 use crate::web_engine::manifest::ManifestEntry;
 use axon_core::config::Config;
 use axon_core::content::{build_selector_config, to_markdown, url_to_stable_filename};
-use axon_core::http::{axon_ua, build_client};
 use axon_core::logging::log_info;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::error::Error;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 /// Stats returned by [`append_sitemap_backfill`].
@@ -34,17 +35,15 @@ pub struct BackfillStats {
 /// Fetch `url`, convert to markdown, and classify as thin/dropped.
 /// Returns `(url, None)` on fetch failure, `(url, Some(...))` otherwise.
 async fn fetch_and_convert_backfill_url(
-    http: reqwest::Client,
+    fetch: Arc<dyn FetchProvider>,
     url: String,
-    retries: usize,
-    backoff: u64,
     min_chars: usize,
     drop_thin: bool,
     selector_config: Option<spider_transformations::transformation::content::SelectorConfiguration>,
 ) -> (String, Option<(String, usize, bool, bool)>) {
     // HTML page backfill: pass `None` to preserve `main`'s uncapped, charset-aware decode.
     // Real HTML pages can exceed the discovery cap and may not be strict UTF-8.
-    let Some(html) = fetch_text_with_retry(&http, &url, retries, backoff, None).await else {
+    let Some(html) = fetch_text(fetch.as_ref(), &url, None).await else {
         return (url, None);
     };
     let trimmed = if is_already_markdown(&url) {
@@ -119,6 +118,7 @@ async fn write_backfill_entry(
 
 pub async fn append_candidate_backfill(
     cfg: &Config,
+    fetch: Arc<dyn FetchProvider>,
     output_dir: &Path,
     seen_urls: &HashSet<String>,
     candidates: Vec<String>,
@@ -148,8 +148,6 @@ pub async fn append_candidate_backfill(
             )
         })?;
 
-    let client = build_client(request_timeout_secs(cfg), Some(axon_ua()))
-        .map_err(|e| format!("failed to build HTTP client for backfill: {e}"))?;
     let mut manifest = open_append_manifest(&manifest_path).await.map_err(|e| {
         format!(
             "failed to open manifest for backfill at {}: {e}",
@@ -171,30 +169,23 @@ pub async fn append_candidate_backfill(
     // Compute the selector config once — it does not change between URLs.
     let shared_selector_config = build_selector_config(cfg);
     for chunk in candidates.chunks(backfill_concurrency) {
-        let mut joins = tokio::task::JoinSet::new();
-        for url in chunk.iter().cloned() {
-            let http = client.clone();
-            let retries = cfg.fetch_retries;
-            let backoff = cfg.retry_backoff_ms;
-            let min_chars = cfg.min_markdown_chars;
-            let drop_thin = cfg.drop_thin_markdown;
+        let fetched = futures_util::future::join_all(chunk.iter().cloned().map(|url| {
+            let fetch = fetch.clone();
             let selector_config = shared_selector_config.clone();
-            joins.spawn(fetch_and_convert_backfill_url(
-                http,
-                url,
-                retries,
-                backoff,
-                min_chars,
-                drop_thin,
-                selector_config,
-            ));
-        }
+            async move {
+                fetch_and_convert_backfill_url(
+                    fetch,
+                    url,
+                    cfg.min_markdown_chars,
+                    cfg.drop_thin_markdown,
+                    selector_config,
+                )
+                .await
+            }
+        }))
+        .await;
 
-        while let Some(joined) = joins.join_next().await {
-            let Ok((url, result)) = joined else {
-                stats.failed += 1;
-                continue;
-            };
+        for (url, result) in fetched {
             let Some((trimmed, markdown_chars, is_thin, dropped)) = result else {
                 stats.failed += 1;
                 continue;
@@ -223,25 +214,32 @@ pub async fn append_candidate_backfill(
 /// to the manifest. Updates `summary.markdown_files` and `summary.thin_pages`.
 ///
 /// This is the engine-level backfill that replaces the CLI's
-/// `append_robots_backfill`. It reuses `discover_sitemap_urls` for discovery
-/// and `fetch_text_with_retry` for fetching.
+/// `append_robots_backfill`. It reuses `discover_sitemap_urls` and the shared
+/// adapter-owned `FetchProvider` for every network operation.
 pub async fn append_sitemap_backfill(
     cfg: &Config,
     start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
     output_dir: &Path,
     seen_urls: &HashSet<String>,
     summary: &mut CrawlSummary,
 ) -> Result<BackfillStats, Box<dyn Error>> {
-    let discovery = discover_sitemap_urls(cfg, start_url).await?;
+    let discovery = discover_sitemap_urls(cfg, start_url, fetch.clone()).await?;
     if discovery.urls.is_empty() {
         return Ok(BackfillStats {
             discovered_urls: discovery.discovered_urls,
             ..BackfillStats::default()
         });
     }
-    let (mut stats, _) =
-        append_candidate_backfill(cfg, output_dir, seen_urls, discovery.urls.clone(), summary)
-            .await?;
+    let (mut stats, _) = append_candidate_backfill(
+        cfg,
+        fetch,
+        output_dir,
+        seen_urls,
+        discovery.urls.clone(),
+        summary,
+    )
+    .await?;
     stats.discovered_urls = discovery.discovered_urls;
     log_info(&format!(
         "sitemap backfill_complete urls_added={}",

@@ -37,7 +37,7 @@ impl SourceAdapter for McpToolSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> AdapterResult<SourceAdapterCapability> {
@@ -113,7 +113,8 @@ async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireR
 }
 
 fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
-    mcp_tool_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    mcp_tool_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let target = resolve_target(plan)?;
     let item_key = format!("{}/{}", target.server, target.tool);

@@ -1,5 +1,9 @@
 use serde_json::Value;
 
+/// Required API `$defs` entries asserted by `schemas::tests`. Kept even though
+/// no non-test code reads it: `cargo clippy -p xtask` without `--all-targets`
+/// reports it as dead, but the contract test at `schemas/tests.rs` depends on it.
+#[cfg(test)]
 pub const PHASE_1_REQUIRED_API_DEFS: &[&str] = &[
     "SuccessEnvelope",
     "ErrorEnvelope",
@@ -287,10 +291,6 @@ pub fn api_vector_schema_defs() -> Vec<(&'static str, Value)> {
         schema_def::<axon_api::source::VectorDistance>("VectorDistance"),
         schema_def::<axon_api::source::SparseVectorModifier>("SparseVectorModifier"),
     ]
-}
-
-pub fn api_dto_names() -> &'static [&'static str] {
-    PHASE_1_REQUIRED_API_DEFS
 }
 
 fn source_lifecycle_defs() -> Vec<(&'static str, Value)> {

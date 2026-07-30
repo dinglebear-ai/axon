@@ -105,6 +105,10 @@ async fn source_adapter_registry_routes_by_selected_adapter_and_reports_capabili
     let adapter = registry
         .adapter_for(&route)
         .expect("selected adapter is registered");
+    let same_adapter = registry
+        .adapter_for(&route)
+        .expect("selected adapter remains registered");
+    assert!(Arc::ptr_eq(&adapter, &same_adapter));
     let capability = adapter.capabilities().await.unwrap();
 
     assert_eq!(capability.0.name, "web");
@@ -153,6 +157,115 @@ async fn source_adapter_registry_accepts_mixed_trait_objects() {
             .adapter_for(&route_plan("web", SourceKind::Web, SourceScope::Site))
             .is_some()
     );
+}
+
+#[tokio::test]
+async fn source_adapter_registry_maps_route_aliases_to_canonical_family_adapters() {
+    let registry = SourceAdapterRegistry::from_arc_adapters(vec![
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "local".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "upload".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "sessions".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "git".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "registry".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "cli_tool".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+        Arc::new(FakeSourceAdapter::new(AdapterRef {
+            name: "mcp_tool".to_string(),
+            version: "1".to_string(),
+        })) as Arc<dyn SourceAdapter>,
+    ]);
+
+    for (route_name, kind, scope, expected_name) in [
+        ("local", SourceKind::Local, SourceScope::Directory, "local"),
+        ("upload", SourceKind::Upload, SourceScope::File, "upload"),
+        (
+            "session",
+            SourceKind::Session,
+            SourceScope::Thread,
+            "sessions",
+        ),
+        ("github", SourceKind::Git, SourceScope::Repo, "git"),
+        (
+            "crates",
+            SourceKind::Registry,
+            SourceScope::Package,
+            "registry",
+        ),
+        ("cli", SourceKind::CliTool, SourceScope::Tool, "cli_tool"),
+        ("mcp", SourceKind::McpTool, SourceScope::Tool, "mcp_tool"),
+    ] {
+        let adapter = registry
+            .adapter_for(&route_plan(route_name, kind, scope))
+            .expect("route alias should resolve to its canonical family adapter");
+        assert_eq!(adapter.name(), expected_name);
+    }
+}
+
+#[tokio::test]
+async fn source_adapter_registry_rejects_duplicate_names() {
+    let first = FakeSourceAdapter::new(AdapterRef {
+        name: "web".to_string(),
+        version: "1".to_string(),
+    });
+    let second = first.clone();
+    let registry = SourceAdapterRegistry::from_adapters(vec![first, second]);
+
+    let error = registry
+        .validate()
+        .await
+        .expect_err("duplicate names must fail");
+    assert_eq!(error.code, "adapter.registry.duplicate".into());
+}
+
+#[tokio::test]
+async fn source_adapter_registry_rejects_missing_matrix_families() {
+    let registry = SourceAdapterRegistry::from_adapters(vec![FakeSourceAdapter::new(AdapterRef {
+        name: "web".to_string(),
+        version: "1".to_string(),
+    })]);
+
+    let error = registry
+        .validate()
+        .await
+        .expect_err("missing families must fail");
+    assert_eq!(error.code, "adapter.registry.missing".into());
+}
+
+#[tokio::test]
+async fn source_adapter_registry_rejects_capability_matrix_drift() {
+    let spec = crate::source_family_matrix()
+        .iter()
+        .find(|spec| spec.adapter == "web")
+        .expect("web matrix entry");
+    let capability = AdapterCapability::new(
+        AdapterRef {
+            name: "web".to_string(),
+            version: "1".to_string(),
+        },
+        SourceKind::Local,
+        SourceScope::Directory,
+    );
+    let wire: SourceAdapterCapability = capability.into();
+    let error = crate::registry::validate_capability(spec, &wire.0)
+        .expect_err("capability drift must fail closed");
+    assert_eq!(error.code, "adapter.registry.capability_mismatch".into());
 }
 
 #[tokio::test]
@@ -228,7 +341,7 @@ fn every_production_adapter_satisfies_source_adapter_as_trait_object() {
     assert_eq!(
         names,
         vec![
-            "web", "git", "feed", "session", "youtube", "reddit", "local", "registry", "cli_tool",
+            "web", "git", "feed", "sessions", "youtube", "reddit", "local", "registry", "cli_tool",
             "mcp_tool", "fake",
         ]
     );

@@ -61,6 +61,8 @@ fn point(point_id: &str, chunk_id: &str, vector: &[f32], text: &str) -> VectorPo
     payload.insert("source_id".to_string(), json!("src-docs"));
     payload.insert("source_generation".to_string(), json!(7));
     payload.insert("committed_generation".to_string(), json!(7));
+    payload.insert("born_epoch".to_string(), json!(7));
+    payload.insert("retired_epoch".to_string(), serde_json::Value::Null);
     payload.insert("vector_point_id".to_string(), json!(point_id));
     payload.insert("document_id".to_string(), json!(format!("doc-{chunk_id}")));
     payload.insert("chunk_id".to_string(), json!(chunk_id));

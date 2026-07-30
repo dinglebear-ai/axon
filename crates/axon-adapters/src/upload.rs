@@ -15,6 +15,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
@@ -37,12 +38,20 @@ const ADAPTER_NAME: &str = "upload";
 mod materialize;
 pub use materialize::{UploadSourceProvider, upload_source_identity_from_uri};
 
-#[derive(Debug, Clone, Default)]
-pub struct UploadSourceAdapter;
+#[derive(Clone, Default)]
+pub struct UploadSourceAdapter {
+    provider: Option<Arc<dyn UploadSourceProvider>>,
+}
 
 impl UploadSourceAdapter {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    pub fn with_provider(provider: Arc<dyn UploadSourceProvider>) -> Self {
+        Self {
+            provider: Some(provider),
+        }
     }
 }
 
@@ -53,7 +62,7 @@ impl SourceAdapter for UploadSourceAdapter {
     }
 
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION
     }
 
     async fn capabilities(&self) -> Result<SourceAdapterCapability> {
@@ -99,6 +108,20 @@ impl SourceAdapter for UploadSourceAdapter {
             data: documents,
         })
     }
+
+    async fn materialize(
+        &self,
+        plan: SourcePlan,
+    ) -> Result<crate::acquisition::MaterializedSource> {
+        let provider = self.provider.clone().ok_or_else(|| {
+            ApiError::new(
+                "adapter.upload.provider_missing",
+                ErrorStage::Fetching,
+                "upload adapter requires a staged-content provider",
+            )
+        })?;
+        self.materialize_with_provider(plan, provider).await
+    }
 }
 
 fn upload_capability(version: &str) -> AdapterCapability {
@@ -115,7 +138,8 @@ fn upload_capability(version: &str) -> AdapterCapability {
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
-    upload_capability(env!("CARGO_PKG_VERSION")).validate_scope(plan.route.scope)?;
+    upload_capability(crate::adapter::SOURCE_ADAPTER_CONTRACT_VERSION)
+        .validate_scope(plan.route.scope)?;
     validate_adapter(plan)?;
     let options = validate_options(&plan.route.validated_options)?;
 

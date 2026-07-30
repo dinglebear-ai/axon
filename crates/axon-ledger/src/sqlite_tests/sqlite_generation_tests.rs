@@ -99,6 +99,15 @@ async fn sqlite_generation_publish_controls_committed_baseline() {
     assert_eq!(stored_generation.publish_state, PublishState::Committed);
     assert!(stored_generation.published_at.is_some());
 
+    let publication_state: (i64, Option<i64>) = sqlx::query_as(
+        "SELECT committed_epoch, previous_epoch FROM source_publication_state WHERE source_id = ?1",
+    )
+    .bind("src_sqlite")
+    .fetch_one(&store.pool)
+    .await
+    .expect("read publication state");
+    assert_eq!(publication_state, (1, None));
+
     let error = store
         .complete_generation(completed_generation_from(&running))
         .await

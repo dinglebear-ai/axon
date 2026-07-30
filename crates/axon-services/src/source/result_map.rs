@@ -164,7 +164,7 @@ pub fn queued_result(
 pub fn adapter_ref(name: &str) -> AdapterRef {
     AdapterRef {
         name: name.to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: axon_adapters::SOURCE_ADAPTER_CONTRACT_VERSION.to_string(),
     }
 }
 

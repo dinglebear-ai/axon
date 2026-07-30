@@ -196,6 +196,10 @@ impl LedgerStore for SqliteLedgerStore {
         .await
     }
 
+    async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
+        document::update_document_statuses(self, statuses).await
+    }
+
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         retry_ledger_write("ledger record cleanup debt", || {
             cleanup::record_cleanup_debt(self, debt.clone())

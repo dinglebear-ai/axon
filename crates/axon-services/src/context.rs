@@ -2,15 +2,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::runtime::{ServiceJobRuntime, resolve_runtime_with_workers};
-#[cfg(test)]
-use axon_adapters::NoopSourceEnricher;
-use axon_adapters::SourceEnricher;
 use axon_adapters::boundary::{FetchProvider, RenderProvider};
 #[cfg(test)]
 use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
+#[cfg(test)]
+use axon_adapters::{NoopSourceEnricher, web::WebSourceAdapter};
+use axon_adapters::{SourceAdapter, SourceAdapterRegistry, SourceEnricher};
 use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
@@ -21,10 +21,13 @@ use axon_embedding::reservation::ProviderReservationManager;
 use axon_jobs::boundary::JobStore;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
+use tokio::sync::OnceCell;
 
 mod target_runtime;
 
-pub use target_runtime::{TargetReadStores, build_read_stores_from_config};
+pub use target_runtime::{
+    TargetReadStores, build_read_stores_from_config, invalidate_embedding_identity_cache,
+};
 
 #[derive(Clone)]
 pub struct ServiceContext {
@@ -59,6 +62,8 @@ pub struct TargetLocalSourceRuntime {
     pub vector_reservations: Arc<ProviderReservationManager>,
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
+    source_adapters: Arc<OnceCell<SourceAdapterRegistry>>,
+    pub(crate) web_source_adapter: Arc<dyn SourceAdapter>,
     /// Real acquisition boundary for `WebSourceAdapter` (issue #298 Wave 1b) —
     /// `dispatch_web` threads these into `WebSourceIndexInput` instead of
     /// running a `crawl_for_source` acquisition pre-pass.
@@ -73,6 +78,17 @@ pub struct TargetLocalSourceRuntime {
 }
 
 impl TargetLocalSourceRuntime {
+    pub(crate) async fn source_adapter_registry(
+        &self,
+        ctx: &ServiceContext,
+    ) -> anyhow::Result<&SourceAdapterRegistry> {
+        self.source_adapters
+            .get_or_try_init(|| {
+                crate::source::adapter_registry::build_source_adapter_registry(ctx, self)
+            })
+            .await
+    }
+
     #[cfg(test)]
     pub fn new(
         jobs: Arc<dyn JobStore>,
@@ -83,6 +99,14 @@ impl TargetLocalSourceRuntime {
         embedding_model: impl Into<String>,
         embedding_dimensions: u32,
     ) -> Self {
+        let fetch_provider: Arc<dyn FetchProvider> =
+            Arc::new(HttpFetchProvider::new(HttpFetchConfig::default()));
+        let render_provider: Arc<dyn RenderProvider> =
+            Arc::new(ChromeRenderProvider::new(ChromeRenderConfig::default()));
+        let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
+            Arc::clone(&fetch_provider),
+            Arc::clone(&render_provider),
+        ));
         Self {
             jobs,
             ledger,
@@ -114,8 +138,10 @@ impl TargetLocalSourceRuntime {
             embedding_dimensions,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
-            fetch_provider: Arc::new(HttpFetchProvider::new(HttpFetchConfig::default())),
-            render_provider: Arc::new(ChromeRenderProvider::new(ChromeRenderConfig::default())),
+            source_adapters: Arc::new(OnceCell::new()),
+            web_source_adapter,
+            fetch_provider,
+            render_provider,
             enricher: Arc::new(NoopSourceEnricher::new()),
         }
     }

@@ -23,7 +23,7 @@ pub(crate) fn source_progress_summary(job: &ServiceJob) -> Option<String> {
 
 fn source_running_progress(job: &ServiceJob, metrics: Option<&Value>) -> Option<String> {
     let Some(metrics) = metrics else {
-        return Some("starting...".to_string());
+        return Some(format!("{}…", job.phase.as_str()));
     };
     if has_any(metrics, &["pages_crawled", "md_created", "error_pages"]) {
         return page_source_running_progress(job, metrics);
@@ -44,7 +44,8 @@ fn source_running_progress(job: &ServiceJob, metrics: Option<&Value>) -> Option<
     ) {
         return document_source_progress(job.status.as_str(), Some(metrics));
     }
-    provider_source_progress(job.status.as_str(), Some(metrics), true)
+    provider_source_progress(job.status.as_str(), Some(metrics), false)
+        .or_else(|| Some(format!("{}…", job.phase.as_str())))
 }
 
 fn source_completed_progress(metrics: Option<&Value>) -> Option<String> {

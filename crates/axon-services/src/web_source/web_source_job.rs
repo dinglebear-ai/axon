@@ -7,6 +7,9 @@
 //! indexing pass, and marks the job terminal so `axon status`/progress readers
 //! see web-source indexing exactly like git/local indexing.
 
+use std::sync::Arc;
+
+use axon_adapters::SourceAdapter;
 use axon_api::source::*;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_jobs::boundary::JobStore;
@@ -14,7 +17,7 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
 use super::WebSourceJobExecution;
-use super::{WebSourceIndexInput, WebSourceIndexOutput, index_web_source};
+use super::{WebSourceIndexInput, WebSourceIndexOutput, index_web_source_with_adapter};
 
 /// Create a source job row, index the web source under it, and record terminal
 /// job status. `input.fetch_provider`/`render_provider` are the real
@@ -22,6 +25,7 @@ use super::{WebSourceIndexInput, WebSourceIndexOutput, index_web_source};
 /// (issue #298 Wave 1b) — no crawl needs to have run beforehand.
 pub(crate) async fn index_web_source_with_execution(
     mut input: WebSourceIndexInput,
+    adapter: Arc<dyn SourceAdapter>,
     execution: WebSourceJobExecution,
     jobs: &dyn JobStore,
     ledger: &dyn LedgerStore,
@@ -49,7 +53,15 @@ pub(crate) async fn index_web_source_with_execution(
         .await?;
     }
 
-    match index_web_source(input.clone(), ledger, embedding_provider, vector_store).await {
+    match index_web_source_with_adapter(
+        input.clone(),
+        adapter,
+        ledger,
+        embedding_provider,
+        vector_store,
+    )
+    .await
+    {
         Ok(output) => {
             if execution.owns_status {
                 record_terminal_status(
@@ -92,6 +104,7 @@ pub async fn index_web_source_with_job(
     embedding_provider: &dyn EmbeddingProvider,
     vector_store: &dyn VectorStore,
 ) -> anyhow::Result<WebSourceIndexOutput> {
+    let adapter = input.source_adapter();
     let descriptor = jobs
         .create(job_create_request(
             &input,
@@ -106,6 +119,7 @@ pub async fn index_web_source_with_job(
     };
     index_web_source_with_execution(
         input,
+        adapter,
         execution,
         jobs,
         ledger,
