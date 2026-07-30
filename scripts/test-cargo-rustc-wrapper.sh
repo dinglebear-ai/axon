@@ -6,7 +6,11 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 grep -q 'command -v kache' "$repo/scripts/cargo-rustc-wrapper"
-if grep -Eqi 'soldr|zccache|sccache' "$repo/scripts/cargo-rustc-wrapper"; then
+grep -q 'command -v kache' "$repo/scripts/cargo-bin-artifact-wrapper"
+retired='sol''dr|zc''cache|sc''cache'
+if grep -Eqi "$retired" \
+  "$repo/scripts/cargo-rustc-wrapper" \
+  "$repo/scripts/cargo-bin-artifact-wrapper"; then
   echo "retired compiler cache reference remains in cargo-rustc-wrapper" >&2
   exit 1
 fi
@@ -67,15 +71,6 @@ out="$tmp/target/debug/deps/axon-123"
   --crate-type bin \
   src/main.rs \
   -o "$out"
-
-if ! command -v cargo-bin-artifact-wrapper >/dev/null 2>&1 &&
-  [ ! -x /home/jmagar/.local/bin/cargo-bin-artifact-wrapper ]; then
-  test -x "$out"
-  test ! -e "$HOME/.local/bin/axon"
-  test ! -e "$AXON_ARTIFACT_BIN_DIR/axon-debug"
-  echo "cargo rustc wrapper passthrough behavior ok (artifact helper unavailable)"
-  exit 0
-fi
 
 cmp "$out" "$HOME/.local/bin/axon"
 cmp "$out" "$AXON_ARTIFACT_BIN_DIR/axon-debug"

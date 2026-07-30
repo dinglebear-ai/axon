@@ -364,7 +364,7 @@ jobs:
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
       - uses: ./.github/actions/setup-rust-kache
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           components: clippy, rustfmt
           install-tauri-deps: "true"
       - name: Install palette dependencies
@@ -429,7 +429,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: xtask-windows
@@ -481,7 +481,7 @@ jobs:
         with:
           # Match rust-toolchain.toml so the Windows target is installed on
           # the same toolchain cargo uses under the repo override.
-          toolchain: 1.96.0
+          toolchain: 1.97.1
           targets: x86_64-pc-windows-gnu
       - name: Install mingw-w64
         run: |
@@ -640,7 +640,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
@@ -707,7 +707,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.96.0
+          toolchain: 1.97.1
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: live-rag-pr

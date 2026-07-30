@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub use super::repo_structure_spec::{REQUIRED_WORKSPACE_MEMBERS, TARGET_CRATES, TargetCrate};
 
-const TARGET_RUST_VERSION: &str = "1.94.0";
+const TARGET_RUST_VERSION: &str = "1.97.1";
 const REMOVED_AFTER_CUTOVER: &[&str] = &[
     "crates/axon-vector",
     "crates/axon-code-index",

@@ -36,16 +36,9 @@ fn task_mode_removed_crawl_fails_before_task_dispatch() {
     );
 }
 
-#[test]
-fn task_list_cursor_rejects_offsets_past_cap() {
-    assert_eq!(parse_cursor_offset(Some("200".to_string())).unwrap(), 200);
-    let err = parse_cursor_offset(Some("220".to_string())).unwrap_err();
-    assert!(
-        err.message.contains("<= 200"),
-        "unexpected error: {}",
-        err.message
-    );
-}
+// `tasks/list` and its cursor helper were removed with rmcp 3.x: SEP-2663
+// defines no task-enumeration method, so there is no paginated offset left to
+// validate. See `tasks.rs` for the surviving get/cancel surface.
 
 // Regression coverage for the cross-transport visibility divergence
 // (security finding S-3 / pipeline-unification redaction-contract C1-V01):
