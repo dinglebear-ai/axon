@@ -373,7 +373,7 @@ fn palette_asset_urls() -> (String, String) {
     #[cfg(not(windows))]
     let (target, ext) = ("linux-x86_64", "tar.gz");
     let base = format!(
-        "https://github.com/jmagar/axon/releases/download/v{version}/axon-palette-{target}.{ext}"
+        "https://github.com/dinglebear-ai/axon/releases/download/v{version}/axon-palette-{target}.{ext}"
     );
     let sha = format!("{base}.sha256");
     (base, sha)

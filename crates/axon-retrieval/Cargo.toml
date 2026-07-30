@@ -3,8 +3,13 @@ name = "axon-retrieval"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Hybrid vector retrieval, query embedding, reranking, and RAG context assembly for Axon."
 authors.workspace = true
 license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 async-trait = "0.1"
@@ -18,6 +23,11 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

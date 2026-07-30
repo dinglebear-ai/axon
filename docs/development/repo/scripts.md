@@ -1,3 +1,9 @@
+---
+title: "Scripts Reference -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Scripts Reference -- Axon
 
 Scripts in the `scripts/` directory for maintenance, testing, and development.

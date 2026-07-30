@@ -440,7 +440,7 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
     ))
 }
 
-/// Map a raw JSON payload into a [`ScrapeResult`].
+/// Map a raw JSON payload into an [`axon_api::job_dto::ScrapeResult`].
 ///
 /// This is a pure function — no network required. Tests call it with JSON literals.
 pub fn map_scrape_payload(

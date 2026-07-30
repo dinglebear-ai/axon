@@ -1,3 +1,9 @@
+---
+title: "Source Pipeline"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # Source Pipeline
 
 Last Modified: 2026-07-19

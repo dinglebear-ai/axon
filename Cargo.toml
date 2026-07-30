@@ -37,10 +37,12 @@ version = "7.2.5"
 edition = "2024"
 rust-version = "1.97.1"
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
-repository = "https://github.com/jmagar/axon"
-homepage = "https://github.com/jmagar/axon#readme"
-authors = ["jmagar"]
-description = "Self-hosted RAG stack for crawl, scrape, search, ingest, query, and ask workflows with Qdrant, TEI, MCP, CLI, REST, and Gemini."
+categories = ["command-line-utilities", "text-processing", "database", "web-programming", "development-tools"]
+repository = "https://github.com/dinglebear-ai/axon"
+homepage = "https://axon.dinglebear.ai"
+authors = ["dinglebear.ai <hello@dinglebear.ai>"]
+description = "Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST."
+readme = "README.md"
 license = "MIT"
 
 # ── workspace lints ──────────────────────────────────────────────────────────
@@ -50,13 +52,25 @@ license = "MIT"
 # cannot mix `workspace = true` with local lint entries.
 [workspace.lints.rust]
 unsafe_code = "deny"
+missing_crate_level_docs = "deny"
+unsafe_op_in_unsafe_fn = "deny"
 unused_import_braces = "warn"
 unused_qualifications = "warn"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+missing_safety_doc = "deny"
 module_inception = "allow"              # src/crawl.rs: acceptable module name
 mod_module_files = "deny"               # forbid mod.rs — enforce foo.rs sibling to foo/ style
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+invalid_codeblock_attributes = "deny"
+invalid_html_tags = "deny"
+bare_urls = "warn"
+private_intra_doc_links = "warn"
+redundant_explicit_links = "warn"
+unescaped_backticks = "warn"
 
 # Override lab-auth from the git source with a local vendored copy that uses
 # rusqlite 0.32 (libsqlite3-sys 0.30) instead of rusqlite 0.39 (libsqlite3-sys
@@ -73,14 +87,23 @@ name = "axon"
 version = "7.2.5"
 edition.workspace = true
 rust-version.workspace = true
-categories = ["command-line-utilities", "development-tools"]
-keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
-repository = "https://github.com/jmagar/axon"
-homepage = "https://github.com/jmagar/axon#readme"
-description = "Self-hosted RAG stack for crawl, scrape, search, ingest, query, and ask workflows with Qdrant, TEI, MCP, CLI, REST, and Gemini."
-authors = ["jmagar"]
-license = "MIT"
+authors.workspace = true
+description.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+publish = false
+default-run = "axon"
+exclude = ["/.github", "/docs", "/apps", "/tests/fixtures"]
 build = "build.rs"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [[bin]]
 name = "axon"

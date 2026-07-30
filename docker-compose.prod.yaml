@@ -42,7 +42,7 @@ x-gpu-service: &gpu-service
 services:
   axon:
     <<: *common-service
-    image: ${AXON_IMAGE:-ghcr.io/jmagar/axon:latest}
+    image: ${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest}
     container_name: axon
     user: "1000:1000"
     env_file:

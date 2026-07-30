@@ -3,8 +3,13 @@ name = "axon-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon transport-neutral API contract and result DTOs shared across CLI, MCP, HTTP, and generated clients"
-license = "MIT"
+description = "Transport-neutral API contracts and result DTOs shared across Axon CLI, MCP, HTTP, and generated clients."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-error = { path = "../axon-error" }
@@ -13,10 +18,15 @@ utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 percent-encoding = "2"
 serde_json = "1"
 similar = "2"
-schemars = { version = "1", features = ["chrono04", "uuid1"] }
+schemars = { version = "=1.2.1", features = ["chrono04", "uuid1"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tracing = "0.1"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

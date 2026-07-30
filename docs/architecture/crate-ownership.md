@@ -1,3 +1,9 @@
+---
+title: "Crate Ownership & the Service Boundary"
+created: 2026-06-27
+updated: 2026-07-30
+---
+
 # Crate Ownership & the Service Boundary
 
 Last Modified: 2026-07-26

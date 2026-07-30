@@ -14,7 +14,7 @@
 //! executable kind.
 //!
 //! Two sibling poll loops share the "poll `has_active_jobs` until quiet" shape
-//! but answer different questions: [`crate::runtime::SqliteServiceRuntime::drain_jobs`]
+//! but answer different questions: the service runtime's `drain_jobs`
 //! (behind `start_worker`, used by `--wait true`) blocks until the queue is
 //! empty *once*; this loop runs until the queue has been *continuously* idle
 //! for `idle_exit_secs`. They are intentionally separate.

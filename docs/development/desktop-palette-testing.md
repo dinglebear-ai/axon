@@ -1,3 +1,9 @@
+---
+title: "Desktop Palette Testing"
+created: 2026-05-18
+updated: 2026-07-30
+---
+
 # Desktop Palette Testing
 Last Modified: 2026-06-14
 

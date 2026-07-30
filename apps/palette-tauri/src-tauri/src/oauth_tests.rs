@@ -50,7 +50,7 @@ fn status_for_reports_signed_in_only_when_server_matches() {
 
 #[test]
 fn credentials_from_token_clamps_huge_expires_in_and_trims_server_url() {
-    let token: crate::oauth::flow::TokenResponse = serde_json::from_str(
+    let token: flow::TokenResponse = serde_json::from_str(
         r#"{"access_token":"a","token_type":"Bearer","expires_in":18446744073709551615,"scope":"axon:read"}"#,
     )
     .unwrap();
@@ -75,7 +75,7 @@ fn credentials_from_token_clamps_huge_expires_in_and_trims_server_url() {
 
 #[test]
 fn classify_refresh_maps_each_result_to_the_right_outcome() {
-    let ok: crate::oauth::flow::TokenResponse = serde_json::from_str(
+    let ok: flow::TokenResponse = serde_json::from_str(
         r#"{"access_token":"a","token_type":"Bearer","expires_in":3600,"scope":"s"}"#,
     )
     .unwrap();
@@ -92,7 +92,7 @@ fn classify_refresh_maps_each_result_to_the_right_outcome() {
     ));
     assert!(matches!(
         classify_refresh(
-            Err(crate::oauth::flow::TokenError {
+            Err(flow::TokenError {
                 rejected: true,
                 message: String::new()
             }),
@@ -106,7 +106,7 @@ fn classify_refresh_maps_each_result_to_the_right_outcome() {
     ));
     assert!(matches!(
         classify_refresh(
-            Err(crate::oauth::flow::TokenError {
+            Err(flow::TokenError {
                 rejected: false,
                 message: String::new()
             }),
@@ -123,11 +123,11 @@ fn classify_refresh_maps_each_result_to_the_right_outcome() {
 #[test]
 fn credentials_from_token_preserves_prior_refresh_token_when_omitted() {
     // Response WITHOUT a refresh_token (provider reuses the existing one).
-    let token: crate::oauth::flow::TokenResponse = serde_json::from_str(
+    let token: flow::TokenResponse = serde_json::from_str(
         r#"{"access_token":"a","token_type":"Bearer","expires_in":3600,"scope":"s"}"#,
     )
     .unwrap();
-    let prior = Some(crate::oauth::secret::Secret::from("prior-refresh"));
+    let prior = Some(secret::Secret::from("prior-refresh"));
     let creds = credentials_from_token(
         "c".to_string(),
         "https://x",
@@ -142,11 +142,11 @@ fn credentials_from_token_preserves_prior_refresh_token_when_omitted() {
     );
 
     // Response WITH a refresh_token overrides the prior.
-    let token: crate::oauth::flow::TokenResponse = serde_json::from_str(
+    let token: flow::TokenResponse = serde_json::from_str(
         r#"{"access_token":"a","token_type":"Bearer","expires_in":3600,"refresh_token":"new-refresh","scope":"s"}"#,
     )
     .unwrap();
-    let prior = Some(crate::oauth::secret::Secret::from("prior-refresh"));
+    let prior = Some(secret::Secret::from("prior-refresh"));
     let creds = credentials_from_token(
         "c".to_string(),
         "https://x",

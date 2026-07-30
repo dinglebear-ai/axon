@@ -32,7 +32,7 @@ pub struct PublishGenerationRequest {
     pub expected_previous_generation: Option<SourceGenerationId>,
 }
 
-/// Result of [`GenerationPublisher::validate_publish`] — a dry-run readiness
+/// Result of `GenerationPublisher::validate_publish` — a dry-run readiness
 /// check performed before `publish_generation` commits a generation as the
 /// source's live/published state.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

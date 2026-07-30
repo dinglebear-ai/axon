@@ -14,6 +14,14 @@
     "vitest": "^4.1.9"
   },
   "name": "@axon/admin-panel",
+  "description": "Web administration panel for the Axon RAG engine.",
+  "author": "dinglebear.ai <hello@dinglebear.ai>",
+  "license": "MIT",
+  "homepage": "https://axon.dinglebear.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dinglebear-ai/axon.git"
+  },
   "overrides": {
     "postcss": "^8.5.10"
   },

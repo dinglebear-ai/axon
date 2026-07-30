@@ -3,8 +3,13 @@ name = "axon-graph"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Source graph storage, resolution, evidence, and conflict handling for Axon."
 authors.workspace = true
 license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 async-trait = "0.1"
@@ -21,6 +26,11 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 [dev-dependencies]
 axon-vectors = { path = "../axon-vectors" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

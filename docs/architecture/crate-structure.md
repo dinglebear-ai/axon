@@ -1,3 +1,9 @@
+---
+title: "Crate Structure"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # Crate Structure
 
 Last Modified: 2026-07-26

@@ -25,6 +25,9 @@
 //! write to `<path>.tmp`, fsync, then `rename` to the target.  On Unix the
 //! target file is created with mode `0o600`.
 
+mod entrypoints;
+pub(crate) use entrypoints::*;
+
 use std::{
     collections::HashMap,
     fs, io,
@@ -296,8 +299,9 @@ fn unescape_double_quoted(inner: &str) -> String {
     out
 }
 
-pub(crate) fn write_axon_env_values(
+pub(crate) fn write_axon_env_values_at(
     values: &HashMap<String, serde_json::Value>,
+    path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Validate all keys before touching disk.
     for key in values.keys() {
@@ -310,11 +314,10 @@ pub(crate) fn write_axon_env_values(
         }
     }
 
-    let path = default_env_path().ok_or("env path unavailable")?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let existing = match fs::read_to_string(&path) {
+    let existing = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
         Err(err) => {
@@ -358,15 +361,12 @@ pub(crate) fn write_axon_env_values(
     }
     let mut output = lines.join("\n");
     output.push('\n');
-    atomic_write(&path, output.as_bytes())?;
+    atomic_write(path, output.as_bytes())?;
     Ok(())
 }
 
-pub(crate) fn read_default_config_values() -> HashMap<String, serde_json::Value> {
-    let Some(path) = default_config_path() else {
-        return HashMap::new();
-    };
-    let contents = match fs::read_to_string(&path) {
+pub(crate) fn read_config_values_at(path: &Path) -> HashMap<String, serde_json::Value> {
+    let contents = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return HashMap::new(),
         Err(err) => {
@@ -392,8 +392,9 @@ pub(crate) fn read_default_config_values() -> HashMap<String, serde_json::Value>
     values
 }
 
-pub(crate) fn write_axon_config_values(
+pub(crate) fn write_axon_config_values_at(
     values: &HashMap<String, serde_json::Value>,
+    path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Validate all keys before touching disk.
     for key in values.keys() {
@@ -409,11 +410,10 @@ pub(crate) fn write_axon_config_values(
         }
     }
 
-    let path = default_config_path().ok_or("config path unavailable")?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let contents = match fs::read_to_string(&path) {
+    let contents = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
         Err(err) => {
@@ -441,7 +441,7 @@ pub(crate) fn write_axon_config_values(
     for (path, value) in entries {
         set_toml_value(&mut doc, path, value);
     }
-    atomic_write(&path, doc.to_string().as_bytes())?;
+    atomic_write(path, doc.to_string().as_bytes())?;
     Ok(())
 }
 

@@ -1,3 +1,9 @@
+---
+title: "Adding a Parser"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a Parser
 
 `axon-parse` owns source parsing and fact extraction — it turns

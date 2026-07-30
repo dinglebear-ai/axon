@@ -1,3 +1,9 @@
+---
+title: "Justfile Recipes -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Justfile Recipes -- Axon
 
 Run `just --list` to see all available recipes.

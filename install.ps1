@@ -3,14 +3,14 @@
 # Windows mirror of install.sh. All prerequisite checks happen inside `axon setup`.
 #
 # Environment controls:
-#   AXON_INSTALL_REPO        GitHub repo (default: jmagar/axon)
+#   AXON_INSTALL_REPO        GitHub repo (default: dinglebear-ai/axon)
 #   AXON_VERSION             Release version tag, e.g. v5.8.1 (default: latest)
 #   AXON_INSTALL_PREFIX      Install prefix (default: $HOME\.local)
 #   AXON_INSTALL_DRY_RUN     Set to 1 to print what would happen without doing it
 #   AXON_INSTALL_SKIP_SETUP  Set to 1 to skip running `axon setup` after install
 #
 # Usage:
-#   irm https://raw.githubusercontent.com/jmagar/axon/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex
 #
 # Pinned version:
 #   $env:AXON_VERSION='v5.8.1'; irm .../install.ps1 | iex
@@ -22,7 +22,7 @@
 param()
 $ErrorActionPreference = 'Stop'
 
-$Repo      = if ($env:AXON_INSTALL_REPO)   { $env:AXON_INSTALL_REPO }   else { 'jmagar/axon' }
+$Repo      = if ($env:AXON_INSTALL_REPO)   { $env:AXON_INSTALL_REPO }   else { 'dinglebear-ai/axon' }
 $Version   = if ($env:AXON_VERSION)        { $env:AXON_VERSION }        else { 'latest' }
 $Prefix    = if ($env:AXON_INSTALL_PREFIX) { $env:AXON_INSTALL_PREFIX } else { Join-Path $HOME '.local' }
 $BinDir    = Join-Path $Prefix 'bin'

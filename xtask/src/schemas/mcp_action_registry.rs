@@ -12,7 +12,7 @@
 //! 1. `mcp_action_registry_tests.rs` calls the already-public
 //!    `axon_mcp::required_scope_for(action, subaction)` oracle for every
 //!    name in [`live_action_names`] (must resolve) and every name in
-//!    [`known_non_live_action_names`] (must resolve to `__deny__`/removed).
+//!    `known_non_live_action_names` (must resolve to `__deny__`/removed).
 //!    If a future edit to `MCP_ACTION_SPECS` adds/removes/rescoped an
 //!    action without a matching edit here, that test fails.
 //! 2. Shared action request DTOs are resolved from the real,
@@ -23,7 +23,7 @@
 //! Contract convergence direction: `docs/pipeline-unification/schemas/
 //! mcp-tool-schema.md`'s target `Action` enum has 31 names; the live
 //! dispatcher currently implements the 28 below. Names present only in the
-//! contract are surfaced via [`deferred_action_names`] / `deferred_actions`
+//! contract are surfaced via `deferred_action_names` / `deferred_actions`
 //! in the generated schema instead of fabricated request schemas.
 
 use serde_json::{Value, json};

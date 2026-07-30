@@ -1,3 +1,9 @@
+---
+title: "Ask Model Comparison Runner"
+created: 2026-06-07
+updated: 2026-07-30
+---
+
 # Ask Model Comparison Runner
 
 `scripts/run-ask-model-comparison.sh` orchestrates repeatable `axon ask` comparisons across multiple LLM configurations. It runs the same question set against each selected profile, stores every answer, captures stderr separately, captures `axon ask --explain --diagnostics --json` retrieval traces, and writes a JSON run artifact with timing plus the effective Axon config for each model.

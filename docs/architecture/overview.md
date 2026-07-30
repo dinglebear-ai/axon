@@ -1,3 +1,9 @@
+---
+title: "Axon Architecture"
+created: 2026-02-25
+updated: 2026-07-30
+---
+
 # Axon Architecture
 Last Modified: 2026-06-30
 

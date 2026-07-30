@@ -181,7 +181,7 @@ fn classify_refresh(
     client_id: String,
     server_url: &str,
     token_endpoint: String,
-    prior_refresh_token: Option<crate::oauth::secret::Secret>,
+    prior_refresh_token: Option<secret::Secret>,
     now_unix: i64,
 ) -> RefreshOutcome {
     match result {
@@ -440,7 +440,7 @@ fn credentials_from_token(
     client_id: String,
     server_url: &str,
     token_endpoint: String,
-    prior_refresh_token: Option<crate::oauth::secret::Secret>,
+    prior_refresh_token: Option<secret::Secret>,
     token: flow::TokenResponse,
     now_unix: i64,
 ) -> StoredCredentials {

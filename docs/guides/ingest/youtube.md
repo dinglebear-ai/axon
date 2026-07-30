@@ -1,3 +1,9 @@
+---
+title: "YouTube Ingest"
+created: 2026-02-23
+updated: 2026-07-30
+---
+
 # YouTube Ingest
 Last Modified: 2026-06-13
 

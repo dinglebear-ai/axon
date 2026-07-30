@@ -30,7 +30,7 @@ pub const DEFAULT_UA: &str =
 pub const AXON_API_UA: &str = concat!(
     "axon/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/jmagar/axon_rust)"
+    " (+https://github.com/dinglebear-ai/axon)"
 );
 
 static RESOLVED_UA: LazyLock<String> = LazyLock::new(|| {

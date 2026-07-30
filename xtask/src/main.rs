@@ -1,3 +1,5 @@
+//! Repository maintenance, contract validation, and schema generation tasks.
+
 #![allow(deprecated)]
 #![allow(
     clippy::collapsible_if,

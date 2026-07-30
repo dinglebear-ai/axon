@@ -1,3 +1,9 @@
+---
+title: "Setup Guide -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Setup Guide -- Axon
 
 Step-by-step instructions to get Axon running locally or via Docker.
@@ -26,7 +32,7 @@ See [stack/PRE-REQS.md](../architecture/stack/pre-reqs.md) for detailed installa
 ## 1. Clone the repository
 
 ```bash
-git clone https://github.com/jmagar/axon.git ~/workspace/axon
+git clone https://github.com/dinglebear-ai/axon.git ~/workspace/axon
 cd ~/workspace/axon
 ```
 

@@ -250,7 +250,7 @@ pub fn error(text: &str) -> String {
     ansi_colorize(ERROR_ANSI, text)
 }
 
-/// "error: <msg>" in Aurora rose-red on stderr — for CLI user-facing errors.
+/// `error: <msg>` in Aurora rose-red on stderr — for CLI user-facing errors.
 pub fn report_error(msg: &str) {
     eprintln!(
         "{} {}",
@@ -259,7 +259,7 @@ pub fn report_error(msg: &str) {
     );
 }
 
-/// "hint: <msg>" in Aurora cyan/dim on stderr — companion to report_error.
+/// `hint: <msg>` in Aurora cyan/dim on stderr — companion to report_error.
 pub fn report_hint(msg: &str) {
     let label = ansi_dim(&ansi_colorize(ACCENT_ANSI, "hint:"));
     eprintln!("{label} {msg}");
