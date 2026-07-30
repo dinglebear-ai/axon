@@ -73,13 +73,15 @@ AXON_INCUS_PUBLISH_LISTEN="100.88.16.79:40090" \
   deploy/incus/bootstrap.sh default
 ```
 
-The profile recreates the dedicated `/mnt/axon-data` and read-only
-`/mnt/axon-gemini` mounts. Because `security.idmap.isolated` allocates a new
-host mapping, restore their ownership for the new container's UID/GID 1000
-before treating the deployment as healthy. Read the new mapping from
-`volatile.idmap.current`—never reuse the retired instance's host IDs—then
-`chown` the two host directories to the mapped IDs. Verify inside the new
-guest with `incus exec "$container" -- sh -c 'touch /mnt/axon-data/.idmap-check && rm /mnt/axon-data/.idmap-check'`.
+The committed profile recreates the dedicated `/mnt/axon-data` and read-only
+`/mnt/axon-gemini` mounts. The bootstrap reads the live `axon-data` device
+path from the profile, so a retained deployment may mount the same data at a
+different absolute guest path. Because `security.idmap.isolated` allocates a
+new host mapping, restore the mounted directories' ownership for the new
+container's UID/GID 1000 before treating the deployment as healthy. Read the
+new mapping from `volatile.idmap.current`—never reuse the retired instance's
+host IDs—then `chown` the two host directories to the mapped IDs. Verify
+write access at the live mount path before proceeding.
 
 Keep `$retired` stopped until the new container has passed bootstrap and its
 health checks. The retained snapshot and instance are the rollback path; only
@@ -87,9 +89,10 @@ delete them after the new deployment has been observed stable.
 
 ## Profile
 
-`profile.yaml` in this directory is exported directly from the live,
-validated Incus profile (`incus profile show axon-container-profile`),
-minus the live-only `used_by` field. To apply it fresh:
+`profile.yaml` in this directory is the source of truth for a fresh
+deployment. Existing profiles are intentionally not overwritten by the
+bootstrap; it reads their live `axon-data` device path before installing the
+native service. To apply the committed profile fresh:
 
 ```bash
 incus profile create axon-container-profile

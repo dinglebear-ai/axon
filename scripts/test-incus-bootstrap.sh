@@ -16,4 +16,8 @@ if grep -Fq 'incus list "$CONTAINER_NAME"' "$bootstrap"; then
   exit 1
 fi
 
+grep -Fq 'container_data_path="$(incus profile device get "$PROFILE_NAME" axon-data path' "$bootstrap"
+grep -Fq '"$CONTAINER_NAME$container_data_path/.env"' "$bootstrap"
+grep -Fq 'EnvironmentFile=$container_data_path/.env' "$bootstrap"
+
 echo "incus bootstrap exact-instance state lookup ok"
