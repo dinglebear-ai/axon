@@ -268,8 +268,7 @@ impl Redactor for DefaultRedactor {
         // stays untouched in `redact_json` so a body secret still skips the
         // chunk instead of being laundered into the index.
         if value_contains_secret(input)
-            || (!context.allow_internal_paths
-                && super::detectors::value_is_absolute_local_path(input))
+            || (!context.allow_internal_paths && value_is_absolute_local_path(input))
         {
             REDACTION_PLACEHOLDER.to_string()
         } else {

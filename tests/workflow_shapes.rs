@@ -423,6 +423,19 @@ fn rust_ci_uses_the_repository_toolchain_pin() {
 }
 
 #[test]
+fn kache_daemon_probe_is_pipefail_safe() {
+    let setup = include_str!("../.github/actions/setup-rust-kache/action.yml");
+    assert!(
+        setup.contains("status=\"$(kache daemon status 2>&1)\""),
+        "the daemon probe must capture the complete status output before matching"
+    );
+    assert!(
+        !setup.contains("kache daemon status 2>&1 | grep -q"),
+        "grep -q must not SIGPIPE the status command under pipefail"
+    );
+}
+
+#[test]
 fn ci_has_changed_path_classifier_and_stable_gate() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     assert!(

@@ -1,3 +1,10 @@
+// `std::env::set_var` / `remove_var` are `unsafe` as of Rust 2024, and this
+// crate now inherits the workspace `unsafe_code = "deny"` lint. Every use below
+// is a test-only env mutation serialized by `env_guard()`; allow it at module
+// scope rather than repeating the attribute on each test, matching the
+// per-site `#[allow(unsafe_code)]` convention used elsewhere in the repo.
+#![allow(unsafe_code)]
+
 use super::*;
 
 /// Reuse the crate-wide env-mutation lock instead of a local/private one.

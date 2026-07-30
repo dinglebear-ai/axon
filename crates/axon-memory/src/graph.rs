@@ -294,7 +294,7 @@ impl GraphBackedMemoryStore {
 fn missing_memory(memory_id: &MemoryId) -> ApiError {
     ApiError::new(
         "memory.not_found",
-        axon_error::ErrorStage::Retrieving,
+        ErrorStage::Retrieving,
         format!("memory not found after mutation: {}", memory_id.0),
     )
 }

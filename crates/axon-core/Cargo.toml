@@ -92,3 +92,6 @@ axon-api = { path = "../axon-api" }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"
+
+[lints]
+workspace = true

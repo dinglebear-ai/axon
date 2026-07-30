@@ -145,7 +145,7 @@ pub(super) fn fixture_repo() -> TempDir {
 }
 
 fn seed_schema_fixtures(root: &Path) {
-    for family in families::all_families() {
+    for family in all_families() {
         let base = format!("xtask/tests/fixtures/schemas/{}", family.as_str());
         write_fixture(
             root,
@@ -170,7 +170,7 @@ fn seed_schema_fixtures(root: &Path) {
 fn seed_generated_schema_snapshots(root: &Path, family: SchemaFamily, target: &str) {
     let target = root.join(target);
     std::fs::create_dir_all(&target).unwrap();
-    let artifacts = families::generator_for(family)
+    let artifacts = generator_for(family)
         .generate(root)
         .unwrap_or_else(|err| panic!("generate {family:?} schema snapshots: {err}"));
     for artifact in artifacts {
@@ -372,7 +372,7 @@ fn generate_writes_all_required_family_artifacts() {
 fn schema_family_statuses_are_explicit() {
     let metadata = families::family_metadata();
 
-    assert_eq!(metadata.len(), families::all_families().len());
+    assert_eq!(metadata.len(), all_families().len());
     for entry in metadata {
         assert_eq!(
             entry.status,
@@ -388,10 +388,8 @@ fn skeleton_artifacts_are_not_contract_complete() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
 
-    for family in families::all_families() {
-        let artifacts = families::generator_for(family)
-            .generate(tmp.path())
-            .unwrap();
+    for family in all_families() {
+        let artifacts = generator_for(family).generate(tmp.path()).unwrap();
         for artifact in artifacts {
             assert!(
                 !artifact.content.contains("SchemaFamilyContract"),
@@ -424,7 +422,7 @@ fn phase_2_rejects_validation_only_or_deferred_families() {
 #[test]
 fn adapters_are_a_schema_family() {
     assert!(
-        families::all_families()
+        all_families()
             .iter()
             .any(|family| family.as_str() == "adapters"),
         "adapters must be generated as the Phase 9 source capability family"
@@ -1344,7 +1342,7 @@ fn error_schema_stage_projection_is_explicit() {
 
 #[test]
 fn database_schema_rejects_legacy_tables() {
-    let schema = families::generator_for(SchemaFamily::Database)
+    let schema = generator_for(SchemaFamily::Database)
         .generate(&fixture_repo().into_path())
         .unwrap()
         .into_iter()
@@ -1579,7 +1577,7 @@ fn removed_surface_drift_checks_legacy_purge_properties_by_schema_path() {
 
 #[test]
 fn json_report_shape_is_machine_readable() {
-    let reports = vec![super::FamilyReport {
+    let reports = vec![FamilyReport {
         family: SchemaFamily::Api,
         ok: true,
         artifacts_checked: 3,
@@ -1597,7 +1595,7 @@ fn json_report_shape_is_machine_readable() {
 
 #[test]
 fn family_report_includes_fixture_and_snapshot_counts() {
-    let report = super::FamilyReport {
+    let report = FamilyReport {
         family: SchemaFamily::Cli,
         ok: true,
         artifacts_checked: 2,
@@ -1800,7 +1798,7 @@ fn schema_generator_contract_fixtures_validate() {
 
 #[test]
 fn json_report_shape_marks_stale_family_as_failed() {
-    let report = super::FamilyReport::from_drift(
+    let report = FamilyReport::from_drift(
         SchemaFamily::Api,
         3,
         vec!["docs/reference/api/schemas.json differs".to_string()],
@@ -2061,7 +2059,7 @@ fn schema_generation_is_idempotent_across_all_families() {
 
 fn snapshot_contents(root: &Path) -> std::collections::BTreeMap<String, String> {
     let mut contents = std::collections::BTreeMap::new();
-    for family in families::all_families() {
+    for family in all_families() {
         let dir = root.join(format!(
             "xtask/tests/fixtures/schemas/{}/snapshots",
             family.as_str()
@@ -2292,7 +2290,7 @@ fn assert_stale_after_with_args(
     assert!(err.to_string().contains(expected_error_substring));
 }
 
-fn workspace_path(path: &str) -> std::path::PathBuf {
+fn workspace_path(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("xtask has workspace parent")
@@ -2301,8 +2299,8 @@ fn workspace_path(path: &str) -> std::path::PathBuf {
 
 fn generated_artifact_contents(root: &Path) -> std::collections::BTreeMap<String, String> {
     let mut contents = std::collections::BTreeMap::new();
-    for family in families::all_families() {
-        for artifact in families::generator_for(family).generate(root).unwrap() {
+    for family in all_families() {
+        for artifact in generator_for(family).generate(root).unwrap() {
             let path = artifact.path.to_string_lossy().replace('\\', "/");
             contents.insert(
                 path.clone(),

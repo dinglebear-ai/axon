@@ -5,7 +5,7 @@ use axon_api::source::*;
 pub(crate) fn validate_sparse_vector(
     point_chunk_id: &ChunkId,
     sparse: &SparseVector,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<(), ApiError> {
     if sparse.chunk_id != *point_chunk_id {
         return Err(ApiError::new(
@@ -52,7 +52,7 @@ pub(crate) fn validate_sparse_vector(
 
 pub(crate) fn batch_sparse_vectors_by_chunk(
     batch: &VectorPointBatch,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<BTreeMap<String, SparseVector>, ApiError> {
     let point_chunks = batch
         .points

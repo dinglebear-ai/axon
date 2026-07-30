@@ -87,7 +87,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions>
         if !ALLOWED_OPTIONS.contains(&key.as_str()) {
             return Err(ApiError::new(
                 "adapter.local.option.unsupported",
-                axon_error::ErrorStage::Routing,
+                ErrorStage::Routing,
                 "local adapter option is not supported",
             )
             .with_context("option", key.clone()));
@@ -213,12 +213,8 @@ fn require_enum(options: &AdapterOptions, key: &str, allowed: &[&str]) -> Result
 }
 
 fn option_invalid(key: &str, message: &str) -> ApiError {
-    ApiError::new(
-        "adapter.local.option.invalid",
-        axon_error::ErrorStage::Routing,
-        message,
-    )
-    .with_context("option", key.to_string())
+    ApiError::new("adapter.local.option.invalid", ErrorStage::Routing, message)
+        .with_context("option", key.to_string())
 }
 
 fn is_code_search_file(path: &Path) -> bool {

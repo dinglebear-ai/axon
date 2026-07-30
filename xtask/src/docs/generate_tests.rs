@@ -1,7 +1,7 @@
 use super::*;
 use std::fs;
 
-fn seed(root: &std::path::Path) {
+fn seed(root: &Path) {
     fs::create_dir_all(root.join("docs/reference/cli")).unwrap();
     fs::write(
         root.join("docs/reference/cli/commands.json"),

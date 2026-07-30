@@ -26,7 +26,7 @@ fn normalize_item_key(source_kind: SourceKind, raw_key: &str) -> Result<SourceIt
     if trimmed.is_empty() {
         return Err(ApiError::new(
             "adapter.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "source item key must not be empty",
         ));
     }
@@ -40,7 +40,7 @@ fn normalize_item_key(source_kind: SourceKind, raw_key: &str) -> Result<SourceIt
     if key.is_empty() {
         return Err(ApiError::new(
             "adapter.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "source item key must not be empty after normalization",
         ));
     }

@@ -303,7 +303,7 @@ fn redact_pre_chunk(
     }
 }
 
-fn content_text(document: &axon_api::source::SourceDocument) -> PreparedContentText {
+fn content_text(document: &SourceDocument) -> PreparedContentText {
     match &document.content {
         ContentRef::InlineText { text } => PreparedContentText {
             text: text.clone(),

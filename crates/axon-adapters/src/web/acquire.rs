@@ -129,7 +129,7 @@ pub(super) async fn acquire_changed_items(
     if opts.cache_policy == CachePolicy::Offline && !manifest_items.is_empty() {
         return Err(ApiError::new(
             "web.cache.offline_miss",
-            axon_error::ErrorStage::Fetching,
+            ErrorStage::Fetching,
             "offline cache policy cannot acquire changed web items",
         )
         .with_context("changed_items", manifest_items.len().to_string()));
@@ -252,7 +252,7 @@ async fn acquire_item(
     axon_core::http::validate_url(&item.canonical_uri).map_err(|err| {
         ApiError::new(
             "web.acquire.invalid_uri",
-            axon_error::ErrorStage::Resolving,
+            ErrorStage::Resolving,
             format!("web target rejected by SSRF policy: {err}"),
         )
         .with_source_id(item.source_id.0.clone())
@@ -326,7 +326,7 @@ pub(crate) async fn acquire_via_fetch(
         if !sent_prior_validator {
             return Err(ApiError::new(
                 "web.fetch.invalid_304_without_validator",
-                axon_error::ErrorStage::Fetching,
+                ErrorStage::Fetching,
                 format!(
                     "received 304 Not Modified for {} without sending a prior validator",
                     item.canonical_uri

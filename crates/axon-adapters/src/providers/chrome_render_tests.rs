@@ -100,7 +100,7 @@ fn automation_script_ref(uri: &str) -> ArtifactRef {
         uri: uri.to_string(),
         size_bytes: None,
         content_hash: None,
-        created_at: Timestamp::from(chrono::Utc::now()),
+        created_at: Timestamp::from(Utc::now()),
     }
 }
 
@@ -108,11 +108,11 @@ fn automation_script_ref(uri: &str) -> ArtifactRef {
 fn automation_script_path_strips_file_scheme() {
     assert_eq!(
         automation_script_path("file:///tmp/script.json"),
-        std::path::PathBuf::from("/tmp/script.json")
+        PathBuf::from("/tmp/script.json")
     );
     assert_eq!(
         automation_script_path("/tmp/script.json"),
-        std::path::PathBuf::from("/tmp/script.json")
+        PathBuf::from("/tmp/script.json")
     );
 }
 

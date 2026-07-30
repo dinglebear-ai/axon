@@ -27,7 +27,7 @@
         {
           "path": "crates/axon-adapters/src/web.rs",
           "kind": "rust_module",
-          "checksum": "sha256:795d0d7a2c78900ac18303471e6b529c4d27127ef13a475c0c7534e75c1612c3"
+          "checksum": "sha256:6eb03602a010c2c3e7c14cae7f5eaa2d16d4c515f102e4acc46c89e0987c0988"
         },
         {
           "path": "crates/axon-route/src/capability.rs",
@@ -45,7 +45,7 @@
           "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
         }
       ],
-      "manifest_checksum": "b1a1d685adaf35da2cd3a26eb4ad77449d9afc14a030dfe005ebad74f6572ecc"
+      "manifest_checksum": "8fdb63dd06c74de7f13827f1a1f4e9d42616e06f56ecee53b333933e4cbe114c"
     },
     {
       "family": "api",
@@ -164,10 +164,10 @@
         {
           "path": "xtask/src/schemas/registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:4cafeb82adf22f4ccdabb5e11cb0d94dae551a13e52e27b4e4871f4acecaa782"
+          "checksum": "sha256:e311c00778ae7f149f1d2df39ab5dd62050a261a700607b3ab9286de1b98eb2c"
         }
       ],
-      "manifest_checksum": "a1f2eb74b7490c27821ca14a827e657e9a0db9cacf08a21506ffa847a0f3052c"
+      "manifest_checksum": "3c22e0bf4e43d0c69de8cb174602959f1e5a117f61e67d73bba81aa2b8e28fb1"
     },
     {
       "family": "cli",
@@ -492,7 +492,7 @@
         {
           "path": "crates/axon-adapters/src/boundary.rs",
           "kind": "rust_module",
-          "checksum": "sha256:4fee60c1f2f8b8cb8dc320c4b2777cb6b63f1c3b41d148bc4e66291ec36db695"
+          "checksum": "sha256:1872171caf8a4566a76e7e2e4db8865904ee7e0d60cee3e630db2f751d82fa06"
         },
         {
           "path": "crates/axon-api/src/schema_registry.rs",
@@ -507,7 +507,7 @@
         {
           "path": "crates/axon-authz/src/policy.rs",
           "kind": "rust_module",
-          "checksum": "sha256:27590ae1e1ecfde070df97bf3d67b362ad08d4e5d499d7d19baa64e2d1519ac3"
+          "checksum": "sha256:56c0a64d7310d77a16dddf2de636afe2e0a9c581d35fa319418dc458c10046c9"
         },
         {
           "path": "crates/axon-core/src/boundary.rs",
@@ -517,7 +517,7 @@
         {
           "path": "crates/axon-embedding/src/fake.rs",
           "kind": "rust_module",
-          "checksum": "sha256:ee3ae9d7dbee3455d25afb00a4e9c62689521a6b543cec31c74d3eb082c8b17f"
+          "checksum": "sha256:042f8b08ad4cfc4e3ae03a71d5ff3f20c19717efc24242c6a74ac3bb8bc1a178"
         },
         {
           "path": "crates/axon-embedding/src/provider.rs",
@@ -527,7 +527,7 @@
         {
           "path": "crates/axon-llm/src/fake.rs",
           "kind": "rust_module",
-          "checksum": "sha256:6b864926eb293c52751e81390fc85f13f014900e7399bb8bafd014c4915ef6d5"
+          "checksum": "sha256:99fb9c1ac34b9438587208eb1217469435f2308bd937a843ecc1c09f7946c89c"
         },
         {
           "path": "crates/axon-llm/src/provider.rs",
@@ -542,7 +542,7 @@
         {
           "path": "crates/axon-vectors/src/store.rs",
           "kind": "rust_module",
-          "checksum": "sha256:147f6b2e4f9e857456d6ef7dfc5dd5142ba18e050f8d96a85723e4bc0837fb62"
+          "checksum": "sha256:1ad1fc6409f6ed31032626c3a8d6e1256ed3813ecc6fbf42d7068dc633521362"
         },
         {
           "path": "docs/pipeline-unification/runtime/provider-contract.md",
@@ -555,7 +555,7 @@
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
       ],
-      "manifest_checksum": "6cbc5b4702bb2df45e0a55bdd09f9482a54caa14cd8f97d86c26f1026db5b456"
+      "manifest_checksum": "b771a1797d282ff7be5fd4ce2a2b6512cc816447c9a387eb7663f1a24d9f17d9"
     },
     {
       "family": "vector-payload",
@@ -579,7 +579,7 @@
         {
           "path": "crates/axon-vectors/src/point.rs",
           "kind": "rust_module",
-          "checksum": "sha256:f54a5d4bfb55b42073fae50303585633f843178698d224d8b56726d8423aaa87"
+          "checksum": "sha256:f10723828d703802ad6f592d2093f92f87a6e5017ff35b15b0a4b1f722998939"
         },
         {
           "path": "crates/axon-vectors/src/schema_registry.rs",
@@ -607,7 +607,7 @@
           "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54"
         }
       ],
-      "manifest_checksum": "06e0dc6ddf6922c7a062de5d9eecb61454b580b754feee21a6272443f46aeaa8"
+      "manifest_checksum": "45994f130923d3e00fbb4f2effb6b4831b3ad569014abfb9686f7c2ea8e90a1b"
     }
   ]
 }
