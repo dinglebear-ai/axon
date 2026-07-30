@@ -118,7 +118,7 @@ impl SourceEnricher for FakeSourceEnricher {
         if self.mode == FakeSourceEnricherMode::Failure {
             return Err(ApiError::new(
                 "adapter.enrich.fake_failure",
-                axon_error::ErrorStage::Enriching,
+                ErrorStage::Enriching,
                 "fake source enricher configured to fail",
             ));
         }

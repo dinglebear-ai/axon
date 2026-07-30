@@ -45,7 +45,7 @@ impl AdapterCapability {
         }
         Err(ApiError::new(
             "adapter.scope.unsupported",
-            axon_error::ErrorStage::Routing,
+            ErrorStage::Routing,
             "adapter does not support requested acquisition scope",
         )
         .with_context("adapter", self.adapter.name.clone())

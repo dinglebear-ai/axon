@@ -164,7 +164,7 @@ fn rule_applies(path: &Path, path_string: &str, rule: &RemovedSurfaceRule) -> bo
 pub fn check_enum_projection_drift(artifacts: &[SchemaArtifact]) -> Result<()> {
     let Some(api) = artifacts
         .iter()
-        .find(|artifact| artifact.path == std::path::Path::new("docs/reference/api/schemas.json"))
+        .find(|artifact| artifact.path == Path::new("docs/reference/api/schemas.json"))
     else {
         return Ok(());
     };

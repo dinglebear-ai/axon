@@ -193,7 +193,7 @@ fn root_config_example_parses() {
 /// schema contract's fixture root (see
 /// docs/pipeline-unification/schemas/config-schema.md's "Validation
 /// Fixtures").
-fn config_schema_fixture(relative: &str) -> std::path::PathBuf {
+fn config_schema_fixture(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(relative)

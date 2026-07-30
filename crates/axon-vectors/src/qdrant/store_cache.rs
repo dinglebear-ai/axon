@@ -32,7 +32,7 @@ impl QdrantVectorStore {
         &self,
         http: &QdrantHttp,
         collection: &str,
-        stage: axon_error::ErrorStage,
+        stage: ErrorStage,
     ) -> Result<Option<CollectionSpec>> {
         let url = http.endpoint().collection_path(collection, "");
         let body = http.get_json(stage, &url, "qdrant_get_collection").await?;
@@ -43,7 +43,7 @@ impl QdrantVectorStore {
         &self,
         http: &QdrantHttp,
         collection: &str,
-        stage: axon_error::ErrorStage,
+        stage: ErrorStage,
     ) -> Result<CollectionSpec> {
         if let Some(spec) = self.cached_collection_spec(collection).await {
             return Ok(spec);

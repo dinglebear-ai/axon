@@ -1,7 +1,7 @@
 use super::*;
 use std::fs;
 
-fn write_family_json(root: &std::path::Path, rel: &str, family: &str, inputs: &[(&str, &str)]) {
+fn write_family_json(root: &Path, rel: &str, family: &str, inputs: &[(&str, &str)]) {
     let path = root.join(rel);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();

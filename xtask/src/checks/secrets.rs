@@ -319,8 +319,8 @@ fn scan_file(
 /// Check DB/HTTP URLs for embedded credentials by validating the password part.
 /// Only flags when the password doesn't look like a placeholder or example.
 fn check_embedded_url_credentials(line: &str, path: &str, lineno: usize, hits: &mut Vec<String>) {
-    static DB_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
-    static HTTP_RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    static DB_RE: OnceLock<Regex> = OnceLock::new();
+    static HTTP_RE: OnceLock<Regex> = OnceLock::new();
 
     let db_re = DB_RE.get_or_init(|| {
         Regex::new(

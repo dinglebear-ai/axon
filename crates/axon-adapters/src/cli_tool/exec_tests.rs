@@ -1,3 +1,9 @@
+// `std::env::set_var` / `remove_var` are `unsafe` as of Rust 2024, and this
+// crate now inherits the workspace `unsafe_code = "deny"` lint. The uses below
+// are test-local env mutations that unset before returning (see the SAFETY
+// comments at each site); allow at module scope rather than per test.
+#![allow(unsafe_code)]
+
 use super::*;
 
 fn source(command: &str, argv: &[&str]) -> CliToolSource {

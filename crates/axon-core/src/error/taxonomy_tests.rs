@@ -207,8 +207,8 @@ fn taxonomy_ignores_untyped_operational_errors() {
 fn taxonomy_from_error_terminates_on_self_referential_source() {
     #[derive(Debug)]
     struct CyclicErr;
-    impl std::fmt::Display for CyclicErr {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    impl Display for CyclicErr {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             f.write_str("cyclic")
         }
     }

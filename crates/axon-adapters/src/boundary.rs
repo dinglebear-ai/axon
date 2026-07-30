@@ -90,11 +90,7 @@ impl FakeAdapterProviders {
             .push(call);
     }
 
-    fn mode_error(
-        &self,
-        stage: axon_error::ErrorStage,
-        provider_kind: ProviderKind,
-    ) -> Option<ApiError> {
+    fn mode_error(&self, stage: ErrorStage, provider_kind: ProviderKind) -> Option<ApiError> {
         fake_provider_mode_error(
             self.mode_state(),
             &provider_id(provider_kind),
@@ -116,7 +112,7 @@ impl FakeAdapterProviders {
         let mut state = fake_provider_capability_state(
             self.mode_state(),
             &provider_id(provider_kind),
-            axon_error::ErrorStage::Observing,
+            ErrorStage::Observing,
             "adapter provider",
         );
         if self.health != HealthStatus::Healthy {
@@ -176,9 +172,7 @@ impl Default for FakeAdapterProviders {
 impl SearchProvider for FakeAdapterProviders {
     async fn search(&self, request: SearchRequest) -> Result<SearchResult> {
         self.record("search");
-        if let Some(err) =
-            self.mode_error(axon_error::ErrorStage::Discovering, ProviderKind::Search)
-        {
+        if let Some(err) = self.mode_error(ErrorStage::Discovering, ProviderKind::Search) {
             return Err(err);
         }
         Ok(SearchResult {
@@ -200,7 +194,7 @@ impl SearchProvider for FakeAdapterProviders {
 impl FetchProvider for FakeAdapterProviders {
     async fn fetch(&self, request: FetchRequest) -> Result<FetchedResource> {
         self.record("fetch");
-        if let Some(err) = self.mode_error(axon_error::ErrorStage::Fetching, ProviderKind::Fetch) {
+        if let Some(err) = self.mode_error(ErrorStage::Fetching, ProviderKind::Fetch) {
             return Err(err);
         }
         Ok(FetchedResource {
@@ -230,8 +224,7 @@ impl FetchProvider for FakeAdapterProviders {
 impl RenderProvider for FakeAdapterProviders {
     async fn render(&self, request: RenderRequest) -> Result<RenderedResource> {
         self.record("render");
-        if let Some(err) = self.mode_error(axon_error::ErrorStage::Rendering, ProviderKind::Render)
-        {
+        if let Some(err) = self.mode_error(ErrorStage::Rendering, ProviderKind::Render) {
             return Err(err);
         }
         Ok(RenderedResource {
@@ -258,10 +251,7 @@ impl RenderProvider for FakeAdapterProviders {
 impl NetworkCaptureProvider for FakeAdapterProviders {
     async fn capture(&self, request: NetworkCaptureRequest) -> Result<NetworkCaptureResult> {
         self.record("capture");
-        if let Some(err) = self.mode_error(
-            axon_error::ErrorStage::Discovering,
-            ProviderKind::NetworkCapture,
-        ) {
+        if let Some(err) = self.mode_error(ErrorStage::Discovering, ProviderKind::NetworkCapture) {
             return Err(err);
         }
         Ok(NetworkCaptureResult {

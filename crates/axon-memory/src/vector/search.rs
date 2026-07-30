@@ -41,7 +41,7 @@ impl VectorBackedMemoryStore {
             .ok_or_else(|| {
                 ApiError::new(
                     "memory.query_embedding_missing",
-                    axon_error::ErrorStage::Retrieving,
+                    ErrorStage::Retrieving,
                     "embedding provider did not return a memory query vector",
                 )
             })

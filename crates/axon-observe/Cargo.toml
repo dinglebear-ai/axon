@@ -24,3 +24,6 @@ uuid = { version = "1", features = ["v4"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 tempfile = "3"
+
+[lints]
+workspace = true

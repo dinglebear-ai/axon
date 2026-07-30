@@ -49,8 +49,8 @@ pub async fn build_llm_doctor_probe(cfg: &Config) -> LlmDoctorProbe {
 /// dependency on `spider` just for `tokio::join!`.
 async fn spider_join<A, B>(a: A, b: B) -> (A::Output, B::Output)
 where
-    A: std::future::Future,
-    B: std::future::Future,
+    A: Future,
+    B: Future,
 {
     tokio::join!(a, b)
 }
