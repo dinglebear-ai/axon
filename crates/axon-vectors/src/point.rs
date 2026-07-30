@@ -240,7 +240,7 @@ impl VectorPointBatchBuilder {
                 // `tracing::warn!` line that no programmatic consumer sees.
                 Err(VectorPointBatchBuildError::Payload {
                     chunk_id,
-                    source: crate::payload::VectorPayloadValidationError::ForbiddenValue { .. },
+                    source: VectorPayloadValidationError::ForbiddenValue { .. },
                 }) => {
                     skipped_redaction += 1;
                     tracing::warn!(

@@ -113,7 +113,7 @@ impl FakeSourceAdapter {
             .push(call);
     }
 
-    fn failure_error(&self, stage: axon_error::ErrorStage, call: &'static str) -> Option<ApiError> {
+    fn failure_error(&self, stage: ErrorStage, call: &'static str) -> Option<ApiError> {
         match self.mode {
             FakeSourceAdapterMode::Failure => Some(ApiError::new(
                 "adapter.fake.failure",
@@ -162,12 +162,12 @@ impl SourceAdapter for FakeSourceAdapter {
         if plan.route.adapter.name != self.capability.adapter.name {
             return Err(ApiError::new(
                 "adapter.mismatch",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 "route selected a different adapter",
             ));
         }
         self.capability.validate_scope(plan.route.scope)?;
-        if let Some(err) = self.failure_error(axon_error::ErrorStage::Discovering, "discover") {
+        if let Some(err) = self.failure_error(ErrorStage::Discovering, "discover") {
             return Err(err);
         }
 
@@ -215,7 +215,7 @@ impl SourceAdapter for FakeSourceAdapter {
     ) -> Result<SourceAcquisition> {
         self.record("acquire");
         self.capability.validate_scope(plan.route.scope)?;
-        if let Some(err) = self.failure_error(axon_error::ErrorStage::Fetching, "acquire") {
+        if let Some(err) = self.failure_error(ErrorStage::Fetching, "acquire") {
             return Err(err);
         }
 
@@ -301,7 +301,7 @@ impl SourceAdapter for FakeSourceAdapter {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         self.record("normalize");
-        if let Some(err) = self.failure_error(axon_error::ErrorStage::Normalizing, "normalize") {
+        if let Some(err) = self.failure_error(ErrorStage::Normalizing, "normalize") {
             return Err(err);
         }
         let documents = acquisition

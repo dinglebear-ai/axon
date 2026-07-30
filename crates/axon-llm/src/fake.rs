@@ -77,7 +77,7 @@ impl FakeLlmProvider {
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {
-        let mut error = ApiError::new(code, axon_error::ErrorStage::Synthesizing, message)
+        let mut error = ApiError::new(code, ErrorStage::Synthesizing, message)
             .with_provider_id(self.provider_id.0.clone());
         if self.mode == FakeLlmMode::Fatal {
             error.retryable = false;
@@ -89,7 +89,7 @@ impl FakeLlmProvider {
         let mut state = fake_provider_capability_state(
             self.mode_state(),
             &self.provider_id.0,
-            axon_error::ErrorStage::Synthesizing,
+            ErrorStage::Synthesizing,
             "llm provider",
         );
         if let Some(health) = self.health_override.filter(|health| {

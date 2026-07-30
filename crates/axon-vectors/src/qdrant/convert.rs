@@ -174,7 +174,7 @@ pub fn qdrant_upsert_points(
     spec: &CollectionSpec,
     batch: &VectorPointBatch,
 ) -> Result<Vec<PointStruct>> {
-    let batch_sparse = validate_upsert_batch(spec, batch, axon_error::ErrorStage::Upserting)?;
+    let batch_sparse = validate_upsert_batch(spec, batch, ErrorStage::Upserting)?;
     batch
         .points
         .iter()

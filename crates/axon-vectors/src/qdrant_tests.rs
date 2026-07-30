@@ -190,7 +190,7 @@ fn qdrant_filter_converts_path_prefix_to_source_path_should_filter() {
         .must
         .iter()
         .find_map(|condition| match condition.condition_one_of.as_ref()? {
-            qdrant_client::qdrant::condition::ConditionOneOf::Filter(filter) => Some(filter),
+            condition::ConditionOneOf::Filter(filter) => Some(filter),
             _ => None,
         })
         .expect("nested path-prefix filter");

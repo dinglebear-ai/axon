@@ -306,7 +306,7 @@ fn sessions_root(plan: &SourcePlan) -> Result<PathBuf> {
         .ok_or_else(|| {
             ApiError::new(
                 "adapter.session.sessions_root.required",
-                axon_error::ErrorStage::Planning,
+                ErrorStage::Planning,
                 "session adapter requires a sessions_root option pointing at prepared export files",
             )
         })
@@ -333,7 +333,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.session.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -356,7 +356,7 @@ fn collect_files(root: &Path) -> Result<Vec<PathBuf>> {
         let entry = entry.map_err(|err| {
             ApiError::new(
                 "adapter.session.walk_failed",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 err.to_string(),
             )
         })?;
@@ -390,7 +390,7 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
         let name = root.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
             ApiError::new(
                 "adapter.session.item_key.invalid",
-                axon_error::ErrorStage::Normalizing,
+                ErrorStage::Normalizing,
                 "session item key must not be empty",
             )
         })?;
@@ -406,7 +406,7 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
     if key.is_empty() {
         return Err(ApiError::new(
             "adapter.session.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "session item key must not be empty",
         ));
     }
@@ -420,7 +420,7 @@ fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
     if Path::new(key).is_absolute() || key.split('/').any(|part| part == "..") {
         return Err(ApiError::new(
             "adapter.session.path.escape",
-            axon_error::ErrorStage::Fetching,
+            ErrorStage::Fetching,
             "session item key must stay inside the sessions root",
         )
         .with_context("key", key.to_string()));
@@ -459,14 +459,14 @@ fn decode_item(
         ("gemini", Some("json")) => decode::decode_gemini_json(text).map_err(|err| {
             ApiError::new(
                 "adapter.session.decode_failed",
-                axon_error::ErrorStage::Normalizing,
+                ErrorStage::Normalizing,
                 err,
             )
             .with_context("path", key.clone())
         }),
         _ => Err(ApiError::new(
             "adapter.session.unsupported_extension",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "session item has an unsupported file extension",
         )
         .with_context("path", key)),
@@ -478,7 +478,7 @@ fn item_text(item: &AcquiredSourceItem) -> Result<String> {
         ContentRef::InlineText { text } => Ok(text.clone()),
         _ => Err(ApiError::new(
             "adapter.session.content_kind.unsupported",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "session adapter only decodes inline text content",
         )),
     }
@@ -487,7 +487,7 @@ fn item_text(item: &AcquiredSourceItem) -> Result<String> {
 fn fs_error(code: &str, path: &Path, err: std::io::Error) -> ApiError {
     ApiError::new(
         format!("adapter.session.{code}"),
-        axon_error::ErrorStage::Fetching,
+        ErrorStage::Fetching,
         err.to_string(),
     )
     .with_context("path", path.display().to_string())
@@ -496,7 +496,7 @@ fn fs_error(code: &str, path: &Path, err: std::io::Error) -> ApiError {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.session.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

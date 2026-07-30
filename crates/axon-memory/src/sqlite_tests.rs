@@ -821,9 +821,8 @@ async fn compact_semantic_summary_fails_closed_without_synthesizer() {
 #[tokio::test]
 async fn compact_semantic_summary_uses_injected_synthesizer() {
     let (store, clock) = store();
-    let store = store.with_compaction_synthesizer(std::sync::Arc::new(
-        crate::testing::FakeCompactionSynthesizer::new(),
-    ));
+    let store = store
+        .with_compaction_synthesizer(Arc::new(crate::testing::FakeCompactionSynthesizer::new()));
     let a = store
         .remember(request(MemoryType::Fact, "fact one", "axon"))
         .await

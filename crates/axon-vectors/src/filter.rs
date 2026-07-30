@@ -34,13 +34,13 @@ pub fn matches_search_filters(point: &VectorPoint, request: &VectorSearchRequest
 
 pub fn validate_delete_selector(selector: &VectorDeleteSelector) -> Result<()> {
     if let VectorDeleteSelector::Filter { filter, .. } = selector {
-        validate_json_filter(filter, axon_error::ErrorStage::Cleaning)?;
+        validate_json_filter(filter, ErrorStage::Cleaning)?;
     }
     Ok(())
 }
 
 pub fn validate_search_filters(request: &VectorSearchRequest) -> Result<()> {
-    validate_filter_map(&request.filters, axon_error::ErrorStage::Retrieving)
+    validate_filter_map(&request.filters, ErrorStage::Retrieving)
 }
 
 pub fn matches_delete_selector(point: &VectorPoint, selector: &VectorDeleteSelector) -> bool {
@@ -132,7 +132,7 @@ fn matches_json_filter(payload: &MetadataMap, filter: &Value) -> bool {
         .all(|(field, expected)| payload_matches_value(payload, field, expected))
 }
 
-fn validate_json_filter(filter: &Value, stage: axon_error::ErrorStage) -> Result<()> {
+fn validate_json_filter(filter: &Value, stage: ErrorStage) -> Result<()> {
     let Some(object) = filter.as_object() else {
         return Err(invalid_filter(
             stage,
@@ -153,18 +153,14 @@ fn validate_json_filter(filter: &Value, stage: axon_error::ErrorStage) -> Result
     Ok(())
 }
 
-fn validate_filter_map(filters: &MetadataMap, stage: axon_error::ErrorStage) -> Result<()> {
+fn validate_filter_map(filters: &MetadataMap, stage: ErrorStage) -> Result<()> {
     for (field, expected) in filters.iter() {
         validate_filter_value(field, expected, stage)?;
     }
     Ok(())
 }
 
-fn validate_filter_value(
-    field: &str,
-    expected: &Value,
-    stage: axon_error::ErrorStage,
-) -> Result<()> {
+fn validate_filter_value(field: &str, expected: &Value, stage: ErrorStage) -> Result<()> {
     match expected {
         Value::String(_) | Value::Bool(_) => Ok(()),
         Value::Number(number) if number.as_i64().is_some() => Ok(()),
@@ -190,9 +186,9 @@ fn validate_filter_value(
     }
 }
 
-fn invalid_filter(stage: axon_error::ErrorStage, message: impl Into<String>) -> ApiError {
+fn invalid_filter(stage: ErrorStage, message: impl Into<String>) -> ApiError {
     let code = match stage {
-        axon_error::ErrorStage::Cleaning => "vector.invalid_delete_selector",
+        ErrorStage::Cleaning => "vector.invalid_delete_selector",
         _ => "vector.invalid_filter_value",
     };
     ApiError::new(code, stage, message)

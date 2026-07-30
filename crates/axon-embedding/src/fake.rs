@@ -79,7 +79,7 @@ impl FakeEmbeddingProvider {
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {
-        let mut error = ApiError::new(code, axon_error::ErrorStage::Embedding, message)
+        let mut error = ApiError::new(code, ErrorStage::Embedding, message)
             .with_provider_id(self.provider_id.0.clone());
         if self.mode == FakeEmbeddingMode::Fatal {
             error.retryable = false;
@@ -95,7 +95,7 @@ impl FakeEmbeddingProvider {
         let mut state = fake_provider_capability_state(
             self.mode_state(),
             &self.provider_id.0,
-            axon_error::ErrorStage::Embedding,
+            ErrorStage::Embedding,
             "embedding provider",
         );
         if let Some(health) = self.health_override.filter(|health| {

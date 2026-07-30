@@ -126,7 +126,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         _ => {
             return Err(ApiError::new(
                 "adapter.upload.scope.unsupported",
-                axon_error::ErrorStage::Routing,
+                ErrorStage::Routing,
                 "upload adapter only discovers file/directory/map scopes",
             )
             .with_context("scope", format!("{:?}", plan.route.scope)));
@@ -305,7 +305,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.upload.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -327,7 +327,7 @@ fn collect_files(root: &Path, options: &LocalOptions) -> Result<Vec<PathBuf>> {
         let entry = entry.map_err(|err| {
             ApiError::new(
                 "adapter.upload.walk_failed",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 err.to_string(),
             )
         })?;
@@ -359,7 +359,7 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
     if key.is_empty() {
         return Err(ApiError::new(
             "adapter.upload.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "upload item key must not be empty",
         ));
     }
@@ -406,7 +406,7 @@ fn content_kind_for(path: &Path) -> ContentKind {
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.upload.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }

@@ -81,7 +81,7 @@ fn resolve_edge_requires_both_endpoints_present() {
         resolve_node(&node("repo", "r", "repo")),
         resolve_node(&node("docs_site", "d", "docs")),
     ];
-    let edge = axon_api::source::GraphEdgeCandidate {
+    let edge = GraphEdgeCandidate {
         edge_kind: "repo_has_docs".to_string(),
         from_stable_key: "r".to_string(),
         to_stable_key: "d".to_string(),
@@ -93,7 +93,7 @@ fn resolve_edge_requires_both_endpoints_present() {
     assert_eq!(resolved.authority, Authority::Official);
 
     // Dangling endpoint → None.
-    let dangling = axon_api::source::GraphEdgeCandidate {
+    let dangling = GraphEdgeCandidate {
         edge_kind: "repo_has_docs".to_string(),
         from_stable_key: "r".to_string(),
         to_stable_key: "missing".to_string(),

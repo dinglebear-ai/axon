@@ -82,7 +82,7 @@ fn mcp_tool_capability(version: &str) -> AdapterCapability {
 /// item/document.
 fn resolve_target(plan: &SourcePlan) -> AdapterResult<McpToolTarget> {
     parse_mcp_target(&plan.request.source)
-        .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Planning, err.message))
+        .map_err(|err| ApiError::new(err.code, ErrorStage::Planning, err.message))
 }
 
 async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireResult> {
@@ -109,7 +109,7 @@ async fn resolve_for_acquire(plan: &SourcePlan) -> AdapterResult<McpToolAcquireR
             .map(|caller| caller as &dyn super::McpToolCaller),
     )
     .await
-    .map_err(|err| ApiError::new(err.code, axon_error::ErrorStage::Authorizing, err.message))
+    .map_err(|err| ApiError::new(err.code, ErrorStage::Authorizing, err.message))
 }
 
 fn discover_plan(plan: &SourcePlan) -> AdapterResult<SourceManifest> {
@@ -369,7 +369,7 @@ fn validate_adapter(plan: &SourcePlan) -> AdapterResult<()> {
     }
     Err(ApiError::new(
         "adapter.mcp_tool.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))

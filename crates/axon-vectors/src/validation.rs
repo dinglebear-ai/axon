@@ -11,7 +11,7 @@ use crate::store::Result;
 pub(crate) fn validate_upsert_batch(
     spec: &CollectionSpec,
     batch: &VectorPointBatch,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<BTreeMap<String, SparseVector>> {
     if batch.dimensions != spec.dense.dimensions {
         return Err(ApiError::new(
@@ -107,7 +107,7 @@ fn validate_payload_lineage(
     batch: &VectorPointBatch,
     point: &VectorPoint,
     batch_job_id: &mut Option<String>,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<()> {
     require_payload_string(point, "vector_point_id", stage).and_then(|value| {
         require_equal(point, "vector_point_id", value, &point.point_id.0, stage)
@@ -152,7 +152,7 @@ fn validate_payload_lineage(
 fn require_payload_string<'a>(
     point: &'a VectorPoint,
     field: &str,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<&'a str> {
     point
         .payload
@@ -171,11 +171,7 @@ fn require_payload_string<'a>(
         })
 }
 
-fn require_payload_u64(
-    point: &VectorPoint,
-    field: &str,
-    stage: axon_error::ErrorStage,
-) -> Result<u64> {
+fn require_payload_u64(point: &VectorPoint, field: &str, stage: ErrorStage) -> Result<u64> {
     point
         .payload
         .get(field)
@@ -197,7 +193,7 @@ fn require_equal(
     field: &str,
     actual: &str,
     expected: &str,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> Result<()> {
     if actual == expected {
         Ok(())
@@ -217,7 +213,7 @@ fn lineage_mismatch(
     field: &str,
     actual: String,
     expected: String,
-    stage: axon_error::ErrorStage,
+    stage: ErrorStage,
 ) -> ApiError {
     ApiError::new(
         "vector.payload_lineage_mismatch",

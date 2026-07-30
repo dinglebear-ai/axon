@@ -115,7 +115,7 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
     if options.follow_symlinks {
         return Err(ApiError::new(
             "adapter.local.symlinks_unsupported",
-            axon_error::ErrorStage::Authorizing,
+            ErrorStage::Authorizing,
             "contained local sources do not follow symlinks",
         ));
     }
@@ -130,7 +130,7 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
         _ => {
             return Err(ApiError::new(
                 "adapter.local.scope.unsupported",
-                axon_error::ErrorStage::Routing,
+                ErrorStage::Routing,
                 "local adapter only discovers file-like local scopes",
             )
             .with_context("scope", format!("{:?}", plan.route.scope)));
@@ -284,7 +284,7 @@ fn acquire_sync(
 fn blocking_join_error(err: tokio::task::JoinError) -> ApiError {
     ApiError::new(
         "adapter.local.blocking_task_failed",
-        axon_error::ErrorStage::Planning,
+        ErrorStage::Planning,
         err.to_string(),
     )
 }
@@ -295,7 +295,7 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     }
     Err(ApiError::new(
         "adapter.local.mismatch",
-        axon_error::ErrorStage::Routing,
+        ErrorStage::Routing,
         "route selected a different adapter",
     )
     .with_context("adapter", plan.route.adapter.name.clone()))
@@ -319,7 +319,7 @@ fn collect_files(root: &Path, options: &LocalOptions) -> Result<Vec<PathBuf>> {
         let entry = entry.map_err(|err| {
             ApiError::new(
                 "adapter.local.walk_failed",
-                axon_error::ErrorStage::Discovering,
+                ErrorStage::Discovering,
                 err.to_string(),
             )
         })?;
@@ -351,7 +351,7 @@ fn relative_key(root: &Path, file: &Path) -> Result<String> {
     if key.is_empty() {
         return Err(ApiError::new(
             "adapter.local.item_key.invalid",
-            axon_error::ErrorStage::Normalizing,
+            ErrorStage::Normalizing,
             "local item key must not be empty",
         ));
     }

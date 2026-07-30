@@ -139,10 +139,10 @@ impl FakeVectorStore {
     }
 
     fn mode_error(&self) -> Option<ApiError> {
-        self.mode_error_for(axon_error::ErrorStage::Upserting)
+        self.mode_error_for(ErrorStage::Upserting)
     }
 
-    fn mode_error_for(&self, stage: axon_error::ErrorStage) -> Option<ApiError> {
+    fn mode_error_for(&self, stage: ErrorStage) -> Option<ApiError> {
         match self.mode {
             FakeVectorMode::Success
             | FakeVectorMode::PartialFailure
@@ -194,7 +194,7 @@ impl FakeVectorStore {
         let mut state = fake_provider_capability_state(
             self.mode_state(),
             &self.provider_id.0,
-            axon_error::ErrorStage::Upserting,
+            ErrorStage::Upserting,
             "vector store",
         );
         if self.mode == FakeVectorMode::Unavailable {
@@ -240,11 +240,11 @@ impl VectorStore for FakeVectorStore {
         let spec = state.collections.get(&batch.collection).ok_or_else(|| {
             ApiError::new(
                 "vector.collection_not_found",
-                axon_error::ErrorStage::Upserting,
+                ErrorStage::Upserting,
                 format!("collection {} has not been ensured", batch.collection),
             )
         })?;
-        let batch_sparse = validate_upsert_batch(spec, &batch, axon_error::ErrorStage::Upserting)?;
+        let batch_sparse = validate_upsert_batch(spec, &batch, ErrorStage::Upserting)?;
         for point in &mut batch.points {
             if point.sparse_vector.is_none()
                 && let Some(sparse) = batch_sparse.get(&point.chunk_id.0)
@@ -270,7 +270,7 @@ impl VectorStore for FakeVectorStore {
         if partial_failure {
             return Err(ApiError::new(
                 "provider.partial_failure",
-                axon_error::ErrorStage::Upserting,
+                ErrorStage::Upserting,
                 format!("fake vector store wrote {points_written} of {points_attempted} points"),
             )
             .with_provider_id(&self.provider_id.0));
@@ -305,15 +305,15 @@ impl VectorStore for FakeVectorStore {
         if self.mode == FakeVectorMode::CommitFailure {
             return Err(ApiError::new(
                 "provider.commit_failed",
-                axon_error::ErrorStage::Publishing,
+                ErrorStage::Publishing,
                 "vector store failed to mark generation committed",
             )
             .with_provider_id(&self.provider_id.0));
         }
-        if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Publishing) {
+        if let Some(err) = self.mode_error_for(ErrorStage::Publishing) {
             return Err(err);
         }
-        state.collection_spec(&collection, axon_error::ErrorStage::Publishing)?;
+        state.collection_spec(&collection, ErrorStage::Publishing)?;
         let points = state.points.entry(collection.clone()).or_default();
         let mut points_written = 0;
         for point in points.values_mut() {
@@ -352,17 +352,17 @@ impl VectorStore for FakeVectorStore {
         if self.mode == FakeVectorMode::DeleteFailure {
             return Err(ApiError::new(
                 "provider.delete_failed",
-                axon_error::ErrorStage::Cleaning,
+                ErrorStage::Cleaning,
                 "fake vector store failed to delete points",
             )
             .with_provider_id(&self.provider_id.0));
         }
-        if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Cleaning) {
+        if let Some(err) = self.mode_error_for(ErrorStage::Cleaning) {
             return Err(err);
         }
         validate_delete_selector(&selector)?;
         let collection = selector_collection(&selector).to_string();
-        state.collection_spec(&collection, axon_error::ErrorStage::Cleaning)?;
+        state.collection_spec(&collection, ErrorStage::Cleaning)?;
         let points = state.points.entry(collection.clone()).or_default();
         let before = points.len();
         points.retain(|_, point| !matches_delete_selector(point, &selector));
@@ -393,23 +393,22 @@ impl VectorStore for FakeVectorStore {
     async fn search(&self, request: VectorSearchRequest) -> Result<VectorSearchResult> {
         let mut state = self.state.lock().await;
         state.calls.push("search");
-        if let Some(err) = self.mode_error_for(axon_error::ErrorStage::Retrieving) {
+        if let Some(err) = self.mode_error_for(ErrorStage::Retrieving) {
             return Err(err);
         }
         let query_vector = request.dense_vector.as_deref().ok_or_else(|| {
             ApiError::new(
                 "vector.missing_query_vector",
-                axon_error::ErrorStage::Retrieving,
+                ErrorStage::Retrieving,
                 "fake vector store search requires a dense query vector",
             )
         })?;
         let query_sparse = request.sparse_vector.as_ref();
-        let spec =
-            state.collection_spec(&request.collection, axon_error::ErrorStage::Retrieving)?;
+        let spec = state.collection_spec(&request.collection, ErrorStage::Retrieving)?;
         if query_vector.len() as u32 != spec.dense.dimensions {
             return Err(ApiError::new(
                 "vector.dimension_mismatch",
-                axon_error::ErrorStage::Retrieving,
+                ErrorStage::Retrieving,
                 format!(
                     "query vector dimensions {} do not match collection dimensions {}",
                     query_vector.len(),
@@ -420,7 +419,7 @@ impl VectorStore for FakeVectorStore {
         if (query_sparse.is_some() || request.hybrid == Some(true)) && spec.sparse.is_none() {
             return Err(ApiError::new(
                 "vector.sparse_not_configured",
-                axon_error::ErrorStage::Retrieving,
+                ErrorStage::Retrieving,
                 format!(
                     "collection {} does not declare a sparse vector namespace",
                     request.collection

@@ -67,7 +67,7 @@ pub(super) async fn fetch_youtube_dump_to_temporary_file(
     Ok((temporary, path))
 }
 
-async fn fetch_youtube_dump_to_path(target: &str, path: &std::path::Path) -> Result<()> {
+async fn fetch_youtube_dump_to_path(target: &str, path: &Path) -> Result<()> {
     let parsed = parse_youtube_target(target)
         .map_err(|err| anyhow::anyhow!("invalid youtube target '{target}': {}", err.message))?;
 
