@@ -104,7 +104,7 @@ pub fn validate_resolved_ips_with_audit(
 // `#[cfg(not(test))]` (tests use reqwest's default resolver so httpmock
 // servers on 127.0.0.1 stay reachable) — legitimately unused under `cfg(test)`.
 #[cfg_attr(test, allow(dead_code))]
-pub(super) fn record_resolver_denial(host: &str, blocked_ips: Vec<IpAddr>) {
+pub(crate) fn record_resolver_denial(host: &str, blocked_ips: Vec<IpAddr>) {
     let resolved_ip_class = blocked_ips
         .first()
         .copied()
@@ -193,6 +193,10 @@ fn clone_http_error(err: &HttpError) -> HttpError {
         // (neither performs a network request), but cover the variant so this
         // stays exhaustive if that ever changes.
         HttpError::Network(_) => HttpError::InvalidUrl(String::new()),
+        // Same reasoning as Network: the impersonating client performs requests,
+        // not validation, so this variant never reaches an audit builder.
+        #[cfg(feature = "tls-fingerprinting")]
+        HttpError::Impersonation(_) => HttpError::InvalidUrl(String::new()),
     }
 }
 
@@ -211,6 +215,9 @@ fn redact_ssrf_reason(err: &HttpError) -> String {
         }
         HttpError::DnsResolution { host, .. } => format!("dns resolution failed for '{host}'"),
         HttpError::Network(_) => "network error during ssrf validation".to_string(),
+        // Redacted deliberately: the wreq error text can embed the request URL.
+        #[cfg(feature = "tls-fingerprinting")]
+        HttpError::Impersonation(_) => "impersonated request error".to_string(),
     }
 }
 

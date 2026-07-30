@@ -1,5 +1,43 @@
 use std::sync::Arc;
 
+#[cfg(test)]
+mod snapshot_test_hook {
+    use std::sync::{Arc, Mutex, OnceLock};
+    use tokio::sync::Notify;
+
+    pub(super) struct Hook {
+        pub entered: Arc<Notify>,
+        pub resume: Arc<Notify>,
+    }
+
+    static HOOK: OnceLock<Mutex<Option<Hook>>> = OnceLock::new();
+
+    pub(super) fn install() -> (Arc<Notify>, Arc<Notify>) {
+        let entered = Arc::new(Notify::new());
+        let resume = Arc::new(Notify::new());
+        *HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("hook lock") = Some(Hook {
+            entered: Arc::clone(&entered),
+            resume: Arc::clone(&resume),
+        });
+        (entered, resume)
+    }
+
+    pub(super) async fn pause_once_after_read() {
+        let hook = HOOK
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .expect("hook lock")
+            .take();
+        if let Some(hook) = hook {
+            hook.entered.notify_one();
+            hook.resume.notified().await;
+        }
+    }
+}
+
 use async_trait::async_trait;
 use axon_api::source::*;
 use axon_observe::sink::SqliteObservabilitySink;
@@ -83,7 +121,7 @@ impl SqliteUnifiedJobStore {
 #[async_trait]
 impl JobStore for SqliteUnifiedJobStore {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
-        self.create_job(request).await
+        retry_job_write("job create", || self.create_job(request.clone())).await
     }
 
     async fn get(&self, job_id: JobId) -> Result<Option<JobSummary>> {
@@ -103,15 +141,29 @@ impl JobStore for SqliteUnifiedJobStore {
     }
 
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()> {
-        self.update_job_status(status).await
+        retry_job_write("job status update", || {
+            self.update_job_status(status.clone())
+        })
+        .await
     }
 
     async fn append_event(&self, event: SourceProgressEvent) -> Result<()> {
-        self.append_job_event(event).await
+        // Same rationale as `heartbeat`: progress events are emitted on every
+        // pipeline phase transition, and were the other write observed failing
+        // with 517 once the container and host CLI shared jobs.db.
+        retry_job_write("job progress event", || {
+            self.append_job_event(event.clone())
+        })
+        .await
     }
 
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()> {
-        self.record_heartbeat(heartbeat).await
+        // Retried on a transient busy condition. `record_heartbeat` opens and
+        // commits its own transaction, so re-running it is atomic. Heartbeats
+        // are the highest-frequency write in the store and were the first thing
+        // to fail with SQLITE_BUSY_SNAPSHOT (517) once a second process shared
+        // the database — and 517 is precisely what `busy_timeout` cannot cover.
+        retry_job_write("job heartbeat", || self.record_heartbeat(heartbeat.clone())).await
     }
 
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>> {
@@ -127,11 +179,11 @@ impl JobStore for SqliteUnifiedJobStore {
     }
 
     async fn cancel(&self, job_id: JobId, request: JobCancelRequest) -> Result<JobCancelResult> {
-        self.cancel_job(job_id, request).await
+        retry_job_write("job cancel", || self.cancel_job(job_id, request.clone())).await
     }
 
     async fn retry(&self, job_id: JobId, request: JobRetryRequest) -> Result<JobRetryResult> {
-        self.retry_job(job_id, request).await
+        retry_job_write("job retry", || self.retry_job(job_id, request.clone())).await
     }
 
     async fn recover(&self, request: JobRecoveryRequest) -> Result<JobRecoveryResult> {
@@ -139,11 +191,12 @@ impl JobStore for SqliteUnifiedJobStore {
     }
 
     async fn cleanup(&self, request: JobCleanupRequest) -> Result<JobCleanupResult> {
-        self.cleanup_jobs(request).await
+        retry_job_write("job cleanup", || self.cleanup_jobs(request.clone())).await
     }
 
     async fn delete_jobs(&self, job_ids: &[JobId]) -> Result<JobDeleteResult> {
-        self.delete_job_rows(job_ids).await
+        let job_ids = job_ids.to_vec();
+        retry_job_write("job delete", || self.delete_job_rows(&job_ids)).await
     }
 
     async fn artifacts(&self, request: JobArtifactListRequest) -> Result<JobArtifactListResult> {
@@ -151,12 +204,30 @@ impl JobStore for SqliteUnifiedJobStore {
     }
 
     async fn reset(&self) -> Result<()> {
-        self.reset_jobs().await
+        retry_job_write("job reset", || self.reset_jobs()).await
     }
 
     async fn capabilities(&self) -> Result<JobStoreCapability> {
         self.store_capabilities().await
     }
+}
+
+/// Retry every `JobStore` mutation at the public store boundary. Each delegated
+/// operation owns one SQLite transaction (or is idempotent); restarting the
+/// whole boundary operation discards a stale WAL snapshot instead of trying to
+/// continue it. Keep this wrapper here rather than at individual SQL calls so
+/// new write paths cannot silently miss `SQLITE_BUSY_SNAPSHOT` coverage.
+pub(crate) async fn retry_job_write<T, F, Fut>(what: &str, op: F) -> Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    axon_core::sqlite::retry_on(
+        what,
+        |e: &ApiError| axon_core::sqlite::message_is_retryable_busy(&e.to_string()),
+        op,
+    )
+    .await
 }
 
 #[cfg(test)]

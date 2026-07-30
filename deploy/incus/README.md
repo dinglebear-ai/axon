@@ -6,9 +6,19 @@ One Incus system container (`axon-container-profile`) runs:
   a full Docker Engine + Compose internally, using `docker-compose.prod.yaml`
   largely unchanged.
 - **axon itself as a native binary managed by systemd** (`axon-native.service`),
-  built directly inside the container from the repo's own Dockerfile
-  builder/runtime stages, *not* as another nested-Docker service — see
-  "Why axon is native, not nested-Docker" below.
+  deployed atomically from the host's validated `target/release-fast/axon`
+  artifact, *not* as another nested-Docker service — see "Why axon is native,
+  not nested-Docker" below.
+
+The container base is Ubuntu 26.04, matching dookie's glibc baseline. This is
+intentional: host-built Axon binaries can be deployed directly into the native
+service, rather than maintaining a second binary built against an older guest
+glibc.
+
+`bootstrap.sh` refuses to deploy to any other guest base. It deploys the
+host's validated `target/release-fast/axon` artifact atomically by default; set
+`AXON_INCUS_BINARY` only when deliberately selecting another already-built
+host artifact. It does not build Axon inside the guest.
 
 See `docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md` for the
 (retained, harmless) Incus 6.3+/Zabbly upgrade this deployment builds on, and
@@ -32,9 +42,48 @@ correctly the entire time, ruling out a general nested-networking bug).
 Running axon as a native binary via systemd sidesteps that hop entirely — it
 binds directly in the Incus container's own network namespace, and reaches
 qdrant/tei/chrome over their already-published `127.0.0.1` ports like any
-other client would. `bootstrap.sh` builds the binary via `docker build
---target runtime` (same Dockerfile stage production images use) and installs
-`axon-native.service`.
+other client would. `bootstrap.sh` atomically installs a validated host-built
+binary and refreshes `axon-native.service`.
+
+## Migrating a legacy guest to Ubuntu 26.04
+
+`bootstrap.sh` intentionally stops before deployment if the existing instance
+is not `ubuntu:26.04`; changing a launch image cannot change an existing
+Incus rootfs. Do not delete the legacy instance in place: its isolated idmap
+and any manually created proxy device are instance-specific.
+
+From the repository root, snapshot and retain the old guest, then let the
+bootstrap create a new instance with the original name and profile:
+
+```bash
+container="${AXON_INCUS_CONTAINER:-axon}"
+retired="${container}-legacy-$(date +%Y%m%d)"
+
+# Preserve rollback state and record any instance-local devices, especially
+# mcp-publish. The profile owns axon-data and axon-gemini mounts.
+incus snapshot create "$container" pre-ubuntu-26-04
+incus config show "$container" --expanded > "${container}-legacy-expanded.yaml"
+incus config device show "$container" > "${container}-legacy-devices.yaml"
+incus stop "$container"
+incus rename "$container" "$retired"
+
+# Use the same explicit listener value if the recorded mcp-publish device had
+# one. Do not publish 0.0.0.0.
+AXON_INCUS_PUBLISH_LISTEN="100.88.16.79:40090" \
+  deploy/incus/bootstrap.sh default
+```
+
+The profile recreates the dedicated `/mnt/axon-data` and read-only
+`/mnt/axon-gemini` mounts. Because `security.idmap.isolated` allocates a new
+host mapping, restore their ownership for the new container's UID/GID 1000
+before treating the deployment as healthy. Read the new mapping from
+`volatile.idmap.current`—never reuse the retired instance's host IDs—then
+`chown` the two host directories to the mapped IDs. Verify inside the new
+guest with `incus exec "$container" -- sh -c 'touch /mnt/axon-data/.idmap-check && rm /mnt/axon-data/.idmap-check'`.
+
+Keep `$retired` stopped until the new container has passed bootstrap and its
+health checks. The retained snapshot and instance are the rollback path; only
+delete them after the new deployment has been observed stable.
 
 ## Profile
 

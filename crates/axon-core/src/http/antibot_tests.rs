@@ -25,7 +25,12 @@ fn detects_cloudflare_chl_opt() {
 
 #[test]
 fn detects_cloudflare_challenge_platform() {
-    let body = "<html><script src=\"/cdn-cgi/challenge-platform/...\"></script></html>";
+    // Was `/cdn-cgi/challenge-platform/...` — a placeholder that matched the
+    // old bare-substring rule. That rule also matched Cloudflare's passive
+    // `/scripts/jsd/` beacon on ordinary 200 pages, so the test was asserting
+    // the false-positive behaviour. Uses the real orchestrate path now; the
+    // beacon case is pinned by `cloudflare_passive_jsd_beacon_is_not_a_challenge`.
+    let body = "<html><script src=\"/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1\"></script></html>";
     let d = detect_challenge(body, no_headers, 150_000).unwrap();
     assert_eq!(d.vendor, ChallengeVendor::Cloudflare);
 }
@@ -162,4 +167,40 @@ fn huge_body_fingerprint_past_head_is_missed_by_design() {
     body.push_str(&"x".repeat(5 * 1024 * 1024));
     body.push_str("<script>var _cf_chl_opt = {};</script></html>");
     assert!(detect_challenge(&body, no_headers, 150_000).is_none());
+}
+
+/// Cloudflare injects this beacon into ORDINARY served pages, not challenges.
+/// Verbatim from townofpageland.com (HTTP 200, 68 KB, 43 links) on 2026-07-29.
+const CF_PASSIVE_JSD_BEACON: &str = r#"<html><head><title>Welcome To Pageland, South Carolina</title>
+<script>var a=document.createElement('script');
+a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';
+document.getElementsByTagName('head')[0].appendChild(a);</script></head>
+<body><a href="/government">Government</a><a href="/contact">Contact</a></body></html>"#;
+
+#[test]
+fn cloudflare_passive_jsd_beacon_is_not_a_challenge() {
+    // Regression: the bare substring `challenge-platform` used to match here,
+    // so every Cloudflare-fronted site was reported as a bot wall. Pageland
+    // mapped 0 URLs because of it, and the impersonated retry saw the same
+    // beacon and "confirmed" the false wall.
+    assert_eq!(
+        detect_challenge(CF_PASSIVE_JSD_BEACON, |_| None, 150 * 1024),
+        None,
+        "a passive JS-detection beacon on a normal 200 page is not a challenge"
+    );
+}
+
+#[test]
+fn cloudflare_real_challenge_still_detected() {
+    // The challenge-options blob only appears on a genuine interstitial.
+    let chl_opt = r#"<html><head><script>window._cf_chl_opt={cvId:"3"};</script></head></html>"#;
+    let d = detect_challenge(chl_opt, |_| None, 150 * 1024)
+        .expect("_cf_chl_opt is a definitive Cloudflare challenge signal");
+    assert_eq!(d.vendor, ChallengeVendor::Cloudflare);
+
+    // As does the orchestrate path, which is distinct from /scripts/jsd/.
+    let orchestrate = r#"<html><body><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script></body></html>"#;
+    let d = detect_challenge(orchestrate, |_| None, 150 * 1024)
+        .expect("the orchestrate path is a real challenge");
+    assert_eq!(d.vendor, ChallengeVendor::Cloudflare);
 }

@@ -47,6 +47,7 @@ CONTAINER_NAME="${AXON_INCUS_CONTAINER:-axon}"
 PROFILE_NAME="axon-container-profile"
 GPU_PCI_ADDRESS="${AXON_GPU_PCI_ADDRESS:-0000:03:00.0}"
 DEPLOY_PATH="/opt/axon-deploy"
+HOST_AXON_BINARY="${AXON_INCUS_BINARY:-$REPO_ROOT/target/release-fast/axon}"
 MODE="${1:-default}"
 
 log() { echo "[bootstrap] $*"; }
@@ -73,8 +74,11 @@ fi
 
 ### 2. Container: create if missing.
 if ! incus info "$CONTAINER_NAME" >/dev/null 2>&1; then
-  log "creating container $CONTAINER_NAME"
-  incus launch images:debian/bookworm "$CONTAINER_NAME" -p default -p "$PROFILE_NAME"
+  log "creating container $CONTAINER_NAME from Ubuntu 26.04 (host glibc-compatible)"
+  # Keep the native axon service ABI-compatible with dookie.  A Debian 12
+  # guest provides glibc 2.36 while dookie's host-built binary requires the
+  # host's Ubuntu 26.04 glibc baseline, forcing a second container-only build.
+  incus launch images:ubuntu/26.04 "$CONTAINER_NAME" -p default -p "$PROFILE_NAME"
 else
   log "container $CONTAINER_NAME already exists"
 fi
@@ -97,9 +101,17 @@ for _ in $(seq 1 30); do
 done
 [ "$ready" = "1" ] || fatal "container did not become exec-ready within 60s"
 
+# A base-image change only takes effect when the instance is created.  Never
+# silently continue on an older guest: doing so reintroduces the glibc ABI
+# mismatch this deployment exists to remove. See deploy/incus/README.md's
+# "Migrating a legacy guest to Ubuntu 26.04" procedure; it snapshots and
+# retains the legacy instance rather than deleting its data or devices here.
+guest_os="$(incus exec "$CONTAINER_NAME" -- sh -c '. /etc/os-release; printf "%s:%s" "$ID" "$VERSION_ID"')"
+[ "$guest_os" = "ubuntu:26.04" ] || fatal "${CONTAINER_NAME} is ${guest_os}, not ubuntu:26.04; recreate it with the documented Incus migration before deploying a host-built binary"
+
 ### 5. Install Docker inside the container if missing (idempotent). Needed
-### for the nested qdrant/tei/chrome services (and to build axon's own
-### binary via the repo's Dockerfile builder stage — see step 15).
+### for the nested qdrant/tei/chrome services. Axon's native binary is pushed
+### from the host in step 15 and is not built inside this guest.
 if ! incus exec "$CONTAINER_NAME" -- sh -c 'command -v docker' >/dev/null 2>&1; then
   log "Docker not found inside container, installing..."
   incus exec "$CONTAINER_NAME" -- sh -c '
@@ -107,11 +119,11 @@ if ! incus exec "$CONTAINER_NAME" -- sh -c 'command -v docker' >/dev/null 2>&1; 
     apt-get update
     apt-get install -y ca-certificates curl gnupg
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     chmod a+r /etc/apt/keyrings/docker.asc
     codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
     arch="$(dpkg --print-architecture)"
-    echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian ${codename} stable" \
+    echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable" \
       > /etc/apt/sources.list.d/docker.list
     apt-get update
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -292,35 +304,23 @@ if [ "$healthy" != "1" ]; then
   fatal "not all nested-Docker services reported healthy within the bounded window (360s) — inspect 'docker compose ps' inside $CONTAINER_NAME"
 fi
 
-### 15. Build axon's own binary directly inside the container, using the
-### repo's own Dockerfile builder+runtime stages (matches production exactly
-### — same rust:1.94.0-bookworm toolchain, same feature flags, no ad hoc
-### `cargo build` invocation to keep in sync separately). Fed via a tar
-### stream on stdin rather than pushing the whole repo tree to a persistent
-### path first — avoids managing a stale source checkout inside the
-### container between runs. This is genuinely slow on a cold nested-Docker
-### build-cache (large workspace, no compiler cache inside the container) — expect
-### several minutes on the very first run; subsequent runs reuse Docker's
-### layer/BuildKit cache as long as the container itself isn't recreated.
-log "building axon runtime image inside the container (this can take a while on a cold cache)"
-tar cf - -C "$REPO_ROOT" \
-    --exclude=target --exclude=.git --exclude=node_modules \
-    --exclude=.worktrees --exclude='apps/*/node_modules' . \
-  | incus exec "$CONTAINER_NAME" -- docker build -q -f config/Dockerfile --target runtime -t axon-native:runtime - \
-  > /dev/null
-
-log "extracting axon binary from the built image"
-incus exec "$CONTAINER_NAME" -- sh -c '
-  set -e
-  cid="$(docker create axon-native:runtime)"
-  docker cp "$cid:/usr/local/bin/axon" /usr/local/bin/axon
-  docker rm "$cid" >/dev/null
-  chmod 755 /usr/local/bin/axon
-'
+### 15. Deploy the already-validated host binary. The Ubuntu guest shares
+### dookie's glibc baseline, so an in-container rebuild is both unnecessary
+### and a source of artifact drift. Nested Docker remains for TEI/Chrome only.
+[ -x "$HOST_AXON_BINARY" ] || fatal "host Axon binary not executable: $HOST_AXON_BINARY (build it first or set AXON_INCUS_BINARY)"
+host_arch="$(uname -m)"
+guest_arch="$(incus exec "$CONTAINER_NAME" -- uname -m)"
+[ "$host_arch" = "$guest_arch" ] || fatal "host/container architecture mismatch: ${host_arch} != ${guest_arch}"
+host_sha="$(sha256sum "$HOST_AXON_BINARY" | awk '{print $1}')"
+log "atomically deploying host Axon binary (${host_sha})"
+incus file push "$HOST_AXON_BINARY" "$CONTAINER_NAME/usr/local/bin/axon.new"
+guest_sha="$(incus exec "$CONTAINER_NAME" -- sha256sum /usr/local/bin/axon.new | awk '{print $1}')"
+[ "$host_sha" = "$guest_sha" ] || fatal "pushed Axon binary checksum mismatch"
+incus exec "$CONTAINER_NAME" -- sh -c 'chmod 755 /usr/local/bin/axon.new && mv -f /usr/local/bin/axon.new /usr/local/bin/axon'
 
 ### 16. Install/refresh the axon-native systemd unit and (re)start it — always
 ### restart, even if the unit already existed, so a re-run of this script
-### picks up a freshly built binary. AXON_HOME/AXON_DATA_DIR are forced to
+### picks up a freshly deployed binary. AXON_HOME/AXON_DATA_DIR are forced to
 ### the Incus-internal mount path (the shared env file's own values are
 ### bare-host paths, not valid inside this container — same reasoning as the
 ### compose AXON_HOME override this replaced). AXON_HTTP_HOST is forced to

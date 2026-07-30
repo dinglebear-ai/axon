@@ -1,131 +1,14 @@
-//! Targeted tests for sitemap-first map behavior.
+//! Sitemap-layer map tests: robots.txt -> sitemap.xml -> scoped URLs,
+//! sitemapindex recursion, host scoping, and the thin-sitemap fallback gate.
 //!
-//! Tests cover bounded adapter-owned discovery:
-//!   sitemap discovery -> llms.txt discovery -> root-page anchors
-//!
-//! All tests use httpmock for network isolation.
+//! Anchor and llms.txt layers live in `map_fallback_tests`.
+//! Shared fixtures live in `map_test_support`.
 
-use axon_core::config::{Config, RenderMode};
+use super::map_test_support::*;
+use axon_core::config::Config;
 use axon_core::http::LoopbackGuard;
-use axon_services::context::ServiceContext;
-use axon_services::map::discover_with_context;
-use axon_services::types::MapOptions;
 use httpmock::prelude::*;
 use serial_test::serial;
-use std::sync::Arc;
-
-async fn map_payload(
-    cfg: &Config,
-    start_url: &str,
-) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-    let temp = tempfile::tempdir()?;
-    let mut isolated_cfg = cfg.clone();
-    isolated_cfg.sqlite_path = temp.path().join("jobs.db");
-    isolated_cfg.output_dir = temp.path().join("output");
-    let context = ServiceContext::new_with_workers(Arc::new(isolated_cfg))
-        .await
-        .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })?;
-    let result = discover_with_context(
-        &context,
-        start_url,
-        MapOptions {
-            limit: 0,
-            offset: 0,
-        },
-        None,
-    )
-    .await?;
-    if result.map_source == "unsupported" {
-        return Err(format!(
-            "map source pipeline failed: {}",
-            result.warning.as_deref().unwrap_or("no warning")
-        )
-        .into());
-    }
-    Ok(serde_json::to_value(result)?)
-}
-
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-fn base_config() -> Config {
-    Config {
-        json_output: true,
-        discover_sitemaps: true,
-        fetch_retries: 0,
-        retry_backoff_ms: 0,
-        request_timeout_ms: Some(5_000),
-        render_mode: RenderMode::Http,
-        ..Config::default()
-    }
-}
-
-fn sitemap_xml(urls: &[&str]) -> String {
-    let mut xml = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-"#,
-    );
-    for url in urls {
-        xml.push_str(&format!("  <url><loc>{url}</loc></url>\n"));
-    }
-    xml.push_str("</urlset>\n");
-    xml
-}
-
-fn sitemap_index_xml(child_urls: &[&str]) -> String {
-    let mut xml = String::from(
-        r#"<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-"#,
-    );
-    for url in child_urls {
-        xml.push_str(&format!("  <sitemap><loc>{url}</loc></sitemap>\n"));
-    }
-    xml.push_str("</sitemapindex>\n");
-    xml
-}
-
-/// Register all default sitemap seed paths as 404, except the one being tested.
-fn mock_all_sitemaps_404(server: &MockServer) {
-    for path in &[
-        "/sitemap.xml",
-        "/sitemap_index.xml",
-        "/sitemap-index.xml",
-        "/wp-sitemap.xml",
-        "/sitemap/sitemap-index.xml",
-    ] {
-        server.mock(|when, then| {
-            when.method(GET).path(*path);
-            then.status(404);
-        });
-    }
-    server.mock(|when, then| {
-        when.method(GET).path("/robots.txt");
-        then.status(404);
-    });
-}
-
-/// Register the 4 non-`/sitemap.xml` default seed paths as 404. Used by tests that mock
-/// `/sitemap.xml` (and `/robots.txt`) themselves but need the remaining index seeds absent.
-fn mock_index_seeds_404(server: &MockServer) {
-    for path in &[
-        "/sitemap_index.xml",
-        "/sitemap-index.xml",
-        "/wp-sitemap.xml",
-        "/sitemap/sitemap-index.xml",
-    ] {
-        server.mock(|when, then| {
-            when.method(GET).path(*path);
-            then.status(404);
-        });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Test 1: Sitemap-first behavior — robots.txt → sitemap.xml → 10 URLs
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[serial]
@@ -178,13 +61,19 @@ async fn test_sitemap_first_uses_sitemap_urls() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: Fallback trigger correctness — sitemap parsed but all out-of-scope
-//         → map_source stays "sitemap", no anchor fallback
+// Test 2: Fallback trigger correctness — a sitemap that parsed but yielded too
+//         few in-scope URLs must STILL fall through to anchor discovery, and
+//         the two layers must merge.
+//
+// Regression: the trigger used to be `parsed_sitemap_documents == 0`, so a
+// sitemap listing only out-of-scope hosts returned 0 URLs with a null warning
+// and never reached anchors. www.lex-co.sc.gov mapped 0 URLs this way — its
+// sitemap lists a single apex URL while the crawl was seeded from `www.`.
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[serial]
-async fn test_out_of_scope_sitemap_no_anchor_fallback() {
+async fn test_out_of_scope_sitemap_falls_back_to_anchors() {
     let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
@@ -205,44 +94,7 @@ async fn test_out_of_scope_sitemap_no_anchor_fallback() {
     });
     mock_index_seeds_404(&server);
 
-    let cfg = base_config();
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    // map_source must be "sitemap" — sitemap was parsed even though all URLs were out-of-scope.
-    // The fallback trigger is parsed_sitemap_documents == 0, not urls.len() == 0.
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("sitemap"),
-        "map_source must be 'sitemap' when sitemap was parsed but all URLs out-of-scope"
-    );
-    // URLs must be empty (all filtered out)
-    let urls = result["urls"].as_array().expect("urls must be array");
-    assert_eq!(
-        urls.len(),
-        0,
-        "expected 0 URLs after scope filtering, got {urls:?}"
-    );
-    // warning must be null — no anchor fallback was triggered
-    assert!(
-        result["warning"].is_null(),
-        "warning must be null when sitemap was parsed (no anchor fallback)"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Test 3: Bounded structure fallback — no sitemap → root page anchors
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[serial]
-async fn test_bounded_structure_fallback_uses_anchor_hrefs() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    mock_all_sitemaps_404(&server);
-
-    // Root page with internal anchor links
+    // Root page carries in-scope anchors the sitemap never advertised.
     let link_html = (1..=10)
         .map(|i| format!(r#"<a href="{base}/section-{i}">Section {i}</a>"#))
         .collect::<Vec<_>>()
@@ -257,80 +109,86 @@ async fn test_bounded_structure_fallback_uses_anchor_hrefs() {
     let cfg = base_config();
     let result = map_payload(&cfg, &base).await.expect("map_payload failed");
 
+    // Both layers ran, so the source names both.
     assert_eq!(
         result["map_source"].as_str(),
-        Some("bounded-structure"),
-        "expected map_source=bounded-structure when no sitemaps found"
+        Some("sitemap+bounded-structure"),
+        "a thin/out-of-scope sitemap must still reach anchor discovery"
     );
     let urls = result["urls"].as_array().expect("urls must be array");
     assert!(
         !urls.is_empty(),
-        "expected anchor URLs in bounded-structure mode, got empty"
+        "anchors must be recovered when the sitemap yields nothing in scope"
     );
-    // Verify the URLs are from the mock server host
     for url in urls {
         let u = url.as_str().expect("url must be a string");
         assert!(
             u.contains("127.0.0.1") || u.contains("localhost"),
-            "expected internal URL, got: {u}"
+            "out-of-scope sitemap host must not leak into results, got: {u}"
         );
     }
+    assert!(
+        result["warning"].is_null(),
+        "no warning expected once anchors supplied a healthy map, got {:?}",
+        result["warning"]
+    );
 }
-
-// ---------------------------------------------------------------------------
-// Test 4: No-crawl lock-in — bounded-structure mode does NOT invoke Spider
-// ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[serial]
-async fn test_structure_mode_does_not_crawl() {
+async fn test_thin_sitemap_still_reaches_anchor_discovery() {
     let _guard = LoopbackGuard::allow();
     let server = MockServer::start();
     let base = server.base_url();
 
-    mock_all_sitemaps_404(&server);
+    // A parsed, in-scope, but THIN sitemap: one URL. Previously this returned
+    // immediately with a single URL; anchors must now top it up.
+    server.mock(|when, then| {
+        when.method(GET).path("/robots.txt");
+        then.status(404);
+    });
+    server.mock(|when, then| {
+        when.method(GET).path("/sitemap.xml");
+        then.status(200)
+            .header("content-type", "application/xml")
+            .body(sitemap_xml(&[&format!("{base}/only-known-page")]));
+    });
+    mock_index_seeds_404(&server);
 
-    // Root page with some links
-    let root_mock = server.mock(|when, then| {
+    let link_html = (1..=10)
+        .map(|i| format!(r#"<a href="{base}/section-{i}">Section {i}</a>"#))
+        .collect::<Vec<_>>()
+        .join("\n");
+    server.mock(|when, then| {
         when.method(GET).path("/");
         then.status(200)
             .header("content-type", "text/html")
-            .body(format!(
-                r#"<html><body>
-                    <a href="{base}/doc1">Doc 1</a>
-                    <a href="{base}/doc2">Doc 2</a>
-                    <a href="{base}/doc3">Doc 3</a>
-                    <a href="{base}/doc4">Doc 4</a>
-                    <a href="{base}/doc5">Doc 5</a>
-                </body></html>"#
-            ));
-    });
-
-    // These pages must NOT be fetched in bounded-structure mode.
-    // If Spider crawls, it would fetch these — track hits to detect crawling.
-    let deep_mock = server.mock(|when, then| {
-        when.method(GET).path_matches(r"^/doc\d+$");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body("<html><body>deep page content</body></html>");
+            .body(format!("<html><body>{link_html}</body></html>"));
     });
 
     let cfg = base_config();
     let result = map_payload(&cfg, &base).await.expect("map_payload failed");
 
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("bounded-structure"),
-        "expected bounded-structure"
+    let urls: Vec<&str> = result["urls"]
+        .as_array()
+        .expect("urls must be array")
+        .iter()
+        .map(|u| u.as_str().expect("url must be a string"))
+        .collect();
+
+    assert!(
+        urls.iter().any(|u| u.ends_with("/only-known-page")),
+        "sitemap entry must survive the merge, got {urls:?}"
     );
-    // Root was fetched once for anchor extraction
-    assert!(root_mock.calls() >= 1, "root page should be fetched");
-    // Deep pages must NOT be fetched — Spider crawl was NOT triggered
-    assert_eq!(
-        deep_mock.calls(),
-        0,
-        "deep pages must NOT be fetched in bounded-structure mode (no Spider crawl)"
+    assert!(
+        urls.iter().any(|u| u.contains("/section-")),
+        "anchor URLs must be merged in, got {urls:?}"
     );
+    // Merge must not duplicate.
+    let mut deduped = urls.clone();
+    deduped.sort_unstable();
+    deduped.dedup();
+    assert_eq!(deduped.len(), urls.len(), "merged map contains duplicates");
 }
 
 // ---------------------------------------------------------------------------
@@ -447,53 +305,6 @@ async fn test_sitemap_out_of_host_urls_filtered() {
 }
 
 // ---------------------------------------------------------------------------
-// Security — cross-origin anchor URLs NOT in bounded-structure output
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[serial]
-async fn test_bounded_structure_cross_origin_filtered() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    mock_all_sitemaps_404(&server);
-
-    server.mock(|when, then| {
-        when.method(GET).path("/");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body(format!(
-                r#"<html><body>
-                    <a href="{base}/safe-page">Safe</a>
-                    <a href="https://other.example.com/external">External</a>
-                    <a href="https://evil.example.com/phish">Evil</a>
-                </body></html>"#
-            ));
-    });
-
-    let cfg = base_config();
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    let urls: Vec<&str> = result["urls"]
-        .as_array()
-        .expect("urls must be array")
-        .iter()
-        .map(|v| v.as_str().expect("url must be string"))
-        .collect();
-
-    // Cross-origin URLs must not appear
-    assert!(
-        !urls.iter().any(|u| u.contains("other.example.com")),
-        "cross-origin URL must not appear in bounded-structure output: {urls:?}"
-    );
-    assert!(
-        !urls.iter().any(|u| u.contains("evil.example.com")),
-        "cross-origin URL must not appear in bounded-structure output: {urls:?}"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Test 9: pages_seen = 0 in sitemap mode
 // ---------------------------------------------------------------------------
 
@@ -532,54 +343,6 @@ async fn test_pages_seen_zero_in_sitemap_mode() {
         result["pages_seen"].as_u64(),
         Some(0),
         "pages_seen must be 0 in sitemap mode (no pages crawled)"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// Warning field set when bounded-structure returns fewer than 5 URLs
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-#[serial]
-async fn test_warning_when_bounded_structure_too_few_urls() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    mock_all_sitemaps_404(&server);
-
-    // Root page with only 3 internal links — fewer than 5
-    server.mock(|when, then| {
-        when.method(GET).path("/");
-        then.status(200)
-            .header("content-type", "text/html")
-            .body(format!(
-                r#"<html><body>
-                    <a href="{base}/p1">P1</a>
-                    <a href="{base}/p2">P2</a>
-                    <a href="{base}/p3">P3</a>
-                </body></html>"#
-            ));
-    });
-
-    let cfg = base_config();
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("bounded-structure"),
-        "expected bounded-structure"
-    );
-    // warning must be non-null when fewer than 5 URLs found
-    assert!(
-        result["warning"].is_string(),
-        "warning must be a non-null string when bounded-structure returns < 5 URLs, got: {}",
-        result["warning"]
-    );
-    let warning_text = result["warning"].as_str().unwrap();
-    assert!(
-        warning_text.contains("dynamic navigation"),
-        "warning should explain bounded discovery limits: {warning_text}"
     );
 }
 
@@ -690,163 +453,5 @@ async fn test_discover_sitemaps_false_skips_sitemap_fetch() {
     assert!(
         !url_strs.iter().any(|u| u.contains("from-sitemap-")),
         "sitemap URLs must NOT appear when discovery is disabled: {url_strs:?}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// llms.txt union + dedupe into sitemap discovery
-// ---------------------------------------------------------------------------
-
-fn llms_txt_body(urls: &[&str]) -> String {
-    let mut s = String::from("# Docs\n\n> Summary.\n\n## Pages\n\n");
-    for url in urls {
-        s.push_str(&format!("- [link]({url})\n"));
-    }
-    s
-}
-
-#[tokio::test]
-#[serial]
-async fn map_unions_sitemap_and_llms_txt_deduped() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    let a = format!("{base}/a");
-    let b = format!("{base}/b");
-    let c = format!("{base}/c");
-
-    server.mock(|when, then| {
-        when.method(GET).path("/robots.txt");
-        then.status(404);
-    });
-    server.mock(|when, then| {
-        when.method(GET).path("/sitemap.xml");
-        then.status(200)
-            .header("content-type", "application/xml")
-            .body(sitemap_xml(&[a.as_str(), b.as_str()]));
-    });
-    mock_index_seeds_404(&server);
-    // llms.txt links /b (overlaps sitemap) and /c (new).
-    server.mock(|when, then| {
-        when.method(GET).path("/llms.txt");
-        then.status(200)
-            .header("content-type", "text/plain")
-            .body(llms_txt_body(&[b.as_str(), c.as_str()]));
-    });
-
-    let cfg = base_config();
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    let urls: Vec<String> = result["urls"]
-        .as_array()
-        .expect("urls must be array")
-        .iter()
-        .map(|v| v.as_str().unwrap_or_default().to_string())
-        .collect();
-    assert_eq!(urls.len(), 3, "a,b,c with b deduped, got {urls:?}");
-    assert!(urls.iter().any(|u| u.ends_with("/a")));
-    assert!(urls.iter().any(|u| u.ends_with("/b")));
-    assert!(urls.iter().any(|u| u.ends_with("/c")));
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("sitemap+llms"),
-        "map_source must reflect both sources"
-    );
-}
-
-#[tokio::test]
-#[serial]
-async fn map_skips_llms_txt_when_disabled() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    let a = format!("{base}/a");
-
-    server.mock(|when, then| {
-        when.method(GET).path("/robots.txt");
-        then.status(404);
-    });
-    server.mock(|when, then| {
-        when.method(GET).path("/sitemap.xml");
-        then.status(200)
-            .header("content-type", "application/xml")
-            .body(sitemap_xml(&[a.as_str()]));
-    });
-    mock_index_seeds_404(&server);
-    // If discover_llms_txt is honored as false, this mock must never be hit.
-    let llms_mock = server.mock(|when, then| {
-        when.method(GET).path("/llms.txt");
-        then.status(200)
-            .header("content-type", "text/plain")
-            .body(llms_txt_body(&[
-                format!("{base}/should-not-appear").as_str()
-            ]));
-    });
-
-    let cfg = Config {
-        discover_llms_txt: false,
-        ..base_config()
-    };
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    assert_eq!(
-        llms_mock.calls(),
-        0,
-        "/llms.txt must not be fetched when disabled"
-    );
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("sitemap"),
-        "map_source must be plain sitemap when llms.txt disabled"
-    );
-}
-
-/// llms-only branch: every sitemap path 404s (no sitemap parsed) but `/llms.txt` is valid.
-/// The curated llms.txt links must survive — `map_source` is "llms" and they appear in the
-/// result. Guards the early-return-drop regression where no-sitemap root-anchor discovery
-/// lost the llms.txt links. `map_source:"llms"` had no test.
-#[tokio::test]
-#[serial]
-async fn map_llms_only_when_no_sitemap() {
-    let _guard = LoopbackGuard::allow();
-    let server = MockServer::start();
-    let base = server.base_url();
-
-    let x = format!("{base}/x");
-    let y = format!("{base}/y");
-
-    // No sitemap anywhere (all seeds + robots 404).
-    mock_all_sitemaps_404(&server);
-    // Valid llms.txt with two same-host links.
-    server.mock(|when, then| {
-        when.method(GET).path("/llms.txt");
-        then.status(200)
-            .header("content-type", "text/plain")
-            .body(llms_txt_body(&[x.as_str(), y.as_str()]));
-    });
-
-    let cfg = base_config();
-    let result = map_payload(&cfg, &base).await.expect("map_payload failed");
-
-    assert_eq!(
-        result["map_source"].as_str(),
-        Some("llms"),
-        "map_source must be 'llms' when only llms.txt yields URLs"
-    );
-    let urls: Vec<String> = result["urls"]
-        .as_array()
-        .expect("urls must be array")
-        .iter()
-        .map(|v| v.as_str().unwrap_or_default().to_string())
-        .collect();
-    assert!(
-        urls.iter().any(|u| u.ends_with("/x")),
-        "llms.txt URL /x must be present: {urls:?}"
-    );
-    assert!(
-        urls.iter().any(|u| u.ends_with("/y")),
-        "llms.txt URL /y must be present: {urls:?}"
     );
 }

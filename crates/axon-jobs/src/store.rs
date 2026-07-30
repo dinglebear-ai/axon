@@ -74,6 +74,69 @@ pub async fn checkpoint_and_close(pool: &SqlitePool) {
     pool.close().await;
 }
 
+/// How often the `PRAGMA quick_check` integrity probe actually runs.
+const INTEGRITY_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
+/// Marker path recording the last successful integrity probe.
+fn integrity_marker_path(db_path: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("{db_path}.integrity-checked"))
+}
+
+/// True when the probe is due: no marker, an unreadable marker, or one older
+/// than [`INTEGRITY_PROBE_INTERVAL`]. Fails OPEN — any doubt runs the probe, so
+/// a missing or corrupt marker never silently disables corruption detection.
+fn should_run_integrity_probe(db_path: &str) -> bool {
+    if db_path == ":memory:" {
+        return false;
+    }
+    let Ok(meta) = std::fs::metadata(integrity_marker_path(db_path)) else {
+        return true;
+    };
+    let Ok(modified) = meta.modified() else {
+        return true;
+    };
+    modified
+        .elapsed()
+        .map(|age| age >= INTEGRITY_PROBE_INTERVAL)
+        .unwrap_or(true)
+}
+
+/// Record a clean probe. Best-effort: a write failure just means the next start
+/// probes again, which is the safe direction.
+fn record_integrity_probe(db_path: &str) {
+    if db_path == ":memory:" {
+        return;
+    }
+    let _ = std::fs::write(integrity_marker_path(db_path), b"ok");
+}
+
+/// Run SQLite's integrity probe and distinguish an unhealthy database from a
+/// probe that could not run at all. Callers must only advance the marker after
+/// a successful `ok` result: treating a busy/I/O failure as clean would hide a
+/// later corruption check for the entire probe interval.
+async fn quick_check_is_clean(pool: &SqlitePool) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
+        .fetch_optional(pool)
+        .await?;
+    Ok(matches!(result.as_deref(), Some("ok")))
+}
+
+/// Apply a completed integrity probe without ever advancing the marker for an
+/// inconclusive probe. Returns whether corruption was positively detected.
+fn finish_integrity_probe(db_path: &str, result: Result<bool, sqlx::Error>) -> bool {
+    match result {
+        Ok(true) => {
+            record_integrity_probe(db_path);
+            false
+        }
+        Ok(false) => true,
+        Err(error) => {
+            tracing::warn!(error = %error, "jobs: quick_check could not run; leaving integrity probe due");
+            false
+        }
+    }
+}
+
 /// Like `open_sqlite_pool`, but recovers automatically if the database is
 /// corrupted (`SQLITE_CORRUPT` / code 11).
 ///
@@ -90,13 +153,20 @@ pub async fn open_sqlite_pool_or_recover(path: &str) -> Result<SqlitePool, sqlx:
         Ok(pool) => {
             // Quick integrity probe — catches corruption that slipped past the
             // open (e.g. partial WAL frames from a prior SIGKILL).
-            let corrupt = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
-                .fetch_optional(&pool)
-                .await
-                .ok()
-                .flatten()
-                .map(|s| s != "ok")
-                .unwrap_or(false);
+            //
+            // Throttled: on a 176 MB jobs.db this takes ~1.2s and holds a read
+            // snapshot on a pooled connection for its whole duration. Running
+            // it on EVERY process start meant a long-lived reader sat across
+            // other processes' writes and WAL checkpoints — the textbook setup
+            // for SQLITE_BUSY_SNAPSHOT (517), which `busy_timeout` cannot
+            // retry. Corruption does not appear spontaneously between two runs
+            // seconds apart, so a periodic probe keeps the guarantee that
+            // matters at a fraction of the contention cost.
+            let corrupt = if should_run_integrity_probe(path) {
+                finish_integrity_probe(path, quick_check_is_clean(&pool).await)
+            } else {
+                false
+            };
             if !corrupt {
                 axon_core::sqlite::register_active_db_lock(active_lock)?;
                 return Ok(pool);
@@ -143,3 +213,7 @@ pub async fn count_pending_jobs(sqlite_path: &Path) -> i64 {
     let _ = sqlite_path;
     0
 }
+
+#[cfg(test)]
+#[path = "store_tests.rs"]
+mod tests;

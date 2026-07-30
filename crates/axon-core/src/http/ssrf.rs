@@ -3,6 +3,9 @@
 mod audit;
 
 pub use audit::{validate_resolved_ips_with_audit, validate_url_with_audit};
+// Shared with the wreq resolver in `impersonate` so both stacks audit denials.
+#[cfg(feature = "tls-fingerprinting")]
+pub(crate) use audit::record_resolver_denial;
 
 use spider::url::Url;
 use std::net::IpAddr;
