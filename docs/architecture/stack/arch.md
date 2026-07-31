@@ -1,3 +1,9 @@
+---
+title: "Architecture Overview -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Architecture Overview -- Axon
 
 > Current pre-#298 runtime architecture. The target source-pipeline crate and

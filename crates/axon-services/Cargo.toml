@@ -4,8 +4,13 @@ build = "build.rs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon services layer: typed entry points (query/ask/scrape/ingest/crawl/embed/memory/system) shared by CLI, MCP, and HTTP"
-license = "MIT"
+description = "Typed Axon application services and cross-domain runtime composition shared by all transports."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-core = { path = "../axon-core" }
@@ -94,6 +99,11 @@ scraper = "0.22"
 dotenvy = "0.15"
 url = "2"
 libc = "0.2"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

@@ -55,8 +55,11 @@ pub(crate) struct TerminalRunResult {
 /// Resolve the user's shell: `$SHELL` first, then a platform-appropriate
 /// fallback. Unix-first — Windows support is a documented follow-up.
 fn login_shell() -> String {
-    std::env::var("SHELL")
-        .ok()
+    login_shell_from(std::env::var("SHELL").ok())
+}
+
+fn login_shell_from(shell: Option<String>) -> String {
+    shell
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
             if cfg!(windows) {

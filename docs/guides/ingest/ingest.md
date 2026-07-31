@@ -1,3 +1,9 @@
+---
+title: "Ingest System"
+created: 2026-03-09
+updated: 2026-07-30
+---
+
 # Ingest System
 Last Modified: 2026-03-10
 

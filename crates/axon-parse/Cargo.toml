@@ -3,8 +3,13 @@ name = "axon-parse"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Content parsing and structured document conversion for the Axon pipeline."
 authors.workspace = true
 license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-api = { path = "../axon-api" }
@@ -21,6 +26,11 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
 axon-graph = { path = "../axon-graph" }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

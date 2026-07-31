@@ -3,8 +3,13 @@ name = "axon-ledger"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Source identity, generations, manifests, item state, leases, and cleanup debt for Axon."
 authors.workspace = true
 license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-core = { path = "../axon-core" }
@@ -17,6 +22,11 @@ serde_json = "1"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

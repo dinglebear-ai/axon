@@ -1,3 +1,5 @@
+//! Model Context Protocol authentication, schemas, and Axon server runtime.
+
 #![recursion_limit = "512"]
 
 #[path = "auth.rs"]

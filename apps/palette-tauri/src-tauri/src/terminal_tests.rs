@@ -77,7 +77,7 @@ async fn cd_persists_across_subsequent_commands_in_the_session() {
 
     let cd_result = run_direct(&state, &format!("cd {}", tmp.display())).await;
     assert_eq!(cd_result.exit_code, Some(0));
-    assert_eq!(std::path::Path::new(&cd_result.cwd), tmp_canon);
+    assert_eq!(Path::new(&cd_result.cwd), tmp_canon);
 
     // A brand-new spawned process for the *next* command should still see the
     // updated cwd — proving the session state (not the shell process) is what
@@ -104,7 +104,7 @@ async fn cd_with_no_target_goes_home() {
     assert_eq!(result.exit_code, Some(0));
     if let Some(home) = dirs::home_dir() {
         let home_canon = std::fs::canonicalize(&home).unwrap();
-        assert_eq!(std::path::Path::new(&result.cwd), home_canon);
+        assert_eq!(Path::new(&result.cwd), home_canon);
     }
 }
 
@@ -154,14 +154,7 @@ fn resolve_cd_target_handles_tilde_and_relative_paths() {
 
 #[test]
 fn login_shell_prefers_shell_env_var() {
-    // SAFETY: single-threaded test process env mutation, restored immediately.
-    unsafe {
-        std::env::set_var("SHELL", "/bin/zsh");
-    }
-    assert_eq!(login_shell(), "/bin/zsh");
-    unsafe {
-        std::env::remove_var("SHELL");
-    }
+    assert_eq!(login_shell_from(Some("/bin/zsh".to_string())), "/bin/zsh");
 }
 
 #[test]

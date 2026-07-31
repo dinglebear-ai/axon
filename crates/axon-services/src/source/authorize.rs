@@ -12,7 +12,7 @@
 //!
 //! Credential *presence* is checked via the well-known environment variables
 //! Axon already documents per adapter (see repo root `CLAUDE.md`, "Ingest
-//! credentials"). A [`CredentialRequirement`] with an explicit `secret_ref`
+//! credentials"). A [`axon_api::source::CredentialRequirement`] with an explicit `secret_ref`
 //! is assumed pre-resolved by the caller and is not re-checked here.
 
 use axon_api::source::{AuthMode, AuthScope, AuthSnapshot, CredentialKind, RoutePlan, SafetyClass};

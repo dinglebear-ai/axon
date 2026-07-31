@@ -24,7 +24,7 @@
 
 [Unit]
 Description=Axon unified server (native binary, bare-metal)
-Documentation=https://github.com/jmagar/axon
+Documentation=https://github.com/dinglebear-ai/axon
 After=network-online.target
 Wants=network-online.target
 

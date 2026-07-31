@@ -1,3 +1,9 @@
+---
+title: "Prerequisites -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Prerequisites -- Axon
 
 Required tools and versions before developing or deploying.
@@ -90,7 +96,7 @@ Recommended minimums for local development:
 ## Quick start
 
 ```bash
-git clone https://github.com/jmagar/axon.git ~/workspace/axon
+git clone https://github.com/dinglebear-ai/axon.git ~/workspace/axon
 cd ~/workspace/axon
 just setup               # Install all tools
 mkdir -m 700 -p ~/.axon

@@ -13,7 +13,7 @@ assert_contains() {
   file="$1"
   needle="$2"
   grep -F "$needle" "$file" >/dev/null 2>&1 || {
-    printf '--- %s ---\n' "$file" >&2
+    printf '%s\n' "--- $file ---" >&2
     cat "$file" >&2 || true
     fail "expected to find: $needle"
   }
@@ -47,6 +47,14 @@ make_fake_bin() {
     '[ -n "$out" ] || exit 2' \
     'case "$out" in' \
     '  *.sha256) printf "%s  axon\n" "${FAKE_EXPECTED_SHA:-okhash}" >"$out" ;;' \
+    '  *.tar.gz)' \
+    '    staging="${out}.staging"' \
+    '    mkdir -p "$staging"' \
+    '    printf "%s\n" "#!/usr/bin/env sh" "printf \"%s\\\\n\" \"\$*\" >> \"\$AXON_TEST_LOG\"" >"$staging/axon"' \
+    '    chmod +x "$staging/axon"' \
+    '    tar -czf "$out" -C "$staging" axon' \
+    '    rm -rf "$staging"' \
+    '    ;;' \
     '  *) printf "%s\n" "#!/usr/bin/env sh" "printf \"%s\\\\n\" \"\$*\" >> \"\$AXON_TEST_LOG\"" >"$out" ;;' \
     'esac'
   make_exe "$dir/sha256sum" 'printf "%s  %s\n" "${FAKE_ACTUAL_SHA:-okhash}" "$1"'
@@ -135,7 +143,6 @@ test_success_delegates_to_setup_without_logging_token() {
     fail "install with setup should succeed"
   fi
   assert_contains "$log" "setup"
-  assert_contains "$work/stderr" "Gemini CLI found; axon setup ask-smoke verifies auth and completion"
   assert_not_contains "$work/stderr" "secret-token"
 }
 

@@ -1,3 +1,5 @@
+//! Axon command-line executable entry point.
+
 #![recursion_limit = "512"]
 use std::path::PathBuf;
 

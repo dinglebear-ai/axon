@@ -1,3 +1,9 @@
+---
+title: "Adding a REST Route"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a REST Route
 
 `axon-web` owns REST/OpenAPI/SSE and browser web-panel transport — the Axum

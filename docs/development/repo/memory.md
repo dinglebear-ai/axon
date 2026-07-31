@@ -1,3 +1,9 @@
+---
+title: "Knowledge Persistence -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Knowledge Persistence -- Axon
 
 Axon uses `bd` (beads) for issue tracking and persistent knowledge, not markdown TODO lists or MEMORY.md files.

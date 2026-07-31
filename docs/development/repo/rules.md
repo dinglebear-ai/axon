@@ -1,3 +1,9 @@
+---
+title: "Coding Rules -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Coding Rules -- Axon
 
 Standards and conventions enforced across the Axon codebase.

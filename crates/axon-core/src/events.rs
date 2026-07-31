@@ -81,7 +81,7 @@ pub enum ServiceEvent {
     },
     /// Streaming token delta from research synthesis (one event per chunk).
     ///
-    /// Emitted by [`crate::services::search::research`] as the LLM
+    /// Emitted by `services::search::research` as the LLM
     /// writes its synthesis response.  CLI handlers stream these to stderr
     /// inline; web handlers forward them as `{"type":"synthesis_delta"}`.
     SynthesisDelta {

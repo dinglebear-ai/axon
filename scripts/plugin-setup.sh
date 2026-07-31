@@ -23,7 +23,7 @@ export_if_set() {
 
 ensure_axon_binary() {
   command -v axon >/dev/null 2>&1 && return 0
-  printf 'axon is not installed — install it with:\n  curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
+  printf 'axon is not installed — install it with:\n  curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
   exit 1
 }
 

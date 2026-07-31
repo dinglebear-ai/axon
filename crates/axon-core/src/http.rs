@@ -1,6 +1,7 @@
 //! HTTP client and URL validation utilities.
 //!
-//! [`http_client()`] returns a shared [`reqwest::Client`] backed by a [`LazyLock`].
+//! [`http_client()`] returns a shared [`reqwest::Client`] backed by a
+//! [`std::sync::LazyLock`].
 //! [`validate_url()`] enforces SSRF protection: private IP ranges, loopback, and
 //! metadata endpoints are rejected. HTTP clients also use a blocking DNS resolver
 //! for connect-time SSRF checks; use [`validate_url_with_dns()`] before handing

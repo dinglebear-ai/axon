@@ -30,7 +30,7 @@ ensure_axon_binary() {
     export PATH="${PLUGIN_ROOT}/bin:${PATH}"
     return 0
   fi
-  printf 'axon is not installed - install it with:\n  curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
+  printf 'axon is not installed - install it with:\n  curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh\nThen run: axon setup\n' >&2
   return 1
 }
 

@@ -212,7 +212,7 @@ CPU-only hosts should override the TEI image/settings or run an external TEI end
 
 Host ports are overridable: `QDRANT_HTTP_PORT` (→ container `6333`),
 `QDRANT_GRPC_PORT` (→ `6334`), and `TEI_HTTP_PORT` (→ `80`). The axon service
-image is `${AXON_IMAGE:-ghcr.io/jmagar/axon:latest}`.
+image is `${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest}`.
 
 ```bash
 # Start the local infra this homelab actually needs (TEI + Chrome only —

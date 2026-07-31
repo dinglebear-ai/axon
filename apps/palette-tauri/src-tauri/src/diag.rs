@@ -4,6 +4,7 @@
 //! Axon data dir (`~/.axon/logs/palette.log`, overridable via
 //! `AXON_PALETTE_LOG_PATH`). Append-only; warnings are infrequent so no rotation.
 
+use std::fmt::Display;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -20,6 +21,10 @@ pub(crate) fn warn(message: &str) {
     if let Some(path) = log_path() {
         let _ = append_to(&path, message);
     }
+}
+
+pub(crate) fn warn_with_context(context: &str, err: impl Display) {
+    warn(&format!("{context}: {err}"));
 }
 
 fn append_to(path: &Path, message: &str) -> std::io::Result<()> {

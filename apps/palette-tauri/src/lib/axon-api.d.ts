@@ -2449,7 +2449,7 @@ export interface components {
             graph_edge_ids?: components["schemas"]["GraphEdgeId"][] | null;
             /**
              * @description Identity for a [`PruneTargetKind::Graph`] node-delete step (stable
-             *     keys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —
+             *     keys, matching `axon_graph`'s `GraphStore::delete_nodes`). Additive —
              *     existing `Vector`/`Ledger` steps never set this.
              */
             graph_stable_keys?: string[] | null;

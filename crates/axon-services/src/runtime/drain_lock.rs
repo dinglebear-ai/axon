@@ -23,8 +23,9 @@
 //!
 //! [`WorkerDrainLock::try_hold`] (the durable holder) connects with a
 //! [`HOLD_BUSY_TIMEOUT`] so its `BEGIN EXCLUSIVE` *waits out* a transient probe
-//! rather than losing the lock to it — this is what stops [`is_held`] from
-//! evicting a just-starting worker. [`is_held`] (the enqueue-side probe)
+//! rather than losing the lock to it — this is what stops
+//! [`WorkerDrainLock::is_held`] from evicting a just-starting worker.
+//! [`WorkerDrainLock::is_held`] (the enqueue-side probe)
 //! connects with a zero busy-timeout so it never blocks the enqueue path: if a
 //! holder is present it returns `true` immediately.
 //!

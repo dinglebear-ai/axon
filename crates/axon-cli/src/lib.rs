@@ -1,3 +1,5 @@
+//! Axon command-line interface dispatch, output, and schema support.
+
 #![recursion_limit = "512"]
 
 pub mod commands;

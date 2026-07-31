@@ -3,8 +3,13 @@ name = "axon-jobs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon async job runtime: SQLite-backed enqueue/query/store/cancel + in-process worker lanes (crawl/embed/extract/ingest/watch)"
-license = "MIT"
+description = "SQLite-backed durable jobs, attempts, stages, events, reservations, and in-process workers for Axon."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-core = { path = "../axon-core" }
@@ -70,6 +75,11 @@ regex = "1"
 sha2 = "0.11"
 hex = "0.4"
 url = "2"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

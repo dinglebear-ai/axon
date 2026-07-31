@@ -5,7 +5,7 @@ Day-to-day development guide for the Axon MCP server.
 ## Quick Start
 
 ```bash
-git clone https://github.com/jmagar/axon.git
+git clone https://github.com/dinglebear-ai/axon.git
 cd axon
 mkdir -m 700 -p ~/.axon
 cp .env.example ~/.axon/.env

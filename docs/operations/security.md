@@ -1,3 +1,9 @@
+---
+title: "Security Model"
+created: 2026-02-25
+updated: 2026-07-30
+---
+
 # Security Model
 Last Modified: 2026-06-01
 

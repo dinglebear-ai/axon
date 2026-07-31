@@ -180,7 +180,7 @@ pub enum FakeGenerationPublisherMode {
     Fatal,
 }
 
-/// Fake [`boundary::GenerationPublisher`]-shaped publisher (`GenerationPublisher`
+/// Fake `GenerationPublisher`-shaped publisher (`GenerationPublisher`
 /// lives in [`crate::publish`], not `crate::boundary`, since — unlike
 /// `RetrievalEngine` — it has no concrete-struct name collision to route
 /// around) with deterministic success/degraded/fatal modes, a recorded-call

@@ -1,3 +1,9 @@
+---
+title: "Release Checklist — Axon"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Release Checklist — Axon
 
 Pre-release checklist for the current release-please-driven pipeline. See the

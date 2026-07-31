@@ -1,3 +1,5 @@
+//! Export Axon's REST route authorization contracts.
+
 use axon_services::types::{RestRouteAuth, rest_route_inventory};
 use serde::Serialize;
 

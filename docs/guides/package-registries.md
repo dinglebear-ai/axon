@@ -1,3 +1,9 @@
+---
+title: "Package Registries"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # Package Registries
 Last Modified: 2026-07-15
 
