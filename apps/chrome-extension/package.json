@@ -3,6 +3,13 @@
   "private": true,
   "version": "0.3.2",
   "description": "Axon Chrome extension — MV3 side panel, popup command console, and context-menu capture.",
+  "author": "dinglebear.ai <hello@dinglebear.ai>",
+  "license": "MIT",
+  "homepage": "https://axon.dinglebear.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dinglebear-ai/axon.git"
+  },
   "scripts": {
     "test": "node --test"
   }

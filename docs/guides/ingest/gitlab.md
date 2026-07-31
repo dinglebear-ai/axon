@@ -1,3 +1,9 @@
+---
+title: "GitLab Ingest"
+created: 2026-05-20
+updated: 2026-07-30
+---
+
 # GitLab Ingest
 Last Modified: 2026-05-21
 

@@ -1,3 +1,9 @@
+---
+title: "Re-index Guide: Schema v3-v8 Payload Upgrade"
+created: 2026-05-21
+updated: 2026-07-30
+---
+
 # Re-index Guide: Schema v3-v8 Payload Upgrade
 
 This guide explains what changed in Qdrant payload schema versions 3 through 8, who needs to

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{SftpConnectionProfile, default_settings};
 
-fn tempfile_dir(name: &str) -> std::path::PathBuf {
+fn tempfile_dir(name: &str) -> PathBuf {
     let unique = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system time")

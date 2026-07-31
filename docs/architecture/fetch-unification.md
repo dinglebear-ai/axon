@@ -1,3 +1,9 @@
+---
+title: "Web acquisition: one fetch path"
+created: 2026-07-30
+updated: 2026-07-30
+---
+
 # Web acquisition: one fetch path
 
 Last verified: 2026-07-29

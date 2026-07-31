@@ -1,3 +1,9 @@
+---
+title: "Adding a New Source (End-to-End Checklist)"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a New Source (End-to-End Checklist)
 
 This is the end-to-end checklist for bringing a whole new source **family**

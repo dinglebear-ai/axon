@@ -3,11 +3,15 @@
   "info": {
     "title": "Axon REST API",
     "description": "Dedicated REST routes for Axon discovery, source indexing, RAG, memory, and watch workflows.",
+    "contact": {
+      "name": "dinglebear.ai",
+      "email": "hello@dinglebear.ai"
+    },
     "license": {
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "7.2.5"
+    "version": "7.2.6"
   },
   "paths": {
     "/healthz": {
@@ -11949,7 +11953,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this."
+            "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching `axon_graph`'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this."
           },
           "memory_ids": {
             "type": [

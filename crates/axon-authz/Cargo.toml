@@ -3,8 +3,13 @@ name = "axon-authz"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon OAuth scope constants and satisfaction logic"
-license = "MIT"
+description = "OAuth scope constants and authorization satisfaction logic for Axon transports."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 async-trait = "0.1"
@@ -16,6 +21,11 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

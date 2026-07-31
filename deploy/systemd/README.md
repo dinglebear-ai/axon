@@ -15,7 +15,7 @@ running.
 
 - A Linux host with systemd.
 - The `axon` binary. Install it via the one-line installer
-  (`curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh`)
+  (`curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh`)
   on the host, or copy a release binary from GitHub Releases.
 - A reachable Qdrant, Hugging Face TEI (with `Qwen/Qwen3-Embedding-0.6B`), and
   Chrome/CDP. These typically run as containers (use the infra portions of

@@ -1,6 +1,7 @@
 # ── Secrets ──────────────────────────────────────────────────────────────────
 .env
 .env.*
+!deploy/incus/axon-incus-bootstrap.env.example
 services.env
 !.env.example
 # Config-schema contract fixtures (crates/axon-core/tests/fixtures/env/) —
@@ -15,7 +16,7 @@ services.env
 /bin/
 logs/
 backups/
-reports/
+/reports/
 docker/data/
 config/data/
 *.log
@@ -126,7 +127,7 @@ coverage/
 *.tsbuildinfo
 .eslintcache
 npm-debug.log*
-package-lock.json
+/package-lock.json
 
 # ── Android ─────────────────────────────────────────────────────────────────
 apps/android/local.properties

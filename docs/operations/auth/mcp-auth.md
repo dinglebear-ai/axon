@@ -1,3 +1,9 @@
+---
+title: "MCP Auth — Axon"
+created: 2026-03-10
+updated: 2026-07-30
+---
+
 # MCP Auth — Axon
 Last Modified: 2026-06-01
 

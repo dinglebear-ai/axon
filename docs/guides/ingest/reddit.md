@@ -1,3 +1,9 @@
+---
+title: "Reddit Ingest"
+created: 2026-02-23
+updated: 2026-07-30
+---
+
 # Reddit Ingest
 Last Modified: 2026-03-09
 

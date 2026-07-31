@@ -1,3 +1,9 @@
+---
+title: "Performance Tuning Guide"
+created: 2026-02-25
+updated: 2026-07-30
+---
+
 # Performance Tuning Guide
 Last Modified: 2026-03-03
 

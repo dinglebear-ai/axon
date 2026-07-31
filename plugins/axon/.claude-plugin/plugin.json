@@ -1,14 +1,15 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "axon",
-  "description": "Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query via MCP or CLI. A unified `axon` skill covering web crawling, GitHub/Reddit/YouTube ingest, semantic vector search, and grounded LLM answers over indexed content.",
+  "description": "Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.",
   "author": {
-    "name": "Jacob Magar",
-    "email": "jmagar@gmail.com",
-    "url": "https://github.com/jmagar"
+    "name": "dinglebear.ai",
+    "email": "hello@dinglebear.ai",
+    "url": "https://dinglebear.ai"
   },
-  "homepage": "https://github.com/jmagar",
-  "repository": "https://github.com/jmagar/axon",
+  "homepage": "https://axon.dinglebear.ai",
+  "repository": "https://github.com/dinglebear-ai/axon",
+  "license": "MIT",
   "keywords": [
     "rag",
     "crawl",

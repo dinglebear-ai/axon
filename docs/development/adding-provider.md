@@ -1,3 +1,9 @@
+---
+title: "Adding a Provider (Embedding or Vector Store)"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a Provider (Embedding or Vector Store)
 
 "Provider" covers two distinct trait boundaries that are easy to conflate:

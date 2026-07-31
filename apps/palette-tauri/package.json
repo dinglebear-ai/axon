@@ -34,6 +34,14 @@
     "vitest": "^4.1.9"
   },
   "name": "axon-palette-tauri",
+  "description": "Tauri command palette for the Axon REST API.",
+  "author": "dinglebear.ai <hello@dinglebear.ai>",
+  "license": "MIT",
+  "homepage": "https://axon.dinglebear.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dinglebear-ai/axon.git"
+  },
   "private": true,
   "scripts": {
     "build": "tauri build && node scripts/copy-artifacts.mjs",
@@ -54,5 +62,5 @@
     "vite:dev": "vite --host 127.0.0.1"
   },
   "type": "module",
-  "version": "5.14.3"
+  "version": "5.14.4"
 }

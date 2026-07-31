@@ -1,8 +1,8 @@
 //! `axon-prune` — planned destructive cleanup for the source pipeline.
 //!
 //! This crate owns the *plan / execute / receipt* half of pruning: resolving a
-//! [`PruneSelector`](axon_api::source::prune::PruneSelector) into a reviewable
-//! dry-run [`PrunePlan`](axon_api::source::prune::PrunePlan) without mutating
+//! [`PruneSelector`] into a reviewable
+//! dry-run [`PrunePlan`] without mutating
 //! state, then executing that plan against store boundaries in cleanup-debt
 //! order, generation-fenced and idempotent. It never owns the ledger, graph,
 //! memory, artifact, or vector stores — it drives them through the

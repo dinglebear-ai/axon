@@ -1,3 +1,5 @@
+//! Axon's HTTP server, routes, authentication, and OpenAPI surface.
+
 #![recursion_limit = "512"]
 
 #[path = "auth.rs"]

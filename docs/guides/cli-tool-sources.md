@@ -1,3 +1,9 @@
+---
+title: "CLI Tool Sources"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # CLI Tool Sources
 Last Modified: 2026-07-15
 

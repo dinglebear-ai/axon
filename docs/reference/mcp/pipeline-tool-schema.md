@@ -83,7 +83,7 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `crates/axon-mcp/src/server.rs` | `sha256:7e31008399ea192e5e546d9a48f3fabb9c75c56929e6af7ecbbdc30259f3ac9a` |
 | `crates/axon-mcp/src/server/authz.rs` | `sha256:fca993bad9e5de047226bc3853cdc8cd3d20f9f53ab49111270c8aecc20d5ae9` |
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024` |
-| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:24ffebffa5397aa3212bad129dc631c32c50fa870613174c6d2c14efd4011043` |
+| `xtask/src/schemas/mcp_action_registry.rs` | `sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1` |
 
 ## Drift Checks
 

@@ -1,3 +1,9 @@
+---
+title: "Axon Configuration"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Axon Configuration
 Last Modified: 2026-07-24
 

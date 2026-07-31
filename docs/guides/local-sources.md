@@ -1,3 +1,9 @@
+---
+title: "Local Sources"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # Local Sources
 Last Modified: 2026-07-15
 

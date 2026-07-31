@@ -1,3 +1,9 @@
+---
+title: "Context Injection Pipeline"
+created: 2026-03-04
+updated: 2026-07-30
+---
+
 # Context Injection Pipeline
 
 How Axon retrieves, ranks, and assembles the `Context:` block that is injected into the RAG LLM prompt for `ask` and `evaluate`.

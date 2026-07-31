@@ -1,3 +1,5 @@
+//! Application services coordinating Axon's adapters, jobs, retrieval, and runtimes.
+
 // `service_traits::source_service::SourceServiceImpl` boxes `crate::source::
 // index_source`'s already-deep async call chain a second time via
 // `#[async_trait]`; the extra layer pushes query-depth layout computation

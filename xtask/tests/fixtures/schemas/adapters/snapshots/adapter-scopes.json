@@ -1573,7 +1573,7 @@
         "path": "crates/axon-adapters/fixtures/provider-variant-exceptions.json"
       },
       {
-        "checksum": "sha256:b8e0ffebe9f034ae083acd658eab03d99edda8720d8b4c47c7b7a2183d638801",
+        "checksum": "sha256:58754c6e9dee10261d0121799365f31f801dd76c189b2b3c04f8e0d20ac9b094",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/family_matrix.rs"
       },

@@ -3,8 +3,13 @@ name = "axon-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon CLI adapter: argv dispatch + command handlers for all axon subcommands"
-license = "MIT"
+description = "Command-line transport and command handlers for the Axon runtime."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-api = { path = "../axon-api" }
@@ -69,6 +74,11 @@ uuid = { version = "1", features = ["v4", "v5", "serde"] }
 sha2 = "0.11"
 hex = "0.4"
 url = "2"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

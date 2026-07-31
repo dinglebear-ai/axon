@@ -1,3 +1,9 @@
+---
+title: "Axon Android — UI Redesign Spec"
+created: 2026-05-28
+updated: 2026-07-30
+---
+
 # Axon Android — UI Redesign Spec
 _Last updated: 2026-06-04 · Status: **IMPLEMENTED WITH DOCUMENTED FOLLOW-UPS**_
 

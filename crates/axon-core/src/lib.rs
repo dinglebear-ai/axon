@@ -1,3 +1,6 @@
+//! Shared configuration, HTTP security, content transforms, paths, redaction,
+//! user-interface helpers, and health infrastructure for Axon.
+
 pub mod artifacts;
 pub mod ask_explain;
 pub mod binary_status;

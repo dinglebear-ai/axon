@@ -1,6 +1,6 @@
 //! Continuation of `crate_contracts_spec.rs`'s `CRATE_CONTRACTS` table — split
 //! purely to stay under the repo's 500-line monolith cap. See that file's
-//! module doc for what the fields mean and [`super::all_crate_contracts`] to
+//! module doc for what the fields mean and `all_crate_contracts` to
 //! iterate the combined table.
 
 use super::crate_contracts_spec::CrateContract;

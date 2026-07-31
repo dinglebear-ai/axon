@@ -84,13 +84,13 @@ impl Drop for LoopbackGuard {
 /// # DNS Rebinding (TOCTOU — MITIGATED)
 ///
 /// This function performs hostname-level checks only (blocked names, TLDs, literal IPs).
-/// The DNS rebinding TOCTOU window is closed by [`SsrfBlockingResolver`], which is wired
+/// The DNS rebinding TOCTOU window is closed by `SsrfBlockingResolver`, which is wired
 /// into the reqwest HTTP client via `ClientBuilder::dns_resolver()`. The resolver re-runs
 /// `check_ip()` on every IP that the OS returns, at the moment the TCP connection is
 /// established — the same instant reqwest would connect. This means even a TTL-0 DNS
 /// record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
 ///
-/// Test builds skip the custom resolver (see [`SsrfBlockingResolver`]) so that httpmock
+/// Test builds skip the custom resolver (see `SsrfBlockingResolver`) so that httpmock
 /// servers on `127.0.0.1` remain reachable. `validate_url()` still blocks loopback
 /// in tests unless `set_allow_loopback(true)` is called.
 ///

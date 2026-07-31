@@ -1,3 +1,5 @@
+//! Durable job scheduling, execution, state transitions, and persistence.
+
 #![allow(clippy::result_large_err, clippy::too_many_arguments)]
 
 pub mod boundary;
