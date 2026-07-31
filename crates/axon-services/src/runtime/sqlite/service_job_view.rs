@@ -96,8 +96,14 @@ fn summary_to_service_job(
     summary: JobSummary,
     request_json: Option<serde_json::Value>,
 ) -> ServiceJob {
-    let (url, source_type, target, urls_json) =
+    let (url, request_source_type, target, urls_json) =
         request_target_fields(summary.kind, request_json.as_ref());
+    let source_type = request_source_type.or_else(|| {
+        summary
+            .current
+            .as_ref()
+            .and_then(|current| current.adapter.clone())
+    });
     let counts_json = summary
         .counts
         .as_ref()

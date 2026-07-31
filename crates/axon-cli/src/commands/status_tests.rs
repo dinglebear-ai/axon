@@ -98,6 +98,15 @@ fn preserves_url_that_merely_contains_token_substring() {
 }
 
 #[test]
+fn elapsed_duration_uses_compact_human_units() {
+    assert_eq!(format_elapsed_duration(999), "<1s");
+    assert_eq!(format_elapsed_duration(12_000), "12s");
+    assert_eq!(format_elapsed_duration(65_000), "1m 05s");
+    assert_eq!(format_elapsed_duration(3_723_000), "1h 02m 03s");
+    assert_eq!(format_elapsed_duration(97_260_000), "1d 03h 01m");
+}
+
+#[test]
 fn non_url_subject_routes_to_full_scrubber_unchanged_when_clean() {
     // `source_type: target` style labels aren't URLs, so they route to the full
     // `redact_secrets` scrubber (whose own scrubbing is covered by redact_tests).
