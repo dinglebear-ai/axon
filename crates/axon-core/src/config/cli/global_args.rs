@@ -19,13 +19,18 @@ pub(in crate::config) struct GlobalArgs {
     pub(in crate::config) include_subdomains: bool,
 
     /// URL path prefixes to exclude from crawling (comma-separated)
-    #[arg(global = true, long = "exclude-path-prefix", value_delimiter = ',')]
+    #[arg(
+        global = true,
+        long = "exclude-path-prefix",
+        value_delimiter = ',',
+        action = ArgAction::Append
+    )]
     pub(in crate::config) exclude_path_prefix: Vec<String>,
 
     /// Repo-relative path substrings to exclude from git ingest, e.g.
     /// `--exclude-path docs/references/ --exclude-path vendor/` (repeatable).
     /// A file is skipped when its repo-relative path contains any value.
-    #[arg(global = true, long = "exclude-path")]
+    #[arg(global = true, long = "exclude-path", action = ArgAction::Append)]
     pub(in crate::config) ingest_exclude_paths: Vec<String>,
 
     /// Directory for saved markdown/HTML output files
@@ -81,8 +86,8 @@ pub(in crate::config) struct GlobalArgs {
     #[arg(global = true, long)]
     pub(in crate::config) urls: Option<String>,
 
-    /// URL glob patterns to expand into seed URLs (comma-separated)
-    #[arg(global = true, long = "url-glob", value_delimiter = ',')]
+    /// URL glob patterns to expand into seed URLs (comma-separated or repeatable)
+    #[arg(global = true, long = "url-glob", action = ArgAction::Append)]
     pub(in crate::config) url_glob: Vec<String>,
 
     /// Fetch/save only; do not embed scraped or crawled content into Qdrant.
@@ -119,7 +124,7 @@ pub(in crate::config) struct GlobalArgs {
     #[arg(global = true, long, value_enum, default_value_t = ColorChoice::Auto)]
     pub(in crate::config) color: ColorChoice,
 
-    /// Live-update mode (currently honored by `axon status`)
+    /// Live-update mode for `axon status` and `axon monitor jobs`
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::config) watch: bool,
 
@@ -217,13 +222,23 @@ pub(in crate::config) struct GlobalArgs {
     pub(in crate::config) viewport: String,
 
     /// Custom HTTP request header in 'Key: Value' format (repeatable)
-    #[arg(global = true, long = "header", value_name = "HEADER")]
+    #[arg(
+        global = true,
+        long = "header",
+        value_name = "HEADER",
+        action = ArgAction::Append
+    )]
     pub(in crate::config) custom_headers: Vec<String>,
 
     /// Per-path crawl budget in 'PATH=N' format, e.g. '/blog=100' or '*=1000'
     /// (repeatable). Caps the number of pages crawled under each path prefix;
     /// '*' applies to all paths. Unset = no budget (current behavior).
-    #[arg(global = true, long = "budget", value_name = "PATH=N")]
+    #[arg(
+        global = true,
+        long = "budget",
+        value_name = "PATH=N",
+        action = ArgAction::Append
+    )]
     pub(in crate::config) path_budgets: Vec<String>,
 
     /// Disable hybrid (dense + BM42 sparse + RRF) search; force dense-only retrieval.

@@ -2,13 +2,14 @@
 
 One Incus system container (`axon-container-profile`) runs:
 
-- **qdrant (default mode only)/tei/chrome as nested Docker containers**, via
+- **tei/chrome as nested Docker containers**, via
   a full Docker Engine + Compose internally, using `docker-compose.prod.yaml`
   largely unchanged.
-- **axon itself as a native binary managed by systemd** (`axon-native.service`),
-  deployed atomically from the host's validated `target/release-fast/axon`
-  artifact, *not* as another nested-Docker service — see "Why axon is native,
-  not nested-Docker" below.
+- **the axon binary deployed atomically into Incus**, with
+  `axon-native.service` disabled by default. Dookie's host service owns the
+  shared SQLite queue; TEI and Chrome remain inside Incus. Set
+  `AXON_INCUS_RUN_SERVER=true` only when the guest uses an Incus-exclusive
+  database that host processes never open.
 
 The container base is Ubuntu 26.04, matching dookie's glibc baseline. This is
 intentional: host-built Axon binaries can be deployed directly into the native
@@ -39,11 +40,13 @@ docker-proxy accepted external TCP connections and forwarded bytes to the
 container, but the connection was reset mid-relay, specifically for axon
 (qdrant/tei/chrome's identical docker-proxy-published ports worked
 correctly the entire time, ruling out a general nested-networking bug).
-Running axon as a native binary via systemd sidesteps that hop entirely — it
-binds directly in the Incus container's own network namespace, and reaches
-qdrant/tei/chrome over their already-published `127.0.0.1` ports like any
-other client would. `bootstrap.sh` atomically installs a validated host-built
-binary and refreshes `axon-native.service`.
+Running axon as a native binary via systemd sidesteps that hop entirely.
+`bootstrap.sh` atomically installs a validated host-built binary and refreshes
+`axon-native.service`, but leaves the service disabled unless explicitly
+enabled. SQLite WAL files cannot coordinate a queue safely across an Incus bind
+mount: host and guest can retain different WAL inode generations. Dookie
+therefore runs Axon's server on the host and reaches Incus-hosted TEI/Chrome
+through loopback proxy devices.
 
 ## Migrating a legacy guest to Ubuntu 26.04
 
@@ -70,7 +73,8 @@ incus rename "$container" "$retired"
 # Use the same explicit listener value if the recorded mcp-publish device had
 # one. Do not publish 0.0.0.0.
 AXON_INCUS_PUBLISH_LISTEN="100.88.16.79:40090" \
-  deploy/incus/bootstrap.sh default
+  AXON_EXTERNAL_QDRANT_URL=http://100.120.242.29:53333 \
+    deploy/incus/bootstrap.sh external-qdrant
 ```
 
 The committed profile recreates the dedicated `/mnt/axon-data` and read-only
@@ -213,7 +217,8 @@ don't survive a restart — see above).
 
 ### Optional — exposing axon's port to the host
 
-`bootstrap.sh` manages an Incus `proxy` device (`mcp-publish`) that forwards
+When `AXON_INCUS_RUN_SERVER=true`, `bootstrap.sh` manages an Incus `proxy`
+device (`mcp-publish`) that forwards
 a host-side address to axon's `127.0.0.1:8001` inside the container, when
 `AXON_INCUS_PUBLISH_LISTEN` is set (e.g. `100.88.16.79:40090`, dookie's
 Tailscale IP — matching what SWAG's `axon.subdomain.conf` proxies to).

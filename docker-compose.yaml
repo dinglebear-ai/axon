@@ -1,4 +1,4 @@
-name: axon
+name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 
 # Local development stack.
 #

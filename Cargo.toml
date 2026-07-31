@@ -134,19 +134,6 @@ tokio = { version = "1", features = [
 ] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 dotenvy = "0.15"
-# rmcp is pinned EXACTLY (`=`): a caret range is how this workspace silently
-# drifted off its declared version before. 3.0.0-beta.2 keeps the HTTP Parts
-# injection into RequestContext::extensions that our OAuth scope check relies on
-# (ctx.extensions.get::<http::request::Parts>()), plus the MCP task
-# support/progress APIs needed for long-running job-backed tool calls.
-rmcp = { version = "=3.0.0-beta.2", features = [
-  "server",
-  "macros",
-  "transport-io",
-  "transport-streamable-http-server",
-  "schemars",
-  "elicitation",
-] }
 
 [features]
 # Feature gates for optional heavy dependencies from the webclaw port.

@@ -14,6 +14,7 @@ use super::run::{WebAdapterRun, timestamp};
 use super::vectorize_helpers::{
     changed_diff_batches, document_status, payload_index, prepared_document_batches,
     sanitize_web_payload_metadata, take_vertical_parse_artifacts, vector_point_batch_for_documents,
+    vectorized_document_status,
 };
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
@@ -278,7 +279,7 @@ async fn vectorize_documents(
     let batch = embedding_batch_for_documents(input, &documents)?;
     let embedding_reservation = input
         .embedding_reservations
-        .reserve_with_context(ProviderReservationContext {
+        .reserve_with_context_wait(ProviderReservationContext {
             job_id: input.job_id,
             stage_id: None,
             provider_id: Some(input.embedding_provider_id.clone()),
@@ -289,12 +290,11 @@ async fn vectorize_documents(
         .await?;
     let embeddings = embedding_provider.embed(batch).await?;
     drop(embedding_reservation);
-    let (point_batch, skipped_redaction) =
-        vector_point_batch_for_documents(collection, &documents, &embeddings)?;
-    let expected_points = point_batch.points.len() as u64;
+    let built_points = vector_point_batch_for_documents(collection, &documents, &embeddings)?;
+    let expected_points = built_points.batch.points.len() as u64;
     let vector_reservation = input
         .vector_reservations
-        .reserve_with_context(ProviderReservationContext {
+        .reserve_with_context_wait(ProviderReservationContext {
             job_id: input.job_id,
             stage_id: None,
             provider_id: Some(input.vector_provider_id.clone()),
@@ -303,7 +303,7 @@ async fn vectorize_documents(
             ttl_seconds: Some(300),
         })
         .await?;
-    let write = vector_store.upsert(point_batch).await?;
+    let write = vector_store.upsert(built_points.batch).await?;
     drop(vector_reservation);
     if write.points_attempted != write.points_written || write.points_written != expected_points {
         return Err(anyhow::anyhow!(
@@ -314,7 +314,7 @@ async fn vectorize_documents(
     }
     let mut result = VectorizeResultWithStats::default();
     result.stats.points_attempted = write.points_attempted;
-    result.stats.chunks_skipped_redaction = skipped_redaction;
+    result.stats.chunks_skipped_redaction = built_points.skipped_redaction;
     for document in documents {
         result.stats.chunks_prepared += document.chunks.len() as u64;
         result.stats.documents_prepared += 1;
@@ -322,12 +322,8 @@ async fn vectorize_documents(
             .graph_candidates
             .extend(document.graph_candidates.clone());
         result.warnings.extend(document.warnings.clone());
-        let status = document_status(
-            &document,
-            document.chunks.len() as u64,
-            DocumentLifecycleStatus::Vectorized,
-            timestamp(),
-        );
+        let status =
+            vectorized_document_status(&document, &built_points.points_by_document, timestamp())?;
         ledger.update_document_status(status.clone()).await?;
         result.document_statuses.push(status);
     }

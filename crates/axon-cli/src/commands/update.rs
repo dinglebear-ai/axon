@@ -17,7 +17,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
-const DEFAULT_REPO: &str = "jmagar/axon";
+const DEFAULT_REPO: &str = "dinglebear-ai/axon";
 const UPDATE_FILE_RELEASE_DIR: &str = "AXON_UPDATE_FILE_RELEASE_DIR";
 const UPDATE_INSTALL_PATH: &str = "AXON_UPDATE_INSTALL_PATH";
 const DEV_TARGET_DIR: &str = "AXON_DEV_TARGET_DIR";
@@ -42,13 +42,17 @@ struct ReleaseAssetNames {
     signature: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GithubRelease {
     tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
     assets: Vec<GithubAsset>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GithubAsset {
     name: String,
     browser_download_url: String,
@@ -179,6 +183,48 @@ fn default_install_path() -> PathBuf {
 
 async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn Error>> {
     let names = release_asset_names(env::consts::OS, env::consts::ARCH)?;
+    let client = if options.file_release_dir.is_none() {
+        Some(http_client()?)
+    } else {
+        None
+    };
+    let selected_release = match client {
+        Some(client) => Some(
+            fetch_compatible_release(client, &options.repo, options.version.as_deref(), &names)
+                .await?,
+        ),
+        None => None,
+    };
+
+    if options.file_release_dir.is_none() && options.version.is_none() {
+        let release = selected_release
+            .as_ref()
+            .ok_or_else(|| err("automatic update did not resolve a release"))?;
+        let installed_version = installed_binary_version(&options.install_path).await;
+        if should_skip_automatic_update(
+            &release.tag_name,
+            installed_version.as_deref(),
+            options.force,
+        )? {
+            let mut container_synced = false;
+            if options.sync_container {
+                let compose_paths = resolve_compose_paths()?;
+                sync_container_from_installed_binary(&options.install_path, compose_paths).await?;
+                container_synced = true;
+            }
+            return Ok(UpdateReport {
+                version: normalize_version(
+                    installed_version
+                        .as_deref()
+                        .unwrap_or(release.tag_name.as_str()),
+                )
+                .to_string(),
+                install_path: options.install_path,
+                installed: false,
+                container_synced,
+            });
+        }
+    }
     let temp = tempfile::tempdir()?;
     let archive_path = temp.path().join(names.archive);
     let compose_paths = if options.sync_container {
@@ -198,13 +244,12 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
             checksum,
         )
     } else {
-        download_release_assets(
-            &options.repo,
-            options.version.as_deref(),
-            &names,
-            &archive_path,
-        )
-        .await?
+        let client =
+            client.ok_or_else(|| err("network update did not initialize an HTTP client"))?;
+        let release = selected_release
+            .as_ref()
+            .ok_or_else(|| err("network update did not resolve a release"))?;
+        download_release_assets(client, release, &names, &archive_path).await?
     };
 
     let expected = parse_sha256_sidecar(&checksum_body)?;
@@ -215,7 +260,9 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     // detached signature best-effort; verification is enforced only when a
     // public key is configured AND a signature is present — otherwise inert.
     let signature_path = temp.path().join(names.signature);
-    let signature_available = resolve_optional_signature(&options, &names, &signature_path).await?;
+    let signature_available =
+        resolve_optional_signature(&options, &names, selected_release.as_ref(), &signature_path)
+            .await?;
     verify_optional_signature(&archive_path, &signature_path, signature_available)?;
 
     let already_current =
@@ -232,35 +279,62 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     }
 
     Ok(UpdateReport {
-        version,
+        version: normalize_version(&version).to_string(),
         install_path: options.install_path,
         installed: !already_current,
         container_synced,
     })
 }
 
+fn should_skip_automatic_update(
+    release_tag: &str,
+    installed_version: Option<&str>,
+    force: bool,
+) -> Result<bool, Box<dyn Error>> {
+    Ok(!force
+        && installed_version
+            .map(|installed| release_is_newer_than(release_tag, installed).map(|newer| !newer))
+            .transpose()?
+            .unwrap_or(false))
+}
+
+fn release_is_newer_than(tag: &str, current: &str) -> Result<bool, Box<dyn Error>> {
+    Ok(version_tuple(tag)? > version_tuple(current)?)
+}
+
+fn version_tuple(raw: &str) -> Result<(u64, u64, u64), Box<dyn Error>> {
+    let core = raw
+        .trim()
+        .trim_start_matches('v')
+        .split_once('-')
+        .map_or_else(|| raw.trim().trim_start_matches('v'), |(core, _)| core);
+    let mut parts = core.split('.');
+    let major = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    let minor = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    let patch = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    if parts.next().is_some() {
+        return Err(err(format!("invalid release version: {raw}")));
+    }
+    Ok((major, minor, patch))
+}
+
 async fn download_release_assets(
-    repo: &str,
-    version: Option<&str>,
+    client: &reqwest::Client,
+    release: &GithubRelease,
     names: &ReleaseAssetNames,
     archive_path: &Path,
 ) -> Result<(String, String), Box<dyn Error>> {
-    let client = http_client()?;
-    let api_url = match version {
-        Some(tag) => format!("https://api.github.com/repos/{repo}/releases/tags/{tag}"),
-        None => format!("https://api.github.com/repos/{repo}/releases/latest"),
-    };
-
-    let release: GithubRelease = client
-        .get(&api_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    let archive_url = find_asset_url(&release, names.archive)?;
-    let checksum_url = find_asset_url(&release, names.checksum)?;
+    let archive_url = find_asset_url(release, names.archive)?;
+    let checksum_url = find_asset_url(release, names.checksum)?;
     download_to_file(client, archive_url, archive_path).await?;
     let checksum = client
         .get(checksum_url)
@@ -270,7 +344,73 @@ async fn download_release_assets(
         .text()
         .await?;
 
-    Ok((release.tag_name, checksum))
+    Ok((release.tag_name.clone(), checksum))
+}
+
+async fn fetch_compatible_release(
+    client: &reqwest::Client,
+    repo: &str,
+    version: Option<&str>,
+    names: &ReleaseAssetNames,
+) -> Result<GithubRelease, Box<dyn Error>> {
+    if let Some(tag) = version {
+        let release: GithubRelease = client
+            .get(format!(
+                "https://api.github.com/repos/{repo}/releases/tags/{tag}"
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        find_asset_url(&release, names.archive)?;
+        find_asset_url(&release, names.checksum)?;
+        return Ok(release);
+    }
+
+    let releases: Vec<GithubRelease> = client
+        .get(format!(
+            "https://api.github.com/repos/{repo}/releases?per_page=100"
+        ))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    select_latest_compatible_release(&releases, names).cloned()
+}
+
+fn select_latest_compatible_release<'a>(
+    releases: &'a [GithubRelease],
+    names: &ReleaseAssetNames,
+) -> Result<&'a GithubRelease, Box<dyn Error>> {
+    releases
+        .iter()
+        .filter(|release| {
+            !release.draft
+                && !release.prerelease
+                && release
+                    .assets
+                    .iter()
+                    .any(|asset| asset.name == names.archive)
+                && release
+                    .assets
+                    .iter()
+                    .any(|asset| asset.name == names.checksum)
+        })
+        .filter_map(|release| {
+            version_tuple(&release.tag_name)
+                .ok()
+                .map(|version| (version, release))
+        })
+        .max_by_key(|(version, _)| *version)
+        .map(|(_, release)| release)
+        .ok_or_else(|| {
+            err(format!(
+                "no stable semantic-versioned release contains both {} and {}",
+                names.archive, names.checksum
+            ))
+        })
 }
 
 async fn download_to_file(
@@ -368,8 +508,14 @@ fn unique_suffix() -> u128 {
 }
 
 async fn installed_binary_reports_version(installed_binary: &Path, version: &str) -> bool {
+    installed_binary_version(installed_binary)
+        .await
+        .is_some_and(|installed| normalize_version(&installed) == normalize_version(version))
+}
+
+async fn installed_binary_version(installed_binary: &Path) -> Option<String> {
     if !installed_binary.is_file() {
-        return false;
+        return None;
     }
     let Ok(Ok(output)) = timeout(
         COMMAND_TIMEOUT,
@@ -377,21 +523,29 @@ async fn installed_binary_reports_version(installed_binary: &Path, version: &str
     )
     .await
     else {
-        return false;
+        return None;
     };
     if !output.status.success() {
-        return false;
+        return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    output_reports_version(&stdout, version) || output_reports_version(&stderr, version)
+    output_version(&stdout).or_else(|| output_version(&stderr))
 }
 
+#[cfg(test)]
 fn output_reports_version(output: &str, version: &str) -> bool {
     let target = normalize_version(version);
     output
         .split_whitespace()
         .any(|token| normalize_version(token) == target)
+}
+
+fn output_version(output: &str) -> Option<String> {
+    output
+        .split_whitespace()
+        .find(|token| version_tuple(token).is_ok())
+        .map(|token| normalize_version(token).to_string())
 }
 
 fn normalize_version(version: &str) -> &str {

@@ -117,6 +117,7 @@ fn capabilities_to_json_ok_shape() {
         rate_limits: Ok(parse_rate_limits(&rate_limits_fixture())),
     };
     let json = caps.to_json();
+    assert_eq!(json["ok"], true);
     assert!(json["models"].is_array());
     assert_eq!(json["models"].as_array().unwrap().len(), 4);
     assert!(json["rate_limits"]["requests_remaining"].is_number());
@@ -129,6 +130,7 @@ fn capabilities_to_json_error_shape() {
         rate_limits: Err("account/rateLimits/read error: method not found".to_string()),
     };
     let json = caps.to_json();
+    assert_eq!(json["ok"], false);
     assert!(json["models"]["error"].is_string());
     assert!(json["rate_limits"]["error"].is_string());
 }

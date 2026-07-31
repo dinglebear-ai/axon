@@ -22,7 +22,7 @@ See the family contract for declared output paths.
 | `docs/pipeline-unification/schemas/cli-schema.md` | `sha256:e542f512c3329c4f102fc3b93f57415906a00de3b302d1d836b5d9131e5d1a08` |
 | `xtask/src/schemas/cli_registry.rs` | `sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b` |
 | `xtask/src/schemas/cli_registry/part1.rs` | `sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0` |
-| `xtask/src/schemas/cli_registry/part2.rs` | `sha256:ff5d1b6ff19ba79d4e81b4b0439558ae89457795656af0dfee9b9050f51e7ab1` |
+| `xtask/src/schemas/cli_registry/part2.rs` | `sha256:131fdbe61a3f17776a596a82e8fdc7f3eabc6abd5ce59d1480133cbf98102f8e` |
 | `xtask/src/schemas/cli_registry/part3.rs` | `sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088` |
 | `xtask/src/schemas/cli_registry/part4.rs` | `sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7` |
 
@@ -64,7 +64,7 @@ Run `cargo xtask schemas generate --check`.
 
 ## Commands
 
-Sourced from `docs/reference/cli/commands.json` (110 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
+Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
 
 | Command | Group | Summary | Mutates | Auth Scope | Async |
 |---|---|---|---|---|---|
@@ -138,8 +138,7 @@ Sourced from `docs/reference/cli/commands.json` (110 commands). `Group` is the t
 | `prune plan` | `prune` | Resolve a prune target into a reviewable dry-run plan | no | `read` | no |
 | `query` | `query` | Semantic vector search over the Qdrant index | no | `read` | no |
 | `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
-| `reset exec` | `reset` | Execute a reviewed clean-slate reset plan | yes | `admin` | no |
-| `reset plan` | `reset` | Create a reviewable clean-slate reset plan without deleting data | no | `admin` | no |
+| `reset` | `reset` | Plan a clean-slate reset or execute a reviewed plan with flags | yes | `admin` | no |
 | `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
 | `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
 | `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
@@ -179,7 +178,7 @@ Sourced from `docs/reference/cli/commands.json` (110 commands). `Group` is the t
 | `watch status` | `watch` | Show source watch status | no | `read` | no |
 | `watch update` | `watch` | Update a source watch | yes | `write` | no |
 
-Total: 110 commands.
+Total: 109 commands.
 
 ## Removed Commands
 

@@ -46,6 +46,13 @@ impl SequenceRegistry {
         counters.get(&job_id).copied()
     }
 
+    /// Advance the in-memory view to at least a sequence assigned durably.
+    pub fn observe(&self, job_id: JobId, sequence: u64) {
+        let mut counters = self.counters.lock().expect("sequence registry poisoned");
+        let slot = counters.entry(job_id).or_insert(0);
+        *slot = (*slot).max(sequence);
+    }
+
     /// Number of distinct streams that have been issued a sequence.
     pub fn stream_count(&self) -> usize {
         let counters = self.counters.lock().expect("sequence registry poisoned");

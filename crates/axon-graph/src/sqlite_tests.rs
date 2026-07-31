@@ -468,6 +468,64 @@ async fn query_traverses_outbound_with_depth_and_edge_filter() {
 }
 
 #[tokio::test]
+async fn query_cursor_returns_stable_non_overlapping_pages() {
+    let graph = store().await;
+    let mut candidate = repo_docs_candidate(
+        "gc-page",
+        "src",
+        vec![
+            ev("ev-page-1", "github_homepage", 0.9),
+            ev("ev-page-2", "github_homepage", 0.8),
+        ],
+    );
+    candidate
+        .nodes
+        .push(node("wiki", "https://github.com/x/y/wiki", "wiki"));
+    candidate.edges.push(GraphEdgeCandidate {
+        edge_kind: "repo_has_wiki".to_string(),
+        from_stable_key: "https://github.com/x/y".to_string(),
+        to_stable_key: "https://github.com/x/y/wiki".to_string(),
+        evidence_ids: vec!["ev-page-2".to_string()],
+        properties: MetadataMap::new(),
+    });
+    graph.upsert_candidates(vec![candidate]).await.unwrap();
+    let request = |cursor| GraphQueryRequest {
+        start: GraphIdentifier {
+            kind: "repo".to_string(),
+            canonical_uri: None,
+            value: Some("https://github.com/x/y".to_string()),
+            node_id: None,
+            source_id: None,
+            source_item_key: None,
+            metadata: MetadataMap::new(),
+        },
+        edges: Vec::new(),
+        direction: GraphDirection::Out,
+        depth: 1,
+        filters: None,
+        limit: 1,
+        cursor,
+    };
+
+    let first = graph.query(request(None)).await.unwrap();
+    assert_eq!(first.edges.len(), 1);
+    let cursor = first
+        .next_cursor
+        .clone()
+        .expect("first page should advertise the second page");
+    let second = graph.query(request(Some(cursor))).await.unwrap();
+    assert_eq!(second.edges.len(), 1);
+    assert_ne!(first.edges[0].edge_id, second.edges[0].edge_id);
+    assert_eq!(second.next_cursor, None);
+
+    let error = graph
+        .query(request(Some("edge_missing".to_string())))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code.to_string(), "graph.invalid_cursor");
+}
+
+#[tokio::test]
 async fn query_inbound_direction_from_leaf_finds_parent() {
     let graph = store().await;
     graph

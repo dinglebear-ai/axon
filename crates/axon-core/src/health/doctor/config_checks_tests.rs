@@ -63,6 +63,10 @@ fn tuning_env_var_absent_is_silent() {
 fn compose_only_key_flagged_outside_container() {
     let _lock = env_guard();
     unsafe { std::env::remove_var("AXON_IN_CONTAINER") };
+    let _env_file = EnvGuard::set(
+        "AXON_ENV_FILE",
+        "/nonexistent/axon-doctor-config-checks.env",
+    );
     let _guard = EnvGuard::set("TEI_HTTP_PORT", "52000");
     let findings = compose_only_env_vars_outside_compose();
     assert!(findings.iter().any(|f| f.key == "TEI_HTTP_PORT"));
@@ -76,6 +80,36 @@ fn compose_only_key_silent_inside_container() {
     let findings = compose_only_env_vars_outside_compose();
     assert!(findings.is_empty());
     unsafe { std::env::remove_var("AXON_IN_CONTAINER") };
+}
+
+#[test]
+fn compose_only_key_from_managed_env_file_is_silent() {
+    let _lock = env_guard();
+    unsafe { std::env::remove_var("AXON_IN_CONTAINER") };
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join(".env");
+    std::fs::write(&path, "TEI_HTTP_PORT=52000\n").expect("write managed env");
+    let _env_file = EnvGuard::set("AXON_ENV_FILE", path.to_str().unwrap());
+    let _value = EnvGuard::set("TEI_HTTP_PORT", "52000");
+
+    let findings = compose_only_env_vars_outside_compose();
+
+    assert!(!findings.iter().any(|f| f.key == "TEI_HTTP_PORT"));
+}
+
+#[test]
+fn compose_only_shell_override_differing_from_managed_file_is_flagged() {
+    let _lock = env_guard();
+    unsafe { std::env::remove_var("AXON_IN_CONTAINER") };
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let path = dir.path().join(".env");
+    std::fs::write(&path, "TEI_HTTP_PORT=52000\n").expect("write managed env");
+    let _env_file = EnvGuard::set("AXON_ENV_FILE", path.to_str().unwrap());
+    let _value = EnvGuard::set("TEI_HTTP_PORT", "62000");
+
+    let findings = compose_only_env_vars_outside_compose();
+
+    assert!(findings.iter().any(|f| f.key == "TEI_HTTP_PORT"));
 }
 
 #[test]

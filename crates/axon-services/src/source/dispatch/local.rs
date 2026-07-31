@@ -74,7 +74,7 @@ pub(crate) async fn dispatch_local(
         .unwrap_or(true);
     enforce_local_source_policy(input, has_local_scope)?;
 
-    let plan = local_source_plan(input, route, embed).await?;
+    let plan = local_source_plan(input, route, embed, &cfg.ingest_exclude_paths).await?;
     // Trusted local execution uses the shared registry adapter as-is. Every
     // other caller gets a per-request contained instance: containment is keyed
     // to this request's path and scope, which a shared instance cannot carry.
@@ -123,6 +123,7 @@ async fn local_source_plan(
     input: &str,
     route: &RoutePlan,
     embed: bool,
+    exclude_paths: &[String],
 ) -> anyhow::Result<SourcePlan> {
     let raw_root = std::path::PathBuf::from(input);
     reject_symlinked_source_root(&raw_root).await?;
@@ -168,12 +169,18 @@ async fn local_source_plan(
         warnings: Vec::new(),
         metadata: MetadataMap::new(),
     };
-    let routed_route = RoutePlan {
+    let mut routed_route = RoutePlan {
         source: resolved_source,
         adapter: adapter_ref,
         scope,
         ..route.clone()
     };
+    if !exclude_paths.is_empty() {
+        routed_route.validated_options.values.insert(
+            "exclude_paths".to_string(),
+            serde_json::json!(exclude_paths),
+        );
+    }
     let mut request = SourceRequest::local_path(root.to_string_lossy().to_string(), !root_is_file);
     request.embed = embed;
     request.options = routed_route.validated_options.clone();

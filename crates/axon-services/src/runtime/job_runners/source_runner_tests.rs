@@ -2,7 +2,8 @@ use super::*;
 use crate::runtime::job_runners::build_registry;
 use axon_api::source::{
     AuthScope, AuthSnapshot, ConfigSnapshotId, JobCreateRequest, JobIntent,
-    JobKind as UnifiedJobKind, JobPriority, JobStagePlan, MetadataMap, PipelinePhase,
+    JobKind as UnifiedJobKind, JobPriority, JobStagePlan, JobStatusUpdate, LifecycleStatus,
+    MetadataMap, PipelinePhase, StageCounts,
 };
 use axon_jobs::SqliteJobBackend;
 use axon_jobs::boundary::JobStore;
@@ -220,6 +221,51 @@ async fn source_runner_honors_cancellation_before_running() {
         "expected the pre-flight cancellation message, got: {}",
         error.message
     );
+}
+
+#[tokio::test]
+async fn periodic_heartbeat_preserves_durable_phase_and_counts() {
+    let (_tmp, cfg) = test_cfg().await;
+    let backend = SqliteJobBackend::new(Arc::clone(&cfg))
+        .await
+        .expect("enqueue-only backend");
+    let store = SqliteUnifiedJobStore::new(Arc::clone(backend.pool()).as_ref().clone());
+    let request = SourceRequest::new("https://example.com/docs");
+    let claimed = claim_source_job(&store, serde_json::json!({"source_request": request})).await;
+    let expected = StageCounts {
+        items_total: None,
+        items_done: 0,
+        documents_total: Some(2),
+        documents_done: 1,
+        chunks_total: Some(24),
+        chunks_done: 12,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+    store
+        .update_status(JobStatusUpdate {
+            job_id: claimed.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Embedding,
+            stage_id: None,
+            counts: Some(expected.clone()),
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("advance job progress");
+
+    crate::runtime::job_runners::heartbeat_running_preserving_progress(&store, &claimed).await;
+
+    let summary = store
+        .get(claimed.job_id)
+        .await
+        .expect("get job")
+        .expect("job exists");
+    assert_eq!(summary.phase, PipelinePhase::Embedding);
+    assert_eq!(summary.counts, Some(expected));
 }
 
 /// `build_registry` wires Source as the acquisition/indexing family.

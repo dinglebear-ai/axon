@@ -39,7 +39,7 @@ pub async fn run_capabilities(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 pub async fn run_chat(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     use axon_services::service_traits::{AskService, AskServiceImpl};
-    let message = cfg.positional.join(" ");
+    let message = chat_message(cfg)?;
     let result = AskServiceImpl::new(Arc::new(context.clone()))
         .chat(axon_services::service_traits::ask_service::ChatRequest {
             session_id: None,
@@ -52,6 +52,16 @@ pub async fn run_chat(cfg: &Config, context: &ServiceContext) -> Result<(), Box<
         println!("{}", result.reply);
         Ok(())
     }
+}
+
+fn chat_message(cfg: &Config) -> Result<String, Box<dyn Error>> {
+    if !cfg.positional.is_empty() {
+        return Ok(cfg.positional.join(" "));
+    }
+    cfg.query
+        .clone()
+        .filter(|query| !query.trim().is_empty())
+        .ok_or_else(|| "chat requires MESSAGE or --query".into())
 }
 
 pub(super) fn flag_value(cfg: &Config, name: &str) -> Option<String> {
@@ -90,3 +100,7 @@ pub(super) fn print_value(value: impl serde::Serialize) -> Result<(), Box<dyn Er
     println!("{}", serde_json::to_string_pretty(&value)?);
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "resources_tests.rs"]
+mod tests;

@@ -50,6 +50,16 @@ IGNORED_TOKENS = {
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
     "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
     "AXON_PRE_PUSH_BASE",  # local hook control variable, not axon runtime config
+    "AXON_BIND",  # live-harness local bind address, not runtime config
+    "AXON_COMMAND_REGISTRY",  # live-harness fixture override, not runtime config
+    "AXON_INCUS_RUN_SERVER",  # Incus bootstrap test control, not runtime config
+    "AXON_LIVE_COLLECTION",  # live-harness isolated fixture state
+    "AXON_LIVE_COMMAND_TIMEOUT_SECS",  # live-harness timeout
+    "AXON_LIVE_DATA_DIR",  # live-harness isolated fixture state
+    "AXON_LIVE_FIXTURE_URL",  # live-harness fixture endpoint
+    "AXON_LIVE_USE_PRODUCTION_STATE",  # live-harness opt-in control
+    "AXON_TEST_FROM_FILE",  # axon-env loader regression fixture
+    "AXON_TEST_PRECEDENCE",  # axon-env loader regression fixture
     "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_DIR",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_SHA256",  # local shell variable in scripts/axon-backup.sh

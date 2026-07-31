@@ -325,10 +325,29 @@ pub fn handle_job_recover(
 
 /// Handle the result of `job_service::start_worker(cfg, kind).await?`.
 ///
-/// Prints a message in the SQLite runtime (workers are in-process) and propagates
-/// any `Unsupported` error. Extracted to eliminate the identical 5-arm match
-/// block that appears in every command's `"worker"` subcommand handler.
-pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
+/// Reports the in-process worker outcome in the selected output format.
+fn worker_mode_json(mode: &WorkerMode) -> Value {
+    match mode {
+        WorkerMode::InProcess {
+            pending_at_start,
+            elapsed_secs,
+        } => serde_json::json!({
+            "status": "queue_drained",
+            "pending_at_start": pending_at_start,
+            "elapsed_secs": elapsed_secs,
+        }),
+        WorkerMode::Started => serde_json::json!({"status": "started"}),
+        WorkerMode::Unsupported(message) => {
+            serde_json::json!({"status": "unsupported", "message": message})
+        }
+    }
+}
+
+pub fn handle_worker_mode(cfg: &Config, mode: WorkerMode) -> Result<(), Box<dyn Error>> {
+    if cfg.json_output {
+        println!("{}", serde_json::to_string(&worker_mode_json(&mode))?);
+        return Ok(());
+    }
     match mode {
         WorkerMode::InProcess {
             pending_at_start,
@@ -348,3 +367,7 @@ pub fn handle_worker_mode(mode: WorkerMode) -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "common_jobs_tests.rs"]
+mod tests;

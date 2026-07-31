@@ -43,26 +43,34 @@ async fn list_artifacts(cfg: &Config, context: &ServiceContext) -> Result<(), Bo
 
 async fn get_artifact(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let artifact_id = ArtifactId::new(positional(cfg, 1, "artifact_id")?);
-    let detail = axon_services::artifacts::get_artifact(context, artifact_id)
-        .await
-        .map_err(api_error)?;
+    let include_content_url = cfg
+        .positional
+        .iter()
+        .any(|value| value == "--include-content-url");
+    let detail = axon_services::artifacts::get_artifact_with_content_url(
+        context,
+        artifact_id,
+        include_content_url,
+    )
+    .await
+    .map_err(api_error)?;
     print_value(detail)
 }
 
 async fn artifact_content(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
-    if flag_value(cfg, "--range").is_some() {
-        return Err("artifact byte ranges are not implemented by the local store".into());
-    }
     let artifact_id = ArtifactId::new(positional(cfg, 1, "artifact_id")?);
-    let content = axon_services::artifacts::artifact_content(context, artifact_id)
-        .await
-        .map_err(api_error)?;
-    let bytes = tokio::fs::read(&content.path).await?;
+    let range = flag_value(cfg, "--range");
+    let content =
+        axon_services::artifacts::read_artifact_content(context, artifact_id, range.as_deref())
+            .await
+            .map_err(api_error)?;
     let output = flag_value(cfg, "--output").map(std::path::PathBuf::from);
     let download = cfg.positional.iter().any(|value| value == "--download");
-    if let Some(path) = output
-        .or_else(|| download.then(|| std::path::PathBuf::from(default_artifact_filename(&content))))
-    {
+    let destination = output.or_else(|| {
+        download.then(|| std::path::PathBuf::from(default_artifact_filename(&content)))
+    });
+    let bytes = content.bytes;
+    if let Some(path) = destination {
         axon_core::artifacts::atomic_write_explicit(&path, &bytes)
             .await
             .map_err(|error| error.to_string())?;
@@ -237,7 +245,9 @@ fn content_type_for(path: &Path) -> &'static str {
     }
 }
 
-fn default_artifact_filename(content: &axon_services::artifacts::ArtifactContentFile) -> String {
+fn default_artifact_filename(
+    content: &axon_services::artifacts::ArtifactContentDescriptor,
+) -> String {
     let extension = match content.content_type.as_str() {
         "application/json" => "json",
         "image/png" => "png",

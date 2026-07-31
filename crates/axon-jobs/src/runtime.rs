@@ -120,6 +120,13 @@ impl SqliteJobBackend {
             None => false,
         }
     }
+
+    /// Claimed jobs still executing in this backend's in-process worker.
+    pub fn worker_in_flight_jobs(&self) -> usize {
+        self.workers
+            .as_ref()
+            .map_or(0, workers::WorkerHandles::in_flight_jobs)
+    }
 }
 
 fn is_lock_busy(error: &sqlx::Error) -> bool {

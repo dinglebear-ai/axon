@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 mod convert;
-mod raw;
+pub(in crate::config) mod raw;
 
 /// TOML configuration — tuning knobs only, safe to commit to source control.
 ///

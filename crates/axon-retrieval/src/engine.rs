@@ -97,8 +97,9 @@ where
         // bm42 sparse arm: compute the query's sparse vector locally (Qdrant
         // applies IDF server-side). An empty sparse vector (all-stopword / tiny
         // query) contributes nothing to RRF, so hybrid stays safe to request.
-        let sparse_vector =
-            axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query);
+        let sparse_vector = request.hybrid.then(|| {
+            axon_vectors::bm42::compute_bm42_sparse(ChunkId::new("query"), &request.query)
+        });
         let search = self
             .store
             .search(VectorSearchRequest {
@@ -106,9 +107,9 @@ where
                 query: request.query,
                 limit: plan.limit,
                 dense_vector: Some(dense_vector),
-                sparse_vector: Some(sparse_vector),
+                sparse_vector,
                 filters: search_filters(&plan)?,
-                hybrid: Some(true),
+                hybrid: Some(plan.hybrid),
                 generation: plan.generation.clone(),
                 graph_refs: Vec::new(),
                 metadata: MetadataMap::new(),
@@ -257,6 +258,19 @@ pub(crate) fn search_filters(plan: &RetrievalPlan) -> Result<MetadataMap, ApiErr
         filters.insert(
             "vector_namespace".to_string(),
             serde_json::json!(plan.namespace_filters),
+        );
+    }
+    let mut embedded_at_range = serde_json::Map::new();
+    if let Some(since) = &plan.since {
+        embedded_at_range.insert("gte".to_string(), serde_json::json!(since));
+    }
+    if let Some(before) = &plan.before {
+        embedded_at_range.insert("lte".to_string(), serde_json::json!(before));
+    }
+    if !embedded_at_range.is_empty() {
+        filters.insert(
+            "embedded_at".to_string(),
+            serde_json::Value::Object(embedded_at_range),
         );
     }
     Ok(filters)

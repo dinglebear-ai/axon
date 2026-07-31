@@ -69,6 +69,79 @@ fn parse_watch_source_shorthand_creates_source_watch() {
     );
 }
 
+#[test]
+fn parse_url_glob_preserves_brace_commas_and_repeatability() {
+    let _guard = env_guard();
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "source",
+        "--url-glob",
+        "https://www.rust-lang.org/{learn,tools},https://example.com/{a,b}",
+        "--url-glob",
+        "https://other.example/{1..2}",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("source URL globs should parse");
+
+    assert_eq!(
+        cfg.url_glob,
+        vec![
+            "https://www.rust-lang.org/{learn,tools},https://example.com/{a,b}".to_string(),
+            "https://other.example/{1..2}".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn parse_repeatable_global_vectors_preserves_every_occurrence() {
+    let _guard = env_guard();
+    let cli = super::Cli::parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "source",
+        "https://example.com/repo.git",
+        "--exclude-path",
+        "vendor/",
+        "--exclude-path",
+        "docs/private/",
+        "--exclude-path-prefix",
+        "/archive,/legacy",
+        "--exclude-path-prefix",
+        "/private",
+        "--header",
+        "Accept: text/html",
+        "--header",
+        "X-Test: yes",
+        "--budget",
+        "/docs=10",
+        "--budget",
+        "*=20",
+    ]);
+    let cfg = super::build_config::into_config(cli).expect("repeatable globals should parse");
+
+    assert_eq!(
+        cfg.ingest_exclude_paths,
+        vec!["vendor/".to_string(), "docs/private/".to_string()]
+    );
+    assert!(cfg.exclude_path_prefix.contains(&"/archive".to_string()));
+    assert!(cfg.exclude_path_prefix.contains(&"/legacy".to_string()));
+    assert!(cfg.exclude_path_prefix.contains(&"/private".to_string()));
+    assert_eq!(
+        cfg.custom_headers,
+        vec!["Accept: text/html".to_string(), "X-Test: yes".to_string()]
+    );
+    assert_eq!(
+        cfg.path_budgets,
+        vec![("/docs".to_string(), 10), ("*".to_string(), 20)]
+    );
+}
+
 /// The removed source-family commands (`crawl`, `embed`, `ingest`,
 /// `code-search`, `code-search-watch`) must not appear anywhere in the rendered
 /// top-level help after the pipeline-unification clean break (#298 P10), while
@@ -1102,6 +1175,28 @@ fn parse_setup_init_preflight_smoke_and_stack_modes() {
 }
 
 #[test]
+fn reset_parser_preserves_reviewed_store_scope_and_confirmation() {
+    let reset_execute = super::Cli::parse_from([
+        "axon",
+        "reset",
+        "--stores",
+        "jobs",
+        "--plan-id",
+        "reset_plan_1",
+        "--yes",
+    ]);
+    let reset_execute_cfg =
+        super::build_config::into_config(reset_execute).expect("reset execution should parse");
+    assert_eq!(reset_execute_cfg.reset_stores, vec!["jobs"]);
+    assert_eq!(
+        reset_execute_cfg.reset_plan_id.as_deref(),
+        Some("reset_plan_1")
+    );
+    assert!(!reset_execute_cfg.reset_dry_run);
+    assert!(reset_execute_cfg.yes);
+}
+
+#[test]
 fn removed_session_watch_surfaces_are_rejected_by_parser() {
     for args in [
         &["axon", "sessions", "watch"][..],
@@ -1115,5 +1210,147 @@ fn removed_session_watch_surfaces_are_rejected_by_parser() {
             parsed.is_err(),
             "legacy session watch surface should be rejected: {args:?}"
         );
+    }
+}
+
+#[test]
+fn config_text_validation_uses_current_contract_shape() {
+    super::validate_toml_config_text("[retrieval]\nhybrid-candidates = 100\n")
+        .expect("current retrieval section");
+    let error = super::validate_toml_config_text("[search]\nlimit = 7\n")
+        .expect_err("legacy section must fail");
+    assert!(error.contains("unknown field `search`"), "{error}");
+}
+
+#[test]
+fn chat_accepts_query_without_positional_message() {
+    let cli = super::Cli::try_parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "chat",
+        "--query",
+        "hello",
+    ])
+    .expect("query-only chat should parse");
+    let cfg = super::build_config::into_config(cli).expect("query-only chat config");
+    assert!(matches!(cfg.command, CommandKind::Chat));
+    assert_eq!(cfg.query.as_deref(), Some("hello"));
+    assert!(cfg.positional.is_empty());
+}
+
+#[test]
+fn explicit_irrelevant_global_option_is_rejected_after_clap_parsing() {
+    let command = super::build_cli_command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["axon", "query", "hello", "--max-pages", "5"])
+        .expect("global options are syntactically accepted by clap");
+    let error = super::validate_relevant_globals(&command, &matches)
+        .expect_err("query must reject a crawl-only global option");
+    assert_eq!(
+        error,
+        "--max-pages is not supported by `axon query`; run `axon query --help` to see valid options"
+    );
+}
+
+#[test]
+fn explicit_relevant_global_option_remains_accepted() {
+    let command = super::build_cli_command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["axon", "query", "hello", "--since", "7d"])
+        .expect("retrieval global should parse");
+    super::validate_relevant_globals(&command, &matches)
+        .expect("query should accept its documented temporal option");
+}
+
+#[test]
+fn relevant_global_matrix_covers_destructive_map_and_web_analysis_commands() {
+    for args in [
+        vec!["axon", "reset", "--yes"],
+        vec!["axon", "map", "https://example.com", "--sitemap-only"],
+        vec![
+            "axon",
+            "brand",
+            "https://example.com",
+            "--header",
+            "accept: text/html",
+        ],
+        vec![
+            "axon",
+            "diff",
+            "https://example.com/a",
+            "https://example.com/b",
+            "--render-mode",
+            "http",
+        ],
+        vec![
+            "axon",
+            "endpoints",
+            "https://example.com",
+            "--performance-profile",
+            "balanced",
+        ],
+    ] {
+        let command = super::build_cli_command();
+        let matches = command
+            .clone()
+            .try_get_matches_from(args.clone())
+            .unwrap_or_else(|error| panic!("{args:?} should parse: {error}"));
+        super::validate_relevant_globals(&command, &matches)
+            .unwrap_or_else(|error| panic!("{args:?} should be relevant: {error}"));
+    }
+}
+
+#[test]
+fn no_op_job_family_globals_are_rejected_per_subcommand() {
+    for args in [
+        vec!["axon", "status", "--yes"],
+        vec!["axon", "watch", "list", "--wait", "true"],
+        vec!["axon", "jobs", "list", "--yes"],
+    ] {
+        let command = super::build_cli_command();
+        let matches = command
+            .clone()
+            .try_get_matches_from(args.clone())
+            .unwrap_or_else(|error| panic!("{args:?} should reach relevance validation: {error}"));
+        assert!(
+            super::validate_relevant_globals(&command, &matches).is_err(),
+            "{args:?} must reject its unused global option"
+        );
+    }
+}
+
+#[test]
+fn leaf_local_args_that_share_global_ids_bypass_global_relevance_checks() {
+    for args in [
+        vec![
+            "axon",
+            "watch",
+            "create",
+            "https://example.com",
+            "--collection",
+            "docs",
+        ],
+        vec![
+            "axon",
+            "watch",
+            "update",
+            "watch-1",
+            "--collection",
+            "docs-v2",
+        ],
+        vec!["axon", "jobs", "list", "--limit", "5"],
+    ] {
+        let command = super::build_cli_command();
+        let matches = command
+            .clone()
+            .try_get_matches_from(args.clone())
+            .unwrap_or_else(|error| panic!("{args:?} should parse: {error}"));
+        super::validate_relevant_globals(&command, &matches)
+            .unwrap_or_else(|error| panic!("{args:?} local flag misclassified: {error}"));
     }
 }

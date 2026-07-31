@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 use sqlx::Row;
 
 use crate::migration::sqlite_error;
@@ -15,7 +16,9 @@ pub(super) async fn put_manifest(
     manifest: SourceManifest,
 ) -> Result<()> {
     validate_manifest(&manifest)?;
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     ensure_generation_for_manifest_in_tx(&mut tx, &manifest).await?;
     let manifest_json = serde_json::to_string(&manifest).map_err(json_error)?;
     sqlx::query(

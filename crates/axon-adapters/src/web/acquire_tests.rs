@@ -50,6 +50,7 @@ fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
         min_markdown_chars,
         automation_script: None,
         headers: Vec::new(),
+        render_metadata: MetadataMap::new(),
         cache_policy: CachePolicy::Bypass,
         vertical: VerticalOptions {
             enabled: false,
@@ -211,6 +212,7 @@ fn build_render_request_threads_automation_script() {
         &item("https://example.com/a"),
         RenderMode::Chrome,
         Some(automation_ref("/tmp/script.json")),
+        MetadataMap::new(),
     );
     assert_eq!(
         req.automation_script.map(|a| a.uri),
@@ -220,7 +222,12 @@ fn build_render_request_threads_automation_script() {
 
 #[test]
 fn build_render_request_omits_automation_script_when_unset() {
-    let req = build_render_request(&item("https://example.com/a"), RenderMode::Http, None);
+    let req = build_render_request(
+        &item("https://example.com/a"),
+        RenderMode::Http,
+        None,
+        MetadataMap::new(),
+    );
     assert!(req.automation_script.is_none());
 }
 

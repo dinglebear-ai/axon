@@ -25,7 +25,7 @@ use crate::store::Result;
 use super::manifest_items::manifest_items_in_tx;
 
 pub(super) async fn graph_prune_cleanup_debt_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     generation: &SourceGeneration,
     previous_generation: Option<&SourceGenerationId>,
 ) -> Result<Vec<CleanupDebt>> {

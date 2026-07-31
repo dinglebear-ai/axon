@@ -149,7 +149,8 @@ pub async fn atomic_write_explicit(
     let path = path.as_ref();
     let parent = path
         .parent()
-        .ok_or_else(|| ArtifactWriteError::MissingParent(path.to_path_buf()))?;
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(|err| ArtifactWriteError::io("create parent directory", parent, err))?;

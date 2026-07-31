@@ -1,4 +1,4 @@
-name: axon
+name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 
 # Full axon stack: axon (HTTP), tei, chrome, and a mandatory bundled qdrant
 # service — qdrant is NOT optional in this file; every `up -d` starts all 4.
@@ -43,7 +43,7 @@ services:
   axon:
     <<: *common-service
     image: ${AXON_IMAGE:-ghcr.io/dinglebear-ai/axon:latest}
-    container_name: axon
+    container_name: ${AXON_CONTAINER_NAME:-axon}
     user: "1000:1000"
     env_file:
       - path: ${AXON_HOME:-${HOME}/.axon}/.env
@@ -106,7 +106,7 @@ services:
       # home is CODEX_HOME=/home/axon/.axon/codex (see environment above), which
       # already persists via the ~/.axon bind mount on the first volume line.
     ports:
-      - "${AXON_HTTP_PUBLISH:-8001}:8001"
+      - "${AXON_HTTP_PUBLISH:-127.0.0.1:8001}:8001"
     command: ["serve"]
     depends_on:
       axon-tei:
@@ -123,7 +123,7 @@ services:
   axon-qdrant:
     <<: *common-service
     image: qdrant/qdrant:v1.18.2
-    container_name: axon-qdrant
+    container_name: ${AXON_QDRANT_CONTAINER_NAME:-axon-qdrant}
     # Shield the vector DB from the kernel's *global* OOM killer: under host
     # memory pressure (concurrent cargo builds + optimizer churn) qdrant is the
     # largest RSS on the box and got picked twice in 10 minutes (dmesg
@@ -163,7 +163,7 @@ services:
   axon-tei:
     <<: [*common-service, *gpu-service]
     image: ghcr.io/huggingface/text-embeddings-inference:89-1.9
-    container_name: axon-tei
+    container_name: ${AXON_TEI_CONTAINER_NAME:-axon-tei}
     environment:
       # Container-internal path — not suitable for shared .env.
       HF_HUB_CACHE: /data/cache
@@ -212,19 +212,19 @@ services:
     # headless_browser manager + chrome-headless-shell
     # Port 6000: management API (GET / → "healthy", /fork, /shutdown)
     # Port 9222: CDP proxy — pointed at by AXON_CHROME_REMOTE_URL
-    # Security: no built-in auth on CDP/headless_browser. Keep external exposure
-    # controlled at the firewall, reverse proxy, or tunnel layer. Do not add
-    # host-qualified port bindings; pre-commit rejects them.
+    # Security: no built-in auth on CDP/headless_browser. Bind the bundled
+    # provider to host loopback only; remote deployments must use an explicit
+    # authenticated tunnel/proxy or the external-provider overlay.
     <<: *common-service
-    container_name: axon-chrome
+    container_name: ${AXON_CHROME_CONTAINER_NAME:-axon-chrome}
     build:
       context: ./config
       dockerfile: chrome/Dockerfile
     shm_size: "2gb"
     ports:
-      - "9222:9222"  # CDP proxy
-      - "9223:9223"  # raw Chrome DevTools
-      - "6000:6000"  # management API
+      - "127.0.0.1:${AXON_CHROME_CDP_PORT:-9222}:9222"  # CDP proxy
+      - "127.0.0.1:${AXON_CHROME_DEVTOOLS_PORT:-9223}:9223"  # raw Chrome DevTools
+      - "127.0.0.1:${AXON_CHROME_MANAGEMENT_PORT:-6000}:6000"  # management API
     environment:
       HOSTNAME_OVERRIDE: axon-chrome
     healthcheck:

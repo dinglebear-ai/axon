@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 use sqlx::Row;
 
 use crate::migration::sqlite_error;
@@ -14,7 +15,9 @@ pub(super) async fn acquire_lease(
 ) -> Result<Option<LeaseGuard>> {
     let now = timestamp();
     let requested_expires_at = add_seconds(&now, request.ttl_seconds)?;
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let existing = sqlx::query(
         r#"
         SELECT lease_id, owner_id, acquired_at, expires_at
@@ -34,7 +37,7 @@ pub(super) async fn acquire_lease(
         let acquired_at: String = row.get("acquired_at");
         if timestamp_str_after(&existing_expires_at, &now.0)? {
             if owner_id != request.owner_id {
-                tx.rollback().await.map_err(sqlite_error)?;
+                tx.rollback().await;
                 return Ok(None);
             }
 
@@ -117,7 +120,7 @@ pub(super) async fn acquire_lease(
     .map_err(sqlite_error)?
         == 1;
     if !inserted {
-        tx.rollback().await.map_err(sqlite_error)?;
+        tx.rollback().await;
         return Ok(None);
     }
     tx.commit().await.map_err(sqlite_error)?;

@@ -77,64 +77,6 @@ const COMMAND_SECTIONS: &[(&str, &[&str])] = &[
     ("Destructive Cleanup", &["reset", "prune"]),
 ];
 
-const VECTOR_OPTIONS: &[(&str, &str)] = &[
-    ("--collection <name>", "Qdrant collection name"),
-    ("--limit <n>", "Maximum number of results"),
-    (
-        "--since <date>",
-        "Filter to content indexed on or after this date",
-    ),
-    (
-        "--before <date>",
-        "Filter to content indexed on or before this date",
-    ),
-    ("--no-hybrid-search", "Force dense-only retrieval"),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const WEB_OPTIONS: &[(&str, &str)] = &[
-    (
-        "--max-pages <n>",
-        "Maximum pages to crawl (crawl default 2000; 0 = uncapped)",
-    ),
-    ("--max-depth <n>", "Maximum crawl depth"),
-    (
-        "--render-mode <mode>",
-        "Page fetch mode: http, chrome, or auto-switch",
-    ),
-    (
-        "--include-subdomains <bool>",
-        "Include subdomains in crawl scope",
-    ),
-    ("--header <HEADER>", "Custom HTTP request header"),
-    ("--skip-embed", "Fetch/save without indexing into Qdrant"),
-    ("--collection <name>", "Qdrant collection name"),
-    ("--wait <bool>", "Block until async jobs complete"),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const SEARCH_OPTIONS: &[(&str, &str)] = &[
-    ("--limit <n>", "Maximum number of search results"),
-    (
-        "--search-time-range <range>",
-        "Restrict search to day, week, month, or year",
-    ),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const JOB_VIEW_OPTIONS: &[(&str, &str)] = &[
-    ("--active", "Show only active jobs"),
-    ("--recent", "Show active and completed jobs"),
-    ("--reclaimed", "Show only watchdog-reclaimed jobs"),
-    ("--json", "Output machine-readable JSON"),
-];
-
-const SERVICE_OPTIONS: &[(&str, &str)] = &[
-    ("--tei-url <url>", "Text Embeddings Inference endpoint"),
-    ("--qdrant-url <url>", "Qdrant endpoint"),
-    ("--json", "Output machine-readable JSON"),
-];
-
 pub(super) fn maybe_print_top_level_help_and_exit() {
     let args: Vec<String> = env::args().collect();
     if args.len() == 2 && matches!(args[1].as_str(), "-h" | "--help" | "help") {
@@ -234,29 +176,9 @@ fn print_top_level_help() {
 
     println!("  {}", p.section("Global Options"));
     row("-h, --help", "display help");
-    row("--wait <bool>", "true waits; false enqueues and returns");
-    row("--collection <name>", "vector collection (default axon)");
-    row("--skip-embed", "fetch/save without indexing into Qdrant");
-    row(
-        "--cache <bool>",
-        "reuse prior crawl artifacts when possible",
-    );
-    row(
-        "--cache-http-only",
-        "keep cached crawl flow on the HTTP path",
-    );
-    row(
-        "--max-pages <n>",
-        "crawl page limit (default 2000; 0 = uncapped)",
-    );
-    row(
-        "--url-glob <pattern[,..]>",
-        "expand URL seeds via brace globs (e.g. {1..10}, {a,b})",
-    );
-    row("--cron-every-seconds <n>", "repeat command every n seconds");
-    row("--cron-max-runs <n>", "stop cron loop after n runs");
-    row("--max-depth <n>", "crawl depth");
-    row("--output-dir <dir>", "output directory");
+    for (label, description) in global_options(&Cli::command()) {
+        row(&label, &description);
+    }
     println!();
 
     println!("  {}", p.section("Commands"));
@@ -453,48 +375,192 @@ fn local_options(command: &Command) -> Vec<(String, String)> {
 
 fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
     let mut options = local_options(command);
-    options.extend(relevant_global_options(command.get_name(), path));
+    options.extend(relevant_global_options(path));
 
     options.push(("-h, --help".to_string(), "Print help".to_string()));
     options
 }
 
-fn relevant_global_options(command_name: &str, path: &[&str]) -> Vec<(String, String)> {
-    let _ = path;
-    let specs: &[(&str, &str)] = match command_name {
-        "extract" | "map" | "screenshot" | "diff" | "brand" => WEB_OPTIONS,
-        "search" => SEARCH_OPTIONS,
-        "research" => &[
-            ("--limit <n>", "Maximum number of search results"),
-            (
-                "--research-depth <n>",
-                "Number of sources to synthesize over",
-            ),
-            (
-                "--search-time-range <range>",
-                "Restrict search to day, week, month, or year",
-            ),
-            ("--skip-embed", "Queue crawls without indexing into Qdrant"),
-            ("--json", "Output machine-readable JSON"),
-        ],
-        "query" | "retrieve" | "ask" | "evaluate" | "train" | "sources" | "domains" | "stats"
-        | "migrate" | "suggest" => VECTOR_OPTIONS,
-        "status" => JOB_VIEW_OPTIONS,
-        "sessions" | "watch" => &[
-            ("--wait <bool>", "Block until async jobs complete"),
-            ("--active", "Show only active jobs"),
-            ("--recent", "Show active and completed jobs"),
-            ("--json", "Output machine-readable JSON"),
-        ],
-        "debug" | "doctor" => SERVICE_OPTIONS,
-        "mcp" => &[],
-        "serve" => &[("--transport <mode>", "MCP transport for `serve mcp`")],
+const COMMON_GLOBAL_IDS: &[&str] = &[
+    "json",
+    "color",
+    "quiet",
+    "cron_every_seconds",
+    "cron_max_runs",
+];
+const SOURCE_GLOBAL_IDS: &[&str] = &[
+    "max_pages",
+    "max_depth",
+    "include_subdomains",
+    "exclude_path_prefix",
+    "ingest_exclude_paths",
+    "output_dir",
+    "output",
+    "warc",
+    "automation_script",
+    "render_mode",
+    "cache",
+    "cache_http_only",
+    "etag_conditional",
+    "format",
+    "limit",
+    "query",
+    "urls",
+    "url_glob",
+    "skip_embed",
+    "collection",
+    "batch_concurrency",
+    "wait",
+    "performance_profile",
+    "sitemap_only",
+    "tei_url",
+    "qdrant_url",
+    "normalize",
+    "block_assets",
+    "chrome_wait_for_selector",
+    "root_selector",
+    "exclude_selector",
+    "chrome_screenshot",
+    "custom_headers",
+    "path_budgets",
+];
+const MAP_GLOBAL_IDS: &[&str] = &[
+    "max_pages",
+    "max_depth",
+    "include_subdomains",
+    "exclude_path_prefix",
+    "warc",
+    "automation_script",
+    "render_mode",
+    "cache",
+    "cache_http_only",
+    "etag_conditional",
+    "format",
+    "performance_profile",
+    "sitemap_only",
+    "normalize",
+    "block_assets",
+    "chrome_wait_for_selector",
+    "root_selector",
+    "exclude_selector",
+    "chrome_screenshot",
+    "path_budgets",
+    "output_dir",
+    "custom_headers",
+];
+const EXTRACT_GLOBAL_IDS: &[&str] = &["query", "wait"];
+const SCREENSHOT_GLOBAL_IDS: &[&str] = &["output", "screenshot_full_page", "viewport"];
+const RETRIEVAL_GLOBAL_IDS: &[&str] = &[
+    "query",
+    "collection",
+    "limit",
+    "since",
+    "before",
+    "no_hybrid_search",
+    "tei_url",
+    "qdrant_url",
+];
+const SEARCH_GLOBAL_IDS: &[&str] = &[
+    "query",
+    "limit",
+    "research_depth",
+    "search_time_range",
+    "skip_embed",
+    "collection",
+];
+const SCRAPE_GLOBAL_IDS: &[&str] = &[
+    "render_mode",
+    "cache",
+    "cache_http_only",
+    "etag_conditional",
+    "format",
+    "output_dir",
+    "output",
+    "performance_profile",
+    "normalize",
+    "block_assets",
+    "chrome_wait_for_selector",
+    "root_selector",
+    "exclude_selector",
+    "chrome_screenshot",
+    "screenshot_full_page",
+    "viewport",
+    "custom_headers",
+    "collection",
+    "wait",
+    "skip_embed",
+    "tei_url",
+    "qdrant_url",
+];
+const SESSIONS_GLOBAL_IDS: &[&str] = &["wait", "skip_embed", "collection", "tei_url", "qdrant_url"];
+const JOB_STATUS_GLOBAL_IDS: &[&str] = &["watch", "reclaimed", "active", "recent"];
+const MONITOR_GLOBAL_IDS: &[&str] = &["watch"];
+const SERVICE_GLOBAL_IDS: &[&str] = &["tei_url", "qdrant_url"];
+
+fn relevant_global_options(path: &[&str]) -> Vec<(String, String)> {
+    let wanted = relevant_global_ids(path);
+    Cli::command()
+        .get_arguments()
+        .filter(|arg| {
+            let id = arg.get_id().as_str();
+            arg.is_global_set()
+                && !arg.is_hide_set()
+                && !is_positional_arg(arg)
+                && wanted.contains(id)
+                && match id {
+                    "screenshot_full_page" => {
+                        matches!(path, ["source"] | ["scrape"] | ["screenshot"])
+                    }
+                    _ => true,
+                }
+        })
+        .map(|arg| (option_label(arg), arg_help(arg)))
+        .collect()
+}
+
+pub(super) fn relevant_global_ids(path: &[&str]) -> HashSet<&'static str> {
+    let ids = match path {
+        ["extract", ..] if path.len() > 1 => &[],
+        ["sessions"] => SESSIONS_GLOBAL_IDS,
+        ["source"] => SOURCE_GLOBAL_IDS,
+        ["scrape" | "diff"] => SCRAPE_GLOBAL_IDS,
+        ["brand"] => &["custom_headers"],
+        ["endpoints"] => &["performance_profile"],
+        ["extract"] => EXTRACT_GLOBAL_IDS,
+        ["screenshot"] => SCREENSHOT_GLOBAL_IDS,
+        ["map"] => MAP_GLOBAL_IDS,
+        ["search" | "research"] => SEARCH_GLOBAL_IDS,
+        [
+            "query" | "retrieve" | "ask" | "summarize" | "evaluate" | "train" | "suggest" | "chat",
+        ] => RETRIEVAL_GLOBAL_IDS,
+        ["sources" | "domains" | "stats" | "collections", ..] => RETRIEVAL_GLOBAL_IDS,
+        ["status"] | ["jobs", "list"] => JOB_STATUS_GLOBAL_IDS,
+        ["monitor", "jobs"] => MONITOR_GLOBAL_IDS,
+        ["jobs", ..] | ["watch", ..] => &[],
+        ["reset", ..] | ["palette"] => &["yes"],
+        [
+            "doctor" | "debug" | "preflight" | "smoke" | "serve" | "mcp",
+            ..,
+        ] => SERVICE_GLOBAL_IDS,
         _ => &[],
     };
-
-    specs
+    COMMON_GLOBAL_IDS
         .iter()
-        .map(|(label, desc)| ((*label).to_string(), (*desc).to_string()))
+        .chain(ids.iter())
+        .copied()
+        .collect()
+}
+
+fn global_options(command: &Command) -> Vec<(String, String)> {
+    command
+        .get_arguments()
+        .filter(|arg| {
+            arg.is_global_set()
+                && !arg.is_hide_set()
+                && !is_positional_arg(arg)
+                && arg.get_id().as_str() != "help"
+        })
+        .map(|arg| (option_label(arg), arg_help(arg)))
         .collect()
 }
 
@@ -548,11 +614,31 @@ fn value_label(arg: &Arg) -> String {
 }
 
 fn arg_help(arg: &Arg) -> String {
-    let help = arg
+    let mut help = arg
         .get_help()
         .or_else(|| arg.get_long_help())
         .map(ToString::to_string)
         .unwrap_or_default();
+    let possible_values = if option_takes_value(arg) || is_positional_arg(arg) {
+        arg.get_value_parser()
+            .possible_values()
+            .map(|values| {
+                values
+                    .filter(|value| !value.is_hide_set())
+                    .map(|value| value.get_name().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    if !possible_values.is_empty() {
+        if !help.is_empty() {
+            help.push(' ');
+        }
+        help.push_str("Possible values: ");
+        help.push_str(&possible_values.join(", "));
+    }
     if !help.is_empty() {
         return help;
     }

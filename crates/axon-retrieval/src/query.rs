@@ -20,6 +20,11 @@ pub struct RetrievalRequest {
     /// by default so memory records only appear through an intentional memory
     /// retrieval path, regardless of vector namespace filters.
     pub excluded_source_kinds: Vec<String>,
+    pub hybrid: bool,
+    /// Inclusive lower bound for the canonical `embedded_at` payload timestamp.
+    pub since: Option<String>,
+    /// Inclusive upper bound for the canonical `embedded_at` payload timestamp.
+    pub before: Option<String>,
     pub byte_budget: u64,
     pub token_budget: u32,
 }

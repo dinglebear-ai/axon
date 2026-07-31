@@ -12,6 +12,14 @@ pub(super) fn write_compose_assets(compose_dir: &Path) -> io::Result<LocalSetupP
         assets::DOCKER_COMPOSE_SERVICES,
     )?;
     std::fs::write(
+        compose_dir.join("docker-compose.external-qdrant.yaml"),
+        assets::DOCKER_COMPOSE_EXTERNAL_QDRANT,
+    )?;
+    std::fs::write(
+        compose_dir.join("docker-compose.external-providers.yaml"),
+        assets::DOCKER_COMPOSE_EXTERNAL_PROVIDERS,
+    )?;
+    std::fs::write(
         compose_dir.join("config/chrome/Dockerfile"),
         assets::CHROME_DOCKERFILE,
     )?;
@@ -29,6 +37,8 @@ pub(super) fn check_compose_assets(compose_dir: &Path) -> LocalSetupPhase {
     let timer = PhaseTimer::start("compose-assets");
     let required = [
         compose_dir.join("docker-compose.yaml"),
+        compose_dir.join("docker-compose.external-qdrant.yaml"),
+        compose_dir.join("docker-compose.external-providers.yaml"),
         compose_dir.join("config/chrome/Dockerfile"),
         compose_dir.join("config/qdrant/production.yaml"),
     ];

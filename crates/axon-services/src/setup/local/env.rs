@@ -244,6 +244,13 @@ pub(super) fn read_env_file_values(path: &Path) -> io::Result<BTreeMap<String, S
     }
 }
 
+pub(super) fn read_env_values(path: &Path) -> io::Result<BTreeMap<String, String>> {
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    parse_env_file(&std::fs::read_to_string(path)?)
+}
+
 fn parse_env_file(raw: &str) -> io::Result<BTreeMap<String, String>> {
     config_store::parse_env_pairs_from_str(raw)
 }

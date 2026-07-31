@@ -92,6 +92,7 @@ pub(super) async fn unchanged_refresh_output(
         job_id: input.job_id,
         source_id: run.source_id.clone(),
         generation: committed_generation,
+        items_discovered: manifest.items.len() as u64,
         documents_prepared: 0,
         chunks_prepared: 0,
         vector_points_written: 0,

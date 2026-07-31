@@ -40,8 +40,17 @@ from the current env registry before treating it as operational truth.
 |-----|-------|-----------|-----------|--------|--------|
 | `QDRANT_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_QDRANT_URL` | compose-env | compose-interpolation | — | no | runtime.rs |
+| `AXON_EXTERNAL_QDRANT_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `QDRANT_HTTP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `QDRANT_GRPC_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `TEI_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_EXTERNAL_TEI_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `TEI_HTTP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_EXTERNAL_CHROME_REMOTE_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_MANAGEMENT_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_CDP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_DEVTOOLS_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `AXON_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_PROXY` | keep-env | both | — | no | runtime.rs |
 

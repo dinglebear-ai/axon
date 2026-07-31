@@ -125,18 +125,21 @@ fn tuning_env_vars_present() -> Vec<ConfigDiagnostic> {
 }
 
 /// Compose-interpolation-only vars found set outside a Compose-managed
-/// container. Best-effort heuristic: `AXON_IN_CONTAINER` marks the process
-/// as running inside the axon container image, where Compose does read
-/// these vars; its absence means the process is native/host, where these
-/// vars are inert and their presence usually means copy-paste from a
-/// compose `.env` into the host shell/`.env`.
+/// container. `AXON_IN_CONTAINER` marks the process as running inside the
+/// axon image. Native processes may legitimately load the canonical shared
+/// Axon/Compose env file; values that match that file are therefore silent.
+/// A host-shell override that differs from the managed file remains actionable.
 fn compose_only_env_vars_outside_compose() -> Vec<ConfigDiagnostic> {
     if env_non_empty("AXON_IN_CONTAINER").is_some() {
         return Vec::new();
     }
     all_specs()
         .filter(|spec| spec.classification == EnvClassification::ComposeEnv)
-        .filter_map(|spec| env_non_empty(spec.key).map(|_| spec))
+        .filter_map(|spec| {
+            env_non_empty(spec.key)
+                .filter(|value| !managed_env_file_has_value(spec.key, value))
+                .map(|_| spec)
+        })
         .map(|spec| ConfigDiagnostic {
             check: "compose_only_key_outside_compose",
             key: spec.key.to_string(),
@@ -150,6 +153,29 @@ fn compose_only_env_vars_outside_compose() -> Vec<ConfigDiagnostic> {
             ),
         })
         .collect()
+}
+
+fn managed_env_file_path() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("AXON_ENV_FILE").map(PathBuf::from)
+        && !path.as_os_str().is_empty()
+    {
+        return Some(path);
+    }
+    crate::paths::axon_home_dir().map(|dir| dir.join(".env"))
+}
+
+/// Return true only when the effective process value came unchanged from the
+/// managed env file. Parsing is read-only and best-effort; malformed or
+/// unreadable files do not suppress a diagnostic.
+fn managed_env_file_has_value(key: &str, value: &str) -> bool {
+    let Some(path) = managed_env_file_path() else {
+        return false;
+    };
+    let Ok(iter) = dotenvy::from_path_iter(path) else {
+        return false;
+    };
+    iter.filter_map(Result::ok)
+        .any(|(file_key, file_value)| file_key == key && file_value == value)
 }
 
 /// Deprecated env keys present in the environment: registry `Delete`

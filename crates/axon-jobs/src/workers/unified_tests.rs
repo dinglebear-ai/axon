@@ -4,7 +4,7 @@ use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
 use axon_api::source::{
     JobCancelRequest, JobCreateRequest, JobIntent, JobPriority, JobRecoveryRequest, JobStagePlan,
-    MetadataMap, Timestamp,
+    LifecycleStatus, MetadataMap, Timestamp,
 };
 use tempfile::NamedTempFile;
 use tokio::sync::Notify;
@@ -64,7 +64,7 @@ impl UnifiedJobRunner for PanickingRunner {
         _claimed: &UnifiedClaimedJob,
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         panic!("boom: simulated runner panic");
     }
 }
@@ -115,8 +115,8 @@ async fn healthy_runner_still_marks_job_completed() {
             _claimed: &UnifiedClaimedJob,
             _store: &SqliteUnifiedJobStore,
             _shutdown: &CancellationToken,
-        ) -> Result<(), ApiError> {
-            Ok(())
+        ) -> Result<UnifiedJobOutcome, ApiError> {
+            Ok(UnifiedJobOutcome::completed_without_counts())
         }
     }
 
@@ -134,6 +134,54 @@ async fn healthy_runner_still_marks_job_completed() {
 }
 
 #[tokio::test]
+async fn runner_completion_counts_survive_the_terminal_transition() {
+    let (pool, _temp) = test_pool().await;
+    let job_id = enqueue_test_job(&pool, UnifiedJobKind::Source).await;
+    let counts = axon_api::source::StageCounts {
+        items_total: Some(344),
+        items_done: 344,
+        documents_total: Some(344),
+        documents_done: 344,
+        chunks_total: Some(7_608),
+        chunks_done: 7_608,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+
+    struct CountsRunner {
+        counts: axon_api::source::StageCounts,
+    }
+    #[async_trait::async_trait]
+    impl UnifiedJobRunner for CountsRunner {
+        async fn run(
+            &self,
+            _claimed: &UnifiedClaimedJob,
+            _store: &SqliteUnifiedJobStore,
+            _shutdown: &CancellationToken,
+        ) -> Result<UnifiedJobOutcome, ApiError> {
+            Ok(UnifiedJobOutcome::completed(self.counts.clone()))
+        }
+    }
+
+    let claimed = claim_next_unified_job(&pool).await.unwrap().unwrap();
+    let mut registry = JobRunnerRegistry::new();
+    registry.register(
+        UnifiedJobKind::Source,
+        Arc::new(CountsRunner {
+            counts: counts.clone(),
+        }),
+    );
+    let registry = Arc::new(registry);
+
+    run_unified_claimed(&pool, &claimed, &CancellationToken::new(), Some(&registry)).await;
+
+    let store = SqliteUnifiedJobStore::new(pool.clone());
+    let summary = store.get(job_id).await.unwrap().unwrap();
+    assert_eq!(summary.status, LifecycleStatus::Completed);
+    assert_eq!(summary.counts, Some(counts));
+}
+
+#[tokio::test]
 async fn running_cancel_reaches_runner_and_cannot_be_overwritten_by_completion() {
     struct CancelAwareRunner {
         started: Arc<Notify>,
@@ -146,10 +194,10 @@ async fn running_cancel_reaches_runner_and_cannot_be_overwritten_by_completion()
             _claimed: &UnifiedClaimedJob,
             _store: &SqliteUnifiedJobStore,
             cancel: &CancellationToken,
-        ) -> Result<(), ApiError> {
+        ) -> Result<UnifiedJobOutcome, ApiError> {
             self.started.notify_one();
             cancel.cancelled().await;
-            Ok(())
+            Ok(UnifiedJobOutcome::completed_without_counts())
         }
     }
 
@@ -213,13 +261,13 @@ impl UnifiedJobRunner for ConcurrencyTrackingRunner {
         _claimed: &UnifiedClaimedJob,
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         use std::sync::atomic::Ordering;
         let now = self.current.fetch_add(1, Ordering::SeqCst) + 1;
         self.peak.fetch_max(now, Ordering::SeqCst);
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
         self.current.fetch_sub(1, Ordering::SeqCst);
-        Ok(())
+        Ok(UnifiedJobOutcome::completed_without_counts())
     }
 }
 
@@ -359,10 +407,10 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
             _claimed: &UnifiedClaimedJob,
             _store: &SqliteUnifiedJobStore,
             _shutdown: &CancellationToken,
-        ) -> Result<(), ApiError> {
+        ) -> Result<UnifiedJobOutcome, ApiError> {
             self.started.notify_one();
             self.release.notified().await;
-            Ok(())
+            Ok(UnifiedJobOutcome::completed_without_counts())
         }
     }
 
@@ -374,8 +422,8 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
             _claimed: &UnifiedClaimedJob,
             _store: &SqliteUnifiedJobStore,
             _shutdown: &CancellationToken,
-        ) -> Result<(), ApiError> {
-            Ok(())
+        ) -> Result<UnifiedJobOutcome, ApiError> {
+            Ok(UnifiedJobOutcome::completed_without_counts())
         }
     }
 
@@ -393,10 +441,12 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
     let registry = Arc::new(registry);
 
     let notify = Arc::new(Notify::new());
+    let activity = Arc::new(WorkerActivity::default());
     let shutdown = CancellationToken::new();
-    let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits(
+    let handle = tokio::spawn(unified_worker_loop_with_concurrency_limits_and_activity(
         Arc::clone(&pool),
         Arc::clone(&notify),
+        Arc::clone(&activity),
         shutdown.clone(),
         Some(registry),
         GENERAL_CONCURRENCY,
@@ -409,6 +459,10 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
     tokio::time::timeout(std::time::Duration::from_secs(10), started.notified())
         .await
         .expect("a source job should start within 10s");
+    assert!(
+        activity.in_flight() > 0,
+        "a claimed runner must remain visible to process-level drain tracking"
+    );
 
     let store = SqliteUnifiedJobStore::new((*pool).clone());
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
@@ -442,6 +496,11 @@ async fn non_source_job_completes_without_waiting_for_source_jobs_to_drain() {
     release.notify_waiters();
     shutdown.cancel();
     let _ = handle.await;
+    assert_eq!(
+        activity.in_flight(),
+        0,
+        "drain tracking must clear only after every runner returns"
+    );
 }
 
 /// Regression test for defect P2: a job must never sit `status = 'running'`
@@ -477,10 +536,10 @@ async fn job_parked_behind_full_source_lane_is_not_stale_recoverable() {
             _claimed: &UnifiedClaimedJob,
             _store: &SqliteUnifiedJobStore,
             _shutdown: &CancellationToken,
-        ) -> Result<(), ApiError> {
+        ) -> Result<UnifiedJobOutcome, ApiError> {
             self.started.notify_one();
             self.release.notified().await;
-            Ok(())
+            Ok(UnifiedJobOutcome::completed_without_counts())
         }
     }
 

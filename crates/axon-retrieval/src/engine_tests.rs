@@ -14,7 +14,7 @@ use axon_api::source::{
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_embedding::provider::{EmbeddingProvider, Result as EmbeddingProviderResult};
 use axon_vectors::store::{FakeVectorStore, VectorStore};
-use axon_vectors::testing::test_collection_spec_hybrid;
+use axon_vectors::testing::{test_collection_spec, test_collection_spec_hybrid};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -27,6 +27,9 @@ fn request() -> RetrievalRequest {
         generation: Some(SourceGenerationId::new("7")),
         namespace_filters: vec!["docs".to_string(), "guides".to_string()],
         excluded_source_kinds: Vec::new(),
+        hybrid: true,
+        since: None,
+        before: None,
         byte_budget: 80,
         token_budget: 20,
     }
@@ -120,6 +123,38 @@ async fn ranking_is_deterministic_with_fixed_fake_vector_search_results() {
         .collect();
 
     assert_eq!(chunk_ids, vec!["chunk-a", "chunk-b", "chunk-c"]);
+}
+
+#[tokio::test]
+async fn dense_only_request_omits_the_sparse_arm() {
+    let store = Arc::new(FakeVectorStore::new("fake-vectors"));
+    let spec = test_collection_spec(4);
+    store.ensure_collection(spec.clone()).await.unwrap();
+    store
+        .upsert(VectorPointBatch {
+            batch_id: BatchId::new(Uuid::from_u128(13)),
+            collection: "axon-test".to_string(),
+            model: "fake-embedding".to_string(),
+            dimensions: 4,
+            sparse_vectors: None,
+            payload_indexes: spec.payload_indexes,
+            points: vec![point(
+                "point-dense",
+                "chunk-dense",
+                &[1.0, 0.0, 0.0, 0.0],
+                "Dense-only body",
+            )],
+        })
+        .await
+        .unwrap();
+
+    let provider = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 4));
+    let engine = RetrievalEngine::new(store, provider, retrieval_config());
+    let mut request = request();
+    request.hybrid = false;
+    let result = engine.retrieve(request).await.unwrap();
+
+    assert_eq!(result.matches.len(), 1);
 }
 
 #[tokio::test]

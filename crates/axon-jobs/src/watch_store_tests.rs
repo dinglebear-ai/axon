@@ -135,6 +135,59 @@ async fn sqlite_watch_store_reconstructs_stored_request() {
 }
 
 #[tokio::test]
+async fn empty_due_lease_check_does_not_wait_for_an_unrelated_writer() {
+    let (store, pool, _temp) = store().await;
+    let mut blocker = pool.acquire().await.expect("writer connection");
+    sqlx::query("BEGIN IMMEDIATE")
+        .execute(&mut *blocker)
+        .await
+        .expect("hold write lock");
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(250),
+        store.lease_due(chrono::Utc::now().timestamp_millis(), 60_000, 32),
+    )
+    .await;
+
+    sqlx::query("ROLLBACK")
+        .execute(&mut *blocker)
+        .await
+        .expect("release write lock");
+    let leased = result
+        .expect("an empty scheduler pass must remain a read-only fast path")
+        .expect("lease check");
+    assert!(leased.is_empty());
+}
+
+#[tokio::test]
+async fn due_watch_preflight_keeps_atomic_single_lease_authority() {
+    let (store, pool, _temp) = store().await;
+    let watch = WatchStore::create(&store, watch_request()).await.unwrap();
+    let now = chrono::Utc::now().timestamp_millis();
+    sqlx::query(
+        "UPDATE axon_source_watches SET next_run_at = ?, lease_expires_at = NULL \
+         WHERE watch_id = ?",
+    )
+    .bind(now - 1)
+    .bind(&watch.watch_id.0)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (first, second) = tokio::join!(
+        store.lease_due(now, 60_000, 32),
+        store.lease_due(now, 60_000, 32),
+    );
+    let mut lease_counts = vec![first.unwrap().len(), second.unwrap().len()];
+    lease_counts.sort_unstable();
+    assert_eq!(
+        lease_counts,
+        vec![0, 1],
+        "the unchanged atomic UPDATE must grant a due watch to exactly one contender"
+    );
+}
+
+#[tokio::test]
 async fn sqlite_watch_store_schedule_update_recomputes_next_run_at() {
     let (store, pool, _temp) = store().await;
     let created = WatchStore::create(&store, watch_request()).await.unwrap();

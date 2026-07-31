@@ -160,8 +160,12 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
 
     let base_uri = target.web_url.trim_end_matches('/').to_string();
     let mut items = Vec::new();
+    let exclude_paths = option_string_array(&plan.request.options, "exclude_paths")?;
     for file in files {
         let key = relative_key(&root, &file)?;
+        if exclude_paths.iter().any(|excluded| key.contains(excluded)) {
+            continue;
+        }
         let path = safe_item_path(&root, &key)?;
         let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
         if !meta.is_file() {
@@ -199,6 +203,31 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
         created_at: timestamp(),
         metadata: manifest_metadata(&target),
     })
+}
+
+fn option_string_array(options: &AdapterOptions, key: &str) -> Result<Vec<String>> {
+    let Some(value) = options.values.get(key) else {
+        return Ok(Vec::new());
+    };
+    let Some(values) = value.as_array() else {
+        return Err(ApiError::new(
+            "adapter.git.option.invalid",
+            ErrorStage::Routing,
+            format!("git adapter option `{key}` must be an array of strings"),
+        ));
+    };
+    values
+        .iter()
+        .map(|value| {
+            value.as_str().map(ToString::to_string).ok_or_else(|| {
+                ApiError::new(
+                    "adapter.git.option.invalid",
+                    ErrorStage::Routing,
+                    format!("git adapter option `{key}` entries must be strings"),
+                )
+            })
+        })
+        .collect()
 }
 
 fn acquire_sync(plan: &SourcePlan, diff: &SourceManifestDiff) -> Result<SourceAcquisition> {

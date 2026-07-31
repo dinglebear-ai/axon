@@ -313,10 +313,40 @@ async fn on_disk_sink_persists_across_reopen() {
         sink.flush().await.unwrap();
     }
 
-    // Reopen: rows survive; a fresh registry restarts sequence numbering, but
-    // the durable unique index still guards the persisted stream.
+    // Reopen: rows survive and the next event resumes from durable sequence 1.
     let reopened = SqliteObservabilitySink::connect(path_str).await.unwrap();
+    reopened
+        .emit(event(job, PipelinePhase::Embedding))
+        .await
+        .expect("a fresh sink must resume the durable stream");
     let stored = reopened.events_for(job).await.unwrap();
-    assert_eq!(stored.len(), 1);
+    assert_eq!(stored.len(), 2);
     assert_eq!(stored[0].sequence, 1);
+    assert_eq!(stored[1].sequence, 2);
+}
+
+#[tokio::test]
+async fn independent_sinks_assign_unique_sequences_concurrently() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("observe.db");
+    let path_str = path.to_str().unwrap();
+    let first = SqliteObservabilitySink::connect(path_str).await.unwrap();
+    let second = SqliteObservabilitySink::connect(path_str).await.unwrap();
+    let job = JobId(uuid::Uuid::new_v4());
+
+    let (left, right) = tokio::join!(
+        first.emit(event(job, PipelinePhase::Fetching)),
+        second.emit(event(job, PipelinePhase::Embedding))
+    );
+    left.expect("first concurrent event");
+    right.expect("second concurrent event");
+
+    let stored = first.events_for(job).await.unwrap();
+    assert_eq!(
+        stored
+            .iter()
+            .map(|event| event.sequence)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
 }

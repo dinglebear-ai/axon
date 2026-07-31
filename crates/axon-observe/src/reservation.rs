@@ -11,6 +11,7 @@ use axon_api::source::{
 };
 use axon_error::ErrorStage;
 use chrono::{DateTime, Duration, Utc};
+use tokio::sync::Notify;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
@@ -27,6 +28,7 @@ pub struct ProviderReservationConfig {
 #[derive(Debug, Clone)]
 pub struct ProviderReservationManager {
     state: Arc<Mutex<ReservationStateInner>>,
+    capacity_changed: Arc<Notify>,
 }
 
 #[derive(Debug)]
@@ -56,6 +58,7 @@ pub struct ProviderReservation {
     acquired_at: Timestamp,
     expires_at: Option<Timestamp>,
     state: Arc<Mutex<ReservationStateInner>>,
+    capacity_changed: Arc<Notify>,
     released: bool,
 }
 
@@ -97,7 +100,13 @@ impl ProviderReservationManager {
                 cooldown_deadline: None,
                 last_error_code: None,
             })),
+            capacity_changed: Arc::new(Notify::new()),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn capacity_changed_notify(&self) -> Arc<Notify> {
+        Arc::clone(&self.capacity_changed)
     }
 
     pub async fn reserve(&self, priority: JobPriority, units: u32) -> Result<ProviderReservation> {
@@ -128,6 +137,34 @@ impl ProviderReservationManager {
             context.ttl_seconds,
         )
         .await
+    }
+
+    /// Wait for transient reservation capacity instead of converting normal
+    /// provider contention into a terminal pipeline failure.
+    ///
+    /// The notification future is registered before each reservation attempt,
+    /// preventing a release between the failed attempt and the wait from being
+    /// missed. Non-capacity errors (cooling, invalid requests, unavailable
+    /// providers) still return immediately with their original classification.
+    pub async fn reserve_with_context_wait(
+        &self,
+        context: ProviderReservationContext,
+    ) -> Result<ProviderReservation> {
+        loop {
+            let capacity_changed = self.capacity_changed.notified();
+            tokio::pin!(capacity_changed);
+            // `notify_waiters` does not retain a permit. Merely constructing a
+            // `Notified` future is insufficient: it must be enabled before the
+            // capacity check to close the release-between-check-and-await race.
+            capacity_changed.as_mut().enable();
+            match self.reserve_with_context(context.clone()).await {
+                Ok(reservation) => return Ok(reservation),
+                Err(error) if error.code.to_string() == "provider.capacity_exhausted" => {
+                    capacity_changed.await;
+                }
+                Err(error) => return Err(error),
+            }
+        }
     }
 
     async fn reserve_inner(
@@ -166,14 +203,25 @@ impl ProviderReservationManager {
                 "reservation units must be > 0",
             ));
         }
+        if units > state.config.capacity
+            || !state.can_ever_preserve_interactive_capacity(priority, units)
+        {
+            return Err(state.error_for(
+                &effective_provider_id,
+                "provider.invalid_reservation",
+                "reservation cannot be satisfied by the configured provider capacity",
+            ));
+        }
 
         let available = state.config.capacity.saturating_sub(state.active);
         if available < units || !state.preserves_interactive_capacity(priority, units) {
-            return Err(state.error_for(
+            let mut error = state.error_for(
                 &effective_provider_id,
                 "provider.capacity_exhausted",
                 "provider reservation capacity exhausted",
-            ));
+            );
+            error.retryable = true;
+            return Err(error);
         }
 
         state.active += units;
@@ -198,6 +246,7 @@ impl ProviderReservationManager {
             acquired_at: Timestamp::from(acquired_at),
             expires_at,
             state: Arc::clone(&self.state),
+            capacity_changed: Arc::clone(&self.capacity_changed),
             released: false,
         })
     }
@@ -351,6 +400,8 @@ impl Drop for ProviderReservation {
             }
         }
         self.released = true;
+        drop(state);
+        self.capacity_changed.notify_waiters();
     }
 }
 
@@ -405,6 +456,13 @@ impl ReservationStateInner {
             .saturating_sub(self.active)
             .saturating_sub(units);
         available_after >= self.config.interactive_reserve
+    }
+
+    fn can_ever_preserve_interactive_capacity(&self, priority: JobPriority, units: u32) -> bool {
+        if !matches!(priority, JobPriority::Background | JobPriority::Maintenance) {
+            return true;
+        }
+        self.config.capacity.saturating_sub(units) >= self.config.interactive_reserve
     }
 
     fn error_for(&self, provider_id: &ProviderId, code: &str, message: &str) -> ApiError {

@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "lucide-react": "^1.16.0",
-    "next": "^16.2.11",
+    "next": "^16.2.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -23,7 +23,8 @@
     "url": "https://github.com/dinglebear-ai/axon.git"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.25",
+    "sharp": "^0.35.3"
   },
   "private": true,
   "scripts": {

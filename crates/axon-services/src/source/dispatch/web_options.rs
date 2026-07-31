@@ -67,10 +67,57 @@ pub(crate) fn web_crawl_options(
         "cache_policy".to_string(),
         serde_json::json!(if cfg.etag_conditional {
             "revalidate"
+        } else if cfg.cache {
+            "use"
         } else {
             "bypass"
         }),
     );
+    options.insert(
+        "cache_http_only".to_string(),
+        serde_json::json!(cfg.cache_http_only),
+    );
+    options.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
+    options.insert(
+        "block_assets".to_string(),
+        serde_json::json!(cfg.block_assets),
+    );
+    options.insert(
+        "chrome_screenshot".to_string(),
+        serde_json::json!(cfg.chrome_screenshot),
+    );
+    options.insert(
+        "sitemap_only".to_string(),
+        serde_json::json!(cfg.sitemap_only),
+    );
+    options.insert("format".to_string(), serde_json::json!(cfg.format));
+    options.insert(
+        "output_dir".to_string(),
+        serde_json::json!(cfg.output_dir.to_string_lossy()),
+    );
+    if let Some(selector) = cfg.chrome_wait_for_selector.as_deref() {
+        options.insert(
+            "chrome_wait_for_selector".to_string(),
+            serde_json::json!(selector),
+        );
+    }
+    if let Some(selector) = cfg.root_selector.as_deref() {
+        options.insert("root_selector".to_string(), serde_json::json!(selector));
+    }
+    if let Some(selector) = cfg.exclude_selector.as_deref() {
+        options.insert("exclude_selector".to_string(), serde_json::json!(selector));
+    }
+    if !cfg.path_budgets.is_empty() {
+        options.insert(
+            "path_budgets".to_string(),
+            serde_json::Value::Object(
+                cfg.path_budgets
+                    .iter()
+                    .map(|(path, limit)| (path.clone(), serde_json::json!(limit)))
+                    .collect(),
+            ),
+        );
+    }
     options.insert(
         "render_mode".to_string(),
         serde_json::json!(api_render_mode(cfg.render_mode)),

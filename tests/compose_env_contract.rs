@@ -23,9 +23,24 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.prod.yaml must keep TEI data under the canonical ~/.axon appdata root"
     );
     assert!(
-        compose.contains("${AXON_HTTP_PUBLISH:-8001}:8001"),
-        "docker-compose.prod.yaml must use short port syntax without a host/interface prefix"
+        compose.contains("${AXON_HTTP_PUBLISH:-127.0.0.1:8001}:8001"),
+        "Axon's HTTP port must default to loopback while allowing an isolated published binding"
     );
+    assert!(
+        compose.starts_with("name: ${AXON_COMPOSE_PROJECT_NAME:-axon}"),
+        "compose project identity must be overrideable for isolated deployments"
+    );
+    for identity in [
+        "${AXON_CONTAINER_NAME:-axon}",
+        "${AXON_QDRANT_CONTAINER_NAME:-axon-qdrant}",
+        "${AXON_TEI_CONTAINER_NAME:-axon-tei}",
+        "${AXON_CHROME_CONTAINER_NAME:-axon-chrome}",
+    ] {
+        assert!(
+            compose.contains(&format!("container_name: {identity}")),
+            "compose container identity must be overrideable: {identity}"
+        );
+    }
     assert!(
         compose.contains("TEI_SERVER_MAX_CLIENT_BATCH_SIZE"),
         "compose TEI server batch size must not use TEI_MAX_CLIENT_BATCH_SIZE"
@@ -50,6 +65,16 @@ fn services_compose_reads_canonical_axon_home_env() {
         compose.contains("AXON_CODEX_CMD: \"\"") && compose.contains("AXON_CODEX_HOME: \"\""),
         "docker-compose.prod.yaml must clear host-only Codex bootstrap overrides in the container"
     );
+    for mapping in [
+        "127.0.0.1:${AXON_CHROME_CDP_PORT:-9222}:9222",
+        "127.0.0.1:${AXON_CHROME_DEVTOOLS_PORT:-9223}:9223",
+        "127.0.0.1:${AXON_CHROME_MANAGEMENT_PORT:-6000}:6000",
+    ] {
+        assert!(
+            compose.contains(mapping),
+            "unauthenticated bundled Chrome ports must remain host-loopback-only: {mapping}"
+        );
+    }
 }
 
 #[test]
@@ -77,6 +102,21 @@ fn dev_compose_mounts_local_debug_binary_runtime() {
         !compose.contains("docker-compose.dev.yaml"),
         "docker-compose.yaml should be the dev stack directly, not an overlay requiring docker-compose.dev.yaml"
     );
+}
+
+#[test]
+fn compose_overlays_share_the_overrideable_project_identity() {
+    for path in [
+        "docker-compose.yaml",
+        "docker-compose.external-qdrant.yaml",
+        "docker-compose.external-providers.yaml",
+    ] {
+        let compose = fs::read_to_string(path).expect("compose file should be readable");
+        assert!(
+            compose.starts_with("name: ${AXON_COMPOSE_PROJECT_NAME:-axon}"),
+            "{path} must share the overrideable project identity"
+        );
+    }
 }
 
 #[test]
@@ -442,6 +482,7 @@ fn env_example_only_contains_production_runtime_keys() {
         "TEI_URL",
         "TEI_HTTP_PORT",
         "TEI_EMBEDDING_MODEL",
+        "AXON_EXTERNAL_TEI_URL",
         // Qdrant host port mappings + GPU device selection — structural compose
         // runtime config that is part of the minimal boot shape. TEI server
         // performance-tuning flags (client/server batch size, batch tokens,
@@ -456,6 +497,10 @@ fn env_example_only_contains_production_runtime_keys() {
         "CUDA_VISIBLE_DEVICES",
         // Chrome + scrape stack
         "AXON_CHROME_REMOTE_URL",
+        "AXON_EXTERNAL_CHROME_REMOTE_URL",
+        "AXON_CHROME_MANAGEMENT_PORT",
+        "AXON_CHROME_CDP_PORT",
+        "AXON_CHROME_DEVTOOLS_PORT",
         // HTTP behavior — UA overrides
         "AXON_USER_AGENT",
         // LLM (Gemini headless)

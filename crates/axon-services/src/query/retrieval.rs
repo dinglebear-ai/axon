@@ -58,6 +58,7 @@ pub async fn query_via_retrieval_with_cfg(
     // The engine returns per-chunk matches without pagination; fetch enough to
     // cover the requested offset+limit window, then apply the window here.
     let fetch_limit = (opts.offset as u32).saturating_add(limit);
+    let (since, before) = normalize_time_bounds(cfg, chrono::Utc::now())?;
     let result = run_query(
         store,
         provider,
@@ -68,6 +69,9 @@ pub async fn query_via_retrieval_with_cfg(
             query: text.to_string(),
             collection: cfg.collection.clone(),
             limit: fetch_limit.max(1),
+            hybrid: cfg.hybrid_search_enabled,
+            since,
+            before,
         },
     )
     .await
@@ -119,6 +123,58 @@ pub async fn query_via_retrieval_with_cfg(
         .collect();
 
     Ok(QueryResult { results })
+}
+
+pub(super) fn normalize_time_bounds(
+    cfg: &Config,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Result<(Option<String>, Option<String>), Box<dyn Error>> {
+    let since = normalize_time_bound(cfg.since.as_deref(), now, false)?;
+    let before = normalize_time_bound(cfg.before.as_deref(), now, true)?;
+    if let (Some(since), Some(before)) = (&since, &before) {
+        let since_value = chrono::DateTime::parse_from_rfc3339(since)?;
+        let before_value = chrono::DateTime::parse_from_rfc3339(before)?;
+        if since_value > before_value {
+            return Err(Box::new(ServiceError::new(
+                "--since must not be later than --before".to_string(),
+            )));
+        }
+    }
+    Ok((since, before))
+}
+
+pub(super) fn normalize_time_bound(
+    raw: Option<&str>,
+    now: chrono::DateTime<chrono::Utc>,
+    end_of_day_for_date: bool,
+) -> Result<Option<String>, Box<dyn Error>> {
+    let Some(raw) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let timestamp = if let Some(days) = raw.strip_suffix('d').and_then(|v| v.parse::<i64>().ok()) {
+        now - chrono::Duration::days(days)
+    } else if let Some(weeks) = raw.strip_suffix('w').and_then(|v| v.parse::<i64>().ok()) {
+        now - chrono::Duration::weeks(weeks)
+    } else if let Ok(date) = chrono::NaiveDate::parse_from_str(raw, "%Y-%m-%d") {
+        let midnight = date
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight is valid")
+            .and_utc();
+        if end_of_day_for_date {
+            midnight + chrono::Duration::days(1) - chrono::Duration::nanoseconds(1)
+        } else {
+            midnight
+        }
+    } else {
+        chrono::DateTime::parse_from_rfc3339(raw)
+            .map_err(|error| {
+                ServiceError::new(format!(
+                    "invalid temporal bound `{raw}`; expected Nd, Nw, YYYY-MM-DD, or RFC3339: {error}"
+                ))
+            })?
+            .with_timezone(&chrono::Utc)
+    };
+    Ok(Some(timestamp.to_rfc3339()))
 }
 
 type ResolvedStores = (

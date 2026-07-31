@@ -1,4 +1,8 @@
 use super::*;
+use axon_api::source::PipelinePhase;
+use axon_services::types::ServiceJob;
+use serde_json::json;
+use uuid::Uuid;
 
 // Fixtures use unambiguous `EXAMPLE-*` placeholders rather than realistic
 // token shapes: the URL-aware path redacts userinfo and secret-bearing query
@@ -95,6 +99,93 @@ fn preserves_url_that_merely_contains_token_substring() {
         !out.contains("access_token=EXAMPLE"),
         "token value leaked: {out}"
     );
+}
+
+#[test]
+fn completed_source_row_includes_durable_counts() {
+    let now = chrono::Utc::now();
+    let job = ServiceJob {
+        id: Uuid::from_u128(42),
+        status: "completed".to_string(),
+        phase: PipelinePhase::Complete,
+        created_at: now,
+        updated_at: now,
+        started_at: Some(now),
+        finished_at: Some(now),
+        error_text: None,
+        url: Some("https://code.claude.com".to_string()),
+        source_type: Some("web".to_string()),
+        target: Some("https://code.claude.com".to_string()),
+        urls_json: None,
+        progress_json: None,
+        result_json: Some(json!({
+            "items_total": 344,
+            "items_done": 344,
+            "documents_total": 344,
+            "documents_done": 344,
+            "chunks_total": 7_608,
+            "chunks_done": 7_608,
+            "bytes_done": 0,
+        })),
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    };
+
+    let rendered = render_status_jobs_from_slices(&[job], &[], &[], &[], None);
+
+    assert!(
+        rendered.contains("completed https://code.claude.com"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("344/344 docs · 100% · 7608 chunks"),
+        "{rendered}"
+    );
+}
+
+#[test]
+fn completed_map_source_row_includes_durable_item_counts() {
+    let now = chrono::Utc::now();
+    let job = ServiceJob {
+        id: Uuid::from_u128(43),
+        status: "completed".to_string(),
+        phase: PipelinePhase::Complete,
+        created_at: now,
+        updated_at: now,
+        started_at: Some(now),
+        finished_at: Some(now),
+        error_text: None,
+        url: Some("https://gofastmcp.com".to_string()),
+        source_type: Some("web".to_string()),
+        target: Some("https://gofastmcp.com".to_string()),
+        urls_json: None,
+        progress_json: None,
+        result_json: Some(json!({
+            "items_total": 538,
+            "items_done": 538,
+            "documents_total": 0,
+            "documents_done": 0,
+            "chunks_total": 0,
+            "chunks_done": 0,
+            "bytes_done": 0,
+        })),
+        config_json: None,
+        attempt_count: 1,
+        active_attempt_id: None,
+        last_reclaimed_at: None,
+        last_reclaimed_reason: None,
+    };
+
+    let rendered = render_status_jobs_from_slices(&[job], &[], &[], &[], None);
+
+    assert!(
+        rendered.contains("completed https://gofastmcp.com"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("538/538 items · 100%"), "{rendered}");
 }
 
 #[test]
