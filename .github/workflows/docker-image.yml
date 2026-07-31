@@ -13,7 +13,7 @@ permissions:
 jobs:
   publish:
     if: ${{ startsWith(github.event.release.tag_name, 'v') }}
-    uses: dinglebear-ai/workflows/.github/workflows/hosted-container-release.yml@542ea7b7e5ca2d4e21f3277bfcf158584fee90ec
+    uses: dinglebear-ai/workflows/.github/workflows/hosted-container-release.yml@66e64b9f31de7ac1f9aa8c9f87ede9bbec5eae1d
     with:
       checkout-ref: ${{ github.event.release.tag_name }}
       image: ghcr.io/${{ github.repository_owner }}/axon

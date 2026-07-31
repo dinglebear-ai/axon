@@ -537,7 +537,7 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     assert!(docker.contains("release:"));
     assert!(docker.contains("types: [published]"));
     assert!(docker.contains(
-        "dinglebear-ai/workflows/.github/workflows/hosted-container-release.yml@542ea7b7e5ca2d4e21f3277bfcf158584fee90ec"
+        "dinglebear-ai/workflows/.github/workflows/hosted-container-release.yml@66e64b9f31de7ac1f9aa8c9f87ede9bbec5eae1d"
     ));
     assert!(docker.contains("startsWith(github.event.release.tag_name, 'v')"));
     assert!(docker.contains("checkout-ref: ${{ github.event.release.tag_name }}"));
