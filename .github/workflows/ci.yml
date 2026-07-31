@@ -533,7 +533,7 @@ jobs:
     runs-on: [self-hosted, ci-pool-rust]
     timeout-minutes: 30
     needs: [changes, rust-contracts]
-    if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' }}
     env:
       TEI_URL: http://127.0.0.1:52000
       QDRANT_URL: http://127.0.0.1:53333
@@ -832,8 +832,8 @@ jobs:
   mcp-smoke:
     name: mcp-smoke
     runs-on: [self-hosted, ci-pool-rust]
-    needs: [changes, release]
-    if: ${{ needs.release.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    needs: [changes, smoke-binary]
+    if: ${{ needs.smoke-binary.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -899,10 +899,10 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
-          name: axon-release-linux-smoke
-          path: target/release
-      - name: Prepare release binary
-        run: chmod +x ./target/release/axon
+          name: axon-debug-linux-smoke
+          path: target/debug
+      - name: Prepare debug binary
+        run: chmod +x ./target/debug/axon
 
       - name: Write CI mcporter config
         run: |
@@ -981,7 +981,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
-          ./target/release/axon mcp --transport http &
+          ./target/debug/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
           for _ in {1..30}; do
             if nc -z 127.0.0.1 8001 2>/dev/null; then
@@ -1014,44 +1014,6 @@ jobs:
           docker rm -f axon-tei || true
           docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml down || true
 
-  release:
-    name: release
-    runs-on: [self-hosted, ci-pool-rust]
-    timeout-minutes: 60
-    needs: [changes, rust-contracts, web-panel]
-    if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
-    steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-      - uses: ./.github/actions/setup-rust-kache
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-        with:
-          name: axon-web-assets
-          path: apps/web/out
-      - name: cargo build release axon
-        run: cargo build --release --locked --bin axon
-      - name: Upload release smoke binary
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
-        with:
-          name: axon-release-linux-smoke
-          path: target/release/axon
-          if-no-files-found: error
-
-  release-smoke:
-    name: release-smoke
-    runs-on: [self-hosted, ci-pool-rust]
-    timeout-minutes: 10
-    needs: [changes, release]
-    if: ${{ needs.release.result == 'success' }}
-    steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
-        with:
-          name: axon-release-linux-smoke
-          path: target/release
-      - name: smoke test release binary help output
-        run: |
-          chmod +x ./target/release/axon
-          ./target/release/axon --help
-
   ci-gate:
     name: ci-gate
     runs-on: [self-hosted, ci-pool-ops]
@@ -1078,8 +1040,6 @@ jobs:
       - mcp-smoke
       - rag-changes
       - live-rag-pr
-      - release
-      - release-smoke
     steps:
       - name: verify required jobs passed or were intentionally skipped
         run: |
@@ -1120,8 +1080,6 @@ jobs:
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
-          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.release.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
+          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.smoke-binary.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
           require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
           require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip release "${{ needs.release.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
-          require_success_or_intentional_skip release-smoke "${{ needs.release-smoke.result }}" "${{ needs.release.result == 'success' }}"

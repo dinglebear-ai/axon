@@ -341,42 +341,41 @@ fn auto_tag_uses_validated_xtask_release_plan() {
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let smoke = workflow_job_block(workflow, "smoke-binary");
-    assert!(smoke.contains("github.event_name == 'pull_request'"));
+    assert!(smoke.contains("needs.changes.outputs.rust == 'true'"));
     assert!(smoke.contains("cargo build --locked --bin axon"));
     assert!(!smoke.contains("cargo build --release"));
 
-    let release = workflow_job_block(workflow, "release");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(release.contains("github.event_name != 'pull_request'"));
-    assert!(release.contains("needs.changes.outputs.release == 'true'"));
-    assert!(release.contains("'ci:full'"));
+    assert!(
+        !workflow.contains("\n  release:\n") && !workflow.contains("\n  release-smoke:\n"),
+        "CI must not duplicate release-mode artifact builds on the self-hosted farm"
+    );
+    assert!(mcp_smoke.contains("needs: [changes, smoke-binary]"));
+    assert!(mcp_smoke.contains("axon-debug-linux-smoke"));
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
 }
 
 #[test]
-fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
+fn ci_builds_web_assets_once_for_ci_binary_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let web = workflow_job_block(workflow, "web-panel");
-    let release = workflow_job_block(workflow, "release");
     let windows = workflow_job_block(workflow, "windows-build");
 
     assert!(web.contains("npm --prefix apps/web run build"));
     assert!(web.contains("name: axon-web-assets"));
-    for (name, job) in [("release", release), ("windows-build", windows)] {
-        assert!(
-            job.contains("uses: actions/download-artifact@")
-                && job.contains("name: axon-web-assets"),
-            "{name} must reuse the web-panel artifact"
-        );
-        assert!(
-            !job.contains("npm ci --prefix apps/web"),
-            "{name} must not reinstall web dependencies"
-        );
-    }
+    assert!(
+        windows.contains("uses: actions/download-artifact@")
+            && windows.contains("name: axon-web-assets"),
+        "windows-build must reuse the web-panel artifact"
+    );
+    assert!(
+        !windows.contains("npm ci --prefix apps/web"),
+        "windows-build must not reinstall web dependencies"
+    );
 }
 
 #[test]
@@ -462,8 +461,6 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "mcp-smoke",
         "rag-changes",
         "live-rag-pr",
-        "release",
-        "release-smoke",
     ] {
         assert!(
             gate.contains(&format!("- {job}")),
