@@ -1,12 +1,13 @@
 # Axon
 
-Version: 7.2.5
+Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Axon is a self-hosted RAG stack: source acquisition, document preparation,
-embedding, hybrid retrieval, and LLM synthesis in one Rust binary, backed by
-SQLite, Qdrant, Hugging Face TEI, and Chrome/CDP. Every source — a web page,
-a site, a local checkout, a Git repo, a package, a Reddit subreddit, a YouTube
-transcript, an AI session export — enters through one unified pipeline.
+Version: 7.2.6
+
+Every source — a web page, a site, a local checkout, a Git repo, a package, a
+Reddit subreddit, a YouTube transcript, or an AI session export — enters
+through one unified pipeline backed by SQLite, Qdrant, Hugging Face TEI, and
+Chrome/CDP.
 
 Axon runs as a **native binary under systemd**: an Incus system container is the
 preferred deployment, bare-metal systemd is a supported alternative. The
@@ -83,7 +84,7 @@ synthesis or a configured OpenAI-compatible endpoint) the relevant credentials.
 One-line installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jmagar/axon/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.sh | sh
 ```
 
 The installer verifies the release checksum and installs `axon` to
@@ -102,7 +103,7 @@ AXON_INSTALL_METHOD=build ./install.sh    # cargo build --release instead of pul
 Prerequisites: Windows x86_64 (PowerShell 5.1+ or PowerShell Core).
 
 ```powershell
-irm https://raw.githubusercontent.com/jmagar/axon/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex
 ```
 
 Installs `axon.exe` to `%USERPROFILE%\.local\bin` and adds it to the user PATH.

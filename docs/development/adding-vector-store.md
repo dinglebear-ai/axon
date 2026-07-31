@@ -1,3 +1,9 @@
+---
+title: "Adding a Vector Store Backend"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a Vector Store Backend
 
 `axon-vectors` owns vector storage: the `VectorStore` trait, the Qdrant

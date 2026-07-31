@@ -3,8 +3,13 @@ name = "axon-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon shared infrastructure: config, HTTP/SSRF, content transforms, LLM backends, logging, paths, redaction, UI, health"
-license = "MIT"
+description = "Shared Axon configuration, HTTP security, content transforms, paths, redaction, UI, and health infrastructure."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [features]
 # Browser TLS/HTTP2 fingerprint impersonation via wreq (BoringSSL).
@@ -92,6 +97,11 @@ axon-api = { path = "../axon-api" }
 httpmock = "0.8"
 serial_test = "3"
 proptest = "1"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

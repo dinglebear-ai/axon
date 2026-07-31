@@ -3,7 +3,7 @@
 # All prerequisite checks (docker, nvidia-smi, gemini) happen inside `axon setup preflight`.
 set -eu
 
-REPO="${AXON_INSTALL_REPO:-jmagar/axon}"
+REPO="${AXON_INSTALL_REPO:-dinglebear-ai/axon}"
 VERSION="${AXON_VERSION:-latest}"
 PREFIX="${AXON_INSTALL_PREFIX:-$HOME/.local}"
 BIN_DIR="$PREFIX/bin"
@@ -34,7 +34,7 @@ detect_target() {
   case "$os:$arch" in
     linux:x86_64|linux:amd64) printf 'linux-x86_64' ;;
     mingw*:*|msys*:*|cygwin*:*)
-      fail "Windows detected — use install.ps1 instead: irm https://raw.githubusercontent.com/jmagar/axon/main/install.ps1 | iex" ;;
+      fail "Windows detected — use install.ps1 instead: irm https://raw.githubusercontent.com/dinglebear-ai/axon/main/install.ps1 | iex" ;;
     *) fail "unsupported platform $os/$arch" ;;
   esac
 }

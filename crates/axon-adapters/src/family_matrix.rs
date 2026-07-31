@@ -1,7 +1,7 @@
 //! Static source-family matrix for public source contracts.
 //!
 //! Split into submodules to respect the monolith file-size policy: the scope
-//! tables (one 17-field [`SourceScopeCapability`] per supported scope, see
+//! tables (one 17-field `SourceScopeCapability` per supported scope, see
 //! `spec.rs`) live in `family_matrix/scopes_content.rs` (local/upload/git/
 //! web/feed) and `family_matrix/scopes_tooling.rs` (youtube/reddit/sessions/
 //! registry/cli_tool/mcp_tool/memory); the per-family [`SourceAdapterSpec`]

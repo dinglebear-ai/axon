@@ -24,7 +24,7 @@ const CLONE_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Classify whether `input` is a git repository target.
 ///
-/// Thin wrapper over [`axon_adapters::git::parse_git_target`] so transports
+/// Thin wrapper over `git::parse_git_target` so transports
 /// (CLI/MCP/web) can route on git-ness without depending on the adapter crate
 /// directly or reimplementing URL parsing.
 pub fn is_git_target(input: &str) -> bool {

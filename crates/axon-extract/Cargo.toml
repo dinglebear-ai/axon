@@ -3,8 +3,13 @@ name = "axon-extract"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Axon vertical extractors: per-site structured doc extraction (github, pypi, npm, crates.io, reddit, ...)"
-license = "MIT"
+description = "Structured vertical extractors for GitHub, package registries, Reddit, and other supported sources."
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
 
 [dependencies]
 axon-core = { path = "../axon-core" }
@@ -32,6 +37,11 @@ tokio = { version = "1", features = [
 tracing = "0.1"
 regex = "1"
 url = "2"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lints]
 workspace = true

@@ -71,7 +71,7 @@ pub struct TargetLocalSourceRuntime {
     pub render_provider: Arc<dyn RenderProvider>,
     /// Enrichment-stage boundary (source-pipeline.md: `enriching`, between
     /// `fetching`/`acquire` and `normalizing`/`normalize`). Defaults to
-    /// [`NoopSourceEnricher`] — the stage is wired end-to-end (see the git
+    /// `NoopSourceEnricher` — the stage is wired end-to-end (see the git
     /// family's `prepare_changed_documents`) but every concrete enricher is a
     /// no-op passthrough until per-source-kind enrichers land (bead pmj7w).
     pub enricher: Arc<dyn SourceEnricher>,
@@ -302,7 +302,7 @@ impl ServiceContext {
     /// Inject the target source runtime.
     ///
     /// Used both by tests (with fakes via the `#[cfg(test)]`
-    /// [`TargetLocalSourceRuntime::new`]) and by production startup (with the
+    /// test-only `TargetLocalSourceRuntime` constructor) and by production startup (with the
     /// real stores via [`TargetLocalSourceRuntime::from_config`]).
     pub fn with_target_local_source_runtime(mut self, runtime: TargetLocalSourceRuntime) -> Self {
         self.target_local_source = Some(Arc::new(runtime));

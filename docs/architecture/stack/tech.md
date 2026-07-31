@@ -1,3 +1,9 @@
+---
+title: "Technology Choices -- Axon"
+created: 2026-04-04
+updated: 2026-07-30
+---
+
 # Technology Choices -- Axon
 
 ## Language and runtime

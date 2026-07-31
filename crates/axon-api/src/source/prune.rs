@@ -147,7 +147,7 @@ pub struct PruneStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generation: Option<SourceGenerationId>,
     /// Identity for a [`PruneTargetKind::Graph`] node-delete step (stable
-    /// keys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —
+    /// keys, matching `axon_graph`'s `GraphStore::delete_nodes`). Additive —
     /// existing `Vector`/`Ledger` steps never set this.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_stable_keys: Option<Vec<String>>,

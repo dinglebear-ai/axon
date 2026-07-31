@@ -13778,7 +13778,7 @@
           ]
         },
         "graph_stable_keys": {
-          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching [`axon_graph`]'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
+          "description": "Identity for a [`PruneTargetKind::Graph`] node-delete step (stable\nkeys, matching `axon_graph`'s `GraphStore::delete_nodes`). Additive —\nexisting `Vector`/`Ledger` steps never set this.",
           "items": {
             "type": "string"
           },
@@ -28745,7 +28745,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:8cfb0b8738a7384cff7c77d9fbc8754fba72d710f479336a79f4c3bc633ac0f0",
+        "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -28755,7 +28755,7 @@
         "path": "crates/axon-api/src/source/stage.rs"
       },
       {
-        "checksum": "sha256:665b404b4df130d16ca48eda6bc220519c75798abd3f98c2dc43d6c446a16fcb",
+        "checksum": "sha256:e63a61305335e11cbdec0efba913d890cf482e9356543ca9647a461f8f7d7127",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/state.rs"
       },

@@ -42,7 +42,7 @@ const FETCH_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 
 /// crates.io requires a descriptive User-Agent (it 403s the default reqwest UA).
-const REGISTRY_USER_AGENT: &str = "axon-source/1.0 (+https://github.com/jmagar/axon)";
+const REGISTRY_USER_AGENT: &str = "axon-source/1.0 (+https://github.com/dinglebear-ai/axon)";
 
 /// The legacy `pkg:` prefix that marks a registry target.
 const REGISTRY_PREFIX: &str = "pkg:";

@@ -1,3 +1,9 @@
+---
+title: "Adding a Source Adapter"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding a Source Adapter
 
 A source adapter turns a `ResolvedSource` into `SourceDocument` values without

@@ -1,3 +1,9 @@
+---
+title: "Adding an MCP Action"
+created: 2026-07-07
+updated: 2026-07-30
+---
+
 # Adding an MCP Action
 
 `axon-mcp` exposes the entire Axon service surface as a **single** `axon`

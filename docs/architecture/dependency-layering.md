@@ -1,3 +1,9 @@
+---
+title: "Dependency Layering"
+created: 2026-07-15
+updated: 2026-07-30
+---
+
 # Dependency Layering
 
 Last Modified: 2026-07-25

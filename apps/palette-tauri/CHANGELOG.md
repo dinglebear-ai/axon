@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.14.4] - 2026-07-30
+
+### Changed
+
+- Align Palette source files with the fleet module and workspace conventions.
+
 ## [5.14.3](https://github.com/jmagar/axon/compare/palette-v5.14.2...palette-v5.14.3) (2026-07-17)
 
 ### Changed

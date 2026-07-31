@@ -1,3 +1,9 @@
+---
+title: "Vertical Extractor Metadata Spec"
+created: 2026-05-21
+updated: 2026-07-30
+---
+
 # Vertical Extractor Metadata Spec
 
 Status: active

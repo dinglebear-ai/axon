@@ -1,3 +1,9 @@
+---
+title: "Ask Synthesis Backend"
+created: 2026-05-07
+updated: 2026-07-30
+---
+
 # Ask Synthesis Backend
 
 `axon ask` uses the configured `core::llm` completion path. The default is the Gemini CLI headless backend; `AXON_LLM_BACKEND=openai-compat` selects an OpenAI-compatible `/v1/chat/completions` endpoint.

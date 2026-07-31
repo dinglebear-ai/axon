@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::Display,
     sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
@@ -99,10 +98,6 @@ struct BlurDismiss(AtomicBool);
 /// that specific shortcut (rather than calling `unregister_all`) when the user
 /// changes the keybinding.
 struct ActiveShortcut(Mutex<Option<String>>);
-
-fn log_palette_warning(context: &str, err: impl Display) {
-    crate::diag::warn(&format!("{context}: {err}"));
-}
 
 #[tauri::command]
 fn load_palette_config(app: AppHandle) -> Result<PaletteSettings, String> {
@@ -207,7 +202,7 @@ fn merged_settings_or_default(app: &AppHandle) -> PaletteSettings {
     match merged_settings(app) {
         Ok(settings) => settings,
         Err(err) => {
-            crate::diag::warn(&err.to_string());
+            diag::warn(&err.to_string());
             default_settings(&read_default_env_entries())
         }
     }
@@ -365,7 +360,7 @@ fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> 
         if let Some(old_label) = guard.take().filter(|l| l != &new_label) {
             let old_shortcut = shortcut_for_label(&old_label);
             if let Err(err) = app.global_shortcut().unregister(old_shortcut) {
-                crate::diag::warn(&format!(
+                diag::warn(&format!(
                     "failed to unregister old shortcut '{old_label}': {err}"
                 ));
             }
@@ -406,7 +401,7 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     window.show().map_err(|err| err.to_string())?;
     window.set_focus().map_err(|err| err.to_string())?;
     if let Err(err) = window.emit("palette://shown", ()) {
-        log_palette_warning("failed to emit shown event", err);
+        diag::warn_with_context("failed to emit shown event", err);
     }
     Ok(())
 }
@@ -418,12 +413,12 @@ fn toggle_main_window(app: &AppHandle) {
     match window.is_visible() {
         Ok(true) => {
             if let Err(err) = window.hide() {
-                log_palette_warning("failed to hide main window", err);
+                diag::warn_with_context("failed to hide main window", err);
             }
         }
         _ => {
             if let Err(err) = show_main_window(app) {
-                log_palette_warning("failed to show main window", err);
+                diag::warn_with_context("failed to show main window", err);
             }
         }
     }
@@ -443,24 +438,24 @@ fn install_tray(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
                 if let Err(err) = show_main_window(app) {
-                    log_palette_warning("failed to show main window from tray", err);
+                    diag::warn_with_context("failed to show main window from tray", err);
                 }
             }
             "settings" => {
                 if let Err(err) = show_main_window(app) {
-                    log_palette_warning("failed to show main window for settings", err);
+                    diag::warn_with_context("failed to show main window for settings", err);
                 }
                 if let Some(window) = app.get_webview_window("main") {
                     if let Err(err) = window.emit("palette://open-settings", ()) {
-                        log_palette_warning("failed to emit open settings event", err);
+                        diag::warn_with_context("failed to emit open settings event", err);
                     }
                 } else {
-                    log_palette_warning("failed to open settings", "main window not found");
+                    diag::warn_with_context("failed to open settings", "main window not found");
                 }
             }
             "quit" => {
                 if let Err(err) = app.global_shortcut().unregister_all() {
-                    log_palette_warning("failed to unregister global shortcuts on quit", err);
+                    diag::warn_with_context("failed to unregister global shortcuts on quit", err);
                 }
                 app.exit(0);
             }
@@ -551,7 +546,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .manage(TerminalState::new())
         .setup(|app| {
             if let Err(err) = install_tray(app) {
-                log_palette_warning("failed to install tray icon", err);
+                diag::warn_with_context("failed to install tray icon", err);
             }
             let settings = merged_settings_or_default(app.handle());
             register_configured_shortcut(app.handle(), &settings).map_err(anyhow::Error::msg)?;
@@ -561,10 +556,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let window_handle = handle.clone();
                 if let Err(err) = handle.run_on_main_thread(move || {
                     if let Err(err) = show_main_window(&window_handle) {
-                        log_palette_warning("failed to show main window on launch", err);
+                        diag::warn_with_context("failed to show main window on launch", err);
                     }
                 }) {
-                    log_palette_warning("failed to schedule launch window show", err);
+                    diag::warn_with_context("failed to schedule launch window show", err);
                 }
             });
             Ok(())
