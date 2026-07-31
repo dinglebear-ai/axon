@@ -7,17 +7,11 @@ name: chrome-extension-release
 # Builds the distributable zip (real files, no symlinks), checksums it, and
 # publishes a GitHub Release with the zip + SHA256 attached.
 #
-# Manual workflow_dispatch builds the zip and uploads it to the run as an
-# artifact for inspection, but does NOT create a Release unless explicitly
-# called with publish=true on a chrome-ext-v* tag. release-please.yml dispatches
-# this workflow after release-please creates the GitHub Release.
+# Packaging starts only from a published chrome-ext-v* GitHub Release and
+# checks out that immutable tag on a hosted x86_64 runner.
 on:
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: "Attach artifacts to an existing release-please chrome-ext-v* release"
-        type: boolean
-        default: false
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -25,11 +19,16 @@ permissions:
 jobs:
   build:
     name: package chrome extension
-    runs-on: [self-hosted, unraid]
+    if: ${{ startsWith(github.event.release.tag_name, 'chrome-ext-v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write  # required to upload release artifacts
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
 
       - name: Build extension zip
         id: build
@@ -45,8 +44,9 @@ jobs:
 
           # On release-please dispatch, the tag version must match the manifest
           # version so a release can never ship a zip the tag disagrees with.
-          if [[ "${GITHUB_REF}" == refs/tags/chrome-ext-v* ]]; then
-            tag_version="${GITHUB_REF#refs/tags/chrome-ext-v}"
+          tag="${{ github.event.release.tag_name }}"
+          if [[ "$tag" == chrome-ext-v* ]]; then
+            tag_version="${tag#chrome-ext-v}"
             if [[ "$tag_version" != "$version" ]]; then
               echo "::error::tag chrome-ext-v$tag_version does not match manifest version $version — bump $manifest before tagging" >&2
               exit 1
@@ -62,7 +62,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "zip=$dist/$name" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon
           path: |
@@ -71,19 +71,15 @@ jobs:
           if-no-files-found: error
 
       - name: Attach artifacts to release
-        # Attach artifacts only when release-please dispatches this workflow on
-        # an existing chrome-ext-v* release tag.
-        if: >-
-          startsWith(github.ref, 'refs/tags/chrome-ext-v') &&
-          github.event_name == 'workflow_dispatch' &&
-          inputs.publish
+        # Attach artifacts only to the published release that triggered this
+        # run.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           ZIP_PATH: ${{ steps.build.outputs.zip }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.release.tag_name }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
             "$ZIP_PATH" \

@@ -256,7 +256,7 @@ fn android_ci_setup_does_not_install_unused_emulator_packages() {
         .expect("android SDK setup block exists");
 
     assert!(
-        setup.contains("uses: android-actions/setup-android@v3"),
+        setup.contains("uses: android-actions/setup-android@"),
         "android job must set up SDK licenses/tooling before Gradle runs"
     );
     assert!(
@@ -323,31 +323,18 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         release.contains("fromJson(needs.plan.outputs.matrix)"),
         "auto-tag must expand the xtask plan as a matrix"
     );
+    assert!(release.contains("matrix.candidate_tag"));
+    assert!(workflow.contains("workflow_run:"));
+    assert!(workflow.contains("github.event.workflow_run.conclusion == 'success'"));
+    assert!(workflow.contains("ref: ${{ github.event.workflow_run.head_sha }}"));
     assert!(
-        release.contains("matrix.candidate_tag") && release.contains("matrix.release_workflow"),
-        "auto-tag must consume tags and workflows from the xtask release plan"
+        !workflow.contains("gh run list") && !workflow.contains("sleep 20"),
+        "auto-tag must not occupy a farm runner while polling CI"
     );
     assert!(
-        release
-            .find("Wait for CI to pass on this commit")
-            .expect("CI wait step")
-            < release.find("Create and push tag").expect("tag step"),
-        "auto-tag must wait for CI before creating release tags"
+        release.contains("gh release create") && release.contains("--verify-tag"),
+        "auto-tag must publish a release so heavy workflows start from release.published"
     );
-    for required in [
-        "if ! runs_json=$(gh run list",
-        "gh run list failed while polling ci.yml",
-        "--branch main",
-        "--event push",
-        ".headSha == $sha",
-        ".event == \"push\"",
-        ".headBranch == \"main\"",
-    ] {
-        assert!(
-            release.contains(required),
-            "auto-tag CI polling must constrain {required}"
-        );
-    }
 }
 
 #[test]
@@ -381,7 +368,7 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
     assert!(web.contains("name: axon-web-assets"));
     for (name, job) in [("release", release), ("windows-build", windows)] {
         assert!(
-            job.contains("uses: actions/download-artifact@v5")
+            job.contains("uses: actions/download-artifact@")
                 && job.contains("name: axon-web-assets"),
             "{name} must reuse the web-panel artifact"
         );
@@ -550,11 +537,57 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     assert!(compose.contains("compose-smoke-gate:"));
     assert!(compose.contains("require_success_or_intentional_skip compose-config"));
     assert!(compose.contains("require_success_or_intentional_skip image-build-smoke"));
-    assert!(docker.contains("scripts/ci/changed_paths.py"));
-    assert!(docker.contains("AXON_CHANGED_PATHS"));
-    assert!(docker.contains("python3 \"$AXON_CHANGED_PATHS\""));
-    assert!(docker.contains("needs.changes.outputs.docker == 'true'"));
-    assert!(docker.contains("startsWith(github.ref, 'refs/tags/v')"));
+    assert!(docker.contains("release:"));
+    assert!(docker.contains("types: [published]"));
+    assert!(docker.contains(
+        "dinglebear-ai/workflows/.github/workflows/hosted-container-release.yml@542ea7b7e5ca2d4e21f3277bfcf158584fee90ec"
+    ));
+    assert!(docker.contains("startsWith(github.event.release.tag_name, 'v')"));
+    assert!(docker.contains("checkout-ref: ${{ github.event.release.tag_name }}"));
+}
+
+#[test]
+fn fleet_workflows_enforce_pool_and_release_boundaries() {
+    let fast = [
+        include_str!("../.github/workflows/ci.yml"),
+        include_str!("../.github/workflows/codeql.yml"),
+        include_str!("../.github/workflows/compose-smoke.yml"),
+        include_str!("../.github/workflows/auto-tag.yml"),
+        include_str!("../.github/workflows/release-please.yml"),
+        include_str!("../.github/workflows/session-log-automerge.yml"),
+        include_str!("../.github/workflows/claude.yml"),
+    ];
+    for workflow in fast {
+        assert!(!workflow.contains("runs-on: ubuntu-"));
+        assert!(!workflow.contains("runs-on: [self-hosted, unraid]"));
+        for line in workflow
+            .lines()
+            .filter(|line| line.trim_start().starts_with("runs-on: [self-hosted"))
+        {
+            assert!(line.contains("ci-pool-"), "missing pool route: {line}");
+        }
+    }
+
+    let releases = [
+        include_str!("../.github/workflows/release.yml"),
+        include_str!("../.github/workflows/palette-release.yml"),
+        include_str!("../.github/workflows/android-release.yml"),
+        include_str!("../.github/workflows/chrome-extension-release.yml"),
+        include_str!("../.github/workflows/docker-image.yml"),
+    ];
+    for workflow in releases {
+        assert!(workflow.contains("release:"));
+        assert!(workflow.contains("types: [published]"));
+        assert!(!workflow.contains("workflow_dispatch:"));
+        assert!(!workflow.contains("runs-on: [self-hosted"));
+    }
+
+    for workflow in fast.into_iter().chain(releases) {
+        let lower = workflow.to_ascii_lowercase();
+        assert!(!lower.contains("arm64"));
+        assert!(!lower.contains("aarch64"));
+        assert!(!lower.contains("setup-qemu"));
+    }
 }
 
 #[test]

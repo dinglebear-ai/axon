@@ -2,30 +2,32 @@ name: auto-tag
 
 # Selective, per-component auto-release detector.
 #
-# On every push to main this asks `cargo xtask check-release-versions` for the
-# shared release plan. Component metadata lives in `release/components.toml`.
+# After the `CI` workflow succeeds on main this asks
+# `cargo xtask check-release-versions` for the shared release plan. Component
+# metadata lives in `release/components.toml`.
 #
 # For each component, it diffs the component's shipping paths against that
 # component's most recent tag. If the code changed AND the version was bumped
-# (the computed tag does not exist), it waits for CI to pass on this commit,
-# creates the tag, and dispatches the component's release workflow. A component
+# (the computed tag does not exist), it creates the tag and publishes the
+# component GitHub Release. The resulting release.published event is the sole
+# trigger for heavy artifact workflows. A component
 # whose code did NOT change since its last tag is skipped — so a CLI-only change
 # never rebuilds android, and an android-only change never cuts a CLI release.
 #
 # RELEASE GATES (OPS-M1): before a tag is created we (1) verify the new version
 # is a strictly-monotonic bump over that component's highest existing tag, and
-# (2) wait for the entire `CI` workflow to succeed for
-# this exact commit. This prevents an accidental version edit or a red CI from
-# auto-publishing a broken public release.
+# (2) run only after the entire `CI` workflow succeeded for this exact commit.
+# This prevents an accidental version edit or a red CI from auto-publishing a
+# broken public release without occupying a runner while CI is still pending.
 #
 # BUMP ENFORCEMENT: if a component's code changed but its version was NOT bumped
 # (the computed tag already exists), the component's job FAILS with a message
 # naming the component — nothing ships silently. `fail-fast: false` keeps the
 # other components releasing independently; the red job flags the missing bump.
 #
-# NOTE: tags pushed via GITHUB_TOKEN do NOT trigger other workflows (GitHub
-# security model). We therefore dispatch each release workflow explicitly via
-# the API after creating its tag — no PAT required.
+# NOTE: GitHub suppresses workflow events created by GITHUB_TOKEN. The release
+# is therefore published with RELEASE_PLEASE_TOKEN so release.published reaches
+# the heavy artifact workflows.
 #
 # Version bumping rules (from CLAUDE.md): bump ONLY the component you changed.
 #   feat!: / BREAKING CHANGE → major (X+1.0.0)
@@ -33,19 +35,20 @@ name: auto-tag
 #   everything else           → patch (X.Y.Z+1)
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
 
 permissions:
   contents: write   # required to create and push component release tags
-  actions: write   # required to dispatch the release workflows
 
 # Serialize runs for the same ref so two rapid merges to main cannot race on
 # creating/pushing the same component tag (which would fail one run's `git
 # push`). cancel-in-progress: false lets an in-flight release finish tagging
 # rather than being cancelled by the next push.
 concurrency:
-  group: auto-tag-${{ github.ref }}
+  group: auto-tag-main
   cancel-in-progress: false
 
 env:
@@ -55,14 +58,17 @@ env:
 
 jobs:
   plan:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-rust]
+    timeout-minutes: 20
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-rust-kache
@@ -83,58 +89,16 @@ jobs:
     needs: plan
     if: ${{ needs.plan.outputs.matrix != '{"include":[]}' }}
     name: ${{ matrix.id }}
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
-
-      # CI gate: do not cut a public release until the required CI checks for
-      # this exact commit have succeeded. auto-tag and CI both fire on the same
-      # push, so CI may still be in progress when this runs — hence the poll.
-      - name: Wait for CI to pass on this commit
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          sha="${{ github.sha }}"
-          deadline=$(( $(date +%s) + 1800 ))  # 30 minute cap
-          echo "Waiting for CI to succeed for $sha ..."
-          while :; do
-            gh_stderr="$(mktemp)"
-            if ! runs_json=$(gh run list \
-              --workflow=ci.yml \
-              --commit "$sha" \
-              --branch main \
-              --event push \
-              --json databaseId,status,conclusion,headSha,event,headBranch 2>"$gh_stderr"); then
-              echo "::error::gh run list failed while polling ci.yml for $sha" >&2
-              cat "$gh_stderr" >&2
-              exit 1
-            fi
-            run_json=$(jq -c --arg sha "$sha" \
-              '[.[] | select(.headSha == $sha and .event == "push" and .headBranch == "main")][0] // null' \
-              <<<"${runs_json:-[]}")
-            conclusion=$(jq -r '.conclusion // ""' <<<"${run_json:-null}")
-            status=$(jq -r '.status // ""' <<<"${run_json:-null}")
-            if [ "$conclusion" = "success" ]; then
-              echo "CI succeeded for $sha — proceeding to tag."
-              break
-            fi
-            if [ "$conclusion" = "failure" ] || [ "$conclusion" = "cancelled" ] || [ "$conclusion" = "timed_out" ]; then
-              echo "::error::CI concluded '$conclusion' for $sha — refusing to cut a release." >&2
-              exit 1
-            fi
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::timed out waiting for CI to finish for $sha." >&2
-              exit 1
-            fi
-            echo "CI status='${status:-unknown}' conclusion='${conclusion:-pending}'; sleeping 20s ..."
-            sleep 20
-          done
 
       - name: Create and push tag
         run: |
@@ -144,7 +108,15 @@ jobs:
           git push origin "${{ matrix.candidate_tag }}"
           echo "Pushed tag ${{ matrix.candidate_tag }}"
 
-      - name: Dispatch release workflow
+      # Publishing the GitHub Release is the only heavy-work trigger. The
+      # component workflow selects its tag from release.published.
+      - name: Publish component release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run "${{ matrix.release_workflow }}" --ref "${{ matrix.candidate_tag }}" -f publish=true
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          gh release create "${{ matrix.candidate_tag }}" \
+            --verify-tag \
+            --generate-notes \
+            --title "${{ matrix.candidate_tag }}"

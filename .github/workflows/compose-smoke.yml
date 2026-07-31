@@ -15,12 +15,13 @@ concurrency:
 jobs:
   changes:
     name: changes
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 10
     outputs:
       compose: ${{ steps.classify.outputs.compose }}
       docker: ${{ steps.classify.outputs.docker }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
       - name: Prepare trusted changed path classifier
@@ -63,11 +64,12 @@ jobs:
 
   compose-config:
     name: compose-config
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 15
     needs: [changes]
     if: ${{ needs.changes.outputs.compose == 'true' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       # Docker Compose v5 validates external networks exist even during config --quiet.
       # Create the network so both prod and dev compose files pass static validation.
@@ -99,13 +101,14 @@ jobs:
 
   image-build-smoke:
     name: image-build-smoke
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.docker == 'true' }}
     steps:
       # Full checkout: Dockerfile runs cargo build inside the container,
       # so the entire source tree must be in the Docker build context.
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Build Axon image
@@ -120,7 +123,8 @@ jobs:
 
   compose-smoke-gate:
     name: compose-smoke-gate
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 10
     if: always()
     needs:
       - changes

@@ -9,16 +9,11 @@ name: release
 # release so that a palette-only change does not require a CLI version bump and
 # vice-versa.
 #
-# Manual workflow_dispatch builds everything but skips attaching artifacts by
-# default. release-please.yml dispatches this workflow with publish=true on the
-# newly created v* tag after release-please creates the GitHub Release.
+# The heavy build starts only when GitHub reports the component release as
+# published. That event supplies the immutable tag checked out by every job.
 on:
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: "Attach artifacts to an existing release-please v* release"
-        type: boolean
-        default: false
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -33,7 +28,9 @@ env:
 jobs:
   axon-linux:
     name: build axon (linux)
-    runs-on: [self-hosted, unraid]
+    if: ${{ startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     # The `secrets` context is NOT allowed in step-level `if:` conditionals, so
     # the optional signing secret is promoted to job-level env here (where
     # referencing `secrets` IS allowed) and the signing steps gate on
@@ -45,10 +42,28 @@ jobs:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-kache
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.97.1
+      - uses: kunobi-ninja/kache-action@a257c055543c2840700a9bbca8f9c3094a421b1b
+        with:
+          version: "0.12.0"
+          s3-bucket: kache
+          s3-region: us-east-1
+          s3-prefix: rust
+          s3-endpoint: https://s3.tootie.tv
+          s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY }}
+          s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+          manifest-key: release-${{ runner.os }}-x64
+          namespace: release-${{ runner.os }}-x64
+          cache-executables: "true"
+          warm: "true"
+          sync: "false"
+          pr-comment: "false"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
@@ -85,7 +100,7 @@ jobs:
             -m axon-linux-x86_64.tar.gz -x axon-linux-x86_64.tar.gz.minisig
           shred -u /tmp/axon-minisign.key
           echo "Signed axon-linux-x86_64.tar.gz -> .minisig"
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon-linux-x86_64
           path: |
@@ -94,7 +109,7 @@ jobs:
           if-no-files-found: error
       # Separate upload so the optional signature does not weaken the
       # required-file guarantee above. Only present when signing ran.
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         if: ${{ env.SIGNING_KEY != '' }}
         with:
           name: axon-linux-x86_64-signature
@@ -103,16 +118,21 @@ jobs:
 
   axon-windows:
     name: build axon (windows)
+    if: ${{ startsWith(github.event.release.tag_name, 'v') }}
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       # Full checkout: the non-cone sparse list previously omitted root
       # Cargo.toml/Cargo.lock, which broke every build. LFS blobs come down as
       # pointers (lfs: false default) and are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           shared-key: release-axon-windows
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
@@ -140,7 +160,7 @@ jobs:
           $hash = (Get-FileHash axon-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  axon-windows-x86_64.zip" | Out-File -Encoding ascii axon-windows-x86_64.zip.sha256
           Pop-Location
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon-windows-x86_64
           path: |
@@ -151,17 +171,14 @@ jobs:
   publish:
     name: publish github release
     needs: [axon-linux, axon-windows]
-    runs-on: [self-hosted, unraid]
-    # Attach artifacts only when release-please dispatches this workflow on an
-    # existing v* release tag.
-    if: >-
-      startsWith(github.ref, 'refs/tags/v') &&
-      github.event_name == 'workflow_dispatch' &&
-      inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Attach artifacts only to the published v* release that triggered the run.
+    if: ${{ startsWith(github.event.release.tag_name, 'v') }}
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           path: dist
           merge-multiple: true
@@ -178,7 +195,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.release.tag_name }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" dist/axon-linux-x86_64.tar.gz.minisig --clobber
       - name: Attach artifacts to release
@@ -187,7 +204,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.release.tag_name }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
             dist/axon-linux-x86_64.tar.gz \

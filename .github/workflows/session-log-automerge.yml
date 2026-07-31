@@ -29,7 +29,8 @@ concurrency:
 jobs:
   automerge:
     name: auto-merge session logs
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 10
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository

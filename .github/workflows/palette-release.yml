@@ -7,17 +7,11 @@ name: palette-release
 # Builds the portable palette binary for Linux + Windows, packages each with a
 # SHA256 checksum, and publishes a GitHub Release with both artifacts attached.
 #
-# Manual workflow_dispatch builds + packages the binaries and uploads them to
-# the run as artifacts for inspection, but does NOT create a Release unless
-# explicitly called with publish=true on a palette-v* tag. release-please.yml
-# dispatches this workflow after release-please creates the GitHub Release.
+# The heavy build starts only from a published palette-v* GitHub Release and
+# checks out that immutable tag on hosted x86_64 runners.
 on:
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: "Attach artifacts to an existing release-please palette-v* release"
-        type: boolean
-        default: false
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -35,11 +29,16 @@ env:
 jobs:
   version:
     name: resolve and validate version
-    runs-on: [self-hosted, unraid]
+    if: ${{ startsWith(github.event.release.tag_name, 'palette-v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
       - name: Resolve and validate version
         id: version
         run: |
@@ -66,8 +65,9 @@ jobs:
           # On release-please dispatch, the tag version must match
           # tauri.conf.json so a release can never ship a binary the tag
           # disagrees with.
-          if [[ "${GITHUB_REF}" == refs/tags/palette-v* ]]; then
-            tag_version="${GITHUB_REF#refs/tags/palette-v}"
+          tag="${{ github.event.release.tag_name }}"
+          if [[ "$tag" == palette-v* ]]; then
+            tag_version="${tag#palette-v}"
             if [[ "$tag_version" != "$version" ]]; then
               echo "::error::tag palette-v$tag_version does not match version $version — bump $conf before tagging" >&2
               exit 1
@@ -78,23 +78,47 @@ jobs:
   palette-linux:
     name: build axon-palette (linux)
     needs: version
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
       # Full checkout: LFS blobs come down as pointers (lfs: false default) and
       # are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: ./.github/actions/setup-rust-kache
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.97.1
-          install-tauri-deps: "true"
+      - uses: kunobi-ninja/kache-action@a257c055543c2840700a9bbca8f9c3094a421b1b
+        with:
+          version: "0.12.0"
+          s3-bucket: kache
+          s3-region: us-east-1
+          s3-prefix: rust
+          s3-endpoint: https://s3.tootie.tv
+          s3-access-key-id: ${{ secrets.KACHE_S3_ACCESS_KEY }}
+          s3-secret-access-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+          manifest-key: release-palette-${{ runner.os }}-x64
+          namespace: release-palette-${{ runner.os }}-x64
+          cache-executables: "true"
+          warm: "true"
+          sync: "false"
+          pr-comment: "false"
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev patchelf
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
       # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
@@ -109,7 +133,7 @@ jobs:
           cd apps/palette-tauri/src-tauri/target/release
           tar -czf axon-palette-linux-x86_64.tar.gz axon-palette-tauri
           sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon-palette-linux-x86_64
           path: |
@@ -121,22 +145,26 @@ jobs:
     name: build axon-palette (windows)
     needs: version
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       # Full checkout: LFS blobs come down as pointers (lfs: false default) and
       # are not needed to build.
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
           version: 11.3.0
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae
         with:
           workspaces: apps/palette-tauri/src-tauri
           shared-key: release-palette-windows
@@ -161,7 +189,7 @@ jobs:
           $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
           Pop-Location
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon-palette-windows-x86_64
           path: |
@@ -172,17 +200,15 @@ jobs:
   publish:
     name: publish github release
     needs: [version, palette-linux, palette-windows]
-    runs-on: [self-hosted, unraid]
-    # Attach artifacts only when release-please dispatches this workflow on an
-    # existing palette-v* release tag.
-    if: >-
-      startsWith(github.ref, 'refs/tags/palette-v') &&
-      github.event_name == 'workflow_dispatch' &&
-      inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Attach artifacts only to the published palette-v* release that triggered
+    # this run.
+    if: ${{ startsWith(github.event.release.tag_name, 'palette-v') }}
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with:
           path: dist
           merge-multiple: true
@@ -194,7 +220,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.release.tag_name }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
             dist/axon-palette-linux-x86_64.tar.gz \

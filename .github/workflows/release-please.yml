@@ -22,7 +22,8 @@ env:
 jobs:
   release-please:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-ops]
+    timeout-minutes: 20
     permissions:
       contents: write       # required to create release commits and tags
       issues: write         # required for release-please labels
@@ -53,11 +54,12 @@ jobs:
     # prs_created=true. Run fixups for any PR payload it returns so component
     # source version files cannot drift behind the manifest/changelog bump.
     if: ${{ needs.release-please.outputs.prs != '' && needs.release-please.outputs.prs != '[]' && needs.release-please.outputs.prs != 'null' }}
-    runs-on: [self-hosted, unraid]
+    runs-on: [self-hosted, ci-pool-rust]
+    timeout-minutes: 30
     permissions:
       contents: write  # required to push generated fixup commits to release PR branches
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
@@ -88,36 +90,4 @@ jobs:
               git push origin HEAD:"$branch"
             fi
             git checkout "$base_ref"
-          done
-
-  dispatch-artifacts:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: [self-hosted, unraid]
-    permissions:
-      contents: read
-      actions: write  # required to dispatch artifact workflows
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-rust-kache
-      - name: Build dispatch plan
-        env:
-          RELEASE_OUTPUTS: ${{ toJson(needs.release-please.outputs) }}
-        run: |
-          cargo xtask release-please-dispatch-plan \
-            --release-outputs "$RELEASE_OUTPUTS" \
-            --json > dispatch-plan.json
-          jq . dispatch-plan.json
-      - name: Dispatch artifact workflows
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          jq -c '.[]' dispatch-plan.json | while read -r item; do
-            workflow="$(jq -r '.workflow' <<<"$item")"
-            tag="$(jq -r '.tag' <<<"$item")"
-            git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null
-            gh workflow run "$workflow" --ref "$tag" -f publish=true
           done

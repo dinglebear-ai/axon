@@ -7,10 +7,8 @@ name: android-release
 # Builds the release APK, signs it (zipalign + apksigner), checksums it, and
 # publishes a GitHub Release with the APK + SHA256 attached.
 #
-# Manual workflow_dispatch builds + signs the APK and uploads it to the run as
-# an artifact for inspection, but does NOT create a Release unless explicitly
-# called with publish=true on an android-v* tag. release-please.yml dispatches
-# this workflow after release-please creates the GitHub Release.
+# The heavy build starts only from a published android-v* GitHub Release and
+# checks out that immutable tag on a hosted x86_64 runner.
 #
 # ---------------------------------------------------------------------------
 # Required configuration (Settings → Secrets and variables → Actions)
@@ -31,12 +29,8 @@ name: android-release
 # (`owner/name`); the workflow checks it out and points the build at it via
 # AXON_AURORA_ANDROID_PATH. Optionally set AURORA_REF for a pinned branch/tag.
 on:
-  workflow_dispatch:
-    inputs:
-      publish:
-        description: "Attach artifacts to an existing release-please android-v* release"
-        type: boolean
-        default: false
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -48,20 +42,23 @@ env:
 jobs:
   build:
     name: build android apk
-    runs-on: [self-hosted, unraid]
+    if: ${{ startsWith(github.event.release.tag_name, 'android-v') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     # Only this job publishes release artifacts; scope contents: write here rather than
     # granting it workflow-wide to every step (build/sign included).
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
 
       # Aurora composite checkout (see header). Lands a sibling checkout
       # alongside the repo and exports its android/ path for Gradle.
       - name: Checkout Aurora design system
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
           repository: ${{ env.AURORA_REPO }}
@@ -75,12 +72,12 @@ jobs:
         run: echo "AXON_AURORA_ANDROID_PATH=$GITHUB_WORKSPACE/.aurora-design-system/android" >> "$GITHUB_ENV"
 
       - name: Set up pnpm for Aurora token generation
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
         with:
           version: 10.33.2
 
       - name: Set up Node for Aurora token generation
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: "lts/*"
           cache: pnpm
@@ -91,16 +88,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
 
       - name: Resolve and validate version
         id: version
@@ -116,8 +113,9 @@ jobs:
 
           # On release-please dispatch, the tag version must match versionName
           # so a release can never ship an APK the tag disagrees with.
-          if [[ "${GITHUB_REF}" == refs/tags/android-v* ]]; then
-            tag_version="${GITHUB_REF#refs/tags/android-v}"
+          tag="${{ github.event.release.tag_name }}"
+          if [[ "$tag" == android-v* ]]; then
+            tag_version="${tag#android-v}"
             if [[ "$tag_version" != "$version" ]]; then
               echo "::error::tag android-v$tag_version does not match versionName $version — bump $gradle before tagging" >&2
               exit 1
@@ -136,11 +134,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           PUBLISH_REQUESTED: >-
-            ${{
-              startsWith(github.ref, 'refs/tags/android-v') &&
-              github.event_name == 'workflow_dispatch' &&
-              inputs.publish
-            }}
+            ${{ startsWith(github.event.release.tag_name, 'android-v') }}
         run: |
           set -euo pipefail
           version="${{ steps.version.outputs.version }}"
@@ -202,7 +196,7 @@ jobs:
           echo "apk=$out" >> "$GITHUB_OUTPUT"
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
         with:
           name: axon-android
           path: |
@@ -211,19 +205,15 @@ jobs:
           if-no-files-found: error
 
       - name: Attach artifacts to release
-        # Attach artifacts only when release-please dispatches this workflow on
-        # an existing android-v* release tag.
-        if: >-
-          startsWith(github.ref, 'refs/tags/android-v') &&
-          github.event_name == 'workflow_dispatch' &&
-          inputs.publish
+        # Attach artifacts only to the published release that triggered this
+        # run.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           APK_PATH: ${{ steps.package.outputs.apk }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ github.event.release.tag_name }}"
           gh release view "$tag" >/dev/null
           gh release upload "$tag" \
             "$APK_PATH" \

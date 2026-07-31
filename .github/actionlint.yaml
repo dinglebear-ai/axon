@@ -1,10 +1,10 @@
 # Custom runner labels for this repo's self-hosted runners.
 #
 # actionlint validates `runs-on:` against its built-in label list and fails on
-# anything it does not recognise. The self-hosted runners introduced in #456
-# use a `unraid` label (see .github/workflows/compose-smoke.yml and
-# docker-image.yml), which is not a GitHub-hosted label, so it must be declared
-# here or `cargo xtask workflow-lint` fails for every workflow-touching change.
+# anything it does not recognise. Fleet pool labels are scheduling routes and
+# must be declared here so workflow-lint understands the repository contract.
 self-hosted-runner:
   labels:
-    - unraid
+    - ci-pool-ops
+    - ci-pool-rust
+    - ci-pool-typescript
