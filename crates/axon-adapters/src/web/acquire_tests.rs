@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use httpmock::prelude::*;
 
+use crate::adapter::{AcquisitionProgress, AcquisitionProgressSink};
 use crate::boundary::FakeAdapterProviders;
 use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 
@@ -61,9 +62,52 @@ fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
     }
 }
 
+#[derive(Default)]
+struct RecordingProgress(tokio::sync::Mutex<Vec<AcquisitionProgress>>);
+
+#[async_trait::async_trait]
+impl AcquisitionProgressSink for RecordingProgress {
+    async fn report(&self, progress: AcquisitionProgress) {
+        self.0.lock().await.push(progress);
+    }
+}
+
 fn require_item(outcome: AcquiredItem, message: &str) -> AcquiredSourceItem {
     assert!(outcome.warnings.is_empty(), "unexpected warning");
     outcome.item.expect(message)
+}
+
+#[tokio::test]
+async fn concurrent_acquisition_reports_each_completed_page() {
+    let providers = FakeAdapterProviders::new();
+    let progress = RecordingProgress::default();
+    let manifest_items = vec![
+        item("https://example.com/docs/one"),
+        item("https://example.com/docs/two"),
+        item("https://example.com/docs/three"),
+    ];
+
+    let (items, warnings) = acquire_concurrent(
+        &providers,
+        &providers,
+        &manifest_items,
+        &opts(RenderMode::Http, 200),
+        Some(&progress),
+    )
+    .await;
+
+    assert!(warnings.is_empty());
+    assert_eq!(items.len(), 3);
+    let snapshots = progress.0.lock().await;
+    assert_eq!(snapshots.len(), 3);
+    assert_eq!(
+        snapshots.last(),
+        Some(&AcquisitionProgress {
+            items_total: 3,
+            items_done: 3,
+            documents_done: 3,
+        })
+    );
 }
 
 #[tokio::test]

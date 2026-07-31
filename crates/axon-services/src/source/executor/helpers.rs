@@ -304,7 +304,14 @@ pub(super) async fn record_running_phase(
             phase,
             stage_id: None,
             counts: None,
-            current: None,
+            current: Some(ProgressCurrent {
+                source_item_key: None,
+                document_id: None,
+                chunk_id: None,
+                adapter: Some(input.plan.route.adapter.name.clone()),
+                provider: None,
+                message: Some(message.to_string()),
+            }),
             message: Some(message.to_string()),
             error: None,
         })

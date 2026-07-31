@@ -5,7 +5,14 @@
 //! (`run_created_generation`) and the terminal ledger/vector-store publish
 //! step (`publish_created_generation`).
 
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use axon_adapters::{AcquisitionProgress, AcquisitionProgressSink};
 use axon_api::source::*;
+use axon_jobs::boundary::JobStore;
+use tokio::sync::Mutex;
 
 use super::helpers::*;
 use super::{
@@ -18,7 +25,113 @@ use crate::source::output::{self, SourceOutput};
 use crate::source::progress;
 use crate::source::result_map::IndexCounts;
 
+const ACQUISITION_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
+
+struct JobAcquisitionProgress {
+    jobs: Arc<dyn JobStore>,
+    job_id: JobId,
+    source_id: SourceId,
+    adapter: String,
+    items_total: u64,
+    items_offset: u64,
+    documents_offset: u64,
+    last_write: Mutex<Option<Instant>>,
+}
+
+impl JobAcquisitionProgress {
+    fn new(
+        runtime: &TargetLocalSourceRuntime,
+        input: &SourcePipelineInput<'_>,
+        items_total: u64,
+        items_offset: u64,
+        documents_offset: u64,
+    ) -> Self {
+        Self {
+            jobs: runtime.jobs.clone(),
+            job_id: input.plan.job_id,
+            source_id: input.plan.route.source.source_id.clone(),
+            adapter: input.plan.route.adapter.name.clone(),
+            items_total,
+            items_offset,
+            documents_offset,
+            last_write: Mutex::new(None),
+        }
+    }
+}
+
+#[async_trait]
+impl AcquisitionProgressSink for JobAcquisitionProgress {
+    async fn report(&self, progress: AcquisitionProgress) {
+        let is_batch_complete = progress.items_done >= progress.items_total;
+        let should_write = {
+            let mut last_write = self.last_write.lock().await;
+            let now = Instant::now();
+            let due = last_write
+                .is_none_or(|last| now.duration_since(last) >= ACQUISITION_PROGRESS_INTERVAL);
+            if due || is_batch_complete {
+                *last_write = Some(now);
+                true
+            } else {
+                false
+            }
+        };
+        if !should_write {
+            return;
+        }
+
+        let items_done = self
+            .items_offset
+            .saturating_add(progress.items_done)
+            .min(self.items_total);
+        let documents_done = self
+            .documents_offset
+            .saturating_add(progress.documents_done)
+            .min(self.items_total);
+        let update = JobStatusUpdate {
+            job_id: self.job_id,
+            source_id: Some(self.source_id.clone()),
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Fetching,
+            stage_id: None,
+            counts: Some(StageCounts {
+                items_total: Some(self.items_total),
+                items_done,
+                documents_total: Some(self.items_total),
+                documents_done,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            }),
+            current: Some(ProgressCurrent {
+                source_item_key: None,
+                document_id: None,
+                chunk_id: None,
+                adapter: Some(self.adapter.clone()),
+                provider: None,
+                message: Some(format!(
+                    "{items_done}/{} source items acquired",
+                    self.items_total
+                )),
+            }),
+            message: Some(format!(
+                "acquired {items_done}/{} source items",
+                self.items_total
+            )),
+            error: None,
+        };
+        if let Err(error) = self.jobs.update_status(update).await {
+            tracing::warn!(
+                job_id = %self.job_id.0,
+                error = %error,
+                "failed to persist acquisition progress"
+            );
+        }
+    }
+}
+
 struct ProcessedBatch {
+    acquired_documents: u64,
     vectorized: vectorize::VectorizeResult,
     acquisition_artifacts: Vec<ArtifactRef>,
     enrichment_artifacts: Vec<ArtifactRef>,
@@ -74,7 +187,21 @@ pub(super) async fn run_created_generation(
     let archive_requested = input.adapter.wants_archive(&input.plan);
     let mut warnings = Vec::new();
     let mut reused_item_keys = Vec::new();
+    let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
+    let mut acquired_items = 0u64;
+    let mut acquired_documents = 0u64;
     for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
+        let batch_items = batch_diff
+            .added
+            .len()
+            .saturating_add(batch_diff.modified.len()) as u64;
+        let reporter = JobAcquisitionProgress::new(
+            runtime,
+            input,
+            changed_total,
+            acquired_items,
+            acquired_documents,
+        );
         let batch = process_changed_batch(
             runtime,
             input,
@@ -83,8 +210,11 @@ pub(super) async fn run_created_generation(
             &collection,
             batch_diff,
             archive_requested,
+            Some(&reporter),
         )
         .await?;
+        acquired_items = acquired_items.saturating_add(batch_items);
+        acquired_documents = acquired_documents.saturating_add(batch.acquired_documents);
         artifact_cleanup.track(&batch.acquisition_artifacts);
         artifact_cleanup.track(&batch.enrichment_artifacts);
         artifact_cleanup.track(&batch.clean_output.artifacts);
@@ -140,6 +270,7 @@ async fn process_changed_batch(
     collection: &CollectionSpec,
     batch_diff: SourceManifestDiff,
     archive_requested: bool,
+    progress_sink: Option<&dyn AcquisitionProgressSink>,
 ) -> anyhow::Result<ProcessedBatch> {
     record_running_phase(
         runtime,
@@ -149,7 +280,11 @@ async fn process_changed_batch(
         "acquiring changed source items",
     )
     .await?;
-    let acquisition = input.adapter.acquire(&input.plan, &batch_diff).await?;
+    let acquisition = input
+        .adapter
+        .acquire_with_progress(&input.plan, &batch_diff, progress_sink)
+        .await?;
+    let acquired_documents = acquisition.fetched_items.len() as u64;
     progress::acquired(emitter, &acquisition).await;
     let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
     let acquisition_artifacts = resolved.acquisition.artifacts.clone();
@@ -204,6 +339,7 @@ async fn process_changed_batch(
         enrichment_artifacts.extend(enrichment.artifacts.clone());
     }
     Ok(ProcessedBatch {
+        acquired_documents,
         vectorized,
         acquisition_artifacts,
         enrichment_artifacts,
