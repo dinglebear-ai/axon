@@ -28,6 +28,12 @@ fn source_running_progress(job: &ServiceJob, metrics: Option<&Value>) -> Option<
     let Some(metrics) = metrics else {
         return Some(format!("{}…", job.phase.as_str()));
     };
+    if job.phase == axon_api::source::PipelinePhase::Fetching
+        && job.source_type.as_deref() == Some("web")
+        && let Some(progress) = web_page_running_progress(metrics)
+    {
+        return Some(progress);
+    }
     if has_any(metrics, &["pages_crawled", "md_created", "error_pages"]) {
         return page_source_running_progress(job, metrics);
     }
@@ -171,6 +177,21 @@ pub(crate) fn extract_progress_summary(job: &ServiceJob) -> Option<String> {
     Some(format!("{items} items"))
 }
 
+fn web_page_running_progress(metrics: &Value) -> Option<String> {
+    let done = first_u64(metrics, &["items_done"])?;
+    let total = first_u64(metrics, &["items_total"]);
+    let Some(total) = total.filter(|total| *total > 0) else {
+        return Some(format!("{done} pages"));
+    };
+    let percent = ((done as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+    let percent_text = if percent < 99.95 {
+        format!("{percent:.1}%")
+    } else {
+        "100%".to_string()
+    };
+    Some(format!("{done}/{total} pages · {percent_text}"))
+}
+
 fn page_source_running_progress(job: &ServiceJob, metrics: &Value) -> Option<String> {
     let crawled = metrics
         .get("pages_crawled")
@@ -193,12 +214,19 @@ fn page_source_running_progress(job: &ServiceJob, metrics: &Value) -> Option<Str
         String::new()
     };
     let reclaim = reclaimed_suffix(job);
+    let page_count = metrics
+        .get("pages_discovered")
+        .and_then(|v| v.as_u64())
+        .filter(|total| *total > 0)
+        .map(|total| {
+            let percent = ((crawled as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+            format!("{crawled}/{total} pages · {percent:.1}%")
+        })
+        .unwrap_or_else(|| format!("{crawled} crawled"));
     if docs > 0 {
-        Some(format!(
-            "{crawled} crawled · {docs} docs{error_suffix}{reclaim}"
-        ))
+        Some(format!("{page_count} · {docs} docs{error_suffix}{reclaim}"))
     } else {
-        Some(format!("{crawled} crawled{error_suffix}{reclaim}"))
+        Some(format!("{page_count}{error_suffix}{reclaim}"))
     }
 }
 
@@ -211,16 +239,7 @@ fn page_source_completed_progress(metrics: &Value) -> Option<String> {
         .get("md_created")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    let elapsed_ms = metrics
-        .get("elapsed_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let time = if elapsed_ms >= 1000 {
-        format!("{:.1}s", elapsed_ms as f64 / 1000.0)
-    } else {
-        format!("{elapsed_ms}ms")
-    };
-    let mut summary = format!("{docs} docs · {time}");
+    let mut summary = format!("{docs} docs");
     if metrics
         .get("coverage_status")
         .and_then(|v| v.as_str())

@@ -68,6 +68,44 @@ fn source_progress_summary_uses_item_counts_when_documents_are_pending() {
 }
 
 #[test]
+fn source_progress_summary_renders_live_web_page_counts() {
+    let mut job = service_job(
+        "running",
+        Some(json!({
+            "items_total": 300,
+            "items_done": 30,
+            "documents_total": 300,
+            "documents_done": 29,
+            "chunks_done": 0
+        })),
+    );
+    job.source_type = Some("web".to_string());
+
+    assert_eq!(
+        source_progress_summary(&job).as_deref(),
+        Some("30/300 pages · 10.0%")
+    );
+}
+
+#[test]
+fn source_progress_summary_renders_legacy_discovered_page_total() {
+    let job = service_job(
+        "running",
+        Some(json!({
+            "pages_crawled": 30,
+            "pages_discovered": 300,
+            "md_created": 25,
+            "error_pages": 2
+        })),
+    );
+
+    assert_eq!(
+        source_progress_summary(&job).as_deref(),
+        Some("30/300 pages · 10.0% · 25 docs · 2 errors")
+    );
+}
+
+#[test]
 fn source_progress_summary_uses_the_shared_phase_before_counters_arrive() {
     let job = service_job("running", Some(json!({})));
 

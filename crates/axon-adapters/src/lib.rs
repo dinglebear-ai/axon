@@ -38,7 +38,10 @@ pub mod web_engine;
 pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
-pub use adapter::{GeneratedArchive, ReusePolicy, SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter};
+pub use adapter::{
+    AcquisitionProgress, AcquisitionProgressSink, GeneratedArchive, ReusePolicy,
+    SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
+};
 pub use capability::{AdapterCapability, AdapterVersion};
 pub use enrichment::{NoopSourceEnricher, SourceEnricher};
 pub use family_matrix::{SourceFamilyMatrix, source_family_matrix};

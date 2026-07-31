@@ -1,6 +1,7 @@
 use super::*;
 use axon_api::source::{
-    JobId, JobPriority, JobSummary, LifecycleStatus, PipelinePhase, StageCounts, Timestamp,
+    JobId, JobPriority, JobSummary, LifecycleStatus, PipelinePhase, ProgressCurrent, StageCounts,
+    Timestamp,
 };
 use serde_json::json;
 
@@ -56,6 +57,30 @@ fn terminal_job_counts_are_the_shared_result_projection() {
             "bytes_done": 0,
         }))
     );
+}
+
+#[test]
+fn running_job_projects_adapter_into_source_type() {
+    let mut summary = completed_summary();
+    summary.status = LifecycleStatus::Running;
+    summary.phase = PipelinePhase::Fetching;
+    summary.finished_at = None;
+    summary.current = Some(ProgressCurrent {
+        source_item_key: None,
+        document_id: None,
+        chunk_id: None,
+        adapter: Some("web".to_string()),
+        provider: None,
+        message: Some("30/300 pages fetched".to_string()),
+    });
+
+    let job = summary_to_service_job(
+        summary,
+        Some(json!({ "source_request": { "source": "https://example.com/docs" } })),
+    );
+
+    assert_eq!(job.source_type.as_deref(), Some("web"));
+    assert!(job.progress_json.is_some());
 }
 
 #[test]
