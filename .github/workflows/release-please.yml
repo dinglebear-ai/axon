@@ -22,7 +22,8 @@ env:
 jobs:
   release-please:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
+    timeout-minutes: 15
     permissions:
       contents: write       # required to create release commits and tags
       issues: write         # required for release-please labels
@@ -53,7 +54,8 @@ jobs:
     # prs_created=true. Run fixups for any PR payload it returns so component
     # source version files cannot drift behind the manifest/changelog bump.
     if: ${{ needs.release-please.outputs.prs != '' && needs.release-please.outputs.prs != '[]' && needs.release-please.outputs.prs != 'null' }}
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
+    timeout-minutes: 20
     permissions:
       contents: write  # required to push generated fixup commits to release PR branches
     steps:
@@ -93,7 +95,8 @@ jobs:
   dispatch-artifacts:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
+    timeout-minutes: 10
     permissions:
       contents: read
       actions: write  # required to dispatch artifact workflows

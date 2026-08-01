@@ -35,7 +35,8 @@ env:
 jobs:
   version:
     name: resolve and validate version
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -78,7 +79,8 @@ jobs:
   palette-linux:
     name: build axon-palette (linux)
     needs: version
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       # Full checkout: LFS blobs come down as pointers (lfs: false default) and
       # are not needed to build.
@@ -121,6 +123,7 @@ jobs:
     name: build axon-palette (windows)
     needs: version
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       # Full checkout: LFS blobs come down as pointers (lfs: false default) and
       # are not needed to build.
@@ -172,7 +175,8 @@ jobs:
   publish:
     name: publish github release
     needs: [version, palette-linux, palette-windows]
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     # Attach artifacts only when release-please dispatches this workflow on an
     # existing palette-v* release tag.
     if: >-
