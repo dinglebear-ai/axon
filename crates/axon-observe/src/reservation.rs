@@ -197,20 +197,24 @@ impl ProviderReservationManager {
             ));
         }
         if units == 0 {
-            return Err(state.error_for(
+            let mut error = state.error_for(
                 &effective_provider_id,
                 "provider.invalid_reservation",
                 "reservation units must be > 0",
-            ));
+            );
+            error.retryable = false;
+            return Err(error);
         }
         if units > state.config.capacity
             || !state.can_ever_preserve_interactive_capacity(priority, units)
         {
-            return Err(state.error_for(
+            let mut error = state.error_for(
                 &effective_provider_id,
                 "provider.invalid_reservation",
                 "reservation cannot be satisfied by the configured provider capacity",
-            ));
+            );
+            error.retryable = false;
+            return Err(error);
         }
 
         let available = state.config.capacity.saturating_sub(state.active);

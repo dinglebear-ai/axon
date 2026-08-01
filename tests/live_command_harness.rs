@@ -113,6 +113,19 @@ printf '%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%
   "$*" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
   "${AXON_OUTPUT_DIR:-}" "${AXON_ARTIFACT_BIN_DIR:-}" "${AXON_CONFIG_PATH:-}" \
   "${AXON_ENV_FILE:-}" >> '__CALLS__'
+if [ "${1:-}" = --help ]; then
+  printf '  AXON CLI
+
+  Global Options
+  --json  Machine output
+
+  Commands
+'
+  exit 0
+fi
+if [ "${1:-}" = --json ]; then
+  shift
+fi
 if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
   mkdir -p "$HOME/.axon"
   : > "$HOME/.axon/.env"
@@ -182,13 +195,27 @@ fi
     );
     assert!(
         calls.lines().any(|line| {
-            line.starts_with("config path --json|")
+            line.starts_with("--json config path|")
                 && line.contains(&format!("data={}/data", results.display()))
                 && line.contains("|sqlite=|server=|output=|artifact=|")
                 && line.contains(&format!("config={}/config.toml", results.display()))
                 && line.contains(&format!("envfile={}/.env", results.display()))
         }),
         "scenario did not receive the harness-owned state:\n{calls}"
+    );
+
+    let behavior_actual = fs::read_to_string(results.join("behavioral-actual.tsv")).unwrap();
+    assert!(
+        behavior_actual.lines().any(|line| line == "@global	--json"),
+        "global --json usage must be recorded under @global:
+{behavior_actual}"
+    );
+    assert!(
+        !behavior_actual
+            .lines()
+            .any(|line| line == "config path	--json"),
+        "global options must not inflate command-local evidence:
+{behavior_actual}"
     );
 
     let curl_calls = fs::read_to_string(curl_calls).unwrap();
@@ -203,4 +230,192 @@ fi
             .starts_with("-fsS -X DELETE http://qdrant.live:6333/collections/axon_live_"),
         "cleanup must target only the generated isolated collection:\n{curl_calls}"
     );
+}
+
+#[test]
+fn scenario_mode_rejects_explicit_data_dir_outside_harness_tree() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(
+        &registry,
+        r#"{"commands":[{"name":"config path","path":["config","path"],"mutates":false}]}"#,
+    )
+    .unwrap();
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("AXON_BIN", "/bin/true")
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .env("AXON_LIVE_DATA_DIR", temp.path().join("production-state"))
+        .output()
+        .expect("run destructive-state guard");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("AXON_LIVE_DATA_DIR must remain inside the harness output tree"),
+        "missing destructive-state refusal: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn canonical_binary_rejects_invalid_values_and_conflicts_without_help() {
+    let binary = env!("CARGO_BIN_EXE_axon");
+    for (args, expected) in [
+        (
+            vec![
+                "source",
+                "https://example.com",
+                "--render-mode",
+                "bogus",
+                "--json",
+            ],
+            "invalid value 'bogus'",
+        ),
+        (
+            vec!["status", "--active", "--recent", "--json"],
+            "cannot be used with '--recent'",
+        ),
+    ] {
+        let output = Command::new(binary)
+            .args(&args)
+            .output()
+            .expect("run canonical parser rejection");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "unexpected parser exit for {args:?}:
+stdout={}
+stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(expected),
+            "missing parser error {expected:?} for {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains("Usage: axon --help"),
+            "parser rejection must identify the command-specific failure"
+        );
+    }
+}
+
+#[test]
+fn cleanup_deletes_every_generated_collection_and_ignores_foreign_names() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let calls = temp.path().join("curl-calls");
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        format!(
+            r#"#!/usr/bin/env bash
+printf '%s
+' "$*" >> '{}'
+printf '{{}}
+'
+"#,
+            calls.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+
+    let outdir = temp.path().join("results");
+    fs::create_dir_all(outdir.join("logs")).unwrap();
+    let shell = format!(
+        r#"set -u
+OUTDIR='{}'
+SETUP_HOME='{}'
+isolated_compose_project=''
+isolated_compose_network=''
+isolated_collections=(axon_live_one foreign_collection axon_live_two)
+QDRANT_URL='http://qdrant.live:6333'
+source scripts/lib/live-cli-reporting.sh
+"#,
+        outdir.display(),
+        temp.path().join("setup-home").display()
+    );
+    let path_env = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(shell)
+        .env("PATH", path_env)
+        .output()
+        .expect("run cleanup trap");
+    assert!(
+        output.status.success(),
+        "cleanup trap failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let calls = fs::read_to_string(calls).unwrap();
+    let lines = calls.lines().collect::<Vec<_>>();
+    assert_eq!(
+        lines.len(),
+        2,
+        "expected two generated deletions:
+{calls}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.ends_with("/collections/axon_live_one"))
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.ends_with("/collections/axon_live_two"))
+    );
+    assert!(
+        !calls.contains("foreign_collection"),
+        "foreign collection must never be deleted:
+{calls}"
+    );
+}
+
+#[test]
+fn hidden_cli_alias_inventory_is_behaviorally_covered() {
+    let cli = fs::read_to_string("crates/axon-core/src/config/cli.rs").expect("read CLI schema");
+    assert!(
+        !cli.contains("aliases =")
+            && !cli.contains("visible_alias")
+            && !cli.contains("short_alias"),
+        "extend the alias inventory parser when a new alias declaration form is introduced"
+    );
+
+    let marker = "alias = \"";
+    let mut remaining = cli.as_str();
+    let mut aliases = Vec::new();
+    while let Some(start) = remaining.find(marker) {
+        remaining = &remaining[start + marker.len()..];
+        let end = remaining.find('\"').expect("terminated CLI alias");
+        aliases.push(remaining[..end].to_string());
+        remaining = &remaining[end + 1..];
+    }
+    aliases.sort();
+    assert_eq!(aliases, ["completion", "continue", "hook"]);
+
+    let completion = fs::read_to_string("scripts/lib/live-cli-scenarios-jobs-source.sh")
+        .expect("read completion scenarios");
+    assert!(completion.contains("completion alias equivalence"));
+
+    let setup = fs::read_to_string("scripts/lib/live-cli-scenarios-admin.sh")
+        .expect("read setup scenarios");
+    assert!(setup.contains("setup hook alias equivalence"));
+
+    let ask = fs::read_to_string("scripts/lib/live-cli-scenarios-web-rag.sh")
+        .expect("read ask scenarios");
+    assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
 }

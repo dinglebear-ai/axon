@@ -1,9 +1,7 @@
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use axon_core::paths::axon_home_dir;
 use axon_core::ui::{accent, muted, primary};
 use flate2::read::GzDecoder;
-use futures_util::StreamExt;
 use serde::Deserialize;
 use std::env;
 use std::error::Error;
@@ -13,24 +11,36 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
 const DEFAULT_REPO: &str = "dinglebear-ai/axon";
 const UPDATE_FILE_RELEASE_DIR: &str = "AXON_UPDATE_FILE_RELEASE_DIR";
 const UPDATE_INSTALL_PATH: &str = "AXON_UPDATE_INSTALL_PATH";
-const DEV_TARGET_DIR: &str = "AXON_DEV_TARGET_DIR";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
 // Release-artifact integrity (SHA256 + optional OPS-H3 signature) lives in the
 // integrity submodule. Re-exported so the sidecar tests' `super::*` resolves
 // the verification helpers unchanged.
+mod container_sync;
 mod integrity;
+mod release;
+
+#[cfg(test)]
+use container_sync::{
+    ComposePaths, build_container_sync_command_with_paths, compose_args, resolve_axon_env_file,
+    resolve_compose_paths_from_home,
+};
+use container_sync::{resolve_compose_paths, sync_container_from_installed_binary};
 #[cfg(test)]
 use integrity::verify_sha256;
 use integrity::{
     parse_sha256_sidecar, resolve_optional_signature, verify_optional_signature, verify_sha256_file,
+};
+#[cfg(test)]
+use release::select_latest_compatible_release;
+use release::{
+    download_release_assets, download_to_file, fetch_compatible_release, release_asset_names,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,134 +337,6 @@ fn version_tuple(raw: &str) -> Result<(u64, u64, u64), Box<dyn Error>> {
     Ok((major, minor, patch))
 }
 
-async fn download_release_assets(
-    client: &reqwest::Client,
-    release: &GithubRelease,
-    names: &ReleaseAssetNames,
-    archive_path: &Path,
-) -> Result<(String, String), Box<dyn Error>> {
-    let archive_url = find_asset_url(release, names.archive)?;
-    let checksum_url = find_asset_url(release, names.checksum)?;
-    download_to_file(client, archive_url, archive_path).await?;
-    let checksum = client
-        .get(checksum_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-
-    Ok((release.tag_name.clone(), checksum))
-}
-
-async fn fetch_compatible_release(
-    client: &reqwest::Client,
-    repo: &str,
-    version: Option<&str>,
-    names: &ReleaseAssetNames,
-) -> Result<GithubRelease, Box<dyn Error>> {
-    if let Some(tag) = version {
-        let release: GithubRelease = client
-            .get(format!(
-                "https://api.github.com/repos/{repo}/releases/tags/{tag}"
-            ))
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        find_asset_url(&release, names.archive)?;
-        find_asset_url(&release, names.checksum)?;
-        return Ok(release);
-    }
-
-    let releases: Vec<GithubRelease> = client
-        .get(format!(
-            "https://api.github.com/repos/{repo}/releases?per_page=100"
-        ))
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-    select_latest_compatible_release(&releases, names).cloned()
-}
-
-fn select_latest_compatible_release<'a>(
-    releases: &'a [GithubRelease],
-    names: &ReleaseAssetNames,
-) -> Result<&'a GithubRelease, Box<dyn Error>> {
-    releases
-        .iter()
-        .filter(|release| {
-            !release.draft
-                && !release.prerelease
-                && release
-                    .assets
-                    .iter()
-                    .any(|asset| asset.name == names.archive)
-                && release
-                    .assets
-                    .iter()
-                    .any(|asset| asset.name == names.checksum)
-        })
-        .filter_map(|release| {
-            version_tuple(&release.tag_name)
-                .ok()
-                .map(|version| (version, release))
-        })
-        .max_by_key(|(version, _)| *version)
-        .map(|(_, release)| release)
-        .ok_or_else(|| {
-            err(format!(
-                "no stable semantic-versioned release contains both {} and {}",
-                names.archive, names.checksum
-            ))
-        })
-}
-
-async fn download_to_file(
-    client: &reqwest::Client,
-    url: &str,
-    dest: &Path,
-) -> Result<(), Box<dyn Error>> {
-    let response = client.get(url).send().await?.error_for_status()?;
-    let mut file = tokio::fs::File::create(dest).await?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
-    }
-    file.flush().await?;
-    Ok(())
-}
-
-fn find_asset_url<'a>(release: &'a GithubRelease, name: &str) -> Result<&'a str, Box<dyn Error>> {
-    release
-        .assets
-        .iter()
-        .find(|asset| asset.name == name)
-        .map(|asset| asset.browser_download_url.as_str())
-        .ok_or_else(|| {
-            err(format!(
-                "release {} is missing asset {name}",
-                release.tag_name
-            ))
-        })
-}
-
-fn release_asset_names(os: &str, arch: &str) -> Result<ReleaseAssetNames, Box<dyn Error>> {
-    match (os, arch) {
-        ("linux", "x86_64") => Ok(ReleaseAssetNames {
-            archive: "axon-linux-x86_64.tar.gz",
-            checksum: "axon-linux-x86_64.tar.gz.sha256",
-            signature: "axon-linux-x86_64.tar.gz.minisig",
-        }),
-        _ => Err(err(format!(
-            "unsupported platform for axon update: {os}/{arch}; only linux/x86_64 is wired"
-        ))),
-    }
-}
-
 fn extract_axon_binary(archive_path: &Path, temp_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
     let file = fs::File::open(archive_path)?;
     let gz = GzDecoder::new(BufReader::new(file));
@@ -550,132 +432,6 @@ fn output_version(output: &str) -> Option<String> {
 
 fn normalize_version(version: &str) -> &str {
     version.trim().trim_start_matches('v')
-}
-
-fn build_container_sync_command_with_paths(
-    installed_binary: &Path,
-    paths: ComposePaths,
-) -> Result<SyncCommand, Box<dyn Error>> {
-    let bin_dir = installed_binary
-        .parent()
-        .ok_or_else(|| {
-            err(format!(
-                "installed binary has no parent: {}",
-                installed_binary.display()
-            ))
-        })?
-        .to_path_buf();
-
-    Ok(SyncCommand {
-        program: "docker",
-        args: compose_args(&paths, true),
-        current_dir: paths.compose_dir,
-        env_name: DEV_TARGET_DIR,
-        env_value: bin_dir,
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ComposePaths {
-    compose_dir: PathBuf,
-    compose_file: PathBuf,
-    env_file: Option<PathBuf>,
-}
-
-fn compose_args(paths: &ComposePaths, include_up: bool) -> Vec<String> {
-    let mut args = vec!["compose".to_string()];
-    if let Some(env_file) = &paths.env_file {
-        args.push("--env-file".to_string());
-        args.push(env_file.display().to_string());
-    }
-    args.push("-f".to_string());
-    args.push(paths.compose_file.display().to_string());
-    if include_up {
-        args.extend(
-            [
-                "up",
-                "-d",
-                "axon",
-                "--no-deps",
-                "--no-build",
-                "--force-recreate",
-            ]
-            .into_iter()
-            .map(String::from),
-        );
-    }
-    args
-}
-
-fn resolve_compose_paths() -> Result<ComposePaths, Box<dyn Error>> {
-    let axon_home = axon_home_dir().ok_or_else(|| {
-        err("HOME is unset or invalid; cannot resolve trusted ~/.axon compose assets")
-    })?;
-    resolve_compose_paths_from_home(&axon_home, env::var_os("AXON_ENV_FILE").map(PathBuf::from))
-}
-
-fn resolve_compose_paths_from_home(
-    axon_home: &Path,
-    explicit_env_file: Option<PathBuf>,
-) -> Result<ComposePaths, Box<dyn Error>> {
-    let compose_dir = axon_home.join("compose");
-    let compose_file = compose_dir.join("docker-compose.yaml");
-    if !compose_file.is_file() {
-        return Err(err(format!(
-            "trusted compose file is missing: {}; run axon setup init",
-            compose_file.display()
-        )));
-    }
-    Ok(ComposePaths {
-        compose_dir,
-        compose_file,
-        env_file: resolve_axon_env_file(axon_home, explicit_env_file.as_deref()),
-    })
-}
-
-fn resolve_axon_env_file(axon_home: &Path, explicit_env_file: Option<&Path>) -> Option<PathBuf> {
-    if let Some(path) = explicit_env_file {
-        if path.is_absolute() && path.is_file() {
-            return Some(path.to_path_buf());
-        }
-        return None;
-    }
-    let home_env = axon_home.join(".env");
-    if home_env.is_file() {
-        return Some(home_env);
-    }
-    None
-}
-
-async fn sync_container_from_installed_binary(
-    installed_binary: &Path,
-    paths: ComposePaths,
-) -> Result<(), Box<dyn Error>> {
-    let sync = build_container_sync_command_with_paths(installed_binary, paths)?;
-    let mut command = Command::new(sync.program);
-    command
-        .args(&sync.args)
-        .current_dir(&sync.current_dir)
-        .env(sync.env_name, sync.env_value);
-    let status = run_command(command, "container sync").await?;
-    if !status.success() {
-        return Err(err(format!("container sync failed with status {status}")));
-    }
-
-    Ok(())
-}
-
-async fn run_command(
-    mut command: Command,
-    description: &str,
-) -> Result<std::process::ExitStatus, Box<dyn Error>> {
-    match timeout(COMMAND_TIMEOUT, command.status()).await {
-        Ok(result) => Ok(result?),
-        Err(_) => Err(err(format!(
-            "{description} timed out after {} seconds",
-            COMMAND_TIMEOUT.as_secs()
-        ))),
-    }
 }
 
 #[cfg(test)]

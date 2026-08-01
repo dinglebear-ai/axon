@@ -480,7 +480,7 @@ async fn query_cursor_returns_stable_non_overlapping_pages() {
     );
     candidate
         .nodes
-        .push(node("wiki", "https://github.com/x/y/wiki", "wiki"));
+        .push(node("web_page", "https://github.com/x/y/wiki", "wiki"));
     candidate.edges.push(GraphEdgeCandidate {
         edge_kind: "repo_has_wiki".to_string(),
         from_stable_key: "https://github.com/x/y".to_string(),

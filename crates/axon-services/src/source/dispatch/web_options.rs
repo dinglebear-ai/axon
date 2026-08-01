@@ -19,8 +19,23 @@ pub(crate) fn web_crawl_options(
     max_depth_override: Option<u32>,
 ) -> MetadataMap {
     let mut options = MetadataMap::new();
-    let max_pages = max_pages_override.unwrap_or(cfg.max_pages as u64);
-    let max_depth = max_depth_override.unwrap_or(cfg.max_depth as u32);
+    insert_discovery_options(
+        &mut options,
+        cfg,
+        max_pages_override.unwrap_or(cfg.max_pages as u64),
+        max_depth_override.unwrap_or(cfg.max_depth as u32),
+    );
+    insert_content_options(&mut options, cfg);
+    insert_optional_options(&mut options, cfg);
+    options
+}
+
+fn insert_discovery_options(
+    options: &mut MetadataMap,
+    cfg: &Config,
+    max_pages: u64,
+    max_depth: u32,
+) {
     options.insert("max_pages".to_string(), serde_json::json!(max_pages));
     options.insert("max_depth".to_string(), serde_json::json!(max_depth));
     options.insert(
@@ -51,6 +66,32 @@ pub(crate) fn web_crawl_options(
         "sitemap_since_days".to_string(),
         serde_json::json!(cfg.sitemap_since_days),
     );
+    if !cfg.path_budgets.is_empty() {
+        options.insert(
+            "path_budgets".to_string(),
+            serde_json::Value::Object(
+                cfg.path_budgets
+                    .iter()
+                    .map(|(path, limit)| (path.clone(), serde_json::json!(limit)))
+                    .collect(),
+            ),
+        );
+    }
+    if !cfg.url_whitelist.is_empty() {
+        options.insert(
+            "url_whitelist".to_string(),
+            serde_json::json!(cfg.url_whitelist),
+        );
+    }
+    if !cfg.exclude_path_prefix.is_empty() {
+        options.insert(
+            "url_blacklist".to_string(),
+            serde_json::json!(cfg.exclude_path_prefix),
+        );
+    }
+}
+
+fn insert_content_options(options: &mut MetadataMap, cfg: &Config) {
     options.insert(
         "min_markdown_chars".to_string(),
         serde_json::json!(cfg.min_markdown_chars as u64),
@@ -73,71 +114,56 @@ pub(crate) fn web_crawl_options(
             "bypass"
         }),
     );
-    options.insert(
-        "cache_http_only".to_string(),
-        serde_json::json!(cfg.cache_http_only),
-    );
-    options.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
-    options.insert(
-        "block_assets".to_string(),
-        serde_json::json!(cfg.block_assets),
-    );
-    options.insert(
-        "chrome_screenshot".to_string(),
-        serde_json::json!(cfg.chrome_screenshot),
-    );
-    options.insert(
-        "sitemap_only".to_string(),
-        serde_json::json!(cfg.sitemap_only),
-    );
-    options.insert("format".to_string(), serde_json::json!(cfg.format));
-    options.insert(
-        "output_dir".to_string(),
-        serde_json::json!(cfg.output_dir.to_string_lossy()),
-    );
-    if let Some(selector) = cfg.chrome_wait_for_selector.as_deref() {
-        options.insert(
-            "chrome_wait_for_selector".to_string(),
-            serde_json::json!(selector),
-        );
+    for (key, value) in [
+        ("cache_http_only", serde_json::json!(cfg.cache_http_only)),
+        ("normalize", serde_json::json!(cfg.normalize)),
+        ("block_assets", serde_json::json!(cfg.block_assets)),
+        (
+            "chrome_screenshot",
+            serde_json::json!(cfg.chrome_screenshot),
+        ),
+        ("sitemap_only", serde_json::json!(cfg.sitemap_only)),
+        ("format", serde_json::json!(cfg.format)),
+        (
+            "output_dir",
+            serde_json::json!(cfg.output_dir.to_string_lossy()),
+        ),
+        (
+            "render_mode",
+            serde_json::json!(api_render_mode(cfg.render_mode)),
+        ),
+        ("verticals_enabled", serde_json::json!(cfg.enable_verticals)),
+        (
+            "vertical_cache_ttl_secs",
+            serde_json::json!(cfg.vertical_cache_ttl_secs),
+        ),
+    ] {
+        options.insert(key.to_string(), value);
     }
-    if let Some(selector) = cfg.root_selector.as_deref() {
-        options.insert("root_selector".to_string(), serde_json::json!(selector));
-    }
-    if let Some(selector) = cfg.exclude_selector.as_deref() {
-        options.insert("exclude_selector".to_string(), serde_json::json!(selector));
-    }
-    if !cfg.path_budgets.is_empty() {
-        options.insert(
-            "path_budgets".to_string(),
-            serde_json::Value::Object(
-                cfg.path_budgets
-                    .iter()
-                    .map(|(path, limit)| (path.clone(), serde_json::json!(limit)))
-                    .collect(),
-            ),
-        );
-    }
-    options.insert(
-        "render_mode".to_string(),
-        serde_json::json!(api_render_mode(cfg.render_mode)),
-    );
-    options.insert(
-        "verticals_enabled".to_string(),
-        serde_json::json!(cfg.enable_verticals),
-    );
-    options.insert(
-        "vertical_cache_ttl_secs".to_string(),
-        serde_json::json!(cfg.vertical_cache_ttl_secs),
-    );
     if !cfg.auto_dispatch_skip.is_empty() {
         options.insert(
             "auto_dispatch_skip".to_string(),
             serde_json::json!(cfg.auto_dispatch_skip),
         );
     }
-    if let Some(user_agent) = cfg.user_agent.as_deref().filter(|value| !value.is_empty()) {
-        options.insert("user_agent".to_string(), serde_json::json!(user_agent));
+}
+
+fn insert_optional_options(options: &mut MetadataMap, cfg: &Config) {
+    for (key, value) in [
+        (
+            "chrome_wait_for_selector",
+            cfg.chrome_wait_for_selector.as_deref(),
+        ),
+        ("root_selector", cfg.root_selector.as_deref()),
+        ("exclude_selector", cfg.exclude_selector.as_deref()),
+        (
+            "user_agent",
+            cfg.user_agent.as_deref().filter(|value| !value.is_empty()),
+        ),
+    ] {
+        if let Some(value) = value {
+            options.insert(key.to_string(), serde_json::json!(value));
+        }
     }
     if let Some(path) = cfg.warc_output.as_ref() {
         options.insert(
@@ -157,19 +183,6 @@ pub(crate) fn web_crawl_options(
             serde_json::Value::Object(header_options(&cfg.custom_headers)),
         );
     }
-    if !cfg.url_whitelist.is_empty() {
-        options.insert(
-            "url_whitelist".to_string(),
-            serde_json::json!(cfg.url_whitelist),
-        );
-    }
-    if !cfg.exclude_path_prefix.is_empty() {
-        options.insert(
-            "url_blacklist".to_string(),
-            serde_json::json!(cfg.exclude_path_prefix),
-        );
-    }
-    options
 }
 
 fn header_options(headers: &[String]) -> serde_json::Map<String, serde_json::Value> {

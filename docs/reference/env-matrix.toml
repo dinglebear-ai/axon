@@ -4005,3 +4005,63 @@ container_allowed = false
 toml_destination = ""
 compatibility = "advanced"
 reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
+
+[[env]]
+key = "AXON_COMPOSE_PROJECT_NAME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only project identity used to isolate Axon stacks and test harnesses."
+
+[[env]]
+key = "AXON_CONTAINER_NAME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only Axon service container-name override."
+
+[[env]]
+key = "AXON_QDRANT_CONTAINER_NAME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only Qdrant service container-name override."
+
+[[env]]
+key = "AXON_TEI_CONTAINER_NAME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only TEI service container-name override."
+
+[[env]]
+key = "AXON_CHROME_CONTAINER_NAME"
+classification = "compose-env"
+runtime_placement = "compose-interpolation"
+surfaces = ["compose", "scripts", "tests"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "canonical"
+reason = "Compose-only Chrome service container-name override."

@@ -71,12 +71,7 @@ fn ensure_env_file_with_process(
         DEFAULT_CHROME_URL,
         &process_value,
     );
-    insert_process_or_default(
-        &mut env,
-        "AXON_HTTP_PUBLISH",
-        "127.0.0.1:8001",
-        &process_value,
-    );
+    insert_process_or_default(&mut env, "AXON_HTTP_PUBLISH", "8001", &process_value);
     insert_option_process_or_default(
         &mut env,
         "AXON_HTTP_HOST",

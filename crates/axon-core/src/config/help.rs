@@ -381,13 +381,8 @@ fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
     options
 }
 
-const COMMON_GLOBAL_IDS: &[&str] = &[
-    "json",
-    "color",
-    "quiet",
-    "cron_every_seconds",
-    "cron_max_runs",
-];
+const COMMON_GLOBAL_IDS: &[&str] = &["json", "color", "quiet"];
+const CRON_GLOBAL_IDS: &[&str] = &["cron_every_seconds", "cron_max_runs"];
 const SOURCE_GLOBAL_IDS: &[&str] = &[
     "max_pages",
     "max_depth",
@@ -492,6 +487,25 @@ const SCRAPE_GLOBAL_IDS: &[&str] = &[
     "tei_url",
     "qdrant_url",
 ];
+const DIFF_GLOBAL_IDS: &[&str] = &[
+    "render_mode",
+    "cache",
+    "cache_http_only",
+    "etag_conditional",
+    "format",
+    "output_dir",
+    "output",
+    "performance_profile",
+    "normalize",
+    "block_assets",
+    "chrome_wait_for_selector",
+    "root_selector",
+    "exclude_selector",
+    "chrome_screenshot",
+    "screenshot_full_page",
+    "viewport",
+    "custom_headers",
+];
 const SESSIONS_GLOBAL_IDS: &[&str] = &["wait", "skip_embed", "collection", "tei_url", "qdrant_url"];
 const JOB_STATUS_GLOBAL_IDS: &[&str] = &["watch", "reclaimed", "active", "recent"];
 const MONITOR_GLOBAL_IDS: &[&str] = &["watch"];
@@ -523,7 +537,8 @@ pub(super) fn relevant_global_ids(path: &[&str]) -> HashSet<&'static str> {
         ["extract", ..] if path.len() > 1 => &[],
         ["sessions"] => SESSIONS_GLOBAL_IDS,
         ["source"] => SOURCE_GLOBAL_IDS,
-        ["scrape" | "diff"] => SCRAPE_GLOBAL_IDS,
+        ["scrape"] => SCRAPE_GLOBAL_IDS,
+        ["diff"] => DIFF_GLOBAL_IDS,
         ["brand"] => &["custom_headers"],
         ["endpoints"] => &["performance_profile"],
         ["extract"] => EXTRACT_GLOBAL_IDS,
@@ -547,8 +562,22 @@ pub(super) fn relevant_global_ids(path: &[&str]) -> HashSet<&'static str> {
     COMMON_GLOBAL_IDS
         .iter()
         .chain(ids.iter())
+        .chain(
+            command_help_supports_cron(path)
+                .then_some(CRON_GLOBAL_IDS)
+                .into_iter()
+                .flatten(),
+        )
         .copied()
         .collect()
+}
+
+fn command_help_supports_cron(path: &[&str]) -> bool {
+    // Recurring execution is advertised only on the source surface where the
+    // live contract proves bounded multi-run behavior. Other commands may be
+    // one-shot internally and must not inherit cron merely because clap marks
+    // the option global.
+    matches!(path, ["source"])
 }
 
 fn global_options(command: &Command) -> Vec<(String, String)> {

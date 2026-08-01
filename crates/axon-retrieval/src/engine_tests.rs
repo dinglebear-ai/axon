@@ -132,7 +132,7 @@ async fn dense_only_request_omits_the_sparse_arm() {
     store.ensure_collection(spec.clone()).await.unwrap();
     store
         .upsert(VectorPointBatch {
-            batch_id: BatchId::new(Uuid::from_u128(13)),
+            batch_id: BatchId::new(Uuid::from_u128(12)),
             collection: "axon-test".to_string(),
             model: "fake-embedding".to_string(),
             dimensions: 4,

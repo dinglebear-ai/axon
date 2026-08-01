@@ -71,6 +71,9 @@ fn validate_relevant_globals(command: &Command, matches: &ArgMatches) -> Result<
                 .get_long()
                 .map(|long| format!("--{long}"))
                 .unwrap_or_else(|| id.replace('_', "-"));
+            if id == "watch" {
+                return Err("--watch is only supported with `axon status`".to_string());
+            }
             let command_name = if path.is_empty() {
                 "this command".to_string()
             } else {

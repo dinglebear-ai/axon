@@ -23,8 +23,8 @@ fn services_compose_reads_canonical_axon_home_env() {
         "docker-compose.prod.yaml must keep TEI data under the canonical ~/.axon appdata root"
     );
     assert!(
-        compose.contains("${AXON_HTTP_PUBLISH:-127.0.0.1:8001}:8001"),
-        "Axon's HTTP port must default to loopback while allowing an isolated published binding"
+        compose.contains("127.0.0.1:${AXON_HTTP_PUBLISH:-8001}:8001"),
+        "Axon's HTTP port must remain loopback-only while allowing an isolated published port"
     );
     assert!(
         compose.starts_with("name: ${AXON_COMPOSE_PROJECT_NAME:-axon}"),
@@ -430,7 +430,6 @@ fn shell_scripts_share_canonical_env_resolution() {
         "scripts/axon",
         "scripts/searxng-research",
         "scripts/time-query-gen",
-        "scripts/live-test-all-commands.sh",
     ] {
         let script = fs::read_to_string(path).expect("script should be readable");
         assert!(
@@ -438,6 +437,19 @@ fn shell_scripts_share_canonical_env_resolution() {
             "{path} should use the shared canonical env resolver"
         );
     }
+
+    let live_entry = fs::read_to_string("scripts/live-test-all-commands.sh")
+        .expect("live harness entry should be readable");
+    assert!(
+        live_entry.contains("scripts/lib/live-cli-scenarios.sh"),
+        "the modular live harness should source its scenario bootstrap"
+    );
+    let live_scenarios = fs::read_to_string("scripts/lib/live-cli-scenarios.sh")
+        .expect("live harness scenario bootstrap should be readable");
+    assert!(
+        live_scenarios.contains("scripts/lib/axon-env.sh"),
+        "the modular live harness should use the shared canonical env resolver"
+    );
 }
 
 fn env_example_keys() -> BTreeSet<String> {

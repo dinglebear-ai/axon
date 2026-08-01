@@ -252,3 +252,41 @@ fn watch_mutation_help_does_not_advertise_status_watch_mode() {
 
     assert!(!labels.iter().any(|label| label == "--watch"));
 }
+
+#[test]
+fn source_help_is_the_only_command_surface_that_advertises_cron() {
+    let command = Cli::command();
+    let source = command
+        .get_subcommands()
+        .find(|subcommand| subcommand.get_name() == "source")
+        .expect("source command");
+    let source_labels = command_options(source, &["source"])
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect::<Vec<_>>();
+    assert!(
+        source_labels
+            .iter()
+            .any(|label| label.starts_with("--cron-every-seconds"))
+    );
+    assert!(
+        source_labels
+            .iter()
+            .any(|label| label.starts_with("--cron-max-runs"))
+    );
+
+    for name in ["preflight", "map", "scrape", "ask", "doctor"] {
+        let subcommand = command
+            .get_subcommands()
+            .find(|subcommand| subcommand.get_name() == name)
+            .unwrap_or_else(|| panic!("{name} command"));
+        let labels = command_options(subcommand, &[name])
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect::<Vec<_>>();
+        assert!(
+            !labels.iter().any(|label| label.starts_with("--cron-")),
+            "{name} must not advertise unproven cron execution: {labels:?}"
+        );
+    }
+}

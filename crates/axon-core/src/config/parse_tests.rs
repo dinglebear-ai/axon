@@ -1224,6 +1224,7 @@ fn config_text_validation_uses_current_contract_shape() {
 
 #[test]
 fn chat_accepts_query_without_positional_message() {
+    let _guard = env_guard();
     let cli = super::Cli::try_parse_from([
         "axon",
         "--tei-url",
@@ -1353,4 +1354,19 @@ fn leaf_local_args_that_share_global_ids_bypass_global_relevance_checks() {
         super::validate_relevant_globals(&command, &matches)
             .unwrap_or_else(|error| panic!("{args:?} local flag misclassified: {error}"));
     }
+}
+
+#[test]
+fn cron_is_rejected_for_unproven_command_surfaces() {
+    let command = super::build_cli_command();
+    let matches = command
+        .clone()
+        .try_get_matches_from(["axon", "--cron-every-seconds", "60", "preflight"])
+        .expect("global cron is syntactically accepted by clap");
+    let error = super::validate_relevant_globals(&command, &matches)
+        .expect_err("preflight must reject unproven cron execution");
+    assert_eq!(
+        error,
+        "--cron-every-seconds is not supported by `axon preflight`; run `axon preflight --help` to see valid options"
+    );
 }

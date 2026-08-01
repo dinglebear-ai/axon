@@ -82,7 +82,10 @@ fn stress_crawler_heavy_mode_is_explicit_and_rejects_local_qdrant() {
 
 #[test]
 fn stress_crawler_contains_no_container_runtime_control() {
-    let script = std::fs::read_to_string("scripts/stress-crawler.sh").expect("read script");
+    let entry = std::fs::read_to_string("scripts/stress-crawler.sh").expect("read entry script");
+    let runtime = std::fs::read_to_string("scripts/lib/stress-crawler-runtime.sh")
+        .expect("read runtime helpers");
+    let script = format!("{entry}\n{runtime}");
     for forbidden in [
         "docker ",
         "docker-compose",
