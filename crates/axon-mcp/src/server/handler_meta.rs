@@ -7,8 +7,8 @@ use rmcp::{
     ErrorData, RoleServer,
     model::{
         ExtensionCapabilities, InitializeRequestParams, InitializeResult, ListResourcesResult,
-        Meta, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult, Resource,
-        ResourceContents, ServerCapabilities, ServerInfo,
+        MetaObject, PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResult,
+        Resource, ResourceContents, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
 };
@@ -27,8 +27,8 @@ pub(super) fn append_stale_binary_warning(response: AxonToolResponse) -> AxonToo
     }
 }
 
-pub(super) fn status_dashboard_tool_meta() -> Meta {
-    let mut m = Meta::new();
+pub(super) fn status_dashboard_tool_meta() -> MetaObject {
+    let mut m = MetaObject::new();
     // Nested form: _meta.ui.resourceUri (TypeScript SDK / MCP Apps convention).
     // The MCP host SDK normalizes this into a flat key internally; we only need
     // to emit the canonical nested form here.
@@ -39,8 +39,8 @@ pub(super) fn status_dashboard_tool_meta() -> Meta {
     m
 }
 
-pub(crate) fn status_dashboard_resource_meta() -> Meta {
-    let mut m = Meta::new();
+pub(crate) fn status_dashboard_resource_meta() -> MetaObject {
+    let mut m = MetaObject::new();
     m.insert(
         "ui".to_string(),
         serde_json::json!({
