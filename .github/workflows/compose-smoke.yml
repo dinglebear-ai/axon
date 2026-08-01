@@ -15,7 +15,7 @@ concurrency:
 jobs:
   changes:
     name: changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     outputs:
       compose: ${{ steps.classify.outputs.compose }}
       docker: ${{ steps.classify.outputs.docker }}
@@ -63,7 +63,7 @@ jobs:
 
   compose-config:
     name: compose-config
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-system
     needs: [changes]
     if: ${{ needs.changes.outputs.compose == 'true' }}
     steps:
@@ -99,7 +99,7 @@ jobs:
 
   image-build-smoke:
     name: image-build-smoke
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-system
     needs: [changes]
     if: ${{ needs.changes.outputs.docker == 'true' }}
     steps:
@@ -120,7 +120,7 @@ jobs:
 
   compose-smoke-gate:
     name: compose-smoke-gate
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     if: always()
     needs:
       - changes
