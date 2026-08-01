@@ -7,4 +7,8 @@
 # here or `cargo xtask workflow-lint` fails for every workflow-touching change.
 self-hosted-runner:
   labels:
+    - ci-pool-rust
+    - ci-pool-typescript
+    - ci-pool-ops
+    - ci-pool-system
     - unraid

@@ -47,7 +47,7 @@ env:
 jobs:
   changes:
     name: changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     outputs:
       all: ${{ steps.classify.outputs.all }}
       docs: ${{ steps.classify.outputs.docs }}
@@ -111,7 +111,7 @@ jobs:
   # and transport contracts before starting the expensive clippy/test fanout.
   rust-contracts:
     name: rust-contracts
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -224,7 +224,7 @@ jobs:
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
@@ -234,7 +234,7 @@ jobs:
 
   android:
     name: android
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-system
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -321,7 +321,7 @@ jobs:
 
   toml-fmt:
     name: toml-fmt
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -343,7 +343,7 @@ jobs:
 
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
@@ -353,7 +353,7 @@ jobs:
 
   palette-tauri:
     name: palette-tauri
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
@@ -509,7 +509,7 @@ jobs:
 
   smoke-binary:
     name: smoke-binary
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
     env:
@@ -539,7 +539,7 @@ jobs:
 
   web-panel:
     name: web-panel
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-typescript
     needs: [changes]
     if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
@@ -566,7 +566,7 @@ jobs:
 
   chrome-extension:
     name: chrome-extension
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-typescript
     needs: [changes]
     if: ${{ needs.changes.outputs.chrome == 'true' }}
     steps:
@@ -581,7 +581,7 @@ jobs:
   # The fast contract job must pass before either expensive Rust lane starts.
   clippy:
     name: clippy
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -598,7 +598,7 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -655,7 +655,7 @@ jobs:
   # `rag` boolean output consumed by `live-rag-pr`.
   rag-changes:
     name: rag-changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     if: ${{ github.event_name == 'pull_request' }}
     outputs:
       rag: ${{ steps.filter.outputs.rag }}
@@ -777,7 +777,7 @@ jobs:
 
   security:
     name: security
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
@@ -987,7 +987,7 @@ jobs:
 
   binary-smoke-build:
     name: binary-smoke-build
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
@@ -1008,7 +1008,7 @@ jobs:
 
   binary-smoke:
     name: binary-smoke
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes, binary-smoke-build]
     if: ${{ needs.binary-smoke-build.result == 'success' }}
     steps:
@@ -1023,7 +1023,7 @@ jobs:
 
   ci-gate:
     name: ci-gate
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     if: always()
     needs:
       - changes
