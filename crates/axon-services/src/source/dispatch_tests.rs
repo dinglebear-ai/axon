@@ -41,7 +41,7 @@ const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
 fn test_runtime_with_jobs(
     vectors: Arc<FakeVectorStore>,
     ledger: Arc<FakeLedgerStore>,
-    jobs: Arc<dyn JobStore>,
+    jobs: Arc<FakeJobWatchStore>,
 ) -> TargetLocalSourceRuntime {
     TargetLocalSourceRuntime::new(
         jobs,

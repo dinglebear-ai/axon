@@ -1,5 +1,17 @@
 use super::*;
 
+fn apply_vector_point_counts(
+    statuses: &mut [DocumentStatus],
+    points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
+) {
+    for status in statuses {
+        status.vector_point_count = points_by_document
+            .get(&status.document_id)
+            .copied()
+            .unwrap_or(0);
+    }
+}
+
 fn prepared_document(chunk_count: usize) -> PreparedDocument {
     let source_id = SourceId::new("src-window-test");
     let item_key = SourceItemKey::new("item-window-test");
@@ -152,4 +164,58 @@ fn successful_short_upsert_is_rejected() {
     let error = validate_upsert_counts(3, 3, 2).expect_err("short write must fail");
     assert!(error.to_string().contains("vector upsert short write"));
     validate_upsert_counts(3, 3, 3).expect("complete write");
+}
+
+fn vector_write(points: u64) -> VectorStoreWriteResult {
+    VectorStoreWriteResult {
+        header: StageResultHeader {
+            job_id: JobId::new(uuid::Uuid::from_u128(1)),
+            stage_id: StageId::new(uuid::Uuid::from_u128(2)),
+            phase: PipelinePhase::Upserting,
+            status: LifecycleStatus::Completed,
+            started_at: timestamp(),
+            completed_at: Some(timestamp()),
+            counts: StageCounts {
+                items_total: Some(points),
+                items_done: points,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: Some(points),
+                chunks_done: points,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            warnings: Vec::new(),
+            error: None,
+        },
+        collection: "progress-test".to_string(),
+        points_attempted: points,
+        points_written: points,
+        payload_indexes_created: Vec::new(),
+        usage: ProviderUsage {
+            input_tokens: None,
+            output_tokens: None,
+            requests: 1,
+            duration_ms: 0,
+        },
+    }
+}
+
+#[test]
+fn vectorized_document_statuses_count_only_redaction_eligible_points() {
+    let document = prepared_document(3);
+    let eligible = [ChunkId::new("chunk-0"), ChunkId::new("chunk-2")]
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let result = vectorize_result(vec![document], Vec::new(), &eligible, vector_write(2), 1);
+
+    assert_eq!(result.points_written, 2);
+    assert_eq!(result.document_statuses.len(), 1);
+    assert_eq!(result.document_statuses[0].chunk_count, 3);
+    assert_eq!(result.document_statuses[0].vector_point_count, 2);
+    assert_eq!(
+        result.warnings.first().map(|warning| warning.code.as_str()),
+        Some("source.vectorize.redaction_skipped_chunks")
+    );
 }
