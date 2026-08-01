@@ -34,9 +34,13 @@ pub(super) async fn prepare_embed_publish(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    is_final_generation_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
-    for source_batch in documents.chunks(DOCUMENT_BATCH_SIZE) {
+    let source_batch_count = documents.len().div_ceil(DOCUMENT_BATCH_SIZE);
+    for (source_index, source_batch) in documents.chunks(DOCUMENT_BATCH_SIZE).enumerate() {
+        let is_final_source_batch =
+            is_final_generation_batch && source_index + 1 == source_batch_count;
         coordinator
             .report(
                 emitter,
@@ -50,7 +54,11 @@ pub(super) async fn prepare_embed_publish(
             .iter()
             .map(|document| document.chunks.len() as u64)
             .sum();
-        let counts = progress.prepared(source_batch.len() as u64, chunk_count);
+        let counts = progress.prepared(
+            source_batch.len() as u64,
+            chunk_count,
+            is_final_source_batch,
+        );
         coordinator
             .checkpoint(
                 PipelinePhase::Preparing,
@@ -58,7 +66,10 @@ pub(super) async fn prepare_embed_publish(
                 "prepared source documents",
             )
             .await;
-        for batch in chunk_batches(prepared) {
+        let batches = chunk_batches(prepared);
+        let batch_count = batches.len();
+        for (batch_index, batch) in batches.into_iter().enumerate() {
+            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
             if input.plan.request.embed {
                 let batch_chunks = batch
                     .iter()
@@ -82,6 +93,7 @@ pub(super) async fn prepare_embed_publish(
                 emitter,
                 coordinator,
                 progress,
+                is_final_vector_batch,
             )
             .await?;
             merge_vectorize_result(&mut output, result);
@@ -193,6 +205,7 @@ async fn vectorize_batch(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    is_final_vector_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     if !input.plan.request.embed {
         return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
@@ -210,7 +223,7 @@ async fn vectorize_batch(
         .report(
             emitter,
             PipelinePhase::Vectorizing,
-            progress.vectorized(point_batch.points.len() as u64),
+            progress.vectorized(point_batch.points.len() as u64, is_final_vector_batch),
             "built vector point batch",
         )
         .await;

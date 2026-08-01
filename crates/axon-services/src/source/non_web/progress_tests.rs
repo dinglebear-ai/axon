@@ -130,26 +130,42 @@ async fn progress_persistence_failure_is_non_fatal() {
 }
 
 #[test]
-fn downstream_phase_counts_use_distinct_monotonic_coordinate_systems() {
+fn downstream_totals_remain_unknown_until_the_final_bounded_batch() {
     let mut progress = PipelineProgress::default();
-    progress.add_documents(2);
+    progress.add_documents(1);
 
-    let preparing_start = progress.preparing_counts();
-    assert_eq!(preparing_start.documents_total, Some(2));
-    assert_eq!(preparing_start.documents_done, 0);
-    assert_eq!(preparing_start.chunks_total, None);
-    let preparing = progress.prepared(2, 700);
-    let batching = progress.batched(512);
-    let embedding = progress.embedded(512);
-    let vectorizing = progress.vectorized(500);
-    let upserting = progress.upserted(500);
+    let first_preparing = progress.preparing_counts();
+    let first_prepared = progress.prepared(1, 350, false);
+    let first_batching = progress.batched(350);
+    let first_embedding = progress.embedded(350);
+    let first_vectorizing = progress.vectorized(250, false);
 
-    assert_eq!(preparing.documents_done, 2);
-    assert_eq!(preparing.chunks_done, 700);
-    assert_eq!(batching.chunks_done, 512);
-    assert_eq!(embedding.chunks_done, 512);
-    assert_eq!(vectorizing.chunks_total, Some(500));
-    assert_eq!(vectorizing.chunks_done, 500);
-    assert_eq!(upserting.chunks_total, Some(500));
-    assert_eq!(upserting.chunks_done, 500);
+    for counts in [
+        first_preparing,
+        first_prepared,
+        first_batching,
+        first_embedding,
+        first_vectorizing,
+    ] {
+        assert_eq!(counts.documents_total, None);
+        assert_eq!(counts.chunks_total, None);
+    }
+
+    progress.add_documents(1);
+    progress.finish_documents();
+    let final_preparing = progress.preparing_counts();
+    let final_prepared = progress.prepared(1, 350, true);
+    let final_batching = progress.batched(162);
+    let final_embedding = progress.embedded(162);
+    let final_vectorizing = progress.vectorized(250, true);
+    let final_upserting = progress.upserted(500);
+
+    assert_eq!(final_preparing.documents_total, Some(2));
+    assert_eq!(final_prepared.documents_total, Some(2));
+    assert_eq!(final_prepared.chunks_total, Some(700));
+    assert_eq!(final_batching.chunks_total, Some(700));
+    assert_eq!(final_embedding.chunks_total, Some(700));
+    assert_eq!(final_vectorizing.chunks_total, Some(500));
+    assert_eq!(final_upserting.chunks_total, Some(500));
+    assert_eq!(final_upserting.chunks_done, 500);
 }

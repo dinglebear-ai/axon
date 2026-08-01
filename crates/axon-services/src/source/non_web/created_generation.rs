@@ -71,7 +71,9 @@ pub(super) async fn run_created_generation(
         )
         .await;
     let mut state = GenerationRunState::default();
-    for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
+    let batches = batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE);
+    let batch_count = batches.len();
+    for (index, batch_diff) in batches.into_iter().enumerate() {
         process_generation_batch(
             runtime,
             input,
@@ -80,6 +82,7 @@ pub(super) async fn run_created_generation(
             &collection,
             coordinator,
             changed_total,
+            index + 1 == batch_count,
             batch_diff,
             &mut state,
         )
@@ -129,6 +132,7 @@ async fn process_generation_batch(
     collection: &CollectionSpec,
     coordinator: &ProgressCoordinator,
     changed_total: u64,
+    is_final_batch: bool,
     batch_diff: SourceManifestDiff,
     state: &mut GenerationRunState,
 ) -> anyhow::Result<()> {
@@ -141,11 +145,26 @@ async fn process_generation_batch(
         state,
     )
     .await?;
-    let enrichments =
-        enrich_generation_batch(runtime, input, emitter, coordinator, &acquisition, state).await?;
-    let mut documents =
-        normalize_generation_batch(input, emitter, generation, coordinator, acquisition, state)
-            .await?;
+    let enrichments = enrich_generation_batch(
+        runtime,
+        input,
+        emitter,
+        coordinator,
+        &acquisition,
+        is_final_batch,
+        state,
+    )
+    .await?;
+    let mut documents = normalize_generation_batch(
+        input,
+        emitter,
+        generation,
+        coordinator,
+        acquisition,
+        is_final_batch,
+        state,
+    )
+    .await?;
     apply_enrichments(&mut documents, &enrichments);
     let enrichment_graph = enrichment_graph_candidates(&enrichments);
     let batch_result = vectorize::prepare_embed_publish(
@@ -158,6 +177,7 @@ async fn process_generation_batch(
         emitter,
         coordinator,
         &mut state.pipeline,
+        is_final_batch,
     )
     .await?;
     collect_enrichment_output(&enrichments, state);
@@ -203,20 +223,15 @@ async fn enrich_generation_batch(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     acquisition: &SourceAcquisition,
+    is_final_batch: bool,
     state: &mut GenerationRunState,
 ) -> anyhow::Result<std::collections::BTreeMap<SourceItemKey, SourceEnrichment>> {
+    let total = is_final_batch.then_some(state.acquired_documents);
     coordinator
         .report(
             emitter,
             PipelinePhase::Enriching,
-            stage_counts(
-                Some(state.acquired_documents),
-                state.enriched_items,
-                None,
-                0,
-                None,
-                0,
-            ),
+            stage_counts(total, state.enriched_items, None, 0, None, 0),
             "enriching acquired source items",
         )
         .await;
@@ -232,14 +247,7 @@ async fn enrich_generation_batch(
     coordinator
         .checkpoint(
             PipelinePhase::Enriching,
-            stage_counts(
-                Some(state.acquired_documents),
-                state.enriched_items,
-                None,
-                0,
-                None,
-                0,
-            ),
+            stage_counts(total, state.enriched_items, None, 0, None, 0),
             "enriched acquired source items",
         )
         .await;
@@ -252,12 +260,14 @@ async fn normalize_generation_batch(
     generation: &SourceGenerationId,
     coordinator: &ProgressCoordinator,
     acquisition: SourceAcquisition,
+    is_final_batch: bool,
     state: &mut GenerationRunState,
 ) -> anyhow::Result<Vec<SourceDocument>> {
+    let total = is_final_batch.then_some(state.acquired_documents);
     let counts = stage_counts(
-        Some(state.acquired_documents),
+        total,
         state.normalized_documents,
-        Some(state.acquired_documents),
+        total,
         state.normalized_documents,
         None,
         0,
@@ -277,13 +287,16 @@ async fn normalize_generation_batch(
         .normalized_documents
         .saturating_add(normalized.data.len() as u64);
     state.pipeline.add_documents(normalized.data.len() as u64);
+    if is_final_batch {
+        state.pipeline.finish_documents();
+    }
     coordinator
         .checkpoint(
             PipelinePhase::Normalizing,
             stage_counts(
-                Some(state.acquired_documents),
+                total,
                 state.normalized_documents,
-                Some(state.acquired_documents),
+                total,
                 state.normalized_documents,
                 None,
                 0,

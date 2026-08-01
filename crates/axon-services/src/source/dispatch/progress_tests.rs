@@ -59,6 +59,23 @@ fn assert_monotonic(counts: &[StageCounts], phase: PipelinePhase) {
             pair[0].chunks_done <= pair[1].chunks_done,
             "{phase:?} chunk progress regressed"
         );
+        for (name, previous, current) in [
+            ("items", pair[0].items_total, pair[1].items_total),
+            (
+                "documents",
+                pair[0].documents_total,
+                pair[1].documents_total,
+            ),
+            ("chunks", pair[0].chunks_total, pair[1].chunks_total),
+        ] {
+            if let Some(previous) = previous {
+                assert_eq!(
+                    current,
+                    Some(previous),
+                    "{phase:?} {name} total changed after becoming known"
+                );
+            }
+        }
     }
 }
 
@@ -147,10 +164,9 @@ async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_c
         PipelinePhase::Publishing,
         PipelinePhase::Complete,
     ] {
-        assert!(
-            updates.iter().any(|update| update.phase == phase),
-            "missing durable {phase:?} progress"
-        );
+        let counts = phase_counts(phase);
+        assert!(!counts.is_empty(), "missing durable {phase:?} progress");
+        assert_monotonic(&counts, phase);
     }
 
     let embedding = phase_counts(PipelinePhase::Embedding);
