@@ -396,3 +396,7 @@ mod tool_tests;
 #[cfg(test)]
 #[path = "dispatch/local_collapse_tests.rs"]
 mod local_collapse_tests;
+
+#[cfg(test)]
+#[path = "dispatch/progress_tests.rs"]
+mod progress_tests;

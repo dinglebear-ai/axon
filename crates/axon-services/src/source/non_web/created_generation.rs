@@ -5,127 +5,17 @@
 //! (`run_created_generation`) and the terminal ledger/vector-store publish
 //! step (`publish_created_generation`).
 
-use async_trait::async_trait;
-use axon_adapters::{AcquisitionProgress, AcquisitionProgressSink};
 use axon_api::source::*;
-use axon_jobs::boundary::JobStore;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
 
 use super::helpers::*;
+use super::progress::{PipelineProgress, ProgressCoordinator, stage_counts};
 use super::{
     ACQUIRE_BATCH_SIZE, NonWebPipelineInput, SOURCE_LEASE_TTL_SECONDS, SourceEventEmitter,
     metadata, publish, vectorize,
 };
 use crate::context::TargetLocalSourceRuntime;
-use crate::source::progress;
+use crate::source::progress as source_progress;
 use crate::source::result_map::IndexCounts;
-
-const ACQUISITION_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
-
-struct JobAcquisitionProgress {
-    jobs: Arc<dyn JobStore>,
-    job_id: JobId,
-    source_id: SourceId,
-    adapter: String,
-    items_total: u64,
-    items_offset: u64,
-    documents_offset: u64,
-    last_write: Mutex<Option<Instant>>,
-}
-
-impl JobAcquisitionProgress {
-    fn new(
-        runtime: &TargetLocalSourceRuntime,
-        input: &NonWebPipelineInput<'_>,
-        items_total: u64,
-        items_offset: u64,
-        documents_offset: u64,
-    ) -> Self {
-        Self {
-            jobs: runtime.jobs.clone(),
-            job_id: input.plan.job_id,
-            source_id: input.plan.route.source.source_id.clone(),
-            adapter: input.plan.route.adapter.name.clone(),
-            items_total,
-            items_offset,
-            documents_offset,
-            last_write: Mutex::new(None),
-        }
-    }
-}
-
-#[async_trait]
-impl AcquisitionProgressSink for JobAcquisitionProgress {
-    async fn report(&self, progress: AcquisitionProgress) {
-        let is_batch_complete = progress.items_done >= progress.items_total;
-        let should_write = {
-            let mut last_write = self.last_write.lock().await;
-            let now = Instant::now();
-            let due = last_write
-                .is_none_or(|last| now.duration_since(last) >= ACQUISITION_PROGRESS_INTERVAL);
-            if due || is_batch_complete {
-                *last_write = Some(now);
-                true
-            } else {
-                false
-            }
-        };
-        if !should_write {
-            return;
-        }
-
-        let items_done = self
-            .items_offset
-            .saturating_add(progress.items_done)
-            .min(self.items_total);
-        let documents_done = self
-            .documents_offset
-            .saturating_add(progress.documents_done)
-            .min(self.items_total);
-        let update = JobStatusUpdate {
-            job_id: self.job_id,
-            source_id: Some(self.source_id.clone()),
-            status: LifecycleStatus::Running,
-            phase: PipelinePhase::Fetching,
-            stage_id: None,
-            counts: Some(StageCounts {
-                items_total: Some(self.items_total),
-                items_done,
-                documents_total: Some(self.items_total),
-                documents_done,
-                chunks_total: None,
-                chunks_done: 0,
-                bytes_total: None,
-                bytes_done: 0,
-            }),
-            current: Some(ProgressCurrent {
-                source_item_key: None,
-                document_id: None,
-                chunk_id: None,
-                adapter: Some(self.adapter.clone()),
-                provider: None,
-                message: Some(format!(
-                    "{items_done}/{} source items acquired",
-                    self.items_total
-                )),
-            }),
-            message: Some(format!(
-                "acquired {items_done}/{} source items",
-                self.items_total
-            )),
-            error: None,
-        };
-        if let Err(error) = self.jobs.update_status(update).await {
-            tracing::warn!(
-                job_id = %self.job_id.0,
-                error = %error,
-                "failed to persist acquisition progress"
-            );
-        }
-    }
-}
 
 /// Acquire/normalize/prepare/embed/publish the diff's added+modified items in
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
@@ -140,6 +30,18 @@ impl AcquisitionProgressSink for JobAcquisitionProgress {
 /// unbounded-memory / OOM risk unique to this path. Streaming here brings
 /// every non-web family, plus local (`source/dispatch/local.rs`), onto the
 /// same bounded-memory acquisition shape web already had.
+#[derive(Default)]
+struct GenerationRunState {
+    vectorized: vectorize::VectorizeResult,
+    pipeline: PipelineProgress,
+    artifacts: Vec<ArtifactRef>,
+    warnings: Vec<SourceWarning>,
+    acquired_items: u64,
+    acquired_documents: u64,
+    enriched_items: u64,
+    normalized_documents: u64,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_created_generation(
     runtime: &TargetLocalSourceRuntime,
@@ -150,6 +52,7 @@ pub(super) async fn run_created_generation(
     diff: SourceManifestDiff,
     generation: SourceGeneration,
     previous: Option<SourceSummary>,
+    coordinator: &ProgressCoordinator,
 ) -> anyhow::Result<IndexCounts> {
     let collection = collection_spec(input.collection, runtime.embedding_dimensions);
     if input.plan.request.embed {
@@ -158,93 +61,247 @@ pub(super) async fn run_created_generation(
             .ensure_collection(collection.clone())
             .await?;
     }
-    let mut vectorized = vectorize::VectorizeResult::default();
-    let mut artifacts = Vec::new();
-    let mut warnings = Vec::new();
     let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
-    let mut acquired_items = 0u64;
-    let mut acquired_documents = 0u64;
-    for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
-        record_running_phase(
-            runtime,
-            input,
+    coordinator
+        .report(
             emitter,
             PipelinePhase::Fetching,
+            stage_counts(Some(changed_total), 0, Some(changed_total), 0, None, 0),
             "acquiring changed source items",
         )
-        .await?;
-        let batch_items = batch_diff
-            .added
-            .len()
-            .saturating_add(batch_diff.modified.len()) as u64;
-        let reporter = JobAcquisitionProgress::new(
+        .await;
+    let mut state = GenerationRunState::default();
+    for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
+        process_generation_batch(
             runtime,
             input,
+            emitter,
+            &generation.generation,
+            &collection,
+            coordinator,
             changed_total,
-            acquired_items,
-            acquired_documents,
-        );
-        let acquisition = input
-            .adapter
-            .acquire_with_progress(&input.plan, &batch_diff, Some(&reporter))
-            .await?;
-        acquired_items = acquired_items.saturating_add(batch_items);
-        acquired_documents =
-            acquired_documents.saturating_add(acquisition.fetched_items.len() as u64);
-        progress::acquired(emitter, &acquisition).await;
-        artifacts.extend(acquisition.artifacts.clone());
-        warnings.extend(acquisition.header.warnings.clone());
-        let enrichments = enrich(
-            runtime.enricher.clone(),
-            &input.plan,
-            &acquisition.fetched_items,
+            batch_diff,
+            &mut state,
         )
         .await?;
-        record_running_phase(
-            runtime,
-            input,
+    }
+    state.vectorized.warnings.splice(0..0, state.warnings);
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Publishing,
+            stage_counts(Some(1), 0, None, 0, None, 0),
+            "publishing source generation",
+        )
+        .await;
+    let result = publish_created_generation(
+        runtime,
+        input,
+        emitter,
+        lease,
+        manifest,
+        diff,
+        generation,
+        previous,
+        collection,
+        state.vectorized,
+        state.artifacts,
+    )
+    .await;
+    if result.is_ok() {
+        coordinator
+            .checkpoint(
+                PipelinePhase::Publishing,
+                stage_counts(Some(1), 1, None, 0, None, 0),
+                "published source generation",
+            )
+            .await;
+    }
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn process_generation_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    generation: &SourceGenerationId,
+    collection: &CollectionSpec,
+    coordinator: &ProgressCoordinator,
+    changed_total: u64,
+    batch_diff: SourceManifestDiff,
+    state: &mut GenerationRunState,
+) -> anyhow::Result<()> {
+    let acquisition = acquire_generation_batch(
+        input,
+        emitter,
+        coordinator,
+        changed_total,
+        batch_diff,
+        state,
+    )
+    .await?;
+    let enrichments =
+        enrich_generation_batch(runtime, input, emitter, coordinator, &acquisition, state).await?;
+    let mut documents =
+        normalize_generation_batch(input, emitter, generation, coordinator, acquisition, state)
+            .await?;
+    apply_enrichments(&mut documents, &enrichments);
+    let enrichment_graph = enrichment_graph_candidates(&enrichments);
+    let batch_result = vectorize::prepare_embed_publish(
+        runtime,
+        input,
+        documents,
+        &enrichment_graph,
+        generation,
+        collection.clone(),
+        emitter,
+        coordinator,
+        &mut state.pipeline,
+    )
+    .await?;
+    collect_enrichment_output(&enrichments, state);
+    vectorize::merge_vectorize_result(&mut state.vectorized, batch_result);
+    Ok(())
+}
+
+async fn acquire_generation_batch(
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    changed_total: u64,
+    batch_diff: SourceManifestDiff,
+    state: &mut GenerationRunState,
+) -> anyhow::Result<SourceAcquisition> {
+    let batch_items = batch_diff
+        .added
+        .len()
+        .saturating_add(batch_diff.modified.len()) as u64;
+    let reporter = coordinator.acquisition_batch(
+        changed_total,
+        batch_items,
+        state.acquired_items,
+        state.acquired_documents,
+    );
+    let acquisition = input
+        .adapter
+        .acquire_with_progress(&input.plan, &batch_diff, Some(&reporter))
+        .await?;
+    let fetched = acquisition.fetched_items.len() as u64;
+    reporter.complete(fetched).await;
+    state.acquired_items = state.acquired_items.saturating_add(batch_items);
+    state.acquired_documents = state.acquired_documents.saturating_add(fetched);
+    state.artifacts.extend(acquisition.artifacts.clone());
+    state.warnings.extend(acquisition.header.warnings.clone());
+    source_progress::acquired(emitter, &acquisition).await;
+    Ok(acquisition)
+}
+
+async fn enrich_generation_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    acquisition: &SourceAcquisition,
+    state: &mut GenerationRunState,
+) -> anyhow::Result<std::collections::BTreeMap<SourceItemKey, SourceEnrichment>> {
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Enriching,
+            stage_counts(
+                Some(state.acquired_documents),
+                state.enriched_items,
+                None,
+                0,
+                None,
+                0,
+            ),
+            "enriching acquired source items",
+        )
+        .await;
+    let enrichments = enrich(
+        runtime.enricher.clone(),
+        &input.plan,
+        &acquisition.fetched_items,
+    )
+    .await?;
+    state.enriched_items = state
+        .enriched_items
+        .saturating_add(acquisition.fetched_items.len() as u64);
+    coordinator
+        .checkpoint(
+            PipelinePhase::Enriching,
+            stage_counts(
+                Some(state.acquired_documents),
+                state.enriched_items,
+                None,
+                0,
+                None,
+                0,
+            ),
+            "enriched acquired source items",
+        )
+        .await;
+    Ok(enrichments)
+}
+
+async fn normalize_generation_batch(
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    generation: &SourceGenerationId,
+    coordinator: &ProgressCoordinator,
+    acquisition: SourceAcquisition,
+    state: &mut GenerationRunState,
+) -> anyhow::Result<Vec<SourceDocument>> {
+    let counts = stage_counts(
+        Some(state.acquired_documents),
+        state.normalized_documents,
+        Some(state.acquired_documents),
+        state.normalized_documents,
+        None,
+        0,
+    );
+    coordinator
+        .report(
             emitter,
             PipelinePhase::Normalizing,
+            counts,
             "normalizing source documents",
         )
-        .await?;
-        let normalized = input.adapter.normalize(&input.plan, acquisition).await?;
-        progress::normalized(emitter, &generation.generation, &normalized.header).await;
-        warnings.extend(normalized.header.warnings.clone());
-        let mut documents = normalized.data;
-        apply_enrichments(&mut documents, &enrichments);
-        let enrichment_graph = enrichment_graph_candidates(&enrichments);
-        record_running_phase(
-            runtime,
-            input,
-            emitter,
-            PipelinePhase::Preparing,
-            "preparing source documents",
+        .await;
+    let normalized = input.adapter.normalize(&input.plan, acquisition).await?;
+    source_progress::normalized(emitter, generation, &normalized.header).await;
+    state.warnings.extend(normalized.header.warnings.clone());
+    state.normalized_documents = state
+        .normalized_documents
+        .saturating_add(normalized.data.len() as u64);
+    state.pipeline.add_documents(normalized.data.len() as u64);
+    coordinator
+        .checkpoint(
+            PipelinePhase::Normalizing,
+            stage_counts(
+                Some(state.acquired_documents),
+                state.normalized_documents,
+                Some(state.acquired_documents),
+                state.normalized_documents,
+                None,
+                0,
+            ),
+            "normalized source documents",
         )
-        .await?;
-        let batch_result = vectorize::prepare_embed_publish(
-            runtime,
-            input,
-            documents,
-            &enrichment_graph,
-            &generation.generation,
-            collection.clone(),
-            emitter,
-        )
-        .await?;
-        for enrichment in enrichments.values() {
-            warnings.extend(enrichment.warnings.clone());
-            artifacts.extend(enrichment.artifacts.clone());
-        }
-        vectorize::merge_vectorize_result(&mut vectorized, batch_result);
-    }
-    vectorized.warnings.splice(0..0, warnings);
+        .await;
+    Ok(normalized.data)
+}
 
-    publish_created_generation(
-        runtime, input, emitter, lease, manifest, diff, generation, previous, collection,
-        vectorized, artifacts,
-    )
-    .await
+fn collect_enrichment_output(
+    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    state: &mut GenerationRunState,
+) {
+    for enrichment in enrichments.values() {
+        state.warnings.extend(enrichment.warnings.clone());
+        state.artifacts.extend(enrichment.artifacts.clone());
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -339,7 +396,7 @@ async fn publish_created_generation_under_finalizer(
             previous.as_ref(),
         ))
         .await?;
-    progress::published(
+    source_progress::published(
         emitter,
         &published.generation,
         manifest.items.len() as u64,

@@ -87,7 +87,13 @@ fn task_progress_value(kind: JobKind, job: &ServiceJob) -> Option<Value> {
     if kind != JobKind::Source {
         return None;
     }
-    let progress = structured_source_progress(job.progress_json.as_ref())?;
+    let mut progress = structured_source_progress(job.progress_json.as_ref())?;
+    if let Value::Object(object) = &mut progress {
+        object.insert("phase".to_string(), json!(job.phase));
+        if let Some(source_kind) = job.source_kind {
+            object.insert("source_kind".to_string(), json!(source_kind));
+        }
+    }
     sanitized_bounded_json(&progress, "progress")
 }
 

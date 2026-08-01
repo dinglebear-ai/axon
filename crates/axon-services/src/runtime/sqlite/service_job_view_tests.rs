@@ -80,7 +80,55 @@ fn running_job_projects_adapter_into_source_type() {
     );
 
     assert_eq!(job.source_type.as_deref(), Some("web"));
+    assert_eq!(job.source_kind, Some(SourceKind::Web));
     assert!(job.progress_json.is_some());
+}
+
+#[test]
+fn source_kind_aliases_project_to_canonical_families() {
+    let cases = [
+        ("web", SourceKind::Web),
+        ("local", SourceKind::Local),
+        ("git", SourceKind::Git),
+        ("github", SourceKind::Git),
+        ("gitlab", SourceKind::Git),
+        ("gitea", SourceKind::Git),
+        ("registry", SourceKind::Registry),
+        ("crates", SourceKind::Registry),
+        ("npm", SourceKind::Registry),
+        ("pypi", SourceKind::Registry),
+        ("feed", SourceKind::Feed),
+        ("reddit", SourceKind::Reddit),
+        ("youtube", SourceKind::Youtube),
+        ("sessions", SourceKind::Session),
+        ("cli_tool", SourceKind::CliTool),
+        ("mcp_tool", SourceKind::McpTool),
+        ("memory", SourceKind::Memory),
+        ("upload", SourceKind::Upload),
+    ];
+
+    for (alias, expected) in cases {
+        assert_eq!(
+            source_kind_from_alias(alias),
+            Some(expected),
+            "alias {alias}"
+        );
+    }
+    assert_eq!(source_kind_from_alias("unknown-adapter"), None);
+}
+
+#[test]
+fn canonical_request_source_kind_takes_precedence_over_adapter_alias() {
+    let job = summary_to_service_job(
+        completed_summary(),
+        Some(json!({
+            "source_kind": "youtube",
+            "adapter": "github",
+            "source_request": { "source": "https://www.youtube.com/watch?v=test" }
+        })),
+    );
+
+    assert_eq!(job.source_kind, Some(SourceKind::Youtube));
 }
 
 #[test]

@@ -41,6 +41,35 @@ async fn emitter_persists_structured_counts_and_source_context() {
 }
 
 #[tokio::test]
+async fn running_event_carries_the_authoritative_progress_counts() {
+    let (store, job_id) = store_with_job().await;
+    let emitter = emitter(store.clone(), job_id);
+    let counts = StageCounts {
+        items_total: Some(10),
+        items_done: 4,
+        documents_total: Some(10),
+        documents_done: 4,
+        chunks_total: Some(100),
+        chunks_done: 40,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+
+    emitter
+        .running_with_counts(
+            PipelinePhase::Embedding,
+            "embedding chunks",
+            Some(counts.clone()),
+        )
+        .await;
+
+    let event = recorded_progress(&store, job_id, 0).await;
+    assert_eq!(event.status, LifecycleStatus::Running);
+    assert_eq!(event.phase, PipelinePhase::Embedding);
+    assert_eq!(event.counts, counts);
+}
+
+#[tokio::test]
 async fn emitter_persists_item_warning_and_error_payloads() {
     let (store, job_id) = store_with_job().await;
     let emitter = emitter(store.clone(), job_id);

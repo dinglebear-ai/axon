@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use axon_api::source::{
     JobCancelRequest, JobCleanupRequest, JobId, JobKind, JobListRequest, JobRecoveryRequest,
-    JobSummary, LifecycleStatus, Timestamp,
+    JobSummary, LifecycleStatus, SourceKind, Timestamp,
 };
 use axon_jobs::boundary::JobStore;
 use chrono::{DateTime, Utc};
@@ -92,6 +92,52 @@ fn request_target_fields(
     }
 }
 
+fn source_kind_from_alias(alias: &str) -> Option<SourceKind> {
+    match alias.to_ascii_lowercase().as_str() {
+        "web" | "crawl" | "scrape" => Some(SourceKind::Web),
+        "local" => Some(SourceKind::Local),
+        "git" | "github" | "gitlab" | "gitea" => Some(SourceKind::Git),
+        "registry" | "crates" | "npm" | "pypi" => Some(SourceKind::Registry),
+        "feed" | "rss" | "atom" => Some(SourceKind::Feed),
+        "reddit" => Some(SourceKind::Reddit),
+        "youtube" => Some(SourceKind::Youtube),
+        "session" | "sessions" => Some(SourceKind::Session),
+        "cli" | "cli_tool" => Some(SourceKind::CliTool),
+        "mcp" | "mcp_tool" => Some(SourceKind::McpTool),
+        "memory" => Some(SourceKind::Memory),
+        "upload" => Some(SourceKind::Upload),
+        _ => None,
+    }
+}
+
+fn request_source_kind(request_json: &serde_json::Value) -> Option<SourceKind> {
+    request_json
+        .get("source_kind")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .or_else(|| {
+            request_json
+                .get("source_request")
+                .and_then(|request| request.get("source_kind"))
+                .cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+        })
+        .or_else(|| {
+            request_json
+                .get("adapter")
+                .or_else(|| request_json.get("source_type"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(source_kind_from_alias)
+        })
+        .or_else(|| {
+            request_json
+                .get("source_request")
+                .and_then(|request| request.get("adapter"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(source_kind_from_alias)
+        })
+}
+
 fn summary_to_service_job(
     summary: JobSummary,
     request_json: Option<serde_json::Value>,
@@ -104,6 +150,10 @@ fn summary_to_service_job(
             .as_ref()
             .and_then(|current| current.adapter.clone())
     });
+    let source_kind = request_json
+        .as_ref()
+        .and_then(request_source_kind)
+        .or_else(|| source_type.as_deref().and_then(source_kind_from_alias));
     let counts_json = summary
         .counts
         .as_ref()
@@ -128,6 +178,7 @@ fn summary_to_service_job(
         error_text: summary.last_error.as_ref().map(|e| e.message.clone()),
         url,
         source_type,
+        source_kind,
         target,
         urls_json,
         progress_json: (!terminal).then(|| counts_json.clone()).flatten(),

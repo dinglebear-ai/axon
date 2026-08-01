@@ -42,8 +42,16 @@ fn test_runtime(
     vectors: Arc<FakeVectorStore>,
     ledger: Arc<FakeLedgerStore>,
 ) -> TargetLocalSourceRuntime {
+    test_runtime_with_jobs(vectors, ledger, Arc::new(FakeJobWatchStore::new()))
+}
+
+fn test_runtime_with_jobs(
+    vectors: Arc<FakeVectorStore>,
+    ledger: Arc<FakeLedgerStore>,
+    jobs: Arc<FakeJobWatchStore>,
+) -> TargetLocalSourceRuntime {
     TargetLocalSourceRuntime::new(
-        Arc::new(FakeJobWatchStore::new()),
+        jobs,
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
         vectors,
