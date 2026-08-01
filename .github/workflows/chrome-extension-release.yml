@@ -25,7 +25,8 @@ permissions:
 jobs:
   build:
     name: package chrome extension
-    runs-on: [self-hosted, unraid]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write  # required to upload release artifacts
     steps:
