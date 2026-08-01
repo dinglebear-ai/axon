@@ -7,7 +7,7 @@
 //! types are local.
 
 use crate::job_status::JobStatus;
-use crate::source::{JobKind, PipelinePhase};
+use crate::source::{JobKind, PipelinePhase, SourceKind};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceJob {
@@ -21,6 +21,9 @@ pub struct ServiceJob {
     pub error_text: Option<String>,
     pub url: Option<String>,
     pub source_type: Option<String>,
+    /// Canonical source family used for phase-aware status presentation.
+    #[serde(default)]
+    pub source_kind: Option<SourceKind>,
     pub target: Option<String>,
     pub urls_json: Option<serde_json::Value>,
     pub progress_json: Option<serde_json::Value>,
@@ -61,6 +64,8 @@ pub struct StatusJob {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_kind: Option<SourceKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
@@ -86,6 +91,7 @@ impl StatusJob {
             finished_at: job.finished_at,
             error: job.error_text.clone(),
             source: job.target.clone().or_else(|| job.url.clone()),
+            source_kind: job.source_kind,
             progress: job.progress_json.clone(),
             result: job.result_json.clone(),
             attempt: job.attempt_count,

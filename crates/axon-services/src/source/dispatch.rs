@@ -455,3 +455,7 @@ mod tests;
 #[cfg(test)]
 #[path = "dispatch/tool_tests.rs"]
 mod tool_tests;
+
+#[cfg(test)]
+#[path = "dispatch/progress_tests.rs"]
+mod progress_tests;

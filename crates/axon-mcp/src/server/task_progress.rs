@@ -1,7 +1,10 @@
 use super::AxonMcpServer;
 use super::task_id::{kind_name, task_id_for};
-use axon_api::{job_status::JobStatus, source::JobKind};
-use axon_services::runtime::ServiceJobRuntime;
+use axon_api::{
+    job_status::JobStatus,
+    source::{JobKind, PipelinePhase},
+};
+use axon_services::{runtime::ServiceJobRuntime, types::ServiceJob};
 use rmcp::model::{ProgressNotificationParam, ProgressToken};
 use rmcp::{Peer, RoleServer};
 use serde_json::Value;
@@ -111,31 +114,14 @@ async fn run_progress_notifier(
     let mut last_fingerprint = String::new();
     loop {
         tokio::time::sleep(NOTIFIER_READ_INTERVAL).await;
-        let job = match jobs.job_status(kind, job_id).await {
-            Ok(Some(job)) => job,
-            Ok(None) => {
-                tracing::debug!(
-                    task_id = %task_id,
-                    kind = kind_name(kind),
-                    reason = "not_found",
-                    "mcp.task.progress.stop"
-                );
-                return;
-            }
-            Err(e) => {
-                tracing::error!(
-                    task_id = %task_id,
-                    kind = kind_name(kind),
-                    error = %e,
-                    "mcp.task.progress.stop"
-                );
-                return;
-            }
+        let Some(job) = load_progress_job(jobs.as_ref(), kind, job_id, &task_id).await else {
+            return;
         };
         let status = job.status_enum();
         let mapped = map_job_progress(
             kind,
             &status,
+            job.phase,
             progress_metrics_for_status(
                 &status,
                 job.progress_json.as_ref(),
@@ -177,9 +163,39 @@ async fn run_progress_notifier(
     }
 }
 
+async fn load_progress_job(
+    jobs: &dyn ServiceJobRuntime,
+    kind: JobKind,
+    job_id: Uuid,
+    task_id: &str,
+) -> Option<ServiceJob> {
+    match jobs.job_status(kind, job_id).await {
+        Ok(Some(job)) => Some(job),
+        Ok(None) => {
+            tracing::debug!(
+                task_id,
+                kind = kind_name(kind),
+                reason = "not_found",
+                "mcp.task.progress.stop"
+            );
+            None
+        }
+        Err(error) => {
+            tracing::error!(
+                task_id,
+                kind = kind_name(kind),
+                error = %error,
+                "mcp.task.progress.stop"
+            );
+            None
+        }
+    }
+}
+
 pub(super) fn map_job_progress(
     kind: JobKind,
     status: &JobStatus,
+    phase: PipelinePhase,
     result_json: Option<&Value>,
 ) -> MappedProgress {
     match status {
@@ -191,7 +207,7 @@ pub(super) fn map_job_progress(
         JobStatus::Completed => terminal("completed"),
         JobStatus::Failed => terminal("failed"),
         JobStatus::Canceled => terminal("cancelled"),
-        JobStatus::Running => map_running_progress(kind, result_json),
+        JobStatus::Running => map_running_progress(kind, phase, result_json),
         JobStatus::Unknown(_) => terminal("unknown status"),
     }
 }
@@ -238,7 +254,11 @@ fn terminal(message: &'static str) -> MappedProgress {
     }
 }
 
-fn map_running_progress(kind: JobKind, result_json: Option<&Value>) -> MappedProgress {
+fn map_running_progress(
+    kind: JobKind,
+    phase: PipelinePhase,
+    result_json: Option<&Value>,
+) -> MappedProgress {
     let Some(value) = result_json.and_then(Value::as_object) else {
         return MappedProgress {
             progress: 0.0,
@@ -248,7 +268,7 @@ fn map_running_progress(kind: JobKind, result_json: Option<&Value>) -> MappedPro
     };
 
     match kind {
-        JobKind::Source => source_progress(value),
+        JobKind::Source => source_progress(value, phase),
         JobKind::Extract => MappedProgress {
             progress: 0.0,
             total: None,
@@ -262,21 +282,63 @@ fn map_running_progress(kind: JobKind, result_json: Option<&Value>) -> MappedPro
     }
 }
 
-fn source_progress(object: &serde_json::Map<String, Value>) -> MappedProgress {
-    let message = allowlisted_phase(object.get("phase").and_then(Value::as_str));
+fn source_progress(
+    object: &serde_json::Map<String, Value>,
+    phase: PipelinePhase,
+) -> MappedProgress {
+    let message = source_phase_message(phase);
     count_progress(object, "pages_crawled", "pages_discovered", "indexing")
         .or_else(|| count_progress(object, "docs_embedded", "docs_total", "embedding"))
-        .or_else(|| count_progress(object, "documents_done", "documents_total", "embedding"))
-        .or_else(|| count_progress(object, "items_done", "items_total", message))
-        .or_else(|| count_progress(object, "files_done", "files_total", message))
-        .or_else(|| count_progress(object, "tasks_done", "tasks_total", message))
-        .or_else(|| count_progress(object, "chunks_embedded", "chunks_total", message))
-        .or_else(|| count_progress(object, "chunks_done", "chunks_total", message))
+        .or_else(|| match phase {
+            PipelinePhase::Fetching | PipelinePhase::Enriching => {
+                count_progress(object, "items_done", "items_total", message)
+            }
+            PipelinePhase::Normalizing | PipelinePhase::Preparing => {
+                count_progress(object, "documents_done", "documents_total", message)
+            }
+            PipelinePhase::Batching
+            | PipelinePhase::Embedding
+            | PipelinePhase::Vectorizing
+            | PipelinePhase::Upserting => {
+                count_progress(object, "chunks_done", "chunks_total", message)
+            }
+            PipelinePhase::Publishing | PipelinePhase::Cleaning => {
+                count_progress(object, "items_done", "items_total", message)
+            }
+            _ => None,
+        })
+        .or_else(|| {
+            let legacy_message = allowlisted_phase(object.get("phase").and_then(Value::as_str));
+            count_progress(object, "files_done", "files_total", legacy_message)
+                .or_else(|| count_progress(object, "tasks_done", "tasks_total", legacy_message))
+                .or_else(|| {
+                    count_progress(object, "chunks_embedded", "chunks_total", legacy_message)
+                })
+                .or_else(|| count_progress(object, "chunks_done", "chunks_total", message))
+                .or_else(|| count_progress(object, "documents_done", "documents_total", message))
+                .or_else(|| count_progress(object, "items_done", "items_total", message))
+        })
         .unwrap_or(MappedProgress {
             progress: 0.0,
             total: None,
             message,
         })
+}
+
+fn source_phase_message(phase: PipelinePhase) -> &'static str {
+    match phase {
+        PipelinePhase::Fetching => "fetching",
+        PipelinePhase::Enriching => "enriching",
+        PipelinePhase::Normalizing => "normalizing",
+        PipelinePhase::Preparing => "preparing",
+        PipelinePhase::Batching => "batching",
+        PipelinePhase::Embedding => "embedding",
+        PipelinePhase::Vectorizing => "vectorizing",
+        PipelinePhase::Upserting => "upserting",
+        PipelinePhase::Publishing => "publishing",
+        PipelinePhase::Cleaning => "cleaning",
+        _ => "indexing",
+    }
 }
 
 fn count_progress(
