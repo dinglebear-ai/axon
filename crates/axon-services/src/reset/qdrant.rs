@@ -23,6 +23,8 @@ pub struct QdrantInventory {
     pub exists: bool,
     /// Total points currently stored (0 when absent/unreachable).
     pub points: u64,
+    /// Dense vector width reported by the existing collection schema.
+    pub dense_dimension: Option<u64>,
     /// A point was observed without the current `payload_contract_version` —
     /// the store is schema-incompatible and must be reset before reuse.
     pub schema_incompatible: bool,
@@ -83,6 +85,14 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
             ..Default::default()
         };
     }
+    let Ok(collection_info) = resp.json::<Value>().await else {
+        return QdrantInventory {
+            exists: true,
+            unreachable: true,
+            ..Default::default()
+        };
+    };
+    let dense_dimension = collection_dense_dimension(&collection_info);
 
     let Some(points) = collection_point_count(client, base, collection).await else {
         return QdrantInventory {
@@ -110,11 +120,22 @@ pub async fn inventory(cfg: &Config) -> QdrantInventory {
     QdrantInventory {
         exists: true,
         points,
+        dense_dimension,
         schema_incompatible,
         min_schema_version: None,
         payload_contract_versions,
         unreachable: false,
     }
+}
+
+fn collection_dense_dimension(info: &Value) -> Option<u64> {
+    let vectors = info.pointer("/result/config/params/vectors")?;
+    vectors.get("size").and_then(Value::as_u64).or_else(|| {
+        vectors
+            .as_object()?
+            .values()
+            .find_map(|vector| vector.get("size").and_then(Value::as_u64))
+    })
 }
 
 async fn collection_point_count(

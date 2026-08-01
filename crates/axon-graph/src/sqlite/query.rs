@@ -26,6 +26,8 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
         .ok()
         .filter(|l| *l > 0)
         .unwrap_or(usize::MAX);
+    let fetch_limit = limit.saturating_add(1);
+    let mut cursor_seen = request.cursor.is_none();
 
     let mut nodes: Vec<GraphNode> = vec![start.clone()];
     let mut edges: Vec<GraphEdge> = Vec::new();
@@ -34,7 +36,7 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
     let mut frontier: VecDeque<(GraphNodeId, u32)> = VecDeque::from([(start.node_id, 0)]);
 
     while let Some((node_id, depth)) = frontier.pop_front() {
-        if depth >= request.depth || edges.len() >= limit {
+        if depth >= request.depth || edges.len() >= fetch_limit {
             continue;
         }
         let incident = incident_edges(pool, &node_id, request.direction).await?;
@@ -44,10 +46,14 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
             }
             let next = next_node(&edge, &node_id, request.direction);
             if seen_edges.insert(edge.edge_id.0.clone()) {
-                edge.evidence = evidence_for_edge(pool, &edge.edge_id.0).await?;
-                edges.push(edge);
-                if edges.len() >= limit {
-                    break;
+                if cursor_seen {
+                    edge.evidence = evidence_for_edge(pool, &edge.edge_id.0).await?;
+                    edges.push(edge);
+                    if edges.len() >= fetch_limit {
+                        break;
+                    }
+                } else if request.cursor.as_deref() == Some(edge.edge_id.0.as_str()) {
+                    cursor_seen = true;
                 }
             }
             if let Some(next_id) = next
@@ -61,12 +67,29 @@ pub async fn query(pool: &SqlitePool, request: GraphQueryRequest) -> StoreResult
         }
     }
 
+    if !cursor_seen {
+        return Err(axon_api::source::ApiError::new(
+            "graph.invalid_cursor",
+            axon_api::source::ErrorStage::Retrieving,
+            "graph query cursor does not identify an edge in this traversal",
+        ));
+    }
+    let has_more = edges.len() > limit;
+    edges.truncate(limit);
+    let next_cursor = has_more.then(|| {
+        edges
+            .last()
+            .expect("a page with a continuation has at least one edge")
+            .edge_id
+            .0
+            .clone()
+    });
     let evidence: Vec<GraphEvidence> = edges.iter().flat_map(|e| e.evidence.clone()).collect();
     Ok(GraphQueryResult {
         nodes,
         edges,
         evidence,
-        next_cursor: None,
+        next_cursor,
         warnings: Vec::new(),
     })
 }

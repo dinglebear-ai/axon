@@ -111,12 +111,68 @@ impl<T: PruneTarget> PruneExecutor<T> {
         let mut debt_remaining: u64 = 0;
 
         for step in ordered {
-            // Generation fencing: a step that carries an explicit generation
-            // must never target the current committed generation.
+            if step.target == PruneTargetKind::Ledger
+                && step_results.iter().any(|result| {
+                    result.status == LifecycleStatus::Failed
+                        && result.source_id == step.source_id
+                        && result.generation == step.generation
+                })
+            {
+                // Ledger identity is the recovery join for every preceding
+                // boundary. Keep it until vector/artifact/graph/memory cleanup
+                // has succeeded for this exact source generation.
+                debt_remaining += step.estimated_deletes;
+                step_results.push(PruneStepResult {
+                    target: step.target,
+                    status: LifecycleStatus::Skipped,
+                    deleted: 0,
+                    skipped_reason: Some(
+                        "blocked by an earlier cleanup failure for this source generation"
+                            .to_string(),
+                    ),
+                    source_id: step.source_id.clone(),
+                    generation: step.generation.clone(),
+                });
+                continue;
+            }
+
+            // Generation fencing has two selector-specific meanings:
+            // - a generation prune must never remove the current generation;
+            // - a source-wide prune stamps the reviewed current generation
+            //   onto its steps and requires it to remain unchanged.
             if let Some(target_gen) = &step.generation {
                 let source_id = step.source_id.as_ref().map(|s| s.0.as_str());
                 match self.target.current_generation(source_id).await {
-                    Ok(Some(current)) => fence_generation(target_gen, &current)?,
+                    Ok(Some(current)) => {
+                        if matches!(
+                            plan.selector,
+                            axon_api::source::prune::PruneSelector::Source { .. }
+                        ) {
+                            if &current != target_gen {
+                                return Err(PruneDenied::FenceCheckFailed {
+                                    reason: format!(
+                                        "source committed generation changed from {} to {} after planning",
+                                        target_gen.0, current.0
+                                    ),
+                                });
+                            }
+                        } else {
+                            fence_generation(target_gen, &current)?;
+                        }
+                    }
+                    Ok(None)
+                        if matches!(
+                            plan.selector,
+                            axon_api::source::prune::PruneSelector::Source { .. }
+                        ) =>
+                    {
+                        return Err(PruneDenied::FenceCheckFailed {
+                            reason: format!(
+                                "source committed generation {} disappeared after planning",
+                                target_gen.0
+                            ),
+                        });
+                    }
                     Ok(None) => {}
                     Err(reason) => return Err(PruneDenied::FenceCheckFailed { reason }),
                 }

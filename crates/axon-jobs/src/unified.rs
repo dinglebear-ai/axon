@@ -170,6 +170,10 @@ impl JobStore for SqliteUnifiedJobStore {
         self.list_jobs(request).await
     }
 
+    async fn terminal_counts(&self, job_id: JobId) -> Result<Option<StageCounts>> {
+        self.terminal_counts_from_events(job_id).await
+    }
+
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage> {
         self.list_events(request).await
     }

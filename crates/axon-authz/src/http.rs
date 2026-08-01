@@ -383,6 +383,7 @@ fn build_oauth_auth_config_from_sources(
 ) -> Result<lab_auth::config::AuthConfig, Box<dyn std::error::Error>> {
     lab_auth::config::AuthConfigBuilder::new()
         .env_prefix("AXON_MCP")
+        .default_data_dir(axon_core::paths::axon_data_base_dir())
         .session_cookie_name("axon_mcp_session")
         .scopes_supported(vec![
             AXON_READ_SCOPE.into(),

@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 use sqlx::Row;
 
 use crate::migration::sqlite_error;
@@ -13,7 +14,9 @@ pub(super) async fn record_cleanup_debt(
     debt: CleanupDebt,
 ) -> Result<()> {
     validate_cleanup_debt(&debt)?;
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     ensure_source_exists_in_tx(&mut tx, &debt.source_id).await?;
     if let Some(generation) = &debt.generation {
         ensure_generation_exists_in_tx(&mut tx, &debt.source_id, generation).await?;
@@ -83,7 +86,9 @@ pub(super) async fn resolve_cleanup_debt(
     store: &SqliteLedgerStore,
     debt_id: &CleanupDebtId,
 ) -> Result<()> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let existing: Option<String> = sqlx::query_scalar(
         "SELECT debt_json FROM cleanup_debt WHERE debt_id = ?1 AND completed_at IS NULL",
     )
@@ -132,7 +137,9 @@ pub(super) async fn delete_generation(
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<u64> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let documents =
         sqlx::query("DELETE FROM document_status WHERE source_id = ?1 AND generation = ?2")
             .bind(&source_id.0)
@@ -156,7 +163,7 @@ pub(super) async fn delete_generation(
 }
 
 pub(super) async fn insert_cleanup_debt_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     debt: CleanupDebt,
 ) -> Result<()> {
     validate_cleanup_debt(&debt)?;
@@ -164,7 +171,7 @@ pub(super) async fn insert_cleanup_debt_in_tx(
 }
 
 pub(super) async fn insert_cleanup_debt_once_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     debt: CleanupDebt,
 ) -> Result<()> {
     validate_cleanup_debt(&debt)?;
@@ -177,7 +184,7 @@ enum CleanupDebtConflict {
 }
 
 async fn insert_cleanup_debt_with_conflict(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     debt: CleanupDebt,
     conflict: CleanupDebtConflict,
 ) -> Result<()> {
@@ -273,14 +280,14 @@ async fn insert_cleanup_debt_with_conflict(
         .bind(&debt.created_at.0)
         .bind(debt.next_retry_at.as_ref().map(|value| value.0.as_str()))
         .bind(debt.completed_at.as_ref().map(|value| value.0.as_str()))
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sqlite_error)?;
     Ok(())
 }
 
 async fn ensure_generation_exists_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<()> {
@@ -289,7 +296,7 @@ async fn ensure_generation_exists_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     if exists.is_none() {

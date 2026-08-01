@@ -24,7 +24,7 @@ use crate::sqlite::util::json_error;
 use crate::store::Result;
 
 pub(super) async fn ledger_prune_cleanup_debt_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     previous_generation: Option<&SourceGenerationId>,
 ) -> Result<Vec<CleanupDebt>> {
@@ -62,7 +62,7 @@ pub(super) async fn ledger_prune_cleanup_debt_in_tx(
 /// The full generation row for `(source_id, generation)`, or `None` if it no
 /// longer exists (already ledger-pruned, or never existed).
 async fn fetch_generation_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<Option<SourceGeneration>> {
@@ -75,7 +75,7 @@ async fn fetch_generation_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     generation_json
@@ -87,7 +87,7 @@ async fn fetch_generation_in_tx(
 /// than `LedgerPrune` itself (vector/graph/memory) — the "...plus
 /// active_cleanup_debt" half of the retention policy.
 async fn has_unresolved_non_ledger_debt_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<bool> {
@@ -104,7 +104,7 @@ async fn has_unresolved_non_ledger_debt_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     Ok(exists.is_some())

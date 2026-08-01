@@ -358,8 +358,11 @@ fn populate_misc(
 ) -> Result<(), String> {
     let g = inputs.global;
     cfg.hybrid_search_enabled = cfg.hybrid_search_enabled && !g.no_hybrid_search;
-    cfg.cron_every_seconds = g.cron_every_seconds.filter(|v| *v > 0);
-    cfg.cron_max_runs = g.cron_max_runs.filter(|v| *v > 0);
+    // Preserve explicitly supplied zeroes until post-init validation. Silently
+    // converting `--cron-max-runs 0` into `None` turns a bounded invocation
+    // into an unlimited one, which is the opposite of fail-safe behavior.
+    cfg.cron_every_seconds = g.cron_every_seconds;
+    cfg.cron_max_runs = g.cron_max_runs;
     cfg.watchdog_stale_timeout_secs = parse_i64_env("AXON_JOB_STALE_TIMEOUT_SECS")
         .or(inputs.toml.workers.watchdog_stale_timeout_secs)
         .unwrap_or(300)

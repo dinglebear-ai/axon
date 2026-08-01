@@ -3,7 +3,7 @@ use super::task_progress::structured_source_progress;
 use axon_api::{job_status::JobStatus, source::JobKind};
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_services::types::ServiceJob;
-use rmcp::model::{DetailedTask, Meta, Task, TaskPayload, TaskStatus};
+use rmcp::model::{DetailedTask, MetaObject, Task, TaskPayload, TaskStatus};
 use serde_json::{Map, Value, json};
 
 const RESULT_JSON_MAX_BYTES: usize = 64 * 1024;
@@ -76,9 +76,9 @@ fn task_result_payload(kind: JobKind, job: &ServiceJob) -> Map<String, Value> {
     }
 }
 
-pub(super) fn task_meta_from_job(kind: JobKind, job: &ServiceJob) -> Option<Meta> {
+pub(super) fn task_meta_from_job(kind: JobKind, job: &ServiceJob) -> Option<MetaObject> {
     let progress = task_progress_value(kind, job)?;
-    let mut meta = Meta::new();
+    let mut meta = MetaObject::new();
     meta.insert("axon".to_string(), json!({ "progress": progress }));
     Some(meta)
 }

@@ -4,7 +4,10 @@ use axon_services::types::ServiceJob;
 use serde_json::Value;
 
 pub(crate) fn source_progress_summary(job: &ServiceJob) -> Option<String> {
-    if !matches!(job.status.as_str(), "pending" | "running" | "completed") {
+    if !matches!(
+        job.status.as_str(),
+        "pending" | "running" | "completed" | "completed_degraded"
+    ) {
         return None;
     }
     let metrics = if job.status == "running" {
@@ -17,7 +20,7 @@ pub(crate) fn source_progress_summary(job: &ServiceJob) -> Option<String> {
             .strip_prefix(" · ")
             .map(ToOwned::to_owned),
         "running" => source_running_progress(job, metrics),
-        "completed" => source_completed_progress(metrics),
+        "completed" | "completed_degraded" => source_completed_progress(metrics),
         _ => None,
     }
 }
@@ -178,7 +181,13 @@ fn document_source_progress(status: &str, metrics: Option<&Value>) -> Option<Str
     let items_total = first_u64(metrics, &["items_total"]);
     if docs == 0 && chunks == 0 {
         if let Some(total) = items_total.filter(|total| *total > 0) {
-            return Some(format!("{items}/{total} items · preparing"));
+            if status == "running" {
+                return Some(format!("{items}/{total} items · preparing"));
+            }
+            return Some(format!(
+                "{items}/{total} items · {}",
+                percentage(items, total)
+            ));
         }
         if status != "running" {
             return None;

@@ -119,6 +119,9 @@ impl boundary::RetrievalEngine for FakeRetrievalEngine {
             generation: None,
             namespace_filters: request.namespace_filters,
             excluded_source_kinds: Vec::new(),
+            hybrid: true,
+            since: None,
+            before: None,
             byte_budget: u64::MAX,
             token_budget: u32::MAX,
         };
@@ -145,6 +148,9 @@ impl boundary::RetrievalEngine for FakeRetrievalEngine {
             generation: None,
             namespace_filters: Vec::new(),
             excluded_source_kinds: Vec::new(),
+            hybrid: true,
+            since: None,
+            before: None,
             byte_budget: u64::MAX,
             token_budget: u32::MAX,
         };

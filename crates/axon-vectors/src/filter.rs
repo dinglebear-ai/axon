@@ -176,6 +176,23 @@ fn validate_filter_value(field: &str, expected: &Value, stage: ErrorStage) -> Re
             }
             Ok(())
         }
+        Value::Object(range) if is_datetime_range(range) => {
+            for (operator, value) in range {
+                let Some(timestamp) = value.as_str() else {
+                    return Err(invalid_filter(
+                        stage,
+                        format!("datetime range `{field}.{operator}` must be an RFC3339 string"),
+                    ));
+                };
+                chrono::DateTime::parse_from_rfc3339(timestamp).map_err(|error| {
+                    invalid_filter(
+                        stage,
+                        format!("datetime range `{field}.{operator}` is not RFC3339: {error}"),
+                    )
+                })?;
+            }
+            Ok(())
+        }
         other => Err(invalid_filter(
             stage,
             format!(
@@ -217,8 +234,45 @@ fn payload_matches_value(payload: &MetadataMap, field: &str, expected: &Value) -
             .iter()
             .any(|expected| payload_matches_value(payload, field, expected));
     }
+    if let Some(range) = expected
+        .as_object()
+        .filter(|range| is_datetime_range(range))
+    {
+        return payload
+            .get(field)
+            .and_then(Value::as_str)
+            .is_some_and(|actual| datetime_range_matches(actual, range));
+    }
     payload.get(field).is_some_and(|actual| {
         actual == expected || value_matches_string_value(field, actual, expected)
+    })
+}
+
+fn is_datetime_range(range: &serde_json::Map<String, Value>) -> bool {
+    !range.is_empty()
+        && range
+            .keys()
+            .all(|operator| matches!(operator.as_str(), "gt" | "gte" | "lt" | "lte"))
+}
+
+fn datetime_range_matches(actual: &str, range: &serde_json::Map<String, Value>) -> bool {
+    let Ok(actual) = chrono::DateTime::parse_from_rfc3339(actual) else {
+        return false;
+    };
+    range.iter().all(|(operator, expected)| {
+        let Some(expected) = expected
+            .as_str()
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        else {
+            return false;
+        };
+        match operator.as_str() {
+            "gt" => actual > expected,
+            "gte" => actual >= expected,
+            "lt" => actual < expected,
+            "lte" => actual <= expected,
+            _ => false,
+        }
     })
 }
 

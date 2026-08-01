@@ -1,5 +1,6 @@
 use axon_api::source::*;
 use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
+use std::collections::BTreeMap;
 
 const VERTICAL_PARSE_FACTS_KEY: &str = "_axon_vertical_parse_facts";
 const VERTICAL_GRAPH_CANDIDATES_KEY: &str = "_axon_vertical_graph_candidates";
@@ -160,11 +161,39 @@ pub(super) fn document_status(
     }
 }
 
+pub(super) fn vectorized_document_status(
+    document: &PreparedDocument,
+    points_by_document: &BTreeMap<DocumentId, u64>,
+    updated_at: Timestamp,
+) -> anyhow::Result<DocumentStatus> {
+    let vector_point_count = points_by_document
+        .get(&document.document_id)
+        .copied()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "vector point accounting missing web document {}",
+                document.document_id.0
+            )
+        })?;
+    Ok(document_status(
+        document,
+        vector_point_count,
+        DocumentLifecycleStatus::Vectorized,
+        updated_at,
+    ))
+}
+
+pub(super) struct VectorPointBuild {
+    pub(super) batch: VectorPointBatch,
+    pub(super) skipped_redaction: u64,
+    pub(super) points_by_document: BTreeMap<DocumentId, u64>,
+}
+
 pub(super) fn vector_point_batch_for_documents(
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
-) -> anyhow::Result<(VectorPointBatch, u64)> {
+) -> anyhow::Result<VectorPointBuild> {
     let vectors_by_chunk = embeddings
         .vectors
         .iter()
@@ -173,6 +202,7 @@ pub(super) fn vector_point_batch_for_documents(
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut points = Vec::new();
     let mut skipped_redaction = 0u64;
+    let mut points_by_document = BTreeMap::new();
     for document in documents {
         let document_embeddings =
             embedding_result_for_document(embeddings, document, &vectors_by_chunk)?;
@@ -185,11 +215,12 @@ pub(super) fn vector_point_batch_for_documents(
             },
         )
         .build_with_skipped_count()?;
+        points_by_document.insert(document.document_id.clone(), batch.points.len() as u64);
         points.extend(batch.points);
         skipped_redaction += document_skipped;
     }
-    Ok((
-        VectorPointBatch {
+    Ok(VectorPointBuild {
+        batch: VectorPointBatch {
             batch_id: embeddings.batch_id.clone(),
             collection: collection.collection,
             points,
@@ -199,7 +230,8 @@ pub(super) fn vector_point_batch_for_documents(
             payload_indexes: collection.payload_indexes,
         },
         skipped_redaction,
-    ))
+        points_by_document,
+    })
 }
 
 fn embedding_result_for_document(

@@ -47,7 +47,7 @@ env:
 jobs:
   changes:
     name: changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     outputs:
       all: ${{ steps.classify.outputs.all }}
       docs: ${{ steps.classify.outputs.docs }}
@@ -111,7 +111,7 @@ jobs:
   # and transport contracts before starting the expensive clippy/test fanout.
   rust-contracts:
     name: rust-contracts
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -224,7 +224,7 @@ jobs:
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
     steps:
@@ -234,7 +234,7 @@ jobs:
 
   android:
     name: android
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-system
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -263,8 +263,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "lts/*"
-          cache: pnpm
-          cache-dependency-path: .aurora-design-system/pnpm-lock.yaml
 
       - name: Install Aurora token dependencies
         working-directory: .aurora-design-system
@@ -321,7 +319,7 @@ jobs:
 
   toml-fmt:
     name: toml-fmt
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -343,7 +341,7 @@ jobs:
 
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     needs: [changes]
     if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
@@ -353,7 +351,7 @@ jobs:
 
   palette-tauri:
     name: palette-tauri
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
@@ -498,18 +496,18 @@ jobs:
         with:
           name: axon-web-assets
           path: apps/web/out
-      - name: cargo build --release -p axon (windows-gnu cross)
-        run: cargo build --release --locked -p axon --target x86_64-pc-windows-gnu
+      - name: cargo build -p axon (windows-gnu cross)
+        run: cargo build --locked -p axon --target x86_64-pc-windows-gnu
       - name: Upload axon.exe artifact
         uses: actions/upload-artifact@v5
         with:
           name: axon-windows-x86_64
-          path: target/x86_64-pc-windows-gnu/release/axon.exe
+          path: target/x86_64-pc-windows-gnu/debug/axon.exe
           if-no-files-found: error
 
   smoke-binary:
     name: smoke-binary
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
     env:
@@ -539,7 +537,7 @@ jobs:
 
   web-panel:
     name: web-panel
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-typescript
     needs: [changes]
     if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
@@ -566,7 +564,7 @@ jobs:
 
   chrome-extension:
     name: chrome-extension
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-typescript
     needs: [changes]
     if: ${{ needs.changes.outputs.chrome == 'true' }}
     steps:
@@ -581,7 +579,7 @@ jobs:
   # The fast contract job must pass before either expensive Rust lane starts.
   clippy:
     name: clippy
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -598,7 +596,7 @@ jobs:
 
   test:
     name: test
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -655,7 +653,7 @@ jobs:
   # `rag` boolean output consumed by `live-rag-pr`.
   rag-changes:
     name: rag-changes
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     if: ${{ github.event_name == 'pull_request' }}
     outputs:
       rag: ${{ steps.filter.outputs.rag }}
@@ -777,7 +775,7 @@ jobs:
 
   security:
     name: security
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
@@ -803,8 +801,8 @@ jobs:
   mcp-smoke:
     name: mcp-smoke
     runs-on: ubuntu-latest
-    needs: [changes, release]
-    if: ${{ needs.release.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    needs: [changes, binary-smoke-build]
+    if: ${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -870,10 +868,10 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v5
         with:
-          name: axon-release-linux-smoke
-          path: target/release
-      - name: Prepare release binary
-        run: chmod +x ./target/release/axon
+          name: axon-linux-smoke
+          path: target/debug
+      - name: Prepare smoke binary
+        run: chmod +x ./target/debug/axon
 
       - name: Write CI mcporter config
         run: |
@@ -942,7 +940,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
           AXON_EMBED_STRICT_PREDELETE: "false"
-        run: ./target/release/axon source "docs/reference/mcp/overview.md" --wait true --json
+        run: ./target/debug/axon source "docs/reference/mcp/overview.md" --wait true --json
 
       - name: Start axon MCP HTTP server
         env:
@@ -952,7 +950,7 @@ jobs:
           AXON_LOG_DIR: .cache/axon-ci/logs
           AXON_SQLITE_PATH: .cache/axon-ci/jobs.db
         run: |
-          ./target/release/axon mcp --transport http &
+          ./target/debug/axon mcp --transport http &
           echo $! > /tmp/axon-mcp.pid
           for _ in {1..30}; do
             if nc -z 127.0.0.1 8001 2>/dev/null; then
@@ -985,9 +983,9 @@ jobs:
           docker rm -f axon-tei || true
           docker compose --env-file "$HOME/.axon/.env" -f docker-compose.prod.yaml down || true
 
-  release:
-    name: release
-    runs-on: [self-hosted, unraid]
+  binary-smoke-build:
+    name: binary-smoke-build
+    runs-on: ci-pool-rust
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
@@ -997,33 +995,33 @@ jobs:
         with:
           name: axon-web-assets
           path: apps/web/out
-      - name: cargo build release axon
-        run: cargo build --release --locked --bin axon
-      - name: Upload release smoke binary
+      - name: cargo build axon
+        run: cargo build --locked --bin axon
+      - name: Upload smoke binary
         uses: actions/upload-artifact@v5
         with:
-          name: axon-release-linux-smoke
-          path: target/release/axon
+          name: axon-linux-smoke
+          path: target/debug/axon
           if-no-files-found: error
 
-  release-smoke:
-    name: release-smoke
-    runs-on: [self-hosted, unraid]
-    needs: [changes, release]
-    if: ${{ needs.release.result == 'success' }}
+  binary-smoke:
+    name: binary-smoke
+    runs-on: ci-pool-ops
+    needs: [changes, binary-smoke-build]
+    if: ${{ needs.binary-smoke-build.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v5
         with:
-          name: axon-release-linux-smoke
-          path: target/release
-      - name: smoke test release binary help output
+          name: axon-linux-smoke
+          path: target/debug
+      - name: smoke test binary help output
         run: |
-          chmod +x ./target/release/axon
-          ./target/release/axon --help
+          chmod +x ./target/debug/axon
+          ./target/debug/axon --help
 
   ci-gate:
     name: ci-gate
-    runs-on: [self-hosted, unraid]
+    runs-on: ci-pool-ops
     if: always()
     needs:
       - changes
@@ -1044,8 +1042,8 @@ jobs:
       - mcp-smoke
       - rag-changes
       - live-rag-pr
-      - release
-      - release-smoke
+      - binary-smoke-build
+      - binary-smoke
     steps:
       - name: verify required jobs passed or were intentionally skipped
         run: |
@@ -1084,8 +1082,8 @@ jobs:
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
-          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.release.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
+          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
           require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
           require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip release "${{ needs.release.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
-          require_success_or_intentional_skip release-smoke "${{ needs.release-smoke.result }}" "${{ needs.release.result == 'success' }}"
+          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
+          require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"

@@ -5,10 +5,11 @@ use super::SqliteUnifiedJobStore;
 use crate::boundary::Result;
 use crate::state_machine::validate_transition;
 use crate::unified_codec::*;
+use axon_core::sqlite::ImmediateTx;
 
 impl SqliteUnifiedJobStore {
     pub(crate) async fn record_heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()> {
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
         let row = sqlx::query("SELECT status, attempt FROM jobs WHERE job_id = ?")
             .bind(heartbeat.job_id.0.to_string())
             .fetch_optional(&mut *tx)
@@ -46,7 +47,7 @@ impl SqliteUnifiedJobStore {
 
     async fn update_heartbeat_summary(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::SqliteConnection,
         heartbeat: &JobHeartbeat,
         expected_status: LifecycleStatus,
         expected_attempt: u32,
@@ -87,7 +88,7 @@ impl SqliteUnifiedJobStore {
         .bind(heartbeat.job_id.0.to_string())
         .bind(enum_name(expected_status)?)
         .bind(expected_attempt as i64)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
         if result.rows_affected() == 0 {
@@ -105,7 +106,7 @@ impl SqliteUnifiedJobStore {
 
     async fn upsert_heartbeat_history(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::SqliteConnection,
         heartbeat: &JobHeartbeat,
     ) -> Result<()> {
         sqlx::query(
@@ -120,7 +121,7 @@ impl SqliteUnifiedJobStore {
         .bind(heartbeat.attempt as i64)
         .bind(heartbeat.heartbeat_at.0.as_str())
         .bind(to_json(heartbeat)?)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
         Ok(())
@@ -128,7 +129,7 @@ impl SqliteUnifiedJobStore {
 
     async fn upsert_attempt_from_heartbeat(
         &self,
-        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        tx: &mut sqlx::SqliteConnection,
         heartbeat: &JobHeartbeat,
     ) -> Result<()> {
         sqlx::query(
@@ -150,7 +151,7 @@ impl SqliteUnifiedJobStore {
         .bind(heartbeat.heartbeat_at.0.as_str())
         .bind(is_terminal(heartbeat.status).then_some(heartbeat.heartbeat_at.0.as_str()))
         .bind(heartbeat.heartbeat_at.0.as_str())
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
         Ok(())

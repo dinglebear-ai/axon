@@ -31,6 +31,7 @@ fn required_retrieval_payload_indexes_match_target_profile() {
         "embedding_provider",
         "embedding_model",
         "embedding_profile",
+        "embedded_at",
         "web_domain",
     ];
 
@@ -41,6 +42,7 @@ fn required_retrieval_payload_indexes_match_target_profile() {
             .unwrap_or_else(|| panic!("missing required payload index {field_name}"));
         let expected_schema = match field_name {
             "source_generation" | "committed_generation" => PayloadFieldSchema::Integer,
+            "embedded_at" => PayloadFieldSchema::Datetime,
             _ => PayloadFieldSchema::Keyword,
         };
         assert_eq!(index.field_schema, expected_schema);
@@ -66,6 +68,30 @@ fn target_index_profile_excludes_legacy_fields() {
             "legacy field {legacy_field} must not be in target retrieval index profile"
         );
     }
+}
+
+#[test]
+fn missing_required_payload_index_is_repairable_drift() {
+    let incoming = normalize_collection_spec(CollectionSpec {
+        collection: "axon".to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 768,
+            distance: VectorDistance::Cosine,
+        },
+        sparse: None,
+        payload_indexes: Vec::new(),
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    });
+    let mut existing = incoming.clone();
+    existing
+        .payload_indexes
+        .retain(|index| index.field_name != "born_epoch");
+
+    check_collection_drift(&existing, &incoming)
+        .expect("ensure_collection can recreate a missing payload index");
 }
 
 #[test]

@@ -279,10 +279,7 @@ fn oauth_metadata_base_keeps_mcp_as_canonical_resource_audience() {
                 "AXON_PUBLIC_URL".to_string(),
                 "https://axon.example.com".to_string(),
             ),
-            (
-                "AXON_GOOGLE_CLIENT_ID".to_string(),
-                "client-id".to_string(),
-            ),
+            ("AXON_GOOGLE_CLIENT_ID".to_string(), "client-id".to_string()),
             (
                 "AXON_GOOGLE_CLIENT_SECRET".to_string(),
                 "client-secret".to_string(),
@@ -324,10 +321,7 @@ fn build_auth_policy_oauth_configures_admin_email_and_full_oauth_scopes() {
             "AXON_PUBLIC_URL".to_string(),
             "https://axon.example.com".to_string(),
         ),
-        (
-            "AXON_GOOGLE_CLIENT_ID".to_string(),
-            "client-id".to_string(),
-        ),
+        ("AXON_GOOGLE_CLIENT_ID".to_string(), "client-id".to_string()),
         (
             "AXON_GOOGLE_CLIENT_SECRET".to_string(),
             "client-secret".to_string(),
@@ -348,6 +342,10 @@ fn build_auth_policy_oauth_configures_admin_email_and_full_oauth_scopes() {
     assert_eq!(
         config.static_token_scopes,
         vec![AXON_READ_SCOPE.to_string(), AXON_WRITE_SCOPE.to_string()]
+    );
+    assert_eq!(
+        config.sqlite_path,
+        axon_core::paths::axon_data_base_dir().join("auth.db")
     );
 }
 

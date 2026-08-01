@@ -1,5 +1,5 @@
-use super::*;
-use axon_core::sqlite::rollback_on_release;
+use axon_core::sqlite::{ImmediateTx, rollback_on_release};
+use sqlx::SqlitePool;
 use sqlx::sqlite::SqlitePoolOptions;
 
 /// Single-slot in-memory pool wired with the same `after_release` ROLLBACK hook
@@ -32,7 +32,7 @@ async fn commit_persists_writes() {
     let pool = test_pool().await;
     let mut tx = ImmediateTx::begin(&pool).await.expect("begin");
     sqlx::query("INSERT INTO t (id) VALUES (1)")
-        .execute(tx.conn())
+        .execute(&mut *tx)
         .await
         .expect("insert");
     tx.commit().await.expect("commit");
@@ -44,7 +44,7 @@ async fn rollback_discards_writes() {
     let pool = test_pool().await;
     let mut tx = ImmediateTx::begin(&pool).await.expect("begin");
     sqlx::query("INSERT INTO t (id) VALUES (1)")
-        .execute(tx.conn())
+        .execute(&mut *tx)
         .await
         .expect("insert");
     tx.rollback().await;
@@ -61,7 +61,7 @@ async fn drop_unsettled_rolls_back_and_keeps_slot_usable() {
     {
         let mut tx = ImmediateTx::begin(&pool).await.expect("begin");
         sqlx::query("INSERT INTO t (id) VALUES (1)")
-            .execute(tx.conn())
+            .execute(&mut *tx)
             .await
             .expect("insert");
         // drop `tx` here WITHOUT commit/rollback — returns to the pool still
@@ -88,7 +88,7 @@ async fn finish_commits_on_ok() {
     let mut tx = ImmediateTx::begin(&pool).await.expect("begin");
     let work: Result<i64, sqlx::Error> = async {
         sqlx::query("INSERT INTO t (id) VALUES (7)")
-            .execute(tx.conn())
+            .execute(&mut *tx)
             .await?;
         Ok(7)
     }
@@ -104,7 +104,7 @@ async fn finish_rolls_back_on_err() {
     let mut tx = ImmediateTx::begin(&pool).await.expect("begin");
     let work: Result<i64, sqlx::Error> = async {
         sqlx::query("INSERT INTO t (id) VALUES (9)")
-            .execute(tx.conn())
+            .execute(&mut *tx)
             .await?;
         // Force the work to fail after a write so finish() must roll back.
         Err(sqlx::Error::RowNotFound)

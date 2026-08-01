@@ -11,4 +11,7 @@ Commands
   rebuild              Rebuild the Axon image and start the stack
 
 Options
+  --json                           Output results as machine-readable JSON
+  --color <COLOR>                  Color output: auto (TTY detect, default), always, never Possible values: auto, always, never
+  --quiet                          Suppress spinners and progress output (useful in scripts). JSON data is unaffected
   -h, --help                       Print help

@@ -1,10 +1,11 @@
 use axon_api::source::*;
+use sqlx::SqliteConnection;
 
 use crate::boundary::Result;
 use crate::unified_codec::*;
 
 pub(super) async fn reset_job_for_retry(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut SqliteConnection,
     job_id: JobId,
     current_status: LifecycleStatus,
     attempt: u32,
@@ -52,7 +53,7 @@ pub(super) async fn reset_job_for_retry(
     .bind(idempotency_key)
     .bind(now.0.as_str())
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     if result.rows_affected() == 0 {
@@ -60,7 +61,7 @@ pub(super) async fn reset_job_for_retry(
     }
     sqlx::query("DELETE FROM job_stages WHERE job_id = ?")
         .bind(job_id.0.to_string())
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
     for stage in stage_plan {
@@ -75,7 +76,7 @@ pub(super) async fn reset_job_for_retry(
         .bind(enum_name(stage.phase)?)
         .bind(if stage.required { 1_i64 } else { 0_i64 })
         .bind(to_json(&stage.provider_requirements)?)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
     }
@@ -83,7 +84,7 @@ pub(super) async fn reset_job_for_retry(
 }
 
 pub(super) async fn reset_stale_job_for_recovery(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut SqliteConnection,
     job_id: JobId,
     current_attempt: u32,
     next_attempt: u32,
@@ -120,7 +121,7 @@ pub(super) async fn reset_stale_job_for_recovery(
     .bind(now.0.as_str())
     .bind(job_id.0.to_string())
     .bind(current_attempt as i64)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     if result.rows_affected() == 0 {
@@ -138,7 +139,7 @@ pub(super) async fn reset_stale_job_for_recovery(
     .bind(optional_to_json(&Some(recovery_error.clone()))?)
     .bind(job_id.0.to_string())
     .bind(current_attempt as i64)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
 
@@ -151,13 +152,13 @@ pub(super) async fn reset_stale_job_for_recovery(
     .bind(job_id.0.to_string())
     .bind(next_attempt as i64)
     .bind(now.0.as_str())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
 
     sqlx::query("DELETE FROM job_stages WHERE job_id = ?")
         .bind(job_id.0.to_string())
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
     for stage in stage_plan {
@@ -172,7 +173,7 @@ pub(super) async fn reset_stale_job_for_recovery(
         .bind(enum_name(stage.phase)?)
         .bind(if stage.required { 1_i64 } else { 0_i64 })
         .bind(to_json(&stage.provider_requirements)?)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
     }
@@ -184,14 +185,14 @@ pub(super) async fn reset_stale_job_for_recovery(
     )
     .bind(now.0.as_str())
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     Ok(true)
 }
 
 pub(super) async fn fail_stale_job_after_attempt_limit(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut SqliteConnection,
     job_id: JobId,
     current_attempt: u32,
     max_attempts: u32,
@@ -229,7 +230,7 @@ pub(super) async fn fail_stale_job_after_attempt_limit(
     .bind(optional_to_json(&Some(summary_error))?)
     .bind(job_id.0.to_string())
     .bind(current_attempt as i64)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     if result.rows_affected() == 0 {
@@ -240,7 +241,7 @@ pub(super) async fn fail_stale_job_after_attempt_limit(
 }
 
 pub(super) async fn terminalize_active_children(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut SqliteConnection,
     job_id: JobId,
     status: LifecycleStatus,
     timestamp: &Timestamp,
@@ -257,7 +258,7 @@ pub(super) async fn terminalize_active_children(
     .bind(timestamp.0.as_str())
     .bind(optional_to_json(&error)?)
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     sqlx::query(
@@ -271,7 +272,7 @@ pub(super) async fn terminalize_active_children(
     .bind(timestamp.0.as_str())
     .bind(optional_to_json(&error)?)
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     let provider_status = provider_status_for_terminal(status);
@@ -284,14 +285,14 @@ pub(super) async fn terminalize_active_children(
     .bind(enum_name(provider_status)?)
     .bind(timestamp.0.as_str())
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     update_heartbeat_json_status(tx, job_id, status).await
 }
 
 pub(super) async fn update_heartbeat_json_status(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut SqliteConnection,
     job_id: JobId,
     status: LifecycleStatus,
 ) -> Result<()> {
@@ -311,7 +312,7 @@ pub(super) async fn update_heartbeat_json_status(
     .bind(enum_name(status)?)
     .bind(enum_name(phase)?)
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     sqlx::query(
@@ -322,7 +323,7 @@ pub(super) async fn update_heartbeat_json_status(
     .bind(enum_name(status)?)
     .bind(enum_name(phase)?)
     .bind(job_id.0.to_string())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sql_error)?;
     Ok(())

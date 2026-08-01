@@ -53,6 +53,7 @@ impl CodexCapabilities {
     /// inclusion in the doctor services map.
     pub fn to_json(&self) -> Value {
         json!({
+            "ok": self.models.is_ok() && self.rate_limits.is_ok(),
             "models": match &self.models {
                 Ok(models) => json!(models),
                 Err(e) => json!({ "error": e }),

@@ -124,6 +124,23 @@ async fn emitter_persists_item_warning_and_error_payloads() {
     );
 }
 
+#[tokio::test]
+async fn concurrent_emitters_use_store_allocated_sequences() {
+    let (store, job_id) = store_with_job().await;
+    let first = emitter(store.clone(), job_id);
+    let second = emitter(store.clone(), job_id);
+
+    tokio::join!(
+        first.completed(PipelinePhase::Fetching, "first"),
+        second.completed(PipelinePhase::Preparing, "second"),
+    );
+
+    let events = store.recorded_events(job_id).await;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].sequence, 1);
+    assert_eq!(events[1].sequence, 2);
+}
+
 fn emitter(store: Arc<FakeJobWatchStore>, job_id: JobId) -> SourceEventEmitter {
     SourceEventEmitter::new(Some(store), Some(job_id))
         .with_route(

@@ -37,6 +37,9 @@ pub struct QueryServiceRequest {
     pub query: String,
     pub collection: String,
     pub limit: u32,
+    pub hybrid: bool,
+    pub since: Option<String>,
+    pub before: Option<String>,
 }
 
 /// One retrieval hit, mapped from the engine's internal match.
@@ -105,6 +108,9 @@ pub async fn run_query(
         // own dedicated request path (`crate::memory::memory_retrieval_filter`)
         // that opts in explicitly.
         excluded_source_kinds: vec![crate::memory::MEMORY_SOURCE_KIND.to_string()],
+        hybrid: request.hybrid,
+        since: request.since,
+        before: request.before,
         byte_budget: DEFAULT_BYTE_BUDGET,
         token_budget: DEFAULT_TOKEN_BUDGET,
     };

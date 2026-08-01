@@ -209,9 +209,10 @@ where
 /// first, then standard env vars are applied for auto mode:
 /// - `NO_COLOR` (https://no-color.org) — disables auto-mode colors
 /// - `FORCE_COLOR` / `CLICOLOR_FORCE` — enables colors even without a TTY (Docker, CI)
-/// - Falls back to the writer's own TTY detection
-fn should_use_ansi(writer: &Writer<'_>) -> bool {
-    should_use_ansi_for_writer(writer.has_ansi_escapes())
+/// - Falls back to stderr TTY detection
+fn should_use_ansi() -> bool {
+    use std::io::IsTerminal;
+    should_use_ansi_for_writer(io::stderr().is_terminal())
 }
 
 fn should_use_ansi_for_writer(writer_supports_ansi: bool) -> bool {
@@ -247,7 +248,7 @@ where
         mut writer: Writer<'_>,
         event: &tracing::Event<'_>,
     ) -> fmt::Result {
-        let ansi = should_use_ansi(&writer);
+        let ansi = should_use_ansi();
 
         // HH:MM:SS (local time)
         let ts = Local::now().format("%H:%M:%S").to_string();

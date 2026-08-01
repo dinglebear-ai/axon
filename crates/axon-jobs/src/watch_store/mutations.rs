@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 use sqlx::Row;
 use std::future::Future;
 
@@ -45,7 +46,7 @@ impl SqliteWatchStore {
     }
 
     pub(super) async fn record_run_once(&self, watch_id: &WatchId, job_id: &JobId) -> Result<()> {
-        let mut transaction = self.pool.begin().await.map_err(sqlite_err)?;
+        let mut transaction = ImmediateTx::begin(&self.pool).await.map_err(sqlite_err)?;
         let watch_exists =
             sqlx::query_scalar::<_, i64>("SELECT 1 FROM axon_source_watches WHERE watch_id = ?")
                 .bind(&watch_id.0)

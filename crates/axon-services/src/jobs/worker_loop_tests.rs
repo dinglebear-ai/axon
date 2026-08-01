@@ -2,7 +2,7 @@ use super::*;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use axon_api::source::JobKind;
@@ -23,6 +23,7 @@ struct FakeQueueRuntime {
     inner: NoopServiceRuntime,
     active_polls: AtomicI64,
     recover_calls: AtomicU64,
+    in_flight: AtomicUsize,
 }
 
 impl FakeQueueRuntime {
@@ -31,6 +32,7 @@ impl FakeQueueRuntime {
             inner: NoopServiceRuntime,
             active_polls: AtomicI64::new(active_polls),
             recover_calls: AtomicU64::new(0),
+            in_flight: AtomicUsize::new(0),
         }
     }
 }
@@ -39,6 +41,10 @@ impl FakeQueueRuntime {
 impl ServiceJobRuntime for FakeQueueRuntime {
     fn mode_name(&self) -> &'static str {
         self.inner.mode_name()
+    }
+
+    fn worker_in_flight_jobs(&self) -> usize {
+        self.in_flight.load(Ordering::Acquire)
     }
 
     async fn wait_for_job(&self, id: uuid::Uuid, kind: JobKind) -> RuntimeResult<String> {
@@ -133,4 +139,80 @@ async fn idle_queue_exits_after_exactly_the_idle_window() {
 
     assert!(report.elapsed_secs >= 2, "elapsed={}", report.elapsed_secs);
     assert!(report.elapsed_secs <= 5, "elapsed={}", report.elapsed_secs);
+}
+
+#[tokio::test(start_paused = true)]
+async fn does_not_idle_exit_while_process_local_runner_is_in_flight() {
+    let runtime = Arc::new(FakeQueueRuntime::with_active_polls(0));
+    runtime.in_flight.store(1, Ordering::Release);
+    let ctx = context_with(Arc::clone(&runtime));
+
+    let loop_task = tokio::spawn(async move {
+        run_worker_until_idle(&ctx, WorkerLoopOptions { idle_exit_secs: 2 })
+            .await
+            .expect("worker loop")
+    });
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(
+        !loop_task.is_finished(),
+        "idle exit must not trust an empty durable projection while a runner is alive"
+    );
+
+    runtime.in_flight.store(0, Ordering::Release);
+    let report = loop_task.await.expect("worker task");
+    assert!(report.elapsed_secs >= 7, "elapsed={}", report.elapsed_secs);
+}
+
+#[tokio::test]
+async fn durable_running_source_row_prevents_idle_exit() {
+    let sqlite = crate::test_support::sqlite_test_runtime()
+        .await
+        .expect("sqlite runtime");
+    let pool = sqlite.runtime.sqlite_pool().expect("sqlite pool");
+    let now = chrono::Utc::now().to_rfc3339();
+    let job_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO jobs (
+            job_id, kind, intent, status, phase, priority, attempt, created_at, updated_at
+         ) VALUES (?, 'source', 'run', 'running', 'fetching', 'normal', 1, ?, ?)",
+    )
+    .bind(&job_id)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool.as_ref())
+    .await
+    .expect("insert running source");
+
+    let ctx = crate::context::ServiceContext::from_runtime(
+        Arc::new(Config::test_default()),
+        Arc::clone(&sqlite.runtime),
+    );
+    let loop_task = tokio::spawn(async move {
+        run_worker_until_idle(&ctx, WorkerLoopOptions { idle_exit_secs: 2 })
+            .await
+            .expect("worker loop")
+    });
+
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    assert!(
+        !loop_task.is_finished(),
+        "a real durable running Source row must hold the standalone worker open"
+    );
+
+    sqlx::query(
+        "UPDATE jobs SET status = 'completed', phase = 'complete', finished_at = ? \
+         WHERE job_id = ?",
+    )
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(job_id)
+    .execute(pool.as_ref())
+    .await
+    .expect("terminalize source");
+    let report = tokio::time::timeout(Duration::from_secs(5), loop_task)
+        .await
+        .expect("worker should exit after the row becomes terminal")
+        .expect("worker task");
+    assert!(!report.final_active_jobs);
+    assert_eq!(report.final_in_flight_jobs, 0);
 }

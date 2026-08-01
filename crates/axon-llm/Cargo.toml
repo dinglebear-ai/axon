@@ -15,7 +15,6 @@ publish = false
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
-axon-error = { path = "../axon-error" }
 axon-observe = { path = "../axon-observe" }
 dashmap = "6"
 futures-util = "0.3"

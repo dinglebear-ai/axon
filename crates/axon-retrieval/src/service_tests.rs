@@ -72,6 +72,9 @@ async fn run_query_returns_mapped_hits_via_trait_objects() {
             query: "alpha beta body".to_string(),
             collection: "axon-test".to_string(),
             limit: 5,
+            hybrid: true,
+            since: None,
+            before: None,
         },
     )
     .await
@@ -157,6 +160,9 @@ async fn run_query_excludes_memory_source_kind_by_default() {
             query: "alpha body".to_string(),
             collection: "axon-test".to_string(),
             limit: 5,
+            hybrid: true,
+            since: None,
+            before: None,
         },
     )
     .await

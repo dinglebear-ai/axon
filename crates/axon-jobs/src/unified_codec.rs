@@ -75,13 +75,10 @@ pub(crate) async fn ensure_job_pool(pool: &SqlitePool, job_id: JobId) -> Result<
     Ok(())
 }
 
-pub(crate) async fn ensure_job(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    job_id: JobId,
-) -> Result<()> {
+pub(crate) async fn ensure_job(tx: &mut sqlx::SqliteConnection, job_id: JobId) -> Result<()> {
     let found = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM jobs WHERE job_id = ?")
         .bind(job_id.0.to_string())
-        .fetch_one(&mut **tx)
+        .fetch_one(&mut *tx)
         .await
         .map_err(sql_error)?;
     if found == 0 {

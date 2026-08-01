@@ -55,7 +55,7 @@ use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::options::{
     auto_dispatch_skip, automation_script_ref, cache_policy, effective_render_mode, headers,
-    min_markdown_chars, user_agent, verticals_enabled, warc_path,
+    min_markdown_chars, render_metadata, user_agent, verticals_enabled, warc_path,
 };
 use super::vertical::{VerticalAcquire, VerticalOptions};
 
@@ -76,6 +76,7 @@ struct AcquireOptions {
     automation_script: Option<ArtifactRef>,
     headers: Vec<RedactedHeader>,
     cache_policy: CachePolicy,
+    render_metadata: MetadataMap,
     vertical: VerticalOptions,
 }
 
@@ -111,6 +112,7 @@ pub(super) async fn acquire_changed_items(
         automation_script: automation_script_ref(values),
         headers: headers(values),
         cache_policy: cache_policy(values),
+        render_metadata: render_metadata(values),
         vertical: VerticalOptions {
             enabled: verticals_enabled(values),
             auto_dispatch_skip: auto_dispatch_skip(values),
@@ -308,6 +310,7 @@ async fn acquire_item(
                     item,
                     RenderMode::Chrome,
                     opts.automation_script.clone(),
+                    opts.render_metadata.clone(),
                 ))
                 .await?;
             Ok(AcquiredItem {
@@ -321,6 +324,7 @@ async fn acquire_item(
                 item,
                 opts.min_markdown_chars,
                 opts.automation_script.clone(),
+                opts.render_metadata.clone(),
                 warnings,
             )
             .await
@@ -438,6 +442,7 @@ async fn acquire_via_auto_switch(
     item: &ManifestItem,
     min_markdown_chars: usize,
     automation_script: Option<ArtifactRef>,
+    render_metadata: MetadataMap,
     mut warnings: Vec<SourceWarning>,
 ) -> Result<AcquiredItem> {
     let first = render
@@ -445,6 +450,7 @@ async fn acquire_via_auto_switch(
             item,
             RenderMode::Http,
             automation_script.clone(),
+            render_metadata.clone(),
         ))
         .await?;
     if first.markdown.chars().count() >= min_markdown_chars {
@@ -458,6 +464,7 @@ async fn acquire_via_auto_switch(
             item,
             RenderMode::Chrome,
             automation_script,
+            render_metadata,
         ))
         .await
     {
@@ -524,6 +531,7 @@ fn build_render_request(
     item: &ManifestItem,
     mode: RenderMode,
     automation_script: Option<ArtifactRef>,
+    metadata: MetadataMap,
 ) -> RenderRequest {
     RenderRequest {
         uri: item.canonical_uri.clone(),
@@ -532,7 +540,7 @@ fn build_render_request(
         wait_ms: None,
         automation_script,
         credential_refs: Vec::new(),
-        metadata: MetadataMap::new(),
+        metadata,
     }
 }
 

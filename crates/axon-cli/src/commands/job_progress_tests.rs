@@ -216,3 +216,37 @@ fn source_progress_summary_renders_terminal_shared_counts() {
         Some("10/10 docs · 100% · 84 chunks")
     );
 }
+
+#[test]
+fn source_progress_summary_renders_terminal_map_item_counts() {
+    let mut job = service_job("completed", PipelinePhase::Complete, None);
+    job.result_json = Some(json!({
+        "items_total": 381,
+        "items_done": 381,
+        "documents_total": 0,
+        "documents_done": 0,
+        "chunks_total": 0,
+        "chunks_done": 0,
+    }));
+
+    assert_eq!(
+        source_progress_summary(&job).as_deref(),
+        Some("381/381 items · 100%")
+    );
+}
+
+#[test]
+fn source_progress_summary_renders_degraded_terminal_counts() {
+    let mut job = service_job("completed_degraded", PipelinePhase::Complete, None);
+    job.result_json = Some(json!({
+        "documents_total": 10,
+        "documents_done": 9,
+        "chunks_total": 84,
+        "chunks_done": 80,
+    }));
+
+    assert_eq!(
+        source_progress_summary(&job).as_deref(),
+        Some("9/10 docs · 90.0% · 80 chunks")
+    );
+}

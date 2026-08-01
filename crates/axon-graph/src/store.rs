@@ -214,9 +214,11 @@ impl GraphStore for FakeGraphStore {
             .ok()
             .filter(|limit| *limit > 0)
             .unwrap_or(usize::MAX);
+        let fetch_limit = limit.saturating_add(1);
+        let mut cursor_seen = request.cursor.is_none();
 
         while let Some((node_id, depth)) = frontier.pop_front() {
-            if depth >= max_depth || edges.len() >= limit {
+            if depth >= max_depth || edges.len() >= fetch_limit {
                 continue;
             }
 
@@ -228,9 +230,13 @@ impl GraphStore for FakeGraphStore {
                     continue;
                 };
                 if seen_edges.insert(edge.edge_id.clone()) {
-                    edges.push(edge.clone());
-                    if edges.len() >= limit {
-                        break;
+                    if cursor_seen {
+                        edges.push(edge.clone());
+                        if edges.len() >= fetch_limit {
+                            break;
+                        }
+                    } else if request.cursor.as_deref() == Some(edge.edge_id.0.as_str()) {
+                        cursor_seen = true;
                     }
                 }
                 if seen_nodes.insert(next_node_id.clone()) {
@@ -241,6 +247,23 @@ impl GraphStore for FakeGraphStore {
                 }
             }
         }
+        if !cursor_seen {
+            return Err(ApiError::new(
+                "graph.invalid_cursor",
+                ErrorStage::Retrieving,
+                "graph query cursor does not identify an edge in this traversal",
+            ));
+        }
+        let has_more = edges.len() > limit;
+        edges.truncate(limit);
+        let next_cursor = has_more.then(|| {
+            edges
+                .last()
+                .expect("a page with a continuation has at least one edge")
+                .edge_id
+                .0
+                .clone()
+        });
         let evidence = edges
             .iter()
             .flat_map(|edge| edge.evidence.clone())
@@ -249,7 +272,7 @@ impl GraphStore for FakeGraphStore {
             nodes,
             edges,
             evidence,
-            next_cursor: None,
+            next_cursor,
             warnings: Vec::new(),
         })
     }

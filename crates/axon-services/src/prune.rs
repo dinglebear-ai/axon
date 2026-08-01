@@ -45,6 +45,8 @@ use axon_api::source::enums::Severity;
 use axon_api::source::ids::{SourceGenerationId, SourceId};
 use axon_api::source::prune::{PruneEstimate, PrunePlan, PruneRequest, PruneResult, PruneSelector};
 use axon_api::source::vector::VectorDeleteSelector;
+use axon_api::source::{LeaseGuard, LeaseRequest, MetadataMap};
+use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_ledger::store::LedgerStore;
 use axon_prune::plan::PruneScopeSource;
 use axon_prune::{PruneExecutor, PrunePlanner, PruneTarget, StepExecution};
@@ -90,12 +92,23 @@ pub fn prune_plan(request: &PruneRequest) -> PrunePlan {
 /// estimate for the same honest-zero reason `NullScopeSource` documents —
 /// neither store has anything to size for them yet.
 pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) -> PrunePlan {
+    let mut source_fence = None;
     let estimate = match &request.selector {
         PruneSelector::Collection { collection } => {
             estimate_collection_points(ctx, collection).await
         }
-        _ => match ctx.target_local_source_runtime() {
-            Some(runtime) => estimate_from_ledger(runtime.ledger.as_ref(), &request.selector).await,
+        PruneSelector::Source { source_id } => match ledger_for_context(ctx) {
+            Some(ledger) => match ledger.committed_generation(source_id.clone()).await {
+                Ok(Some(generation)) => {
+                    source_fence = Some(generation.clone());
+                    manifest_estimate(ledger.as_ref(), source_id.clone(), generation, false).await
+                }
+                _ => PruneEstimate::default(),
+            },
+            None => PruneEstimate::default(),
+        },
+        _ => match ledger_for_context(ctx) {
+            Some(ledger) => estimate_from_ledger(ledger.as_ref(), &request.selector).await,
             // No target-local ledger wired for this `ServiceContext` (e.g. a
             // pure-vector `ServiceContext::new`) — honest zero, same
             // rationale as `NullScopeSource`.
@@ -105,8 +118,33 @@ pub async fn prune_plan_estimated(ctx: &ServiceContext, request: &PruneRequest) 
     let planner = PrunePlanner::new(PrefetchedScopeSource(estimate))
         .with_collection(ctx.cfg().collection.clone());
     let mut plan = planner.resolve(&request.selector);
+    // A source selector deletes every vector generation. Stamp the committed
+    // generation observed during planning onto each source step as an
+    // optimistic fence. Execution acquires the source lease and requires this
+    // exact generation to still be current before any delete starts.
+    if let Some(generation) = source_fence {
+        for step in &mut plan.steps {
+            step.generation = Some(generation.clone());
+        }
+    }
     warn_if_unsupported(&mut plan);
     plan
+}
+
+/// Resolve the unified ledger without requiring a worker-bearing context.
+///
+/// Ordinary `prune plan` and `prune exec` invocations intentionally use an
+/// enqueue-only [`ServiceContext`], so `target_local_source_runtime()` is not
+/// attached. The ledger still lives in the same already-migrated SQLite pool
+/// as the job store; binding a lightweight ledger facade to that shared pool
+/// keeps read-only planning accurate without starting workers.
+fn ledger_for_context(ctx: &ServiceContext) -> Option<Arc<dyn LedgerStore>> {
+    if let Some(runtime) = ctx.target_local_source_runtime() {
+        return Some(Arc::clone(&runtime.ledger));
+    }
+    ctx.jobs
+        .sqlite_pool()
+        .map(|pool| Arc::new(SqliteLedgerStore::from_pool((*pool).clone())) as Arc<dyn LedgerStore>)
 }
 
 /// Real point-count estimate for a `Collection` selector: counts every point
@@ -138,7 +176,7 @@ async fn estimate_from_ledger(ledger: &dyn LedgerStore, selector: &PruneSelector
         PruneSelector::Source { source_id } => {
             match ledger.committed_generation(source_id.clone()).await {
                 Ok(Some(generation)) => {
-                    manifest_estimate(ledger, source_id.clone(), generation).await
+                    manifest_estimate(ledger, source_id.clone(), generation, false).await
                 }
                 _ => PruneEstimate::default(),
             }
@@ -146,7 +184,7 @@ async fn estimate_from_ledger(ledger: &dyn LedgerStore, selector: &PruneSelector
         PruneSelector::Generation {
             source_id,
             generation,
-        } => manifest_estimate(ledger, source_id.clone(), generation.clone()).await,
+        } => manifest_estimate(ledger, source_id.clone(), generation.clone(), true).await,
         // CleanupDebt/Artifact/Graph/Memory/JobRetention/Cache selectors don't
         // name a ledger-sizeable source+generation — honest zero, same as
         // `NullScopeSource`. `Collection` is sized separately by
@@ -159,11 +197,16 @@ async fn manifest_estimate(
     ledger: &dyn LedgerStore,
     source_id: SourceId,
     generation: SourceGenerationId,
+    include_ledger_generation: bool,
 ) -> PruneEstimate {
     match ledger.get_manifest(source_id, generation).await {
         Ok(Some(manifest)) => PruneEstimate {
             vector_points: manifest.items.len() as u64,
-            ledger_generations: 1,
+            // A source-wide selector has no safe source-row deletion boundary:
+            // its committed generation must remain available for refresh and
+            // generation fencing. An explicit generation selector can prune
+            // its ledger rows after the executor proves it is not current.
+            ledger_generations: u64::from(include_ledger_generation),
             ..Default::default()
         },
         _ => PruneEstimate::default(),
@@ -256,16 +299,71 @@ pub async fn prune_execute(
     // ledger wired (e.g. a pure-vector context) leaves this `None`, matching
     // `VectorOnlyPruneTarget::current_generation`'s documented "not fenced"
     // degradation.
-    let ledger = ctx
-        .target_local_source_runtime()
-        .map(|runtime| Arc::clone(&runtime.ledger));
+    let ledger = ledger_for_context(ctx);
+    let source_lease = acquire_source_prune_lease(plan, ledger.as_ref()).await?;
     let target = VectorOnlyPruneTarget {
         vector_store: &vector_store,
-        collection: ctx.cfg().collection.clone(),
-        ledger,
+        ledger: ledger.clone(),
     };
     let executor = PruneExecutor::new(target);
-    executor.execute(plan, authz).await
+    let result = executor.execute(plan, authz).await;
+    release_source_prune_lease(source_lease).await?;
+    result
+}
+
+const SOURCE_PRUNE_LEASE_TTL_SECONDS: u64 = 30 * 60;
+
+async fn acquire_source_prune_lease(
+    plan: &PrunePlan,
+    ledger: Option<&Arc<dyn LedgerStore>>,
+) -> Result<Option<(Arc<dyn LedgerStore>, LeaseGuard)>, PruneDenied> {
+    let PruneSelector::Source { source_id } = &plan.selector else {
+        return Ok(None);
+    };
+    if plan.steps.is_empty() {
+        return Ok(None);
+    }
+    if plan.steps.iter().any(|step| step.generation.is_none()) {
+        return Err(PruneDenied::FenceCheckFailed {
+            reason: "source prune plan is missing its reviewed generation fence".to_string(),
+        });
+    }
+    let ledger = ledger
+        .cloned()
+        .ok_or_else(|| PruneDenied::FenceCheckFailed {
+            reason: "source prune requires the source ledger".to_string(),
+        })?;
+    let owner_id = format!("prune:{}", plan.job_id.0);
+    let lease = ledger
+        .acquire_lease(LeaseRequest {
+            lease_key: format!("source:{}", source_id.0),
+            owner_id,
+            ttl_seconds: SOURCE_PRUNE_LEASE_TTL_SECONDS,
+            job_id: Some(plan.job_id),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .map_err(|error| PruneDenied::FenceCheckFailed {
+            reason: format!("failed to acquire source prune lease: {}", error.message),
+        })?
+        .ok_or_else(|| PruneDenied::FenceCheckFailed {
+            reason: format!("source {} is being refreshed", source_id.0),
+        })?;
+    Ok(Some((ledger, lease)))
+}
+
+async fn release_source_prune_lease(
+    lease: Option<(Arc<dyn LedgerStore>, LeaseGuard)>,
+) -> Result<(), PruneDenied> {
+    let Some((ledger, lease)) = lease else {
+        return Ok(());
+    };
+    ledger
+        .release_lease(lease.lease_id, lease.owner_id)
+        .await
+        .map_err(|error| PruneDenied::FenceCheckFailed {
+            reason: format!("failed to release source prune lease: {}", error.message),
+        })
 }
 
 /// Convenience wrapper mirroring [`crate::reset::reset`]'s shape: build a plan
@@ -312,7 +410,6 @@ impl PruneScopeSource for NullScopeSource {
 /// exposes (rather than one ledger-recorded debt entry at a time).
 struct VectorOnlyPruneTarget<'a> {
     vector_store: &'a dyn VectorStore,
-    collection: String,
     /// The target-local ledger, when this target was built from a
     /// `ServiceContext` that has one wired (see [`prune_execute`]). `None`
     /// preserves the previous "not fenced" degradation for contexts with no
@@ -322,10 +419,9 @@ struct VectorOnlyPruneTarget<'a> {
 
 impl<'a> VectorOnlyPruneTarget<'a> {
     #[cfg(test)]
-    fn new(vector_store: &'a dyn VectorStore, collection: impl Into<String>) -> Self {
+    fn new(vector_store: &'a dyn VectorStore, _collection: impl Into<String>) -> Self {
         Self {
             vector_store,
-            collection: collection.into(),
             ledger: None,
         }
     }
@@ -336,9 +432,9 @@ impl<'a> VectorOnlyPruneTarget<'a> {
         collection: impl Into<String>,
         ledger: Arc<dyn LedgerStore>,
     ) -> Self {
+        let _ = collection.into();
         Self {
             vector_store,
-            collection: collection.into(),
             ledger: Some(ledger),
         }
     }
@@ -369,33 +465,41 @@ impl PruneTarget for VectorOnlyPruneTarget<'_> {
         &self,
         step: &axon_api::source::prune::PruneStep,
     ) -> Result<StepExecution, String> {
-        let selector = match step.vector_selector.clone() {
-            Some(selector) => selector,
-            None => match (&step.source_id, &step.generation) {
-                (Some(source_id), Some(generation)) => VectorDeleteSelector::Generation {
-                    collection: self.collection.clone(),
-                    source_id: SourceId::new(source_id.0.clone()),
-                    generation: SourceGenerationId::new(generation.0.clone()),
-                },
-                (Some(source_id), None) => VectorDeleteSelector::Source {
-                    collection: self.collection.clone(),
-                    source_id: SourceId::new(source_id.0.clone()),
-                    generation: None,
-                },
-                _ => {
+        match step.target {
+            axon_api::source::prune::PruneTargetKind::Vector => {
+                let Some(selector) = step.vector_selector.clone() else {
                     return Ok(StepExecution::skipped(
                         "no vector selector resolvable for this step",
                     ));
-                }
-            },
-        };
-
-        let deleted = self
-            .vector_store
-            .delete(selector)
-            .await
-            .map_err(|err| err.message.clone())?;
-        Ok(StepExecution::deleted(deleted.points_deleted))
+                };
+                let deleted = self
+                    .vector_store
+                    .delete(selector)
+                    .await
+                    .map_err(|err| err.message.clone())?;
+                Ok(StepExecution::deleted(deleted.points_deleted))
+            }
+            axon_api::source::prune::PruneTargetKind::Ledger => {
+                let Some(ledger) = self.ledger.as_ref() else {
+                    return Ok(StepExecution::skipped("ledger store is unavailable"));
+                };
+                let (Some(source_id), Some(generation)) = (&step.source_id, &step.generation)
+                else {
+                    return Ok(StepExecution::skipped(
+                        "ledger prune requires an explicit source generation",
+                    ));
+                };
+                let deleted = ledger
+                    .delete_generation(source_id.clone(), generation.clone())
+                    .await
+                    .map_err(|err| err.message)?;
+                Ok(StepExecution::deleted(deleted))
+            }
+            _ => Ok(StepExecution::skipped(format!(
+                "{:?} prune boundary is not wired",
+                step.target
+            ))),
+        }
     }
 }
 

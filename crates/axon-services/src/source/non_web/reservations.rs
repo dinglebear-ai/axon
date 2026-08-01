@@ -15,7 +15,7 @@ pub(super) async fn embedding(
 ) -> anyhow::Result<ProviderReservation> {
     Ok(runtime
         .embedding_reservations
-        .reserve_with_context(ProviderReservationContext {
+        .reserve_with_context_wait(ProviderReservationContext {
             job_id: input.plan.job_id,
             stage_id: None,
             provider_id: Some(runtime.embedding_provider_id.clone()),
@@ -32,7 +32,7 @@ pub(super) async fn vector(
 ) -> anyhow::Result<ProviderReservation> {
     Ok(runtime
         .vector_reservations
-        .reserve_with_context(ProviderReservationContext {
+        .reserve_with_context_wait(ProviderReservationContext {
             job_id: input.plan.job_id,
             stage_id: None,
             provider_id: Some(runtime.vector_provider_id.clone()),

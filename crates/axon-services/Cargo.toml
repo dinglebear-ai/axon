@@ -35,7 +35,6 @@ anyhow = "1"
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-indicatif = "0.18"
 psl = "2"
 futures-util = "0.3"
 hex = "0.4"
@@ -43,33 +42,10 @@ reqwest = { version = "0.13", features = ["json", "rustls", "stream", "form"] }
 rand_core = { version = "0.9", features = ["os_rng", "std"] }
 sha2 = "0.10"
 metrics = "0.24"
-notify = "8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
 thiserror = "2"
-spider = { version = "2", default-features = false, features = [
-  "basic",
-  "chrome",
-  "regex",
-  "sitemap",
-  "adblock",
-  "chrome_stealth",
-  "chrome_screenshot",
-  "chrome_store_page",
-  "chrome_headless_new",
-  "chrome_simd",
-  "simd",
-  "inline-more",
-  "cache_mem",
-  "ua_generator",
-  "headers",
-  "time",
-  "control",
-  "hedge",
-  "etag_cache",
-  "warc",
-] }
 spider_agent = { version = "2.47.89", default-features = false, features = [
   "search_tavily",
   "openai",
