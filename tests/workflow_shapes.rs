@@ -358,13 +358,14 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     assert!(smoke.contains("cargo build --locked --bin axon"));
     assert!(!smoke.contains("cargo build --release"));
 
-    let release = workflow_job_block(workflow, "release");
+    let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(release.contains("github.event_name != 'pull_request'"));
-    assert!(release.contains("needs.changes.outputs.release == 'true'"));
-    assert!(release.contains("'ci:full'"));
+    assert!(binary_smoke_build.contains("github.event_name != 'pull_request'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.release == 'true'"));
+    assert!(binary_smoke_build.contains("'ci:full'"));
+    assert!(!binary_smoke_build.contains("cargo build --release"));
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
@@ -374,12 +375,15 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
 fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let web = workflow_job_block(workflow, "web-panel");
-    let release = workflow_job_block(workflow, "release");
+    let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let windows = workflow_job_block(workflow, "windows-build");
 
     assert!(web.contains("npm --prefix apps/web run build"));
     assert!(web.contains("name: axon-web-assets"));
-    for (name, job) in [("release", release), ("windows-build", windows)] {
+    for (name, job) in [
+        ("binary-smoke-build", binary_smoke_build),
+        ("windows-build", windows),
+    ] {
         assert!(
             job.contains("uses: actions/download-artifact@v5")
                 && job.contains("name: axon-web-assets"),
@@ -475,8 +479,8 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "mcp-smoke",
         "rag-changes",
         "live-rag-pr",
-        "release",
-        "release-smoke",
+        "binary-smoke-build",
+        "binary-smoke",
     ] {
         assert!(
             gate.contains(&format!("- {job}")),
