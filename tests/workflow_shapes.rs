@@ -397,6 +397,63 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
 }
 
 #[test]
+fn rust_setup_installs_sqlite_for_cross_process_regressions() {
+    let setup = include_str!("../.github/actions/setup-rust-kache/action.yml");
+    assert!(
+        setup.contains("command -v sqlite3 >/dev/null 2>&1 || need_install=true"),
+        "the shared Rust setup must detect a missing sqlite3 CLI"
+    );
+    assert!(
+        setup.contains(
+            r#"packages="build-essential pkg-config ripgrep sqlite3 libssl-dev libdbus-1-dev""#
+        ),
+        "the shared Rust setup must install sqlite3 for cross-process WAL and stress tests"
+    );
+}
+
+#[test]
+fn linux_smoke_artifact_uses_a_pinned_compatible_runtime() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
+    let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
+
+    assert!(
+        binary_smoke_build.contains("runs-on: ubuntu-24.04"),
+        "the reusable Linux smoke binary must be built on the oldest supported smoke runtime"
+    );
+    assert!(
+        mcp_smoke.contains("runs-on: ubuntu-24.04"),
+        "the MCP consumer must run on the same pinned Ubuntu runtime as the binary producer"
+    );
+    assert!(
+        binary_smoke_build.contains("name: axon-linux-smoke")
+            && mcp_smoke.contains("name: axon-linux-smoke"),
+        "the producer and MCP consumer must share the same smoke artifact"
+    );
+}
+
+#[test]
+fn toml_fmt_installs_rust_before_mise_cargo_tools() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let toml_fmt = workflow_job_block(workflow, "toml-fmt");
+    let rust_setup = toml_fmt
+        .find("uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8")
+        .expect("toml-fmt Rust setup");
+    let mise_install = toml_fmt
+        .find("uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d")
+        .expect("toml-fmt mise install");
+
+    assert!(
+        toml_fmt.contains("toolchain: 1.97.1"),
+        "toml-fmt must use the repository-pinned Rust toolchain"
+    );
+    assert!(
+        rust_setup < mise_install,
+        "toml-fmt must install cargo before mise invokes the cargo taplo backend"
+    );
+}
+
+#[test]
 fn rust_ci_uses_the_repository_toolchain_pin() {
     let toolchain = include_str!("../rust-toolchain.toml");
     let channel = toolchain
