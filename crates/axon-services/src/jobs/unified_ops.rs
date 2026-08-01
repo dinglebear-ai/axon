@@ -17,10 +17,13 @@ pub async fn list_unified_jobs(
     service_context: &ServiceContext,
     request: JobListRequest,
 ) -> Result<Page<axon_api::source::JobSummary>, Box<dyn Error + Send + Sync>> {
-    call_job_store(
-        service_context,
-        |store| async move { store.list(request).await },
-    )
+    call_job_store(service_context, |store| async move {
+        let mut page = store.list(request).await?;
+        for summary in &mut page.items {
+            hydrate_terminal_counts(store.as_ref(), summary).await?;
+        }
+        Ok(page)
+    })
     .await
 }
 
@@ -28,11 +31,48 @@ pub async fn unified_job_status(
     service_context: &ServiceContext,
     job_id: axon_api::source::JobId,
 ) -> Result<Option<axon_api::source::JobSummary>, Box<dyn Error + Send + Sync>> {
-    call_job_store(
-        service_context,
-        |store| async move { store.get(job_id).await },
-    )
+    call_job_store(service_context, |store| async move {
+        let Some(mut summary) = store.get(job_id).await? else {
+            return Ok(None);
+        };
+        hydrate_terminal_counts(store.as_ref(), &mut summary).await?;
+        Ok(Some(summary))
+    })
     .await
+}
+
+async fn hydrate_terminal_counts(
+    store: &dyn axon_jobs::boundary::JobStore,
+    summary: &mut axon_api::source::JobSummary,
+) -> Result<(), axon_api::source::ApiError> {
+    let counts_empty = summary.counts.as_ref().is_none_or(|counts| {
+        counts.items_done == 0
+            && counts.documents_done == 0
+            && counts.chunks_done == 0
+            && counts.bytes_done == 0
+    });
+    if counts_empty
+        && matches!(
+            summary.status,
+            axon_api::source::LifecycleStatus::Completed
+                | axon_api::source::LifecycleStatus::CompletedDegraded
+                | axon_api::source::LifecycleStatus::Failed
+                | axon_api::source::LifecycleStatus::Expired
+                | axon_api::source::LifecycleStatus::Canceled
+                | axon_api::source::LifecycleStatus::Skipped
+        )
+    {
+        let recovered = store.terminal_counts(summary.job_id).await?;
+        if recovered.as_ref().is_some_and(|counts| {
+            counts.items_done > 0
+                || counts.documents_done > 0
+                || counts.chunks_done > 0
+                || counts.bytes_done > 0
+        }) {
+            summary.counts = recovered;
+        }
+    }
+    Ok(())
 }
 
 pub async fn unified_job_events(

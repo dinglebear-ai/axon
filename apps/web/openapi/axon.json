@@ -11,7 +11,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "7.2.6"
+    "version": "7.2.7"
   },
   "paths": {
     "/healthz": {
@@ -7873,12 +7873,14 @@
             "required": [
               "retention",
               "producer_refs",
-              "content_url",
               "metadata"
             ],
             "properties": {
               "content_url": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "metadata": {
                 "$ref": "#/components/schemas/MetadataMap"

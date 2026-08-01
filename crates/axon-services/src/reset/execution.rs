@@ -187,7 +187,9 @@ async fn reset_qdrant(
         &cfg.qdrant_url,
         &cfg.collection,
     );
-    match qdrant::probe_tei_dim(cfg).await {
+    let dense_dimension =
+        preferred_reset_dimension(qdrant::probe_tei_dim(cfg).await, inv.dense_dimension);
+    match dense_dimension {
         Some(dim) => {
             qdrant::create_named_collection(cfg, dim).await?;
             created.qdrant_collections.push(cfg.collection.clone());
@@ -209,6 +211,13 @@ async fn reset_qdrant(
         }
     }
     Ok(())
+}
+
+pub(super) fn preferred_reset_dimension(
+    provider_dimension: Option<u64>,
+    prior_collection_dimension: Option<u64>,
+) -> Option<u64> {
+    provider_dimension.or(prior_collection_dimension)
 }
 
 /// Write the reset receipt as a JSON artifact under the artifact root. Returns

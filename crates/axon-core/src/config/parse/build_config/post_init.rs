@@ -20,6 +20,8 @@ pub(super) struct PostInit {
 }
 
 pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
+    validate_cron(cfg)?;
+
     // Validate that --etag-conditional is not set without --cache.
     // etag_conditional seeds spider's ETag cache from a persisted sidecar and
     // reconciles 304 responses back into the manifest — that path requires the
@@ -71,6 +73,19 @@ pub(super) fn apply(cfg: &mut Config, ctx: PostInit) -> Result<(), String> {
     // Derive output_dir from the canonical data directory when still at the clap default.
     if !ctx.output_dir_was_explicit && cfg.output_dir == std::path::Path::new(DEFAULT_OUTPUT_DIR) {
         cfg.output_dir = crate::paths::axon_data_base_dir().join("output");
+    }
+    Ok(())
+}
+
+fn validate_cron(cfg: &Config) -> Result<(), String> {
+    if cfg.cron_max_runs.is_some() && cfg.cron_every_seconds.is_none() {
+        return Err("--cron-max-runs requires --cron-every-seconds".to_string());
+    }
+    if cfg.cron_every_seconds == Some(0) {
+        return Err("--cron-every-seconds must be greater than zero".to_string());
+    }
+    if cfg.cron_max_runs == Some(0) {
+        return Err("--cron-max-runs must be greater than zero".to_string());
     }
     Ok(())
 }

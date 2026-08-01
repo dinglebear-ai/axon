@@ -378,6 +378,7 @@ async fn record_published_vector_generation(
         job_id: input.job_id,
         source_id: run.source_id.clone(),
         generation: published.generation,
+        items_discovered: manifest.items.len() as u64,
         documents_prepared: vectorized.documents_prepared,
         chunks_prepared: vectorized.chunks_prepared,
         vector_points_written: points_written,

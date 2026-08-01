@@ -14,6 +14,7 @@ use async_trait::async_trait;
 use axon_api::source::{
     ApiError, JobHeartbeat, JobId, ProviderId, ProviderKind, SourceProgressEvent, Timestamp,
 };
+use axon_core::sqlite::ImmediateTx;
 use axon_error::ErrorStage;
 use chrono::Utc;
 use serde_json::json;
@@ -97,7 +98,18 @@ impl SqliteObservabilitySink {
         let write = redact_event(event).map_err(|error| *error)?;
         event = write.payload;
         let job_id = event.job_id;
-        event.sequence = self.sequences.next(job_id);
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(map_sqlx)?;
+        let durable_last: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(sequence), 0) FROM axon_observe_events WHERE job_id = ?",
+        )
+        .bind(job_id.0.to_string())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_sqlx)?;
+        event.sequence = u64::try_from(durable_last)
+            .map_err(|_| map_str("observe.sequence_invalid", "negative durable sequence"))?
+            .checked_add(1)
+            .ok_or_else(|| map_str("observe.sequence_overflow", "sequence exceeds u64"))?;
         let sequence = i64::try_from(event.sequence)
             .map_err(|_| map_str("observe.sequence_overflow", "sequence exceeds i64"))?;
         let event_json = stamp_event_json(&event, &write.redaction).map_err(|error| *error)?;
@@ -119,9 +131,11 @@ impl SqliteObservabilitySink {
         .bind(&event.timestamp.0)
         .bind(event_json)
         .bind(now_ms())
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(map_sqlx)?;
+        tx.commit().await.map_err(map_sqlx)?;
+        self.sequences.observe(job_id, event.sequence);
         Ok(())
     }
 

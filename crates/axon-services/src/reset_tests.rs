@@ -1,4 +1,16 @@
 use super::*;
+
+#[test]
+fn reset_dimension_prefers_current_embedding_provider() {
+    assert_eq!(
+        execution::preferred_reset_dimension(Some(1024), Some(768)),
+        Some(1024)
+    );
+    assert_eq!(
+        execution::preferred_reset_dimension(None, Some(768)),
+        Some(768)
+    );
+}
 use axon_api::reset::{
     ResetCreated, ResetDeleted, ResetEstimate, ResetExecutionState, ResetPlan, ResetReceipt,
     ResetStorePlan,
@@ -51,6 +63,25 @@ fn resolve_stores_dedups_and_canonicalizes_order() {
             "vectors".to_string(),
         ]
     );
+}
+
+#[test]
+fn jobs_scope_expands_only_to_the_shared_sqlite_store_family() {
+    let cfg = cfg_with(vec!["jobs"], false, false);
+    let stores = resolve_stores(&cfg).expect("resolve jobs scope");
+    assert_eq!(
+        stores,
+        vec![
+            "jobs".to_string(),
+            "ledger".to_string(),
+            "code_index".to_string(),
+            "watch".to_string(),
+            "graph".to_string(),
+            "memory".to_string(),
+        ]
+    );
+    assert!(!stores.iter().any(|store| store == "vectors"));
+    assert!(!stores.iter().any(|store| store == "artifacts"));
 }
 
 #[test]
@@ -204,6 +235,32 @@ async fn reset_writes_no_unified_job_row_for_itself() {
     assert_eq!(
         count.0, 0,
         "reset must not create a unified job row for its own execution"
+    );
+}
+
+#[tokio::test]
+async fn destructive_reset_refuses_while_a_worker_holds_the_queue() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut cfg = cfg_with(vec!["jobs"], false, false);
+    cfg.sqlite_path = dir.path().join("jobs.db");
+
+    let plan = reset(&cfg).await.expect("reset plan");
+    let lock_path = crate::runtime::drain_lock_path(&cfg.sqlite_path);
+    let _worker = crate::runtime::WorkerDrainLock::try_hold(&lock_path)
+        .await
+        .expect("probe worker lock")
+        .expect("hold worker lock");
+
+    cfg.yes = true;
+    cfg.reset_plan_id = Some(plan.plan_id);
+    let error = reset_with_authz(&cfg, &ResetAuthz::admin())
+        .await
+        .expect_err("reset must not replace SQLite under a live worker");
+
+    assert!(error.to_string().contains("reset.worker_active"));
+    assert!(
+        !cfg.sqlite_path.exists(),
+        "blocked reset must not create SQLite"
     );
 }
 

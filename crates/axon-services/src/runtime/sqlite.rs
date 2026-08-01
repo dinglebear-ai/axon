@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use axon_api::source::{JobKind, LifecycleStatus};
@@ -9,7 +10,7 @@ use axon_jobs::boundary::JobStore;
 use axon_jobs::status::JobStatus;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_observe::sink::SqliteObservabilitySink;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 use crate::runtime::{JobPagination, RuntimeResult, ServiceJobRuntime, WorkerMode};
@@ -20,6 +21,7 @@ mod service_job_view;
 pub struct SqliteServiceRuntime {
     pub(crate) cfg: Arc<Config>,
     pub(crate) backend: Arc<SqliteJobBackend>,
+    worker_queue_idle_observed: AtomicBool,
 }
 
 impl SqliteServiceRuntime {
@@ -27,6 +29,7 @@ impl SqliteServiceRuntime {
         Self {
             cfg,
             backend: Arc::new(backend),
+            worker_queue_idle_observed: AtomicBool::new(false),
         }
     }
 
@@ -56,6 +59,77 @@ impl ServiceJobRuntime for SqliteServiceRuntime {
 
     fn notify_unified(&self) {
         self.backend.notify_unified();
+    }
+
+    fn worker_in_flight_jobs(&self) -> usize {
+        self.backend.worker_in_flight_jobs()
+    }
+
+    async fn has_active_worker_jobs(&self, kinds: &[JobKind]) -> RuntimeResult<bool> {
+        if kinds.is_empty() {
+            return Ok(false);
+        }
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "SELECT kind FROM jobs \
+             WHERE status IN ('queued', 'pending', 'waiting', 'blocked', 'running', 'canceling') \
+               AND kind IN (",
+        );
+        {
+            let mut kinds_sql = query.separated(", ");
+            for kind in kinds {
+                let name = serde_json::to_value(kind)
+                    .map_err(Box::<dyn Error + Send + Sync>::from)?
+                    .as_str()
+                    .ok_or_else(|| {
+                        Box::<dyn Error + Send + Sync>::from("job kind did not serialize as a name")
+                    })?
+                    .to_string();
+                kinds_sql.push_bind(name);
+            }
+        }
+        query.push(") LIMIT 1");
+        let active_kind = query
+            .build_query_scalar::<String>()
+            .fetch_optional(self.backend.pool().as_ref())
+            .await
+            .map_err(Box::<dyn Error + Send + Sync>::from)?;
+        if active_kind.is_some() {
+            self.worker_queue_idle_observed
+                .store(false, Ordering::Release);
+            return Ok(true);
+        }
+
+        // Emit one diagnostic at the start of each idle window. The database
+        // filename comes from the live SQLite connection rather than Config,
+        // and the grouped rows expose any unexpected status/kind spelling.
+        // This is intentionally transition-triggered so a 30-second idle
+        // window does not produce 30 identical log lines.
+        if !self.worker_queue_idle_observed.swap(true, Ordering::AcqRel) {
+            let database_file = sqlx::query_scalar::<_, String>(
+                "SELECT file FROM pragma_database_list WHERE name = 'main'",
+            )
+            .fetch_optional(self.backend.pool().as_ref())
+            .await
+            .ok()
+            .flatten();
+            let active_rows = sqlx::query_as::<_, (String, String, i64)>(
+                "SELECT kind, status, COUNT(*) \
+                   FROM jobs \
+                  WHERE status IN ('queued', 'pending', 'waiting', 'blocked', 'running', 'canceling') \
+                  GROUP BY kind, status \
+                  ORDER BY kind, status",
+            )
+            .fetch_all(self.backend.pool().as_ref())
+            .await
+            .unwrap_or_default();
+            tracing::warn!(
+                configured_path = %self.cfg.sqlite_path.display(),
+                database_file = ?database_file,
+                active_rows = ?active_rows,
+                "jobs: worker queue entered idle window"
+            );
+        }
+        Ok(false)
     }
 
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> RuntimeResult<String> {

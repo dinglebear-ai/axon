@@ -1,0 +1,19 @@
+name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
+
+# Override for deployments that use existing external TEI and Chrome services
+# instead of starting the bundled GPU/browser containers. Apply alongside the
+# production compose file. Both URLs are required so the axon service cannot
+# silently fall back to unreachable container DNS names.
+
+services:
+  axon-tei:
+    profiles: ["external-providers-disabled"]
+
+  axon-chrome:
+    profiles: ["external-providers-disabled"]
+
+  axon:
+    depends_on: !override {}
+    environment:
+      TEI_URL: ${AXON_EXTERNAL_TEI_URL:?AXON_EXTERNAL_TEI_URL must be set when applying docker-compose.external-providers.yaml}
+      AXON_CHROME_REMOTE_URL: ${AXON_EXTERNAL_CHROME_REMOTE_URL:?AXON_EXTERNAL_CHROME_REMOTE_URL must be set when applying docker-compose.external-providers.yaml}

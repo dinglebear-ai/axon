@@ -256,7 +256,7 @@ pub struct Config {
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 
-    /// Live-update mode for `axon status`. Flag: `--watch`.
+    /// Live-update mode for `axon status` and `axon monitor jobs`. Flag: `--watch`.
     pub watch_mode: bool,
 
     /// Concurrency/timeout preset. Profiles scale linearly with CPU count. Flag: `--performance-profile`.
@@ -942,11 +942,11 @@ pub struct Config {
     /// Passed to `SearchOptions::with_time_range`. Default: None. Flag: `--search-time-range`.
     pub search_time_range: Option<String>,
 
-    /// Lower bound for `scraped_at` payload filter on query/ask. Accepts `7d`, `30d`, `1w`,
+    /// Lower bound for `embedded_at` payload filter on query/ask. Accepts `7d`, `30d`, `1w`,
     /// `YYYY-MM-DD`, or RFC3339. Default: None (no lower bound). Flag: `--since`.
     pub since: Option<String>,
 
-    /// Upper bound for `scraped_at` payload filter on query/ask. Same formats as `--since`.
+    /// Upper bound for `embedded_at` payload filter on query/ask. Same formats as `--since`.
     /// Default: None (no upper bound). Flag: `--before`.
     pub before: Option<String>,
 

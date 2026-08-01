@@ -15,6 +15,9 @@ pub struct RetrievalPlan {
     pub allowed_visibility: Vec<Visibility>,
     pub namespace_filters: Vec<String>,
     pub excluded_source_kinds: Vec<String>,
+    pub hybrid: bool,
+    pub since: Option<String>,
+    pub before: Option<String>,
     pub byte_budget: u64,
     pub token_budget: u32,
 }
@@ -32,6 +35,9 @@ impl RetrievalPlan {
             allowed_visibility,
             namespace_filters: request.namespace_filters.clone(),
             excluded_source_kinds: request.excluded_source_kinds.clone(),
+            hybrid: request.hybrid,
+            since: request.since.clone(),
+            before: request.before.clone(),
             byte_budget: request.byte_budget,
             token_budget: request.token_budget,
         }

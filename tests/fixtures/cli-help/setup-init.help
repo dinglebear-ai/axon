@@ -6,7 +6,7 @@ Usage
 Options
   --mcp-host <MCP_HOST>            MCP HTTP bind host written to AXON_HTTP_HOST
   --mcp-port <MCP_PORT>            MCP HTTP bind port written to AXON_HTTP_PORT
-  --auth-mode <AUTH_MODE>          MCP auth mode. Bearer generates/requires AXON_HTTP_TOKEN; OAuth requires Google OAuth vars
+  --auth-mode <AUTH_MODE>          MCP auth mode. Bearer generates/requires AXON_HTTP_TOKEN; OAuth requires Google OAuth vars Possible values: bearer, oauth
   --mcp-token <MCP_TOKEN>          Static bearer token for AXON_HTTP_TOKEN
   --oauth-public-url <OAUTH_PUBLIC_URL>
                                    Public URL for OAuth metadata and callbacks
@@ -23,4 +23,7 @@ Options
                                    Reddit client ID for Reddit ingest
   --reddit-client-secret <REDDIT_CLIENT_SECRET>
                                    Reddit client secret for Reddit ingest
+  --json                           Output results as machine-readable JSON
+  --color <COLOR>                  Color output: auto (TTY detect, default), always, never Possible values: auto, always, never
+  --quiet                          Suppress spinners and progress output (useful in scripts). JSON data is unaffected
   -h, --help                       Print help

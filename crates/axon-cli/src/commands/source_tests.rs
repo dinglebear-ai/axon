@@ -66,3 +66,37 @@ fn sanitize_terminal_text_strips_control_characters() {
     );
     assert_eq!(sanitize_terminal_text("untouched"), "untouched");
 }
+
+#[test]
+fn source_inputs_accept_urls_without_a_positional_source() {
+    let cfg = Config {
+        urls_csv: Some("https://example.com/one,https://example.com/two".to_string()),
+        positional: Vec::new(),
+        ..Config::default()
+    };
+
+    assert_eq!(
+        resolve_source_inputs(&cfg).unwrap(),
+        vec![
+            "https://example.com/one".to_string(),
+            "https://example.com/two".to_string()
+        ]
+    );
+}
+
+#[test]
+fn source_inputs_reject_an_empty_source_surface() {
+    let cfg = Config {
+        positional: Vec::new(),
+        urls_csv: None,
+        url_glob: Vec::new(),
+        ..Config::default()
+    };
+
+    assert!(
+        resolve_source_inputs(&cfg)
+            .unwrap_err()
+            .to_string()
+            .contains("--urls")
+    );
+}

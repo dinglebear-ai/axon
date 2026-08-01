@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use axon_api::source::{
-    ApiError, AuthSnapshot, ErrorStage, JobId, JobKind as UnifiedJobKind, LifecycleStatus,
-    PipelinePhase,
+    ApiError, AuthSnapshot, ErrorStage, JobId, JobKind as UnifiedJobKind, PipelinePhase,
 };
 use futures::FutureExt;
 use sqlx::SqlitePool;
@@ -12,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::unified::SqliteUnifiedJobStore;
 
 use super::auth_enforcement::{require_job_scope, required_scope_for_kind};
-use super::{POLL_INTERVAL, WORKER_BATCH_LIMIT};
+use super::{POLL_INTERVAL, WORKER_BATCH_LIMIT, WorkerActivity};
 
 mod helpers;
 
@@ -22,7 +21,7 @@ pub(crate) use claim::claim_next_unified_job;
 use claim::claim_next_unified_job_unchecked;
 
 mod runner_registry;
-pub use runner_registry::{JobRunnerRegistry, UnifiedJobRunner};
+pub use runner_registry::{JobRunnerRegistry, UnifiedJobOutcome, UnifiedJobRunner};
 
 mod terminal;
 
@@ -41,9 +40,9 @@ pub struct UnifiedClaimedJob {
 
 /// Convenience entry point using the default concurrency. Production callers
 /// go through [`crate::workers::spawn_unified::spawn_unified_worker`], which
-/// always calls [`unified_worker_loop_with_concurrency`] directly with
-/// `cfg.unified_worker_concurrency`; this wrapper exists for tests and any
-/// future direct caller that doesn't need a configured value.
+/// calls the activity-aware loop with `cfg.unified_worker_concurrency`; this
+/// wrapper exists for tests and any future direct caller that doesn't need a
+/// configured value.
 #[allow(dead_code)]
 pub(crate) async fn unified_worker_loop(
     pool: Arc<SqlitePool>,
@@ -114,12 +113,34 @@ pub(crate) async fn unified_worker_loop_with_concurrency(
 /// configured value (matches `Config::source_job_concurrency_limit`'s
 /// default). Production callers go through
 /// [`crate::workers::spawn_unified::spawn_unified_worker`], which always
-/// passes `cfg.source_job_concurrency_limit` explicitly.
+/// passes `cfg.source_job_concurrency_limit` and shared activity state
+/// explicitly.
 const DEFAULT_SOURCE_CONCURRENCY: usize = 4;
 
 pub(crate) async fn unified_worker_loop_with_concurrency_limits(
     pool: Arc<SqlitePool>,
     notify: Arc<Notify>,
+    shutdown: CancellationToken,
+    registry: Option<Arc<JobRunnerRegistry>>,
+    concurrency: usize,
+    source_concurrency: usize,
+) {
+    unified_worker_loop_with_concurrency_limits_and_activity(
+        pool,
+        notify,
+        Arc::new(WorkerActivity::default()),
+        shutdown,
+        registry,
+        concurrency,
+        source_concurrency,
+    )
+    .await;
+}
+
+pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
+    pool: Arc<SqlitePool>,
+    notify: Arc<Notify>,
+    activity: Arc<WorkerActivity>,
     shutdown: CancellationToken,
     registry: Option<Arc<JobRunnerRegistry>>,
     concurrency: usize,
@@ -196,7 +217,14 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits(
                         let pool = Arc::clone(&pool);
                         let shutdown = shutdown.clone();
                         let registry = registry.clone();
+                        // Increment before spawning so a task can never begin
+                        // executing without being visible to the process-level
+                        // idle monitor. The durable running row covers the
+                        // short interval between the claim transaction and
+                        // this process-local handoff.
+                        let activity_guard = activity.begin();
                         in_flight.push(tokio::spawn(async move {
+                            let _activity_guard = activity_guard;
                             let _source_permit = source_permit;
                             run_unified_claimed(&pool, &claimed, &shutdown, registry.as_deref())
                                 .await;
@@ -266,8 +294,9 @@ pub(crate) async fn mark_job_failed_for_tests(
             request_json: None,
             auth_snapshot: AuthSnapshot::default(),
         },
-        LifecycleStatus::Failed,
+        axon_api::source::LifecycleStatus::Failed,
         PipelinePhase::Complete,
+        None,
         Some(error),
     )
     .await
@@ -344,12 +373,13 @@ pub(crate) async fn run_unified_claimed(
     }
 
     match run_result {
-        Ok(Ok(())) => {
+        Ok(Ok(outcome)) => {
             if let Err(mark_error) = terminal::mark_terminal(
                 pool,
                 claimed,
-                LifecycleStatus::Completed,
+                outcome.status,
                 PipelinePhase::Complete,
+                outcome.counts,
                 None,
             )
             .await

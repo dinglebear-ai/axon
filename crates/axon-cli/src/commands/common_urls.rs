@@ -136,6 +136,25 @@ fn expand_url_glob_seed_inner(seed: &str, depth: usize, out: &mut Vec<String>, w
     }
 }
 
+fn split_url_glob_patterns(raw: &str) -> Vec<&str> {
+    let mut patterns = Vec::new();
+    let mut start = 0;
+    let mut brace_depth = 0_u32;
+    for (index, character) in raw.char_indices() {
+        match character {
+            '{' => brace_depth = brace_depth.saturating_add(1),
+            '}' => brace_depth = brace_depth.saturating_sub(1),
+            ',' if brace_depth == 0 => {
+                patterns.push(&raw[start..index]);
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    patterns.push(&raw[start..]);
+    patterns
+}
+
 pub fn parse_urls(cfg: &Config) -> Vec<String> {
     let mut out = Vec::new();
     let mut raw = Vec::new();
@@ -150,7 +169,8 @@ pub fn parse_urls(cfg: &Config) -> Vec<String> {
     raw.extend(
         cfg.url_glob
             .iter()
-            .map(|s| s.trim())
+            .flat_map(|value| split_url_glob_patterns(value))
+            .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string),
     );

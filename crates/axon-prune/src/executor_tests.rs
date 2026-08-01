@@ -219,6 +219,63 @@ async fn old_generation_passes_fence_and_deletes() {
 }
 
 #[tokio::test]
+async fn source_prune_requires_the_reviewed_generation_to_remain_current() {
+    let mut plan = cleanup_plan();
+    let reviewed = SourceGenerationId::new("gen-reviewed");
+    for step in &mut plan.steps {
+        step.generation = Some(reviewed.clone());
+    }
+    let target = FakePruneTarget::from_steps(&plan.steps).with_current_generation(reviewed.clone());
+    let executor = PruneExecutor::new(target);
+
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
+
+    assert_eq!(result.status, LifecycleStatus::Completed);
+    assert!(result.deleted_counts.total() > 0);
+}
+
+#[tokio::test]
+async fn source_prune_fails_before_apply_when_generation_changed_after_planning() {
+    let mut plan = cleanup_plan();
+    for step in &mut plan.steps {
+        step.generation = Some(SourceGenerationId::new("gen-reviewed"));
+    }
+    let applied = Arc::new(AtomicBool::new(false));
+    let target = ChangedGenerationTarget {
+        applied: Arc::clone(&applied),
+    };
+    let executor = PruneExecutor::new(target);
+
+    let result = executor.execute(&plan, &PruneAuthz::admin()).await;
+
+    assert!(matches!(
+        result,
+        Err(PruneDenied::FenceCheckFailed { reason })
+            if reason.contains("changed from gen-reviewed to gen-new")
+    ));
+    assert!(!applied.load(Ordering::SeqCst), "apply must not run");
+}
+
+struct ChangedGenerationTarget {
+    applied: Arc<AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl PruneTarget for ChangedGenerationTarget {
+    async fn current_generation(
+        &self,
+        _source_id: Option<&str>,
+    ) -> Result<Option<SourceGenerationId>, String> {
+        Ok(Some(SourceGenerationId::new("gen-new")))
+    }
+
+    async fn apply(&self, _step: &PruneStep) -> Result<StepExecution, String> {
+        self.applied.store(true, Ordering::SeqCst);
+        Ok(StepExecution::deleted(1))
+    }
+}
+
+#[tokio::test]
 async fn partial_failure_records_remaining_debt() {
     let plan = cleanup_plan();
     // Force the graph boundary to fail; other boundaries still delete.
@@ -227,11 +284,15 @@ async fn partial_failure_records_remaining_debt() {
     let result = executor.execute(&plan, &PruneAuthz::admin()).await.unwrap();
 
     assert_eq!(result.status, LifecycleStatus::CompletedDegraded);
-    // The failed graph step contributes its estimated deletes to remaining debt.
+    // The failed graph step and the recovery-critical ledger row both remain
+    // as cleanup debt.
     let graph_est = cleanup_debt_estimate().graph_nodes + cleanup_debt_estimate().graph_edges;
-    assert_eq!(result.cleanup_debt_remaining, graph_est);
-    // Non-graph boundaries still deleted.
+    let ledger_est = cleanup_debt_estimate().ledger_generations;
+    assert_eq!(result.cleanup_debt_remaining, graph_est + ledger_est);
+    // Independent non-graph boundaries still delete, but ledger identity is
+    // preserved until the failed boundary can be retried.
     assert!(result.deleted_counts.vector_points > 0);
+    assert_eq!(result.deleted_counts.ledger_generations, 0);
     let graph_step = result
         .steps
         .iter()
@@ -240,6 +301,18 @@ async fn partial_failure_records_remaining_debt() {
     assert_eq!(graph_step.status, LifecycleStatus::Failed);
     assert_eq!(graph_step.deleted, 0);
     assert!(graph_step.skipped_reason.is_some());
+    let ledger_step = result
+        .steps
+        .iter()
+        .find(|s| s.target == PruneTargetKind::Ledger)
+        .unwrap();
+    assert_eq!(ledger_step.status, LifecycleStatus::Skipped);
+    assert!(
+        ledger_step
+            .skipped_reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("earlier cleanup failure"))
+    );
 }
 
 // --- Admin gate on execute() ------------------------------------------------

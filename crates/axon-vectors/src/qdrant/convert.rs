@@ -10,9 +10,9 @@ use std::collections::HashMap;
 
 use axon_api::source::*;
 use qdrant_client::qdrant::{
-    CreateCollection, CreateFieldIndexCollection, DenseVector, FieldCondition, FieldType, Filter,
-    HnswConfigDiff, Match, NamedVectors, OptimizersConfigDiff, PointStruct, QuantizationConfig,
-    QuantizationType, ScalarQuantization, SparseVector as QdrantSparseVector,
+    CreateCollection, CreateFieldIndexCollection, DatetimeRange, DenseVector, FieldCondition,
+    FieldType, Filter, HnswConfigDiff, Match, NamedVectors, OptimizersConfigDiff, PointStruct,
+    QuantizationConfig, QuantizationType, ScalarQuantization, SparseVector as QdrantSparseVector,
     SparseVectorConfig as QdrantSparseVectorConfig, SparseVectorParams, Value,
     Vector as QdrantVector, VectorParams, VectorParamsMap, Vectors, VectorsConfig, condition,
     r#match, quantization_config, vector, vectors, vectors_config,
@@ -268,6 +268,42 @@ pub(crate) fn qdrant_field_conditions(
 }
 
 fn field_condition(field: &str, value: &serde_json::Value) -> qdrant_client::qdrant::Condition {
+    if let Some(range) = value.as_object()
+        && !range.is_empty()
+        && range
+            .keys()
+            .all(|operator| matches!(operator.as_str(), "gt" | "gte" | "lt" | "lte"))
+    {
+        let timestamp = |operator: &str| {
+            range
+                .get(operator)
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                .map(|value| prost_types::Timestamp {
+                    seconds: value.timestamp(),
+                    nanos: value.timestamp_subsec_nanos() as i32,
+                })
+        };
+        return qdrant_client::qdrant::Condition {
+            condition_one_of: Some(condition::ConditionOneOf::Field(FieldCondition {
+                key: field.to_string(),
+                r#match: None,
+                range: None,
+                geo_bounding_box: None,
+                geo_radius: None,
+                values_count: None,
+                geo_polygon: None,
+                datetime_range: Some(DatetimeRange {
+                    lt: timestamp("lt"),
+                    gt: timestamp("gt"),
+                    gte: timestamp("gte"),
+                    lte: timestamp("lte"),
+                }),
+                is_empty: None,
+                is_null: None,
+            })),
+        };
+    }
     qdrant_client::qdrant::Condition {
         condition_one_of: Some(condition::ConditionOneOf::Field(FieldCondition {
             key: field.to_string(),

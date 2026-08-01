@@ -10,7 +10,7 @@ fn snapshot_test_db_path() -> std::path::PathBuf {
 }
 
 #[tokio::test]
-async fn public_create_generation_retries_real_wal_stale_snapshot_exactly_once() {
+async fn public_create_generation_reserves_writer_before_snapshot_read() {
     let path = snapshot_test_db_path();
     let path_string = path.to_string_lossy().to_string();
     let store = Arc::new(
@@ -32,16 +32,23 @@ async fn public_create_generation_retries_real_wal_stale_snapshot_exactly_once()
     });
 
     entered_wait.await;
-    sqlx::query("UPDATE sources SET updated_at = updated_at WHERE source_id = 'src_sqlite'")
-        .execute(&writer)
-        .await
-        .expect("writer commits after reader snapshot");
+    let competing_writer = tokio::spawn(async move {
+        sqlx::query("UPDATE sources SET updated_at = updated_at WHERE source_id = 'src_sqlite'")
+            .execute(&writer)
+            .await
+            .expect("competing writer commits after generation transaction")
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        !competing_writer.is_finished(),
+        "BEGIN IMMEDIATE must reserve the writer before reading generation state"
+    );
     resume.notify_one();
 
     let generation = creating
         .await
         .expect("generation task joins")
-        .expect("public LedgerStore retry recovers SQLITE_BUSY_SNAPSHOT");
+        .expect("generation creation succeeds");
     assert_eq!(generation.generation.0, "gen_1");
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM source_generations WHERE source_id = 'src_sqlite'",
@@ -51,7 +58,7 @@ async fn public_create_generation_retries_real_wal_stale_snapshot_exactly_once()
     .expect("count generations");
     assert_eq!(count, 1, "retry must not duplicate the generation");
 
-    writer.close().await;
+    competing_writer.await.expect("competing writer task joins");
     std::fs::remove_file(path).expect("remove snapshot test database");
 }
 

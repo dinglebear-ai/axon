@@ -151,6 +151,7 @@ async fn retrieval_ask_context_with_hits(
     // the fetch width; `ask_chunk_limit` (default 24) bounds the entries
     // rendered into context.
     let fetch_limit = cfg.ask_hybrid_candidates.max(cfg.ask_chunk_limit).max(1) as u32;
+    let (since, before) = super::retrieval::normalize_time_bounds(cfg, chrono::Utc::now())?;
 
     log_info(&format!(
         "{label} retrieval: axon-retrieval engine collection={} fetch_limit={} chunk_limit={}",
@@ -167,6 +168,9 @@ async fn retrieval_ask_context_with_hits(
             query: question.to_string(),
             collection: cfg.collection.clone(),
             limit: fetch_limit,
+            hybrid: cfg.hybrid_search_enabled,
+            since,
+            before,
         },
     )
     .await

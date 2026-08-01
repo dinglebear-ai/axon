@@ -263,8 +263,6 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: "lts/*"
-          cache: pnpm
-          cache-dependency-path: .aurora-design-system/pnpm-lock.yaml
 
       - name: Install Aurora token dependencies
         working-directory: .aurora-design-system

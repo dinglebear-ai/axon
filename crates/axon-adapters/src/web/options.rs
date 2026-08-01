@@ -19,6 +19,11 @@ use crate::providers::chrome_render::map_render_mode;
 const DEFAULT_MIN_MARKDOWN_CHARS: usize = 200;
 
 pub(super) fn effective_render_mode(values: &MetadataMap) -> RenderMode {
+    if bool_option(values, "cache_http_only").unwrap_or(false)
+        && cache_policy(values) != CachePolicy::Bypass
+    {
+        return RenderMode::Http;
+    }
     values
         .get("render_mode")
         .and_then(|value| serde_json::from_value::<RenderMode>(value.clone()).ok())
@@ -126,6 +131,29 @@ pub(super) fn automation_script_ref(values: &MetadataMap) -> Option<ArtifactRef>
     })
 }
 
+pub(super) fn render_metadata(values: &MetadataMap) -> MetadataMap {
+    const KEYS: &[&str] = &[
+        "normalize",
+        "block_assets",
+        "chrome_wait_for_selector",
+        "root_selector",
+        "exclude_selector",
+        "chrome_screenshot",
+        "format",
+        "output_dir",
+    ];
+    MetadataMap(
+        KEYS.iter()
+            .filter_map(|key| {
+                values
+                    .get(*key)
+                    .cloned()
+                    .map(|value| ((*key).to_string(), value))
+            })
+            .collect(),
+    )
+}
+
 fn bool_option(values: &MetadataMap, key: &str) -> Option<bool> {
     values.get(key).and_then(Value::as_bool)
 }
@@ -167,13 +195,9 @@ pub(super) fn build_discovery_config(plan: &SourcePlan) -> Config {
     let mut cfg = Config {
         output_dir: Default::default(),
         embed: false,
-        // Defense-in-depth: adapter-owned discovery must never opt into
-        // Spider's built-in crawl-result
-        // caching or the whole-crawl disk-TTL shortcut that used to live in
-        // `axon-services::crawl_sync` — `LedgerStore::diff_manifest` is now the
-        // sole staleness authority. `Config::default()` already sets this to
-        // `false`; forcing it here survives a future default flip.
-        cache: false,
+        // The ledger remains the publication/staleness authority, while this
+        // flag controls Spider's HTTP response cache during acquisition.
+        cache: cache_policy(values) != CachePolicy::Bypass,
         render_mode: map_render_mode(effective_render_mode(values)),
         ..Config::default()
     };
@@ -215,6 +239,43 @@ pub(super) fn build_discovery_config(plan: &SourcePlan) -> Config {
     }
     if values.contains_key("cache_policy") {
         cfg.etag_conditional = cache_policy(values) == CachePolicy::Revalidate;
+    }
+    cfg.cache_http_only = bool_option(values, "cache_http_only").unwrap_or(false);
+    cfg.normalize = bool_option(values, "normalize").unwrap_or(false);
+    cfg.block_assets = bool_option(values, "block_assets").unwrap_or(false);
+    cfg.chrome_screenshot = bool_option(values, "chrome_screenshot").unwrap_or(false);
+    cfg.sitemap_only = bool_option(values, "sitemap_only").unwrap_or(false);
+    cfg.chrome_wait_for_selector = values
+        .get("chrome_wait_for_selector")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    cfg.root_selector = values
+        .get("root_selector")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    cfg.exclude_selector = values
+        .get("exclude_selector")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if let Some(value) = values.get("format")
+        && let Ok(format) = serde_json::from_value(value.clone())
+    {
+        cfg.format = format;
+    }
+    cfg.path_budgets = values
+        .get("path_budgets")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|entries| entries.iter())
+        .filter_map(|(path, limit)| {
+            limit
+                .as_u64()
+                .and_then(|limit| u32::try_from(limit).ok())
+                .map(|limit| (path.clone(), limit))
+        })
+        .collect();
+    if let Some(output_dir) = values.get("output_dir").and_then(Value::as_str) {
+        cfg.output_dir = output_dir.into();
     }
     cfg.enable_verticals = verticals_enabled(values);
     if let Some(value) = vertical_cache_ttl_secs(values) {

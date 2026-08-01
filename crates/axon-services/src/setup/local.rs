@@ -53,7 +53,9 @@ pub async fn run_local_setup(mode: LocalSetupMode) -> io::Result<LocalSetupRepor
 /// stays at the default. The deployed `.env` value is the authoritative bind, and
 /// this matches how the `setup`/`preflight` readiness check resolves the axon URL.
 pub async fn stack_already_healthy() -> bool {
-    let host = std::env::var("AXON_HTTP_HOST").unwrap_or_default();
+    let host = std::env::var("AXON_HTTP_HOST")
+        .or_else(|_| std::env::var("AXON_BIND"))
+        .unwrap_or_default();
     let port = std::env::var("AXON_HTTP_PORT")
         .ok()
         .and_then(|value| value.trim().parse::<u16>().ok())
@@ -229,6 +231,7 @@ fn build_report(
 ) -> LocalSetupReport {
     let elapsed_ms = started.elapsed().as_millis();
     let has_errors = phase_errors(&phases);
+    let server_url = report_server_url(&env_path);
     LocalSetupReport {
         mode,
         elapsed_ms,
@@ -240,11 +243,35 @@ fn build_report(
         env_path,
         config_path,
         compose_dir,
-        web_panel_url: DEFAULT_SERVER_URL.to_string(),
-        mcp_url: format!("{DEFAULT_SERVER_URL}/mcp"),
+        web_panel_url: server_url.clone(),
+        mcp_url: format!("{server_url}/mcp"),
         phases,
         has_errors,
     }
+}
+
+fn report_server_url(env_path: &Path) -> String {
+    let file_values = env::read_env_values(env_path).unwrap_or_default();
+    report_server_url_with(&file_values, |key| std::env::var(key).ok())
+}
+
+fn report_server_url_with(
+    file_values: &BTreeMap<String, String>,
+    process_value: impl Fn(&str) -> Option<String>,
+) -> String {
+    let host = process_value("AXON_HTTP_HOST")
+        .or_else(|| process_value("AXON_BIND"))
+        .or_else(|| file_values.get("AXON_HTTP_HOST").cloned())
+        .or_else(|| file_values.get("AXON_BIND").cloned())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+    let port = process_value("AXON_HTTP_PORT")
+        .or_else(|| file_values.get("AXON_HTTP_PORT").cloned())
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .unwrap_or(8001);
+    axon_readyz_url(&host, port)
+        .strip_suffix("/readyz")
+        .unwrap_or(DEFAULT_SERVER_URL)
+        .to_string()
 }
 
 struct EnvPhaseState {

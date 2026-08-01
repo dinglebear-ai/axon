@@ -35,15 +35,10 @@ async fn resolve(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn E
     let result = GraphStore::resolve(
         &graph,
         GraphResolveRequest {
-            identifiers: vec![GraphIdentifier {
-                kind: flag_value(cfg, "--kind").unwrap_or_default(),
-                canonical_uri: identifier.contains("://").then(|| identifier.to_string()),
-                value: (!identifier.contains("://")).then(|| identifier.to_string()),
-                node_id: None,
-                source_id: None,
-                source_item_key: None,
-                metadata: Default::default(),
-            }],
+            identifiers: vec![resolvable_identifier(
+                identifier,
+                flag_value(cfg, "--kind").unwrap_or_default(),
+            )],
             include_edges: false,
         },
     )
@@ -62,7 +57,7 @@ async fn query(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Err
             // ever tried as a node_id, so `graph query <uri>` resolved nothing
             // (URIs are `canonical_uri`/`stable_key` aliases, not node ids) and
             // returned zero nodes.
-            start: query_start_identifier(positional(cfg, 1, "query")?),
+            start: resolvable_identifier(positional(cfg, 1, "query")?, String::new()),
             edges: Vec::new(),
             direction: GraphDirection::Both,
             depth: 1,
@@ -76,15 +71,15 @@ async fn query(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Err
     print_value(result)
 }
 
-/// Build a start identifier for `graph query` that resolves whether the arg is
-/// a canonical URI, a stable key, or a node id. `GraphStore::query`'s
+/// Build an identifier that resolves whether the arg is a canonical URI, a
+/// stable key, or a node id. `GraphStore`'s
 /// `resolve_one` tries `node_id`, then `canonical_uri`, then `value`
 /// (stable_key) in order and returns the first hit, so a URI is offered as
 /// `canonical_uri` and anything else as both a `value` and a `node_id`.
-fn query_start_identifier(identifier: &str) -> GraphIdentifier {
+fn resolvable_identifier(identifier: &str, kind: String) -> GraphIdentifier {
     let is_uri = identifier.contains("://");
     GraphIdentifier {
-        kind: String::new(),
+        kind,
         canonical_uri: is_uri.then(|| identifier.to_string()),
         value: (!is_uri).then(|| identifier.to_string()),
         node_id: (!is_uri).then(|| GraphNodeId::new(identifier.to_string())),
@@ -97,26 +92,41 @@ fn query_start_identifier(identifier: &str) -> GraphIdentifier {
 async fn node(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let node_id = positional(cfg, 1, "node_id")?;
     let graph = store(cfg, context).await?;
-    let detail = graph_svc::node_detail(
-        &graph,
-        GraphNodeId::new(node_id),
-        cfg.positional
-            .iter()
-            .any(|value| value == "--include-edges"),
-    )
-    .await
-    .map_err(api_error)?
-    .ok_or_else(|| format!("graph node {node_id} not found"))?;
+    let include_evidence = cfg
+        .positional
+        .iter()
+        .any(|value| value == "--include-evidence");
+    let include_edges = cfg
+        .positional
+        .iter()
+        .any(|value| value == "--include-edges")
+        || include_evidence;
+    let mut detail = graph_svc::node_detail(&graph, GraphNodeId::new(node_id), include_edges)
+        .await
+        .map_err(api_error)?
+        .ok_or_else(|| format!("graph node {node_id} not found"))?;
+    if !include_evidence {
+        for edge in &mut detail.edges {
+            edge.evidence.clear();
+        }
+    }
     print_value(serde_json::json!({ "node": detail.node, "edges": detail.edges }))
 }
 
 async fn edge(cfg: &Config, context: &ServiceContext) -> Result<(), Box<dyn Error>> {
     let edge_id = positional(cfg, 1, "edge_id")?;
     let graph = store(cfg, context).await?;
-    let edge = GraphStore::get_edge(&graph, GraphEdgeId::new(edge_id))
+    let mut edge = GraphStore::get_edge(&graph, GraphEdgeId::new(edge_id))
         .await
         .map_err(api_error)?
         .ok_or_else(|| format!("graph edge {edge_id} not found"))?;
+    if !cfg
+        .positional
+        .iter()
+        .any(|value| value == "--include-evidence")
+    {
+        edge.evidence.clear();
+    }
     print_value(edge)
 }
 

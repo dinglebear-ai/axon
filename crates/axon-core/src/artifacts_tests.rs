@@ -64,6 +64,23 @@ async fn atomic_write_explicit_replaces_an_existing_file_without_temp_leaks() {
     assert_eq!(entries, [std::ffi::OsString::from("state.json")]);
 }
 
+#[tokio::test]
+#[serial_test::serial]
+async fn atomic_write_explicit_accepts_a_parentless_relative_filename() {
+    let temp = tempfile::tempdir().unwrap();
+    let original_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(temp.path()).unwrap();
+
+    let result = atomic_write_explicit("artifact.bin", b"content").await;
+
+    std::env::set_current_dir(original_dir).unwrap();
+    assert_eq!(result.unwrap(), std::path::PathBuf::from("artifact.bin"));
+    assert_eq!(
+        std::fs::read(temp.path().join("artifact.bin")).unwrap(),
+        b"content"
+    );
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn atomic_write_under_rejects_symlinked_parent_escape() {

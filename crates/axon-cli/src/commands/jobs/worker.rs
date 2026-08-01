@@ -36,7 +36,7 @@ pub(crate) async fn run_worker_process(cfg: Arc<Config>) -> Result<(), Box<dyn E
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?
     else {
         emit_not_acquired(&cfg);
-        return Ok(());
+        return Err("jobs.worker_already_active: another worker process owns this queue".into());
     };
 
     let idle_exit_secs = resolve_idle_exit_secs(
@@ -116,6 +116,9 @@ fn emit_report(
                     "idle_exit_secs": idle_exit_secs,
                     "elapsed_secs": report.elapsed_secs,
                     "recovered_jobs": report.recovered_jobs,
+                    "final_active_jobs": report.final_active_jobs,
+                    "final_in_flight_jobs": report.final_in_flight_jobs,
+                    "sqlite_path": cfg.sqlite_path,
                 }
             })
         );

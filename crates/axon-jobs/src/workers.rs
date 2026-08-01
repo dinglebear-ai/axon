@@ -7,13 +7,14 @@ mod watch_scheduler;
 mod watchdog;
 
 use spawn_unified::spawn_unified_worker;
-pub use unified::{JobRunnerRegistry, UnifiedJobRunner};
+pub use unified::{JobRunnerRegistry, UnifiedJobOutcome, UnifiedJobRunner};
 
 pub(crate) use cancel_registry::cancel_job;
 
 use axon_core::config::Config;
 use sqlx::SqlitePool;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -24,9 +25,34 @@ use tokio_util::sync::CancellationToken;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const WORKER_BATCH_LIMIT: usize = 32;
 
+#[derive(Debug, Default)]
+pub(crate) struct WorkerActivity {
+    in_flight: AtomicUsize,
+}
+
+impl WorkerActivity {
+    fn begin(self: &Arc<Self>) -> WorkerActivityGuard {
+        self.in_flight.fetch_add(1, Ordering::AcqRel);
+        WorkerActivityGuard(Arc::clone(self))
+    }
+
+    fn in_flight(&self) -> usize {
+        self.in_flight.load(Ordering::Acquire)
+    }
+}
+
+struct WorkerActivityGuard(Arc<WorkerActivity>);
+
+impl Drop for WorkerActivityGuard {
+    fn drop(&mut self) {
+        self.0.in_flight.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
 /// Handles to wake unified worker tasks.
 pub struct WorkerHandles {
     pub(crate) unified: Arc<Notify>,
+    activity: Arc<WorkerActivity>,
     shutdown: CancellationToken,
     #[allow(dead_code)]
     pub(crate) worker_handles: Vec<tokio::task::JoinHandle<()>>,
@@ -36,6 +62,15 @@ impl WorkerHandles {
     /// Notify the unified durable-job worker that a job-backed operation was queued.
     pub fn notify_unified(&self) {
         self.unified.notify_one();
+    }
+
+    /// Number of jobs claimed by this process whose runner has not returned.
+    ///
+    /// This is the authoritative process-local drain signal. Durable rows are
+    /// still queried for queued work, but an idle-exit decision must not rely
+    /// on a database projection alone while a claimed task remains alive.
+    pub fn in_flight_jobs(&self) -> usize {
+        self.activity.in_flight()
     }
 }
 
@@ -53,6 +88,7 @@ pub fn spawn_workers(
     job_runner_registry: Option<Arc<JobRunnerRegistry>>,
 ) -> WorkerHandles {
     let unified_notify = Arc::new(Notify::new());
+    let activity = Arc::new(WorkerActivity::default());
     let shutdown = CancellationToken::new();
 
     tracing::info!(
@@ -64,6 +100,7 @@ pub fn spawn_workers(
         spawn_unified_worker(
             Arc::clone(&pool),
             Arc::clone(&unified_notify),
+            Arc::clone(&activity),
             shutdown.clone(),
             job_runner_registry,
             cfg.unified_worker_concurrency,
@@ -87,6 +124,7 @@ pub fn spawn_workers(
 
     WorkerHandles {
         unified: unified_notify,
+        activity,
         shutdown,
         worker_handles,
     }

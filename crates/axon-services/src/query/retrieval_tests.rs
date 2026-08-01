@@ -8,13 +8,33 @@ use axon_ledger::store::FakeLedgerStore;
 use axon_vectors::store::{FakeVectorStore, VectorStore};
 use axon_vectors::testing::{TestPointSpec, test_clean_point, test_collection_spec_hybrid};
 
-use super::query_via_retrieval;
+use super::{normalize_time_bounds, query_via_retrieval};
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::test_support::NoopServiceRuntime;
 use crate::types::Pagination;
 
 const BATCH_ID: &str = "00000000-0000-0000-0000-000000000001";
 const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
+
+#[test]
+fn temporal_bounds_normalize_relative_dates_and_reject_reversed_windows() {
+    let now = chrono::DateTime::parse_from_rfc3339("2026-07-31T12:00:00Z")
+        .unwrap()
+        .with_timezone(&chrono::Utc);
+    let mut cfg = Config::test_default();
+    cfg.since = Some("1w".to_string());
+    cfg.before = Some("2026-07-31".to_string());
+    let (since, before) = normalize_time_bounds(&cfg, now).unwrap();
+    assert_eq!(since.as_deref(), Some("2026-07-24T12:00:00+00:00"));
+    assert_eq!(
+        before.as_deref(),
+        Some("2026-07-31T23:59:59.999999999+00:00")
+    );
+
+    cfg.since = Some("2026-08-01".to_string());
+    let error = normalize_time_bounds(&cfg, now).unwrap_err();
+    assert!(error.to_string().contains("--since must not be later"));
+}
 
 fn point(point_id: &str, chunk_id: &str, vector: &[f32], text: &str) -> VectorPoint {
     test_clean_point(TestPointSpec {

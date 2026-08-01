@@ -2,11 +2,13 @@
 # Idempotent bootstrap for axon's Incus deployment.
 #
 # Split model (confirmed in production 2026-07-08, bead axon_rust-4m749.3):
-#   - qdrant (default mode only)/tei/chrome run as NESTED DOCKER containers
+#   - tei/chrome run as NESTED DOCKER containers
 #     inside the Incus container — they need the GPU-passthrough Docker
 #     Engine setup this script builds.
-#   - axon itself runs as a NATIVE BINARY via systemd directly inside the
-#     Incus container, NOT as a nested-Docker service. A containerized axon
+#   - axon's binary is deployed into Incus, but its native service is disabled
+#     by default because the host CLI and an Incus process cannot safely share
+#     a bind-mounted SQLite WAL. Set AXON_INCUS_RUN_SERVER=true only when the
+#     host never opens that database. A containerized axon
 #     talking to nested-Docker qdrant/tei/chrome over the "jakenet" bridge
 #     needs no NAT hairpin of its own, but publishing axon's port back out to
 #     the host (for SWAG/Cloudflare) requires an extra NAT hop through
@@ -20,11 +22,11 @@
 #     qdrant/tei/chrome over their already-published localhost ports.
 #
 # Usage:
-#   deploy/incus/bootstrap.sh [default|external-qdrant]
+#   deploy/incus/bootstrap.sh [external-qdrant|bundled-qdrant]
 #
-# default mode:          bundled qdrant starts alongside tei/chrome.
-# external-qdrant mode:  requires AXON_EXTERNAL_QDRANT_URL; bundled qdrant is
-#                        not started, axon points at the external instance.
+# external-qdrant mode (default): requires AXON_EXTERNAL_QDRANT_URL; bundled
+#                                 qdrant is not started.
+# bundled-qdrant mode:            explicit opt-in for other installations.
 #
 # Optional: set AXON_INCUS_PUBLISH_LISTEN (e.g. "100.88.16.79:40090") to have
 # this script manage the Incus `proxy` device that exposes axon's HTTP port
@@ -43,19 +45,26 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=deploy/incus/proxy-devices.sh
+source "$REPO_ROOT/deploy/incus/proxy-devices.sh"
 CONTAINER_NAME="${AXON_INCUS_CONTAINER:-axon}"
 PROFILE_NAME="axon-container-profile"
 GPU_PCI_ADDRESS="${AXON_GPU_PCI_ADDRESS:-0000:03:00.0}"
 DEPLOY_PATH="/opt/axon-deploy"
 HOST_AXON_BINARY="${AXON_INCUS_BINARY:-$REPO_ROOT/target/release-fast/axon}"
-MODE="${1:-default}"
+MODE="${1:-external-qdrant}"
+RUN_INCUS_SERVER="${AXON_INCUS_RUN_SERVER:-false}"
 
 log() { echo "[bootstrap] $*"; }
 fatal() { echo "[bootstrap] FATAL: $*" >&2; exit 1; }
 
 case "$MODE" in
-  default|external-qdrant) ;;
-  *) fatal "unknown mode '$MODE' (expected 'default' or 'external-qdrant')" ;;
+  external-qdrant|bundled-qdrant) ;;
+  *) fatal "unknown mode '$MODE' (expected 'external-qdrant' or 'bundled-qdrant')" ;;
+esac
+case "$RUN_INCUS_SERVER" in
+  true|false) ;;
+  *) fatal "AXON_INCUS_RUN_SERVER must be true or false" ;;
 esac
 if [ "$MODE" = "external-qdrant" ] && [ -z "${AXON_EXTERNAL_QDRANT_URL:-}" ]; then
   fatal "AXON_EXTERNAL_QDRANT_URL must be set for external-qdrant mode"
@@ -262,7 +271,7 @@ incus exec "$CONTAINER_NAME" -- docker network inspect "$docker_network_name" >/
 ### 11. Memory-headroom check before starting bundled qdrant. This is the
 ### mandatory gate — dookie has a real, documented qdrant OOM-crashloop
 ### history; a config-integrity checksum alone would not have caught it.
-if [ "$MODE" = "default" ]; then
+if [ "$MODE" = "bundled-qdrant" ]; then
   avail_kb="$(incus exec "$CONTAINER_NAME" -- awk '/MemAvailable/{print $2}' /proc/meminfo)"
   avail_gb=$(( avail_kb / 1024 / 1024 ))
   if [ "$avail_gb" -lt 18 ]; then
@@ -290,13 +299,13 @@ else
   incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
 fi
 
-### 13. Bring up ONLY the nested-Docker services — qdrant (default mode)/tei/
+### 13. Bring up ONLY the nested-Docker services — qdrant (explicit bundled mode)/tei/
 ### chrome, never axon itself (see split-model rationale at the top of this
 ### file). Explicit service names, not a bare `up -d`, so this stays correct
 ### even if docker-compose.prod.yaml's `axon` service definition changes
 ### later.
-if [ "$MODE" = "default" ]; then
-  log "=== bundled qdrant IS starting locally (default mode) ==="
+if [ "$MODE" = "bundled-qdrant" ]; then
+  log "=== bundled qdrant IS starting locally (explicit bundled-qdrant mode) ==="
   incus exec "$CONTAINER_NAME" \
     --cwd "$DEPLOY_PATH" \
     -- docker compose --env-file .env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
@@ -313,7 +322,7 @@ fi
 ### healthchecks (true today).
 log "polling for nested-Docker services healthy (bounded: up to 360s)"
 docker_services="axon-tei axon-chrome"
-[ "$MODE" = "default" ] && docker_services="axon-qdrant $docker_services"
+[ "$MODE" = "bundled-qdrant" ] && docker_services="axon-qdrant $docker_services"
 healthy=0
 for _ in $(seq 1 36); do
   statuses="$(incus exec "$CONTAINER_NAME" -- sh -c \
@@ -335,12 +344,17 @@ fi
 host_arch="$(uname -m)"
 guest_arch="$(incus exec "$CONTAINER_NAME" -- uname -m)"
 [ "$host_arch" = "$guest_arch" ] || fatal "host/container architecture mismatch: ${host_arch} != ${guest_arch}"
+host_glibc="$(getconf GNU_LIBC_VERSION)"
+guest_glibc="$(incus exec "$CONTAINER_NAME" -- getconf GNU_LIBC_VERSION)"
+[ "$host_glibc" = "$guest_glibc" ] || fatal "host/container glibc mismatch: ${host_glibc} != ${guest_glibc}"
 host_sha="$(sha256sum "$HOST_AXON_BINARY" | awk '{print $1}')"
 log "atomically deploying host Axon binary (${host_sha})"
 incus file push "$HOST_AXON_BINARY" "$CONTAINER_NAME/usr/local/bin/axon.new"
 guest_sha="$(incus exec "$CONTAINER_NAME" -- sha256sum /usr/local/bin/axon.new | awk '{print $1}')"
 [ "$host_sha" = "$guest_sha" ] || fatal "pushed Axon binary checksum mismatch"
 incus exec "$CONTAINER_NAME" -- sh -c 'chmod 755 /usr/local/bin/axon.new && mv -f /usr/local/bin/axon.new /usr/local/bin/axon'
+incus exec "$CONTAINER_NAME" -- /usr/local/bin/axon --version >/dev/null ||
+  fatal "deployed Axon binary cannot execute inside $CONTAINER_NAME"
 
 ### 16. Install/refresh the axon-native systemd unit and (re)start it — always
 ### restart, even if the unit already existed, so a re-run of this script
@@ -356,7 +370,13 @@ incus exec "$CONTAINER_NAME" -- sh -c 'chmod 755 /usr/local/bin/axon.new && mv -
 ### in every case — a native axon-native unit inside this container always
 ### needs to listen on all interfaces to be reachable from the host/SWAG.
 log "installing axon-native systemd unit"
-cat > /tmp/axon-native.service <<UNIT
+unit_tmp="$(mktemp "${TMPDIR:-/tmp}/axon-native.service.XXXXXX")"
+cleanup_unit_tmp() {
+  rm -f -- "$unit_tmp"
+}
+trap cleanup_unit_tmp EXIT
+chmod 0600 "$unit_tmp"
+cat > "$unit_tmp" <<UNIT
 [Unit]
 Description=Axon unified server (native binary, Incus-hosted)
 After=network-online.target docker.service
@@ -377,25 +397,31 @@ User=root
 [Install]
 WantedBy=multi-user.target
 UNIT
-incus file push /tmp/axon-native.service "$CONTAINER_NAME/etc/systemd/system/axon-native.service"
-rm -f /tmp/axon-native.service
+incus file push "$unit_tmp" "$CONTAINER_NAME/etc/systemd/system/axon-native.service"
+cleanup_unit_tmp
+trap - EXIT
 incus exec "$CONTAINER_NAME" -- systemctl daemon-reload
-incus exec "$CONTAINER_NAME" -- systemctl enable axon-native.service >/dev/null 2>&1 || true
-incus exec "$CONTAINER_NAME" -- systemctl restart axon-native.service
+if [ "$RUN_INCUS_SERVER" = "true" ]; then
+  incus exec "$CONTAINER_NAME" -- systemctl enable axon-native.service >/dev/null 2>&1 || true
+  incus exec "$CONTAINER_NAME" -- systemctl restart axon-native.service
 
-### 17. Health-check polling for the native axon service — same bounded
-### pattern as step 14 (36 * 10s = 360s max).
-log "polling for axon-native healthy (bounded: up to 360s)"
-axon_healthy=0
-for _ in $(seq 1 36); do
-  if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 http://127.0.0.1:8001/healthz >/dev/null 2>&1; then
-    axon_healthy=1
-    break
+  ### 17. Health-check polling for the native axon service — same bounded
+  ### pattern as step 14 (36 * 10s = 360s max).
+  log "polling for axon-native healthy (bounded: up to 360s)"
+  axon_healthy=0
+  for _ in $(seq 1 36); do
+    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 http://127.0.0.1:8001/healthz >/dev/null 2>&1; then
+      axon_healthy=1
+      break
+    fi
+    sleep 10
+  done
+  if [ "$axon_healthy" != "1" ]; then
+    fatal "axon-native did not become healthy within the bounded window (360s) — inspect 'systemctl status axon-native' and 'journalctl -u axon-native' inside $CONTAINER_NAME"
   fi
-  sleep 10
-done
-if [ "$axon_healthy" != "1" ]; then
-  fatal "axon-native did not become healthy within the bounded window (360s) — inspect 'systemctl status axon-native' and 'journalctl -u axon-native' inside $CONTAINER_NAME"
+else
+  log "disabling axon-native; the host owns the shared SQLite worker runtime"
+  incus exec "$CONTAINER_NAME" -- systemctl disable --now axon-native.service >/dev/null 2>&1 || true
 fi
 
 ### 18. Optional: manage the Incus `proxy` device that exposes axon's HTTP
@@ -408,7 +434,10 @@ fi
 ### working deployment had it added by hand, outside any script, and losing
 ### it was the reason "axon.tootie.tv" 502'd after a redeploy), hence
 ### managing it here on every run.
-if [ -n "${AXON_INCUS_PUBLISH_LISTEN:-}" ]; then
+if [ "$RUN_INCUS_SERVER" != "true" ]; then
+  log "removing mcp-publish because axon-native is disabled"
+  incus config device remove "$CONTAINER_NAME" mcp-publish >/dev/null 2>&1 || true
+elif [ -n "${AXON_INCUS_PUBLISH_LISTEN:-}" ]; then
   log "ensuring proxy device forwards ${AXON_INCUS_PUBLISH_LISTEN} -> 127.0.0.1:8001"
   incus config device remove "$CONTAINER_NAME" mcp-publish >/dev/null 2>&1 || true
   incus config device add "$CONTAINER_NAME" mcp-publish proxy \
@@ -418,7 +447,29 @@ else
   log "AXON_INCUS_PUBLISH_LISTEN not set — not managing host port exposure for axon"
 fi
 
-### 19. Enable Incus-level autostart. The companion systemd unit
+### 19. Publish nested Chrome back to the host loopback. Host CLI commands use
+### AXON_CHROME_REMOTE_URL=http://127.0.0.1:6000, while Chrome runs inside this
+### Incus instance. Chrome's management response points clients at the
+### DevTools websocket on port 9222, so publish both ports. Reconcile the
+### proxies every run because instance-local devices disappear when a
+### container is recreated.
+chrome_publish_listen="tcp:${AXON_INCUS_CHROME_PUBLISH_LISTEN:-127.0.0.1:6000}"
+log "ensuring Chrome proxy ${chrome_publish_listen} -> 127.0.0.1:6000"
+ensure_loopback_proxy \
+  "$CONTAINER_NAME" \
+  chrome-publish \
+  "$chrome_publish_listen" \
+  tcp:127.0.0.1:6000
+
+chrome_cdp_publish_listen="tcp:${AXON_INCUS_CHROME_CDP_PUBLISH_LISTEN:-127.0.0.1:9222}"
+log "ensuring Chrome CDP proxy ${chrome_cdp_publish_listen} -> 127.0.0.1:9222"
+ensure_loopback_proxy \
+  "$CONTAINER_NAME" \
+  chrome-cdp-publish \
+  "$chrome_cdp_publish_listen" \
+  tcp:127.0.0.1:9222
+
+### 20. Enable Incus-level autostart. The companion systemd unit
 ### (axon-incus-bootstrap.service) is what actually re-runs THIS script after
 ### a host reboot — boot.autostart alone would restart the container but
 ### skip the nvidia-procfs re-application, GPU re-verification, and

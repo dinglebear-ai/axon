@@ -72,21 +72,20 @@ impl QdrantVectorStore {
         let _spec = self
             .require_collection_spec(&http, &collection, stage)
             .await?;
-        if let VectorDeleteSelector::Generation { .. } = &selector {
-            return delete_generation_points_server_side(&http, &collection, &selector, stage)
-                .await;
-        }
         if let VectorDeleteSelector::Collection { .. } = &selector {
             return delete_collection_points_by_scroll(self, &http, &collection, stage).await;
         }
         let body = delete_body(&selector)?;
+        let matched = count_delete_matches(&http, &collection, &body, stage).await?;
         let url = http
             .endpoint()
             .collection_path(&collection, "points/delete?wait=true");
-        // The REST delete API acknowledges the operation but returns no scanned
-        // count, so `points_deleted` reflects the acknowledged op, not a tally.
         let _ack: DeleteResponse = http.post_json(stage, &url, &body, "qdrant_delete").await?;
-        Ok(delete_result(collection, 0))
+        Ok(qdrant_delete_result(
+            collection,
+            matched,
+            "pre_delete_exact_match_count",
+        ))
     }
 
     pub(super) async fn search_inner(
@@ -166,45 +165,48 @@ struct CountResponse {
     result: CountResult,
 }
 
-async fn delete_generation_points_server_side(
+#[derive(serde::Deserialize)]
+struct RetrieveResponse {
+    #[serde(default)]
+    result: Vec<serde_json::Value>,
+}
+
+/// Count the exact points targeted by a Qdrant delete before issuing it.
+///
+/// Qdrant's synchronous delete acknowledgement does not contain a deletion
+/// count. Filtered selectors use `/points/count` and explicit point-id
+/// selectors use `/points` retrieval against the same request body. The count
+/// is exact at observation time, but it is not transactionally coupled to the
+/// subsequent delete; the receipt therefore marks it as an estimate.
+async fn count_delete_matches(
     http: &QdrantHttp,
     collection: &str,
-    selector: &VectorDeleteSelector,
+    delete_body: &serde_json::Value,
     stage: ErrorStage,
-) -> Result<VectorStoreDeleteResult> {
-    let VectorDeleteSelector::Generation {
-        source_id,
-        generation,
-        ..
-    } = selector
-    else {
-        return Ok(delete_result(collection.to_string(), 0));
-    };
+) -> Result<u64> {
+    if let Some(filter) = delete_body.get("filter") {
+        let url = http.endpoint().collection_path(collection, "points/count");
+        let body = serde_json::json!({ "filter": filter, "exact": true });
+        let count: CountResponse = http
+            .post_json(stage, &url, &body, "qdrant_delete_count")
+            .await?;
+        return Ok(count.result.count);
+    }
 
-    let filter = generation_delete_filter(source_id, generation)?;
-    let count_url = http.endpoint().collection_path(collection, "points/count");
-    let delete_url = http
-        .endpoint()
-        .collection_path(collection, "points/delete?wait=true");
-    let count_body = serde_json::json!({
-        "filter": filter,
-        "exact": true,
-    });
-    let count: CountResponse = http
-        .post_json(
-            stage,
-            &count_url,
-            &count_body,
-            "qdrant_delete_generation_count",
-        )
-        .await?;
+    if let Some(points) = delete_body.get("points") {
+        let url = http.endpoint().collection_path(collection, "points");
+        let body = serde_json::json!({
+            "ids": points,
+            "with_payload": false,
+            "with_vector": false,
+        });
+        let retrieved: RetrieveResponse = http
+            .post_json(stage, &url, &body, "qdrant_delete_retrieve")
+            .await?;
+        return Ok(retrieved.result.len() as u64);
+    }
 
-    let body = serde_json::json!({ "filter": filter });
-    let _ack: DeleteResponse = http
-        .post_json(stage, &delete_url, &body, "qdrant_delete_generation_filter")
-        .await?;
-
-    Ok(delete_result(collection.to_string(), count.result.count))
+    Ok(0)
 }
 
 /// Count every point in `collection`, no filter (exact server-side count).
@@ -278,7 +280,37 @@ async fn delete_collection_points_by_scroll(
         offset = Some(next);
     }
 
-    Ok(delete_result(collection.to_string(), deleted))
+    Ok(qdrant_delete_result(
+        collection.to_string(),
+        deleted,
+        "scrolled_point_id_count",
+    ))
+}
+
+fn qdrant_delete_result(
+    collection: String,
+    observed_matches: u64,
+    count_basis: &str,
+) -> VectorStoreDeleteResult {
+    let mut result = delete_result(collection, observed_matches);
+    result.warnings.push(SourceWarning {
+        code: "vector.qdrant_delete_count_estimated".to_string(),
+        severity: Severity::Warning,
+        message: "Qdrant acknowledged the delete but does not report an actual deletion count; \
+                  points_deleted is the observed match count and may differ under concurrent mutation"
+            .to_string(),
+        source_item_key: None,
+        retryable: false,
+    });
+    result.metadata.insert(
+        "points_deleted_count_basis".to_string(),
+        serde_json::Value::String(count_basis.to_string()),
+    );
+    result.metadata.insert(
+        "points_deleted_is_estimate".to_string(),
+        serde_json::Value::Bool(true),
+    );
+    result
 }
 
 fn generation_delete_filter(

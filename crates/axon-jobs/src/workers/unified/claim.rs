@@ -3,6 +3,7 @@
 //! it under the monolith line cap.
 
 use axon_api::source::{ApiError, AuthSnapshot, JobId, Timestamp};
+use axon_core::sqlite::ImmediateTx;
 use sqlx::{Row, SqlitePool};
 
 use super::UnifiedClaimedJob;
@@ -35,7 +36,7 @@ pub(super) async fn claim_next_unified_job_unchecked(
     pool: &SqlitePool,
     allow_source: bool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
-    let mut tx = pool.begin().await.map_err(sql_error)?;
+    let mut tx = ImmediateTx::begin(pool).await.map_err(sql_error)?;
     let now = chrono::Utc::now().to_rfc3339();
     let row = sqlx::query(
         "SELECT job_id, kind, attempt, request_json, auth_snapshot_json

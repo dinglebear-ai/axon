@@ -279,9 +279,7 @@ pub(crate) async fn emit_source_event(
     message: impl Into<String>,
     details: SourceEventDetails,
 ) -> anyhow::Result<()> {
-    let sequence = jobs.latest_event_sequence(job_id).await?.unwrap_or(0) + 1;
-    let mut event =
-        SourceProgressEvent::minimal(job_id, sequence, phase, status, severity, message);
+    let mut event = SourceProgressEvent::minimal(job_id, 0, phase, status, severity, message);
     event.attempt = attempt.max(1);
     event.visibility = Visibility::Public;
     event.source_id = source_id;

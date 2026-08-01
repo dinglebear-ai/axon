@@ -630,3 +630,40 @@ fn etag_conditional_with_cache_true_is_valid() {
     assert!(cfg.etag_conditional);
     assert!(cfg.cache);
 }
+
+#[test]
+fn cron_max_runs_requires_an_interval() {
+    let _guard = env_guard();
+    let err = into_config(cli_with_services(&[
+        "--cron-max-runs",
+        "2",
+        "extract",
+        "https://example.com",
+    ]))
+    .expect_err("a run limit without a schedule must fail");
+    assert!(err.contains("--cron-max-runs requires --cron-every-seconds"));
+}
+
+#[test]
+fn cron_values_reject_zero_instead_of_becoming_unbounded() {
+    let _guard = env_guard();
+    let interval_err = into_config(cli_with_services(&[
+        "--cron-every-seconds",
+        "0",
+        "extract",
+        "https://example.com",
+    ]))
+    .expect_err("a zero cron interval must fail");
+    assert!(interval_err.contains("--cron-every-seconds must be greater than zero"));
+
+    let max_runs_err = into_config(cli_with_services(&[
+        "--cron-every-seconds",
+        "60",
+        "--cron-max-runs",
+        "0",
+        "extract",
+        "https://example.com",
+    ]))
+    .expect_err("zero max-runs must not silently mean unlimited");
+    assert!(max_runs_err.contains("--cron-max-runs must be greater than zero"));
+}

@@ -92,9 +92,17 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
     let detail = get_artifact(&ctx, ArtifactId::new("art_report_abc"))
         .await
         .unwrap();
-    assert_eq!(detail.content_url, "/v1/artifacts/art_report_abc/content");
+    assert_eq!(
+        detail.content_url.as_deref(),
+        Some("/v1/artifacts/art_report_abc/content")
+    );
     assert_eq!(detail.producer_refs, ["job:test"]);
     assert_eq!(detail.summary.label.as_deref(), Some("report.json"));
+    let detail_without_url =
+        get_artifact_with_content_url(&ctx, ArtifactId::new("art_report_abc"), false)
+            .await
+            .unwrap();
+    assert_eq!(detail_without_url.content_url, None);
 
     let content = artifact_content(&ctx, ArtifactId::new("art_report_abc"))
         .await
@@ -102,6 +110,27 @@ async fn typed_service_lists_and_reads_metadata_by_opaque_id() {
     assert_eq!(content.size_bytes, 6);
     assert_eq!(content.path, root.join("art_report_abc.bin"));
     assert_eq!(content.content_type, "application/json");
+    assert_eq!(
+        read_artifact_content(&ctx, ArtifactId::new("art_report_abc"), Some("bytes=1-3"))
+            .await
+            .unwrap()
+            .bytes,
+        b"epo"
+    );
+    assert_eq!(
+        read_artifact_content(&ctx, ArtifactId::new("art_report_abc"), Some("-2"))
+            .await
+            .unwrap()
+            .bytes,
+        b"rt"
+    );
+    let range_error = read_artifact_content(&ctx, ArtifactId::new("art_report_abc"), Some("9-10"))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        range_error.code.to_string(),
+        "artifact.range_not_satisfiable"
+    );
 
     tokio::fs::write(root.join("art_report_abc.json"), b"not valid json")
         .await

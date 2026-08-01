@@ -16,6 +16,7 @@ use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
 use axon_services::index_source;
+use futures_util::stream::{self, StreamExt};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::error::Error;
@@ -26,11 +27,114 @@ pub async fn run_source(
     cfg: &Config,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    let input = resolve_source_input(cfg)?;
+    let inputs = resolve_source_inputs(cfg)?;
+    if inputs.len() == 1 {
+        let request = build_source_request(cfg, inputs.into_iter().next().expect("one input"))?;
+        return run_source_request(cfg, service_context, request).await;
+    }
+    if cfg.command != CommandKind::Source {
+        return Err("--urls and --url-glob accept multiple inputs only with `axon source`".into());
+    }
+    if cfg.output_path.is_some() {
+        return Err("--output accepts only one source input".into());
+    }
 
-    let request = build_source_request(cfg, input)?;
+    let concurrency = cfg.batch_concurrency.clamp(1, 512);
+    let outcomes = stream::iter(inputs.into_iter().enumerate())
+        .map(|(index, input)| async move {
+            let reported_input = input.clone();
+            let result = match build_source_request(cfg, input) {
+                Ok(request) => execute_source_request(cfg, service_context, request).await,
+                Err(error) => Err(error),
+            };
+            result
+                .map(|result| (index, result))
+                .map_err(|error| (index, reported_input, error.to_string()))
+        })
+        .buffer_unordered(concurrency)
+        .collect::<Vec<Result<(usize, SourceResult), (usize, String, String)>>>()
+        .await;
+    if should_detach(cfg)
+        && outcomes.iter().any(|outcome| {
+            outcome
+                .as_ref()
+                .is_ok_and(|(_, result)| result.job.is_some())
+        })
+    {
+        // A sibling input can fail after other jobs were durably enqueued.
+        // Start the worker before propagating that error so successful jobs do
+        // not remain queued indefinitely.
+        detach::ensure_worker_process(cfg).await;
+    }
+    let mut indexed_results = Vec::new();
+    let mut batch_errors = Vec::new();
+    for outcome in outcomes {
+        match outcome {
+            Ok(result) => indexed_results.push(result),
+            Err(error) => batch_errors.push(error),
+        }
+    }
+    indexed_results.sort_by_key(|(index, _)| *index);
+    batch_errors.sort_by_key(|(index, _, _)| *index);
+    let semantic_failures = indexed_results
+        .iter()
+        .filter(|(_, result)| result.status == LifecycleStatus::Failed)
+        .count();
+    let failed = batch_errors.len() + semantic_failures;
+    let succeeded = indexed_results.len() - semantic_failures;
 
-    run_source_request(cfg, service_context, request).await
+    if cfg.json_output {
+        let mut rendered = indexed_results
+            .iter()
+            .map(|(index, result)| {
+                if is_queued_descriptor(result) {
+                    (*index, queued_descriptor_json(result))
+                } else {
+                    (*index, source_result_json(cfg, result))
+                }
+            })
+            .collect::<Vec<_>>();
+        rendered.extend(batch_errors.iter().map(|(index, input, error)| {
+            (
+                *index,
+                serde_json::json!({
+                    "input": input,
+                    "status": "failed",
+                    "error": error,
+                }),
+            )
+        }));
+        rendered.sort_by_key(|(index, _)| *index);
+        let rendered = rendered
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect::<Vec<_>>();
+        println!(
+            "{}",
+            serde_json::json!({
+                "count": rendered.len(),
+                "succeeded": succeeded,
+                "failed": failed,
+                "results": rendered,
+            })
+        );
+    } else {
+        for (_, result) in &indexed_results {
+            render_source_result(cfg, result);
+        }
+        for (_, input, error) in &batch_errors {
+            eprintln!("{} {}: {}", muted("failed"), input, error);
+        }
+    }
+    if failed > 0 {
+        return Err(format!(
+            "{} of {} source inputs failed",
+            failed,
+            indexed_results.len() + batch_errors.len()
+        )
+        .into());
+    }
+    Ok(())
 }
 
 /// Per the command contract, `axon <source>` is detached by default: it
@@ -46,8 +150,30 @@ pub(crate) async fn run_source_request(
     service_context: &ServiceContext,
     request: SourceRequest,
 ) -> Result<(), Box<dyn Error>> {
+    let result = execute_source_request(cfg, service_context, request).await?;
+    render_source_result(cfg, &result);
+    if should_detach(cfg) && result.job.is_some() {
+        detach::ensure_worker_process(cfg).await;
+    }
+    write_scrape_output_if_requested(cfg, service_context, &result).await?;
+    if result.status == LifecycleStatus::Failed {
+        let msg = result
+            .warnings
+            .first()
+            .map(|w| w.message.clone())
+            .unwrap_or_else(|| "source indexing failed".to_string());
+        return Err(msg.into());
+    }
+    Ok(())
+}
+
+async fn execute_source_request(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    request: SourceRequest,
+) -> Result<SourceResult, Box<dyn Error>> {
     let detached = should_detach(cfg);
-    let result = if detached {
+    Ok(if detached {
         detach::enqueue_source_detached(service_context, request).await?
     } else {
         index_source(request, service_context)
@@ -57,28 +183,7 @@ pub(crate) async fn run_source_request(
             // actionable cause (e.g. the git adapter's clone failure) survives
             // instead of being flattened to only the outermost context.
             .map_err(|e| -> Box<dyn Error> { e.into() })?
-    };
-
-    render_source_result(cfg, &result);
-    if detached && result.job.is_some() {
-        detach::ensure_worker_process(cfg).await;
-    }
-    // Retained `scrape` (never detached) writes its one page to --output when
-    // requested; a detached source job has no inline content so this no-ops.
-    write_scrape_output_if_requested(cfg, service_context, &result).await?;
-
-    // A degraded/failed result (unsupported input, no data plane, …) carries a
-    // warning but no error — surface it as a nonzero exit for CLI callers.
-    if result.status == LifecycleStatus::Failed {
-        let msg = result
-            .warnings
-            .first()
-            .map(|w| w.message.clone())
-            .unwrap_or_else(|| "source indexing failed".to_string());
-        return Err(msg.into());
-    }
-
-    Ok(())
+    })
 }
 
 /// Parse a `--scope` string (e.g. `page`, `site`) into a [`SourceScope`].
@@ -119,17 +224,26 @@ pub(crate) fn build_source_request(
     Ok(request)
 }
 
-/// Read the positional argument as the source input to index.
-fn resolve_source_input(cfg: &Config) -> Result<String, Box<dyn Error>> {
-    cfg.positional
-        .first()
-        .cloned()
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
+/// Resolve positional, `--urls`, or `--url-glob` source inputs.
+fn resolve_source_inputs(cfg: &Config) -> Result<Vec<String>, Box<dyn Error>> {
+    let inputs = if cfg.urls_csv.is_some() || !cfg.url_glob.is_empty() {
+        super::common_urls::parse_urls(cfg)
+    } else {
+        cfg.positional
+            .iter()
+            .filter(|input| !input.trim().is_empty())
+            .cloned()
+            .collect()
+    };
+    if inputs.is_empty() {
+        Err({
             "axon source requires a local path, git repository URL, feed URL, youtube target, \
-             reddit target, web URL, session selector, or registry target argument"
+             reddit target, web URL, session selector, registry target, --urls, or --url-glob"
                 .into()
         })
+    } else {
+        Ok(inputs)
+    }
 }
 
 pub(crate) fn source_result_json(cfg: &Config, result: &SourceResult) -> serde_json::Value {

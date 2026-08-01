@@ -109,32 +109,32 @@ pub const REMOVED_CONFIG_KEYS: &[RemovedConfigKey] = &[
     },
     RemovedConfigKey {
         removed_key: "AXON_COLLECTION",
-        replacement: "server.default_collection",
+        replacement: "server.default-collection",
         target: "config.toml",
     },
     RemovedConfigKey {
         removed_key: "AXON_HYBRID_CANDIDATES",
-        replacement: "retrieval.hybrid_candidates",
+        replacement: "retrieval.hybrid-candidates",
         target: "config.toml",
     },
     RemovedConfigKey {
         removed_key: "AXON_ASK_HYBRID_CANDIDATES",
-        replacement: "ask.hybrid_candidates",
+        replacement: "ask.hybrid-candidates",
         target: "config.toml",
     },
     RemovedConfigKey {
         removed_key: "AXON_EMBED_DOC_TIMEOUT_SECS",
-        replacement: "providers.embedding.doc_timeout_secs",
+        replacement: "providers.embedding.doc-timeout-secs",
         target: "config.toml",
     },
     RemovedConfigKey {
         removed_key: "AXON_WATCH_TICK_SECS",
-        replacement: "watch.tick_secs",
+        replacement: "watch.tick-secs",
         target: "config.toml",
     },
     RemovedConfigKey {
         removed_key: "AXON_WATCH_LEASE_SECS",
-        replacement: "watch.lease_secs",
+        replacement: "watch.lease-secs",
         target: "config.toml",
     },
 ];
@@ -147,6 +147,205 @@ pub fn removed_config_key(key: &str) -> Option<&'static RemovedConfigKey> {
 
 pub fn config_rewrite_preview() -> io::Result<ConfigRewritePreview> {
     config_rewrite_preview_for_paths(resolve_env_path(), resolve_toml_path())
+}
+
+pub fn config_rewrite_apply() -> io::Result<ConfigRewritePreview> {
+    config_rewrite_apply_for_paths(resolve_env_path(), resolve_toml_path())
+}
+
+pub fn config_rewrite_apply_for_paths(
+    env_path: Option<PathBuf>,
+    toml_path: Option<PathBuf>,
+) -> io::Result<ConfigRewritePreview> {
+    if let Some(path) = env_path.as_ref() {
+        recover_config_rewrite(path)?;
+    }
+    let mut preview = config_rewrite_preview_for_paths(env_path.clone(), toml_path.clone())?;
+    if preview.stale_keys.is_empty() {
+        preview.dry_run = false;
+        return Ok(preview);
+    }
+
+    let env_path = env_path
+        .ok_or_else(|| io::Error::new(ErrorKind::NotFound, "cannot resolve .env rewrite path"))?;
+    let mut env_entries = read_env_entries(&env_path)?;
+    let mut toml_document = match toml_path.as_ref() {
+        Some(path) => read_toml_document(path)?,
+        None => toml_edit::DocumentMut::new(),
+    };
+    let mut toml_changed = false;
+
+    for edit in &preview.stale_keys {
+        let value = env_entries
+            .get(&edit.removed_key)
+            .cloned()
+            .ok_or_else(|| io::Error::other("stale config changed during rewrite"))?;
+        match edit.target.as_str() {
+            "env" => {
+                if let Some(existing) = env_entries.get(&edit.replacement)
+                    && existing != &value
+                {
+                    return Err(io::Error::new(
+                        ErrorKind::AlreadyExists,
+                        format!(
+                            "refusing to overwrite {} while rewriting {}",
+                            edit.replacement, edit.removed_key
+                        ),
+                    ));
+                }
+                env_entries.insert(edit.replacement.clone(), value);
+            }
+            "config.toml" => {
+                if let Some(existing) = get_toml_entry(&toml_document, &edit.replacement) {
+                    if existing != value.trim() {
+                        return Err(io::Error::new(
+                            ErrorKind::AlreadyExists,
+                            format!(
+                                "refusing to overwrite {} while rewriting {}",
+                                edit.replacement, edit.removed_key
+                            ),
+                        ));
+                    }
+                } else {
+                    set_toml_entry(&mut toml_document, &edit.replacement, &value)?;
+                    toml_changed = true;
+                }
+            }
+            target => {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    format!("unsupported rewrite target {target:?}"),
+                ));
+            }
+        }
+        env_entries.remove(&edit.removed_key);
+    }
+
+    let toml_write = if toml_changed {
+        axon_core::config::parse::validate_toml_config_text(&toml_document.to_string())
+            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
+        let path = toml_path.as_deref().ok_or_else(|| {
+            io::Error::new(
+                ErrorKind::NotFound,
+                "cannot resolve config.toml rewrite path",
+            )
+        })?;
+        Some((path, &toml_document))
+    } else {
+        None
+    };
+    commit_config_rewrite(&env_path, &env_entries, toml_write, || Ok(()))?;
+
+    preview.dry_run = false;
+    preview.write_count = preview.stale_keys.len();
+    Ok(preview)
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct ConfigRewriteJournal {
+    env_original: Option<String>,
+    toml: Option<ConfigRewriteFileJournal>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct ConfigRewriteFileJournal {
+    path: PathBuf,
+    original: Option<String>,
+}
+
+fn rewrite_journal_path(env_path: &Path) -> PathBuf {
+    let name = env_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(".env");
+    env_path.with_file_name(format!("{name}.rewrite-journal"))
+}
+
+fn read_optional_text(path: &Path) -> io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn restore_optional_text(path: &Path, original: Option<&str>) -> io::Result<()> {
+    match original {
+        Some(contents) => write_private_file_atomic(path, contents),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        },
+    }
+}
+
+fn recover_config_rewrite(env_path: &Path) -> io::Result<()> {
+    let journal_path = rewrite_journal_path(env_path);
+    let raw = match std::fs::read_to_string(&journal_path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let journal: ConfigRewriteJournal = serde_json::from_str(&raw)
+        .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
+    restore_optional_text(env_path, journal.env_original.as_deref())?;
+    if let Some(toml) = journal.toml.as_ref() {
+        restore_optional_text(&toml.path, toml.original.as_deref())?;
+    }
+    std::fs::remove_file(journal_path)
+}
+
+fn commit_config_rewrite<F>(
+    env_path: &Path,
+    env_entries: &BTreeMap<String, String>,
+    toml_write: Option<(&Path, &toml_edit::DocumentMut)>,
+    after_toml_write: F,
+) -> io::Result<()>
+where
+    F: FnOnce() -> io::Result<()>,
+{
+    let journal_path = rewrite_journal_path(env_path);
+    let journal = ConfigRewriteJournal {
+        env_original: read_optional_text(env_path)?,
+        toml: toml_write
+            .map(|(path, _)| -> io::Result<ConfigRewriteFileJournal> {
+                Ok(ConfigRewriteFileJournal {
+                    path: path.to_path_buf(),
+                    original: read_optional_text(path)?,
+                })
+            })
+            .transpose()?,
+    };
+    write_private_file_atomic(
+        &journal_path,
+        &serde_json::to_string(&journal).map_err(io::Error::other)?,
+    )?;
+
+    let write_result = (|| {
+        if let Some((path, document)) = toml_write {
+            write_toml_document(path, document)?;
+        }
+        after_toml_write()?;
+        write_env_entries(env_path, env_entries)
+    })();
+    if let Err(error) = write_result {
+        let restore_env = restore_optional_text(env_path, journal.env_original.as_deref());
+        let restore_toml = journal
+            .toml
+            .as_ref()
+            .map(|toml| restore_optional_text(&toml.path, toml.original.as_deref()))
+            .transpose();
+        if let Err(restore_error) = restore_env.and(restore_toml.map(|_| ())) {
+            return Err(io::Error::other(format!(
+                "{error}; rollback failed and {} was retained for recovery: {restore_error}",
+                journal_path.display()
+            )));
+        }
+        std::fs::remove_file(&journal_path)?;
+        return Err(error);
+    }
+    std::fs::remove_file(journal_path)
 }
 
 pub fn config_rewrite_preview_for_paths(
@@ -347,17 +546,45 @@ pub fn unset_toml_entry(document: &mut toml_edit::DocumentMut, dotted: &str) -> 
     }
     let last = segments[segments.len() - 1];
     let parents = &segments[..segments.len() - 1];
-    let mut current: &mut toml_edit::Item = document.as_item_mut();
-    for parent in parents {
-        match current.as_table_like_mut().and_then(|t| t.get_mut(parent)) {
-            Some(next) => current = next,
-            None => return Ok(false),
-        }
+    let removed = remove_toml_leaf(document.as_item_mut(), parents, last);
+    if removed {
+        prune_empty_toml_path(document.as_item_mut(), parents);
     }
-    let Some(table) = current.as_table_like_mut() else {
-        return Ok(false);
+    Ok(removed)
+}
+
+fn remove_toml_leaf(current: &mut toml_edit::Item, parents: &[&str], leaf: &str) -> bool {
+    let Some((parent, rest)) = parents.split_first() else {
+        return current
+            .as_table_like_mut()
+            .and_then(|table| table.remove(leaf))
+            .is_some();
     };
-    Ok(table.remove(last).is_some())
+    current
+        .as_table_like_mut()
+        .and_then(|table| table.get_mut(parent))
+        .is_some_and(|next| remove_toml_leaf(next, rest, leaf))
+}
+
+/// Remove newly empty parent tables after a dotted key is unset. Without this,
+/// unsetting the last key from a deprecated/renamed section leaves an empty
+/// section that still fails the strict config-contract parser.
+fn prune_empty_toml_path(current: &mut toml_edit::Item, parents: &[&str]) -> bool {
+    let Some((parent, rest)) = parents.split_first() else {
+        return current
+            .as_table_like()
+            .is_some_and(|table| table.is_empty());
+    };
+    let child_empty = current
+        .as_table_like_mut()
+        .and_then(|table| table.get_mut(parent))
+        .is_some_and(|child| prune_empty_toml_path(child, rest));
+    if child_empty && let Some(table) = current.as_table_like_mut() {
+        table.remove(parent);
+    }
+    current
+        .as_table_like()
+        .is_some_and(|table| table.is_empty())
 }
 
 /// Flatten a TOML document into dotted key → string-value entries, walking only

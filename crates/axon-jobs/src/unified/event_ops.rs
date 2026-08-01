@@ -7,10 +7,11 @@ use axon_core::redact::{
 use super::SqliteUnifiedJobStore;
 use crate::boundary::Result;
 use crate::unified_codec::{ensure_job, enum_name, event_details, sql_error, to_json};
+use axon_core::sqlite::ImmediateTx;
 
 impl SqliteUnifiedJobStore {
     pub(crate) async fn append_job_event(&self, mut event: SourceProgressEvent) -> Result<()> {
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
         ensure_job(&mut tx, event.job_id).await?;
         if let Some(dedupe_key) = event.dedupe_key.as_deref() {
             let existing = sqlx::query_scalar::<_, i64>(
@@ -91,7 +92,7 @@ impl SqliteUnifiedJobStore {
     }
 }
 
-async fn next_sequence(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, job_id: JobId) -> Result<u64> {
+async fn next_sequence(tx: &mut sqlx::SqliteConnection, job_id: JobId) -> Result<u64> {
     let sequence = sqlx::query_scalar::<_, i64>(
         "UPDATE jobs
          SET last_event_sequence = last_event_sequence + 1
@@ -99,20 +100,20 @@ async fn next_sequence(tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>, job_id: Job
          RETURNING last_event_sequence",
     )
     .bind(job_id.0.to_string())
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(sql_error)?;
     Ok(sequence as u64)
 }
 
 async fn validate_explicit_sequence(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     event: &SourceProgressEvent,
 ) -> Result<Option<u64>> {
     let last_sequence =
         sqlx::query_scalar::<_, i64>("SELECT last_event_sequence FROM jobs WHERE job_id = ?")
             .bind(event.job_id.0.to_string())
-            .fetch_one(&mut **tx)
+            .fetch_one(&mut *tx)
             .await
             .map_err(sql_error)? as u64;
     let expected = last_sequence + 1;
@@ -125,7 +126,7 @@ async fn validate_explicit_sequence(
         )
         .bind(event.job_id.0.to_string())
         .bind(dedupe_key)
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(sql_error)?;
         if duplicate_sequence == Some(event.sequence as i64) {

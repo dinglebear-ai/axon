@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 use sqlx::Row;
 
 use super::SqliteUnifiedJobStore;
@@ -71,7 +72,7 @@ impl SqliteUnifiedJobStore {
         let mut requeued = 0_u64;
         let mut failed = 0_u64;
         if !request.dry_run && scanned > 0 {
-            let mut tx = self.pool.begin().await.map_err(sql_error)?;
+            let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
             for row in rows {
                 let job_id = JobId::new(parse_uuid(row.get::<String, _>("job_id"))?);
                 let attempt = (row.get::<i64, _>("attempt") as u32).max(1);

@@ -68,6 +68,28 @@ pub trait ServiceJobRuntime: Send + Sync {
     /// callers treat a missed wakeup as a (slower, still-correct) poll fallback.
     fn notify_unified(&self) {}
 
+    /// Process-local claimed tasks whose runners have not returned.
+    ///
+    /// Enqueue-only and test runtimes default to zero. Worker-bearing
+    /// runtimes override this so idle-exit cannot race a lossy database view.
+    fn worker_in_flight_jobs(&self) -> usize {
+        0
+    }
+
+    /// True when any executable worker kind has a durable active row.
+    ///
+    /// The default preserves compatibility for injected runtimes. SQLite
+    /// overrides this with one direct `EXISTS` query rather than projecting
+    /// the same question through paginated list calls.
+    async fn has_active_worker_jobs(&self, kinds: &[JobKind]) -> RuntimeResult<bool> {
+        for kind in kinds {
+            if self.has_active_jobs(*kind).await? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     async fn wait_for_job(&self, id: Uuid, kind: JobKind) -> RuntimeResult<String>;
     async fn job_errors(&self, id: Uuid, kind: JobKind) -> RuntimeResult<Option<String>>;
     async fn has_active_jobs(&self, kind: JobKind) -> RuntimeResult<bool>;
