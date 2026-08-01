@@ -1,5 +1,4 @@
 use axon_api::source::*;
-use uuid::Uuid;
 
 use super::FakeJobWatchState;
 
@@ -137,11 +136,13 @@ pub(super) fn retry_locked(
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .map(|stage| JobStagePlan {
-            phase: stage.phase,
-            required: stage.required,
-            provider_requirements: stage.provider_requirements,
-            estimated_items: stage.counts.items_total,
+        .map(|stage| {
+            JobStagePlan::restored(
+                stage.phase,
+                stage.required,
+                stage.provider_requirements,
+                stage.counts.items_total,
+            )
         })
         .collect::<Vec<_>>();
     if let Some(from_phase) = request.from_phase {
@@ -168,10 +169,9 @@ pub(super) fn retry_locked(
         job.updated_at = updated_at;
     }
     let mut stages = Vec::new();
-    for stage in stage_plan {
-        state.next_stage += 1;
+    for (ordinal, stage) in stage_plan.into_iter().enumerate() {
         stages.push(JobStageSnapshot {
-            stage_id: StageId::new(Uuid::from_u128(state.next_stage)),
+            stage_id: stage.stable_id(job_id, ordinal),
             phase: stage.phase,
             status: LifecycleStatus::Queued,
             required: stage.required,

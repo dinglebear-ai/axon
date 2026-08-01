@@ -9,11 +9,11 @@
 //! offline, so their materialization behavior is covered in `axon-adapters`.
 
 use axon_adapters::{feed::FeedSourceAdapter, local::LocalSourceAdapter};
-use axon_api::source::{AuthScope, AuthSnapshot, ProviderId, SourceRequest};
+use axon_api::source::{AuthScope, AuthSnapshot, LifecycleStatus, ProviderId, SourceRequest};
 use axon_core::http::LoopbackGuard;
 use axon_embedding::fake::FakeEmbeddingProvider;
-use axon_jobs::boundary::FakeJobWatchStore;
-use axon_ledger::store::FakeLedgerStore;
+use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
+use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 use httpmock::prelude::*;
 use std::path::{Path, PathBuf};
@@ -38,12 +38,13 @@ const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
   </item>
 </channel></rss>"#;
 
-fn test_runtime(
+fn test_runtime_with_jobs(
     vectors: Arc<FakeVectorStore>,
     ledger: Arc<FakeLedgerStore>,
+    jobs: Arc<dyn JobStore>,
 ) -> TargetLocalSourceRuntime {
     TargetLocalSourceRuntime::new(
-        Arc::new(FakeJobWatchStore::new()),
+        jobs,
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
         vectors,
@@ -51,6 +52,13 @@ fn test_runtime(
         "fake-embedding",
         8,
     )
+}
+
+fn test_runtime(
+    vectors: Arc<FakeVectorStore>,
+    ledger: Arc<FakeLedgerStore>,
+) -> TargetLocalSourceRuntime {
+    test_runtime_with_jobs(vectors, ledger, Arc::new(FakeJobWatchStore::new()))
 }
 
 fn route_for(source: &str) -> axon_api::source::RoutePlan {
@@ -177,6 +185,107 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
         ledger.committed_generation(&counts.source_id).await,
         Some(counts.generation.clone())
     );
+}
+
+#[tokio::test]
+async fn published_session_survives_lease_release_failures_as_degraded() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = claude_fixture_dir(home.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
+    let ledger = Arc::new(FakeLedgerStore::new().with_release_lease_failure());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let runtime = test_runtime(vectors, ledger.clone());
+
+    let selector = format!("session:claude:{}", dir.display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
+    let counts = dispatch_session_with_roots(
+        &runtime,
+        &selector,
+        "axon-test",
+        "test-owner",
+        None,
+        false,
+        None,
+        None,
+        &route,
+        &roots,
+        &execution,
+    )
+    .await
+    .expect("published generation must survive lease release failures");
+
+    assert_eq!(
+        ledger.committed_generation(&counts.source_id).await,
+        Some(counts.generation.clone())
+    );
+    assert!(
+        counts
+            .warnings
+            .iter()
+            .any(|warning| { warning.code == "source.publish.finalizer_release_deferred" })
+    );
+    assert!(
+        counts
+            .warnings
+            .iter()
+            .any(|warning| { warning.code == "source.lease.release_deferred" })
+    );
+    let summary = ledger
+        .get_source(counts.source_id.clone())
+        .await
+        .expect("source summary lookup")
+        .expect("source summary");
+    assert_eq!(summary.status, LifecycleStatus::CompletedDegraded);
+    assert!(summary.last_refreshed_at.is_some());
+}
+
+#[tokio::test]
+async fn published_session_survives_terminal_status_failure_as_degraded() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = claude_fixture_dir(home.path());
+    let roots = crate::sessions::SessionRoots::for_home(home.path());
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new().with_terminal_status_failure());
+    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs);
+
+    let selector = format!("session:claude:{}", dir.display());
+    let route = route_for(&selector);
+    let execution = test_execution(&selector);
+    let counts = dispatch_session_with_roots(
+        &runtime,
+        &selector,
+        "axon-test",
+        "test-owner",
+        None,
+        false,
+        None,
+        None,
+        &route,
+        &roots,
+        &execution,
+    )
+    .await
+    .expect("published generation must survive terminal job status failure");
+
+    assert_eq!(
+        ledger.committed_generation(&counts.source_id).await,
+        Some(counts.generation.clone())
+    );
+    assert!(
+        counts
+            .warnings
+            .iter()
+            .any(|warning| { warning.code == "source.job.terminal_status_deferred" })
+    );
+    let summary = ledger
+        .get_source(counts.source_id.clone())
+        .await
+        .expect("source summary lookup")
+        .expect("source summary");
+    assert_eq!(summary.status, LifecycleStatus::CompletedDegraded);
+    assert!(summary.last_refreshed_at.is_some());
 }
 
 #[tokio::test]

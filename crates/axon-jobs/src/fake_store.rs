@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::boundary::{JobDeleteResult, JobStore, Result};
 use crate::limits::clamp_page_limit;
-use crate::state_machine::validate_transition;
+use crate::state_machine::{validate_stage_plan, validate_transition};
 use crate::unified::pagination::{
     EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
     encode_job_cursor,
@@ -25,6 +25,14 @@ use helpers::*;
 #[derive(Debug, Clone, Default)]
 pub struct FakeJobWatchStore {
     state: Arc<Mutex<FakeJobWatchState>>,
+    mode: FakeJobWatchMode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum FakeJobWatchMode {
+    #[default]
+    Success,
+    TerminalStatusFailure,
 }
 
 #[derive(Debug, Default)]
@@ -47,6 +55,11 @@ impl FakeJobWatchStore {
         Self::default()
     }
 
+    pub fn with_terminal_status_failure(mut self) -> Self {
+        self.mode = FakeJobWatchMode::TerminalStatusFailure;
+        self
+    }
+
     /// Test-only inspection seam that bypasses public event visibility rules.
     pub async fn recorded_events(&self, job_id: JobId) -> Vec<JobEvent> {
         self.state
@@ -62,6 +75,7 @@ impl FakeJobWatchStore {
 #[async_trait]
 impl JobStore for FakeJobWatchStore {
     async fn create(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
+        validate_stage_plan(&request.stage_plan)?;
         let mut state = self.state.lock().await;
         if let Some(job_id) = request
             .idempotency_key
@@ -106,10 +120,9 @@ impl JobStore for FakeJobWatchStore {
             state.requests.insert(job_id, request_json);
         }
         let mut stages = Vec::new();
-        for stage in request.stage_plan {
-            state.next_stage += 1;
+        for (ordinal, stage) in request.stage_plan.into_iter().enumerate() {
             stages.push(JobStageSnapshot {
-                stage_id: StageId::new(Uuid::from_u128(state.next_stage)),
+                stage_id: stage.stable_id(job_id, ordinal),
                 phase: stage.phase,
                 status: LifecycleStatus::Queued,
                 required: stage.required,
@@ -163,6 +176,14 @@ impl JobStore for FakeJobWatchStore {
     }
 
     async fn update_status(&self, status: JobStatusUpdate) -> Result<()> {
+        if self.mode == FakeJobWatchMode::TerminalStatusFailure && is_terminal_status(status.status)
+        {
+            return Err(ApiError::new(
+                "job.terminal_status_write_failed",
+                ErrorStage::Publishing,
+                "injected terminal job status failure",
+            ));
+        }
         let mut state = self.state.lock().await;
         let updated_at = state.timestamp();
         let stage_counts = status.counts.clone();

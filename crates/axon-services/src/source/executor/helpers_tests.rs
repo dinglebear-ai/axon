@@ -48,13 +48,13 @@ fn legacy_manifest_without_publication_configuration_is_not_reused() {
 /// Companion to the web-source fix: `record_terminal_status` previously built
 /// its `SourceError` with `message: error.to_string()` (anyhow's top-context
 /// frame only, discarding the chain) and a hardcoded `cause: None` — so any
-/// non-web source (git/local/feed/registry/reddit/youtube) failing deep in
+/// source (git/local/feed/registry/reddit/youtube) failing deep in
 /// the pipeline surfaced just as unhelpfully as the web path did before this
 /// fix. `terminal_source_error` must carry the full chain in `cause`.
 #[test]
 fn terminal_source_error_cause_preserves_full_chain() {
     let root = anyhow::anyhow!("qdrant upsert timed out after 30s");
-    let err = root.context("publishing non-web source generation failed");
+    let err = root.context("publishing source generation failed");
 
     let source_error = terminal_source_error(&err);
 
@@ -70,11 +70,34 @@ fn terminal_source_error_cause_preserves_full_chain() {
 
 #[test]
 fn terminal_source_error_cause_is_none_for_single_frame_error() {
-    let err = anyhow::anyhow!("non-web source indexing failed");
+    let err = anyhow::anyhow!("source indexing failed");
 
     let source_error = terminal_source_error(&err);
 
     assert_eq!(source_error.cause, None);
+}
+
+#[test]
+fn terminal_stage_counts_use_discovered_items() {
+    let output = IndexCounts {
+        job_id: JobId::new(uuid::Uuid::nil()),
+        source_id: SourceId::new("src-stage-counts"),
+        generation: SourceGenerationId::new("1"),
+        items_discovered: 9,
+        documents_prepared: 4,
+        chunks_prepared: 6,
+        vector_points_written: 5,
+        removed: 2,
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
+    };
+
+    let counts = stage_counts(&output);
+    assert_eq!(counts.items_total, Some(9));
+    assert_eq!(counts.items_done, 9);
+    assert_eq!(counts.documents_total, Some(4));
 }
 
 /// Redaction gate: this `SourceError` is persisted straight into

@@ -31,6 +31,15 @@ pub enum ReusePolicy {
     ConditionalRequest,
 }
 
+#[derive(Debug, Clone)]
+pub struct GeneratedArchive {
+    pub kind: ArtifactKind,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+    pub content_hash: String,
+    pub metadata: MetadataMap,
+}
+
 #[async_trait]
 pub trait SourceAdapter: Send + Sync {
     fn name(&self) -> &'static str;
@@ -69,5 +78,21 @@ pub trait SourceAdapter: Send + Sync {
     /// overlays conditional-request metadata unless an adapter opts in.
     fn reuse_policy(&self) -> ReusePolicy {
         ReusePolicy::None
+    }
+
+    fn wants_archive(&self, _plan: &SourcePlan) -> bool {
+        false
+    }
+
+    /// Build an adapter-native durable archive from acquired items. The
+    /// shared runner owns persistence and lifecycle metadata; adapters own
+    /// only source-specific serialization. Stateless/non-archival adapters
+    /// use the default no-op.
+    fn build_archive(
+        &self,
+        _plan: &SourcePlan,
+        _items: &[AcquiredSourceItem],
+    ) -> Option<GeneratedArchive> {
+        None
     }
 }

@@ -322,9 +322,21 @@ pub(crate) async fn acquire_via_fetch(
     } else {
         None
     };
-    let sent_prior_validator = prior_etag.is_some();
+    let prior_last_modified = if cache_policy == CachePolicy::Revalidate {
+        item.metadata
+            .get("web_prior_last_modified")
+            .and_then(Value::as_str)
+    } else {
+        None
+    };
+    let sent_prior_validator = prior_etag.is_some() || prior_last_modified.is_some();
     let fetched = fetch
-        .fetch(build_fetch_request(item, prior_etag, headers))
+        .fetch(build_fetch_request(
+            item,
+            prior_etag,
+            prior_last_modified,
+            headers,
+        ))
         .await?;
     if fetched.status == 304 {
         if !sent_prior_validator {
@@ -346,6 +358,14 @@ pub(crate) async fn acquire_via_fetch(
                 } else {
                     "false"
                 },
+            )
+            .with_context(
+                "has_web_prior_last_modified",
+                if item.metadata.contains_key("web_prior_last_modified") {
+                    "true"
+                } else {
+                    "false"
+                },
             ));
         }
         let mut metadata = MetadataMap::new();
@@ -358,6 +378,12 @@ pub(crate) async fn acquire_via_fetch(
         metadata.insert("web_reuse_required".to_string(), serde_json::json!(true));
         if let Some(etag) = prior_etag {
             metadata.insert("web_etag".to_string(), serde_json::json!(etag));
+        }
+        if let Some(last_modified) = prior_last_modified {
+            metadata.insert(
+                "web_last_modified".to_string(),
+                serde_json::json!(last_modified),
+            );
         }
         log_info(&format!(
             "web_etag_conditional: 304 Not Modified for {} — reusing prior committed content if available",
@@ -395,6 +421,15 @@ pub(crate) async fn acquire_via_fetch(
     // copies this key onto the next generation's `ManifestItem.metadata`.
     if let Some(etag) = fetched.etag.as_deref().or(prior_etag) {
         metadata.insert("web_etag".to_string(), serde_json::json!(etag));
+    }
+    if let Some(last_modified) = header_value(&fetched.headers, "Last-Modified")
+        .as_deref()
+        .or(prior_last_modified)
+    {
+        metadata.insert(
+            "web_last_modified".to_string(),
+            serde_json::json!(last_modified),
+        );
     }
 
     Ok(Some(AcquiredSourceItem {
@@ -481,6 +516,7 @@ async fn acquire_via_auto_switch(
 fn build_fetch_request(
     item: &ManifestItem,
     prior_etag: Option<&str>,
+    prior_last_modified: Option<&str>,
     headers: &[RedactedHeader],
 ) -> FetchRequest {
     let mut headers = headers.to_vec();
@@ -488,6 +524,13 @@ fn build_fetch_request(
         headers.push(RedactedHeader {
             name: "If-None-Match".to_string(),
             value: etag.to_string(),
+            redacted: false,
+        });
+    }
+    if let Some(last_modified) = prior_last_modified {
+        headers.push(RedactedHeader {
+            name: "If-Modified-Since".to_string(),
+            value: last_modified.to_string(),
             redacted: false,
         });
     }
@@ -501,6 +544,14 @@ fn build_fetch_request(
         credential_refs: Vec::new(),
         metadata: MetadataMap::new(),
     }
+}
+
+fn header_value(headers: &RedactedHeaders, name: &str) -> Option<String> {
+    headers
+        .headers
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case(name))
+        .map(|header| header.value.clone())
 }
 
 fn build_render_request(
