@@ -194,6 +194,7 @@ async fn dispatch_local_or_git(
         SourceKind::Git => {
             dispatch::dispatch_git(
                 adapter,
+                cfg,
                 runtime,
                 input,
                 collection,

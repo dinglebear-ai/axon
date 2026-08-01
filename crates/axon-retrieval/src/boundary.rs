@@ -64,6 +64,9 @@ where
             generation: None,
             namespace_filters: request.namespace_filters,
             excluded_source_kinds: vec![MEMORY_SOURCE_KIND.to_string()],
+            hybrid: true,
+            since: None,
+            before: None,
             byte_budget: DEFAULT_BYTE_BUDGET,
             token_budget: DEFAULT_TOKEN_BUDGET,
         };
@@ -96,6 +99,9 @@ where
             generation: None,
             namespace_filters: Vec::new(),
             excluded_source_kinds: vec![MEMORY_SOURCE_KIND.to_string()],
+            hybrid: true,
+            since: None,
+            before: None,
             byte_budget,
             token_budget: DEFAULT_TOKEN_BUDGET,
         };

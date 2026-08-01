@@ -100,6 +100,12 @@ fn toml_set_get_unset_nested() {
     assert!(unset_toml_entry(&mut doc, "ask.cache.ttl-secs").unwrap());
     assert!(get_toml_entry(&doc, "ask.cache.ttl-secs").is_none());
     assert!(!unset_toml_entry(&mut doc, "ask.cache.ttl-secs").unwrap());
+
+    assert!(unset_toml_entry(&mut doc, "search.collection").unwrap());
+    assert!(
+        !doc.as_table().contains_key("search"),
+        "unsetting the last key must remove its empty parent section"
+    );
 }
 
 #[test]
@@ -155,4 +161,157 @@ fn rewrite_preview_reports_removed_keys_without_writing() {
         std::fs::read_to_string(&path).unwrap(),
         "AXON_MCP_HTTP_TOKEN=secret\nQDRANT_URL=http://qdrant\n"
     );
+}
+
+#[test]
+fn rewrite_apply_moves_env_and_toml_keys() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    let toml_path = dir.path().join("config.toml");
+    std::fs::write(
+        &env_path,
+        "AXON_MCP_HTTP_TOKEN=secret\nAXON_COLLECTION=rewritten_collection\nQDRANT_URL=http://qdrant\n",
+    )
+    .unwrap();
+
+    let result =
+        config_rewrite_apply_for_paths(Some(env_path.clone()), Some(toml_path.clone())).unwrap();
+
+    assert!(!result.dry_run);
+    assert_eq!(result.write_count, 2);
+    let env = read_env_entries(&env_path).unwrap();
+    assert_eq!(
+        env.get("AXON_HTTP_TOKEN").map(String::as_str),
+        Some("secret")
+    );
+    assert!(!env.contains_key("AXON_MCP_HTTP_TOKEN"));
+    assert!(!env.contains_key("AXON_COLLECTION"));
+    let toml = std::fs::read_to_string(toml_path).unwrap();
+    assert!(toml.contains("default-collection = \"rewritten_collection\""));
+    axon_core::config::parse::validate_toml_config_text(&toml).unwrap();
+}
+
+#[test]
+fn rewrite_apply_refuses_conflicting_destination() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    std::fs::write(&env_path, "AXON_MCP_HTTP_TOKEN=old\nAXON_HTTP_TOKEN=new\n").unwrap();
+    let before = std::fs::read_to_string(&env_path).unwrap();
+
+    let error = config_rewrite_apply_for_paths(Some(env_path.clone()), None).unwrap_err();
+
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read_to_string(env_path).unwrap(), before);
+}
+
+#[test]
+fn rewrite_apply_is_idempotent_when_toml_already_has_the_same_value() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    let toml_path = dir.path().join("config.toml");
+    std::fs::write(&env_path, "AXON_COLLECTION=rewritten_collection\n").unwrap();
+    std::fs::write(
+        &toml_path,
+        "[server]\ndefault-collection = \"rewritten_collection\"\n",
+    )
+    .unwrap();
+
+    let result =
+        config_rewrite_apply_for_paths(Some(env_path.clone()), Some(toml_path.clone())).unwrap();
+
+    assert_eq!(result.write_count, 1);
+    assert!(
+        !read_env_entries(&env_path)
+            .unwrap()
+            .contains_key("AXON_COLLECTION")
+    );
+    assert_eq!(
+        get_toml_entry(
+            &read_toml_document(&toml_path).unwrap(),
+            "server.default-collection"
+        )
+        .as_deref(),
+        Some("rewritten_collection")
+    );
+}
+
+#[test]
+fn rewrite_commit_rolls_back_both_files_after_intermediate_failure() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    let toml_path = dir.path().join("config.toml");
+    let original_env = "AXON_COLLECTION=old\n";
+    let original_toml = "[server]\ndefault-collection = \"old\"\n";
+    std::fs::write(&env_path, original_env).unwrap();
+    std::fs::write(&toml_path, original_toml).unwrap();
+
+    let env_entries = BTreeMap::new();
+    let mut document = read_toml_document(&toml_path).unwrap();
+    set_toml_entry(&mut document, "server.default-collection", "new").unwrap();
+    let error = commit_config_rewrite(
+        &env_path,
+        &env_entries,
+        Some((&toml_path, &document)),
+        || Err(io::Error::other("injected failure after TOML write")),
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("injected failure"));
+    assert_eq!(std::fs::read_to_string(&env_path).unwrap(), original_env);
+    assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), original_toml);
+    assert!(!rewrite_journal_path(&env_path).exists());
+}
+
+#[test]
+fn rewrite_recovery_does_not_touch_toml_for_an_env_only_transaction() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    let toml_path = dir.path().join("config.toml");
+    let original_env = "AXON_MCP_HTTP_TOKEN=old\n";
+    let current_toml = "[server]\ndefault-collection = \"keep\"\n";
+    std::fs::write(&env_path, "AXON_HTTP_TOKEN=new\n").unwrap();
+    std::fs::write(&toml_path, current_toml).unwrap();
+    let journal = ConfigRewriteJournal {
+        env_original: Some(original_env.to_string()),
+        toml: None,
+    };
+    std::fs::write(
+        rewrite_journal_path(&env_path),
+        serde_json::to_string(&journal).unwrap(),
+    )
+    .unwrap();
+
+    recover_config_rewrite(&env_path).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&env_path).unwrap(), original_env);
+    assert_eq!(std::fs::read_to_string(&toml_path).unwrap(), current_toml);
+    assert!(!rewrite_journal_path(&env_path).exists());
+}
+
+#[test]
+fn rewrite_recovery_removes_toml_created_by_an_interrupted_transaction() {
+    let dir = TempDir::new().unwrap();
+    let env_path = dir.path().join(".env");
+    let toml_path = dir.path().join("config.toml");
+    let original_env = "AXON_COLLECTION=old\n";
+    std::fs::write(&env_path, "QDRANT_URL=http://qdrant\n").unwrap();
+    std::fs::write(&toml_path, "[server]\ndefault-collection = \"partial\"\n").unwrap();
+    let journal = ConfigRewriteJournal {
+        env_original: Some(original_env.to_string()),
+        toml: Some(ConfigRewriteFileJournal {
+            path: toml_path.clone(),
+            original: None,
+        }),
+    };
+    std::fs::write(
+        rewrite_journal_path(&env_path),
+        serde_json::to_string(&journal).unwrap(),
+    )
+    .unwrap();
+
+    recover_config_rewrite(&env_path).unwrap();
+
+    assert_eq!(std::fs::read_to_string(&env_path).unwrap(), original_env);
+    assert!(!toml_path.exists());
+    assert!(!rewrite_journal_path(&env_path).exists());
 }

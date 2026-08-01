@@ -16,7 +16,6 @@ axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
-axon-adapters = { path = "../axon-adapters" }
 # Domain-store crates whose migration sets the composed cross-crate runner
 # applies against the one unified SQLite pool (see src/migrations.rs).
 axon-ledger = { path = "../axon-ledger" }
@@ -26,7 +25,6 @@ axon-memory = { path = "../axon-memory" }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-dashmap = "6"
 notify = "8"
 futures = "0.3"
 serde = { version = "1", features = ["derive"] }
@@ -69,9 +67,7 @@ tokio = { version = "1", features = [
 ] }
 tokio-util = { version = "0.7", features = ["compat", "io"] }
 tracing = "0.1"
-utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
-regex = "1"
 sha2 = "0.11"
 hex = "0.4"
 url = "2"

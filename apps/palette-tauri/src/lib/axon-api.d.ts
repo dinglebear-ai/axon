@@ -1421,7 +1421,7 @@ export interface components {
             disposition: string;
         };
         ArtifactDetail: components["schemas"]["ArtifactSummary"] & {
-            content_url: string;
+            content_url?: string | null;
             metadata: components["schemas"]["MetadataMap"];
             producer_refs: string[];
             retention: unknown;

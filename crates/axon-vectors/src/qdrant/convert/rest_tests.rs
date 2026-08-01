@@ -94,3 +94,41 @@ fn search_filter_json_converts_path_prefix_to_source_path_should_filter() {
     assert_eq!(path_filter[1]["key"], "chunk_locator.path");
     assert_eq!(path_filter[0]["match"]["text"], "src");
 }
+
+#[test]
+fn datetime_range_filter_uses_qdrant_range_wire_shape() {
+    let request = VectorSearchRequest {
+        collection: "axon-test".to_string(),
+        query: "docs".to_string(),
+        limit: 10,
+        dense_vector: None,
+        sparse_vector: None,
+        filters: MetadataMap(
+            [(
+                "embedded_at".to_string(),
+                serde_json::json!({
+                    "gte": "2026-07-01T00:00:00Z",
+                    "lte": "2026-07-31T23:59:59Z"
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        ),
+        hybrid: None,
+        generation: None,
+        graph_refs: Vec::new(),
+        metadata: MetadataMap::new(),
+    };
+
+    let filter = search_filter_json(&request)
+        .expect("datetime range filter")
+        .expect("filter");
+    assert_eq!(filter["must"][0]["key"], "embedded_at");
+    assert_eq!(
+        filter["must"][0]["range"],
+        serde_json::json!({
+            "gte": "2026-07-01T00:00:00Z",
+            "lte": "2026-07-31T23:59:59Z"
+        })
+    );
+}

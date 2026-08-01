@@ -644,6 +644,17 @@
           "url_blacklist",
           "etag_conditional",
           "cache_policy",
+          "cache_http_only",
+          "normalize",
+          "block_assets",
+          "chrome_wait_for_selector",
+          "root_selector",
+          "exclude_selector",
+          "chrome_screenshot",
+          "path_budgets",
+          "format",
+          "sitemap_only",
+          "output_dir",
           "min_markdown_chars",
           "drop_thin_markdown",
           "warc_path",
@@ -1593,7 +1604,7 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:8e9985a3dccda4782551a112e420814b3ac74075526773a95f74e2dd8ac00992",
+        "checksum": "sha256:0a65275defcc4bae3306cdc940b344cbb25a0c0f2be2d22162fc63c5f2f40740",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },

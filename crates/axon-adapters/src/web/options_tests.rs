@@ -172,15 +172,38 @@ fn build_discovery_config_honors_crawl_options() {
     values.insert("url_blacklist".to_string(), json!(["/blocked"]));
     values.insert("headers".to_string(), json!({"X-Test": "ok"}));
     values.insert("cache_policy".to_string(), json!("revalidate"));
+    values.insert("cache_http_only".to_string(), json!(true));
+    values.insert("normalize".to_string(), json!(true));
+    values.insert("block_assets".to_string(), json!(true));
+    values.insert("chrome_wait_for_selector".to_string(), json!("#ready"));
+    values.insert("root_selector".to_string(), json!("main"));
+    values.insert("exclude_selector".to_string(), json!("aside"));
+    values.insert("chrome_screenshot".to_string(), json!(true));
+    values.insert("path_budgets".to_string(), json!({"/docs": 7}));
+    values.insert("format".to_string(), json!("rawHtml"));
+    values.insert("sitemap_only".to_string(), json!(true));
+    values.insert("output_dir".to_string(), json!("/tmp/axon-output"));
     values.insert("vertical_cache_ttl_secs".to_string(), json!({"github": 60}));
     let plan = plan_with_options(values);
 
     let cfg = build_discovery_config(&plan);
 
-    assert_eq!(cfg.render_mode, axon_core::config::RenderMode::Chrome);
+    assert_eq!(cfg.render_mode, axon_core::config::RenderMode::Http);
     assert_eq!(cfg.max_pages, 25);
     assert_eq!(cfg.max_depth, 3);
     assert!(cfg.etag_conditional);
+    assert!(cfg.cache);
+    assert!(cfg.cache_http_only);
+    assert!(cfg.normalize);
+    assert!(cfg.block_assets);
+    assert_eq!(cfg.chrome_wait_for_selector.as_deref(), Some("#ready"));
+    assert_eq!(cfg.root_selector.as_deref(), Some("main"));
+    assert_eq!(cfg.exclude_selector.as_deref(), Some("aside"));
+    assert!(cfg.chrome_screenshot);
+    assert_eq!(cfg.path_budgets, vec![("/docs".to_string(), 7)]);
+    assert_eq!(cfg.format, axon_core::config::ScrapeFormat::RawHtml);
+    assert!(cfg.sitemap_only);
+    assert_eq!(cfg.output_dir, PathBuf::from("/tmp/axon-output"));
     assert!(cfg.include_subdomains);
     assert!(cfg.respect_robots);
     assert!(!cfg.discover_sitemaps);
@@ -196,4 +219,22 @@ fn build_discovery_config_honors_crawl_options() {
             .iter()
             .any(|prefix| prefix == "/blocked")
     );
+}
+
+#[test]
+fn render_metadata_carries_only_render_provider_options() {
+    let values = json!({
+        "normalize": true,
+        "block_assets": true,
+        "root_selector": "main",
+        "max_pages": 99
+    });
+    let values: MetadataMap = serde_json::from_value(values).unwrap();
+
+    let metadata = render_metadata(&values);
+
+    assert_eq!(metadata.get("normalize"), Some(&json!(true)));
+    assert_eq!(metadata.get("block_assets"), Some(&json!(true)));
+    assert_eq!(metadata.get("root_selector"), Some(&json!("main")));
+    assert!(metadata.get("max_pages").is_none());
 }

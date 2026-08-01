@@ -284,6 +284,35 @@ async fn discover_applies_project_filter_to_codex_cwd_content() {
 }
 
 #[tokio::test]
+async fn codex_project_filter_uses_session_metadata_not_arbitrary_transcript_text() {
+    let root = temp_dir("codex-project-filter");
+    fs::create_dir_all(&root).unwrap();
+    let file = root.join("rollout.jsonl");
+    fs::write(
+        &file,
+        concat!(
+            "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/home/j/other\"}}\n",
+            "{\"type\":\"response_item\",\"payload\":{\"text\":\"mentions /home/j/proj later\"}}\n"
+        ),
+    )
+    .unwrap();
+    assert!(
+        !matches_project_filter(Some("/home/j/proj"), &root, &file, "rollout.jsonl",),
+        "the matcher must inspect structured project metadata, not the whole transcript"
+    );
+    let mut plan = session_plan(CODEX_TARGET, &root, SourceScope::Thread, true);
+    insert_project_filter(&mut plan, "/home/j/proj");
+
+    let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+
+    assert!(
+        manifest.items.is_empty(),
+        "project selection must not scan arbitrary transcript bodies"
+    );
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
 async fn discover_project_filter_keeps_gemini_unmatched_when_export_lacks_project() {
     let root = fixture_gemini_dir();
     let mut plan = session_plan(GEMINI_TARGET, &root, SourceScope::Thread, true);

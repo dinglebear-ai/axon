@@ -37,10 +37,10 @@ pub(in crate::config) enum ConfigSubcommand {
     Get {
         /// UPPER_SNAKE for .env, dotted lowercase for config.toml
         key: String,
-        /// Force read from .env regardless of key shape
+        /// Explicitly select .env; key must satisfy the environment-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         env: bool,
-        /// Force read from config.toml regardless of key shape
+        /// Explicitly select config.toml; key must satisfy the TOML-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         toml: bool,
         /// Reveal secret values instead of showing `***`
@@ -51,18 +51,20 @@ pub(in crate::config) enum ConfigSubcommand {
     Set {
         key: String,
         value: String,
-        /// Force write to .env regardless of key shape
+        /// Explicitly select .env; key must satisfy the environment-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         env: bool,
-        /// Force write to config.toml regardless of key shape
+        /// Explicitly select config.toml; key must satisfy the TOML-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         toml: bool,
     },
     /// Remove a value from .env or config.toml
     Unset {
         key: String,
+        /// Explicitly select .env; key must satisfy the environment-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         env: bool,
+        /// Explicitly select config.toml; key must satisfy the TOML-key schema
         #[arg(long, action = ArgAction::SetTrue)]
         toml: bool,
     },

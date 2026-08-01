@@ -33,6 +33,9 @@ fn request() -> RetrievalRequest {
         generation: None,
         namespace_filters: Vec::new(),
         excluded_source_kinds: Vec::new(),
+        hybrid: true,
+        since: None,
+        before: None,
         byte_budget: 4096,
         token_budget: 512,
     }

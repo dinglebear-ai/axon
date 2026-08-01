@@ -12,7 +12,30 @@ use axon_services::screenshot::screenshot_capture;
 use std::error::Error;
 use util::require_chrome;
 
+fn write_json_screenshot_preamble(
+    cfg: &Config,
+    normalized: &str,
+    stderr: &mut dyn std::io::Write,
+) -> std::io::Result<()> {
+    if !cfg.quiet {
+        writeln!(
+            stderr,
+            "screenshot: capturing url={normalized} full_page={} viewport={}x{} chrome_remote_url={}",
+            cfg.screenshot_full_page,
+            cfg.viewport_width,
+            cfg.viewport_height,
+            cfg.chrome_remote_url.as_deref().unwrap_or("none"),
+        )?;
+    }
+    Ok(())
+}
+
 pub(crate) fn print_screenshot_preamble(cfg: &Config, normalized: &str) {
+    if cfg.json_output {
+        write_json_screenshot_preamble(cfg, normalized, &mut std::io::stderr())
+            .expect("write screenshot progress to stderr");
+        return;
+    }
     print_phase("◐", "Screenshot", normalized);
     println!("  {}", primary("Options:"));
     print_option("fullPage", &cfg.screenshot_full_page.to_string());
@@ -27,17 +50,37 @@ pub(crate) fn print_screenshot_preamble(cfg: &Config, normalized: &str) {
     println!();
 }
 
+fn write_json_screenshot_result(
+    cfg: &Config,
+    normalized: &str,
+    result: &axon_services::types::ScreenshotResult,
+    stdout: &mut dyn std::io::Write,
+    stderr: &mut dyn std::io::Write,
+) -> Result<(), Box<dyn Error>> {
+    writeln!(stdout, "{}", serde_json::to_string(result)?)?;
+    if !cfg.quiet {
+        writeln!(
+            stderr,
+            "screenshot: completed url={normalized} artifact_id={} format=png",
+            result.artifact_id.0
+        )?;
+    }
+    Ok(())
+}
+
 pub(crate) fn emit_screenshot_result(
     cfg: &Config,
     normalized: &str,
     result: &axon_services::types::ScreenshotResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string(result)?);
-        log_done(&format!(
-            "command=screenshot url={normalized} artifact_id={} format=png",
-            result.artifact_id.0
-        ));
+        write_json_screenshot_result(
+            cfg,
+            normalized,
+            result,
+            &mut std::io::stdout(),
+            &mut std::io::stderr(),
+        )?;
     } else {
         let explicit_output = cfg
             .output_path

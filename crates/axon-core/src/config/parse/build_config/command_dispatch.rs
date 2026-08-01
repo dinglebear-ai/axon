@@ -348,9 +348,6 @@ fn apply_monitor(out: &mut DispatchOutput, action: MonitorSubcommand) {
     match action {
         MonitorSubcommand::Jobs(args) => {
             let mut positional = vec!["jobs".to_string()];
-            if args.watch {
-                positional.push("--watch".to_string());
-            }
             if args.jsonl {
                 positional.push("--jsonl".to_string());
             }
@@ -371,7 +368,7 @@ fn apply_update(out: &mut DispatchOutput, args: UpdateArgs) {
         out.positional.push("--version".to_string());
         out.positional.push(version);
     }
-    if args.repo != "jmagar/axon" {
+    if args.repo != "dinglebear-ai/axon" {
         out.positional.push("--repo".to_string());
         out.positional.push(args.repo);
     }

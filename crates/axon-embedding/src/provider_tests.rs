@@ -472,7 +472,8 @@ async fn background_reservations_account_for_requested_units_before_using_reserv
         .await
         .unwrap_err();
 
-    assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
+    assert_eq!(denied.code.to_string(), "provider.invalid_reservation");
+    assert!(!denied.retryable);
     assert_eq!(reservations.snapshot().await.active, 0);
 }
 

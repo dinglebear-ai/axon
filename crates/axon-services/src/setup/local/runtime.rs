@@ -1,4 +1,5 @@
 use super::{LocalSetupPhase, LocalSetupStatus, PhaseTimer, SETUP_HARD_MAX_SECS};
+use std::io;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::process::Command;
@@ -32,15 +33,64 @@ pub(super) async fn run_compose<const N: usize>(
         Some("build") => "compose-build",
         _ => "compose-up",
     });
+    if args.first().copied() == Some("up")
+        && let Err(error) = ensure_compose_network(env_path).await
+    {
+        return timer.finish(LocalSetupStatus::Error, error.to_string());
+    }
     let mut cmd = Command::new("docker");
     cmd.arg("compose")
         .arg("--env-file")
         .arg(env_path)
         .arg("-f")
-        .arg(compose_dir.join("docker-compose.yaml"))
-        .args(args)
-        .current_dir(compose_dir);
+        .arg(compose_dir.join("docker-compose.yaml"));
+    if let Err(error) = add_external_qdrant_overlay(&mut cmd, compose_dir, env_path) {
+        return timer.finish(LocalSetupStatus::Error, error.to_string());
+    }
+    if let Err(error) = add_external_providers_overlay(&mut cmd, compose_dir, env_path) {
+        return timer.finish(LocalSetupStatus::Error, error.to_string());
+    }
+    cmd.args(args).current_dir(compose_dir);
     run_timed_command(timer, cmd, Duration::from_secs(SETUP_HARD_MAX_SECS)).await
+}
+
+async fn ensure_compose_network(env_path: &Path) -> io::Result<()> {
+    let network = compose_network_name(env_path)?;
+    let inspected = Command::new("docker")
+        .args(["network", "inspect", &network])
+        .output()
+        .await?;
+    if inspected.status.success() {
+        return Ok(());
+    }
+
+    let created = Command::new("docker")
+        .args(["network", "create", &network])
+        .output()
+        .await?;
+    if created.status.success() {
+        return Ok(());
+    }
+
+    // Treat a concurrent creator as success.
+    let reinspected = Command::new("docker")
+        .args(["network", "inspect", &network])
+        .output()
+        .await?;
+    if reinspected.status.success() {
+        return Ok(());
+    }
+    Err(io::Error::other(command_failure_detail(&created)))
+}
+
+pub(super) fn compose_network_name(env_path: &Path) -> io::Result<String> {
+    let values = super::env::read_env_values(env_path)?;
+    Ok(values
+        .get("DOCKER_NETWORK")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("axon")
+        .to_string())
 }
 
 pub(super) async fn follow_logs(compose_dir: &Path, env_path: &Path) -> LocalSetupPhase {
@@ -50,9 +100,14 @@ pub(super) async fn follow_logs(compose_dir: &Path, env_path: &Path) -> LocalSet
         .arg("--env-file")
         .arg(env_path)
         .arg("-f")
-        .arg(compose_dir.join("docker-compose.yaml"))
-        .args(["logs", "-f"])
-        .current_dir(compose_dir);
+        .arg(compose_dir.join("docker-compose.yaml"));
+    if let Err(error) = add_external_qdrant_overlay(&mut cmd, compose_dir, env_path) {
+        return timer.finish(LocalSetupStatus::Error, error.to_string());
+    }
+    if let Err(error) = add_external_providers_overlay(&mut cmd, compose_dir, env_path) {
+        return timer.finish(LocalSetupStatus::Error, error.to_string());
+    }
+    cmd.args(["logs", "-f"]).current_dir(compose_dir);
     match cmd.status().await {
         Ok(status) if status.success() => timer.finish(LocalSetupStatus::Ok, "log stream ended"),
         Ok(status) => timer.finish(
@@ -61,6 +116,68 @@ pub(super) async fn follow_logs(compose_dir: &Path, env_path: &Path) -> LocalSet
         ),
         Err(err) => timer.finish(LocalSetupStatus::Error, err.to_string()),
     }
+}
+
+fn add_external_qdrant_overlay(
+    cmd: &mut Command,
+    compose_dir: &Path,
+    env_path: &Path,
+) -> io::Result<()> {
+    if let Some(url) = external_qdrant_url(env_path)? {
+        cmd.arg("-f")
+            .arg(compose_dir.join("docker-compose.external-qdrant.yaml"))
+            .env("AXON_EXTERNAL_QDRANT_URL", url);
+    }
+    Ok(())
+}
+
+fn add_external_providers_overlay(
+    cmd: &mut Command,
+    compose_dir: &Path,
+    env_path: &Path,
+) -> io::Result<()> {
+    if let Some((tei_url, chrome_url)) = external_provider_urls(env_path)? {
+        cmd.arg("-f")
+            .arg(compose_dir.join("docker-compose.external-providers.yaml"))
+            .env("AXON_EXTERNAL_TEI_URL", tei_url)
+            .env("AXON_EXTERNAL_CHROME_REMOTE_URL", chrome_url);
+    }
+    Ok(())
+}
+
+pub(super) fn external_provider_urls(env_path: &Path) -> io::Result<Option<(String, String)>> {
+    let values = super::env::read_env_values(env_path)?;
+    let tei = values
+        .get("AXON_EXTERNAL_TEI_URL")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let chrome = values
+        .get("AXON_EXTERNAL_CHROME_REMOTE_URL")
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    match (tei, chrome) {
+        (None, None) => Ok(None),
+        (Some(tei), Some(chrome)) => Ok(Some((tei.to_string(), chrome.to_string()))),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "AXON_EXTERNAL_TEI_URL and AXON_EXTERNAL_CHROME_REMOTE_URL must be set together",
+        )),
+    }
+}
+
+pub(super) fn external_qdrant_url(env_path: &Path) -> io::Result<Option<String>> {
+    let values = super::env::read_env_values(env_path)?;
+    Ok(values
+        .get("QDRANT_URL")
+        .map(|value| value.trim())
+        .filter(|value| {
+            !value.is_empty()
+                && !value.contains("://axon-qdrant:")
+                && !value.contains("://127.0.0.1:")
+                && !value.contains("://localhost:")
+                && !value.contains("://[::1]:")
+        })
+        .map(str::to_string))
 }
 
 pub(super) async fn wait_http(name: &'static str, url: impl Into<String>) -> LocalSetupPhase {

@@ -24,6 +24,126 @@ fn unsupported_platform_returns_clear_error() {
 }
 
 #[test]
+fn latest_update_release_skips_unrelated_palette_release() {
+    let names = release_asset_names("linux", "x86_64").unwrap();
+    let releases = vec![
+        GithubRelease {
+            tag_name: "palette-v5.14.2".to_string(),
+            draft: false,
+            prerelease: false,
+            assets: vec![GithubAsset {
+                name: "palette-linux-x86_64.tar.gz".to_string(),
+                browser_download_url: "https://example.test/palette".to_string(),
+            }],
+        },
+        GithubRelease {
+            tag_name: "v7.2.2".to_string(),
+            draft: false,
+            prerelease: false,
+            assets: vec![
+                GithubAsset {
+                    name: names.archive.to_string(),
+                    browser_download_url: "https://example.test/axon".to_string(),
+                },
+                GithubAsset {
+                    name: names.checksum.to_string(),
+                    browser_download_url: "https://example.test/axon.sha256".to_string(),
+                },
+            ],
+        },
+    ];
+
+    let selected =
+        select_latest_compatible_release(&releases, &names).expect("compatible Axon release");
+
+    assert_eq!(selected.tag_name, "v7.2.2");
+}
+
+#[test]
+fn latest_update_release_skips_drafts_and_prereleases() {
+    let names = release_asset_names("linux", "x86_64").unwrap();
+    let compatible = |tag: &str, draft: bool, prerelease: bool| GithubRelease {
+        tag_name: tag.to_string(),
+        draft,
+        prerelease,
+        assets: vec![
+            GithubAsset {
+                name: names.archive.to_string(),
+                browser_download_url: format!("https://example.test/{tag}"),
+            },
+            GithubAsset {
+                name: names.checksum.to_string(),
+                browser_download_url: format!("https://example.test/{tag}.sha256"),
+            },
+        ],
+    };
+    let releases = vec![
+        compatible("v8.0.0-draft", true, false),
+        compatible("v8.0.0-rc.1", false, true),
+        compatible("v7.2.6", false, false),
+    ];
+
+    let selected = select_latest_compatible_release(&releases, &names).unwrap();
+
+    assert_eq!(selected.tag_name, "v7.2.6");
+}
+
+#[test]
+fn latest_update_release_uses_highest_semver_not_api_order() {
+    let names = release_asset_names("linux", "x86_64").unwrap();
+    let compatible = |tag: &str| GithubRelease {
+        tag_name: tag.to_string(),
+        draft: false,
+        prerelease: false,
+        assets: vec![
+            GithubAsset {
+                name: names.archive.to_string(),
+                browser_download_url: format!("https://example.test/{tag}"),
+            },
+            GithubAsset {
+                name: names.checksum.to_string(),
+                browser_download_url: format!("https://example.test/{tag}.sha256"),
+            },
+        ],
+    };
+    let releases = vec![
+        compatible("v6.1.9"),
+        compatible("palette-v99.0.0"),
+        compatible("v6.2.1"),
+        compatible("v6.2.0"),
+    ];
+
+    let selected = select_latest_compatible_release(&releases, &names).unwrap();
+
+    assert_eq!(selected.tag_name, "v6.2.1");
+}
+
+#[test]
+fn automatic_update_never_downgrades_to_last_compatible_binary_release() {
+    assert!(!release_is_newer_than("v6.2.1", "7.2.5").unwrap());
+    assert!(!release_is_newer_than("v7.2.5", "7.2.5").unwrap());
+    assert!(release_is_newer_than("v7.2.6", "7.2.5").unwrap());
+}
+
+#[test]
+fn automatic_update_only_skips_when_destination_is_already_current() {
+    assert!(should_skip_automatic_update("v7.2.5", Some("7.2.5"), false).unwrap());
+    assert!(
+        !should_skip_automatic_update("v7.2.5", None, false).unwrap(),
+        "a missing or stale destination must be repaired"
+    );
+    assert!(
+        !should_skip_automatic_update("v7.2.5", Some("7.2.5"), true).unwrap(),
+        "--force must reinstall even when versions match"
+    );
+    assert!(
+        should_skip_automatic_update("v6.2.1", Some("7.2.5"), false).unwrap(),
+        "automatic updates must never downgrade an installed binary"
+    );
+    assert!(!should_skip_automatic_update("v7.2.6", Some("7.2.5"), false).unwrap());
+}
+
+#[test]
 fn parses_sha256_sidecar_with_filename() {
     let parsed = parse_sha256_sidecar(
         "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08  axon-linux-x86_64.tar.gz\n",
@@ -139,7 +259,10 @@ async fn update_installs_from_file_release_dir_without_container_sync() {
 
     let report = perform_update(options).await.unwrap();
 
-    assert_eq!(report.version, "v5.9.2");
+    assert_eq!(
+        report.version, "5.9.2",
+        "explicit release tags must use the same normalized version shape as automatic updates"
+    );
     assert!(report.installed);
     assert_eq!(
         fs::read_to_string(install_dir.join("axon")).unwrap(),
@@ -195,6 +318,14 @@ fn version_output_requires_exact_normalized_token_match() {
     assert!(output_reports_version("axon v5.9.2\n", "5.9.2"));
     assert!(!output_reports_version("axon 5.9.20\n", "v5.9.2"));
     assert!(!output_reports_version("axon 15.9.2\n", "v5.9.2"));
+}
+
+#[test]
+fn version_output_extracts_the_semver_token() {
+    assert_eq!(output_version("axon 7.2.5\n").as_deref(), Some("7.2.5"));
+    assert_eq!(output_version("axon v7.2.5\n").as_deref(), Some("7.2.5"));
+    assert_eq!(output_version("not a version\n"), None);
+    assert_eq!(output_version("axon 7.2.5.1\n"), None);
 }
 
 #[tokio::test]

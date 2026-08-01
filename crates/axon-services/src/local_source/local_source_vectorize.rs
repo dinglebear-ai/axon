@@ -298,7 +298,7 @@ async fn reserve_embedding(
     };
     Ok(Some(
         manager
-            .reserve_with_context(ProviderReservationContext {
+            .reserve_with_context_wait(ProviderReservationContext {
                 job_id: input.job_id,
                 stage_id: None,
                 provider_id: Some(input.embedding_provider_id.clone()),
@@ -318,7 +318,7 @@ async fn reserve_vector(
     };
     Ok(Some(
         manager
-            .reserve_with_context(ProviderReservationContext {
+            .reserve_with_context_wait(ProviderReservationContext {
                 job_id: input.job_id,
                 stage_id: None,
                 provider_id: Some(input.vector_provider_id.clone()),

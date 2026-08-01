@@ -64,3 +64,17 @@ fn detect_target_both_flags_is_error() {
     let err = detect_target("QDRANT_URL", true, true).unwrap_err();
     assert!(err.to_string().contains("mutually exclusive"));
 }
+
+#[test]
+fn config_validation_rejects_deprecated_section_before_write() {
+    let err = validate_toml_document(&"[search]\nlimit = 7\n")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("refusing to write invalid config.toml"));
+    assert!(err.contains("[search]"));
+}
+
+#[test]
+fn config_validation_accepts_current_contract_key() {
+    validate_toml_document(&"[retrieval]\nhybrid-candidates = 100\n").unwrap();
+}

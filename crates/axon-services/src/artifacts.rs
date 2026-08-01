@@ -45,7 +45,8 @@ pub struct ArtifactDetail {
     pub summary: ArtifactSummary,
     pub retention: serde_json::Value,
     pub producer_refs: Vec<String>,
-    pub content_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_url: Option<String>,
     pub metadata: MetadataMap,
 }
 
@@ -136,6 +137,14 @@ pub async fn get_artifact(
     ctx: &ServiceContext,
     artifact_id: ArtifactId,
 ) -> Result<ArtifactDetail, ApiError> {
+    get_artifact_with_content_url(ctx, artifact_id, true).await
+}
+
+pub async fn get_artifact_with_content_url(
+    ctx: &ServiceContext,
+    artifact_id: ArtifactId,
+    include_content_url: bool,
+) -> Result<ArtifactDetail, ApiError> {
     crate::uploads::cleanup_expired_uploads(ctx).await?;
     let manifest = read_manifest(ctx, &artifact_id).await?;
     let summary = manifest_summary(ctx, &manifest).await?;
@@ -146,12 +155,102 @@ pub async fn get_artifact(
         .unwrap_or(serde_json::Value::Null);
     let producer_refs = metadata_string_list(&manifest.metadata, "producer_refs");
     Ok(ArtifactDetail {
-        content_url: format!("/v1/artifacts/{}/content", artifact_id.0),
+        content_url: include_content_url
+            .then(|| format!("/v1/artifacts/{}/content", artifact_id.0)),
         summary,
         retention,
         producer_refs,
         metadata: manifest.metadata,
     })
+}
+
+pub async fn read_artifact_content(
+    ctx: &ServiceContext,
+    artifact_id: ArtifactId,
+    range: Option<&str>,
+) -> Result<ArtifactContentDescriptor, ApiError> {
+    let content = artifact_content(ctx, artifact_id).await?;
+    let bytes = tokio::fs::read(&content.path)
+        .await
+        .map_err(|error| io_error("artifact.read_failed", &content.path, error))?;
+    let bytes = match range {
+        Some(range) => apply_byte_range(&bytes, range)?,
+        None => bytes,
+    };
+    Ok(ArtifactContentDescriptor {
+        artifact_id: content.artifact_id,
+        content_type: content.content_type,
+        disposition: content.disposition,
+        bytes,
+    })
+}
+
+fn apply_byte_range(bytes: &[u8], raw: &str) -> Result<Vec<u8>, ApiError> {
+    let range = raw.trim().strip_prefix("bytes=").unwrap_or(raw.trim());
+    if range.contains(',') {
+        return Err(artifact_error(
+            "artifact.invalid_range",
+            "multiple artifact byte ranges are not supported",
+        ));
+    }
+    let Some((start, end)) = range.split_once('-') else {
+        return Err(artifact_error(
+            "artifact.invalid_range",
+            "byte range must use START-END, START-, or -SUFFIX_LENGTH",
+        ));
+    };
+    if bytes.is_empty() {
+        return Err(artifact_error(
+            "artifact.range_not_satisfiable",
+            "byte range cannot be satisfied for empty content",
+        ));
+    }
+    let (start, end_exclusive) = if start.is_empty() {
+        let suffix = end.parse::<usize>().map_err(|_| {
+            artifact_error(
+                "artifact.invalid_range",
+                "byte range suffix length must be an integer",
+            )
+        })?;
+        if suffix == 0 {
+            return Err(artifact_error(
+                "artifact.invalid_range",
+                "byte range suffix length must be greater than zero",
+            ));
+        }
+        (bytes.len().saturating_sub(suffix), bytes.len())
+    } else {
+        let start = start.parse::<usize>().map_err(|_| {
+            artifact_error(
+                "artifact.invalid_range",
+                "byte range start must be an integer",
+            )
+        })?;
+        if start >= bytes.len() {
+            return Err(artifact_error(
+                "artifact.range_not_satisfiable",
+                "byte range starts beyond the end of the artifact",
+            ));
+        }
+        let end = if end.is_empty() {
+            bytes.len() - 1
+        } else {
+            end.parse::<usize>().map_err(|_| {
+                artifact_error(
+                    "artifact.invalid_range",
+                    "byte range end must be an integer",
+                )
+            })?
+        };
+        if end < start {
+            return Err(artifact_error(
+                "artifact.invalid_range",
+                "byte range end must not precede its start",
+            ));
+        }
+        (start, end.saturating_add(1).min(bytes.len()))
+    };
+    Ok(bytes[start..end_exclusive].to_vec())
 }
 
 pub async fn artifact_content(

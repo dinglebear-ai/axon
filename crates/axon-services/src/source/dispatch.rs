@@ -20,6 +20,7 @@ use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
     AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, SourceLimits, SourcePlan, SourceRequest,
 };
+use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
 
@@ -86,6 +87,7 @@ fn family_source_plan(
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_git(
     adapter: Arc<dyn SourceAdapter>,
+    cfg: &Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -99,10 +101,18 @@ pub(crate) async fn dispatch_git(
         "command=source collection={collection} kind=git embed={embed}"
     ));
     let materializer = Arc::clone(&adapter);
+    let mut plan = family_source_plan(input, route, embed, None, None);
+    if !cfg.ingest_exclude_paths.is_empty() {
+        plan.request.options.values.insert(
+            "exclude_paths".to_string(),
+            serde_json::json!(cfg.ingest_exclude_paths),
+        );
+        plan.route.validated_options = plan.request.options.clone();
+    }
     dispatch_materialized(
         runtime,
         adapter.as_ref(),
-        family_source_plan(input, route, embed, None, None),
+        plan,
         collection,
         owner_id,
         auth_snapshot,

@@ -58,6 +58,48 @@ fn map_render_mode_round_trips_all_variants() {
 }
 
 #[test]
+fn render_request_metadata_configures_advertised_web_options() {
+    let mut request = request("https://example.com".to_string(), RenderMode::Chrome);
+    request
+        .metadata
+        .insert("normalize".to_string(), serde_json::json!(true));
+    request
+        .metadata
+        .insert("block_assets".to_string(), serde_json::json!(true));
+    request.metadata.insert(
+        "chrome_wait_for_selector".to_string(),
+        serde_json::json!("#ready"),
+    );
+    request
+        .metadata
+        .insert("root_selector".to_string(), serde_json::json!("main"));
+    request
+        .metadata
+        .insert("exclude_selector".to_string(), serde_json::json!("aside"));
+    request
+        .metadata
+        .insert("chrome_screenshot".to_string(), serde_json::json!(true));
+    request
+        .metadata
+        .insert("format".to_string(), serde_json::json!("rawHtml"));
+    request.metadata.insert(
+        "output_dir".to_string(),
+        serde_json::json!("/tmp/axon-output"),
+    );
+
+    let cfg = provider().build_config(&request);
+
+    assert!(cfg.normalize);
+    assert!(cfg.block_assets);
+    assert_eq!(cfg.chrome_wait_for_selector.as_deref(), Some("#ready"));
+    assert_eq!(cfg.root_selector.as_deref(), Some("main"));
+    assert_eq!(cfg.exclude_selector.as_deref(), Some("aside"));
+    assert!(cfg.chrome_screenshot);
+    assert_eq!(cfg.format, ScrapeFormat::RawHtml);
+    assert_eq!(cfg.output_dir, PathBuf::from("/tmp/axon-output"));
+}
+
+#[test]
 fn classify_render_error_recognizes_timeout() {
     assert_eq!(
         classify_render_error("fetch failed for scrape of https://x/: operation timed out"),
@@ -82,11 +124,19 @@ fn classify_render_error_recognizes_rate_limiting() {
 }
 
 #[test]
-fn classify_render_error_defaults_unmatched_errors_to_fatal() {
+fn classify_render_error_recognizes_retryable_server_errors() {
     assert_eq!(
         classify_render_error("scrape failed: HTTP 503 for https://x/"),
-        RenderFailureClass::Fatal
+        RenderFailureClass::Transient
     );
+    assert_eq!(
+        classify_render_error("scrape failed: HTTP 526 for https://x/"),
+        RenderFailureClass::Transient
+    );
+}
+
+#[test]
+fn classify_render_error_defaults_unmatched_errors_to_fatal() {
     assert_eq!(
         classify_render_error("connection refused"),
         RenderFailureClass::Fatal
@@ -183,7 +233,7 @@ async fn render_http_mode_returns_markdown_and_html() {
 }
 
 #[tokio::test]
-async fn render_server_error_marks_provider_unavailable() {
+async fn render_server_error_is_retryable_and_marks_provider_degraded() {
     let _loopback = axon_core::http::LoopbackGuard::allow();
     let server = MockServer::start_async().await;
     server
@@ -199,10 +249,11 @@ async fn render_server_error_marks_provider_unavailable() {
         .render(request(url, RenderMode::Http))
         .await
         .expect_err("5xx must surface as an error");
-    assert_eq!(err.code.to_string(), "render.fatal");
+    assert_eq!(err.code.to_string(), "render.transient");
+    assert!(err.retryable);
 
     let capability = provider.capabilities().await.expect("capabilities");
-    assert_eq!(capability.health, HealthStatus::Unavailable);
+    assert_eq!(capability.health, HealthStatus::Degraded);
 }
 
 #[tokio::test]
@@ -223,6 +274,7 @@ async fn render_rate_limited_cools_the_provider_with_cooldown_until() {
         .await
         .expect_err("429 must surface as an error");
     assert_eq!(err.code.to_string(), "render.rate_limited");
+    assert!(err.retryable);
 
     let capability = provider.capabilities().await.expect("capabilities");
     assert_eq!(capability.health, HealthStatus::Cooling);

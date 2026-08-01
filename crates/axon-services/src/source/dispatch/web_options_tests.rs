@@ -149,6 +149,61 @@ fn robots_cache_and_vertical_ttls_thread_into_validated_options() {
 }
 
 #[test]
+fn advertised_web_globals_thread_into_validated_options() {
+    let cfg = Config {
+        cache: true,
+        cache_http_only: true,
+        normalize: true,
+        block_assets: true,
+        chrome_wait_for_selector: Some("#ready".to_string()),
+        root_selector: Some("main".to_string()),
+        exclude_selector: Some("aside".to_string()),
+        chrome_screenshot: true,
+        path_budgets: vec![("/docs".to_string(), 7)],
+        format: axon_core::config::ScrapeFormat::RawHtml,
+        sitemap_only: true,
+        output_dir: PathBuf::from("/tmp/axon-output"),
+        ..Config::default()
+    };
+
+    let options = web_crawl_options(&cfg, None, None);
+
+    assert_eq!(options.get("cache_policy"), Some(&serde_json::json!("use")));
+    assert_eq!(
+        options.get("cache_http_only"),
+        Some(&serde_json::json!(true))
+    );
+    assert_eq!(options.get("normalize"), Some(&serde_json::json!(true)));
+    assert_eq!(options.get("block_assets"), Some(&serde_json::json!(true)));
+    assert_eq!(
+        options.get("chrome_wait_for_selector"),
+        Some(&serde_json::json!("#ready"))
+    );
+    assert_eq!(
+        options.get("root_selector"),
+        Some(&serde_json::json!("main"))
+    );
+    assert_eq!(
+        options.get("exclude_selector"),
+        Some(&serde_json::json!("aside"))
+    );
+    assert_eq!(
+        options.get("chrome_screenshot"),
+        Some(&serde_json::json!(true))
+    );
+    assert_eq!(
+        options.get("path_budgets"),
+        Some(&serde_json::json!({"/docs": 7}))
+    );
+    assert_eq!(options.get("format"), Some(&serde_json::json!("rawHtml")));
+    assert_eq!(options.get("sitemap_only"), Some(&serde_json::json!(true)));
+    assert_eq!(
+        options.get("output_dir"),
+        Some(&serde_json::json!("/tmp/axon-output"))
+    );
+}
+
+#[test]
 fn caller_web_options_reject_automation_without_local_execute() {
     let mut base = MetadataMap::new();
     let mut caller = MetadataMap::new();

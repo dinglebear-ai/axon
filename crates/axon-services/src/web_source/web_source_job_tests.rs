@@ -1,5 +1,28 @@
 use super::*;
 
+#[test]
+fn terminal_counts_preserve_discovered_items_for_map_jobs() {
+    let output = WebSourceIndexOutput {
+        job_id: JobId::new(uuid::Uuid::from_u128(42)),
+        source_id: SourceId::new("https://docs.example.com"),
+        generation: SourceGenerationId::new("gen_1"),
+        items_discovered: 381,
+        documents_prepared: 0,
+        chunks_prepared: 0,
+        vector_points_written: 0,
+        removed_pages: 0,
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        artifacts: Vec::new(),
+        inline: None,
+    };
+
+    let counts = counts_for_output(&output);
+
+    assert_eq!(counts.items_total, Some(381));
+    assert_eq!(counts.items_done, 381);
+}
+
 /// `terminal_source_error` is the first place a web-source pipeline failure
 /// gets classified into a `SourceError`. Before this fix it collapsed the
 /// `anyhow::Error` chain with `.to_string()` (top context frame only) for

@@ -1,5 +1,6 @@
 use axon_api::source::*;
-use sqlx::{Row, Sqlite, Transaction};
+use axon_core::sqlite::ImmediateTx;
+use sqlx::Row;
 
 use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
@@ -24,7 +25,9 @@ pub(super) async fn update_document_statuses(
     statuses: Vec<DocumentStatus>,
 ) -> Result<()> {
     for statuses in statuses.chunks(DOCUMENT_STATUS_TX_BATCH_SIZE) {
-        let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+        let mut tx = ImmediateTx::begin(&store.pool)
+            .await
+            .map_err(sqlite_error)?;
         for status in statuses {
             update_document_status_in_tx(&mut tx, status).await?;
         }
@@ -34,12 +37,12 @@ pub(super) async fn update_document_statuses(
 }
 
 async fn update_document_status_in_tx(
-    tx: &mut Transaction<'_, Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     status: &DocumentStatus,
 ) -> Result<()> {
     let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
         .bind(&status.source_id.0)
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(sqlite_error)?;
     if exists.is_none() {
@@ -63,7 +66,7 @@ async fn update_document_status_in_tx(
     .bind(&status.source_id.0)
     .bind(&generation.0)
     .bind(&status.source_item_key.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     if item_exists.is_none() {
@@ -107,7 +110,7 @@ async fn update_document_status_in_tx(
     .bind(enum_wire_value(status.status)?)
     .bind(status_json)
     .bind(&status.updated_at.0)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     Ok(())

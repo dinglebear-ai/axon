@@ -189,6 +189,6 @@ MCP actions (see the MCP tables above).
 | `scripts/dev-setup.sh` | Bootstrap development environment |
 | `scripts/enforce_monoliths.py` | Enforce file/function size limits |
 | `scripts/generate_mcp_schema_doc.py` | Regenerate MCP-TOOL-SCHEMA.md |
-| `scripts/live-test-all-commands.sh` | Integration test all CLI commands |
+| `scripts/live-test-all-commands.sh` | Parser inventory plus isolated live scenarios and command/flag behavioral coverage ledger |
 | `scripts/test-client-server-mode.sh` | Legacy CLI client/server smoke test if present |
 | `scripts/test-mcp-tools-mcporter.sh` | MCP smoke test suite |

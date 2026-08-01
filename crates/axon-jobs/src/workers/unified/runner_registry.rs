@@ -17,12 +17,46 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axon_api::source::{ApiError, JobKind};
+use axon_api::source::{ApiError, JobKind, LifecycleStatus, StageCounts};
 use tokio_util::sync::CancellationToken;
 
 use crate::unified::SqliteUnifiedJobStore;
 
 use super::UnifiedClaimedJob;
+
+/// Successful terminal outcome returned by a domain runner.
+///
+/// The worker owns the durable terminal transition, but the runner owns the
+/// domain result. Carrying the status and counts across this boundary prevents
+/// the worker from replacing a rich domain completion with an empty `Ok(())`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnifiedJobOutcome {
+    pub status: LifecycleStatus,
+    pub counts: Option<StageCounts>,
+}
+
+impl UnifiedJobOutcome {
+    pub fn completed(counts: StageCounts) -> Self {
+        Self {
+            status: LifecycleStatus::Completed,
+            counts: Some(counts),
+        }
+    }
+
+    pub fn completed_without_counts() -> Self {
+        Self {
+            status: LifecycleStatus::Completed,
+            counts: None,
+        }
+    }
+
+    pub fn completed_degraded(counts: StageCounts) -> Self {
+        Self {
+            status: LifecycleStatus::CompletedDegraded,
+            counts: Some(counts),
+        }
+    }
+}
 
 /// Executes the real domain work for one unified `JobKind`.
 ///
@@ -39,7 +73,7 @@ pub trait UnifiedJobRunner: Send + Sync {
         claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
         shutdown: &CancellationToken,
-    ) -> Result<(), ApiError>;
+    ) -> Result<UnifiedJobOutcome, ApiError>;
 }
 
 /// Lookup table from `JobKind` to its registered [`UnifiedJobRunner`].
