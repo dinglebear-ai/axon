@@ -10,7 +10,7 @@ use crate::sqlite::util::json_error;
 use crate::store::Result;
 
 pub(super) async fn manifest_items_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<Vec<ManifestItem>> {
@@ -23,7 +23,7 @@ pub(super) async fn manifest_items_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_all(&mut **tx)
+    .fetch_all(&mut *tx)
     .await
     .map_err(sqlite_error)?;
 
@@ -36,7 +36,7 @@ pub(super) async fn manifest_items_in_tx(
 }
 
 pub(super) async fn manifest_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<Option<SourceManifest>> {
@@ -49,7 +49,7 @@ pub(super) async fn manifest_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
 

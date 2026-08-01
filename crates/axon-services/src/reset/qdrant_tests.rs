@@ -37,3 +37,23 @@ fn compatibility_scan_accepts_all_current_pages() {
     assert_eq!(versions, vec![TARGET_PAYLOAD_CONTRACT_VERSION.to_string()]);
     assert!(!incompatible);
 }
+
+#[test]
+fn collection_dimension_reads_named_and_legacy_vectors() {
+    assert_eq!(
+        collection_dense_dimension(&serde_json::json!({
+            "result": { "config": { "params": { "vectors": {
+                "dense": { "size": 1024, "distance": "Cosine" }
+            }}}}
+        })),
+        Some(1024)
+    );
+    assert_eq!(
+        collection_dense_dimension(&serde_json::json!({
+            "result": { "config": { "params": { "vectors": {
+                "size": 768, "distance": "Cosine"
+            }}}}
+        })),
+        Some(768)
+    );
+}

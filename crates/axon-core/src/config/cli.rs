@@ -322,7 +322,7 @@ pub(super) struct PaletteArgs {
 #[derive(Debug, Args)]
 pub(super) struct UpdateArgs {
     /// GitHub repository in owner/name form.
-    #[arg(long, default_value = "jmagar/axon")]
+    #[arg(long, default_value = "dinglebear-ai/axon")]
     pub(super) repo: String,
 
     /// Release tag to install. Defaults to the latest GitHub Release.
@@ -537,10 +537,6 @@ pub(super) enum MonitorSubcommand {
 
 #[derive(Debug, Args)]
 pub(super) struct MonitorJobsArgs {
-    /// Keep polling instead of emitting one batch and exiting.
-    #[arg(long, action = ArgAction::SetTrue)]
-    pub(super) watch: bool,
-
     /// Emit one compact JSON object per event.
     #[arg(long, action = ArgAction::SetTrue)]
     pub(super) jsonl: bool,
@@ -782,13 +778,18 @@ pub(super) enum JobsSubcommand {
     /// Retry a unified durable job.
     Retry {
         job_id: String,
-        #[arg(long, default_value = "same_config")]
+        #[arg(
+            long,
+            default_value = "same_config",
+            value_parser = ["same_config", "with_overrides"]
+        )]
         mode: String,
     },
     /// Recover stale unified durable jobs.
     Recover {
         #[arg(long)]
         kind: Option<String>,
+        /// Recover jobs whose heartbeat/update is older than this RFC3339 timestamp.
         #[arg(long = "stale-before")]
         stale_before: Option<String>,
         #[arg(long)]
@@ -800,6 +801,7 @@ pub(super) enum JobsSubcommand {
         status: Option<String>,
         #[arg(long)]
         kind: Option<String>,
+        /// Remove terminal jobs older than this RFC3339 timestamp.
         #[arg(long = "older-than")]
         older_than: Option<String>,
         #[arg(long)]
@@ -807,7 +809,7 @@ pub(super) enum JobsSubcommand {
         #[arg(long, action = ArgAction::SetTrue)]
         dry_run: bool,
     },
-    /// Clear all unified durable job rows.
+    /// Clear terminal unified durable job rows; active jobs require cancel/recover first.
     Clear {
         #[arg(long, action = ArgAction::SetTrue)]
         confirm: bool,

@@ -40,8 +40,17 @@ from the current env registry before treating it as operational truth.
 |-----|-------|-----------|-----------|--------|--------|
 | `QDRANT_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_QDRANT_URL` | compose-env | compose-interpolation | — | no | runtime.rs |
+| `AXON_EXTERNAL_QDRANT_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `QDRANT_HTTP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `QDRANT_GRPC_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `TEI_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_EXTERNAL_TEI_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `TEI_HTTP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `AXON_CHROME_REMOTE_URL` | keep-env | both | — | no | runtime.rs |
+| `AXON_EXTERNAL_CHROME_REMOTE_URL` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_MANAGEMENT_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_CDP_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
+| `AXON_CHROME_DEVTOOLS_PORT` | compose-env | compose-interpolation | — | no | advanced.rs |
 | `AXON_PUBLIC_URL` | keep-env | both | — | no | runtime.rs |
 | `AXON_CHROME_PROXY` | keep-env | both | — | no | runtime.rs |
 
@@ -155,6 +164,11 @@ The Rust binary never reads most of them directly.
 |-----|-------|-----------|-------|--------|
 | `AXON_HTTP_PUBLISH` | compose-env | compose-interp | Port mapping `${AXON_HTTP_PUBLISH:-8001}:8001` | advanced.rs |
 | `AXON_IMAGE` | compose-env | compose-interp | Docker image tag override | advanced.rs |
+| `AXON_COMPOSE_PROJECT_NAME` | compose-env | compose-interp | Compose project identity for stack isolation | advanced.rs |
+| `AXON_CONTAINER_NAME` | compose-env | compose-interp | Axon service container-name override | advanced.rs |
+| `AXON_QDRANT_CONTAINER_NAME` | compose-env | compose-interp | Qdrant service container-name override | advanced.rs |
+| `AXON_TEI_CONTAINER_NAME` | compose-env | compose-interp | TEI service container-name override | advanced.rs |
+| `AXON_CHROME_CONTAINER_NAME` | compose-env | compose-interp | Chrome service container-name override | advanced.rs |
 | `AXON_LOG_COLOR` | compose-env | compose-interp | Sets `CLICOLOR_FORCE` inside container | advanced.rs |
 | `AXON_IN_CONTAINER` | compose-env | container | Set by Compose to `"1"`; read by Rust binary | advanced.rs |
 | `GEMINI_HOME` | compose-env | compose-interp | Volume mount path | advanced.rs |

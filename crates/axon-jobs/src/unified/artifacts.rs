@@ -1,4 +1,5 @@
 use axon_api::source::{ApiError, ArtifactRef, ErrorStage, JobId};
+use axon_core::sqlite::ImmediateTx;
 
 use super::SqliteUnifiedJobStore;
 use crate::boundary::Result;
@@ -13,7 +14,7 @@ impl SqliteUnifiedJobStore {
         artifacts: &[ArtifactRef],
     ) -> Result<()> {
         ensure_job_pool(&self.pool, job_id).await?;
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
         for artifact in artifacts {
             let size_bytes = artifact
                 .size_bytes

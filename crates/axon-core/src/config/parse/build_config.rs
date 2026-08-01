@@ -37,9 +37,8 @@ pub(super) fn into_config_with_sources(
 
     let dispatched = command_dispatch::dispatch(cli.command);
     // `--watch` is a `global = true` flag, so it lands in `global.watch` for any
-    // subcommand. Only `status` and `monitor jobs` implement a live-poll loop;
-    // `monitor` reads the global flag via `cfg.watch_mode` (its local `--watch`
-    // is shadowed by the global one), so it must be exempted here too.
+    // subcommand. Only `status` and `monitor jobs` implement a live-poll loop,
+    // so monitor reads it through `cfg.watch_mode`.
     if global.watch
         && dispatched.command != CommandKind::Status
         && dispatched.command != CommandKind::Monitor

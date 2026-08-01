@@ -14,8 +14,74 @@ use crate::unified::pagination::{
     encode_job_cursor,
 };
 use crate::unified_codec::*;
+use axon_core::sqlite::ImmediateTx;
 
 impl SqliteUnifiedJobStore {
+    pub(crate) async fn terminal_counts_from_events(
+        &self,
+        job_id: JobId,
+    ) -> Result<Option<StageCounts>> {
+        let row = sqlx::query(
+            "WITH latest_attempt AS (
+                SELECT MAX(attempt) AS attempt
+                FROM job_events
+                WHERE job_id = ?
+             )
+             SELECT
+                MAX(json_extract(details_json, '$.source_progress_event.counts.items_total')) AS items_total,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.items_done')) AS items_done,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.documents_total')) AS documents_total,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.documents_done')) AS documents_done,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.chunks_total')) AS chunks_total,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.chunks_done')) AS chunks_done,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.bytes_total')) AS bytes_total,
+                MAX(json_extract(details_json, '$.source_progress_event.counts.bytes_done')) AS bytes_done
+             FROM job_events, latest_attempt
+             WHERE job_id = ?
+               AND job_events.attempt = latest_attempt.attempt
+               AND json_type(details_json, '$.source_progress_event.counts') = 'object'",
+        )
+        .bind(job_id.0.to_string())
+        .bind(job_id.0.to_string())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sql_error)?;
+
+        let items_total = optional_u64(&row, "items_total")?;
+        let items_done = optional_u64(&row, "items_done")?;
+        let documents_total = optional_u64(&row, "documents_total")?;
+        let documents_done = optional_u64(&row, "documents_done")?;
+        let chunks_total = optional_u64(&row, "chunks_total")?;
+        let chunks_done = optional_u64(&row, "chunks_done")?;
+        let bytes_total = optional_u64(&row, "bytes_total")?;
+        let bytes_done = optional_u64(&row, "bytes_done")?;
+        if [
+            items_total,
+            items_done,
+            documents_total,
+            documents_done,
+            chunks_total,
+            chunks_done,
+            bytes_total,
+            bytes_done,
+        ]
+        .iter()
+        .all(Option::is_none)
+        {
+            return Ok(None);
+        }
+        Ok(Some(StageCounts {
+            items_total,
+            items_done: items_done.unwrap_or(0),
+            documents_total,
+            documents_done: documents_done.unwrap_or(0),
+            chunks_total,
+            chunks_done: chunks_done.unwrap_or(0),
+            bytes_total,
+            bytes_done: bytes_done.unwrap_or(0),
+        }))
+    }
+
     pub(crate) async fn create_job(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
         if let Some(idempotency_key) = request.idempotency_key.as_deref()
             && let Some(summary) = find_by_idempotency_key(&self.pool, idempotency_key).await?
@@ -27,7 +93,7 @@ impl SqliteUnifiedJobStore {
         let root_job_id = request.root_job_id.unwrap_or(job_id);
         let now = now_timestamp();
         let request_json = request.request.clone();
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
         sqlx::query(
             "INSERT INTO jobs (
                 job_id, kind, intent, status, phase, priority, source_id, watch_id,
@@ -122,7 +188,7 @@ impl SqliteUnifiedJobStore {
     }
 
     pub(crate) async fn update_job_status(&self, status: JobStatusUpdate) -> Result<()> {
-        let mut tx = self.pool.begin().await.map_err(sql_error)?;
+        let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
         let row = sqlx::query("SELECT status, started_at FROM jobs WHERE job_id = ?")
             .bind(status.job_id.0.to_string())
             .fetch_optional(&mut *tx)
@@ -193,7 +259,7 @@ impl SqliteUnifiedJobStore {
 
     async fn update_stage_status(
         &self,
-        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        tx: &mut sqlx::SqliteConnection,
         status: &JobStatusUpdate,
         stage_id: StageId,
         started_at: &Option<String>,
@@ -215,7 +281,7 @@ impl SqliteUnifiedJobStore {
         .bind(optional_to_json(&status.error)?)
         .bind(stage_id.0.to_string())
         .bind(status.job_id.0.to_string())
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
         if result.rows_affected() == 0 {
@@ -344,6 +410,21 @@ impl SqliteUnifiedJobStore {
         .map(|sequence| sequence as u64);
         Ok(sequence)
     }
+}
+
+fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u64>> {
+    row.try_get::<Option<i64>, _>(column)
+        .map_err(sql_error)?
+        .map(|value| {
+            u64::try_from(value).map_err(|_| {
+                ApiError::new(
+                    "job.counts_invalid",
+                    ErrorStage::Retrieving,
+                    format!("negative historical counter in {column}"),
+                )
+            })
+        })
+        .transpose()
 }
 
 struct JobFilterBindings {

@@ -189,6 +189,14 @@ async fn execute_saved_plan(
     if !authz.is_admin {
         return Err("reset.admin_required: destructive reset requires axon:admin".into());
     }
+    let worker_lock = crate::runtime::drain_lock_path(&cfg.sqlite_path);
+    let _reset_lock = crate::runtime::WorkerDrainLock::try_hold(&worker_lock)
+        .await
+        .map_err(|error| format!("reset.worker_probe_failed: {error}"))?
+        .ok_or(
+            "reset.worker_active: stop the active Axon worker or server before replacing SQLite"
+                .to_string(),
+        )?;
     let saved = plan_store::load_plan(cfg, plan_id).await?;
     if saved.plan_id != plan_id {
         return Err("reset.plan_id_mismatch: stored plan identity does not match request".into());

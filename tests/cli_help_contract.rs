@@ -373,6 +373,11 @@ fn all_command_help_filters_inherited_global_noise() {
             "--auto-switch-thin-ratio",
             "--screenshot-full-page",
         ] {
+            if unexpected == "--screenshot-full-page"
+                && matches!(command, "source" | "scrape" | "screenshot")
+            {
+                continue;
+            }
             assert!(
                 !stdout.contains(unexpected),
                 "{command} help should not include inherited global noise {unexpected}:\n{stdout}"

@@ -237,6 +237,50 @@ Track:
 - error/retry frequency
 - worker saturation signals in logs
 
+### Isolated crawler stress run
+
+Use the dedicated harness for the final live load phase. It defaults to a
+non-mutating JSON plan:
+
+```bash
+scripts/stress-crawler.sh --mode plan \
+  --url https://docs.example.com/
+```
+
+Run a cheap end-to-end check before the heavy pass:
+
+```bash
+scripts/stress-crawler.sh --mode smoke
+```
+
+Heavy mode requires an explicit target and confirmation. It maps the site
+first, targets at least 500 pages when available, queues concurrent page jobs
+beside the main site crawl, and uses the existing external Qdrant endpoint.
+It never starts a container runtime or Qdrant:
+
+```bash
+AXON_STRESS_CONFIRM=CRAWL_AND_DELETE_ISOLATED_STATE \
+  scripts/stress-crawler.sh --mode heavy \
+  --url https://docs.example.com/ \
+  --max-pages 500 \
+  --concurrent-jobs 8
+```
+
+Each run owns an `axon_stress_*` collection and an isolated
+`AXON_DATA_DIR`/SQLite database. The exit trap deletes both even after failure.
+The retained report contains discovery evidence, per-job latency, p50/p95/max
+latency, document/chunk/vector throughput, terminal counts, graph counts,
+error counts, and Qdrant point verification. Durable scheduler reservations are
+reported as not applicable because source plans currently manage embedding
+capacity in memory rather than requesting rows in `provider_reservations`.
+Prepared chunks are pre-redaction while Qdrant points are post-redaction, so the
+report records secret-policy skips and the resulting point delta explicitly;
+it requires nonzero publication rather than falsely requiring those counts to
+match.
+Failed runs still retain a structured report with terminal/error evidence and
+verified SQLite/Qdrant cleanup. Heavy mode rejects loopback and the
+`axon-qdrant` Compose-service hostname.
+
 ## Symptom -> Tuning Matrix
 
 | Symptom | Likely bottleneck | First knobs |

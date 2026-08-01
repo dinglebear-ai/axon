@@ -1,4 +1,11 @@
-use std::{fs, path::Path};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader, Read},
+    path::Path,
+};
+
+const MAX_METADATA_LINES: usize = 32;
+const MAX_METADATA_BYTES: u64 = 64 * 1024;
 
 pub(super) fn matches_project_filter(
     filter: Option<&str>,
@@ -16,7 +23,7 @@ pub(super) fn matches_project_filter(
         || (path_filter
             && (pathish_contains(&root.to_string_lossy(), &filter)
                 || pathish_contains(&file.to_string_lossy(), &filter)))
-        || file_text_contains(file, &filter)
+        || file_project_metadata_contains(file, &filter)
 }
 
 fn trimmed_filter(filter: Option<&str>) -> Option<&str> {
@@ -32,8 +39,40 @@ fn pathish_contains(value: &str, filter: &str) -> bool {
     lower.contains(filter) || normalize_separators(&lower).contains(&normalize_separators(filter))
 }
 
-fn file_text_contains(file: &Path, filter: &str) -> bool {
-    fs::read_to_string(file).is_ok_and(|text| pathish_contains(&text, filter))
+fn file_project_metadata_contains(file: &Path, filter: &str) -> bool {
+    let Ok(file) = File::open(file) else {
+        return false;
+    };
+    let reader = BufReader::new(file.take(MAX_METADATA_BYTES));
+    reader
+        .lines()
+        .take(MAX_METADATA_LINES)
+        .filter_map(Result::ok)
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(&line).ok())
+        .any(|value| metadata_value_matches(&value, filter))
+}
+
+fn metadata_value_matches(value: &serde_json::Value, filter: &str) -> bool {
+    const PROJECT_KEYS: [&str; 5] = [
+        "cwd",
+        "project",
+        "project_path",
+        "projectPath",
+        "projectHash",
+    ];
+    match value {
+        serde_json::Value::Object(object) => object.iter().any(|(key, value)| {
+            (PROJECT_KEYS.contains(&key.as_str())
+                && value
+                    .as_str()
+                    .is_some_and(|candidate| pathish_contains(candidate, filter)))
+                || metadata_value_matches(value, filter)
+        }),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| metadata_value_matches(value, filter)),
+        _ => false,
+    }
 }
 
 fn normalize_separators(value: &str) -> String {
@@ -49,66 +88,5 @@ fn normalize_separators(value: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_filter_allows_all() {
-        assert!(matches_project_filter(
-            None,
-            Path::new("/tmp/root"),
-            Path::new("/tmp/root/session.jsonl"),
-            "session.jsonl",
-        ));
-        assert!(matches_project_filter(
-            Some("  "),
-            Path::new("/tmp/root"),
-            Path::new("/tmp/root/session.jsonl"),
-            "session.jsonl",
-        ));
-    }
-
-    #[test]
-    fn matches_relative_or_root_path_case_insensitively() {
-        assert!(matches_project_filter(
-            Some("axon"),
-            Path::new("/home/me/.claude/projects"),
-            Path::new("/home/me/.claude/projects/-home-me-workspace-Axon/session.jsonl"),
-            "-home-me-workspace-Axon/session.jsonl",
-        ));
-        assert!(matches_project_filter(
-            Some("/home/me/workspace/axon"),
-            Path::new("/home/me/.claude/projects/-home-me-workspace-axon"),
-            Path::new("/home/me/.claude/projects/-home-me-workspace-axon/session.jsonl"),
-            "session.jsonl",
-        ));
-    }
-
-    #[test]
-    fn rejects_unmatched_project() {
-        assert!(!matches_project_filter(
-            Some("other-project"),
-            Path::new("/home/me/.codex/sessions"),
-            Path::new("/home/me/.codex/sessions/2026/07/15/session.jsonl"),
-            "2026/07/15/session.jsonl",
-        ));
-    }
-
-    #[test]
-    fn matches_project_in_file_content() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("rollout.jsonl");
-        fs::write(
-            &file,
-            r#"{"type":"session_meta","payload":{"cwd":"/home/me/workspace/axon"}}"#,
-        )
-        .unwrap();
-
-        assert!(matches_project_filter(
-            Some("/home/me/workspace/axon"),
-            dir.path(),
-            &file,
-            "rollout.jsonl",
-        ));
-    }
-}
+#[path = "project_filter_tests.rs"]
+mod tests;

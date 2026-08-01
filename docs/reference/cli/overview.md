@@ -32,7 +32,7 @@ Headline command groups:
 | Extraction/inspection | `extract` (+ lifecycle), `brand`, `diff`, `endpoints`, `screenshot` |
 | Lifecycle | `jobs list/get/events/stream/cancel/retry/recover/cleanup/clear/worker`, `watch create/.../history` |
 | Memory | `memory remember/list/search/show/link/supersede/context` |
-| Cleanup | `prune plan/exec`, `reset plan/exec`, `migrate` |
+| Cleanup | `prune plan/exec`, flag-driven `reset`, `migrate` |
 | Discovery | `sources`, `domains`, `stats`, `status`, `monitor jobs` |
 | Runtime/setup | `serve`, `serve mcp`, `mcp`, `doctor`, `preflight`, `smoke`, `compose`, `setup`, `config`, `update` |
 | Resources | `artifacts`, `uploads`, `collections`, `graph`, `providers`, `capabilities` |

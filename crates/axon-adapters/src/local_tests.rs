@@ -110,6 +110,31 @@ async fn local_directory_discovery_emits_sorted_relative_file_items() {
 }
 
 #[tokio::test]
+async fn local_directory_discovery_honors_all_exclude_path_substrings() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    fs::create_dir_all(root.join("docs/private")).unwrap();
+    fs::create_dir_all(root.join("vendor")).unwrap();
+    fs::write(root.join("keep.md"), "keep").unwrap();
+    fs::write(root.join("docs/private/excluded.md"), "private").unwrap();
+    fs::write(root.join("vendor/dependency.rs"), "vendor").unwrap();
+    let mut plan = source_plan(root, SourceScope::Directory);
+    plan.route.validated_options.values.insert(
+        "exclude_paths".to_string(),
+        serde_json::json!(["vendor/", "docs/private/"]),
+    );
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let keys = manifest
+        .items
+        .iter()
+        .map(|item| item.source_item_key.0.as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(keys, vec!["keep.md"]);
+}
+
+#[tokio::test]
 async fn local_adapter_acquires_and_normalizes_source_documents() {
     let adapter = LocalSourceAdapter::new();
     let root = temp_source_dir();

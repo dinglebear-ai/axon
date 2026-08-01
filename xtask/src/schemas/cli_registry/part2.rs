@@ -113,7 +113,7 @@ fn commands_sources_stats_jobs() -> Vec<CliRegistryCommand> {
         ),
         c(
             &["jobs", "clear"],
-            "Clear all unified durable job rows",
+            "Clear terminal unified durable job rows; active jobs require cancel/recover first",
             None,
             true,
             false,
@@ -254,16 +254,8 @@ fn commands_source_serve_prune() -> Vec<CliRegistryCommand> {
         ),
         // reset
         c(
-            &["reset", "plan"],
-            "Create a reviewable clean-slate reset plan without deleting data",
-            None,
-            false,
-            false,
-            "admin",
-        ),
-        c(
-            &["reset", "exec"],
-            "Execute a reviewed clean-slate reset plan",
+            &["reset"],
+            "Plan a clean-slate reset or execute a reviewed plan with flags",
             None,
             true,
             false,

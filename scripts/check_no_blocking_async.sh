@@ -11,9 +11,13 @@ set -euo pipefail
 pattern='block_on|block_in_place'
 
 paths=(
-  src/vector/ops/commands/ask
-  src/vector/ops/qdrant/hybrid.rs
-  src/vector/ops/qdrant/dual_search.rs
+  crates/axon-cli/src/commands/ask.rs
+  crates/axon-cli/src/commands/ask
+  crates/axon-retrieval/src
+  crates/axon-services/src/query/ask_retrieval.rs
+  crates/axon-services/src/query/ask_retrieval
+  crates/axon-services/src/query/retrieval.rs
+  crates/axon-vectors/src/qdrant/search.rs
 )
 
 if rg -n "$pattern" "${paths[@]}" \

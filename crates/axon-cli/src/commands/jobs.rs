@@ -111,8 +111,42 @@ async fn get_job(cfg: &Config, service_context: &ServiceContext) -> Result<(), B
     if let Some(error) = job.last_error {
         println!("  {} {}", muted("Error:"), error.message);
     }
+    if let Some(counts) = job.counts.as_ref().and_then(format_job_counts) {
+        println!("  {} {}", muted("Result:"), counts);
+    }
     println!("Job ID: {}", job.job_id.0);
     Ok(())
+}
+
+fn format_job_counts(counts: &axon_api::source::StageCounts) -> Option<String> {
+    if counts.documents_done == 0 && counts.chunks_done == 0 {
+        if let Some(total) = counts.items_total.filter(|total| *total > 0) {
+            let percent = ((counts.items_done as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+            let percent = if percent < 99.95 {
+                format!("{percent:.1}%")
+            } else {
+                "100%".to_string()
+            };
+            return Some(format!("{}/{} items · {percent}", counts.items_done, total));
+        }
+        return (counts.items_done > 0).then(|| format!("{} items", counts.items_done));
+    }
+    if let Some(total) = counts.documents_total.filter(|total| *total > 0) {
+        let percent = ((counts.documents_done as f64 / total as f64) * 100.0).clamp(0.0, 100.0);
+        let percent = if percent < 99.95 {
+            format!("{percent:.1}%")
+        } else {
+            "100%".to_string()
+        };
+        return Some(format!(
+            "{}/{} docs · {percent} · {} chunks",
+            counts.documents_done, total, counts.chunks_done
+        ));
+    }
+    Some(format!(
+        "{} docs · {} chunks",
+        counts.documents_done, counts.chunks_done
+    ))
 }
 
 async fn job_events(cfg: &Config, service_context: &ServiceContext) -> Result<(), Box<dyn Error>> {
@@ -330,40 +364,5 @@ fn enum_wire<T: serde::Serialize>(value: T) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn retry_mode_accepts_wire_names() {
-        assert!(matches!(
-            parse_retry_mode("same_config").expect("same_config"),
-            JobRetryMode::SameConfig
-        ));
-        assert!(matches!(
-            parse_retry_mode("with_overrides").expect("with_overrides"),
-            JobRetryMode::WithOverrides
-        ));
-    }
-
-    #[test]
-    fn job_filters_parse_wire_enums() {
-        let cfg = Config {
-            positional: vec![
-                "list".to_string(),
-                "--status".to_string(),
-                "completed_degraded".to_string(),
-                "--kind".to_string(),
-                "provider_probe".to_string(),
-            ],
-            ..Config::default()
-        };
-        assert!(matches!(
-            parse_opt_flag::<LifecycleStatus>(&cfg, "--status").expect("status"),
-            Some(LifecycleStatus::CompletedDegraded)
-        ));
-        assert!(matches!(
-            parse_opt_flag::<JobKind>(&cfg, "--kind").expect("kind"),
-            Some(JobKind::ProviderProbe)
-        ));
-    }
-}
+#[path = "jobs_tests.rs"]
+mod tests;

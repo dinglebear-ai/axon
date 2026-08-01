@@ -5,8 +5,9 @@
 
 use axon_api::source::{
     ApiError, ErrorStage, JobHeartbeat, LifecycleStatus, PipelinePhase, Severity,
-    SourceProgressEvent, Timestamp, Visibility,
+    SourceProgressEvent, StageCounts, Timestamp, Visibility,
 };
+use axon_core::sqlite::ImmediateTx;
 use sqlx::SqlitePool;
 
 use crate::boundary::JobStore;
@@ -62,6 +63,7 @@ pub(super) async fn fail_unified_claimed(
         claimed,
         LifecycleStatus::Failed,
         PipelinePhase::Complete,
+        None,
         Some(error),
     )
     .await
@@ -142,6 +144,7 @@ pub(super) async fn mark_canceled(
         LifecycleStatus::Canceled,
         PipelinePhase::Canceled,
         None,
+        None,
     )
     .await
     {
@@ -154,10 +157,11 @@ pub(super) async fn mark_terminal(
     claimed: &UnifiedClaimedJob,
     status: LifecycleStatus,
     phase: PipelinePhase,
+    counts: Option<StageCounts>,
     error: Option<ApiError>,
 ) -> Result<(), ApiError> {
     retry_job_write("unified worker terminal transition", || {
-        mark_terminal_once(pool, claimed, status, phase, error.clone())
+        mark_terminal_once(pool, claimed, status, phase, counts.clone(), error.clone())
     })
     .await
 }
@@ -167,6 +171,7 @@ async fn mark_terminal_once(
     claimed: &UnifiedClaimedJob,
     status: LifecycleStatus,
     phase: PipelinePhase,
+    counts: Option<StageCounts>,
     error: Option<ApiError>,
 ) -> Result<(), ApiError> {
     let now = Timestamp::from(chrono::Utc::now());
@@ -189,7 +194,12 @@ async fn mark_terminal_once(
         .map(serde_json::to_string)
         .transpose()
         .map_err(json_error)?;
-    let mut tx = pool.begin().await.map_err(sql_error)?;
+    let counts_json = counts
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(json_error)?;
+    let mut tx = ImmediateTx::begin(pool).await.map_err(sql_error)?;
     // mark_terminal is only ever called with a terminal LifecycleStatus
     // (Completed/CompletedDegraded/Failed/Canceled — see call sites in
     // run_unified_claimed/fail_unified_claimed/mark_canceled), never Waiting,
@@ -204,6 +214,7 @@ async fn mark_terminal_once(
             phase = ?,
             updated_at = ?,
             finished_at = COALESCE(finished_at, ?),
+            counts_json = COALESCE(?, counts_json),
             last_error_json = ?,
             cooldown_until = NULL
          WHERE job_id = ? AND attempt = ?
@@ -217,6 +228,7 @@ async fn mark_terminal_once(
     .bind(phase.as_str())
     .bind(now.0.as_str())
     .bind(now.0.as_str())
+    .bind(counts_json.as_deref())
     .bind(source_error_json.as_deref())
     .bind(claimed.job_id.0.to_string())
     .bind(claimed.attempt as i64)

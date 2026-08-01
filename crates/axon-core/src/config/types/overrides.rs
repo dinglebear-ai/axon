@@ -53,10 +53,10 @@ pub struct ConfigOverrides {
     /// Override `Config::exclude_selector`.
     pub exclude_selector: Option<String>,
 
-    /// Override `Config::since` (`scraped_at` lower-bound filter).
+    /// Override `Config::since` (`embedded_at` lower-bound filter).
     pub since: Option<String>,
 
-    /// Override `Config::before` (`scraped_at` upper-bound filter).
+    /// Override `Config::before` (`embedded_at` upper-bound filter).
     pub before: Option<String>,
 
     /// Override `Config::hybrid_search_enabled`.

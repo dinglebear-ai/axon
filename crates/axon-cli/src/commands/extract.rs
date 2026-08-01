@@ -148,9 +148,10 @@ async fn maybe_handle_extract_subcommand(
                 println!("{} aborted", symbol_for_status("canceled"));
             }
         }
-        "worker" => {
-            handle_worker_mode(job_service::start_worker(service_context, JobKind::Extract).await?)?
-        }
+        "worker" => handle_worker_mode(
+            cfg,
+            job_service::start_worker(service_context, JobKind::Extract).await?,
+        )?,
         "recover" => {
             let reclaimed = job_service::recover_jobs(service_context, JobKind::Extract).await?;
             handle_job_recover(cfg, reclaimed, "extract")?;

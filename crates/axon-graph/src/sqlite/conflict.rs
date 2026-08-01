@@ -15,7 +15,7 @@ type StoreResult<T> = Result<T, axon_api::source::ApiError>;
 /// Record a conflict on an edge whose incoming authority equals an existing
 /// authoritative claim.
 pub async fn record_edge_conflict(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     edge: &ResolvedEdge,
     existing_authority: Authority,
 ) -> StoreResult<()> {
@@ -33,7 +33,7 @@ pub async fn record_edge_conflict(
     .bind(super::row::authority_to_str(existing_authority.to_level()))
     .bind(super::row::authority_to_str(edge.authority.to_level()))
     .bind(now_timestamp())
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to record edge conflict: {e}")))?;
     Ok(())

@@ -138,6 +138,30 @@ async fn discover_lists_repo_files_and_excludes_git_dir() {
 }
 
 #[tokio::test]
+async fn discover_honors_repo_relative_exclude_path_substrings() {
+    let repo = fixture_repo();
+    fs::create_dir_all(repo.join("docs/private")).unwrap();
+    fs::create_dir_all(repo.join("vendor")).unwrap();
+    fs::write(repo.join("docs/private/secret.md"), "secret\n").unwrap();
+    fs::write(repo.join("vendor/dependency.rs"), "vendored\n").unwrap();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    plan.request.options.values.insert(
+        "exclude_paths".to_string(),
+        serde_json::json!(["src/", "docs/private/", "vendor/"]),
+    );
+
+    let manifest = GitSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys: Vec<_> = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect();
+
+    assert_eq!(keys, vec!["README.md"]);
+    fs::remove_dir_all(&repo).ok();
+}
+
+#[tokio::test]
 async fn acquire_then_normalize_stamps_git_metadata() {
     let repo = fixture_repo();
     let plan = git_plan(&repo, SourceScope::Repo, true);

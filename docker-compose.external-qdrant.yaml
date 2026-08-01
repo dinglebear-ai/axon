@@ -1,4 +1,4 @@
-name: axon
+name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 
 # Override for deployments that point axon at an existing EXTERNAL qdrant
 # instance (this homelab: tootie, kept off dookie for RAM reasons) instead of

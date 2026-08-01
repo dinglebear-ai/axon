@@ -35,13 +35,13 @@ use axon_api::source::{
 };
 use axon_core::config::Config;
 use axon_jobs::unified::SqliteUnifiedJobStore;
-use axon_jobs::workers::UnifiedJobRunner;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
+use axon_jobs::workers::{UnifiedJobOutcome, UnifiedJobRunner};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
-use crate::runtime::job_runners::heartbeat_running;
+use crate::runtime::job_runners::{heartbeat_running, heartbeat_running_preserving_progress};
 
 pub(super) struct SourceRunner {
     cfg: Arc<Config>,
@@ -102,7 +102,7 @@ impl UnifiedJobRunner for SourceRunner {
         claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
         shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         heartbeat_running(store, claimed, PipelinePhase::Fetching).await;
         if shutdown.is_cancelled() {
             return Err(source_error("source canceled before running"));
@@ -123,9 +123,20 @@ impl UnifiedJobRunner for SourceRunner {
 
         let ctx = self.service_context().await?;
         let run_fut = run_source_request_with_context(claimed, source_request, ctx);
-        let result = tokio::select! {
-            _ = shutdown.cancelled() => return Err(source_error("source canceled")),
-            result = run_fut => result,
+        tokio::pin!(run_fut);
+        let mut heartbeat = tokio::time::interval_at(
+            tokio::time::Instant::now() + std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(30),
+        );
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let result = loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => return Err(source_error("source canceled")),
+                result = &mut run_fut => break result,
+                _ = heartbeat.tick() => {
+                    heartbeat_running_preserving_progress(store, claimed).await;
+                }
+            }
         };
 
         match result {
@@ -155,17 +166,23 @@ pub(crate) async fn run_source_request_with_context(
     crate::source::index_source_with_execution(source_request, ctx, execution).await
 }
 
-/// Map the terminal [`SourceResult::status`] to the runner's `Result`.
-/// `Completed`/`CompletedDegraded` both count as a successful unified job
-/// (the unified worker's `Ok(())` path always marks `Completed` today — see
-/// `crates/axon-jobs/src/workers/unified.rs::run_unified_claimed` — so a
-/// finer-grained `CompletedDegraded` distinction is not yet plumbed through
-/// this trait; degradation is still visible via `SourceResult.warnings` on
-/// the job's own result payload). Any other terminal status is a real
-/// failure and must fail the job with a descriptive `ApiError`.
-fn outcome_from_result(result: SourceResult) -> Result<(), ApiError> {
+/// Preserve the source pipeline's authoritative terminal status and counts
+/// across the runner boundary so the worker can persist them atomically with
+/// its terminal transition.
+fn outcome_from_result(result: SourceResult) -> Result<UnifiedJobOutcome, ApiError> {
+    let counts = axon_api::source::StageCounts {
+        items_total: Some(result.counts.items_total),
+        items_done: result.counts.items_total,
+        documents_total: Some(result.counts.documents_total),
+        documents_done: result.counts.documents_total,
+        chunks_total: Some(result.counts.chunks_total),
+        chunks_done: result.counts.chunks_total,
+        bytes_total: Some(result.counts.bytes_total),
+        bytes_done: result.counts.bytes_total,
+    };
     match result.status {
-        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded => Ok(()),
+        LifecycleStatus::Completed => Ok(UnifiedJobOutcome::completed(counts)),
+        LifecycleStatus::CompletedDegraded => Ok(UnifiedJobOutcome::completed_degraded(counts)),
         _ => {
             let detail = result
                 .warnings

@@ -1,4 +1,7 @@
 use super::*;
+use axon_vectors::testing::{
+    test_collection_spec, test_embedding_result_for, test_prepared_document,
+};
 
 fn web_document_with_target_metadata() -> SourceDocument {
     let mut metadata = MetadataMap::new();
@@ -95,4 +98,49 @@ fn web_source_vectorize_preserves_target_web_metadata() {
         !document.metadata.contains_key("web_render_mode"),
         "debug-only acquisition metadata stays out of vector payloads"
     );
+}
+
+#[test]
+fn vector_point_counts_are_recorded_per_document_after_redaction_skips() {
+    let mut redacted_document = test_prepared_document();
+    redacted_document.chunks[0].content = "API_KEY=abc123".to_string();
+
+    let mut clean_document = test_prepared_document();
+    clean_document.document_id = DocumentId::new("doc-clean");
+    clean_document.source_item_key = SourceItemKey::new("https://example.com/clean");
+    clean_document.canonical_uri = "https://example.com/clean".to_string();
+    for (index, chunk) in clean_document.chunks.iter_mut().enumerate() {
+        chunk.chunk_id = ChunkId::new(format!("chunk-clean-{index}"));
+    }
+
+    let mut embeddings = test_embedding_result_for(&redacted_document, "text-embedding-test", 3);
+    embeddings
+        .vectors
+        .extend(test_embedding_result_for(&clean_document, "text-embedding-test", 3).vectors);
+
+    let built = vector_point_batch_for_documents(
+        test_collection_spec(3),
+        &[redacted_document.clone(), clean_document.clone()],
+        &embeddings,
+    )
+    .expect("build vector points");
+
+    assert_eq!(built.skipped_redaction, 1);
+    assert_eq!(built.batch.points.len(), 3);
+    assert_eq!(
+        built.points_by_document.get(&redacted_document.document_id),
+        Some(&1)
+    );
+    assert_eq!(
+        built.points_by_document.get(&clean_document.document_id),
+        Some(&2)
+    );
+    let redacted_status = vectorized_document_status(
+        &redacted_document,
+        &built.points_by_document,
+        Timestamp("2026-07-31T00:00:00Z".to_string()),
+    )
+    .expect("build redacted document status");
+    assert_eq!(redacted_status.chunk_count, 2);
+    assert_eq!(redacted_status.vector_point_count, 1);
 }

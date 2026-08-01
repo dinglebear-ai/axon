@@ -27,6 +27,29 @@ impl SqliteWatchStore {
         lease_ttl_ms: i64,
         limit: i64,
     ) -> Result<Vec<LeasedSourceWatch>> {
+        // The atomic UPDATE below must acquire SQLite's single-writer lock
+        // even when it ultimately returns zero rows. Most scheduler ticks have
+        // no due watches, so avoid joining unrelated write contention on that
+        // common path. This read is only a conservative fast-path hint: when
+        // it finds a candidate, the UPDATE remains the sole lease authority
+        // and rechecks every eligibility predicate atomically.
+        let has_due_watch = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS( \
+                 SELECT 1 FROM axon_source_watches \
+                 WHERE enabled = 1 AND every_seconds >= 30 AND next_run_at <= ? \
+                   AND (lease_expires_at IS NULL OR lease_expires_at < ?) \
+                 LIMIT 1 \
+             )",
+        )
+        .bind(now)
+        .bind(now)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(sqlite_err)?;
+        if !has_due_watch {
+            return Ok(Vec::new());
+        }
+
         retry_watch_write("watch lease due", || {
             self.lease_due_once(now, lease_ttl_ms, limit)
         })

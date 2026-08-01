@@ -15,14 +15,14 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-cli/src/schema_registry.rs` | `sha256:0e551ddbd987f079d50a73b15521bfd7f5166d13f7f2a5c39e762eb026942168` |
-| `crates/axon-core/src/config/cli.rs` | `sha256:f56f35b0f9ed0060565962aabbf311bf0393283b3f493ac212bc2803cf2aa47c` |
-| `crates/axon-core/src/config/cli/config_args.rs` | `sha256:ee3bae44b57a96696213245d225b14d09ac95415d4ca8da10403f7949fabd2e6` |
-| `crates/axon-core/src/config/cli/resources_args.rs` | `sha256:73badd087b225420442a48784f2d8f8a039e5c17176d02875baef134146164b4` |
+| `crates/axon-core/src/config/cli.rs` | `sha256:2195a728bf2cd45f66625128704e22c3e4575add19dc8d7a82c2d3e5f3d952de` |
+| `crates/axon-core/src/config/cli/config_args.rs` | `sha256:4dd1a47605f798d0504820d3118d205cc335d048febdd97e5656bf7f7e38caa7` |
+| `crates/axon-core/src/config/cli/resources_args.rs` | `sha256:220dffa6f6fd4159b35794c8e1950cfdab0738da9ca5f7b6760b4638347705c2` |
 | `crates/axon-core/src/config/cli/setup_args.rs` | `sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7` |
 | `docs/pipeline-unification/schemas/cli-schema.md` | `sha256:e542f512c3329c4f102fc3b93f57415906a00de3b302d1d836b5d9131e5d1a08` |
 | `xtask/src/schemas/cli_registry.rs` | `sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b` |
 | `xtask/src/schemas/cli_registry/part1.rs` | `sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0` |
-| `xtask/src/schemas/cli_registry/part2.rs` | `sha256:ff5d1b6ff19ba79d4e81b4b0439558ae89457795656af0dfee9b9050f51e7ab1` |
+| `xtask/src/schemas/cli_registry/part2.rs` | `sha256:95a0e61d6e097be6a01c4f27dff6fa18e7f076d723ac2562d53db6a6437bcc4f` |
 | `xtask/src/schemas/cli_registry/part3.rs` | `sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088` |
 | `xtask/src/schemas/cli_registry/part4.rs` | `sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7` |
 
@@ -111,7 +111,7 @@ Run `cargo xtask schemas generate --check`.
 | `graph source` | `graph` | Walk the SourceGraph neighborhood of a source | no | `read` | no |
 | `jobs cancel` | `jobs` | Request cancellation for a unified durable job | yes | `write` | no |
 | `jobs cleanup` | `jobs` | Remove old terminal unified durable jobs | yes | `write` | no |
-| `jobs clear` | `jobs` | Clear all unified durable job rows | yes | `admin` | no |
+| `jobs clear` | `jobs` | Clear terminal unified durable job rows; active jobs require cancel/recover first | yes | `admin` | no |
 | `jobs events` | `jobs` | Show one job's event page | no | `read` | no |
 | `jobs get` | `jobs` | Show one unified durable job | no | `read` | no |
 | `jobs list` | `jobs` | List unified durable jobs | no | `read` | no |
@@ -138,8 +138,7 @@ Run `cargo xtask schemas generate --check`.
 | `prune plan` | `prune` | Resolve a prune target into a reviewable dry-run plan | no | `read` | no |
 | `query` | `query` | Semantic vector search over the Qdrant index | no | `read` | no |
 | `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
-| `reset exec` | `reset` | Execute a reviewed clean-slate reset plan | yes | `admin` | no |
-| `reset plan` | `reset` | Create a reviewable clean-slate reset plan without deleting data | no | `admin` | no |
+| `reset` | `reset` | Plan a clean-slate reset or execute a reviewed plan with flags | yes | `admin` | no |
 | `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
 | `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
 | `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
@@ -179,4 +178,4 @@ Run `cargo xtask schemas generate --check`.
 | `watch status` | `watch` | Show source watch status | no | `read` | no |
 | `watch update` | `watch` | Update a source watch | yes | `write` | no |
 
-Total: 110 commands.
+Total: 109 commands.

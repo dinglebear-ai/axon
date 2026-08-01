@@ -8,7 +8,9 @@
 //! (stats) open an existing database without depending on the jobs crate.
 
 mod busy_retry;
+mod immediate_tx;
 pub use busy_retry::{is_retryable_busy, message_is_retryable_busy, retry_on, with_busy_retry};
+pub use immediate_tx::ImmediateTx;
 
 use sqlx::sqlite::SqliteConnection;
 use sqlx::{
@@ -55,6 +57,41 @@ pub async fn rollback_on_release(conn: &mut SqliteConnection) -> Result<bool, sq
             tracing::warn!(error = %e, "sqlite: after_release ROLLBACK failed; evicting connection");
             Ok(false)
         }
+    }
+}
+
+/// Keep WAL and shared-memory sidecars linked while pools come and go.
+///
+/// Axon intentionally opens the same database from several short-lived CLI
+/// processes while a long-lived worker is active. Without
+/// `SQLITE_FCNTL_PERSIST_WAL`, a closing connection may unlink `-wal`/`-shm`;
+/// an already-open worker then continues against the orphaned inodes while a
+/// new CLI connection reads a newly-created WAL generation. That split-brain
+/// leaves terminal worker writes invisible to `status`/`jobs get`.
+///
+/// SQLx exposes the raw handle behind an exclusive async guard specifically
+/// for SQLite file controls. Pin `libsqlite3-sys` to SQLx 0.8's exact version
+/// in this crate so the handle type and constants cannot drift independently.
+#[allow(unsafe_code)]
+async fn enable_persistent_wal(conn: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    let mut handle = conn.lock_handle().await?;
+    let mut enabled = 1i32;
+    // SAFETY: `lock_handle()` exclusively owns SQLite's connection worker for
+    // this call; `main` and `enabled` remain valid for its synchronous duration.
+    let result = unsafe {
+        libsqlite3_sys::sqlite3_file_control(
+            handle.as_raw_handle().as_ptr(),
+            c"main".as_ptr(),
+            libsqlite3_sys::SQLITE_FCNTL_PERSIST_WAL,
+            std::ptr::from_mut(&mut enabled).cast(),
+        )
+    };
+    if result == libsqlite3_sys::SQLITE_OK {
+        Ok(())
+    } else {
+        Err(sqlx::Error::Protocol(format!(
+            "sqlite: enabling persistent WAL sidecars failed with code {result}"
+        )))
     }
 }
 
@@ -418,10 +455,19 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
         .pragma("busy_timeout", "30000")
         .pragma("foreign_keys", "ON");
 
+    let persist_wal = path != ":memory:";
     SqlitePoolOptions::new()
         .max_connections(4)
         .min_connections(1)
         .acquire_timeout(std::time::Duration::from_secs(60))
+        .after_connect(move |conn, _meta| {
+            Box::pin(async move {
+                if persist_wal {
+                    enable_persistent_wal(conn).await?;
+                }
+                Ok(())
+            })
+        })
         .after_release(|conn, _meta| Box::pin(rollback_on_release(conn)))
         .connect_with(opts)
         .await
@@ -465,3 +511,7 @@ pub fn reset_runtime_health_for_tests() {
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = SqliteRuntimeHealth::default();
 }
+
+#[cfg(test)]
+#[path = "sqlite_tests.rs"]
+mod tests;

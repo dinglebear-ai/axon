@@ -9,8 +9,8 @@ impl UnifiedJobRunner for StubRunner {
         _claimed: &UnifiedClaimedJob,
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
-        Ok(())
+    ) -> Result<UnifiedJobOutcome, ApiError> {
+        Ok(UnifiedJobOutcome::completed_without_counts())
     }
 }
 

@@ -267,6 +267,15 @@ pub async fn discover_site_urls(
     combined.extend(llms_urls);
     let discovery_urls = scope_and_filter_map_urls(cfg, combined, &scope);
 
+    if cfg.sitemap_only {
+        return Ok(build_discovery_map_result(
+            discovery_urls,
+            raw_sitemap_count,
+            discovery_source.unwrap_or("sitemap"),
+            start.elapsed().as_millis(),
+        ));
+    }
+
     // A sitemap that parsed successfully but yielded few in-scope URLs is not a
     // usable map — a stale sitemap, a thin one listing only section roots, or one
     // whose entries all fell outside scope. Gate on the RESULTING URL count, not

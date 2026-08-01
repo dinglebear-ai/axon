@@ -2163,7 +2163,7 @@
         "path": "crates/axon-llm/src/provider.rs"
       },
       {
-        "checksum": "sha256:a17532cccb3c9668ca720355ede2a2f8e25c058567d1ce67d85097df07c9bdfc",
+        "checksum": "sha256:3526a9a4a0ae22b5a6e451a69b04a78415aa9d0e789a26180effc9920602df08",
         "kind": "rust_module",
         "path": "crates/axon-observe/src/reservation.rs"
       },

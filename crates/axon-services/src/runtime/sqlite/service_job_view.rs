@@ -134,6 +134,42 @@ fn summary_to_service_job(
     }
 }
 
+async fn hydrate_terminal_counts(
+    store: &Arc<dyn JobStore>,
+    summary: &mut JobSummary,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let terminal = matches!(
+        summary.status,
+        LifecycleStatus::Completed
+            | LifecycleStatus::CompletedDegraded
+            | LifecycleStatus::Failed
+            | LifecycleStatus::Expired
+            | LifecycleStatus::Canceled
+            | LifecycleStatus::Skipped
+    );
+    let counts_empty = summary.counts.as_ref().is_none_or(|counts| {
+        counts.items_done == 0
+            && counts.documents_done == 0
+            && counts.chunks_done == 0
+            && counts.bytes_done == 0
+    });
+    if terminal && counts_empty {
+        let recovered = store
+            .terminal_counts(summary.job_id)
+            .await
+            .map_err(|error| Box::<dyn Error + Send + Sync>::from(error.message))?;
+        if recovered.as_ref().is_some_and(|counts| {
+            counts.items_done > 0
+                || counts.documents_done > 0
+                || counts.chunks_done > 0
+                || counts.bytes_done > 0
+        }) {
+            summary.counts = recovered;
+        }
+    }
+    Ok(())
+}
+
 pub(super) async fn list(
     store: &Arc<dyn JobStore>,
     kind: JobKind,
@@ -158,7 +194,8 @@ pub(super) async fn list(
         .take(limit.max(0) as usize)
         .collect::<Vec<_>>();
     let mut jobs = Vec::with_capacity(page_items.len());
-    for summary in page_items {
+    for mut summary in page_items {
+        hydrate_terminal_counts(store, &mut summary).await?;
         let job_id = summary.job_id;
         let request_json = store
             .request_json(job_id)
@@ -179,12 +216,13 @@ pub(super) async fn status(
         .get(job_id)
         .await
         .map_err(|e| Box::<dyn Error + Send + Sync>::from(e.message))?;
-    let Some(summary) = summary else {
+    let Some(mut summary) = summary else {
         return Ok(None);
     };
     if summary.kind != kind {
         return Ok(None);
     }
+    hydrate_terminal_counts(store, &mut summary).await?;
     let request_json = store
         .request_json(job_id)
         .await

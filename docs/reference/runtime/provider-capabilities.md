@@ -36,7 +36,7 @@ Provider capabilities report health, limits, cooling, reservation policy, reserv
 | `crates/axon-embedding/src/provider.rs` | `sha256:6ea8b3fc76cae8f4aef0eb1a9602e4f3dc7cb7b2c9cf22ce2c5a050adee767ba` |
 | `crates/axon-llm/src/fake.rs` | `sha256:99fb9c1ac34b9438587208eb1217469435f2308bd937a843ecc1c09f7946c89c` |
 | `crates/axon-llm/src/provider.rs` | `sha256:a1600254dc8b409227437eff91ec012a17adb0ee42766564bd7431036b2ed359` |
-| `crates/axon-observe/src/reservation.rs` | `sha256:a17532cccb3c9668ca720355ede2a2f8e25c058567d1ce67d85097df07c9bdfc` |
+| `crates/axon-observe/src/reservation.rs` | `sha256:3526a9a4a0ae22b5a6e451a69b04a78415aa9d0e789a26180effc9920602df08` |
 | `crates/axon-vectors/src/store.rs` | `sha256:113c825205589ff6c8878a4fd8001b74d3a1e72caf5e93e1c6e0c2c27fe08274` |
 | `docs/pipeline-unification/runtime/provider-contract.md` | `sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73` |
 | `docs/pipeline-unification/schemas/provider-capability-schema.md` | `sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f` |

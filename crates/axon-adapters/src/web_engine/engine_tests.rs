@@ -464,6 +464,42 @@ fn test_map_scope_allows_root_seed_without_path_filter() {
     assert_eq!(scope.path_prefix, None);
 }
 
+#[test]
+fn test_map_root_redirect_to_deep_page_preserves_requested_site_scope() {
+    let scope = derive_map_scope(
+        "https://docs.example.com/",
+        "https://docs.example.com/getting-started/welcome",
+    )
+    .expect("scope");
+
+    assert_eq!(scope.host, "docs.example.com");
+    assert_eq!(scope.path_prefix, None);
+}
+
+#[test]
+fn test_map_non_root_redirect_uses_resolved_canonical_path() {
+    let scope = derive_map_scope(
+        "https://old.example.com/docs/python/api",
+        "https://new.example.com/reference/python/api",
+    )
+    .expect("scope");
+
+    assert_eq!(scope.host, "new.example.com");
+    assert_eq!(scope.path_prefix.as_deref(), Some("/reference/python/api"));
+}
+
+#[test]
+fn test_map_same_origin_path_redirect_uses_resolved_canonical_path() {
+    let scope = derive_map_scope(
+        "https://docs.example.com/docs/python/api",
+        "https://docs.example.com/reference/python/api",
+    )
+    .expect("scope");
+
+    assert_eq!(scope.host, "docs.example.com");
+    assert_eq!(scope.path_prefix.as_deref(), Some("/reference/python/api"));
+}
+
 // Coverage checks are skipped when max_pages == 0 (uncapped), so this verifies
 // the explicit single-page fallback rule rather than the coverage heuristic.
 #[test]

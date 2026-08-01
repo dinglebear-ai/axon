@@ -1,4 +1,5 @@
 use axon_api::source::*;
+use axon_core::sqlite::ImmediateTx;
 
 use crate::migration::sqlite_error;
 use crate::sqlite::SqliteLedgerStore;
@@ -25,7 +26,9 @@ pub(super) async fn create_generation(
     store: &SqliteLedgerStore,
     source_id: SourceId,
 ) -> Result<SourceGeneration> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     ensure_source_exists_in_tx(&mut tx, &source_id).await?;
     let previous_generation = current_committed_generation_in_tx(&mut tx, &source_id).await?;
     #[cfg(test)]
@@ -71,12 +74,12 @@ pub(super) async fn create_generation(
 }
 
 pub(super) async fn ensure_source_exists_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
 ) -> Result<()> {
     let exists: Option<i64> = sqlx::query_scalar("SELECT 1 FROM sources WHERE source_id = ?1")
         .bind(&source_id.0)
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(sqlite_error)?;
     if exists.is_none() {
@@ -90,7 +93,9 @@ pub(super) async fn complete_generation(
     generation: SourceGeneration,
 ) -> Result<SourceGeneration> {
     ensure_generation_publishable(&generation)?;
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
     ensure_generation_writable(&stored)?;
     let manifest_exists: Option<i64> = sqlx::query_scalar(
@@ -134,7 +139,9 @@ pub(super) async fn fail_generation(
     store: &SqliteLedgerStore,
     generation: SourceGeneration,
 ) -> Result<SourceGeneration> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let stored = generation_in_tx(&mut tx, &generation.source_id, &generation.generation).await?;
     if stored.published_at.is_some() || stored.publish_state != PublishState::Writing {
         return Err(generation_already_published_error(&stored));
@@ -154,7 +161,9 @@ pub(super) async fn publish_generation(
     store: &SqliteLedgerStore,
     request: PublishGenerationRequest,
 ) -> Result<SourceGeneration> {
-    let mut tx = store.pool.begin().await.map_err(sqlite_error)?;
+    let mut tx = ImmediateTx::begin(&store.pool)
+        .await
+        .map_err(sqlite_error)?;
     let generation = generation_in_tx(&mut tx, &request.source_id, &request.generation).await?;
     ensure_generation_publishable(&generation)?;
 
@@ -273,7 +282,7 @@ pub(super) async fn committed_generation(
 }
 
 pub(super) async fn upsert_generation_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     generation: &SourceGeneration,
     sequence: Option<i64>,
 ) -> Result<()> {
@@ -288,7 +297,7 @@ pub(super) async fn upsert_generation_in_tx(
         )
         .bind(&generation.source_id.0)
         .bind(&generation.generation.0)
-        .fetch_one(&mut **tx)
+        .fetch_one(&mut *tx)
         .await
         .map_err(sqlite_error)?,
     };
@@ -326,14 +335,14 @@ pub(super) async fn upsert_generation_in_tx(
             .as_ref()
             .map(|value| value.0.as_str()),
     )
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     Ok(())
 }
 
 async fn generation_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
     generation: &SourceGenerationId,
 ) -> Result<SourceGeneration> {
@@ -346,7 +355,7 @@ async fn generation_in_tx(
     )
     .bind(&source_id.0)
     .bind(&generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     let Some(generation_json) = generation_json else {
@@ -361,7 +370,7 @@ async fn generation_in_tx(
 }
 
 pub(super) async fn ensure_generation_for_manifest_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     manifest: &SourceManifest,
 ) -> Result<()> {
     let exists: Option<i64> = sqlx::query_scalar(
@@ -373,7 +382,7 @@ pub(super) async fn ensure_generation_for_manifest_in_tx(
     )
     .bind(&manifest.source_id.0)
     .bind(&manifest.generation.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     if exists.is_some() {
@@ -388,7 +397,7 @@ pub(super) async fn ensure_generation_for_manifest_in_tx(
         "#,
     )
     .bind(&manifest.source_id.0)
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     let generation = SourceGeneration {
@@ -419,7 +428,7 @@ pub(super) async fn ensure_generation_for_manifest_in_tx(
 }
 
 pub(super) async fn current_committed_generation_in_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     source_id: &SourceId,
 ) -> Result<Option<SourceGenerationId>> {
     let committed_generation: Option<String> = sqlx::query_scalar(
@@ -430,7 +439,7 @@ pub(super) async fn current_committed_generation_in_tx(
         "#,
     )
     .bind(&source_id.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(sqlite_error)?
     .flatten();

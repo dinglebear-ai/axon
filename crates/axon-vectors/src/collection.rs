@@ -64,10 +64,11 @@ pub fn check_collection_drift(existing: &CollectionSpec, incoming: &CollectionSp
             .iter()
             .find(|index| index.field_name == required.field_name)
         else {
-            return Err(collection_drift(format!(
-                "collection {} is missing required payload index {}",
-                existing.collection, required.field_name
-            )));
+            // Missing indexes are repairable: Qdrant's index PUT is
+            // idempotent, and ensure_collection runs it immediately after
+            // drift validation. A present index with the wrong schema remains
+            // fatal because Qdrant cannot change its type in place safely.
+            continue;
         };
         if existing_index.field_schema != required.field_schema {
             let reset_hint = if matches!(
@@ -112,6 +113,7 @@ pub fn required_retrieval_payload_indexes() -> Vec<PayloadIndexSpec> {
         ("embedding_provider", PayloadFieldSchema::Keyword),
         ("embedding_model", PayloadFieldSchema::Keyword),
         ("embedding_profile", PayloadFieldSchema::Keyword),
+        ("embedded_at", PayloadFieldSchema::Datetime),
         ("web_domain", PayloadFieldSchema::Keyword),
     ]
     .into_iter()

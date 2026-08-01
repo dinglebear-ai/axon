@@ -14,6 +14,9 @@ fn retrieval_filters_exclude_unpublished_vectors_by_default() {
         allowed_visibility: vec![Visibility::Public],
         namespace_filters: Vec::new(),
         excluded_source_kinds: Vec::new(),
+        hybrid: true,
+        since: Some("2026-07-01T00:00:00+00:00".to_string()),
+        before: Some("2026-07-31T00:00:00+00:00".to_string()),
         byte_budget: 4096,
         token_budget: 512,
     };
@@ -25,4 +28,11 @@ fn retrieval_filters_exclude_unpublished_vectors_by_default() {
     assert_eq!(filters["document_status"], json!("published"));
     assert_eq!(filters["visibility"], json!(["public"]));
     assert_eq!(filters["redaction_status"], json!("clean"));
+    assert_eq!(
+        filters["embedded_at"],
+        json!({
+            "gte": "2026-07-01T00:00:00+00:00",
+            "lte": "2026-07-31T00:00:00+00:00"
+        })
+    );
 }

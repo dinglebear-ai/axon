@@ -5,7 +5,6 @@ use axon_services::types::ServiceJob;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
-use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::Duration;
 use uuid::Uuid;
@@ -70,9 +69,10 @@ pub async fn run_monitor(
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
     let mut options = MonitorOptions::from_positional(&cfg.positional)?;
-    // `--watch` is a `global = true` clap flag, so `monitor jobs --watch` sets
-    // `cfg.watch_mode` rather than the (shadowed) local monitor flag. Honor it.
+    // `--watch` is a global clap flag, so monitor reads it from the resolved
+    // config rather than duplicating a command-local option.
     options.watch = options.watch || cfg.watch_mode;
+    options.jsonl = effective_jsonl(options.watch, options.jsonl, cfg.json_output);
     let mut state = read_state(&options.state_file);
     state.mark_monitor_started_at(chrono::Utc::now());
 
@@ -92,7 +92,7 @@ pub async fn run_monitor(
 
         let events = detect_events_from_status_jobs(&mut state, &jobs);
         write_state(&options.state_file, &state)?;
-        emit_events(&events, options.jsonl)?;
+        emit_events(&events, options.jsonl, cfg.json_output)?;
 
         if !options.watch {
             break;
@@ -102,6 +102,10 @@ pub async fn run_monitor(
     }
 
     Ok(())
+}
+
+fn effective_jsonl(watch: bool, jsonl: bool, json_output: bool) -> bool {
+    jsonl || (watch && json_output)
 }
 
 async fn load_monitor_status_jobs(
@@ -316,8 +320,27 @@ fn write_state(path: &PathBuf, state: &JobMonitorState) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-fn emit_events(events: &[JobMonitorEvent], jsonl: bool) -> Result<(), Box<dyn Error>> {
+fn emit_events(
+    events: &[JobMonitorEvent],
+    jsonl: bool,
+    json_output: bool,
+) -> Result<(), Box<dyn Error>> {
     let mut stdout = std::io::stdout().lock();
+    emit_events_to(&mut stdout, events, jsonl, json_output)
+}
+
+fn emit_events_to(
+    stdout: &mut dyn std::io::Write,
+    events: &[JobMonitorEvent],
+    jsonl: bool,
+    json_output: bool,
+) -> Result<(), Box<dyn Error>> {
+    if json_output && !jsonl {
+        serde_json::to_writer(&mut *stdout, events)?;
+        writeln!(stdout)?;
+        stdout.flush()?;
+        return Ok(());
+    }
     for event in events {
         if jsonl {
             writeln!(stdout, "{}", serde_json::to_string(event)?)?;
@@ -339,3 +362,7 @@ fn emit_events(events: &[JobMonitorEvent], jsonl: bool) -> Result<(), Box<dyn Er
 fn state_key(kind: &str, id: Uuid) -> String {
     format!("{kind}:{id}")
 }
+
+#[cfg(test)]
+#[path = "monitor_tests.rs"]
+mod tests;

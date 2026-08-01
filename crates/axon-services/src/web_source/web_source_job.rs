@@ -229,8 +229,8 @@ mod tests;
 
 fn counts_for_output(output: &WebSourceIndexOutput) -> StageCounts {
     StageCounts {
-        items_total: None,
-        items_done: 0,
+        items_total: Some(output.items_discovered),
+        items_done: output.items_discovered,
         documents_total: Some(output.documents_prepared),
         documents_done: output.documents_prepared,
         chunks_total: Some(output.chunks_prepared),

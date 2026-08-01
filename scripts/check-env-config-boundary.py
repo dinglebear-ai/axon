@@ -50,6 +50,32 @@ IGNORED_TOKENS = {
     "AXON_CHANGED_PATHS",  # workflow test fixture variable, not axon runtime config
     "AXON_FULL_PRE_PUSH",  # local hook control variable, not axon runtime config
     "AXON_PRE_PUSH_BASE",  # local hook control variable, not axon runtime config
+    "AXON_BIND",  # live-harness local bind address, not runtime config
+    "AXON_COMMAND_REGISTRY",  # live-harness fixture override, not runtime config
+    "AXON_INCUS_RUN_SERVER",  # Incus bootstrap test control, not runtime config
+    "AXON_LIVE_COLLECTION",  # live-harness isolated fixture state
+    "AXON_LIVE_COMMAND_TIMEOUT_SECS",  # live-harness timeout
+    "AXON_LIVE_DATA_DIR",  # live-harness isolated fixture state
+    "AXON_LIVE_FIXTURE_URL",  # live-harness fixture endpoint
+    "AXON_LIVE_MAP_FIXTURE_URL",  # live-harness map fixture endpoint
+    "AXON_LIVE_USE_PRODUCTION_STATE",  # live-harness opt-in control
+    "AXON_LIVE_HARNESS_SET",  # live-harness config mutation fixture
+    "AXON_LIVE_HARNESS_TOKEN",  # live-harness config secret fixture
+    "AXON_ARTIFACT_ROOT",  # isolated live/stress harness artifact root
+    "AXON_STRESS_COLLECTION",  # stress-harness isolated collection override
+    "AXON_STRESS_CONCURRENT_JOBS",  # stress-harness workload control
+    "AXON_STRESS_CONFIRM",  # stress-harness destructive confirmation guard
+    "AXON_STRESS_MAP_MAX_PAGES",  # stress-harness map bound
+    "AXON_STRESS_MAP_TIMEOUT_SECS",  # stress-harness map timeout
+    "AXON_STRESS_MAX_PAGES",  # stress-harness workload bound
+    "AXON_STRESS_MIN_COMPLETION_PERCENT",  # stress-harness acceptance threshold
+    "AXON_STRESS_OUTDIR",  # stress-harness report directory
+    "AXON_STRESS_SOURCE_CONCURRENCY",  # stress-harness source concurrency
+    "AXON_STRESS_TIMEOUT_SECS",  # stress-harness terminal deadline
+    "AXON_STRESS_URL",  # stress-harness target override
+    "AXON_STRESS_WORKER_CONCURRENCY",  # stress-harness worker concurrency
+    "AXON_TEST_FROM_FILE",  # axon-env loader regression fixture
+    "AXON_TEST_PRECEDENCE",  # axon-env loader regression fixture
     "QDRANT_DEST",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_DIR",  # local shell variable in scripts/axon-backup.sh
     "QDRANT_SHA256",  # local shell variable in scripts/axon-backup.sh

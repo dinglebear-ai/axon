@@ -4,6 +4,7 @@ use axon_api::source::{GraphCandidate, GraphWriteResult, SourceId};
 use axon_core::redact::{
     DefaultRedactor, RedactionContext, Redactor, redact_metadata_checked, stamp_redaction_metadata,
 };
+use axon_core::sqlite::ImmediateTx;
 use sqlx::SqlitePool;
 
 use super::header::{now_timestamp, stage_header};
@@ -35,8 +36,7 @@ pub async fn upsert_candidates(
         .map(|c| c.source_id.clone())
         .unwrap_or_else(|| SourceId::new("graph"));
 
-    let mut tx = pool
-        .begin()
+    let mut tx = ImmediateTx::begin(pool)
         .await
         .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
 
@@ -91,7 +91,7 @@ pub async fn upsert_candidates(
 /// Upsert one node by (kind, stable_key), merging authority under the
 /// keep-highest-authority policy and unioning source ids.
 async fn upsert_node(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     node: &ResolvedNode,
     source_id: &SourceId,
     fallback_confidence: f32,
@@ -111,7 +111,7 @@ async fn upsert_node(
         "SELECT authority, source_ids_json, confidence FROM graph_nodes WHERE node_id = ?",
     )
     .bind(&node.node_id.0)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to read node for upsert: {e}")))?;
 
@@ -163,7 +163,7 @@ async fn upsert_node(
     .bind(source_ids_json)
     .bind(&now)
     .bind(&now)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to upsert node: {e}")))?;
 
@@ -182,7 +182,7 @@ async fn upsert_node(
         .bind(alias_kind)
         .bind(alias_value)
         .bind(&node.node_id.0)
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await
         .map_err(|e| graph_storage_error(format!("failed to upsert alias: {e}")))?;
     }
@@ -193,7 +193,7 @@ async fn upsert_node(
 /// Upsert one edge by (kind, from, to). On conflict the authority is resolved
 /// under keep-highest-authority; equal authoritative claims record a conflict.
 async fn upsert_edge(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     edge: &crate::merge::ResolvedEdge,
 ) -> StoreResult<()> {
     let now = now_timestamp();
@@ -205,7 +205,7 @@ async fn upsert_edge(
     let redacted_properties = stamp_redaction_metadata(redacted_properties, &redaction_report);
     let existing = sqlx::query("SELECT authority, confidence FROM graph_edges WHERE edge_id = ?")
         .bind(&edge.edge_id.0)
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| graph_storage_error(format!("failed to read edge for upsert: {e}")))?;
 
@@ -250,7 +250,7 @@ async fn upsert_edge(
     .bind(metadata_to_json(&redacted_properties)?)
     .bind(&now)
     .bind(&now)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to upsert edge: {e}")))?;
 
@@ -259,7 +259,7 @@ async fn upsert_edge(
 
 /// Upsert one evidence record for an edge (idempotent by (edge_id, evidence_id)).
 async fn upsert_evidence(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     edge_id: &str,
     ev: &axon_api::source::GraphEvidence,
 ) -> StoreResult<()> {
@@ -305,7 +305,7 @@ async fn upsert_evidence(
     .bind(&redacted_quote)
     .bind(ev.confidence as f64)
     .bind(metadata_to_json(&redacted_metadata)?)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(|e| graph_storage_error(format!("failed to upsert evidence: {e}")))?;
     Ok(())

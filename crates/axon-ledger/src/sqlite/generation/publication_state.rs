@@ -6,7 +6,7 @@ use crate::sqlite::util::timestamp;
 use crate::store::Result;
 
 pub(super) async fn record_committed_epoch(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    tx: &mut sqlx::SqliteConnection,
     generation: &SourceGeneration,
 ) -> Result<()> {
     let row = sqlx::query(
@@ -14,7 +14,7 @@ pub(super) async fn record_committed_epoch(
     )
     .bind(&generation.source_id.0)
     .bind(&generation.generation.0)
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     let committed_epoch: i64 = row.get("sequence");
@@ -24,7 +24,7 @@ pub(super) async fn record_committed_epoch(
         )
         .bind(&generation.source_id.0)
         .bind(&previous.0)
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(sqlite_error)?,
         None => None,
@@ -47,7 +47,7 @@ pub(super) async fn record_committed_epoch(
     .bind(committed_epoch)
     .bind(previous_epoch)
     .bind(timestamp().0)
-    .execute(&mut **tx)
+    .execute(&mut *tx)
     .await
     .map_err(sqlite_error)?;
     Ok(())

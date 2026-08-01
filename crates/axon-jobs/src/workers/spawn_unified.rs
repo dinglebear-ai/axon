@@ -4,6 +4,7 @@ use sqlx::SqlitePool;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use super::WorkerActivity;
 use super::unified::{self, JobRunnerRegistry};
 
 /// Spawn the unified durable worker task.
@@ -16,6 +17,7 @@ use super::unified::{self, JobRunnerRegistry};
 pub(super) fn spawn_unified_worker(
     pool: Arc<SqlitePool>,
     unified_notify: Arc<Notify>,
+    activity: Arc<WorkerActivity>,
     shutdown: CancellationToken,
     job_runner_registry: Option<Arc<JobRunnerRegistry>>,
     concurrency: usize,
@@ -42,12 +44,15 @@ pub(super) fn spawn_unified_worker(
         registered_kinds,
         "jobs: spawning unified worker"
     );
-    tokio::spawn(unified::unified_worker_loop_with_concurrency_limits(
-        pool,
-        unified_notify,
-        shutdown,
-        job_runner_registry,
-        concurrency,
-        source_concurrency,
-    ))
+    tokio::spawn(
+        unified::unified_worker_loop_with_concurrency_limits_and_activity(
+            pool,
+            unified_notify,
+            activity,
+            shutdown,
+            job_runner_registry,
+            concurrency,
+            source_concurrency,
+        ),
+    )
 }

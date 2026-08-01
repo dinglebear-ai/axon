@@ -39,6 +39,8 @@ pub struct WorkerLoopOptions {
 pub struct WorkerLoopReport {
     pub elapsed_secs: u64,
     pub recovered_jobs: u64,
+    pub final_active_jobs: bool,
+    pub final_in_flight_jobs: usize,
 }
 
 /// Run the worker loop until the queue is idle (see [`WorkerLoopOptions`]).
@@ -73,6 +75,8 @@ pub async fn run_worker_until_idle(
         } else {
             let since = idle_since.get_or_insert_with(tokio::time::Instant::now);
             if since.elapsed().as_secs() >= options.idle_exit_secs {
+                report.final_active_jobs = false;
+                report.final_in_flight_jobs = service_context.jobs.worker_in_flight_jobs();
                 break;
             }
         }
@@ -86,17 +90,21 @@ pub async fn run_worker_until_idle(
 
 /// True while any watched kind has pending or running rows.
 async fn queue_active(service_context: &ServiceContext) -> Result<bool, Box<dyn Error>> {
-    for kind in WORKER_JOB_KINDS {
-        if service_context
-            .jobs
-            .has_active_jobs(*kind)
-            .await
-            .map_err(super::downgrade)?
-        {
-            return Ok(true);
-        }
+    if service_context.jobs.worker_in_flight_jobs() > 0 {
+        return Ok(true);
     }
-    Ok(false)
+    if service_context
+        .jobs
+        .has_active_worker_jobs(WORKER_JOB_KINDS)
+        .await
+        .map_err(super::downgrade)?
+    {
+        return Ok(true);
+    }
+    // A claim can begin while the durable scans above are in progress. Read
+    // the process-local activity again so that transition cannot be mistaken
+    // for a continuously idle queue.
+    Ok(service_context.jobs.worker_in_flight_jobs() > 0)
 }
 
 /// Reclaim stale attempts for every watched kind. Best-effort: a failed sweep
