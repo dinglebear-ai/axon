@@ -53,6 +53,12 @@ pub trait JobStore: Send + Sync {
     async fn append_event(&self, event: SourceProgressEvent) -> Result<()>;
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()>;
     async fn list(&self, request: JobListRequest) -> Result<Page<JobSummary>>;
+    /// Recover terminal counters for historical jobs whose durable summary
+    /// predates runner-outcome persistence. Stores without event-backed
+    /// recovery may return `None`.
+    async fn terminal_counts(&self, _job_id: JobId) -> Result<Option<StageCounts>> {
+        Ok(None)
+    }
     async fn events(&self, request: JobEventListRequest) -> Result<JobEventPage>;
     async fn latest_event_sequence(&self, job_id: JobId) -> Result<Option<u64>>;
     async fn cancel(&self, job_id: JobId, request: JobCancelRequest) -> Result<JobCancelResult>;

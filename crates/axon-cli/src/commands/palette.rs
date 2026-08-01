@@ -7,13 +7,15 @@
 //! Subcommands:
 //!   axon palette                     — find and launch (auto-install prompt if missing)
 //!   axon palette launch              — same as bare invocation
-//!   axon palette install             — download release tarball matching this axon version
+//!   axon palette install             — download the newest compatible palette release
 //!   axon palette install --method build  — build from source (requires pnpm + the Tauri toolchain)
 //!   axon palette desktop             — write/refresh .desktop entry (Linux only)
 //!   axon palette autostart           — write/refresh autostart entry (Linux only)
 
 use axon_core::config::Config;
+use axon_core::http::http_client;
 use axon_core::ui::{accent, muted, primary};
+use serde::Deserialize;
 use sha2::Digest;
 use std::error::Error;
 use std::io::Cursor;
@@ -23,6 +25,24 @@ use std::path::{Path, PathBuf};
 const PALETTE_BIN: &str = "axon-palette-tauri.exe";
 #[cfg(not(windows))]
 const PALETTE_BIN: &str = "axon-palette-tauri";
+const PALETTE_RELEASES_API: &str =
+    "https://api.github.com/repos/dinglebear-ai/axon/releases?per_page=100";
+
+#[derive(Debug, Clone, Deserialize)]
+struct PaletteRelease {
+    tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    assets: Vec<PaletteAsset>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct PaletteAsset {
+    name: String,
+    browser_download_url: String,
+}
 
 pub async fn run_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let sub = cfg.positional.first().map(String::as_str);
@@ -56,6 +76,10 @@ async fn launch_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
         }
     };
 
+    let mut child = std::process::Command::new(&exe)
+        .spawn()
+        .map_err(|e| format!("failed to launch {}: {e}", exe.display()))?;
+    confirm_palette_started(&mut child, &exe)?;
     if cfg.json_output {
         println!(
             "{}",
@@ -71,10 +95,17 @@ async fn launch_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
             accent(&exe.display().to_string())
         );
     }
+    Ok(())
+}
 
-    std::process::Command::new(&exe)
-        .spawn()
-        .map_err(|e| format!("failed to launch {}: {e}", exe.display()))?;
+fn confirm_palette_started(
+    child: &mut std::process::Child,
+    exe: &Path,
+) -> Result<(), Box<dyn Error>> {
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    if let Some(status) = child.try_wait()? {
+        return Err(format!("palette {} exited during startup: {status}", exe.display()).into());
+    }
     Ok(())
 }
 
@@ -108,7 +139,18 @@ async fn pull_or_build_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 async fn pull_palette(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let (archive_url, sha_url) = palette_asset_urls();
+    let client = http_client()?;
+    let releases = client
+        .get(PALETTE_RELEASES_API)
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Vec<PaletteRelease>>()
+        .await?;
+    let (archive_url, sha_url) = select_palette_assets(&releases).ok_or_else(|| {
+        let (archive, checksum) = palette_asset_names();
+        format!("no GitHub release contains both palette assets `{archive}` and `{checksum}`")
+    })?;
     if !cfg.json_output {
         eprintln!(
             "{}",
@@ -279,8 +321,9 @@ fn extract_zip(bytes: &Vec<u8>, dest_dir: &Path) -> Result<(), Box<dyn Error>> {
 
 // ── Resolution ────────────────────────────────────────────────────────────────
 
-/// Find the palette binary: check the same dir as the running axon exe first
-/// (co-installed), then walk PATH. Cross-platform, no `which` call needed.
+/// Find the palette binary: check the same dir as the running axon exe first,
+/// then the standard per-user install location, then walk PATH. Cross-platform,
+/// no `which` call needed.
 fn resolve_palette_binary() -> Option<PathBuf> {
     if let Ok(exe) = std::env::current_exe()
         && let Some(dir) = exe.parent()
@@ -289,6 +332,10 @@ fn resolve_palette_binary() -> Option<PathBuf> {
         if candidate.is_file() {
             return Some(candidate);
         }
+    }
+    let user_candidate = expand_home("~/.local/bin").join(PALETTE_BIN);
+    if user_candidate.is_file() {
+        return Some(user_candidate);
     }
     if let Some(path_var) = std::env::var_os("PATH") {
         for dir in std::env::split_paths(&path_var) {
@@ -305,13 +352,35 @@ fn resolve_palette_binary() -> Option<PathBuf> {
 /// it immediately on the next call. Falls back to `~/.local/bin` if the exe dir
 /// is not writable or cannot be determined.
 fn palette_install_dir() -> Result<PathBuf, Box<dyn Error>> {
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-        && !dir.as_os_str().is_empty()
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf))
+        .filter(|dir| !dir.as_os_str().is_empty());
+    Ok(select_palette_install_dir(
+        exe_dir,
+        expand_home("~/.local/bin"),
+        directory_is_writable,
+    ))
+}
+
+fn select_palette_install_dir(
+    exe_dir: Option<PathBuf>,
+    fallback: PathBuf,
+    is_writable: impl Fn(&Path) -> bool,
+) -> PathBuf {
+    exe_dir.filter(|dir| is_writable(dir)).unwrap_or(fallback)
+}
+
+fn directory_is_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".axon-palette-write-probe-{}", std::process::id()));
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
     {
-        return Ok(dir.to_path_buf());
+        Ok(_) => std::fs::remove_file(probe).is_ok(),
+        Err(_) => false,
     }
-    Ok(expand_home("~/.local/bin"))
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -364,19 +433,60 @@ fn find_palette_dir() -> Result<PathBuf, Box<dyn Error>> {
     Err("cannot find apps/palette-tauri; run from the axon repo root".into())
 }
 
-/// Version-matched, platform-aware asset URLs. Uses the running binary's own
-/// version so `axon palette install` always fetches the matching palette release.
-fn palette_asset_urls() -> (String, String) {
-    let version = env!("CARGO_PKG_VERSION");
+/// Platform-aware palette asset names.
+fn palette_asset_names() -> (&'static str, &'static str) {
     #[cfg(windows)]
     let (target, ext) = ("windows-x86_64", "zip");
     #[cfg(not(windows))]
     let (target, ext) = ("linux-x86_64", "tar.gz");
-    let base = format!(
-        "https://github.com/dinglebear-ai/axon/releases/download/v{version}/axon-palette-{target}.{ext}"
+    let archive = match (target, ext) {
+        ("windows-x86_64", "zip") => "axon-palette-windows-x86_64.zip",
+        _ => "axon-palette-linux-x86_64.tar.gz",
+    };
+    let checksum = match (target, ext) {
+        ("windows-x86_64", "zip") => "axon-palette-windows-x86_64.zip.sha256",
+        _ => "axon-palette-linux-x86_64.tar.gz.sha256",
+    };
+    (archive, checksum)
+}
+
+/// Select the newest release that actually contains both platform assets.
+/// Axon, Palette, Android, and browser-extension releases share one repository,
+/// and the newest release may be for another product or an assetless Palette
+/// tag. GitHub returns releases newest-first, so the first compatible pair wins.
+fn select_palette_assets(releases: &[PaletteRelease]) -> Option<(String, String)> {
+    let (archive_name, checksum_name) = palette_asset_names();
+    releases
+        .iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .filter_map(|release| {
+            let archive = release
+                .assets
+                .iter()
+                .find(|asset| asset.name == archive_name)?;
+            let checksum = release
+                .assets
+                .iter()
+                .find(|asset| asset.name == checksum_name)?;
+            Some((
+                palette_version_tuple(&release.tag_name)?,
+                archive.browser_download_url.clone(),
+                checksum.browser_download_url.clone(),
+            ))
+        })
+        .max_by_key(|(version, _, _)| *version)
+        .map(|(_, archive, checksum)| (archive, checksum))
+}
+
+fn palette_version_tuple(tag: &str) -> Option<(u64, u64, u64)> {
+    let core = tag.trim().strip_prefix("palette-v")?;
+    let mut parts = core.split('.');
+    let version = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
     );
-    let sha = format!("{base}.sha256");
-    (base, sha)
+    parts.next().is_none().then_some(version)
 }
 
 // ── Desktop integration (Linux only) ─────────────────────────────────────────

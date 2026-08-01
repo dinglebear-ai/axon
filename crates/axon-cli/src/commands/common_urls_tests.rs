@@ -1,4 +1,6 @@
-use super::{MAX_EXPANSION_TOTAL, expand_url_glob_seed, start_url_from_cfg, truncate_chars};
+use super::{
+    MAX_EXPANSION_TOTAL, expand_url_glob_seed, parse_urls, start_url_from_cfg, truncate_chars,
+};
 use axon_core::config::{CommandKind, Config};
 
 #[test]
@@ -33,6 +35,25 @@ fn expands_url_glob_list_and_nested() {
             "https://example.com/news/b".to_string(),
             "https://example.com/docs/a".to_string(),
             "https://example.com/docs/b".to_string()
+        ]
+    );
+}
+
+#[test]
+fn url_glob_csv_splits_only_between_patterns() {
+    let cfg = Config {
+        url_glob: vec!["https://example.com/{news,docs},https://other.example/{a,b}".to_string()],
+        positional: Vec::new(),
+        ..Config::default()
+    };
+
+    assert_eq!(
+        parse_urls(&cfg),
+        vec![
+            "https://example.com/news".to_string(),
+            "https://example.com/docs".to_string(),
+            "https://other.example/a".to_string(),
+            "https://other.example/b".to_string(),
         ]
     );
 }

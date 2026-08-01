@@ -24,6 +24,24 @@ fn collection_spec(name: &str) -> CollectionSpec {
     }
 }
 
+#[test]
+fn qdrant_delete_receipt_marks_observed_count_as_estimated() {
+    let result = qdrant_delete_result("axon-test".to_string(), 7, "pre_delete_exact_match_count");
+
+    assert_eq!(result.points_matched, 7);
+    assert_eq!(result.points_deleted, 7);
+    assert_eq!(
+        result.metadata["points_deleted_count_basis"],
+        json!("pre_delete_exact_match_count")
+    );
+    assert_eq!(result.metadata["points_deleted_is_estimate"], json!(true));
+    assert_eq!(result.warnings.len(), 1);
+    assert_eq!(
+        result.warnings[0].code,
+        "vector.qdrant_delete_count_estimated"
+    );
+}
+
 #[tokio::test]
 async fn require_collection_spec_uses_cached_spec_without_network() {
     let store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");

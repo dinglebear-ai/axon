@@ -28,7 +28,7 @@ use axon_jobs::boundary::JobStore;
 use axon_jobs::config_snapshot::apply_config_snapshot;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
-use axon_jobs::workers::{JobRunnerRegistry, UnifiedJobRunner};
+use axon_jobs::workers::{JobRunnerRegistry, UnifiedJobOutcome, UnifiedJobRunner};
 use axon_memory::record::SystemClock;
 use axon_memory::sqlite::SqliteMemoryStore;
 use axon_memory::store::MemoryStore;
@@ -103,6 +103,39 @@ pub(crate) async fn heartbeat_running(
     claimed: &UnifiedClaimedJob,
     phase: PipelinePhase,
 ) {
+    record_running_heartbeat(store, claimed, phase, None).await;
+}
+
+pub(crate) async fn heartbeat_running_preserving_progress(
+    store: &SqliteUnifiedJobStore,
+    claimed: &UnifiedClaimedJob,
+) {
+    let summary = match store.get(claimed.job_id).await {
+        Ok(Some(summary)) => summary,
+        Ok(None) => {
+            log_warn(&format!(
+                "heartbeat skipped for missing job {}",
+                claimed.job_id.0
+            ));
+            return;
+        }
+        Err(error) => {
+            log_warn(&format!(
+                "heartbeat state read failed for job {}: {error}",
+                claimed.job_id.0
+            ));
+            return;
+        }
+    };
+    record_running_heartbeat(store, claimed, summary.phase, summary.counts).await;
+}
+
+async fn record_running_heartbeat(
+    store: &SqliteUnifiedJobStore,
+    claimed: &UnifiedClaimedJob,
+    phase: PipelinePhase,
+    counts: Option<axon_api::source::StageCounts>,
+) {
     if let Err(error) = store
         .heartbeat(JobHeartbeat {
             job_id: claimed.job_id,
@@ -115,7 +148,7 @@ pub(crate) async fn heartbeat_running(
             sequence: 0,
             last_progress_at: None,
             last_event_sequence: None,
-            counts: None,
+            counts,
             provider_reservations: Vec::new(),
         })
         .await
@@ -143,7 +176,7 @@ impl UnifiedJobRunner for ProviderProbeRunner {
         claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
         shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         heartbeat_running(store, claimed, PipelinePhase::Evaluating).await;
         if shutdown.is_cancelled() {
             return Err(probe_error("provider probe canceled before running"));
@@ -155,7 +188,7 @@ impl UnifiedJobRunner for ProviderProbeRunner {
         // duplicate, nested job row for the same probe.
         crate::system::doctor_inner(&self.cfg)
             .await
-            .map(|_result| ())
+            .map(|_result| UnifiedJobOutcome::completed_without_counts())
             .map_err(|error| probe_error(error.to_string()))
     }
 }
@@ -202,7 +235,7 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
         claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
         shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         heartbeat_running(store, claimed, PipelinePhase::Preparing).await;
         if shutdown.is_cancelled() {
             return Err(compaction_error(
@@ -238,7 +271,9 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                     .map_err(|error| compaction_error(error.message))?;
                 let mut ids = vec![result.memory_id];
                 ids.extend(archived_ids);
-                enqueue_runner_memory_sync(self.memory_store.as_ref(), store, ids, "compact").await
+                enqueue_runner_memory_sync(self.memory_store.as_ref(), store, ids, "compact")
+                    .await?;
+                Ok(UnifiedJobOutcome::completed_without_counts())
             }
             (Some("memory_import"), Some(payload)) => {
                 let request: axon_api::source::MemoryImportRequest =
@@ -258,16 +293,17 @@ impl UnifiedJobRunner for MemoryCompactionRunner {
                     .map_err(|error| compaction_error(error.message))?;
                 sync_ids.extend(result.created_ids);
                 if result.dry_run || sync_ids.is_empty() {
-                    return Ok(());
+                    return Ok(UnifiedJobOutcome::completed_without_counts());
                 }
                 enqueue_runner_memory_sync(self.memory_store.as_ref(), store, sync_ids, "import")
-                    .await
+                    .await?;
+                Ok(UnifiedJobOutcome::completed_without_counts())
             }
             _ => self
                 .memory_store
                 .capabilities()
                 .await
-                .map(|_capability| ())
+                .map(|_capability| UnifiedJobOutcome::completed_without_counts())
                 .map_err(|error| compaction_error(error.message)),
         }
     }
@@ -332,7 +368,7 @@ impl UnifiedJobRunner for ExtractRunner {
         claimed: &UnifiedClaimedJob,
         store: &SqliteUnifiedJobStore,
         shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<UnifiedJobOutcome, ApiError> {
         heartbeat_running(store, claimed, PipelinePhase::Parsing).await;
         if shutdown.is_cancelled() {
             return Err(extract_error("extract canceled before running"));
@@ -368,7 +404,9 @@ impl UnifiedJobRunner for ExtractRunner {
         let extract_fut = crate::extract::extract_sync(&effective_cfg, &urls, &prompt);
         tokio::select! {
             _ = shutdown.cancelled() => Err(extract_error("extract canceled")),
-            result = extract_fut => result.map(|_summary| ()).map_err(|error| extract_error(error.to_string())),
+            result = extract_fut => result
+                .map(|_summary| UnifiedJobOutcome::completed_without_counts())
+                .map_err(|error| extract_error(error.to_string())),
         }
     }
 }

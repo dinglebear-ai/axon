@@ -10,6 +10,7 @@ use axon_api::source::{
     SourceCounts, SourceItemKey, SourceKind, SourceManifest, SourceScope, SourceSummary, Timestamp,
     VectorPointBatch, VectorStoreDeleteResult, VectorStoreWriteResult,
 };
+use axon_core::config::Config;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::FakeJobWatchStore;
 use axon_ledger::store::FakeLedgerStore;
@@ -563,6 +564,112 @@ async fn ledger_with_committed_generation(
         .await
         .expect("publish generation");
     (ledger, published.generation)
+}
+
+#[tokio::test]
+async fn prune_plan_reads_shared_ledger_from_enqueue_only_context() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let mut cfg = Config::default();
+    cfg.sqlite_path = temp.path().join("jobs.db");
+    let ctx = ServiceContext::new(Arc::new(cfg))
+        .await
+        .expect("enqueue-only context");
+    assert!(ctx.target_local_source_runtime().is_none());
+
+    let pool = ctx.jobs.sqlite_pool().expect("shared sqlite pool");
+    let ledger = axon_ledger::sqlite::SqliteLedgerStore::from_pool((*pool).clone());
+    let source_id = "enqueue-only/source";
+    ledger
+        .upsert_source(ledger_source_summary(source_id))
+        .await
+        .expect("register source");
+    let created = ledger
+        .create_generation(SourceId::new(source_id))
+        .await
+        .expect("create generation");
+    ledger
+        .put_manifest(ledger_manifest(source_id, &created.generation))
+        .await
+        .expect("put manifest");
+    let mut completed = created;
+    completed.status = LifecycleStatus::Completed;
+    completed.publish_state = PublishState::Writing;
+    let completed = ledger
+        .complete_generation(completed)
+        .await
+        .expect("complete generation");
+    let published_generation = completed.generation.clone();
+    ledger
+        .publish_generation(PublishGenerationRequest {
+            source_id: SourceId::new(source_id),
+            generation: completed.generation,
+            expected_previous_generation: None,
+        })
+        .await
+        .expect("publish generation");
+
+    let request = PruneRequest::dry_run(
+        PruneSelector::Source {
+            source_id: SourceId::new(source_id),
+        },
+        "enqueue-only estimate",
+    );
+    let plan = prune_plan_estimated(&ctx, &request).await;
+    assert_eq!(plan.estimated.vector_points, 1);
+    assert_eq!(plan.estimated.ledger_generations, 0);
+    assert_eq!(plan.steps.len(), 1);
+    assert_eq!(plan.steps[0].target, PruneTargetKind::Vector);
+    assert_eq!(
+        plan.steps[0].generation.as_ref(),
+        Some(&published_generation)
+    );
+}
+
+#[tokio::test]
+async fn source_prune_is_rejected_while_source_refresh_holds_the_lease() {
+    let (ledger, current_generation) = ledger_with_committed_generation("owner/repo").await;
+    let ledger: Arc<dyn LedgerStore> = Arc::new(ledger);
+    let active_lease = ledger
+        .acquire_lease(axon_api::source::LeaseRequest {
+            lease_key: "source:owner/repo".to_string(),
+            owner_id: "active-source-refresh".to_string(),
+            ttl_seconds: 60,
+            job_id: None,
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .expect("acquire active source lease")
+        .expect("source lease available");
+
+    let cfg = Arc::new(axon_core::config::Config::test_default());
+    let service_jobs: Arc<dyn crate::runtime::ServiceJobRuntime> =
+        Arc::new(crate::test_support::NoopServiceRuntime);
+    let ctx = ServiceContext::from_runtime(cfg, service_jobs).with_target_local_source_runtime(
+        TargetLocalSourceRuntime::new(
+            Arc::new(FakeJobWatchStore::new()),
+            Arc::clone(&ledger),
+            Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
+            Arc::new(FakeVectorStore::new("fake-vector")),
+            ProviderId::new("fake-embedding"),
+            "fake-embedding",
+            8,
+        ),
+    );
+    let mut plan = plan_with_vector_step(true);
+    plan.steps[0].generation = Some(current_generation);
+
+    let error = prune_execute(&ctx, &plan, true, &PruneAuthz::admin())
+        .await
+        .expect_err("source refresh lease must fence source-wide prune");
+
+    assert!(matches!(
+        error,
+        PruneDenied::FenceCheckFailed { reason } if reason.contains("being refreshed")
+    ));
+    ledger
+        .release_lease(active_lease.lease_id, active_lease.owner_id)
+        .await
+        .expect("release active source lease");
 }
 
 #[tokio::test]

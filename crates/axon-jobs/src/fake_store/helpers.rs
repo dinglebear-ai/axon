@@ -29,9 +29,8 @@ pub(super) fn event_details(event: &SourceProgressEvent) -> MetadataMap {
 
 pub(super) fn append_event_locked(
     state: &mut FakeJobWatchState,
-    event: SourceProgressEvent,
+    mut event: SourceProgressEvent,
 ) -> crate::boundary::Result<()> {
-    event.validate_bounds().map_err(|error| *error)?;
     if !state.jobs.contains_key(&event.job_id) {
         return Err(missing_job(event.job_id));
     }
@@ -48,6 +47,10 @@ pub(super) fn append_event_locked(
         .and_then(|events| events.last())
         .map(|event| event.sequence + 1)
         .unwrap_or(1);
+    if event.sequence == 0 {
+        event.sequence = expected_sequence;
+    }
+    event.validate_bounds().map_err(|error| *error)?;
     if event.sequence != expected_sequence {
         if let Some(dedupe_key) = event.dedupe_key.as_ref()
             && has_dedupe_key_at_sequence(state, event.job_id, dedupe_key, event.sequence)

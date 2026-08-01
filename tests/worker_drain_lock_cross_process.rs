@@ -62,8 +62,8 @@ fn second_worker_refuses_while_first_holds_the_lock() {
         "second worker should refuse while the first holds the lock; stdout: {stdout}"
     );
     assert!(
-        second.status.success(),
-        "second worker should exit 0 (clean refusal), got {:?}",
+        !second.status.success(),
+        "a worker that did not acquire the queue must not report success: {:?}",
         second.status
     );
     // Lock release on holder death is a kernel guarantee for the fcntl lock and

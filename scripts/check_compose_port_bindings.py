@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject docker compose port mappings that bind to a host/interface."""
+"""Reject Docker Compose port mappings that bind non-loopback interfaces."""
 
 from __future__ import annotations
 
@@ -100,8 +100,8 @@ def mapping_errors(value: str) -> list[str]:
     port_part = value.split("/", 1)[0]
     fields = split_top_level_colons(port_part)
 
-    if len(fields) >= 3:
-        errors.append("short syntax includes a host/interface prefix")
+    if len(fields) >= 3 and fields[0] not in {"127.0.0.1", "[::1]"}:
+        errors.append("short syntax includes a non-loopback host/interface prefix")
 
     for default in env_defaults(value):
         if ":" in default:
@@ -139,7 +139,11 @@ def find_errors(path: str, lines: list[str]) -> list[str]:
         if content.startswith("- "):
             item = content[2:].strip()
             if item.startswith("host_ip:"):
-                errors.append(f"{path}:{line_number}: ports long syntax must not set host_ip")
+                host_ip = unquote(item.split(":", 1)[1].strip())
+                if host_ip not in {"127.0.0.1", "::1"}:
+                    errors.append(
+                        f"{path}:{line_number}: ports long syntax host_ip must be loopback"
+                    )
                 continue
             if not item or item.endswith(":"):
                 continue
@@ -149,7 +153,11 @@ def find_errors(path: str, lines: list[str]) -> list[str]:
             continue
 
         if content.startswith("host_ip:"):
-            errors.append(f"{path}:{line_number}: ports long syntax must not set host_ip")
+            host_ip = unquote(content.split(":", 1)[1].strip())
+            if host_ip not in {"127.0.0.1", "::1"}:
+                errors.append(
+                    f"{path}:{line_number}: ports long syntax host_ip must be loopback"
+                )
 
     return errors
 
@@ -214,7 +222,7 @@ def resolve_paths(args: argparse.Namespace) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Block docker compose ports entries that include host/interface bindings."
+        description="Block Docker Compose port entries that bind non-loopback interfaces."
     )
     parser.add_argument("--staged", action="store_true", help="prefer staged file content")
     parser.add_argument("files", nargs="*", help="compose files to check")
@@ -232,8 +240,9 @@ def main() -> int:
         for error in errors:
             print(f"  {error}", file=sys.stderr)
         print(
-            'Use bare host-port mappings like "52000:80"; do not use '
-            '"127.0.0.1:52000:80", "localhost:52000:80", or any other host prefix.',
+            'Use bare host-port mappings for intentionally public services or '
+            '"127.0.0.1:52000:80" for host-local services; do not bind an '
+            "unreviewed non-loopback host/interface prefix.",
             file=sys.stderr,
         )
         return 1

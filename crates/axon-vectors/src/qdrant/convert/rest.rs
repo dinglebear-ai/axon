@@ -197,6 +197,14 @@ pub fn canonical_uri_filter_json(canonical_uri: &str, prefix: bool) -> serde_jso
 }
 
 fn condition_json(field: &str, value: &serde_json::Value) -> serde_json::Value {
+    if let Some(range) = value.as_object()
+        && !range.is_empty()
+        && range
+            .keys()
+            .all(|operator| matches!(operator.as_str(), "gt" | "gte" | "lt" | "lte"))
+    {
+        return json!({ "key": field, "range": range });
+    }
     let Some(values) = value.as_array() else {
         return match_json(field, value);
     };

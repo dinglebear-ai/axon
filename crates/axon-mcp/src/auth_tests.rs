@@ -349,6 +349,10 @@ fn build_auth_policy_oauth_configures_admin_email_and_full_oauth_scopes() {
         config.static_token_scopes,
         vec![AXON_READ_SCOPE.to_string(), AXON_WRITE_SCOPE.to_string()]
     );
+    assert_eq!(
+        config.sqlite_path,
+        axon_core::paths::axon_data_base_dir().join("auth.db")
+    );
 }
 
 #[test]

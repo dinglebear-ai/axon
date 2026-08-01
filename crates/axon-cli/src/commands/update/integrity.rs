@@ -9,7 +9,6 @@
 //!   independent trust root. Inert until both are present.
 
 use super::{GithubRelease, ReleaseAssetNames, UpdateOptions, download_to_file, err};
-use axon_core::http::http_client;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::error::Error;
@@ -73,6 +72,7 @@ pub(super) fn verify_sha256_file(path: &Path, expected: &str) -> Result<(), Box<
 pub(super) async fn resolve_optional_signature(
     options: &UpdateOptions,
     names: &ReleaseAssetNames,
+    selected_release: Option<&GithubRelease>,
     dest: &Path,
 ) -> Result<bool, Box<dyn Error>> {
     // Skip resolution entirely when verification is disabled (no public key).
@@ -96,24 +96,9 @@ pub(super) async fn resolve_optional_signature(
 
     // Network path: look the signature up on the same release. We tolerate a
     // missing asset (older/unsigned releases) but surface real download errors.
-    let client = http_client()?;
-    let api_url = match options.version.as_deref() {
-        Some(tag) => format!(
-            "https://api.github.com/repos/{}/releases/tags/{tag}",
-            options.repo
-        ),
-        None => format!(
-            "https://api.github.com/repos/{}/releases/latest",
-            options.repo
-        ),
-    };
-    let release: GithubRelease = client
-        .get(&api_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
+    let release = selected_release
+        .ok_or_else(|| err("network update signature lookup has no selected release"))?;
+    let client = axon_core::http::http_client()?;
     match release
         .assets
         .iter()

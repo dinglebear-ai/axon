@@ -10,6 +10,7 @@ use crate::adapter::Result;
 const ALLOWED_OPTIONS: &[&str] = &[
     "include_globs",
     "exclude_globs",
+    "exclude_paths",
     "respect_gitignore",
     "follow_symlinks",
     "max_file_bytes",
@@ -33,6 +34,7 @@ pub(crate) struct LocalOptions {
     include_set: Option<GlobSet>,
     sensitive_include_set: Option<GlobSet>,
     exclude_set: GlobSet,
+    exclude_paths: Vec<String>,
 }
 
 impl LocalOptions {
@@ -47,6 +49,13 @@ impl LocalOptions {
             .as_ref()
             .is_some_and(|include_set| include_set.is_match(relative_key));
         if self.exclude_set.is_match(relative_key) {
+            return false;
+        }
+        if self
+            .exclude_paths
+            .iter()
+            .any(|excluded| relative_key.contains(excluded))
+        {
             return false;
         }
         if let Some(include_set) = &self.include_set
@@ -95,6 +104,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions>
     }
     require_string_array(options, "include_globs")?;
     require_string_array(options, "exclude_globs")?;
+    require_string_array(options, "exclude_paths")?;
     require_bool(options, "respect_gitignore")?;
     let follow_symlinks = optional_bool(options, "follow_symlinks")?.unwrap_or(false);
     let max_file_bytes = optional_u64(options, "max_file_bytes")?;
@@ -102,6 +112,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions>
     require_enum(options, "watch_policy", &["manual", "auto", "disabled"])?;
     let include_globs = string_array(options, "include_globs");
     let exclude_globs = string_array(options, "exclude_globs");
+    let exclude_paths = string_array(options, "exclude_paths");
     let include_set = (!include_globs.is_empty())
         .then(|| glob_set(&include_globs))
         .transpose()?;
@@ -122,6 +133,7 @@ pub(crate) fn validate_options(options: &AdapterOptions) -> Result<LocalOptions>
         include_set,
         sensitive_include_set,
         exclude_set,
+        exclude_paths,
     })
 }
 

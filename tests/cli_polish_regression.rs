@@ -66,6 +66,15 @@ fn status_watch_json_and_quiet_use_one_shot_output() {
 #[test]
 fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     let home = temp_home();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            home.path().join(".axon"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .expect("make .axon permissions intentionally loose");
+    }
     let auto_output = axon(&home)
         .arg("--color=auto")
         .arg("status")
@@ -77,7 +86,25 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
         !auto_stdout.contains("\x1b["),
         "piped stdout must stay plain in auto mode: {auto_stdout:?}"
     );
+    let auto_stderr = String::from_utf8_lossy(&auto_output.stderr);
+    assert!(
+        auto_stderr.contains("WARN") && auto_stderr.contains("from_mode"),
+        "fixture must produce a warning: {auto_stderr:?}"
+    );
+    assert!(
+        !auto_stderr.contains("\x1b["),
+        "captured stderr must stay plain in auto mode: {auto_stderr:?}"
+    );
 
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(
+            home.path().join(".axon"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .expect("make .axon permissions intentionally loose again");
+    }
     let always_output = axon(&home)
         .arg("--color=always")
         .arg("status")
@@ -88,6 +115,15 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     assert!(
         always_stdout.contains("\x1b["),
         "always mode should force ANSI in stdout: {always_stdout:?}"
+    );
+    let always_stderr = String::from_utf8_lossy(&always_output.stderr);
+    assert!(
+        always_stderr.contains("WARN") && always_stderr.contains("from_mode"),
+        "fixture must produce an always-mode warning: {always_stderr:?}"
+    );
+    assert!(
+        always_stderr.contains("\x1b["),
+        "always mode should force ANSI in stderr: {always_stderr:?}"
     );
 }
 

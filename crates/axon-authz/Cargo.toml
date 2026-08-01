@@ -14,6 +14,7 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 axon-api = { path = "../axon-api" }
+axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
 axum = { version = "0.8", features = ["ws"] }
 lab-auth = { git = "https://github.com/dinglebear-ai/labby.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }

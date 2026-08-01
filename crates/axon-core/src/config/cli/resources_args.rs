@@ -184,6 +184,6 @@ pub(crate) enum ProviderSubcommand {
 
 #[derive(Debug, Args)]
 pub(crate) struct ChatArgs {
-    #[arg(value_name = "MESSAGE", required = true)]
+    #[arg(value_name = "MESSAGE")]
     pub(crate) message: Vec<String>,
 }

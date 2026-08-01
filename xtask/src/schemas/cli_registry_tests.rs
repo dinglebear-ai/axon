@@ -158,10 +158,7 @@ fn clean_break_reset_and_status_records_are_canonical() {
         .filter(|command| command.path.first() == Some(&"reset"))
         .map(|command| command.path)
         .collect::<Vec<_>>();
-    assert_eq!(
-        reset_paths,
-        [&["reset", "plan"][..], &["reset", "exec"][..]]
-    );
+    assert_eq!(reset_paths, [&["reset"][..]]);
 
     let status = records
         .iter()

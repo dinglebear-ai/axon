@@ -71,12 +71,7 @@ fn ensure_env_file_with_process(
         DEFAULT_CHROME_URL,
         &process_value,
     );
-    insert_process_or_default(
-        &mut env,
-        "AXON_HTTP_PUBLISH",
-        "127.0.0.1:8001",
-        &process_value,
-    );
+    insert_process_or_default(&mut env, "AXON_HTTP_PUBLISH", "8001", &process_value);
     insert_option_process_or_default(
         &mut env,
         "AXON_HTTP_HOST",
@@ -242,6 +237,13 @@ pub(super) fn read_env_file_values(path: &Path) -> io::Result<BTreeMap<String, S
     } else {
         Ok(BTreeMap::new())
     }
+}
+
+pub(super) fn read_env_values(path: &Path) -> io::Result<BTreeMap<String, String>> {
+    if !path.exists() {
+        return Ok(BTreeMap::new());
+    }
+    parse_env_file(&std::fs::read_to_string(path)?)
 }
 
 fn parse_env_file(raw: &str) -> io::Result<BTreeMap<String, String>> {

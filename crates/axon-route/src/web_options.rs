@@ -48,19 +48,38 @@ fn validate_option(key: &str, value: &Value) -> Result<(), ApiError> {
         "max_pages" | "max_depth" | "max_sitemaps" | "max_llms_txt_urls" | "sitemap_since_days"
         | "min_markdown_chars" => expect_non_negative_integer(key, value),
         "include_subdomains" | "respect_robots" | "discover_sitemaps" | "discover_llms_txt"
-        | "etag_conditional" | "drop_thin_markdown" | "verticals_enabled" => {
+        | "etag_conditional" | "drop_thin_markdown" | "verticals_enabled" | "cache_http_only"
+        | "normalize" | "block_assets" | "chrome_screenshot" | "sitemap_only" => {
             expect_bool(key, value)
         }
         "render_mode" => expect_render_mode(value),
         "headers" => expect_headers(value),
         "cache_policy" => expect_cache_policy(value),
         "vertical_cache_ttl_secs" => expect_non_negative_integer_map(key, value),
+        "path_budgets" => expect_non_negative_integer_map(key, value),
         "url_whitelist" | "url_blacklist" | "auto_dispatch_skip" => expect_string_array(key, value),
-        "warc_path" | "automation_script" | "user_agent" => expect_nonempty_string(key, value),
+        "warc_path"
+        | "automation_script"
+        | "user_agent"
+        | "chrome_wait_for_selector"
+        | "root_selector"
+        | "exclude_selector"
+        | "output_dir" => expect_nonempty_string(key, value),
+        "format" => expect_scrape_format(value),
         // Legacy disk-handoff keys (`manifest_path`, `markdown_root`,
         // `map_urls`) and anything else the router already allowed: nothing
         // further to validate here.
         _ => Ok(()),
+    }
+}
+
+fn expect_scrape_format(value: &Value) -> Result<(), ApiError> {
+    match value.as_str() {
+        Some("markdown" | "html" | "rawHtml" | "json" | "llm") => Ok(()),
+        _ => Err(invalid_option(
+            "format",
+            "expected \"markdown\", \"html\", \"rawHtml\", \"json\", or \"llm\"",
+        )),
     }
 }
 

@@ -38,6 +38,9 @@ load_axon_env_file() {
       key="${key#"${key%%[![:space:]]*}"}"
       key="${key%"${key##*[![:space:]]}"}"
       [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+      # Match dotenvy's process-level precedence: a caller-provided value wins
+      # over the file. This is essential for one-off backend overrides and CI.
+      [[ -v "$key" ]] && continue
 
       value="${value#"${value%%[![:space:]]*}"}"
       value="${value%"${value##*[![:space:]]}"}"

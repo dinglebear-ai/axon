@@ -59,7 +59,8 @@ The enforcement checks below live in the `xtask` crate (see `axon_rust-pp5`). Ru
 | Script | Purpose |
 |--------|---------|
 | `test-mcp-tools-mcporter.sh` | MCP smoke test suite (50+ tool calls) |
-| `live-test-all-commands.sh` | Integration test all CLI commands against live services |
+| `live-test-all-commands.sh` | Registry-wide parser checks plus isolated live scenarios; fails on missing command/flag behavioral contracts |
+| `stress-crawler.sh` | Opt-in isolated crawler/embedding/graph stress run with concurrent jobs, metrics, verification, and automatic cleanup |
 | `test-client-server-mode.sh` | CLI client/server smoke against a running `axon serve` |
 | `test-ask-quality-regressions.sh` | RAG answer quality regression tests |
 | `test-mcp-oauth-protection.sh` | MCP OAuth endpoint security tests |

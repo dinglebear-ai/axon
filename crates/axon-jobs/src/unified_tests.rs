@@ -13,7 +13,7 @@ fn snapshot_test_db_path() -> std::path::PathBuf {
 }
 
 #[tokio::test]
-async fn public_status_update_retries_a_real_wal_stale_snapshot() {
+async fn public_status_update_reserves_writer_before_reading_snapshot() {
     let path = snapshot_test_db_path();
     let path_string = path.to_string_lossy().to_string();
     let pool = open_sqlite_pool(&path_string).await.expect("open job pool");
@@ -43,11 +43,19 @@ async fn public_status_update_retries_a_real_wal_stale_snapshot() {
     });
 
     entered_wait.await;
-    sqlx::query("UPDATE jobs SET updated_at = updated_at WHERE job_id = ?")
-        .bind(job.job_id.0.to_string())
-        .execute(&writer)
-        .await
-        .expect("writer commits after reader snapshot");
+    let writer_job_id = job.job_id;
+    let competing_writer = tokio::spawn(async move {
+        sqlx::query("UPDATE jobs SET updated_at = updated_at WHERE job_id = ?")
+            .bind(writer_job_id.0.to_string())
+            .execute(&writer)
+            .await
+            .expect("competing writer commits after status transaction")
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        !competing_writer.is_finished(),
+        "BEGIN IMMEDIATE must reserve the writer before the status read"
+    );
     resume.notify_one();
 
     updating
@@ -64,7 +72,7 @@ async fn public_status_update_retries_a_real_wal_stale_snapshot() {
         LifecycleStatus::Running
     );
 
-    writer.close().await;
+    competing_writer.await.expect("competing writer task joins");
     std::fs::remove_file(path).expect("remove snapshot test database");
 }
 
@@ -89,6 +97,50 @@ async fn job_store_write_boundary_restarts_busy_snapshot_operation() {
 
     assert!(result.is_ok());
     assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn concurrent_status_updates_serialize_without_busy_errors() {
+    let path = snapshot_test_db_path();
+    let path_string = path.to_string_lossy().to_string();
+    let pool = open_sqlite_pool(&path_string).await.expect("open job pool");
+    seed_source(&pool).await;
+    let store = Arc::new(SqliteUnifiedJobStore::new(pool));
+    let mut jobs = Vec::new();
+    for index in 0..16 {
+        let mut request = create_request();
+        request.request_id = Some(format!("concurrent-{index}"));
+        request.idempotency_key = Some(format!("concurrent-idem-{index}"));
+        jobs.push(store.create(request).await.expect("create job").job_id);
+    }
+
+    let mut updates = tokio::task::JoinSet::new();
+    for job_id in jobs {
+        let store = Arc::clone(&store);
+        updates.spawn(async move {
+            store
+                .update_status(JobStatusUpdate {
+                    job_id,
+                    source_id: None,
+                    status: LifecycleStatus::Running,
+                    phase: PipelinePhase::Publishing,
+                    stage_id: None,
+                    counts: None,
+                    current: None,
+                    message: Some("concurrent publish".to_string()),
+                    error: None,
+                })
+                .await
+        });
+    }
+    while let Some(result) = updates.join_next().await {
+        result
+            .expect("status task joins")
+            .expect("concurrent status update succeeds");
+    }
+
+    store.pool_for_tests().close().await;
+    std::fs::remove_file(path).expect("remove concurrent test database");
 }
 
 async fn store() -> SqliteUnifiedJobStore {
@@ -432,6 +484,119 @@ async fn status_update_enforces_state_machine_and_persists_progress() {
         .expect("stage exists");
     assert_eq!(stage.status, LifecycleStatus::Waiting);
     assert_eq!(stage.counts, counts);
+}
+
+#[tokio::test]
+async fn terminal_counts_recovers_historical_counts_from_progress_events() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Publishing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("queued -> running");
+
+    let expected = StageCounts {
+        items_total: Some(344),
+        items_done: 344,
+        documents_total: Some(344),
+        documents_done: 344,
+        chunks_total: Some(7_608),
+        chunks_done: 7_608,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+    let mut published = progress_event(job.job_id, 1, Visibility::Public);
+    published.phase = PipelinePhase::Publishing;
+    published.status = LifecycleStatus::Completed;
+    published.counts = expected.clone();
+    store
+        .append_event(published)
+        .await
+        .expect("append completion event");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Completed,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("running -> completed without durable counts");
+
+    assert!(
+        store
+            .get(job.job_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .counts
+            .is_none()
+    );
+    assert_eq!(
+        store.terminal_counts(job.job_id).await.unwrap(),
+        Some(expected)
+    );
+}
+
+#[tokio::test]
+async fn terminal_counts_uses_only_the_latest_attempt() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+
+    let mut first_attempt = progress_event(job.job_id, 1, Visibility::Public);
+    first_attempt.attempt = 1;
+    first_attempt.counts = StageCounts {
+        items_total: None,
+        items_done: 0,
+        documents_total: Some(100),
+        documents_done: 100,
+        chunks_total: Some(1_000),
+        chunks_done: 1_000,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+    store
+        .append_event(first_attempt)
+        .await
+        .expect("append first-attempt event");
+
+    let expected = StageCounts {
+        items_total: None,
+        items_done: 0,
+        documents_total: Some(2),
+        documents_done: 2,
+        chunks_total: Some(24),
+        chunks_done: 24,
+        bytes_total: None,
+        bytes_done: 0,
+    };
+    let mut second_attempt = progress_event(job.job_id, 2, Visibility::Public);
+    second_attempt.attempt = 2;
+    second_attempt.counts = expected.clone();
+    store
+        .append_event(second_attempt)
+        .await
+        .expect("append second-attempt event");
+
+    assert_eq!(
+        store.terminal_counts(job.job_id).await.unwrap(),
+        Some(expected)
+    );
 }
 
 #[tokio::test]
@@ -1618,10 +1783,10 @@ impl crate::workers::UnifiedJobRunner for SlowConcurrentRunner {
         _claimed: &crate::workers::unified::UnifiedClaimedJob,
         _store: &SqliteUnifiedJobStore,
         _shutdown: &CancellationToken,
-    ) -> Result<(), ApiError> {
+    ) -> Result<crate::workers::UnifiedJobOutcome, ApiError> {
         let _permit = self.marker.acquire().await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        Ok(())
+        Ok(crate::workers::UnifiedJobOutcome::completed_without_counts())
     }
 }
 

@@ -266,6 +266,84 @@ async fn dropping_job_aware_reservation_releases_capacity() {
 }
 
 #[tokio::test]
+async fn registered_capacity_wait_catches_release_between_check_and_await() {
+    let manager = ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new("tei"),
+        provider_kind: ProviderKind::Embedding,
+        capacity: 1,
+        interactive_reserve: 0,
+        cooldown_after_failures: 1,
+        cooldown_secs: 60,
+    });
+    let held = manager.reserve(JobPriority::Interactive, 1).await.unwrap();
+
+    // Mirror the ordering used by `reserve_with_context_wait`: register the
+    // waiter, observe exhaustion, then release before polling the waiter.
+    let capacity_notify = manager.capacity_changed_notify();
+    let capacity_changed = capacity_notify.notified();
+    tokio::pin!(capacity_changed);
+    capacity_changed.as_mut().enable();
+    let denied = manager
+        .reserve(JobPriority::Interactive, 1)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
+
+    drop(held);
+    tokio::time::timeout(std::time::Duration::from_millis(100), capacity_changed)
+        .await
+        .expect("registered waiter must observe release before its first poll");
+}
+
+#[tokio::test]
+async fn capacity_exhaustion_is_retryable_and_waiting_reservation_backpressures() {
+    let manager = ProviderReservationManager::new(ProviderReservationConfig {
+        provider_id: ProviderId::new("tei"),
+        provider_kind: ProviderKind::Embedding,
+        capacity: 1,
+        interactive_reserve: 0,
+        cooldown_after_failures: 1,
+        cooldown_secs: 60,
+    });
+    let held = manager.reserve(JobPriority::Background, 1).await.unwrap();
+    let denied = manager
+        .reserve(JobPriority::Background, 1)
+        .await
+        .unwrap_err();
+    assert_eq!(denied.code.to_string(), "provider.capacity_exhausted");
+    assert!(denied.retryable);
+
+    let waiter = {
+        let manager = manager.clone();
+        tokio::spawn(async move {
+            manager
+                .reserve_with_context_wait(ProviderReservationContext {
+                    job_id: JobId(uuid::Uuid::new_v4()),
+                    stage_id: None,
+                    provider_id: None,
+                    priority: JobPriority::Background,
+                    units: 1,
+                    ttl_seconds: Some(30),
+                })
+                .await
+        })
+    };
+    tokio::task::yield_now().await;
+    assert!(
+        !waiter.is_finished(),
+        "capacity waiter must apply backpressure"
+    );
+
+    drop(held);
+    let granted = tokio::time::timeout(std::time::Duration::from_secs(1), waiter)
+        .await
+        .expect("waiter should wake when capacity is released")
+        .expect("wait task")
+        .expect("reservation should be granted");
+    assert_eq!(granted.priority(), JobPriority::Background);
+}
+
+#[tokio::test]
 async fn cooldown_snapshot_is_heartbeat_ready() {
     let manager = manager();
     manager.record_failure("provider.timeout", true).await;

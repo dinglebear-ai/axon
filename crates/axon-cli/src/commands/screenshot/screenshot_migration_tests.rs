@@ -9,6 +9,7 @@
 //! All tests exercise pure functions — no Chrome, no network.
 
 use super::util::require_chrome;
+use super::{write_json_screenshot_preamble, write_json_screenshot_result};
 use axon_api::source::{ArtifactId, Timestamp};
 use axon_core::config::Config;
 use axon_core::paths::url_to_screenshot_filename;
@@ -55,6 +56,79 @@ fn screenshot_json_contract_is_stable() {
     assert!(obj.get("path").is_none());
     assert!(obj.get("relative_path").is_none());
     assert!(obj.get("display_path").is_none());
+}
+
+#[test]
+fn screenshot_json_keeps_progress_on_stderr_and_data_on_stdout() {
+    let cfg = Config {
+        json_output: true,
+        chrome_remote_url: Some("http://127.0.0.1:6000".to_string()),
+        ..Config::default()
+    };
+    let result = axon_services::types::ScreenshotResult {
+        artifact_id: ArtifactId::new("art_screenshot_streams"),
+        width: 1280,
+        height: 720,
+        captured_at: Timestamp("2026-07-30T00:00:00Z".to_string()),
+        warnings: Vec::new(),
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    write_json_screenshot_preamble(&cfg, "https://example.com", &mut stderr).unwrap();
+    write_json_screenshot_result(
+        &cfg,
+        "https://example.com",
+        &result,
+        &mut stdout,
+        &mut stderr,
+    )
+    .unwrap();
+
+    let stdout = String::from_utf8(stdout).unwrap();
+    let stderr = String::from_utf8(stderr).unwrap();
+    assert_eq!(stdout.lines().count(), 1);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(stdout.trim()).unwrap()["artifact_id"],
+        "art_screenshot_streams"
+    );
+    assert!(!stdout.contains("capturing"));
+    assert!(!stdout.contains("completed"));
+    assert!(stderr.contains("screenshot: capturing"));
+    assert!(stderr.contains("screenshot: completed"));
+}
+
+#[test]
+fn screenshot_json_quiet_suppresses_progress_only() {
+    let cfg = Config {
+        json_output: true,
+        quiet: true,
+        chrome_remote_url: Some("http://127.0.0.1:6000".to_string()),
+        ..Config::default()
+    };
+    let result = axon_services::types::ScreenshotResult {
+        artifact_id: ArtifactId::new("art_screenshot_quiet"),
+        width: 1280,
+        height: 720,
+        captured_at: Timestamp("2026-07-30T00:00:00Z".to_string()),
+        warnings: Vec::new(),
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    write_json_screenshot_preamble(&cfg, "https://example.com", &mut stderr).unwrap();
+    write_json_screenshot_result(
+        &cfg,
+        "https://example.com",
+        &result,
+        &mut stdout,
+        &mut stderr,
+    )
+    .unwrap();
+
+    assert!(stderr.is_empty());
+    assert_eq!(stdout.iter().filter(|byte| **byte == b'\n').count(), 1);
+    serde_json::from_slice::<serde_json::Value>(&stdout).unwrap();
 }
 
 // ── 3. Filename sanitization ────────────────────────────────────────

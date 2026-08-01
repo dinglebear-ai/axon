@@ -81,10 +81,11 @@ fn run_setup_config_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     match cfg.positional.get(1).map(String::as_str) {
         Some("rewrite") => {
             let dry_run = cfg.positional.iter().any(|arg| arg == "--dry-run");
-            if !dry_run {
-                return Err("setup config rewrite currently supports --dry-run only".into());
-            }
-            let preview = axon_services::config::config_rewrite_preview()?;
+            let preview = if dry_run {
+                axon_services::config::config_rewrite_preview()?
+            } else {
+                axon_services::config::config_rewrite_apply()?
+            };
             if cfg.json_output {
                 println!("{}", serde_json::to_string_pretty(&preview)?);
                 return Ok(());
@@ -115,6 +116,14 @@ fn run_setup_config_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
             }
             if dry_run {
                 println!("{}", muted("dry-run: no files were written."));
+            } else {
+                println!(
+                    "{}",
+                    muted(&format!(
+                        "applied {} rewrite(s); restart Axon to reload configuration.",
+                        preview.write_count
+                    ))
+                );
             }
             Ok(())
         }
@@ -214,9 +223,18 @@ fn local_bin_dir() -> Option<std::path::PathBuf> {
 }
 
 async fn run_install_setup_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
-    let _ = cfg;
     let dest = install_self()?;
-    println!("installed -> {}", dest.display());
+    if cfg.json_output {
+        println!(
+            "{}",
+            serde_json::to_string(&json!({
+                "status": "installed",
+                "path": dest.display().to_string(),
+            }))?
+        );
+    } else {
+        println!("installed -> {}", dest.display());
+    }
     Ok(())
 }
 

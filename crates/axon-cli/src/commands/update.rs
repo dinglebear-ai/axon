@@ -1,9 +1,7 @@
 use axon_core::config::Config;
 use axon_core::http::http_client;
-use axon_core::paths::axon_home_dir;
 use axon_core::ui::{accent, muted, primary};
 use flate2::read::GzDecoder;
-use futures_util::StreamExt;
 use serde::Deserialize;
 use std::env;
 use std::error::Error;
@@ -13,24 +11,36 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
-const DEFAULT_REPO: &str = "jmagar/axon";
+const DEFAULT_REPO: &str = "dinglebear-ai/axon";
 const UPDATE_FILE_RELEASE_DIR: &str = "AXON_UPDATE_FILE_RELEASE_DIR";
 const UPDATE_INSTALL_PATH: &str = "AXON_UPDATE_INSTALL_PATH";
-const DEV_TARGET_DIR: &str = "AXON_DEV_TARGET_DIR";
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
 // Release-artifact integrity (SHA256 + optional OPS-H3 signature) lives in the
 // integrity submodule. Re-exported so the sidecar tests' `super::*` resolves
 // the verification helpers unchanged.
+mod container_sync;
 mod integrity;
+mod release;
+
+#[cfg(test)]
+use container_sync::{
+    ComposePaths, build_container_sync_command_with_paths, compose_args, resolve_axon_env_file,
+    resolve_compose_paths_from_home,
+};
+use container_sync::{resolve_compose_paths, sync_container_from_installed_binary};
 #[cfg(test)]
 use integrity::verify_sha256;
 use integrity::{
     parse_sha256_sidecar, resolve_optional_signature, verify_optional_signature, verify_sha256_file,
+};
+#[cfg(test)]
+use release::select_latest_compatible_release;
+use release::{
+    download_release_assets, download_to_file, fetch_compatible_release, release_asset_names,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,13 +52,17 @@ struct ReleaseAssetNames {
     signature: &'static str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GithubRelease {
     tag_name: String,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
     assets: Vec<GithubAsset>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct GithubAsset {
     name: String,
     browser_download_url: String,
@@ -179,6 +193,48 @@ fn default_install_path() -> PathBuf {
 
 async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn Error>> {
     let names = release_asset_names(env::consts::OS, env::consts::ARCH)?;
+    let client = if options.file_release_dir.is_none() {
+        Some(http_client()?)
+    } else {
+        None
+    };
+    let selected_release = match client {
+        Some(client) => Some(
+            fetch_compatible_release(client, &options.repo, options.version.as_deref(), &names)
+                .await?,
+        ),
+        None => None,
+    };
+
+    if options.file_release_dir.is_none() && options.version.is_none() {
+        let release = selected_release
+            .as_ref()
+            .ok_or_else(|| err("automatic update did not resolve a release"))?;
+        let installed_version = installed_binary_version(&options.install_path).await;
+        if should_skip_automatic_update(
+            &release.tag_name,
+            installed_version.as_deref(),
+            options.force,
+        )? {
+            let mut container_synced = false;
+            if options.sync_container {
+                let compose_paths = resolve_compose_paths()?;
+                sync_container_from_installed_binary(&options.install_path, compose_paths).await?;
+                container_synced = true;
+            }
+            return Ok(UpdateReport {
+                version: normalize_version(
+                    installed_version
+                        .as_deref()
+                        .unwrap_or(release.tag_name.as_str()),
+                )
+                .to_string(),
+                install_path: options.install_path,
+                installed: false,
+                container_synced,
+            });
+        }
+    }
     let temp = tempfile::tempdir()?;
     let archive_path = temp.path().join(names.archive);
     let compose_paths = if options.sync_container {
@@ -198,13 +254,12 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
             checksum,
         )
     } else {
-        download_release_assets(
-            &options.repo,
-            options.version.as_deref(),
-            &names,
-            &archive_path,
-        )
-        .await?
+        let client =
+            client.ok_or_else(|| err("network update did not initialize an HTTP client"))?;
+        let release = selected_release
+            .as_ref()
+            .ok_or_else(|| err("network update did not resolve a release"))?;
+        download_release_assets(client, release, &names, &archive_path).await?
     };
 
     let expected = parse_sha256_sidecar(&checksum_body)?;
@@ -215,7 +270,9 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     // detached signature best-effort; verification is enforced only when a
     // public key is configured AND a signature is present — otherwise inert.
     let signature_path = temp.path().join(names.signature);
-    let signature_available = resolve_optional_signature(&options, &names, &signature_path).await?;
+    let signature_available =
+        resolve_optional_signature(&options, &names, selected_release.as_ref(), &signature_path)
+            .await?;
     verify_optional_signature(&archive_path, &signature_path, signature_available)?;
 
     let already_current =
@@ -232,87 +289,52 @@ async fn perform_update(options: UpdateOptions) -> Result<UpdateReport, Box<dyn 
     }
 
     Ok(UpdateReport {
-        version,
+        version: normalize_version(&version).to_string(),
         install_path: options.install_path,
         installed: !already_current,
         container_synced,
     })
 }
 
-async fn download_release_assets(
-    repo: &str,
-    version: Option<&str>,
-    names: &ReleaseAssetNames,
-    archive_path: &Path,
-) -> Result<(String, String), Box<dyn Error>> {
-    let client = http_client()?;
-    let api_url = match version {
-        Some(tag) => format!("https://api.github.com/repos/{repo}/releases/tags/{tag}"),
-        None => format!("https://api.github.com/repos/{repo}/releases/latest"),
-    };
-
-    let release: GithubRelease = client
-        .get(&api_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .json()
-        .await?;
-
-    let archive_url = find_asset_url(&release, names.archive)?;
-    let checksum_url = find_asset_url(&release, names.checksum)?;
-    download_to_file(client, archive_url, archive_path).await?;
-    let checksum = client
-        .get(checksum_url)
-        .send()
-        .await?
-        .error_for_status()?
-        .text()
-        .await?;
-
-    Ok((release.tag_name, checksum))
+fn should_skip_automatic_update(
+    release_tag: &str,
+    installed_version: Option<&str>,
+    force: bool,
+) -> Result<bool, Box<dyn Error>> {
+    Ok(!force
+        && installed_version
+            .map(|installed| release_is_newer_than(release_tag, installed).map(|newer| !newer))
+            .transpose()?
+            .unwrap_or(false))
 }
 
-async fn download_to_file(
-    client: &reqwest::Client,
-    url: &str,
-    dest: &Path,
-) -> Result<(), Box<dyn Error>> {
-    let response = client.get(url).send().await?.error_for_status()?;
-    let mut file = tokio::fs::File::create(dest).await?;
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        file.write_all(&chunk?).await?;
+fn release_is_newer_than(tag: &str, current: &str) -> Result<bool, Box<dyn Error>> {
+    Ok(version_tuple(tag)? > version_tuple(current)?)
+}
+
+fn version_tuple(raw: &str) -> Result<(u64, u64, u64), Box<dyn Error>> {
+    let core = raw
+        .trim()
+        .trim_start_matches('v')
+        .split_once('-')
+        .map_or_else(|| raw.trim().trim_start_matches('v'), |(core, _)| core);
+    let mut parts = core.split('.');
+    let major = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    let minor = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    let patch = parts
+        .next()
+        .ok_or_else(|| err(format!("invalid release version: {raw}")))?
+        .parse()?;
+    if parts.next().is_some() {
+        return Err(err(format!("invalid release version: {raw}")));
     }
-    file.flush().await?;
-    Ok(())
-}
-
-fn find_asset_url<'a>(release: &'a GithubRelease, name: &str) -> Result<&'a str, Box<dyn Error>> {
-    release
-        .assets
-        .iter()
-        .find(|asset| asset.name == name)
-        .map(|asset| asset.browser_download_url.as_str())
-        .ok_or_else(|| {
-            err(format!(
-                "release {} is missing asset {name}",
-                release.tag_name
-            ))
-        })
-}
-
-fn release_asset_names(os: &str, arch: &str) -> Result<ReleaseAssetNames, Box<dyn Error>> {
-    match (os, arch) {
-        ("linux", "x86_64") => Ok(ReleaseAssetNames {
-            archive: "axon-linux-x86_64.tar.gz",
-            checksum: "axon-linux-x86_64.tar.gz.sha256",
-            signature: "axon-linux-x86_64.tar.gz.minisig",
-        }),
-        _ => Err(err(format!(
-            "unsupported platform for axon update: {os}/{arch}; only linux/x86_64 is wired"
-        ))),
-    }
+    Ok((major, minor, patch))
 }
 
 fn extract_axon_binary(archive_path: &Path, temp_dir: &Path) -> Result<PathBuf, Box<dyn Error>> {
@@ -368,8 +390,14 @@ fn unique_suffix() -> u128 {
 }
 
 async fn installed_binary_reports_version(installed_binary: &Path, version: &str) -> bool {
+    installed_binary_version(installed_binary)
+        .await
+        .is_some_and(|installed| normalize_version(&installed) == normalize_version(version))
+}
+
+async fn installed_binary_version(installed_binary: &Path) -> Option<String> {
     if !installed_binary.is_file() {
-        return false;
+        return None;
     }
     let Ok(Ok(output)) = timeout(
         COMMAND_TIMEOUT,
@@ -377,16 +405,17 @@ async fn installed_binary_reports_version(installed_binary: &Path, version: &str
     )
     .await
     else {
-        return false;
+        return None;
     };
     if !output.status.success() {
-        return false;
+        return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    output_reports_version(&stdout, version) || output_reports_version(&stderr, version)
+    output_version(&stdout).or_else(|| output_version(&stderr))
 }
 
+#[cfg(test)]
 fn output_reports_version(output: &str, version: &str) -> bool {
     let target = normalize_version(version);
     output
@@ -394,134 +423,15 @@ fn output_reports_version(output: &str, version: &str) -> bool {
         .any(|token| normalize_version(token) == target)
 }
 
+fn output_version(output: &str) -> Option<String> {
+    output
+        .split_whitespace()
+        .find(|token| version_tuple(token).is_ok())
+        .map(|token| normalize_version(token).to_string())
+}
+
 fn normalize_version(version: &str) -> &str {
     version.trim().trim_start_matches('v')
-}
-
-fn build_container_sync_command_with_paths(
-    installed_binary: &Path,
-    paths: ComposePaths,
-) -> Result<SyncCommand, Box<dyn Error>> {
-    let bin_dir = installed_binary
-        .parent()
-        .ok_or_else(|| {
-            err(format!(
-                "installed binary has no parent: {}",
-                installed_binary.display()
-            ))
-        })?
-        .to_path_buf();
-
-    Ok(SyncCommand {
-        program: "docker",
-        args: compose_args(&paths, true),
-        current_dir: paths.compose_dir,
-        env_name: DEV_TARGET_DIR,
-        env_value: bin_dir,
-    })
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ComposePaths {
-    compose_dir: PathBuf,
-    compose_file: PathBuf,
-    env_file: Option<PathBuf>,
-}
-
-fn compose_args(paths: &ComposePaths, include_up: bool) -> Vec<String> {
-    let mut args = vec!["compose".to_string()];
-    if let Some(env_file) = &paths.env_file {
-        args.push("--env-file".to_string());
-        args.push(env_file.display().to_string());
-    }
-    args.push("-f".to_string());
-    args.push(paths.compose_file.display().to_string());
-    if include_up {
-        args.extend(
-            [
-                "up",
-                "-d",
-                "axon",
-                "--no-deps",
-                "--no-build",
-                "--force-recreate",
-            ]
-            .into_iter()
-            .map(String::from),
-        );
-    }
-    args
-}
-
-fn resolve_compose_paths() -> Result<ComposePaths, Box<dyn Error>> {
-    let axon_home = axon_home_dir().ok_or_else(|| {
-        err("HOME is unset or invalid; cannot resolve trusted ~/.axon compose assets")
-    })?;
-    resolve_compose_paths_from_home(&axon_home, env::var_os("AXON_ENV_FILE").map(PathBuf::from))
-}
-
-fn resolve_compose_paths_from_home(
-    axon_home: &Path,
-    explicit_env_file: Option<PathBuf>,
-) -> Result<ComposePaths, Box<dyn Error>> {
-    let compose_dir = axon_home.join("compose");
-    let compose_file = compose_dir.join("docker-compose.yaml");
-    if !compose_file.is_file() {
-        return Err(err(format!(
-            "trusted compose file is missing: {}; run axon setup init",
-            compose_file.display()
-        )));
-    }
-    Ok(ComposePaths {
-        compose_dir,
-        compose_file,
-        env_file: resolve_axon_env_file(axon_home, explicit_env_file.as_deref()),
-    })
-}
-
-fn resolve_axon_env_file(axon_home: &Path, explicit_env_file: Option<&Path>) -> Option<PathBuf> {
-    if let Some(path) = explicit_env_file {
-        if path.is_absolute() && path.is_file() {
-            return Some(path.to_path_buf());
-        }
-        return None;
-    }
-    let home_env = axon_home.join(".env");
-    if home_env.is_file() {
-        return Some(home_env);
-    }
-    None
-}
-
-async fn sync_container_from_installed_binary(
-    installed_binary: &Path,
-    paths: ComposePaths,
-) -> Result<(), Box<dyn Error>> {
-    let sync = build_container_sync_command_with_paths(installed_binary, paths)?;
-    let mut command = Command::new(sync.program);
-    command
-        .args(&sync.args)
-        .current_dir(&sync.current_dir)
-        .env(sync.env_name, sync.env_value);
-    let status = run_command(command, "container sync").await?;
-    if !status.success() {
-        return Err(err(format!("container sync failed with status {status}")));
-    }
-
-    Ok(())
-}
-
-async fn run_command(
-    mut command: Command,
-    description: &str,
-) -> Result<std::process::ExitStatus, Box<dyn Error>> {
-    match timeout(COMMAND_TIMEOUT, command.status()).await {
-        Ok(result) => Ok(result?),
-        Err(_) => Err(err(format!(
-            "{description} timed out after {} seconds",
-            COMMAND_TIMEOUT.as_secs()
-        ))),
-    }
 }
 
 #[cfg(test)]

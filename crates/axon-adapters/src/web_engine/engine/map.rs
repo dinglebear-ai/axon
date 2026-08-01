@@ -122,15 +122,15 @@ fn derive_map_scope_url(requested_url: &str, resolved_url: &str) -> Option<Strin
         .or_else(|| canonicalize_url_for_dedupe(requested_url))?;
     let mut resolved = Url::parse(&resolved_canonical).ok()?;
 
-    let requested_path = requested.path().trim_end_matches('/').to_string();
-    let resolved_path = resolved.path().trim_end_matches('/').to_string();
-    let scope_path = if !requested_path.is_empty()
-        && requested.host_str()? != resolved.host_str()?
-        && resolved_path.is_empty()
-    {
-        requested_path
+    // A root request means "the whole resolved site", even when the origin
+    // redirects `/` to a deep landing page. For a non-root request, however,
+    // a redirect may be the canonical subsection path; retain that resolved
+    // path rather than transplanting a stale path onto the new origin.
+    let requested_path = requested.path().trim_end_matches('/');
+    let scope_path = if requested_path.is_empty() {
+        String::new()
     } else {
-        resolved_path
+        resolved.path().trim_end_matches('/').to_string()
     };
 
     resolved.set_path(if scope_path.is_empty() {
