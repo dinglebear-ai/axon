@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -10,16 +9,11 @@ const MAX_CACHED_DOCUMENTS: usize = 1024;
 const MAX_CACHED_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
-pub(super) struct ReusedWebDocument {
-    pub(super) document: SourceDocument,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct InProcessWebDocumentCache {
+pub(crate) struct InProcessDocumentCache {
     entries: Arc<Mutex<BTreeMap<DocumentCacheKey, CachedDocument>>>,
 }
 
-impl InProcessWebDocumentCache {
+impl InProcessDocumentCache {
     pub(crate) fn new() -> Self {
         Self {
             entries: Arc::new(Mutex::new(BTreeMap::new())),
@@ -27,37 +21,13 @@ impl InProcessWebDocumentCache {
     }
 }
 
-pub(super) async fn cache_documents(
-    cache: &dyn DocumentCache,
-    source_id: &SourceId,
-    generation: &SourceGenerationId,
-    documents: &[SourceDocument],
-) -> BoundaryResult<()> {
-    for document in documents {
-        cache
-            .put(
-                DocumentCacheKey {
-                    source_id: source_id.clone(),
-                    source_item_key: document.source_item_key.clone(),
-                    generation: Some(generation.clone()),
-                },
-                CachedDocument {
-                    document: document.clone(),
-                    cached_at: timestamp(),
-                },
-            )
-            .await?;
-    }
-    Ok(())
-}
-
 #[async_trait]
-impl DocumentCache for InProcessWebDocumentCache {
+impl DocumentCache for InProcessDocumentCache {
     async fn get(&self, key: DocumentCacheKey) -> BoundaryResult<Option<CachedDocument>> {
         Ok(self
             .entries
             .lock()
-            .expect("web source reuse cache mutex poisoned")
+            .expect("source document cache mutex poisoned")
             .get(&key)
             .cloned())
     }
@@ -66,7 +36,7 @@ impl DocumentCache for InProcessWebDocumentCache {
         let mut entries = self
             .entries
             .lock()
-            .expect("web source reuse cache mutex poisoned");
+            .expect("source document cache mutex poisoned");
         entries.insert(key, value);
         enforce_cache_limits(&mut entries);
         Ok(())
@@ -76,7 +46,7 @@ impl DocumentCache for InProcessWebDocumentCache {
         let mut entries = self
             .entries
             .lock()
-            .expect("web source reuse cache mutex poisoned");
+            .expect("source document cache mutex poisoned");
         match selector {
             DocumentCacheInvalidation::Key { key } => {
                 entries.remove(&key);
@@ -95,7 +65,7 @@ impl DocumentCache for InProcessWebDocumentCache {
     async fn reset(&self) -> BoundaryResult<()> {
         self.entries
             .lock()
-            .expect("web source reuse cache mutex poisoned")
+            .expect("source document cache mutex poisoned")
             .clear();
         Ok(())
     }
@@ -111,50 +81,15 @@ impl DocumentCache for InProcessWebDocumentCache {
             serde_json::json!(MAX_CACHED_DOCUMENT_BYTES),
         );
         Ok(CapabilityBase {
-            name: "web-reuse-cache".to_string(),
+            name: "source-document-cache".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             owner_crate: "axon-services".to_string(),
             health: HealthStatus::Healthy,
-            features: vec!["in-process".to_string()],
+            features: vec!["in-process".to_string(), "bounded".to_string()],
             limits,
         }
         .into())
     }
-}
-
-pub(super) async fn load_reused_web_document(
-    cache: &dyn DocumentCache,
-    source_id: &SourceId,
-    previous_generation: Option<&SourceGenerationId>,
-    item_key: &SourceItemKey,
-    next_generation: &SourceGenerationId,
-) -> BoundaryResult<Option<ReusedWebDocument>> {
-    let Some(generation) = previous_generation else {
-        return Ok(None);
-    };
-    let cached = cache
-        .get(DocumentCacheKey {
-            source_id: source_id.clone(),
-            source_item_key: item_key.clone(),
-            generation: Some(generation.clone()),
-        })
-        .await?;
-    Ok(cached.map(|cached| ReusedWebDocument {
-        document: retarget_document(cached.document, next_generation),
-    }))
-}
-
-fn retarget_document(
-    mut document: SourceDocument,
-    _next_generation: &SourceGenerationId,
-) -> SourceDocument {
-    document.metadata.remove("source_generation");
-    document.metadata.remove("committed_generation");
-    document
-}
-
-fn timestamp() -> Timestamp {
-    Timestamp(chrono::Utc::now().to_rfc3339())
 }
 
 fn enforce_cache_limits(cache: &mut BTreeMap<DocumentCacheKey, CachedDocument>) {
@@ -163,7 +98,6 @@ fn enforce_cache_limits(cache: &mut BTreeMap<DocumentCacheKey, CachedDocument>) 
     {
         return;
     }
-
     let mut entries = cache
         .iter()
         .map(|(key, value)| {
@@ -175,7 +109,6 @@ fn enforce_cache_limits(cache: &mut BTreeMap<DocumentCacheKey, CachedDocument>) 
         })
         .collect::<Vec<_>>();
     entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
-
     let mut total_bytes = entries.iter().map(|(_, _, bytes)| *bytes).sum::<usize>();
     let mut total_entries = cache.len();
     for (_, key, bytes) in entries {
@@ -211,19 +144,15 @@ fn estimated_document_bytes(document: &SourceDocument) -> usize {
             .iter()
             .map(|(key, value)| key.len() + value.to_string().len())
             .sum::<usize>()
-        + estimated_content_ref_bytes(&document.content)
-}
-
-fn estimated_content_ref_bytes(content: &ContentRef) -> usize {
-    match content {
-        ContentRef::InlineText { text } => text.len(),
-        ContentRef::InlineBytes {
-            bytes_base64,
-            mime_type,
-        } => bytes_base64.len() + mime_type.len(),
-        ContentRef::Artifact { artifact_id } => artifact_id.0.len(),
-        ContentRef::External { uri, integrity } => {
-            uri.len() + integrity.as_deref().map(str::len).unwrap_or_default()
+        + match &document.content {
+            ContentRef::InlineText { text } => text.len(),
+            ContentRef::InlineBytes {
+                bytes_base64,
+                mime_type,
+            } => bytes_base64.len() + mime_type.len(),
+            ContentRef::Artifact { artifact_id } => artifact_id.0.len(),
+            ContentRef::External { uri, integrity } => {
+                uri.len() + integrity.as_deref().map(str::len).unwrap_or_default()
+            }
         }
-    }
 }

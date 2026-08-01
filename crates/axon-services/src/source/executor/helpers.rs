@@ -1,12 +1,11 @@
-//! Small schema and provider helpers for the non-web pipeline.
+//! Small schema and provider helpers for the canonical source pipeline.
 
 use axon_adapters::SourceEnricher;
-use axon_api::{ApiError, source::*};
-use axon_error::ErrorStage;
+use axon_api::source::*;
 use axon_ledger::store::LedgerStore;
 use std::sync::Arc;
 
-use super::NonWebPipelineInput;
+use super::SourcePipelineInput;
 use crate::context::TargetLocalSourceRuntime;
 use crate::source::events::SourceEventEmitter;
 use crate::source::result_map::IndexCounts;
@@ -15,7 +14,7 @@ use super::vectorize::VectorizeResult;
 
 pub(super) async fn unchanged_result(
     ledger: &dyn LedgerStore,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     manifest: &SourceManifest,
     diff: &SourceManifestDiff,
     previous: Option<&SourceSummary>,
@@ -50,6 +49,7 @@ pub(super) async fn unchanged_result(
         job_id: input.plan.job_id,
         source_id: manifest.source_id.clone(),
         generation,
+        items_discovered: manifest.items.len() as u64,
         documents_prepared: 0,
         chunks_prepared: 0,
         vector_points_written: 0,
@@ -108,8 +108,8 @@ pub(super) fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u
 /// batch so `adapter.acquire(&plan, &batch)` sees a well-formed
 /// `SourceManifestDiff`. Mirrors the pre-collapse `local_source_vectorize.rs`
 /// / `web_source/vectorize_helpers.rs` `changed_diff_batches` helpers those
-/// two pipelines already used — now the one copy every non-web family
-/// (including local) streams acquisition through (finding C1: `non_web` used
+/// two pipelines already used — now the one copy every source family
+/// (including local) streams acquisition through (finding C1: `executor` used
 /// to be the only pipeline that acquired an entire changed generation in one
 /// unbounded call).
 pub(super) fn batch_changed_diff(
@@ -267,33 +267,7 @@ pub(super) fn preserved_source_counts(source: &SourceSummary) -> SourceCounts {
 pub(super) async fn ensure_providers_ready(
     runtime: &TargetLocalSourceRuntime,
 ) -> anyhow::Result<()> {
-    let embedding = runtime.embedding_provider.capabilities().await?;
-    let vector = runtime.vector_store.capabilities().await?;
-    for capability in [&embedding, &vector] {
-        if !matches!(
-            capability.health,
-            HealthStatus::Healthy | HealthStatus::Degraded
-        ) {
-            return Err(capability
-                .last_error
-                .clone()
-                .unwrap_or_else(|| {
-                    ApiError::new(
-                        "provider.not_ready",
-                        ErrorStage::Planning,
-                        format!("provider {} is not ready", capability.provider_id.0),
-                    )
-                })
-                .into());
-        }
-    }
-    if !vector
-        .vector_store
-        .as_ref()
-        .is_some_and(|capability| capability.generation_publish)
-    {
-        anyhow::bail!("vector provider does not support source generation publication");
-    }
+    crate::reserved_call::ensure_source_providers_ready(runtime).await?;
     Ok(())
 }
 
@@ -303,8 +277,8 @@ pub(super) fn timestamp() -> Timestamp {
 
 pub(super) fn stage_counts(output: &IndexCounts) -> StageCounts {
     StageCounts {
-        items_total: Some(output.documents_prepared + output.removed),
-        items_done: output.documents_prepared,
+        items_total: Some(output.items_discovered),
+        items_done: output.items_discovered,
         documents_total: Some(output.documents_prepared),
         documents_done: output.documents_prepared,
         chunks_total: Some(output.chunks_prepared),
@@ -316,7 +290,7 @@ pub(super) fn stage_counts(output: &IndexCounts) -> StageCounts {
 
 pub(super) async fn record_running_phase(
     runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     phase: PipelinePhase,
     message: &str,
@@ -379,7 +353,7 @@ pub(super) fn enrichment_graph_candidates(
         .collect()
 }
 
-/// Build the terminal `SourceError` for a failed non-web pipeline run.
+/// Build the terminal `SourceError` for a failed canonical source pipeline run.
 ///
 /// This is persisted straight into `jobs.last_error_json` — a column with no
 /// automatic redaction pass (unlike `job_events`/`details_json`, which run

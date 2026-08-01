@@ -108,12 +108,10 @@ pub async fn extract_start_with_context(
             attempt: 1,
             priority: JobPriority::Normal,
             idempotency_key: None,
-            stage_plan: vec![JobStagePlan {
-                phase: PipelinePhase::Parsing,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: Some(urls.len() as u64),
-            }],
+            stage_plan: vec![
+                JobStagePlan::required(PipelinePhase::Parsing)
+                    .with_estimated_items(Some(urls.len() as u64)),
+            ],
             request: Some(serde_json::json!({
                 "urls": urls,
                 "config_json": config_json,

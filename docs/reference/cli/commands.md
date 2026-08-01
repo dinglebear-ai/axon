@@ -64,7 +64,7 @@ Run `cargo xtask schemas generate --check`.
 
 ## Commands
 
-Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
+Sourced from `docs/reference/cli/commands.json` (110 commands). `Group` is the top-level command family (e.g. `jobs`, `watch`); multi-word `Command` values are `<group> <subcommand>`. `Mutates` and `Auth Scope` mirror the JSON `mutates` / `requires_auth_scope` fields; `Async` marks commands that can return a durable job id instead of completing synchronously.
 
 | Command | Group | Summary | Mutates | Auth Scope | Async |
 |---|---|---|---|---|---|
@@ -111,7 +111,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `graph source` | `graph` | Walk the SourceGraph neighborhood of a source | no | `read` | no |
 | `jobs cancel` | `jobs` | Request cancellation for a unified durable job | yes | `write` | no |
 | `jobs cleanup` | `jobs` | Remove old terminal unified durable jobs | yes | `write` | no |
-| `jobs clear` | `jobs` | Clear terminal unified durable job rows; active jobs require cancel/recover first | yes | `admin` | no |
+| `jobs clear` | `jobs` | Clear all unified durable job rows | yes | `admin` | no |
 | `jobs events` | `jobs` | Show one job's event page | no | `read` | no |
 | `jobs get` | `jobs` | Show one unified durable job | no | `read` | no |
 | `jobs list` | `jobs` | List unified durable jobs | no | `read` | no |
@@ -138,7 +138,8 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `prune plan` | `prune` | Resolve a prune target into a reviewable dry-run plan | no | `read` | no |
 | `query` | `query` | Semantic vector search over the Qdrant index | no | `read` | no |
 | `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
-| `reset` | `reset` | Plan a clean-slate reset or execute a reviewed plan with flags | yes | `admin` | no |
+| `reset exec` | `reset` | Execute a reviewed clean-slate reset plan | yes | `admin` | no |
+| `reset plan` | `reset` | Create a reviewable clean-slate reset plan without deleting data | no | `admin` | no |
 | `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
 | `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
 | `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
@@ -178,7 +179,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `watch status` | `watch` | Show source watch status | no | `read` | no |
 | `watch update` | `watch` | Update a source watch | yes | `write` | no |
 
-Total: 109 commands.
+Total: 110 commands.
 
 ## Removed Commands
 

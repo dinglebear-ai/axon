@@ -119,12 +119,7 @@ fn child_job_request(
         attempt: 1,
         priority: JobPriority::Background,
         idempotency_key: None,
-        stage_plan: vec![JobStagePlan {
-            phase,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: None,
-        }],
+        stage_plan: vec![JobStagePlan::required(phase)],
         request: None,
         auth_snapshot,
         config_snapshot_id: Some(ConfigSnapshotId::new("runtime")),

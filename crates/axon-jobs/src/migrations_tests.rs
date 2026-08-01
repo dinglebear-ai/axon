@@ -162,6 +162,66 @@ async fn fresh_db_migrates_all_namespaces() {
 /// Re-running the composed runner on an already-migrated pool is a no-op: no
 /// "table already exists" error and no duplicate applied-migration rows.
 #[tokio::test]
+async fn canonical_epoch_one_store_applies_missing_tail_migrations() {
+    static OLD_JOBS: &[SqlMigration] = &[JOBS_MIGRATIONS[0]];
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("epoch-one.db");
+    let pool = SqlitePool::connect(&format!("sqlite://{}?mode=rwc", path.display()))
+        .await
+        .expect("open fixture pool");
+    let old_sets = [
+        axon_ledger::migration::migration_set(),
+        MigrationSet::new(JOBS_NAMESPACE, OLD_JOBS),
+        axon_observe::migration::migration_set(),
+        axon_graph::migration::migration_set(),
+        axon_memory::migration::migration_set(),
+    ];
+    let mut tx = pool.begin().await.expect("begin epoch-one fixture");
+    ensure_applied_table(&mut tx)
+        .await
+        .expect("create receipt table");
+    for set in old_sets {
+        apply_set(&mut tx, set).await.expect("apply epoch-one set");
+    }
+    identity::stamp_schema_epoch(&mut tx)
+        .await
+        .expect("stamp epoch");
+    tx.commit().await.expect("commit epoch-one fixture");
+
+    apply_all_migrations(&pool)
+        .await
+        .expect("canonical epoch-one store should upgrade in place");
+
+    let scheduler_receipt: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations          WHERE namespace = 'jobs' AND version = 2 AND name = '0002_provider_scheduler'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read scheduler receipt");
+    assert_eq!(scheduler_receipt, 1);
+    let columns: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM pragma_table_info('provider_reservations') ORDER BY cid",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("read reservation columns");
+    for required in [
+        "capacity_domain",
+        "authority_id",
+        "enqueue_sequence",
+        "effective_priority",
+        "attempt",
+        "fence",
+        "quarantined",
+    ] {
+        assert!(
+            columns.iter().any(|column| column == required),
+            "missing upgraded scheduler column {required}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn repeated_run_is_noop() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("migrate.db");
@@ -203,7 +263,7 @@ async fn canonical_store_with_tampered_checksum_is_rejected() {
     assert!(
         error
             .to_string()
-            .contains("names, versions, checksums, or epochs"),
+            .contains("migration receipt jobs/1 does not match canonical identity"),
         "{error}"
     );
 }
@@ -252,4 +312,38 @@ async fn migration_failure_rolls_back_schema_and_receipts_atomically() {
         table_count, 0,
         "failed migration must leave no schema writes"
     );
+}
+
+#[tokio::test]
+async fn upgrade_preflight_allows_missing_tail_schema_but_rejects_unknown_schema() {
+    let pool = SqlitePool::connect(":memory:").await.expect("open pool");
+    sqlx::query(
+        "CREATE TABLE axon_applied_migrations (
+            namespace TEXT NOT NULL, version INTEGER NOT NULL, name TEXT NOT NULL,
+            checksum TEXT NOT NULL, schema_epoch INTEGER NOT NULL,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (namespace, version)
+        )",
+    )
+    .execute(&pool)
+    .await
+    .expect("canonical receipt table");
+    let mut connection = pool.acquire().await.expect("connection");
+    identity::validate_table_subset(&mut connection)
+        .await
+        .expect("missing canonical tail tables are allowed before mutation");
+    identity::validate_foreign_key_subset(&mut connection)
+        .await
+        .expect("missing canonical tail foreign keys are allowed before mutation");
+    drop(connection);
+
+    sqlx::query("CREATE TABLE legacy_extra (id TEXT PRIMARY KEY)")
+        .execute(&pool)
+        .await
+        .expect("unknown table");
+    let mut connection = pool.acquire().await.expect("connection");
+    let error = identity::validate_table_subset(&mut connection)
+        .await
+        .expect_err("unknown schema must still fail closed");
+    assert!(error.to_string().contains("legacy_extra"), "{error}");
 }

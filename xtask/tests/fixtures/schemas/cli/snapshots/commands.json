@@ -630,7 +630,7 @@
         "clear"
       ],
       "requires_auth_scope": "admin",
-      "summary": "Clear terminal unified durable job rows; active jobs require cancel/recover first"
+      "summary": "Clear all unified durable job rows"
     },
     {
       "async": false,
@@ -813,13 +813,27 @@
       "async": false,
       "group": "reset",
       "maps_to_dto": null,
-      "mutates": true,
-      "name": "reset",
+      "mutates": false,
+      "name": "reset plan",
       "path": [
-        "reset"
+        "reset",
+        "plan"
       ],
       "requires_auth_scope": "admin",
-      "summary": "Plan a clean-slate reset or execute a reviewed plan with flags"
+      "summary": "Create a reviewable clean-slate reset plan without deleting data"
+    },
+    {
+      "async": false,
+      "group": "reset",
+      "maps_to_dto": null,
+      "mutates": true,
+      "name": "reset exec",
+      "path": [
+        "reset",
+        "exec"
+      ],
+      "requires_auth_scope": "admin",
+      "summary": "Execute a reviewed clean-slate reset plan"
     },
     {
       "async": false,

@@ -15,6 +15,7 @@ fn counts(source_id: &str, generation: &str) -> IndexCounts {
         job_id: JobId::new(Uuid::from_u128(7)),
         source_id: SourceId::new(source_id),
         generation: SourceGenerationId::new(generation),
+        items_discovered: 0,
         documents_prepared: 0,
         chunks_prepared: 0,
         vector_points_written: 0,

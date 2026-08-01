@@ -7172,6 +7172,22 @@
     "JobCreateRequest_JobStagePlan": {
       "additionalProperties": false,
       "properties": {
+        "allowed_next": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_PipelinePhase"
+          },
+          "type": "array"
+        },
+        "allowed_skips": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_StageSkipReason"
+          },
+          "type": "array"
+        },
+        "applicability": {
+          "$ref": "#/$defs/JobCreateRequest_StageApplicability",
+          "default": "always"
+        },
         "estimated_items": {
           "format": "uint64",
           "minimum": 0,
@@ -7191,6 +7207,10 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "stage_key": {
+          "default": "",
+          "type": "string"
         }
       },
       "required": [
@@ -7330,6 +7350,28 @@
         "retryable"
       ],
       "type": "object"
+    },
+    "JobCreateRequest_StageApplicability": {
+      "enum": [
+        "always",
+        "when_changed",
+        "when_embedding",
+        "when_scope_matches",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_StageSkipReason": {
+      "enum": [
+        "not_applicable",
+        "disabled",
+        "no_changes",
+        "reused",
+        "empty_input",
+        "unsupported",
+        "canceled"
+      ],
+      "type": "string"
     },
     "JobCreateRequest_TransportKind": {
       "enum": [
@@ -21888,6 +21930,22 @@
     "SourcePlan_JobStagePlan": {
       "additionalProperties": false,
       "properties": {
+        "allowed_next": {
+          "items": {
+            "$ref": "#/$defs/SourcePlan_PipelinePhase"
+          },
+          "type": "array"
+        },
+        "allowed_skips": {
+          "items": {
+            "$ref": "#/$defs/SourcePlan_StageSkipReason"
+          },
+          "type": "array"
+        },
+        "applicability": {
+          "$ref": "#/$defs/SourcePlan_StageApplicability",
+          "default": "always"
+        },
         "estimated_items": {
           "format": "uint64",
           "minimum": 0,
@@ -21907,6 +21965,10 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "stage_key": {
+          "default": "",
+          "type": "string"
         }
       },
       "required": [
@@ -22535,6 +22597,28 @@
         "disabled",
         "ensure",
         "enabled"
+      ],
+      "type": "string"
+    },
+    "SourcePlan_StageApplicability": {
+      "enum": [
+        "always",
+        "when_changed",
+        "when_embedding",
+        "when_scope_matches",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "SourcePlan_StageSkipReason": {
+      "enum": [
+        "not_applicable",
+        "disabled",
+        "no_changes",
+        "reused",
+        "empty_input",
+        "unsupported",
+        "canceled"
       ],
       "type": "string"
     },
@@ -28695,7 +28779,7 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab",
+        "checksum": "sha256:2f90a731c1891edc3d44faa45b95f560914598cd7ccfaf98350d2748bbfb38da",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
@@ -28705,7 +28789,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:dba63291e2f0e9724d7939ebb06bb57c72bf4701ebabc378fdad1ec05b134a4c",
+        "checksum": "sha256:69ddadba30632a6060c23b3d790100c3d82774daf14f4a72ef933b1822f1d015",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
@@ -28715,7 +28799,7 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:f3897a8fd1c41a2af742b8dccfc6889618376629da5bfa92a5389c1b38c064ec",
+        "checksum": "sha256:8e169aaadba8eb5c90020b0f1ea18945e11084d165f4aee5b21f722957b6814a",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },

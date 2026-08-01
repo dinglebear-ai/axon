@@ -159,6 +159,33 @@ pub enum PipelinePhase {
 }
 
 #[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StageApplicability {
+    #[default]
+    Always,
+    WhenChanged,
+    WhenEmbedding,
+    WhenScopeMatches,
+    Optional,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum StageSkipReason {
+    NotApplicable,
+    Disabled,
+    NoChanges,
+    Reused,
+    EmptyInput,
+    Unsupported,
+    Canceled,
+}
+
+#[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
 )]
 #[serde(rename_all = "snake_case")]
