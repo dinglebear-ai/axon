@@ -95,6 +95,80 @@ fn registry_mode_exercises_every_advertised_command_and_option() {
 }
 
 #[test]
+fn worktree_fingerprint_batches_hashing_and_detects_mutations() {
+    let helper_path =
+        fs::canonicalize("scripts/lib/live-cli-reporting.sh").expect("canonical reporting helper");
+    let helper = fs::read_to_string(&helper_path).expect("read reporting helper");
+    assert!(
+        helper.contains("xargs -0 -r sha256sum -z --"),
+        "regular files must be hashed in batches"
+    );
+    assert!(
+        !helper.contains("sha256sum -- \"$path\""),
+        "the fingerprint must not spawn one sha256sum process per file"
+    );
+
+    let temp = tempfile::tempdir().expect("tempdir");
+    let git_status = Command::new("git")
+        .args(["init", "-q"])
+        .current_dir(temp.path())
+        .status()
+        .expect("initialize temporary repository");
+    assert!(git_status.success());
+    fs::write(temp.path().join("alpha.txt"), "alpha\n").unwrap();
+    fs::write(temp.path().join("beta.txt"), "beta\n").unwrap();
+    std::os::unix::fs::symlink("alpha.txt", temp.path().join("current")).unwrap();
+
+    let shell = r#"
+set -euo pipefail
+ROOT_DIR="$FINGERPRINT_ROOT"
+OUTDIR="$ROOT_DIR/out"
+SETUP_HOME="$ROOT_DIR/setup-home"
+isolated_compose_project=""
+isolated_compose_network=""
+isolated_collections=()
+QDRANT_URL=""
+source "$FINGERPRINT_HELPER"
+before="$(worktree_content_fingerprint)"
+same="$(worktree_content_fingerprint)"
+printf 'changed\n' > "$ROOT_DIR/alpha.txt"
+after_file="$(worktree_content_fingerprint)"
+rm -- "$ROOT_DIR/current"
+ln -s beta.txt "$ROOT_DIR/current"
+after_link="$(worktree_content_fingerprint)"
+printf '%s\n%s\n%s\n%s\n' "$before" "$same" "$after_file" "$after_link"
+"#;
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(shell)
+        .env("FINGERPRINT_ROOT", temp.path())
+        .env("FINGERPRINT_HELPER", helper_path)
+        .output()
+        .expect("run worktree fingerprint probe");
+    assert!(
+        output.status.success(),
+        "fingerprint probe failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let hashes = String::from_utf8(output.stdout)
+        .expect("fingerprint output")
+        .lines()
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert_eq!(hashes.len(), 4, "expected four fingerprint samples");
+    assert!(hashes.iter().all(|hash| hash.len() == 64));
+    assert_eq!(hashes[0], hashes[1], "unchanged content must be stable");
+    assert_ne!(
+        hashes[1], hashes[2],
+        "file content changes must be detected"
+    );
+    assert_ne!(
+        hashes[2], hashes[3],
+        "symlink target changes must be detected"
+    );
+}
+
+#[test]
 fn scenario_mode_isolates_state_and_cleans_up_only_its_collection() {
     let temp = tempfile::tempdir().expect("tempdir");
     let registry = temp.path().join("commands.json");

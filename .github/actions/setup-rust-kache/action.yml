@@ -38,6 +38,7 @@ runs:
         command -v cc >/dev/null 2>&1 || need_install=true
         command -v pkg-config >/dev/null 2>&1 || need_install=true
         command -v rg >/dev/null 2>&1 || need_install=true
+        command -v sqlite3 >/dev/null 2>&1 || need_install=true
         pkg-config --exists openssl 2>/dev/null || need_install=true
         pkg-config --exists dbus-1 2>/dev/null || need_install=true
         if [ "${{ inputs.install-tauri-deps }}" = "true" ]; then
@@ -54,7 +55,7 @@ runs:
         if [ "$need_install" = false ]; then
           exit 0
         fi
-        packages="build-essential pkg-config ripgrep libssl-dev libdbus-1-dev"
+        packages="build-essential pkg-config ripgrep sqlite3 libssl-dev libdbus-1-dev"
         if [ "${{ inputs.install-tauri-deps }}" = "true" ]; then
           packages="$packages curl file libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf wget"
         fi
