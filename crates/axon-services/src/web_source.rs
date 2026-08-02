@@ -1,6 +1,10 @@
 mod artifacts;
 mod job_execution;
+mod no_vector_publish;
 mod normalize;
+mod normalize_batch;
+mod pipeline;
+mod progress;
 mod publish;
 mod reuse;
 mod run;
@@ -29,6 +33,7 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
 use self::artifacts::{cleanup_artifacts_after_error, record_artifacts_on_manifest};
+use self::pipeline::run_web_pipeline;
 use self::publish::{
     GenerationDocumentCounts, complete_generation, completed_source_summary,
     ensure_lease_before_publish, fail_generation, publish_generation_without_vectors,
@@ -192,126 +197,6 @@ pub(crate) async fn index_web_source_with_adapter(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_web_pipeline(
-    input: &WebSourceIndexInput,
-    adapter: Arc<dyn SourceAdapter>,
-    ledger: &dyn LedgerStore,
-    embedding_provider: &dyn EmbeddingProvider,
-    vector_store: &dyn VectorStore,
-    previous_source: Option<SourceSummary>,
-    run: WebAdapterRun,
-    lease: &LeaseGuard,
-    events: &crate::source::events::SourceEventEmitter,
-) -> anyhow::Result<WebSourceIndexOutput> {
-    use crate::source::progress;
-
-    events
-        .running(PipelinePhase::Discovering, "discovering web source items")
-        .await;
-    let mut manifest = adapter.discover(&run.plan).await?;
-    progress::discovered(events, &manifest).await;
-    events
-        .running(PipelinePhase::Diffing, "diffing web source manifest")
-        .await;
-    let diff = ledger.diff_manifest(manifest.clone()).await?;
-    progress::diffed(events, &diff).await;
-    if let Some(output) =
-        unchanged_refresh_output(input, ledger, previous_source, &run, &manifest, &diff).await?
-    {
-        progress::published(
-            events,
-            &output.generation,
-            manifest.items.len() as u64,
-            &output.warnings,
-            0,
-            0,
-        )
-        .await;
-        return Ok(output);
-    }
-    let diff = overlay_previous_web_etags(ledger, &diff).await?;
-
-    events
-        .running(PipelinePhase::Fetching, "fetching changed web source items")
-        .await;
-    let generation = ledger.create_generation(run.source_id.clone()).await?;
-    manifest.generation = generation.generation.clone();
-    let diff = retarget_diff_generation(diff, &generation.generation);
-    ledger.put_manifest(manifest.clone()).await?;
-    let manifest_items = manifest.items.len() as u64;
-    // `scope = Map` is discover-only. `embed=false` is not discover-only: the
-    // source contract requires acquire/normalize/prepare/graph to still run
-    // while skipping only collection creation, embedding, and vector upsert.
-    let output = if input.scope == SourceScope::Map {
-        publish_map_generation(input, ledger, run, generation, manifest, diff).await?
-    } else if !input.embed {
-        events
-            .running(
-                PipelinePhase::Normalizing,
-                "normalizing web source documents",
-            )
-            .await;
-        events
-            .running(PipelinePhase::Preparing, "preparing web source documents")
-            .await;
-        publish_prepared_generation_without_vectors(NoVectorGenerationRequest {
-            input,
-            ledger,
-            run,
-            lease,
-            generation,
-            manifest,
-            diff,
-        })
-        .await?
-    } else {
-        events
-            .running(
-                PipelinePhase::Normalizing,
-                "normalizing web source documents",
-            )
-            .await;
-        events
-            .running(PipelinePhase::Preparing, "preparing web source documents")
-            .await;
-        events
-            .running(PipelinePhase::Embedding, "embedding web source chunks")
-            .await;
-        events
-            .running(PipelinePhase::Upserting, "upserting web source vectors")
-            .await;
-        events
-            .running(
-                PipelinePhase::Publishing,
-                "publishing web source generation",
-            )
-            .await;
-        publish_vector_generation(VectorGenerationRequest {
-            input,
-            ledger,
-            embedding_provider,
-            vector_store,
-            run,
-            lease,
-            generation,
-            manifest,
-            diff,
-        })
-        .await?
-    };
-    progress::published(
-        events,
-        &output.generation,
-        manifest_items,
-        &output.warnings,
-        output.documents_prepared,
-        output.chunks_prepared,
-    )
-    .await;
-    Ok(output)
-}
-
 fn retarget_diff_generation(
     mut diff: SourceManifestDiff,
     generation: &SourceGenerationId,
@@ -361,133 +246,6 @@ async fn publish_map_generation(
         warnings: Vec::new(),
         artifacts: Vec::new(),
         inline: None,
-    })
-}
-
-struct NoVectorGenerationRequest<'a> {
-    input: &'a WebSourceIndexInput,
-    ledger: &'a dyn LedgerStore,
-    run: WebAdapterRun,
-    lease: &'a LeaseGuard,
-    generation: SourceGeneration,
-    manifest: SourceManifest,
-    diff: SourceManifestDiff,
-}
-
-async fn publish_prepared_generation_without_vectors(
-    request: NoVectorGenerationRequest<'_>,
-) -> anyhow::Result<WebSourceIndexOutput> {
-    let NoVectorGenerationRequest {
-        input,
-        ledger,
-        run,
-        lease,
-        generation,
-        mut manifest,
-        diff,
-    } = request;
-    let prepared = prepare_changed_documents_without_vectors(
-        input,
-        &run,
-        &diff,
-        &generation.generation,
-        ledger,
-    )
-    .await
-    .map_err(|err| err.context("failed to prepare web source generation without vectors"));
-    let prepared = match prepared {
-        Ok(prepared) => prepared,
-        Err(err) => return Err(fail_generation(ledger, generation, err).await),
-    };
-    let effective_diff = apply_reused_item_keys(&diff, &prepared.reused_item_keys);
-    if let Err(err) = ensure_lease_before_publish(ledger, input, lease).await {
-        let err = fail_generation(ledger, generation, err).await;
-        return Err(cleanup_artifacts_after_error(
-            input.artifact_store.as_ref(),
-            &prepared.artifacts,
-            err,
-        )
-        .await);
-    }
-    if let Err(err) = record_artifacts_on_manifest(
-        ledger,
-        &mut manifest,
-        &effective_diff,
-        &prepared.artifact_index,
-    )
-    .await
-    {
-        let err = fail_generation(ledger, generation, err).await;
-        return Err(cleanup_artifacts_after_error(
-            input.artifact_store.as_ref(),
-            &prepared.artifacts,
-            err,
-        )
-        .await);
-    }
-    let completed = match complete_generation(
-        ledger,
-        generation.clone(),
-        &effective_diff,
-        GenerationDocumentCounts {
-            discovered: manifest.items.len() as u64,
-            prepared: prepared.documents_prepared,
-            embedded: 0,
-            published: prepared.documents_prepared,
-            failed: 0,
-        },
-    )
-    .await
-    {
-        Ok(completed) => completed,
-        Err(err) => {
-            let err = fail_generation(ledger, generation, err).await;
-            return Err(cleanup_artifacts_after_error(
-                input.artifact_store.as_ref(),
-                &prepared.artifacts,
-                err,
-            )
-            .await);
-        }
-    };
-    let published = match publish_generation_without_vectors(ledger, &completed).await {
-        Ok(published) => published,
-        Err(err) => {
-            return Err(cleanup_artifacts_after_error(
-                input.artifact_store.as_ref(),
-                &prepared.artifacts,
-                err,
-            )
-            .await);
-        }
-    };
-    for status in &prepared.document_statuses {
-        ledger
-            .update_document_status(published_status(status))
-            .await?;
-    }
-    ledger
-        .upsert_source(completed_source_summary(
-            input,
-            &run,
-            manifest.items.len() as u64,
-            &effective_diff,
-            0,
-        ))
-        .await?;
-    Ok(WebSourceIndexOutput {
-        job_id: input.job_id,
-        source_id: run.source_id,
-        generation: published.generation,
-        items_discovered: manifest.items.len() as u64,
-        documents_prepared: prepared.documents_prepared,
-        chunks_prepared: prepared.chunks_prepared,
-        vector_points_written: 0,
-        removed_pages: effective_diff.counts.removed,
-        graph_candidates: prepared.graph_candidates,
-        warnings: prepared.warnings,
-        artifacts: prepared.artifacts,
-        inline: prepared.inline,
     })
 }
 

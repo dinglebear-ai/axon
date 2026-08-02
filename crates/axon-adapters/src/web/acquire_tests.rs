@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use httpmock::prelude::*;
 
+use crate::adapter::{AcquisitionProgress, AcquisitionProgressSink};
 use crate::boundary::FakeAdapterProviders;
 use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
 
@@ -61,9 +62,119 @@ fn opts(mode: RenderMode, min_markdown_chars: usize) -> AcquireOptions {
     }
 }
 
+#[derive(Default)]
+struct RecordingProgress(tokio::sync::Mutex<Vec<AcquisitionProgress>>);
+
+#[async_trait::async_trait]
+impl AcquisitionProgressSink for RecordingProgress {
+    async fn report(&self, progress: AcquisitionProgress) {
+        self.0.lock().await.push(progress);
+    }
+}
+
 fn require_item(outcome: AcquiredItem, message: &str) -> AcquiredSourceItem {
     assert!(outcome.warnings.is_empty(), "unexpected warning");
     outcome.item.expect(message)
+}
+
+#[tokio::test]
+async fn concurrent_acquisition_reports_each_completed_page() {
+    let providers = FakeAdapterProviders::new();
+    let progress = RecordingProgress::default();
+    let manifest_items = vec![
+        item("https://example.com/docs/one"),
+        item("https://example.com/docs/two"),
+        item("https://example.com/docs/three"),
+    ];
+
+    let (items, warnings) = acquire_concurrent(
+        &providers,
+        &providers,
+        &manifest_items,
+        &opts(RenderMode::Http, 200),
+        Some(&progress),
+    )
+    .await;
+
+    assert!(warnings.is_empty());
+    assert_eq!(items.len(), 3);
+    let snapshots = progress.0.lock().await;
+    assert_eq!(snapshots.len(), 3);
+    assert_eq!(
+        snapshots.last(),
+        Some(&AcquisitionProgress {
+            items_total: 3,
+            items_done: 3,
+            documents_done: 3,
+        })
+    );
+}
+
+#[tokio::test]
+async fn sequential_acquisition_reports_each_completed_page() {
+    let providers = FakeAdapterProviders::new();
+    let progress = RecordingProgress::default();
+    let manifest_items = vec![
+        item("https://example.com/docs/one"),
+        item("https://example.com/docs/two"),
+        item("https://example.com/docs/three"),
+    ];
+
+    let (items, warnings) = acquire_sequential(
+        &providers,
+        &providers,
+        &manifest_items,
+        &opts(RenderMode::Http, 200),
+        Some(&progress),
+    )
+    .await;
+
+    assert!(warnings.is_empty());
+    assert_eq!(items.len(), 3);
+    let snapshots = progress.0.lock().await;
+    assert_eq!(snapshots.len(), 3);
+    assert_eq!(snapshots[0].items_done, 1);
+    assert_eq!(snapshots[1].items_done, 2);
+    assert_eq!(
+        snapshots.last(),
+        Some(&AcquisitionProgress {
+            items_total: 3,
+            items_done: 3,
+            documents_done: 3,
+        })
+    );
+}
+
+#[tokio::test]
+async fn failed_pages_advance_attempts_without_inflating_documents() {
+    let providers = FakeAdapterProviders::new().with_mode(crate::boundary::FakeAdapterMode::Fatal);
+    let progress = RecordingProgress::default();
+    let manifest_items = vec![
+        item("https://example.com/docs/one"),
+        item("https://example.com/docs/two"),
+    ];
+
+    let (items, warnings) = acquire_concurrent(
+        &providers,
+        &providers,
+        &manifest_items,
+        &opts(RenderMode::Http, 200),
+        Some(&progress),
+    )
+    .await;
+
+    assert!(items.is_empty());
+    assert_eq!(warnings.len(), 2);
+    let snapshots = progress.0.lock().await;
+    assert_eq!(snapshots.len(), 2);
+    assert_eq!(
+        snapshots.last(),
+        Some(&AcquisitionProgress {
+            items_total: 2,
+            items_done: 2,
+            documents_done: 0,
+        })
+    );
 }
 
 #[tokio::test]
@@ -340,6 +451,49 @@ async fn etag_conditional_304_marks_the_item_for_reuse() {
     assert_eq!(acquired.metadata["web_status"], 304);
     assert_eq!(acquired.metadata["web_reuse_required"], true);
     assert!(matches!(acquired.content_ref, ContentRef::External { .. }));
+}
+
+#[tokio::test]
+async fn conditional_304_advances_progress_with_a_reusable_document() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET)
+                .path("/page")
+                .header("If-None-Match", "\"v1\"");
+            then.status(304);
+        })
+        .await;
+
+    let provider = HttpFetchProvider::new(HttpFetchConfig::default());
+    let render = FakeAdapterProviders::new();
+    let progress = RecordingProgress::default();
+    let url = format!("{}/page", server.base_url());
+    let manifest_items = vec![item_with_current_and_prior_etags(&url, "\"v2\"", "\"v1\"")];
+    let mut options = opts(RenderMode::Http, 200);
+    options.cache_policy = CachePolicy::Revalidate;
+
+    let (items, warnings) = acquire_concurrent(
+        &provider,
+        &render,
+        &manifest_items,
+        &options,
+        Some(&progress),
+    )
+    .await;
+
+    assert!(warnings.is_empty());
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].metadata["web_reuse_required"], true);
+    assert_eq!(
+        progress.0.lock().await.last(),
+        Some(&AcquisitionProgress {
+            items_total: 1,
+            items_done: 1,
+            documents_done: 1,
+        })
+    );
 }
 
 #[tokio::test]

@@ -24,11 +24,31 @@ fn test_reservations(provider_id: &str, kind: ProviderKind) -> Arc<ProviderReser
 }
 
 use super::normalize::normalize_changed_documents;
+use super::progress::{WebPipelineProgress, WebProgressCoordinator};
 use super::run::{
     apply_reused_item_keys, overlay_previous_web_etags, resolve_web_run, source_summary,
 };
 use super::vectorize::{collection_spec, vectorize_changed_documents};
 use super::{WebSourceIndexInput, reuse};
+use crate::source::events::SourceEventEmitter;
+
+fn progress_fixture(
+    input: &WebSourceIndexInput,
+    run: &super::run::WebAdapterRun,
+    diff: &SourceManifestDiff,
+) -> (
+    SourceEventEmitter,
+    WebProgressCoordinator,
+    WebPipelineProgress,
+) {
+    let events = SourceEventEmitter::for_web(input.event_store.clone(), input.job_id, input.scope)
+        .with_source(run.source_id.clone(), run.canonical_uri.clone())
+        .with_attempt(input.attempt);
+    let coordinator = WebProgressCoordinator::new(input, run.source_id.clone());
+    let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
+    let progress = WebPipelineProgress::new(changed_total);
+    (events, coordinator, progress)
+}
 
 #[derive(Debug, Default)]
 struct ConditionalFetchState {
@@ -304,7 +324,17 @@ async fn seed_cached_generation(
         Vec::new(),
         Vec::new(),
     );
-    let normalized = normalize_changed_documents(&input, &run, &first_diff).await?;
+    let (events, coordinator, mut progress) = progress_fixture(&input, &run, &first_diff);
+    let normalized = normalize_changed_documents(
+        &input,
+        &run,
+        &first_diff,
+        &events,
+        &coordinator,
+        &mut progress,
+        true,
+    )
+    .await?;
     assert_eq!(
         normalized.documents.len(),
         1,
@@ -349,6 +379,8 @@ async fn second_run_304_reuses_previous_document_without_embedding() {
         .expect("overlay previous manifest etag");
     let embedder = FakeEmbeddingProvider::new("fake-embedding", 8);
     let vectors = FakeVectorStore::new("fake-vector");
+    let (events, coordinator, mut progress) =
+        progress_fixture(&second_input, &second_run, &second_diff);
     let result = vectorize_changed_documents(
         &second_input,
         &second_run,
@@ -358,6 +390,9 @@ async fn second_run_304_reuses_previous_document_without_embedding() {
         &embedder,
         &vectors,
         collection_spec(&second_input),
+        &events,
+        &coordinator,
+        &mut progress,
     )
     .await
     .expect("304 reuse should vectorize cleanly");
@@ -414,9 +449,19 @@ async fn missing_prior_content_refetches_before_publish() {
         .await
         .expect("overlay previous manifest etag");
 
-    let normalized = normalize_changed_documents(&second_input, &second_run, &second_diff)
-        .await
-        .expect("cache miss should refetch");
+    let (events, coordinator, mut progress) =
+        progress_fixture(&second_input, &second_run, &second_diff);
+    let normalized = normalize_changed_documents(
+        &second_input,
+        &second_run,
+        &second_diff,
+        &events,
+        &coordinator,
+        &mut progress,
+        true,
+    )
+    .await
+    .expect("cache miss should refetch");
 
     assert_eq!(normalized.documents.len(), 1);
     assert!(normalized.reused_item_keys.is_empty());
@@ -471,10 +516,20 @@ async fn cache_miss_refetch_fails_if_unconditional_fetch_still_returns_304() {
         .await
         .expect("overlay previous manifest etag");
 
-    let err = normalize_changed_documents(&second_input, &second_run, &second_diff)
-        .await
-        .err()
-        .expect("unexpected second 304 should fail publish");
+    let (events, coordinator, mut progress) =
+        progress_fixture(&second_input, &second_run, &second_diff);
+    let err = normalize_changed_documents(
+        &second_input,
+        &second_run,
+        &second_diff,
+        &events,
+        &coordinator,
+        &mut progress,
+        true,
+    )
+    .await
+    .err()
+    .expect("unexpected second 304 should fail publish");
 
     assert!(
         err.to_string().contains("304 Not Modified"),
@@ -527,9 +582,19 @@ async fn changed_page_uses_previous_manifest_etag_not_current_discovery_etag() {
         serde_json::json!("\"v2\"")
     );
 
-    let normalized = normalize_changed_documents(&second_input, &second_run, &second_diff)
-        .await
-        .expect("changed page should refetch instead of reusing stale content");
+    let (events, coordinator, mut progress) =
+        progress_fixture(&second_input, &second_run, &second_diff);
+    let normalized = normalize_changed_documents(
+        &second_input,
+        &second_run,
+        &second_diff,
+        &events,
+        &coordinator,
+        &mut progress,
+        true,
+    )
+    .await
+    .expect("changed page should refetch instead of reusing stale content");
 
     assert_eq!(normalized.documents.len(), 1);
     assert!(normalized.reused_item_keys.is_empty());

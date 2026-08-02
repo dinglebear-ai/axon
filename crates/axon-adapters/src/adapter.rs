@@ -7,6 +7,24 @@ use crate::acquisition::MaterializedSource;
 
 pub type Result<T> = std::result::Result<T, ApiError>;
 
+/// Monotonic progress snapshot for one adapter acquisition call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AcquisitionProgress {
+    /// Number of source items in this acquisition batch.
+    pub items_total: u64,
+    /// Number of source items whose acquisition attempt has finished.
+    pub items_done: u64,
+    /// Number of finished items that produced a document.
+    pub documents_done: u64,
+}
+
+/// Optional observer used by adapters that can report progress before acquire returns.
+#[async_trait]
+pub trait AcquisitionProgressSink: Send + Sync {
+    /// Persist or forward one monotonic acquisition snapshot.
+    async fn report(&self, progress: AcquisitionProgress);
+}
+
 /// Version of the stable source-adapter contract described by the family matrix.
 /// This is independent from the Axon crate release version.
 pub const SOURCE_ADAPTER_CONTRACT_VERSION: &str = "1";
@@ -42,6 +60,15 @@ pub trait SourceAdapter: Send + Sync {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition>;
+    /// Acquire changed items while optionally emitting live batch progress.
+    async fn acquire_with_progress(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+        _progress: Option<&dyn AcquisitionProgressSink>,
+    ) -> Result<SourceAcquisition> {
+        self.acquire(plan, diff).await
+    }
     async fn normalize(
         &self,
         plan: &SourcePlan,

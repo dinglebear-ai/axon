@@ -3,11 +3,13 @@
 mod created_generation;
 mod helpers;
 mod metadata;
+mod progress;
 mod publish;
+mod reservations;
 mod vectorize;
 use super::events::SourceEventEmitter;
 use super::execution::SourceExecutionContext;
-use super::progress;
+use super::progress as source_progress;
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
 use anyhow::Context as _;
@@ -151,30 +153,47 @@ where
         }
         Err(error) => Err(error),
     };
-    if let Err(error) = &result {
-        progress::pipeline_failed(emitter, error).await;
-    }
-    if let Err(error) = &result {
-        runtime
-            .ledger
-            .upsert_source(metadata::source_summary(
-                input,
-                LifecycleStatus::Failed,
-                previous
-                    .as_ref()
-                    .map(preserved_source_counts)
-                    .unwrap_or_else(empty_source_counts),
-                previous.as_ref(),
-            ))
-            .await
-            .with_context(|| {
-                format!("source failed with `{error}` and its summary could not be finalized")
-            })?;
-    }
+    record_source_failure(runtime, input, emitter, previous.as_ref(), &result).await?;
     let release = runtime
         .ledger
         .release_lease(lease.lease_id, input.owner_id.to_string())
         .await;
+    merge_source_and_release(result, release)
+}
+
+async fn record_source_failure(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    previous: Option<&SourceSummary>,
+    result: &anyhow::Result<IndexCounts>,
+) -> anyhow::Result<()> {
+    let Err(error) = result else {
+        return Ok(());
+    };
+    source_progress::pipeline_failed(emitter, error).await;
+    let counts = previous
+        .map(preserved_source_counts)
+        .unwrap_or_else(empty_source_counts);
+    runtime
+        .ledger
+        .upsert_source(metadata::source_summary(
+            input,
+            LifecycleStatus::Failed,
+            counts,
+            previous,
+        ))
+        .await
+        .with_context(|| {
+            format!("source failed with `{error}` and its summary could not be finalized")
+        })?;
+    Ok(())
+}
+
+fn merge_source_and_release(
+    result: anyhow::Result<IndexCounts>,
+    release: Result<(), axon_api::source::ApiError>,
+) -> anyhow::Result<IndexCounts> {
     match (result, release) {
         (Ok(output), Ok(())) => Ok(output),
         (Err(error), Ok(())) => Err(error),
@@ -187,6 +206,55 @@ where
     }
 }
 
+async fn discover_and_diff(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    coordinator: &progress::ProgressCoordinator,
+) -> anyhow::Result<(SourceManifest, SourceManifestDiff)> {
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Discovering,
+            progress::stage_counts(None, 0, None, 0, None, 0),
+            "discovering source items",
+        )
+        .await;
+    let mut manifest = input.adapter.discover(&input.plan).await?;
+    apply_max_items(&mut manifest, input.plan.limits.effective.max_items);
+    let item_count = manifest.items.len() as u64;
+    coordinator
+        .checkpoint(
+            PipelinePhase::Discovering,
+            progress::stage_counts(Some(item_count), item_count, None, 0, None, 0),
+            "discovered source items",
+        )
+        .await;
+    source_progress::discovered(emitter, &manifest).await;
+    manifest.metadata.insert(
+        PUBLICATION_CONFIG_KEY.to_string(),
+        serde_json::json!(input.plan.config_snapshot_id.0.clone()),
+    );
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Diffing,
+            progress::stage_counts(Some(item_count), 0, None, 0, None, 0),
+            "diffing source manifest",
+        )
+        .await;
+    let diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
+    coordinator
+        .checkpoint(
+            PipelinePhase::Diffing,
+            progress::stage_counts(Some(item_count), item_count, None, 0, None, 0),
+            "diffed source manifest",
+        )
+        .await;
+    source_progress::diffed(emitter, &diff).await;
+    Ok((manifest, diff))
+}
+
 async fn run_generation(
     runtime: &TargetLocalSourceRuntime,
     input: &NonWebPipelineInput<'_>,
@@ -194,31 +262,8 @@ async fn run_generation(
     lease: &LeaseGuard,
     previous: Option<SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
-    record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Discovering,
-        "discovering source items",
-    )
-    .await?;
-    let mut manifest = input.adapter.discover(&input.plan).await?;
-    apply_max_items(&mut manifest, input.plan.limits.effective.max_items);
-    progress::discovered(emitter, &manifest).await;
-    manifest.metadata.insert(
-        PUBLICATION_CONFIG_KEY.to_string(),
-        serde_json::json!(input.plan.config_snapshot_id.0.clone()),
-    );
-    record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Diffing,
-        "diffing source manifest",
-    )
-    .await?;
-    let mut diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
-    progress::diffed(emitter, &diff).await;
+    let coordinator = progress::ProgressCoordinator::new(runtime, input);
+    let (mut manifest, mut diff) = discover_and_diff(runtime, input, emitter, &coordinator).await?;
     let publication_config_unchanged = match diff.previous_generation.as_ref() {
         Some(generation) => runtime
             .ledger
@@ -262,6 +307,7 @@ async fn run_generation(
         diff,
         generation.clone(),
         previous,
+        &coordinator,
     )
     .await;
     if result.is_err() {
@@ -310,7 +356,11 @@ fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {
         // ever claimed one of these generic non-web jobs (recovery/retry of
         // an interrupted git/feed/youtube/reddit/session/registry index) it
         // failed with "source job request is missing `source_request`".
-        request: Some(serde_json::json!({ "source_request": input.plan.request })),
+        request: Some(serde_json::json!({
+            "source_request": input.plan.request,
+            "source_kind": input.plan.route.source.source_kind,
+            "adapter": input.plan.route.adapter.name,
+        })),
         auth_snapshot: input
             .auth_snapshot
             .cloned()

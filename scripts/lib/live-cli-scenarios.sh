@@ -119,4 +119,3 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     missing_live "$name" "no stateful live scenario is registered"
   done < <(jq -r '.commands[].name' "$REGISTRY")
 fi
-
