@@ -18,6 +18,16 @@ use crate::source::output::{self, SourceOutput};
 use crate::source::progress;
 use crate::source::result_map::IndexCounts;
 
+struct ProcessedBatch {
+    vectorized: vectorize::VectorizeResult,
+    acquisition_artifacts: Vec<ArtifactRef>,
+    enrichment_artifacts: Vec<ArtifactRef>,
+    clean_output: SourceOutput,
+    archive_items: Vec<AcquiredSourceItem>,
+    warnings: Vec<SourceWarning>,
+    reused_item_keys: Vec<SourceItemKey>,
+}
+
 /// Acquire/normalize/prepare/embed/publish the diff's added+modified items in
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
 /// `adapter.acquire(&plan, &diff)` call for the whole changed corpus.
@@ -65,76 +75,26 @@ pub(super) async fn run_created_generation(
     let mut warnings = Vec::new();
     let mut reused_item_keys = Vec::new();
     for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
-        record_running_phase(
+        let batch = process_changed_batch(
             runtime,
             input,
-            emitter,
-            PipelinePhase::Fetching,
-            "acquiring changed source items",
-        )
-        .await?;
-        let acquisition = input.adapter.acquire(&input.plan, &batch_diff).await?;
-        progress::acquired(emitter, &acquisition).await;
-        artifact_cleanup.track(&acquisition.artifacts);
-        artifacts.extend(acquisition.artifacts.clone());
-        if archive_requested {
-            archive_items.extend(acquisition.fetched_items.clone());
-        }
-        warnings.extend(acquisition.header.warnings.clone());
-        let enrichments = enrich(
-            runtime.enricher.clone(),
-            &input.plan,
-            &acquisition.fetched_items,
-        )
-        .await?;
-        record_running_phase(
-            runtime,
-            input,
-            emitter,
-            PipelinePhase::Normalizing,
-            "normalizing source documents",
-        )
-        .await?;
-        let normalized =
-            reuse::normalize_acquisition(runtime, input, &batch_diff, acquisition).await?;
-        reused_item_keys.extend(normalized.reused_item_keys);
-        progress::normalized(
             emitter,
             &generation.generation,
-            &normalized.normalized.header,
-        )
-        .await;
-        warnings.extend(normalized.normalized.header.warnings.clone());
-        let mut documents = normalized.normalized.data;
-        apply_enrichments(&mut documents, &enrichments);
-        let clean_output = output::store_clean_outputs(runtime, &input.plan, &documents).await?;
-        artifact_cleanup.track(&clean_output.artifacts);
-        output.merge(clean_output);
-        let enrichment_graph = enrichment_graph_candidates(&enrichments);
-        record_running_phase(
-            runtime,
-            input,
-            emitter,
-            PipelinePhase::Preparing,
-            "preparing source documents",
+            &collection,
+            batch_diff,
+            archive_requested,
         )
         .await?;
-        let batch_result = vectorize::prepare_embed_publish(
-            runtime,
-            input,
-            documents,
-            &enrichment_graph,
-            &generation.generation,
-            collection.clone(),
-            emitter,
-        )
-        .await?;
-        for enrichment in enrichments.values() {
-            warnings.extend(enrichment.warnings.clone());
-            artifact_cleanup.track(&enrichment.artifacts);
-            artifacts.extend(enrichment.artifacts.clone());
-        }
-        vectorize::merge_vectorize_result(&mut vectorized, batch_result);
+        artifact_cleanup.track(&batch.acquisition_artifacts);
+        artifact_cleanup.track(&batch.enrichment_artifacts);
+        artifact_cleanup.track(&batch.clean_output.artifacts);
+        artifacts.extend(batch.acquisition_artifacts);
+        artifacts.extend(batch.enrichment_artifacts);
+        archive_items.extend(batch.archive_items);
+        warnings.extend(batch.warnings);
+        reused_item_keys.extend(batch.reused_item_keys);
+        output.merge(batch.clean_output);
+        vectorize::merge_vectorize_result(&mut vectorized, batch.vectorized);
     }
     vectorized.warnings.splice(0..0, warnings);
     let archive_output =
@@ -170,6 +130,88 @@ pub(super) async fn run_created_generation(
         artifact_cleanup.disarm();
     }
     result
+}
+
+async fn process_changed_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    emitter: &SourceEventEmitter,
+    generation: &SourceGenerationId,
+    collection: &CollectionSpec,
+    batch_diff: SourceManifestDiff,
+    archive_requested: bool,
+) -> anyhow::Result<ProcessedBatch> {
+    record_running_phase(
+        runtime,
+        input,
+        emitter,
+        PipelinePhase::Fetching,
+        "acquiring changed source items",
+    )
+    .await?;
+    let acquisition = input.adapter.acquire(&input.plan, &batch_diff).await?;
+    progress::acquired(emitter, &acquisition).await;
+    let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
+    let acquisition_artifacts = resolved.acquisition.artifacts.clone();
+    let archive_items = if archive_requested {
+        resolved.acquisition.fetched_items.clone()
+    } else {
+        Vec::new()
+    };
+    let enrichments = enrich(
+        runtime.enricher.clone(),
+        &input.plan,
+        &resolved.acquisition.fetched_items,
+    )
+    .await?;
+    record_running_phase(
+        runtime,
+        input,
+        emitter,
+        PipelinePhase::Normalizing,
+        "normalizing source documents",
+    )
+    .await?;
+    let normalized =
+        reuse::normalize_acquisition(runtime, input, &batch_diff, resolved.acquisition).await?;
+    progress::normalized(emitter, generation, &normalized.header).await;
+    let mut warnings = normalized.header.warnings.clone();
+    let mut documents = normalized.data;
+    apply_enrichments(&mut documents, &enrichments);
+    let clean_output = output::store_clean_outputs(runtime, &input.plan, &documents).await?;
+    let enrichment_graph = enrichment_graph_candidates(&enrichments);
+    record_running_phase(
+        runtime,
+        input,
+        emitter,
+        PipelinePhase::Preparing,
+        "preparing source documents",
+    )
+    .await?;
+    let vectorized = vectorize::prepare_embed_publish(
+        runtime,
+        input,
+        documents,
+        &enrichment_graph,
+        generation,
+        collection.clone(),
+        emitter,
+    )
+    .await?;
+    let mut enrichment_artifacts = Vec::new();
+    for enrichment in enrichments.values() {
+        warnings.extend(enrichment.warnings.clone());
+        enrichment_artifacts.extend(enrichment.artifacts.clone());
+    }
+    Ok(ProcessedBatch {
+        vectorized,
+        acquisition_artifacts,
+        enrichment_artifacts,
+        clean_output,
+        archive_items,
+        warnings,
+        reused_item_keys: resolved.reused_item_keys,
+    })
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -14,8 +14,8 @@ const PRIOR_LAST_MODIFIED: &str = "web_prior_last_modified";
 const LAST_MODIFIED: &str = "web_last_modified";
 const REUSE_REQUIRED: &str = "web_reuse_required";
 
-pub(super) struct NormalizedAcquisition {
-    pub(super) normalized: StageExecutionResult<Vec<SourceDocument>>,
+pub(super) struct ResolvedAcquisition {
+    pub(super) acquisition: SourceAcquisition,
     pub(super) reused_item_keys: Vec<SourceItemKey>,
 }
 
@@ -53,18 +53,15 @@ pub(super) async fn overlay_trusted_validators(
     Ok(adjusted)
 }
 
-pub(super) async fn normalize_acquisition(
+pub(super) async fn resolve_acquisition(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
     diff: &SourceManifestDiff,
     mut acquisition: SourceAcquisition,
-) -> anyhow::Result<NormalizedAcquisition> {
+) -> anyhow::Result<ResolvedAcquisition> {
     if input.adapter.reuse_policy() != ReusePolicy::ConditionalRequest {
-        let inherited_warnings = acquisition.header.warnings.clone();
-        let mut normalized = input.adapter.normalize(&input.plan, acquisition).await?;
-        normalized.header.warnings.splice(0..0, inherited_warnings);
-        return Ok(NormalizedAcquisition {
-            normalized,
+        return Ok(ResolvedAcquisition {
+            acquisition,
             reused_item_keys: Vec::new(),
         });
     }
@@ -90,19 +87,37 @@ pub(super) async fn normalize_acquisition(
                 source_item_key: Some(item_key),
                 retryable: true,
             });
-            fetched.push(refetch_unconditionally(input, diff, item.manifest_item).await?);
+            let canonical_uri = item.manifest_item.canonical_uri.clone();
+            let reacquired = refetch_unconditionally(input, diff, item.manifest_item).await?;
+            fetched.push(merge_reacquired(
+                &mut acquisition,
+                reacquired,
+                &canonical_uri,
+            )?);
         }
     }
 
     acquisition.fetched_items = fetched;
+    Ok(ResolvedAcquisition {
+        acquisition,
+        reused_item_keys,
+    })
+}
+
+pub(super) async fn normalize_acquisition(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    diff: &SourceManifestDiff,
+    acquisition: SourceAcquisition,
+) -> anyhow::Result<StageExecutionResult<Vec<SourceDocument>>> {
+    let conditional = input.adapter.reuse_policy() == ReusePolicy::ConditionalRequest;
     let inherited_warnings = acquisition.header.warnings.clone();
     let mut normalized = input.adapter.normalize(&input.plan, acquisition).await?;
     normalized.header.warnings.splice(0..0, inherited_warnings);
-    cache_documents(runtime, diff, &normalized.data).await?;
-    Ok(NormalizedAcquisition {
-        normalized,
-        reused_item_keys,
-    })
+    if conditional {
+        cache_documents(runtime, diff, &normalized.data).await?;
+    }
+    Ok(normalized)
 }
 
 pub(super) fn apply_reused_items(
@@ -143,6 +158,32 @@ fn reuse_required(item: &AcquiredSourceItem) -> bool {
             &item.content_ref,
             ContentRef::External { uri, .. } if uri.starts_with("reuse://")
         )
+}
+
+fn merge_reacquired(
+    acquisition: &mut SourceAcquisition,
+    mut reacquired: SourceAcquisition,
+    canonical_uri: &str,
+) -> anyhow::Result<AcquiredSourceItem> {
+    if reacquired.fetched_items.len() != 1 {
+        anyhow::bail!(
+            "unconditional refetch for {canonical_uri} returned {} items; expected exactly one",
+            reacquired.fetched_items.len()
+        );
+    }
+    let acquired = reacquired
+        .fetched_items
+        .pop()
+        .expect("refetch item count checked above");
+    if reuse_required(&acquired) {
+        anyhow::bail!("unconditional refetch for {canonical_uri} returned another reuse response");
+    }
+    acquisition
+        .header
+        .warnings
+        .append(&mut reacquired.header.warnings);
+    acquisition.artifacts.append(&mut reacquired.artifacts);
+    Ok(acquired)
 }
 
 async fn reuse_cached_document(
@@ -209,7 +250,7 @@ async fn refetch_unconditionally(
     input: &SourcePipelineInput<'_>,
     diff: &SourceManifestDiff,
     mut item: ManifestItem,
-) -> anyhow::Result<AcquiredSourceItem> {
+) -> anyhow::Result<SourceAcquisition> {
     item.metadata.remove(PRIOR_ETAG);
     item.metadata.remove(PRIOR_LAST_MODIFIED);
     let mut plan = input.plan.clone();
@@ -221,23 +262,10 @@ async fn refetch_unconditionally(
         .validated_options
         .values
         .insert("cache_policy".to_string(), serde_json::json!("bypass"));
-    let reacquired = input
+    Ok(input
         .adapter
-        .acquire(&plan, &single_item_diff(diff, item.clone()))
-        .await?;
-    let Some(acquired) = reacquired.fetched_items.into_iter().next() else {
-        anyhow::bail!(
-            "unconditional refetch for {} returned no content",
-            item.canonical_uri
-        );
-    };
-    if reuse_required(&acquired) {
-        anyhow::bail!(
-            "unconditional refetch for {} returned another reuse response",
-            item.canonical_uri
-        );
-    }
-    Ok(acquired)
+        .acquire(&plan, &single_item_diff(diff, item))
+        .await?)
 }
 
 fn single_item_diff(diff: &SourceManifestDiff, item: ManifestItem) -> SourceManifestDiff {

@@ -151,11 +151,7 @@ async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
     let embed_calls_after_first = harness.embedder().calls().await.len();
     let vector_calls_after_first = harness.vectors().calls().await;
     assert!(embed_calls_after_first > 0);
-    assert!(
-        vector_calls_after_first
-            .iter()
-            .any(|call| *call == "upsert")
-    );
+    assert!(vector_calls_after_first.contains(&"upsert"));
 
     provider
         .set_body("<html><body>transient discovery change</body></html>")
@@ -218,11 +214,14 @@ async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
         "third run should perform discovery plus one unconditional cache-miss refetch"
     );
     assert!(harness.embedder().calls().await.len() > embeds_before_refetch);
-    assert!(
+    assert_eq!(
         third
             .warnings
             .iter()
-            .any(|warning| warning.code == "source.reuse.cache_miss_refetch")
+            .filter(|warning| warning.code == "source.reuse.cache_miss_refetch")
+            .count(),
+        1,
+        "the cache-miss warning must survive exactly once"
     );
 
     let committed = harness
@@ -267,13 +266,9 @@ async fn canonical_vector_commit_failure_rolls_back_generation() {
 
     assert!(format!("{error:#}").contains("commit_failed"), "{error:#}");
     let calls = vectors.calls().await;
-    assert!(calls.iter().any(|call| *call == "upsert"));
-    assert!(
-        calls
-            .iter()
-            .any(|call| *call == "mark_generation_committed")
-    );
-    assert!(calls.iter().any(|call| *call == "delete"));
+    assert!(calls.contains(&"upsert"));
+    assert!(calls.contains(&"mark_generation_committed"));
+    assert!(calls.contains(&"delete"));
     assert_eq!(
         harness
             .ledger()

@@ -111,7 +111,7 @@ Run `cargo xtask schemas generate --check`.
 | `graph source` | `graph` | Walk the SourceGraph neighborhood of a source | no | `read` | no |
 | `jobs cancel` | `jobs` | Request cancellation for a unified durable job | yes | `write` | no |
 | `jobs cleanup` | `jobs` | Remove old terminal unified durable jobs | yes | `write` | no |
-| `jobs clear` | `jobs` | Clear all unified durable job rows | yes | `admin` | no |
+| `jobs clear` | `jobs` | Clear terminal unified durable job rows; active jobs require cancel/recover first | yes | `admin` | no |
 | `jobs events` | `jobs` | Show one job's event page | no | `read` | no |
 | `jobs get` | `jobs` | Show one unified durable job | no | `read` | no |
 | `jobs list` | `jobs` | List unified durable jobs | no | `read` | no |
@@ -138,8 +138,7 @@ Run `cargo xtask schemas generate --check`.
 | `prune plan` | `prune` | Resolve a prune target into a reviewable dry-run plan | no | `read` | no |
 | `query` | `query` | Semantic vector search over the Qdrant index | no | `read` | no |
 | `research` | `research` | Web research via SearXNG/Tavily with LLM synthesis and auto-indexing | yes | `read` | no |
-| `reset exec` | `reset` | Execute a reviewed clean-slate reset plan | yes | `admin` | no |
-| `reset plan` | `reset` | Create a reviewable clean-slate reset plan without deleting data | no | `admin` | no |
+| `reset` | `reset` | Plan a clean-slate reset or execute a reviewed plan with flags | yes | `admin` | no |
 | `retrieve` | `retrieve` | Fetch stored document chunks from Qdrant by URL | no | `read` | no |
 | `scrape` | `scrape` | Fetch, normalize, and index exactly one web page through SourceRequest | yes | `write` | no |
 | `screenshot` | `screenshot` | Capture a full-page screenshot of one or more URLs | yes | `write` | no |
@@ -179,4 +178,4 @@ Run `cargo xtask schemas generate --check`.
 | `watch status` | `watch` | Show source watch status | no | `read` | no |
 | `watch update` | `watch` | Update a source watch | yes | `write` | no |
 
-Total: 110 commands.
+Total: 109 commands.
