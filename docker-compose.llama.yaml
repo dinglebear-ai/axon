@@ -107,7 +107,8 @@ services:
       - ${LLAMA_CPP_CACHE_DIR:-${HOME}/.axon/llama-cpp/cache}:/root/.cache/llama.cpp
       - ${LLAMA_CPP_MODELS_DIR:-${HOME}/.axon/llama-cpp/models}:/models
     ports:
-      - "${LLAMA_CPP_PORT:-8080}:8080"
+      - "100.88.16.79:${LLAMA_CPP_PORT:-8080}:8080"
+      - "10.1.0.6:${LLAMA_CPP_PORT:-8080}:8080"
     command:
       - -hf
       - ${LLAMA_CPP_HF_MODEL:-ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M}
