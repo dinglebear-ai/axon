@@ -4,6 +4,7 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 
 use super::artifacts::{cleanup_artifacts_after_error, record_artifacts_on_manifest};
+use super::progress::{WebPipelineProgress, WebProgressCoordinator};
 use super::publish::{
     GenerationDocumentCounts, complete_generation, completed_source_summary,
     ensure_lease_before_publish, fail_generation, fail_generation_and_rollback_vectors,
@@ -25,6 +26,9 @@ pub(super) struct VectorGenerationRequest<'a> {
     pub(super) generation: SourceGeneration,
     pub(super) manifest: SourceManifest,
     pub(super) diff: SourceManifestDiff,
+    pub(super) events: &'a crate::source::events::SourceEventEmitter,
+    pub(super) coordinator: &'a WebProgressCoordinator,
+    pub(super) progress: &'a mut WebPipelineProgress,
 }
 
 pub(super) async fn publish_vector_generation(
@@ -40,6 +44,9 @@ pub(super) async fn publish_vector_generation(
         generation,
         mut manifest,
         diff,
+        events,
+        coordinator,
+        progress,
     } = request;
     let collection = collection_spec(input);
     let vectorized = vectorize_or_rollback(VectorizeWebGeneration {
@@ -51,6 +58,9 @@ pub(super) async fn publish_vector_generation(
         generation: &generation,
         diff: &diff,
         collection: &collection,
+        events,
+        coordinator,
+        progress,
     })
     .await?;
     let effective_diff = apply_reused_item_keys(&diff, &vectorized.reused_item_keys);
@@ -110,6 +120,9 @@ struct VectorizeWebGeneration<'a> {
     generation: &'a SourceGeneration,
     diff: &'a SourceManifestDiff,
     collection: &'a CollectionSpec,
+    events: &'a crate::source::events::SourceEventEmitter,
+    coordinator: &'a WebProgressCoordinator,
+    progress: &'a mut WebPipelineProgress,
 }
 
 async fn vectorize_or_rollback(
@@ -124,6 +137,9 @@ async fn vectorize_or_rollback(
         generation,
         diff,
         collection,
+        events,
+        coordinator,
+        progress,
     } = request;
     if let Err(err) = vector_store.ensure_collection(collection.clone()).await {
         return Err(fail_generation(ledger, generation.clone(), anyhow::Error::new(err)).await);
@@ -137,6 +153,9 @@ async fn vectorize_or_rollback(
         embedding_provider,
         vector_store,
         collection.clone(),
+        events,
+        coordinator,
+        progress,
     )
     .await
     .map_err(|err| err.context("failed to vectorize web source generation"))

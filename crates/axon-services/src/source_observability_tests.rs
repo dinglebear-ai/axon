@@ -101,10 +101,18 @@ async fn page_source_emits_ordered_phase_events() {
             "unexpected degraded event at {phase:?} ({status:?})"
         );
     }
-    let spine = phases
+    // Fine-grained progress may emit multiple running checkpoints inside a
+    // phase. Collapse only adjacent duplicates so this test locks ordering and
+    // terminal transitions without rejecting legitimate additional progress.
+    let mut spine = Vec::new();
+    for checkpoint in phases
         .into_iter()
         .filter(|(_, status)| *status != LifecycleStatus::CompletedDegraded)
-        .collect::<Vec<_>>();
+    {
+        if spine.last() != Some(&checkpoint) {
+            spine.push(checkpoint);
+        }
+    }
     assert_eq!(
         spine,
         vec![
@@ -116,9 +124,12 @@ async fn page_source_emits_ordered_phase_events() {
             (PipelinePhase::Diffing, LifecycleStatus::Running),
             (PipelinePhase::Diffing, LifecycleStatus::Completed),
             (PipelinePhase::Fetching, LifecycleStatus::Running),
+            (PipelinePhase::Enriching, LifecycleStatus::Running),
             (PipelinePhase::Normalizing, LifecycleStatus::Running),
             (PipelinePhase::Preparing, LifecycleStatus::Running),
+            (PipelinePhase::Batching, LifecycleStatus::Running),
             (PipelinePhase::Embedding, LifecycleStatus::Running),
+            (PipelinePhase::Vectorizing, LifecycleStatus::Running),
             (PipelinePhase::Upserting, LifecycleStatus::Running),
             (PipelinePhase::Publishing, LifecycleStatus::Running),
             (PipelinePhase::Publishing, LifecycleStatus::Completed),

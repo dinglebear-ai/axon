@@ -13,6 +13,7 @@ fn job(id: &str, status: &str, progress: serde_json::Value) -> ServiceJob {
         error_text: None,
         url: Some("https://example.com".to_string()),
         source_type: Some("web".to_string()),
+        source_kind: Some(axon_api::source::SourceKind::Web),
         target: None,
         urls_json: None,
         progress_json: Some(progress),
@@ -68,6 +69,7 @@ fn status_payload_uses_unified_typed_job_collections() {
     assert_eq!(value["cleanup"]["jobs"][0]["kind"], "prune");
     assert_eq!(value["warnings"][0], "provider cooling");
     assert_eq!(value["jobs"][0]["phase"], "fetching");
+    assert_eq!(value["jobs"][0]["source_kind"], "web");
     assert_eq!(value["jobs"][0]["progress"]["phase"], "acquire");
     assert_eq!(value["jobs"][0]["result"]["documents"], 4);
 }
