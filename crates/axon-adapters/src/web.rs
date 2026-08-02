@@ -10,9 +10,11 @@
 //! on this path.
 
 mod acquire;
+mod fetch;
 mod manifest_items;
 mod metadata;
 mod options;
+mod render;
 mod site_discovery;
 mod url_parts;
 mod vertical;
