@@ -347,6 +347,7 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     for required in [
         "if ! runs_json=$(gh run list",
+        "--repo \"${{ github.repository }}\"",
         "gh run list failed while polling ci.yml",
         "--branch main",
         "--event push",
