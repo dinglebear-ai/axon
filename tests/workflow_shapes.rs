@@ -300,6 +300,7 @@ fn lefthook_pre_push_uses_path_aware_router() {
 fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let plan = workflow_job_block(workflow, "plan");
+    let ci_gate = workflow_job_block(workflow, "ci-gate");
     let release = workflow_job_block(workflow, "release");
     assert!(
         plan.contains("cargo xtask check-release-versions --head HEAD --mode main --json"),
@@ -316,8 +317,19 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag matrix must include only changed components"
     );
     assert!(
-        release.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#),
-        "auto-tag must skip release job for an empty matrix"
+        ci_gate.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#)
+            && release.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#),
+        "auto-tag must skip CI gating and releases for an empty matrix"
+    );
+    assert!(
+        ci_gate.contains("runs-on: ubuntu-24.04")
+            && ci_gate.contains("timeout-minutes: 65")
+            && release.contains("runs-on: ubuntu-24.04"),
+        "auto-tag polling and tagging must not consume self-hosted runners"
+    );
+    assert!(
+        release.contains("needs: [plan, ci-gate]"),
+        "the release matrix must wait for the shared CI gate"
     );
     assert!(
         release.contains("fromJson(needs.plan.outputs.matrix)"),
@@ -328,14 +340,14 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must consume tags and workflows from the xtask release plan"
     );
     assert!(
-        release
-            .find("Wait for CI to pass on this commit")
-            .expect("CI wait step")
-            < release.find("Create and push tag").expect("tag step"),
-        "auto-tag must wait for CI before creating release tags"
+        ci_gate.contains("Wait for CI to pass on this commit")
+            && release.contains("Create and push tag")
+            && !release.contains("Wait for CI to pass on this commit"),
+        "one shared CI gate must run before the release matrix creates tags"
     );
     for required in [
         "if ! runs_json=$(gh run list",
+        "--repo \"${{ github.repository }}\"",
         "gh run list failed while polling ci.yml",
         "--branch main",
         "--event push",
@@ -344,7 +356,7 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         ".headBranch == \"main\"",
     ] {
         assert!(
-            release.contains(required),
+            ci_gate.contains(required),
             "auto-tag CI polling must constrain {required}"
         );
     }

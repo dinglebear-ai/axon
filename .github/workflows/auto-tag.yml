@@ -79,33 +79,29 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           cat release-plan.json
 
-  release:
+  # Wait for the commit's CI workflow without occupying scarce self-hosted
+  # runners. One hosted gate serves the entire release matrix.
+  ci-gate:
     needs: plan
     if: ${{ needs.plan.outputs.matrix != '{"include":[]}' }}
-    name: ${{ matrix.id }}
-    runs-on: [self-hosted, unraid]
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    permissions:
+      actions: read
+      contents: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          fetch-depth: 0
-
-      # CI gate: do not cut a public release until the required CI checks for
-      # this exact commit have succeeded. auto-tag and CI both fire on the same
-      # push, so CI may still be in progress when this runs — hence the poll.
       - name: Wait for CI to pass on this commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           sha="${{ github.sha }}"
-          deadline=$(( $(date +%s) + 1800 ))  # 30 minute cap
+          deadline=$(( $(date +%s) + 3600 ))
           echo "Waiting for CI to succeed for $sha ..."
           while :; do
             gh_stderr="$(mktemp)"
             if ! runs_json=$(gh run list \
+              --repo "${{ github.repository }}" \
               --workflow=ci.yml \
               --commit "$sha" \
               --branch main \
@@ -135,6 +131,19 @@ jobs:
             echo "CI status='${status:-unknown}' conclusion='${conclusion:-pending}'; sleeping 20s ..."
             sleep 20
           done
+
+  release:
+    needs: [plan, ci-gate]
+    if: ${{ needs.plan.outputs.matrix != '{"include":[]}' }}
+    name: ${{ matrix.id }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
 
       - name: Create and push tag
         run: |
