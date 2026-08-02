@@ -86,10 +86,14 @@ impl ProgressCoordinator {
         counts: StageCounts,
         message: &str,
     ) {
-        let counts = self.persist(phase, counts, message).await;
-        emitter
-            .running_with_counts(phase, message, Some(counts))
-            .await;
+        let (counts, persisted) = self.persist(phase, counts, message).await;
+        if persisted {
+            emitter
+                .running_with_counts(phase, message, Some(counts))
+                .await;
+        } else {
+            emitter.running(phase, message).await;
+        }
     }
 
     /// Persist a progress checkpoint without emitting a duplicate source event.
@@ -135,7 +139,7 @@ impl ProgressCoordinator {
         phase: PipelinePhase,
         counts: StageCounts,
         message: &str,
-    ) -> StageCounts {
+    ) -> (StageCounts, bool) {
         let counts = {
             let mut state = self.state.lock().await;
             normalize_phase_counts(&mut state.phase_counts, phase, counts)
@@ -158,20 +162,24 @@ impl ProgressCoordinator {
             message: Some(message.to_string()),
             error: None,
         };
-        if let Err(error) = self.writer.update(update).await {
-            tracing::warn!(
-                job_id = %self.job_id.0,
-                source_id = %self.source_id.0,
-                phase = ?phase,
-                adapter = %self.adapter,
-                items_done = counts.items_done,
-                documents_done = counts.documents_done,
-                chunks_done = counts.chunks_done,
-                error = %error,
-                "failed to persist source progress"
-            );
-        }
-        counts
+        let persisted = match self.writer.update(update).await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(
+                    job_id = %self.job_id.0,
+                    source_id = %self.source_id.0,
+                    phase = ?phase,
+                    adapter = %self.adapter,
+                    items_done = counts.items_done,
+                    documents_done = counts.documents_done,
+                    chunks_done = counts.chunks_done,
+                    error = %error,
+                    "failed to persist source progress"
+                );
+                false
+            }
+        };
+        (counts, persisted)
     }
 }
 
@@ -441,11 +449,7 @@ fn normalize_phase_counts(
 }
 
 fn max_total(previous: Option<u64>, current: Option<u64>) -> Option<u64> {
-    match (previous, current) {
-        (Some(previous), Some(current)) => Some(previous.max(current)),
-        (Some(previous), None) => Some(previous),
-        (None, current) => current,
-    }
+    previous.or(current)
 }
 
 fn clamp_done(done: u64, total: Option<u64>) -> u64 {

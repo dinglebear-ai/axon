@@ -1,4 +1,5 @@
 use super::*;
+use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
 
 #[derive(Default)]
 struct RecordingWriter {
@@ -29,6 +30,49 @@ fn coordinator(writer: Arc<RecordingWriter>) -> ProgressCoordinator {
         "local",
         Duration::ZERO,
     )
+}
+
+async fn event_store_with_job() -> (Arc<FakeJobWatchStore>, JobId) {
+    let store = Arc::new(FakeJobWatchStore::new());
+    let descriptor = store
+        .create(JobCreateRequest {
+            request_id: None,
+            job_kind: JobKind::Source,
+            job_intent: JobIntent::Run,
+            source_id: Some(SourceId::new("src-progress-test")),
+            watch_id: None,
+            parent_job_id: None,
+            root_job_id: None,
+            attempt: 1,
+            priority: JobPriority::Normal,
+            idempotency_key: None,
+            stage_plan: Vec::new(),
+            request: None,
+            auth_snapshot: AuthSnapshot::trusted_system("test"),
+            config_snapshot_id: Some(ConfigSnapshotId::new("cfg-progress-test")),
+            requirements: MetadataMap::new(),
+            result_schema: Some("source_result".to_string()),
+            warnings: Vec::new(),
+            error: None,
+            metadata: MetadataMap::new(),
+            deadline_at: None,
+        })
+        .await
+        .expect("create progress event job");
+    (store, descriptor.job_id)
+}
+
+fn event_emitter(store: Arc<FakeJobWatchStore>, job_id: JobId) -> SourceEventEmitter {
+    SourceEventEmitter::new(Some(store), Some(job_id))
+        .with_route(
+            SourceKind::Local,
+            SourceScope::Site,
+            AdapterRef {
+                name: "local".to_string(),
+                version: "test".to_string(),
+            },
+        )
+        .with_source(SourceId::new("src-progress-test"), "file:///progress-test")
 }
 
 #[tokio::test]
@@ -127,6 +171,75 @@ async fn progress_persistence_failure_is_non_fatal() {
             .chunks_done,
         3
     );
+}
+
+#[tokio::test]
+async fn failed_status_write_emits_an_uncounted_running_event() {
+    let writer = Arc::new(RecordingWriter {
+        updates: Mutex::new(Vec::new()),
+        fail: true,
+    });
+    let (store, job_id) = event_store_with_job().await;
+    let coordinator = ProgressCoordinator::with_writer(
+        writer,
+        job_id,
+        SourceId::new("src-progress-test"),
+        "local",
+        Duration::ZERO,
+    );
+    let emitter = event_emitter(store.clone(), job_id);
+
+    coordinator
+        .report(
+            &emitter,
+            PipelinePhase::Embedding,
+            stage_counts(Some(2), 2, Some(2), 2, Some(10), 3),
+            "embedding chunks",
+        )
+        .await;
+
+    let events = store.recorded_events(job_id).await;
+    assert_eq!(events.len(), 1);
+    let progress: SourceProgressEvent = serde_json::from_value(
+        events[0]
+            .details
+            .get("source_progress_event")
+            .cloned()
+            .expect("source progress payload"),
+    )
+    .expect("deserialize source progress event");
+    assert_eq!(progress.phase, PipelinePhase::Embedding);
+    assert_eq!(progress.status, LifecycleStatus::Running);
+    assert_eq!(progress.counts, stage_counts(None, 0, None, 0, None, 0));
+}
+
+#[test]
+fn phase_totals_freeze_at_the_first_known_value() {
+    let mut prior = Vec::new();
+    let first = normalize_phase_counts(
+        &mut prior,
+        PipelinePhase::Embedding,
+        stage_counts(Some(2), 2, Some(2), 2, Some(10), 3),
+    );
+    let expanded = normalize_phase_counts(
+        &mut prior,
+        PipelinePhase::Embedding,
+        stage_counts(Some(4), 4, Some(4), 4, Some(20), 15),
+    );
+    let omitted = normalize_phase_counts(
+        &mut prior,
+        PipelinePhase::Embedding,
+        stage_counts(None, 1, None, 1, None, 1),
+    );
+
+    assert_eq!(first.chunks_total, Some(10));
+    assert_eq!(expanded.items_total, Some(2));
+    assert_eq!(expanded.documents_total, Some(2));
+    assert_eq!(expanded.chunks_total, Some(10));
+    assert_eq!(expanded.items_done, 2);
+    assert_eq!(expanded.documents_done, 2);
+    assert_eq!(expanded.chunks_done, 10);
+    assert_eq!(omitted, expanded);
 }
 
 #[test]

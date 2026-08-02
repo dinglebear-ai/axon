@@ -45,10 +45,13 @@ impl WebProgressCoordinator {
         counts: StageCounts,
         message: &'static str,
     ) {
-        self.persist(phase, counts.clone(), message).await;
-        events
-            .running_with_counts(phase, message, Some(counts))
-            .await;
+        if self.persist(phase, counts.clone(), message).await {
+            events
+                .running_with_counts(phase, message, Some(counts))
+                .await;
+        } else {
+            events.running(phase, message).await;
+        }
     }
 
     pub(super) async fn checkpoint(
@@ -94,9 +97,14 @@ impl WebProgressCoordinator {
         }
     }
 
-    async fn persist(&self, phase: PipelinePhase, counts: StageCounts, message: &'static str) {
+    async fn persist(
+        &self,
+        phase: PipelinePhase,
+        counts: StageCounts,
+        message: &'static str,
+    ) -> bool {
         let Some(jobs) = &self.jobs else {
-            return;
+            return false;
         };
         if let Err(error) = jobs
             .update_status(JobStatusUpdate {
@@ -118,7 +126,9 @@ impl WebProgressCoordinator {
                 error = %error,
                 "failed to persist web source progress"
             );
+            return false;
         }
+        true
     }
 }
 
