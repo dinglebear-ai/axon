@@ -10,6 +10,7 @@
 //! on this path.
 
 mod acquire;
+mod binary;
 mod fetch;
 mod manifest_items;
 mod metadata;

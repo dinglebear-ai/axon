@@ -267,6 +267,71 @@ async fn auto_switch_re_renders_with_chrome_when_thin() {
 }
 
 #[tokio::test]
+async fn auto_switch_pdf_url_bypasses_renderer_and_preserves_binary_content() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/agenda.PDF");
+            then.status(200)
+                .header("content-type", "application/pdf")
+                .body(b"%PDF-1.7\n\0binary-payload");
+        })
+        .await;
+
+    let fetch = HttpFetchProvider::new(HttpFetchConfig::default());
+    let render = FakeAdapterProviders::new();
+    let url = format!("{}/agenda.PDF?download=1#page=1", server.base_url());
+    let acquired = require_item(
+        acquire_item(
+            &fetch,
+            &render,
+            &item(&url),
+            &opts(RenderMode::AutoSwitch, 5),
+        )
+        .await
+        .unwrap(),
+        "PDF fetch should not be skipped",
+    );
+
+    assert!(render.calls().await.is_empty());
+    assert_eq!(
+        acquired.manifest_item.content_kind,
+        Some(ContentKind::BinaryMetadata)
+    );
+    assert!(matches!(
+        acquired.content_ref,
+        ContentRef::InlineBytes { .. }
+    ));
+    assert_eq!(acquired.metadata["web_fetch_method"], "http_fetch");
+    assert_eq!(acquired.metadata["web_render_bypass_reason"], "pdf_uri");
+}
+
+#[test]
+fn pdf_uri_detection_handles_case_query_and_fragment_without_false_suffixes() {
+    assert!(uri_has_pdf_path(
+        "https://example.com/agenda.PDF?download=1#page=2"
+    ));
+    assert!(!uri_has_pdf_path("https://example.com/agenda.pdf.html"));
+    assert!(!uri_has_pdf_path(
+        "https://example.com/view?file=agenda.pdf"
+    ));
+}
+
+#[test]
+fn rendered_pdf_magic_is_rejected_before_markdown_processing() {
+    let manifest_item = item("https://example.com/download");
+    let err = reject_binary_rendered_payload(
+        &manifest_item,
+        "%PDF-1.7\n\0binary bytes incorrectly decoded as text",
+    )
+    .expect_err("raw PDF bytes must never enter the markdown pipeline");
+
+    assert_eq!(err.code.to_string(), "web.render.binary_payload");
+    assert!(err.message.contains("binary content as markdown"));
+}
+
+#[tokio::test]
 async fn http_mode_propagates_fetch_errors() {
     let providers = FakeAdapterProviders::new().with_mode(crate::boundary::FakeAdapterMode::Fatal);
     let err = acquire_item(

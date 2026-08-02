@@ -53,6 +53,9 @@ use serde_json::Value;
 use crate::adapter::{AcquisitionProgress, AcquisitionProgressSink, Result};
 use crate::boundary::{FetchProvider, RenderProvider};
 
+#[cfg(test)]
+use super::binary::reject_binary_rendered_payload;
+use super::binary::uri_has_pdf_path;
 use super::fetch::acquire_via_fetch;
 #[cfg(test)]
 use super::fetch::build_fetch_request;
@@ -300,6 +303,21 @@ async fn acquire_item(
         VerticalAcquire::Unsupported => {}
     }
 
+    if uri_has_pdf_path(&item.canonical_uri) {
+        let fetched = acquire_via_fetch(fetch, item, opts.cache_policy, &opts.headers).await?;
+        let fetched = fetched.map(|mut acquired| {
+            acquired.metadata.insert(
+                "web_render_bypass_reason".to_string(),
+                serde_json::json!("pdf_uri"),
+            );
+            acquired
+        });
+        return Ok(AcquiredItem {
+            item: fetched,
+            warnings,
+        });
+    }
+
     match opts.mode {
         RenderMode::Http => {
             let fetched = acquire_via_fetch(fetch, item, opts.cache_policy, &opts.headers).await?;
@@ -318,7 +336,7 @@ async fn acquire_item(
                 ))
                 .await?;
             Ok(AcquiredItem {
-                item: Some(acquired_from_rendered(item, rendered, "chrome_render")),
+                item: Some(acquired_from_rendered(item, rendered, "chrome_render")?),
                 warnings,
             })
         }

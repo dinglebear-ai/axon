@@ -7,6 +7,7 @@ use crate::adapter::Result;
 use crate::boundary::RenderProvider;
 
 use super::acquire::AcquiredItem;
+use super::binary::reject_binary_rendered_payload;
 
 pub(super) async fn acquire_via_auto_switch(
     render: &dyn RenderProvider,
@@ -26,7 +27,7 @@ pub(super) async fn acquire_via_auto_switch(
         .await?;
     if first.markdown.chars().count() >= min_markdown_chars {
         return Ok(AcquiredItem {
-            item: Some(acquired_from_rendered(item, first, "auto_switch_http")),
+            item: Some(acquired_from_rendered(item, first, "auto_switch_http")?),
             warnings,
         });
     }
@@ -40,7 +41,11 @@ pub(super) async fn acquire_via_auto_switch(
         .await
     {
         Ok(rendered) => Ok(AcquiredItem {
-            item: Some(acquired_from_rendered(item, rendered, "auto_switch_chrome")),
+            item: Some(acquired_from_rendered(
+                item,
+                rendered,
+                "auto_switch_chrome",
+            )?),
             warnings,
         }),
         Err(err) => {
@@ -63,7 +68,7 @@ pub(super) async fn acquire_via_auto_switch(
                     item,
                     first,
                     "auto_switch_http_fallback",
-                )),
+                )?),
                 warnings,
             })
         }
@@ -91,7 +96,8 @@ pub(super) fn acquired_from_rendered(
     item: &ManifestItem,
     rendered: RenderedResource,
     method_tag: &'static str,
-) -> AcquiredSourceItem {
+) -> Result<AcquiredSourceItem> {
+    reject_binary_rendered_payload(item, &rendered.markdown)?;
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(ContentKind::Markdown);
 
@@ -105,7 +111,7 @@ pub(super) fn acquired_from_rendered(
         serde_json::json!(render_mode_tag(rendered.render_mode)),
     );
 
-    AcquiredSourceItem {
+    Ok(AcquiredSourceItem {
         manifest_item,
         fetch_status: LifecycleStatus::Completed,
         content_ref: ContentRef::InlineText {
@@ -117,7 +123,7 @@ pub(super) fn acquired_from_rendered(
         },
         fetched_at: rendered.captured_at,
         metadata,
-    }
+    })
 }
 
 fn render_mode_tag(mode: RenderMode) -> &'static str {
