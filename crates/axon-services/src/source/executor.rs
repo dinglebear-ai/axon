@@ -7,6 +7,7 @@ mod metadata;
 mod progress;
 mod publish;
 mod reuse;
+mod vector_points;
 mod vectorize;
 use super::events::SourceEventEmitter;
 use super::execution::SourceExecutionContext;

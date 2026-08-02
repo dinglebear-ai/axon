@@ -62,7 +62,10 @@ pub(super) async fn run_created_generation(
         )
         .await;
 
-    for batch_diff in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE) {
+    let batches = batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE);
+    let batch_count = batches.len();
+    for (batch_index, batch_diff) in batches.into_iter().enumerate() {
+        let is_final_batch = batch_index + 1 == batch_count;
         let batch_items = batch_diff
             .added
             .len()
@@ -81,6 +84,7 @@ pub(super) async fn run_created_generation(
             &collection,
             batch_diff,
             archive_requested,
+            is_final_batch,
             &reporter,
             coordinator,
             &mut stage,
@@ -161,6 +165,7 @@ async fn process_changed_batch(
     collection: &CollectionSpec,
     batch_diff: SourceManifestDiff,
     archive_requested: bool,
+    is_final_batch: bool,
     reporter: &AcquisitionBatchProgress<'_>,
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
@@ -194,17 +199,19 @@ async fn process_changed_batch(
         coordinator,
         stage,
         &resolved.acquisition.fetched_items,
+        is_final_batch,
     )
     .await?;
 
+    let total = is_final_batch.then_some(stage.acquired_documents);
     coordinator
         .report(
             emitter,
             PipelinePhase::Normalizing,
             stage_counts(
-                Some(stage.acquired_documents),
+                total,
                 stage.normalized_documents,
-                Some(stage.acquired_documents),
+                total,
                 stage.normalized_documents,
                 None,
                 0,
@@ -221,13 +228,16 @@ async fn process_changed_batch(
         .normalized_documents
         .saturating_add(documents.len() as u64);
     stage.pipeline.add_documents(documents.len() as u64);
+    if is_final_batch {
+        stage.pipeline.finish_documents();
+    }
     coordinator
         .checkpoint(
             PipelinePhase::Normalizing,
             stage_counts(
-                Some(stage.acquired_documents),
+                total,
                 stage.normalized_documents,
-                Some(stage.acquired_documents),
+                total,
                 stage.normalized_documents,
                 None,
                 0,
@@ -249,6 +259,7 @@ async fn process_changed_batch(
         emitter,
         coordinator,
         &mut stage.pipeline,
+        is_final_batch,
     )
     .await?;
 
@@ -275,19 +286,14 @@ async fn enrich_changed_items(
     coordinator: &ProgressCoordinator,
     stage: &mut GenerationStageProgress,
     items: &[AcquiredSourceItem],
+    is_final_batch: bool,
 ) -> anyhow::Result<std::collections::BTreeMap<SourceItemKey, SourceEnrichment>> {
+    let total = is_final_batch.then_some(stage.acquired_documents);
     coordinator
         .report(
             emitter,
             PipelinePhase::Enriching,
-            stage_counts(
-                Some(stage.acquired_documents),
-                stage.enriched_items,
-                None,
-                0,
-                None,
-                0,
-            ),
+            stage_counts(total, stage.enriched_items, None, 0, None, 0),
             "enriching acquired source items",
         )
         .await;
@@ -296,14 +302,7 @@ async fn enrich_changed_items(
     coordinator
         .checkpoint(
             PipelinePhase::Enriching,
-            stage_counts(
-                Some(stage.acquired_documents),
-                stage.enriched_items,
-                None,
-                0,
-                None,
-                0,
-            ),
+            stage_counts(total, stage.enriched_items, None, 0, None, 0),
             "enriched acquired source items",
         )
         .await;

@@ -2,10 +2,10 @@ use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_ledger::store::LedgerStore;
-use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
 use uuid::Uuid;
 
 use super::progress::{PipelineProgress, ProgressCoordinator};
+use super::vector_points::{VectorPointBuild, point_batch};
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
 use crate::reserved_call::{self, ProviderCallContext};
 
@@ -23,13 +23,6 @@ pub(super) struct VectorizeResult {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
-struct VectorPointBuild {
-    batch: VectorPointBatch,
-    skipped_redaction: u64,
-    #[cfg_attr(not(test), allow(dead_code))]
-    points_by_document: std::collections::BTreeMap<DocumentId, u32>,
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn prepare_embed_publish(
     runtime: &TargetLocalSourceRuntime,
@@ -41,9 +34,13 @@ pub(super) async fn prepare_embed_publish(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    is_final_generation_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
-    for source_batch in documents.chunks(DOCUMENT_BATCH_SIZE) {
+    let source_batch_count = documents.len().div_ceil(DOCUMENT_BATCH_SIZE);
+    for (source_index, source_batch) in documents.chunks(DOCUMENT_BATCH_SIZE).enumerate() {
+        let is_final_source_batch =
+            is_final_generation_batch && source_index + 1 == source_batch_count;
         coordinator
             .report(
                 emitter,
@@ -57,7 +54,11 @@ pub(super) async fn prepare_embed_publish(
             .iter()
             .map(|document| document.chunks.len() as u64)
             .sum();
-        let counts = progress.prepared(source_batch.len() as u64, chunk_count);
+        let counts = progress.prepared(
+            source_batch.len() as u64,
+            chunk_count,
+            is_final_source_batch,
+        );
         coordinator
             .checkpoint(
                 PipelinePhase::Preparing,
@@ -65,7 +66,10 @@ pub(super) async fn prepare_embed_publish(
                 "prepared source documents",
             )
             .await;
-        for batch in chunk_batches(prepared) {
+        let batches = chunk_batches(prepared);
+        let batch_count = batches.len();
+        for (batch_index, batch) in batches.into_iter().enumerate() {
+            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
             if input.plan.request.embed {
                 let batch_chunks = batch
                     .iter()
@@ -89,6 +93,7 @@ pub(super) async fn prepare_embed_publish(
                 emitter,
                 coordinator,
                 progress,
+                is_final_vector_batch,
             )
             .await?;
             merge_vectorize_result(&mut output, result);
@@ -200,6 +205,7 @@ async fn vectorize_batch(
     emitter: &SourceEventEmitter,
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
+    is_final_vector_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     if !input.plan.request.embed {
         return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
@@ -220,7 +226,7 @@ async fn vectorize_batch(
         .report(
             emitter,
             PipelinePhase::Vectorizing,
-            progress.vectorized(point_batch.points.len() as u64),
+            progress.vectorized(point_batch.points.len() as u64, is_final_vector_batch),
             "built vector point batch",
         )
         .await;
@@ -264,7 +270,8 @@ async fn embed_prepared_batch(
             PipelinePhase::Embedding,
             input.execution.priority,
             embedding_operation,
-        ),
+        )
+        .with_counts(counts),
         embedding_batch,
     )
     .await?;
@@ -306,7 +313,8 @@ async fn upsert_vector_batch(
             PipelinePhase::Upserting,
             input.execution.priority,
             upsert_operation,
-        ),
+        )
+        .with_counts(counts),
         batch,
     )
     .await?;
@@ -443,64 +451,6 @@ fn embedding_batch(
         }
     }
     Ok(builder.build()?)
-}
-
-fn point_batch(
-    collection: CollectionSpec,
-    documents: &[PreparedDocument],
-    embeddings: &EmbeddingResult,
-) -> anyhow::Result<VectorPointBuild> {
-    let by_chunk = embeddings
-        .vectors
-        .iter()
-        .cloned()
-        .map(|vector| (vector.chunk_id.clone(), vector))
-        .collect::<std::collections::BTreeMap<_, _>>();
-    let mut points = Vec::new();
-    let mut skipped_redaction = 0u64;
-    let mut points_by_document = std::collections::BTreeMap::new();
-    for document in documents {
-        let document_embeddings = EmbeddingResult {
-            batch_id: embeddings.batch_id.clone(),
-            job_id: embeddings.job_id,
-            provider_id: embeddings.provider_id.clone(),
-            model: embeddings.model.clone(),
-            dimensions: embeddings.dimensions,
-            vectors: document
-                .chunks
-                .iter()
-                .filter_map(|chunk| by_chunk.get(&chunk.chunk_id).cloned())
-                .collect(),
-            usage: embeddings.usage.clone(),
-            warnings: embeddings.warnings.clone(),
-        };
-        let (batch, document_skipped) = VectorPointBatchBuilder::new(
-            collection.clone(),
-            document.clone(),
-            document_embeddings,
-            VectorPointBatchBuildContext {
-                embedded_at: timestamp(),
-            },
-        )
-        .build_with_skipped_count()?;
-        let document_point_count = u32::try_from(batch.points.len()).unwrap_or(u32::MAX);
-        points_by_document.insert(document.document_id.clone(), document_point_count);
-        points.extend(batch.points);
-        skipped_redaction += document_skipped;
-    }
-    Ok(VectorPointBuild {
-        batch: VectorPointBatch {
-            batch_id: embeddings.batch_id.clone(),
-            collection: collection.collection,
-            points,
-            model: embeddings.model.clone(),
-            dimensions: embeddings.dimensions,
-            sparse_vectors: None,
-            payload_indexes: collection.payload_indexes,
-        },
-        skipped_redaction,
-        points_by_document,
-    })
 }
 
 fn validate_upsert_counts(
