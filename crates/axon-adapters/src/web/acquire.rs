@@ -50,7 +50,7 @@ use axon_core::logging::{log_info, log_warn};
 use futures_util::stream::{self, StreamExt};
 use serde_json::Value;
 
-use crate::adapter::Result;
+use crate::adapter::{AcquisitionProgress, AcquisitionProgressSink, Result};
 use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::options::{
@@ -102,6 +102,7 @@ pub(super) async fn acquire_changed_items(
     manifest_items: &[ManifestItem],
     fetch: &dyn FetchProvider,
     render: &dyn RenderProvider,
+    progress: Option<&dyn AcquisitionProgressSink>,
 ) -> Result<AcquireOutcome> {
     let values = &plan.route.validated_options.values;
     let opts = AcquireOptions {
@@ -139,8 +140,8 @@ pub(super) async fn acquire_changed_items(
     let warc_path = warc_path(values);
 
     let (items, warnings) = match warc_path.as_deref() {
-        Some(_) => acquire_sequential(fetch, render, manifest_items, &opts).await,
-        None => acquire_concurrent(fetch, render, manifest_items, &opts).await,
+        Some(_) => acquire_sequential(fetch, render, manifest_items, &opts, progress).await,
+        None => acquire_concurrent(fetch, render, manifest_items, &opts, progress).await,
     };
 
     Ok(AcquireOutcome { items, warnings })
@@ -156,10 +157,11 @@ async fn acquire_sequential(
     render: &dyn RenderProvider,
     manifest_items: &[ManifestItem],
     opts: &AcquireOptions,
+    progress: Option<&dyn AcquisitionProgressSink>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
     let mut items = Vec::with_capacity(manifest_items.len());
     let mut warnings = Vec::new();
-    for item in manifest_items {
+    for (index, item) in manifest_items.iter().enumerate() {
         let outcome = acquire_item(fetch, render, item, opts).await;
         if let Some(acquired) = resolve_item_outcome(
             outcome,
@@ -169,6 +171,7 @@ async fn acquire_sequential(
         ) {
             items.push(acquired);
         }
+        report_progress(progress, manifest_items.len(), index + 1, items.len()).await;
     }
     (items, warnings)
 }
@@ -185,6 +188,7 @@ async fn acquire_concurrent(
     render: &dyn RenderProvider,
     manifest_items: &[ManifestItem],
     opts: &AcquireOptions,
+    progress: Option<&dyn AcquisitionProgressSink>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
     let mut pending = stream::iter(manifest_items.to_vec())
         .map(|item| {
@@ -199,14 +203,34 @@ async fn acquire_concurrent(
 
     let mut items = Vec::new();
     let mut warnings = Vec::new();
+    let mut completed = 0usize;
     while let Some((source_item_key, canonical_uri, outcome)) = pending.next().await {
         if let Some(acquired) =
             resolve_item_outcome(outcome, source_item_key, &canonical_uri, &mut warnings)
         {
             items.push(acquired);
         }
+        completed += 1;
+        report_progress(progress, manifest_items.len(), completed, items.len()).await;
     }
     (items, warnings)
+}
+
+async fn report_progress(
+    sink: Option<&dyn AcquisitionProgressSink>,
+    items_total: usize,
+    items_done: usize,
+    documents_done: usize,
+) {
+    let Some(sink) = sink else {
+        return;
+    };
+    sink.report(AcquisitionProgress {
+        items_total: items_total as u64,
+        items_done: items_done as u64,
+        documents_done: documents_done as u64,
+    })
+    .await;
 }
 
 /// Shared per-item error isolation for both acquisition paths. A hard

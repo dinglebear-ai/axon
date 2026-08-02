@@ -1,5 +1,5 @@
 use super::*;
-use axon_api::source::PipelinePhase;
+use axon_api::source::{PipelinePhase, SourceKind};
 use axon_services::types::ServiceJob;
 use serde_json::json;
 use uuid::Uuid;
@@ -102,8 +102,17 @@ fn preserves_url_that_merely_contains_token_substring() {
 }
 
 #[test]
+fn elapsed_duration_uses_compact_human_units() {
+    assert_eq!(format_elapsed_duration(999), "<1s");
+    assert_eq!(format_elapsed_duration(12_000), "12s");
+    assert_eq!(format_elapsed_duration(65_000), "1m 05s");
+    assert_eq!(format_elapsed_duration(3_723_000), "1h 02m 03s");
+    assert_eq!(format_elapsed_duration(97_260_000), "1d 03h 01m");
+}
+
+#[test]
 fn completed_source_row_includes_durable_counts() {
-    let now = chrono::Utc::now();
+    let now = Utc::now();
     let job = ServiceJob {
         id: Uuid::from_u128(42),
         status: "completed".to_string(),
@@ -115,6 +124,7 @@ fn completed_source_row_includes_durable_counts() {
         error_text: None,
         url: Some("https://code.claude.com".to_string()),
         source_type: Some("web".to_string()),
+        source_kind: Some(SourceKind::Web),
         target: Some("https://code.claude.com".to_string()),
         urls_json: None,
         progress_json: None,
@@ -148,7 +158,7 @@ fn completed_source_row_includes_durable_counts() {
 
 #[test]
 fn completed_map_source_row_includes_durable_item_counts() {
-    let now = chrono::Utc::now();
+    let now = Utc::now();
     let job = ServiceJob {
         id: Uuid::from_u128(43),
         status: "completed".to_string(),
@@ -160,6 +170,7 @@ fn completed_map_source_row_includes_durable_item_counts() {
         error_text: None,
         url: Some("https://gofastmcp.com".to_string()),
         source_type: Some("web".to_string()),
+        source_kind: Some(SourceKind::Web),
         target: Some("https://gofastmcp.com".to_string()),
         urls_json: None,
         progress_json: None,

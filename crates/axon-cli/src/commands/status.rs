@@ -12,6 +12,7 @@ use axon_services::system::{
     build_status_payload_with_errors_and_sqlite, load_status_jobs, sqlite_status_error,
 };
 use axon_services::types::ServiceJob;
+use chrono::{DateTime, Utc};
 use std::error::Error;
 use std::fmt::Write as _;
 
@@ -307,9 +308,15 @@ fn write_status_section(
         let label = truncate_status_text_to(&redact_status_subject(&label_for(job)), label_limit);
         let _ = writeln!(out, "{prefix}{label}");
         let _ = writeln!(out, "    {}", muted(&format!("id {}", job.id)));
-        if let Some(p) = progress_for(job) {
-            let _ = writeln!(out, "    {}", muted(&truncate_status_continuation(&p)));
-        }
+        let elapsed = job_elapsed_text(job, Utc::now());
+        let progress = progress_for(job)
+            .map(|progress| format!("{progress} · elapsed {elapsed}"))
+            .unwrap_or_else(|| format!("elapsed {elapsed}"));
+        let _ = writeln!(
+            out,
+            "    {}",
+            muted(&truncate_status_continuation(&progress))
+        );
         if let Some(err) = job
             .error_text
             .as_deref()
@@ -320,6 +327,39 @@ fn write_status_section(
         }
     }
     let _ = writeln!(out);
+}
+
+fn job_elapsed_text(job: &ServiceJob, now: DateTime<Utc>) -> String {
+    let started_at = job.started_at.as_ref().unwrap_or(&job.created_at);
+    let finished_at = job.finished_at.as_ref().unwrap_or(&now);
+    let elapsed_ms = finished_at
+        .signed_duration_since(started_at)
+        .num_milliseconds()
+        .max(0);
+    format_elapsed_duration(elapsed_ms)
+}
+
+fn format_elapsed_duration(elapsed_ms: i64) -> String {
+    if elapsed_ms < 1_000 {
+        return "<1s".to_string();
+    }
+    let seconds = (elapsed_ms / 1_000) as u64;
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    let minutes = seconds / 60;
+    let remaining_seconds = seconds % 60;
+    if minutes < 60 {
+        return format!("{minutes}m {remaining_seconds:02}s");
+    }
+    let hours = minutes / 60;
+    let remaining_minutes = minutes % 60;
+    if hours < 24 {
+        return format!("{hours}h {remaining_minutes:02}m {remaining_seconds:02}s");
+    }
+    let days = hours / 24;
+    let remaining_hours = hours % 24;
+    format!("{days}d {remaining_hours:02}h {remaining_minutes:02}m")
 }
 
 fn truncate_status_continuation(text: &str) -> String {

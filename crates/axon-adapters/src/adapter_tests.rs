@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axon_api::source::*;
 use uuid::Uuid;
@@ -15,13 +15,56 @@ use crate::sessions::SessionSourceAdapter;
 use crate::web::WebSourceAdapter;
 use crate::youtube::YoutubeSourceAdapter;
 use crate::{
-    AdapterCapability, FakeSourceAdapter, FakeSourceAdapterMode, SourceAdapter,
-    SourceAdapterRegistry,
+    AcquisitionProgress, AcquisitionProgressSink, AdapterCapability, FakeSourceAdapter,
+    FakeSourceAdapterMode, SourceAdapter, SourceAdapterRegistry,
 };
 
 fn web_adapter() -> WebSourceAdapter {
     let providers = Arc::new(FakeAdapterProviders::new());
     WebSourceAdapter::new(providers.clone(), providers)
+}
+
+#[derive(Default)]
+struct RecordingProgress(Mutex<Vec<AcquisitionProgress>>);
+
+#[async_trait::async_trait]
+impl AcquisitionProgressSink for RecordingProgress {
+    async fn report(&self, progress: AcquisitionProgress) {
+        self.0
+            .lock()
+            .expect("recording progress mutex poisoned")
+            .push(progress);
+    }
+}
+
+#[tokio::test]
+async fn default_acquire_with_progress_delegates_without_fabricating_snapshots() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(
+        "README.md",
+        ContentKind::Markdown,
+        "# Axon",
+    );
+    let plan = source_plan(route);
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let diff = manifest_diff(&plan, manifest.items.clone());
+    let progress = RecordingProgress::default();
+
+    let acquisition = adapter
+        .acquire_with_progress(&plan, &diff, Some(&progress))
+        .await
+        .unwrap();
+
+    assert_eq!(acquisition.fetched_items.len(), 1);
+    assert_eq!(adapter.calls(), vec!["discover", "acquire"]);
+    assert!(
+        progress
+            .0
+            .lock()
+            .expect("recording progress mutex poisoned")
+            .is_empty(),
+        "the default adapter fallback must not invent intra-batch progress"
+    );
 }
 
 #[tokio::test]

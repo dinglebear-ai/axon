@@ -1,11 +1,12 @@
 use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
-use axon_embedding::reservation::{ProviderReservation, ProviderReservationContext};
 use axon_ledger::store::LedgerStore;
 use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
 use uuid::Uuid;
 
+use super::progress::{PipelineProgress, ProgressCoordinator};
+use super::reservations;
 use super::{NonWebPipelineInput, SourceEventEmitter, TargetLocalSourceRuntime, timestamp};
 
 const DOCUMENT_BATCH_SIZE: usize = 64;
@@ -22,6 +23,7 @@ pub(super) struct VectorizeResult {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn prepare_embed_publish(
     runtime: &TargetLocalSourceRuntime,
     input: &NonWebPipelineInput<'_>,
@@ -30,13 +32,70 @@ pub(super) async fn prepare_embed_publish(
     generation: &SourceGenerationId,
     collection: CollectionSpec,
     emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    is_final_generation_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
-    for source_batch in documents.chunks(DOCUMENT_BATCH_SIZE) {
+    let source_batch_count = documents.len().div_ceil(DOCUMENT_BATCH_SIZE);
+    for (source_index, source_batch) in documents.chunks(DOCUMENT_BATCH_SIZE).enumerate() {
+        let is_final_source_batch =
+            is_final_generation_batch && source_index + 1 == source_batch_count;
+        coordinator
+            .report(
+                emitter,
+                PipelinePhase::Preparing,
+                progress.preparing_counts(),
+                "preparing source documents",
+            )
+            .await;
         let prepared = prepare_documents(source_batch, generation, enrichment_graph)?;
-        for batch in chunk_batches(prepared) {
-            let result =
-                vectorize_batch(runtime, input, batch, collection.clone(), emitter).await?;
+        let chunk_count = prepared
+            .iter()
+            .map(|document| document.chunks.len() as u64)
+            .sum();
+        let counts = progress.prepared(
+            source_batch.len() as u64,
+            chunk_count,
+            is_final_source_batch,
+        );
+        coordinator
+            .checkpoint(
+                PipelinePhase::Preparing,
+                counts,
+                "prepared source documents",
+            )
+            .await;
+        let batches = chunk_batches(prepared);
+        let batch_count = batches.len();
+        for (batch_index, batch) in batches.into_iter().enumerate() {
+            let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
+            if input.plan.request.embed {
+                let batch_chunks = batch
+                    .iter()
+                    .map(|document| document.chunks.len() as u64)
+                    .sum();
+                let counts = progress.batched(batch_chunks);
+                coordinator
+                    .report(
+                        emitter,
+                        PipelinePhase::Batching,
+                        counts,
+                        "batching prepared chunks",
+                    )
+                    .await;
+            }
+            let result = vectorize_batch(
+                runtime,
+                input,
+                batch,
+                collection.clone(),
+                emitter,
+                coordinator,
+                progress,
+                is_final_vector_batch,
+            )
+            .await?;
             merge_vectorize_result(&mut output, result);
         }
     }
@@ -137,59 +196,160 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn vectorize_batch(
     runtime: &TargetLocalSourceRuntime,
     input: &NonWebPipelineInput<'_>,
     documents: Vec<PreparedDocument>,
     collection: CollectionSpec,
     emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    is_final_vector_batch: bool,
 ) -> anyhow::Result<VectorizeResult> {
     if !input.plan.request.embed {
         return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
     }
-    super::record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Embedding,
-        "embedding prepared document batch",
-    )
-    .await?;
-    let embedding_reservation = reserve_embedding(runtime, input).await?;
-    record_reservation(
-        runtime,
-        input,
-        PipelinePhase::Embedding,
-        &embedding_reservation,
-    )
-    .await?;
-    let embedding_batch = embedding_batch(runtime, input, &documents)?;
-    let embeddings = runtime.embedding_provider.embed(embedding_batch).await?;
-    drop(embedding_reservation);
 
-    super::record_running_phase(
-        runtime,
-        input,
-        emitter,
-        PipelinePhase::Upserting,
-        "upserting vector point batch",
-    )
-    .await?;
-    let vector_reservation = reserve_vector(runtime, input).await?;
-    record_reservation(
-        runtime,
-        input,
-        PipelinePhase::Upserting,
-        &vector_reservation,
-    )
-    .await?;
+    let embeddings =
+        embed_prepared_batch(runtime, input, &documents, emitter, coordinator, progress).await?;
     let (point_batch, skipped_redaction) = point_batch(collection, &documents, &embeddings)?;
-    let write = runtime.vector_store.upsert(point_batch).await?;
-    drop(vector_reservation);
+    let eligible_chunks = point_batch
+        .points
+        .iter()
+        .map(|point| point.chunk_id.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Vectorizing,
+            progress.vectorized(point_batch.points.len() as u64, is_final_vector_batch),
+            "built vector point batch",
+        )
+        .await;
+    let write =
+        upsert_vector_batch(runtime, input, point_batch, emitter, coordinator, progress).await?;
+    Ok(vectorize_result(
+        documents,
+        embeddings.warnings,
+        &eligible_chunks,
+        write,
+        skipped_redaction,
+    ))
+}
 
+#[allow(clippy::too_many_arguments)]
+async fn embed_prepared_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    documents: &[PreparedDocument],
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+) -> anyhow::Result<EmbeddingResult> {
+    let counts = progress.embedding_counts();
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Embedding,
+            counts.clone(),
+            "embedding prepared chunks",
+        )
+        .await;
+    let reservation = reservations::embedding(runtime, input).await?;
+    reservations::heartbeat(
+        runtime,
+        input,
+        PipelinePhase::Embedding,
+        counts,
+        &reservation,
+    )
+    .await;
+    let result = runtime
+        .embedding_provider
+        .embed(embedding_batch(runtime, input, documents)?)
+        .await?;
+    drop(reservation);
+    coordinator
+        .checkpoint(
+            PipelinePhase::Embedding,
+            progress.embedded(result.vectors.len() as u64),
+            "embedded prepared chunks",
+        )
+        .await;
+    Ok(result)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upsert_vector_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &NonWebPipelineInput<'_>,
+    batch: VectorPointBatch,
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+) -> anyhow::Result<VectorStoreWriteResult> {
+    let counts = progress.upserting_counts();
+    coordinator
+        .report(
+            emitter,
+            PipelinePhase::Upserting,
+            counts.clone(),
+            "upserting vector point batch",
+        )
+        .await;
+    let reservation = reservations::vector(runtime, input).await?;
+    reservations::heartbeat(
+        runtime,
+        input,
+        PipelinePhase::Upserting,
+        counts,
+        &reservation,
+    )
+    .await;
+    let write = runtime.vector_store.upsert(batch).await?;
+    drop(reservation);
+    if write.points_written != write.points_attempted {
+        anyhow::bail!(
+            "vector store wrote {} of {} attempted points",
+            write.points_written,
+            write.points_attempted
+        );
+    }
+    coordinator
+        .checkpoint(
+            PipelinePhase::Upserting,
+            progress.upserted(write.points_written),
+            "upserted vector point batch",
+        )
+        .await;
+    Ok(write)
+}
+
+fn vectorize_result(
+    documents: Vec<PreparedDocument>,
+    embedding_warnings: Vec<SourceWarning>,
+    eligible_chunks: &std::collections::BTreeSet<ChunkId>,
+    write: VectorStoreWriteResult,
+    skipped_redaction: u64,
+) -> VectorizeResult {
+    let point_counts = documents
+        .iter()
+        .map(|document| {
+            let count = document
+                .chunks
+                .iter()
+                .filter(|chunk| eligible_chunks.contains(&chunk.chunk_id))
+                .count();
+            (
+                document.document_id.clone(),
+                u32::try_from(count).unwrap_or(u32::MAX),
+            )
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
-    result.warnings.extend(embeddings.warnings);
+    result.warnings.extend(embedding_warnings);
     if skipped_redaction > 0 {
         result.warnings.push(SourceWarning {
             code: "source.vectorize.redaction_skipped_chunks".to_string(),
@@ -204,9 +364,9 @@ async fn vectorize_batch(
         });
     }
     for status in &mut result.document_statuses {
-        status.vector_point_count = status.chunk_count;
+        status.vector_point_count = point_counts.get(&status.document_id).copied().unwrap_or(0);
     }
-    Ok(result)
+    result
 }
 
 fn statuses_only(
@@ -338,66 +498,6 @@ fn point_batch(
         },
         skipped_redaction,
     ))
-}
-
-async fn reserve_embedding(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-) -> anyhow::Result<ProviderReservation> {
-    Ok(runtime
-        .embedding_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.plan.job_id,
-            stage_id: None,
-            provider_id: Some(runtime.embedding_provider_id.clone()),
-            priority: input.execution.priority,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?)
-}
-
-async fn reserve_vector(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-) -> anyhow::Result<ProviderReservation> {
-    Ok(runtime
-        .vector_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.plan.job_id,
-            stage_id: None,
-            provider_id: Some(runtime.vector_provider_id.clone()),
-            priority: input.execution.priority,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?)
-}
-
-async fn record_reservation(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    phase: PipelinePhase,
-    reservation: &ProviderReservation,
-) -> anyhow::Result<()> {
-    runtime
-        .jobs
-        .heartbeat(JobHeartbeat {
-            job_id: input.plan.job_id,
-            attempt: input.execution.attempt,
-            worker_id: Some("source-pipeline".to_string()),
-            phase,
-            status: LifecycleStatus::Running,
-            stage_id: None,
-            heartbeat_at: timestamp(),
-            sequence: 0,
-            last_progress_at: Some(timestamp()),
-            last_event_sequence: None,
-            counts: None,
-            provider_reservations: vec![reservation.snapshot()],
-        })
-        .await?;
-    Ok(())
 }
 
 #[cfg(test)]

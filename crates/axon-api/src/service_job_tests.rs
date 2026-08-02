@@ -13,6 +13,7 @@ fn service_job() -> ServiceJob {
         error_text: None,
         url: Some("https://example.com/docs".to_string()),
         source_type: Some("web".to_string()),
+        source_kind: Some(SourceKind::Web),
         target: Some("https://example.com".to_string()),
         urls_json: None,
         progress_json: Some(serde_json::json!({"phase": "acquire", "items_done": 3})),
@@ -33,6 +34,7 @@ fn status_job_serializes_canonical_fields_without_wire_aliases() {
     assert_eq!(value["job_id"], "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     assert_eq!(value["kind"], "source");
     assert_eq!(value["phase"], "fetching");
+    assert_eq!(value["source_kind"], "web");
     assert_eq!(value["progress"]["phase"], "acquire");
     assert_eq!(value["result"]["documents"], 2);
     for removed in [

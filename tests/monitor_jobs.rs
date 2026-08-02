@@ -16,6 +16,7 @@ fn job(id: Uuid, status: &str, target: &str, result_json: serde_json::Value) -> 
         error_text: None,
         url: Some(target.to_string()),
         source_type: None,
+        source_kind: None,
         target: Some(target.to_string()),
         urls_json: None,
         progress_json: None,
