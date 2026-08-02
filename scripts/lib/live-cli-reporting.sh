@@ -29,14 +29,25 @@ trap cleanup_live_fixtures EXIT
 worktree_content_fingerprint() {
   (
     cd "$ROOT_DIR" || exit 1
+
+    # Keep symlink targets distinct from regular-file content. NUL delimiters
+    # preserve unusual but valid path and target bytes without ambiguity.
+    printf 'links\0'
     while IFS= read -r -d '' path; do
-      if [ -L "$path" ]; then
-        printf 'link\t%s\t%s\n' "$path" "$(readlink -- "$path")"
-      elif [ -f "$path" ]; then
-        printf 'file\t%s\t' "$path"
-        sha256sum -- "$path" | awk '{print $1}'
+      [ -L "$path" ] || continue
+      printf '%s\0%s\0' "$path" "$(readlink -- "$path")"
+    done < <(git ls-files -co --exclude-standard -z | LC_ALL=C sort -z)
+
+    # Hash regular files in batches. The previous implementation launched one
+    # sha256sum process per path, which made the 4,000+ file worktree
+    # fingerprint exceed nextest's 120-second timeout under load.
+    printf 'files\0'
+    while IFS= read -r -d '' path; do
+      if [ -f "$path" ] && [ ! -L "$path" ]; then
+        printf '%s\0' "$path"
       fi
-    done < <(git ls-files -co --exclude-standard -z | sort -z)
+    done < <(git ls-files -co --exclude-standard -z | LC_ALL=C sort -z) \
+      | xargs -0 -r sha256sum -z --
   ) | sha256sum | awk '{print $1}'
 }
 

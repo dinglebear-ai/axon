@@ -324,6 +324,9 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: 1.97.1
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
         with:
           install_args: cargo:taplo-cli
@@ -800,7 +803,7 @@ jobs:
 
   mcp-smoke:
     name: mcp-smoke
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [changes, binary-smoke-build]
     if: ${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     timeout-minutes: 35
@@ -985,7 +988,7 @@ jobs:
 
   binary-smoke-build:
     name: binary-smoke-build
-    runs-on: ci-pool-rust
+    runs-on: ubuntu-24.04
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
