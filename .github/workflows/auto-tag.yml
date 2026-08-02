@@ -153,7 +153,25 @@ jobs:
           git push origin "${{ matrix.candidate_tag }}"
           echo "Pushed tag ${{ matrix.candidate_tag }}"
 
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ matrix.candidate_tag }}"
+          repo="${{ github.repository }}"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "GitHub Release $tag already exists."
+          else
+            gh release create "$tag" \
+              --repo "$repo" \
+              --verify-tag \
+              --generate-notes \
+              --title "$tag"
+            echo "Created GitHub Release $tag."
+          fi
+
       - name: Dispatch release workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run "${{ matrix.release_workflow }}" --ref "${{ matrix.candidate_tag }}" -f publish=true
+        run: gh workflow run "${{ matrix.release_workflow }}" --repo "${{ github.repository }}" --ref "${{ matrix.candidate_tag }}" -f publish=true
