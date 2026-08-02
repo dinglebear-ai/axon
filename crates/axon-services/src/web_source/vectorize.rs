@@ -7,15 +7,25 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use uuid::Uuid;
 
+use crate::source::events::SourceEventEmitter;
+
 use super::WebSourceIndexInput;
 use super::artifacts::{WebArtifactIndex, cleanup_artifacts_after_error};
 use super::normalize::{NormalizedWebDocuments, normalize_changed_documents};
+use super::progress::{WebPipelineProgress, WebProgressCoordinator};
 use super::run::{WebAdapterRun, timestamp};
 use super::vectorize_helpers::{
-    changed_diff_batches, document_status, payload_index, prepared_document_batches,
-    sanitize_web_payload_metadata, take_vertical_parse_artifacts, vector_point_batch_for_documents,
-    vectorized_document_status,
+    VectorPointBuild, changed_diff_batches, document_status, payload_index,
+    prepared_document_batches, sanitize_web_payload_metadata, take_vertical_parse_artifacts,
+    vector_point_batch_for_documents, vectorized_document_status,
 };
+
+#[path = "vectorize_pipeline.rs"]
+mod pipeline;
+#[path = "vectorize_provider.rs"]
+mod provider;
+
+pub(super) use pipeline::{prepare_changed_documents_without_vectors, vectorize_changed_documents};
 
 const WEB_CHANGED_DOCUMENT_BATCH_SIZE: usize = 64;
 const WEB_CHANGED_CHUNK_BATCH_SIZE: usize = 512;
@@ -39,165 +49,6 @@ pub(super) struct VectorizeResult {
     pub(super) artifacts: Vec<ArtifactRef>,
     pub(super) inline: Option<InlineSourceResult>,
     pub(super) artifact_index: WebArtifactIndex,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct VectorizeStats {
-    documents_prepared: u64,
-    chunks_prepared: u64,
-    /// Publish-stage count: vector points actually upserted (the post-skip
-    /// value). Distinct from `chunks_prepared`, which is the preparation-stage
-    /// count of emitted chunks before secret-redaction skips. The publish
-    /// invariant (`ensure_full_write`) compares against this, not
-    /// `chunks_prepared`, so that chunks skipped by the redaction
-    /// `ForbiddenValue` check don't make expected != wrote. See
-    /// `docs/pipeline-unification/runtime/observability-contract.md`'s
-    /// `axon_chunks_prepared_total` vs `axon_vector_points_written_total`.
-    points_attempted: u64,
-    /// Chunks skipped during point-batch build because their payload tripped
-    /// the secret-redaction `ForbiddenValue` check (do-not-index-secrets).
-    /// Surfaced as a `SourceWarning` on the `VectorizeResult` so it is
-    /// observable to job events and the source result, not only as a
-    /// `tracing::warn!`.
-    chunks_skipped_redaction: u64,
-}
-
-#[derive(Debug, Clone, Default)]
-struct VectorizeResultWithStats {
-    stats: VectorizeStats,
-    document_statuses: Vec<DocumentStatus>,
-    graph_candidates: Vec<GraphCandidate>,
-    warnings: Vec<SourceWarning>,
-}
-
-pub(super) async fn vectorize_changed_documents(
-    input: &WebSourceIndexInput,
-    run: &WebAdapterRun,
-    diff: &SourceManifestDiff,
-    generation: &SourceGenerationId,
-    ledger: &dyn LedgerStore,
-    embedding_provider: &dyn EmbeddingProvider,
-    vector_store: &dyn VectorStore,
-    collection: CollectionSpec,
-) -> anyhow::Result<VectorizeResult> {
-    let mut result = VectorizeResult::default();
-    for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
-        let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
-        result.warnings.extend(normalized.warnings);
-        result.reused_item_keys.extend(normalized.reused_item_keys);
-        result.artifacts.extend(normalized.artifacts);
-        result.artifact_index.merge(normalized.artifact_index);
-        if result.inline.is_none() {
-            result.inline = normalized.inline;
-        }
-        let prepared = match prepare_source_documents(normalized.documents, generation) {
-            Ok(prepared) => prepared,
-            Err(err) => {
-                return Err(cleanup_artifacts_after_error(
-                    input.artifact_store.as_ref(),
-                    &result.artifacts,
-                    err,
-                )
-                .await);
-            }
-        };
-        for prepared_batch in prepared_document_batches(prepared, WEB_CHANGED_CHUNK_BATCH_SIZE) {
-            let batch_result = match vectorize_documents(
-                input,
-                ledger,
-                embedding_provider,
-                vector_store,
-                collection.clone(),
-                prepared_batch,
-            )
-            .await
-            {
-                Ok(batch_result) => batch_result,
-                Err(err) => {
-                    return Err(cleanup_artifacts_after_error(
-                        input.artifact_store.as_ref(),
-                        &result.artifacts,
-                        err,
-                    )
-                    .await);
-                }
-            };
-            result.documents_prepared += batch_result.stats.documents_prepared;
-            result.chunks_prepared += batch_result.stats.chunks_prepared;
-            result.points_attempted += batch_result.stats.points_attempted;
-            if batch_result.stats.chunks_skipped_redaction > 0 {
-                result.warnings.push(SourceWarning {
-                    code: "web.vectorize.redaction_skipped_chunks".to_string(),
-                    severity: Severity::Warning,
-                    message: format!(
-                        "skipped {} chunk(s) with secret-redaction-forbidden payload values \
-                         (not indexed; reduced vector point count accordingly)",
-                        batch_result.stats.chunks_skipped_redaction
-                    ),
-                    source_item_key: None,
-                    retryable: false,
-                });
-            }
-            result
-                .document_statuses
-                .extend(batch_result.document_statuses);
-            result
-                .graph_candidates
-                .extend(batch_result.graph_candidates);
-            result.warnings.extend(batch_result.warnings);
-        }
-    }
-    Ok(result)
-}
-
-pub(super) async fn prepare_changed_documents_without_vectors(
-    input: &WebSourceIndexInput,
-    run: &WebAdapterRun,
-    diff: &SourceManifestDiff,
-    generation: &SourceGenerationId,
-    ledger: &dyn LedgerStore,
-) -> anyhow::Result<VectorizeResult> {
-    let mut result = VectorizeResult::default();
-    for batch_diff in changed_diff_batches(diff, WEB_CHANGED_DOCUMENT_BATCH_SIZE) {
-        let normalized = normalize_changed_documents(input, run, &batch_diff).await?;
-        result.warnings.extend(normalized.warnings);
-        result.reused_item_keys.extend(normalized.reused_item_keys);
-        result.artifacts.extend(normalized.artifacts);
-        result.artifact_index.merge(normalized.artifact_index);
-        if result.inline.is_none() {
-            result.inline = normalized.inline;
-        }
-        let prepared = match prepare_source_documents(normalized.documents, generation) {
-            Ok(prepared) => prepared,
-            Err(err) => {
-                return Err(cleanup_artifacts_after_error(
-                    input.artifact_store.as_ref(),
-                    &result.artifacts,
-                    err,
-                )
-                .await);
-            }
-        };
-        for document in prepared {
-            result.documents_prepared += 1;
-            result.chunks_prepared += document.chunks.len() as u64;
-            result
-                .graph_candidates
-                .extend(document.graph_candidates.clone());
-            let status =
-                document_status(&document, 0, DocumentLifecycleStatus::Prepared, timestamp());
-            if let Err(err) = ledger.update_document_status(status.clone()).await {
-                return Err(cleanup_artifacts_after_error(
-                    input.artifact_store.as_ref(),
-                    &result.artifacts,
-                    anyhow::Error::new(err),
-                )
-                .await);
-            }
-            result.document_statuses.push(status);
-        }
-    }
-    Ok(result)
 }
 
 pub(super) fn collection_spec(input: &WebSourceIndexInput) -> CollectionSpec {
@@ -263,71 +114,6 @@ fn prepare_source_documents(
         documents.push(prepared);
     }
     Ok(documents)
-}
-
-async fn vectorize_documents(
-    input: &WebSourceIndexInput,
-    ledger: &dyn LedgerStore,
-    embedding_provider: &dyn EmbeddingProvider,
-    vector_store: &dyn VectorStore,
-    collection: CollectionSpec,
-    documents: Vec<PreparedDocument>,
-) -> anyhow::Result<VectorizeResultWithStats> {
-    if documents.is_empty() {
-        return Ok(VectorizeResultWithStats::default());
-    }
-    let batch = embedding_batch_for_documents(input, &documents)?;
-    let embedding_reservation = input
-        .embedding_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.job_id,
-            stage_id: None,
-            provider_id: Some(input.embedding_provider_id.clone()),
-            priority: JobPriority::Background,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?;
-    let embeddings = embedding_provider.embed(batch).await?;
-    drop(embedding_reservation);
-    let built_points = vector_point_batch_for_documents(collection, &documents, &embeddings)?;
-    let expected_points = built_points.batch.points.len() as u64;
-    let vector_reservation = input
-        .vector_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.job_id,
-            stage_id: None,
-            provider_id: Some(input.vector_provider_id.clone()),
-            priority: JobPriority::Background,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?;
-    let write = vector_store.upsert(built_points.batch).await?;
-    drop(vector_reservation);
-    if write.points_attempted != write.points_written || write.points_written != expected_points {
-        return Err(anyhow::anyhow!(
-            "upsert wrote {} of {} attempted points; expected {expected_points}",
-            write.points_written,
-            write.points_attempted
-        ));
-    }
-    let mut result = VectorizeResultWithStats::default();
-    result.stats.points_attempted = write.points_attempted;
-    result.stats.chunks_skipped_redaction = built_points.skipped_redaction;
-    for document in documents {
-        result.stats.chunks_prepared += document.chunks.len() as u64;
-        result.stats.documents_prepared += 1;
-        result
-            .graph_candidates
-            .extend(document.graph_candidates.clone());
-        result.warnings.extend(document.warnings.clone());
-        let status =
-            vectorized_document_status(&document, &built_points.points_by_document, timestamp())?;
-        ledger.update_document_status(status.clone()).await?;
-        result.document_statuses.push(status);
-    }
-    Ok(result)
 }
 
 fn embedding_batch_for_documents(

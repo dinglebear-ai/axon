@@ -10,8 +10,11 @@ use axon_adapters::{SourceAdapter, web};
 use axon_api::source::*;
 
 use super::WebSourceIndexInput;
-use super::artifacts::{WebArtifactIndex, store_clean_outputs, store_warc_artifact};
-use super::reuse;
+use super::artifacts::WebArtifactIndex;
+use super::normalize_batch::NormalizationBatch;
+use crate::source::events::SourceEventEmitter;
+
+use super::progress::{WebPipelineProgress, WebProgressCoordinator};
 use super::run::WebAdapterRun;
 
 pub(super) struct NormalizedWebDocuments {
@@ -27,107 +30,63 @@ pub(super) async fn normalize_changed_documents(
     input: &WebSourceIndexInput,
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,
+    events: &SourceEventEmitter,
+    coordinator: &WebProgressCoordinator,
+    progress: &mut WebPipelineProgress,
+    final_batch: bool,
 ) -> anyhow::Result<NormalizedWebDocuments> {
     let adapter = web::WebSourceAdapter::new(
         std::sync::Arc::clone(&input.fetch_provider),
         std::sync::Arc::clone(&input.render_provider),
     );
-    let mut acquisition = adapter.acquire(&run.plan, diff).await?;
-    let mut warnings = acquisition.header.warnings.clone();
-    let mut artifact_index = WebArtifactIndex::default();
-    let mut artifacts = Vec::new();
-    for artifact in store_warc_artifact(input, run, &acquisition.fetched_items).await? {
-        artifact_index.push_generation(artifact.clone());
-        artifacts.push(artifact);
-    }
-    let mut documents = Vec::new();
-    let mut documents_to_cache = Vec::new();
-    let mut fetched_items = Vec::new();
-    let mut reused_item_keys = Vec::new();
-
-    for item in std::mem::take(&mut acquisition.fetched_items) {
-        let reuse_required = item
-            .metadata
-            .get("web_reuse_required")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(false);
-        if !reuse_required {
-            fetched_items.push(item);
-            continue;
-        }
-
-        if let Some(reused) = reuse::load_reused_web_document(
-            input.document_cache.as_ref(),
-            &run.source_id,
-            diff.previous_generation.as_ref(),
-            &item.manifest_item.source_item_key,
-            &diff.next_generation,
-        )
-        .await?
-        {
-            reused_item_keys.push(item.manifest_item.source_item_key.clone());
-            documents_to_cache.push(reused.document);
-            continue;
-        }
-
-        warnings.push(SourceWarning {
-            code: "web.reuse.cache_miss_refetch".to_string(),
-            severity: Severity::Warning,
-            message: format!(
-                "conditional 304 for {} had no cached committed document; refetching before publish",
-                item.manifest_item.canonical_uri
-            ),
-            source_item_key: Some(item.manifest_item.source_item_key.clone()),
-            retryable: true,
-        });
-        fetched_items
-            .push(refetch_without_conditional(input, run, diff, item.manifest_item).await?);
-    }
-
-    if !fetched_items.is_empty() {
-        acquisition.fetched_items = fetched_items;
-        let normalized = adapter.normalize(&run.plan, acquisition).await?.data;
-        let clean_output = store_clean_outputs(input, &normalized).await?;
-        artifacts.extend(clean_output.artifacts);
-        artifact_index.merge(clean_output.artifact_index);
-        let inline = clean_output.inline;
-        documents_to_cache.extend(normalized.clone());
-        documents.extend(normalized);
-        reuse::cache_documents(
-            input.document_cache.as_ref(),
-            &run.source_id,
-            &diff.next_generation,
-            &documents_to_cache,
-        )
+    let batch_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
+    let sink = progress.acquisition_sink(coordinator, events, batch_total);
+    let mut acquisition = adapter
+        .acquire_with_progress(&run.plan, diff, Some(&sink))
         .await?;
-        return Ok(NormalizedWebDocuments {
-            documents,
-            warnings,
-            reused_item_keys,
-            artifacts,
-            inline,
-            artifact_index,
-        });
-    }
-
-    reuse::cache_documents(
-        input.document_cache.as_ref(),
-        &run.source_id,
-        &diff.next_generation,
-        &documents_to_cache,
-    )
-    .await?;
-    Ok(NormalizedWebDocuments {
-        documents,
-        warnings,
-        reused_item_keys,
-        artifacts,
-        inline: None,
-        artifact_index,
-    })
+    let acquired_documents = acquisition.fetched_items.len() as u64;
+    coordinator
+        .checkpoint(
+            events,
+            PipelinePhase::Fetching,
+            progress.acquired(batch_total, acquired_documents),
+            "fetched changed web source items",
+        )
+        .await;
+    coordinator
+        .report(
+            events,
+            PipelinePhase::Enriching,
+            progress.enriching_counts(),
+            "enriching web source items",
+        )
+        .await;
+    coordinator
+        .report(
+            events,
+            PipelinePhase::Normalizing,
+            progress.normalizing_counts(),
+            "normalizing web source documents",
+        )
+        .await;
+    let batch = NormalizationBatch::collect(input, run, diff, &mut acquisition).await?;
+    let normalized = batch.finish(input, run, diff, acquisition).await?;
+    let completed_documents = normalized
+        .documents
+        .len()
+        .saturating_add(normalized.reused_item_keys.len()) as u64;
+    coordinator
+        .checkpoint(
+            events,
+            PipelinePhase::Normalizing,
+            progress.normalized(completed_documents, final_batch),
+            "normalized web source documents",
+        )
+        .await;
+    Ok(normalized)
 }
 
-async fn refetch_without_conditional(
+pub(super) async fn refetch_without_conditional(
     input: &WebSourceIndexInput,
     run: &WebAdapterRun,
     diff: &SourceManifestDiff,

@@ -76,12 +76,27 @@ impl SourceEventEmitter {
     }
 
     pub(crate) async fn running(&self, phase: PipelinePhase, message: impl Into<String>) {
+        self.running_with_counts(phase, message, None).await;
+    }
+
+    /// Emit a running checkpoint with the same canonical counts persisted on
+    /// the authoritative job row. This keeps event consumers aligned with
+    /// status polling without exposing service internals to adapters.
+    pub(crate) async fn running_with_counts(
+        &self,
+        phase: PipelinePhase,
+        message: impl Into<String>,
+        counts: Option<StageCounts>,
+    ) {
         self.emit(
             phase,
             LifecycleStatus::Running,
             Severity::Info,
             message,
-            SourceEventDetails::default(),
+            SourceEventDetails {
+                counts,
+                ..SourceEventDetails::default()
+            },
         )
         .await;
     }

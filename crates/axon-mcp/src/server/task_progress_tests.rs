@@ -1,5 +1,8 @@
 use super::*;
-use axon_api::{job_status::JobStatus, source::JobKind};
+use axon_api::{
+    job_status::JobStatus,
+    source::{JobKind, PipelinePhase},
+};
 use serde_json::json;
 
 #[test]
@@ -11,7 +14,12 @@ fn maps_source_page_progress_without_leaking_paths() {
         "pages_discovered": 10,
         "message": "raw worker message"
     });
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        Some(&value),
+    );
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));
     assert_eq!(progress.message, "indexing");
@@ -20,7 +28,12 @@ fn maps_source_page_progress_without_leaking_paths() {
 #[test]
 fn maps_source_document_progress_with_real_total() {
     let value = json!({"docs_embedded": 2, "docs_total": 5, "chunks_embedded": 50});
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Embedding,
+        Some(&value),
+    );
     assert_eq!(progress.progress, 2.0);
     assert_eq!(progress.total, Some(5.0));
     assert_eq!(progress.message, "embedding");
@@ -36,10 +49,36 @@ fn maps_source_unified_stage_counts_with_real_total() {
         "chunks_total": 20,
         "chunks_done": 17
     });
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
-    assert_eq!(progress.progress, 2.0);
-    assert_eq!(progress.total, Some(5.0));
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Embedding,
+        Some(&value),
+    );
+    assert_eq!(progress.progress, 17.0);
+    assert_eq!(progress.total, Some(20.0));
     assert_eq!(progress.message, "embedding");
+}
+
+#[test]
+fn maps_source_fetching_counts_by_items() {
+    let value = json!({
+        "items_total": 5,
+        "items_done": 3,
+        "documents_total": 5,
+        "documents_done": 2,
+        "chunks_total": 20,
+        "chunks_done": 17
+    });
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        Some(&value),
+    );
+    assert_eq!(progress.progress, 3.0);
+    assert_eq!(progress.total, Some(5.0));
+    assert_eq!(progress.message, "fetching");
 }
 
 #[test]
@@ -50,7 +89,12 @@ fn maps_source_provider_progress_with_allowlisted_message() {
         "files_done": 7,
         "files_total": 9
     });
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, Some(&value));
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        Some(&value),
+    );
     assert_eq!(progress.progress, 7.0);
     assert_eq!(progress.total, Some(9.0));
     assert_eq!(progress.message, "indexing");
@@ -58,7 +102,12 @@ fn maps_source_provider_progress_with_allowlisted_message() {
 
 #[test]
 fn extract_running_progress_uses_unknown_total() {
-    let progress = map_job_progress(JobKind::Extract, &JobStatus::Running, None);
+    let progress = map_job_progress(
+        JobKind::Extract,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        None,
+    );
     assert_eq!(progress.progress, 0.0);
     assert_eq!(progress.total, None);
     assert_eq!(progress.message, "running");
@@ -74,7 +123,12 @@ fn active_progress_prefers_progress_json_over_legacy_result_json() {
         Some(&progress_json),
         Some(&result_json),
     );
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, selected);
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        selected,
+    );
 
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));
@@ -108,7 +162,12 @@ fn active_progress_ignores_degraded_progress_json_marker() {
         Some(&progress_json),
         Some(&result_json),
     );
-    let progress = map_job_progress(JobKind::Source, &JobStatus::Running, selected);
+    let progress = map_job_progress(
+        JobKind::Source,
+        &JobStatus::Running,
+        PipelinePhase::Fetching,
+        selected,
+    );
 
     assert_eq!(progress.progress, 4.0);
     assert_eq!(progress.total, Some(10.0));

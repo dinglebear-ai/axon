@@ -39,6 +39,7 @@ fn make_job_with_status(
         error_text: None,
         url: url.map(String::from),
         source_type: source_type.map(String::from),
+        source_kind: None,
         target: target.map(String::from),
         urls_json,
         progress_json: None,

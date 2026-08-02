@@ -17,6 +17,8 @@ use crate::unified_codec::reject_non_public_visibility;
 
 #[path = "fake_store/helpers.rs"]
 mod helpers;
+#[path = "fake_store/inspection.rs"]
+mod inspection;
 #[path = "fake_store/watch.rs"]
 mod watch;
 
@@ -33,6 +35,8 @@ struct FakeJobWatchState {
     requests: BTreeMap<JobId, serde_json::Value>,
     stages: BTreeMap<JobId, Vec<JobStageSnapshot>>,
     events: BTreeMap<JobId, Vec<JobEvent>>,
+    status_updates: BTreeMap<JobId, Vec<JobStatusUpdate>>,
+    heartbeats: BTreeMap<JobId, Vec<JobHeartbeat>>,
     idempotency_keys: BTreeMap<String, JobId>,
     watches: BTreeMap<WatchId, WatchResult>,
     watch_runs: BTreeMap<WatchId, Vec<JobId>>,
@@ -45,17 +49,6 @@ struct FakeJobWatchState {
 impl FakeJobWatchStore {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Test-only inspection seam that bypasses public event visibility rules.
-    pub async fn recorded_events(&self, job_id: JobId) -> Vec<JobEvent> {
-        self.state
-            .lock()
-            .await
-            .events
-            .get(&job_id)
-            .cloned()
-            .unwrap_or_default()
     }
 }
 
@@ -166,6 +159,7 @@ impl JobStore for FakeJobWatchStore {
         let mut state = self.state.lock().await;
         let updated_at = state.timestamp();
         let stage_counts = status.counts.clone();
+        let recorded_status = status.clone();
         {
             let job = state
                 .jobs
@@ -207,6 +201,11 @@ impl JobStore for FakeJobWatchStore {
             }
             stage.error = status.error.as_ref().map(source_error_to_api_error);
         }
+        state
+            .status_updates
+            .entry(recorded_status.job_id)
+            .or_default()
+            .push(recorded_status);
         Ok(())
     }
 
@@ -217,6 +216,7 @@ impl JobStore for FakeJobWatchStore {
 
     async fn heartbeat(&self, heartbeat: JobHeartbeat) -> Result<()> {
         let mut state = self.state.lock().await;
+        let recorded_heartbeat = heartbeat.clone();
         let job = state
             .jobs
             .get_mut(&heartbeat.job_id)
@@ -229,6 +229,11 @@ impl JobStore for FakeJobWatchStore {
         job.updated_at = heartbeat.heartbeat_at.clone();
         job.counts = heartbeat.counts.clone();
         job.heartbeat = Some(heartbeat);
+        state
+            .heartbeats
+            .entry(recorded_heartbeat.job_id)
+            .or_default()
+            .push(recorded_heartbeat);
         Ok(())
     }
 

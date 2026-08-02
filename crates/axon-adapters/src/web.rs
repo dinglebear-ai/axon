@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::adapter::{Result, SourceAdapter};
+use crate::adapter::{AcquisitionProgressSink, Result, SourceAdapter};
 use crate::boundary::{FetchProvider, RenderProvider};
 use crate::capability::AdapterCapability;
 
@@ -46,6 +46,61 @@ pub struct WebSourceAdapter {
 impl WebSourceAdapter {
     pub fn new(fetch: Arc<dyn FetchProvider>, render: Arc<dyn RenderProvider>) -> Self {
         Self { fetch, render }
+    }
+
+    async fn acquire_internal(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+        progress: Option<&dyn AcquisitionProgressSink>,
+    ) -> Result<SourceAcquisition> {
+        validate_adapter(plan)?;
+        if plan.route.scope == SourceScope::Map {
+            return Ok(SourceAcquisition {
+                header: stage_header(plan.job_id, "web_fetch", PipelinePhase::Fetching, 0),
+                source_id: plan.route.source.source_id.clone(),
+                generation: diff.next_generation.clone(),
+                adapter: plan.route.adapter.clone(),
+                scope: plan.route.scope,
+                manifest: diff_manifest(plan, diff, Vec::new()),
+                fetched_items: Vec::new(),
+                artifacts: Vec::new(),
+            });
+        }
+
+        let manifest_items: Vec<ManifestItem> = diff
+            .added
+            .iter()
+            .chain(diff.modified.iter())
+            .cloned()
+            .collect();
+        let outcome = acquire::acquire_changed_items(
+            plan,
+            &manifest_items,
+            self.fetch.as_ref(),
+            self.render.as_ref(),
+            progress,
+        )
+        .await?;
+
+        let mut header = stage_header(
+            plan.job_id,
+            "web_fetch",
+            PipelinePhase::Fetching,
+            outcome.items.len(),
+        );
+        header.warnings = outcome.warnings;
+
+        Ok(SourceAcquisition {
+            header,
+            source_id: plan.route.source.source_id.clone(),
+            generation: diff.next_generation.clone(),
+            adapter: plan.route.adapter.clone(),
+            scope: plan.route.scope,
+            manifest: diff_manifest(plan, diff, manifest_items),
+            fetched_items: outcome.items,
+            artifacts: Vec::new(),
+        })
     }
 }
 
@@ -104,52 +159,16 @@ impl SourceAdapter for WebSourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
-        validate_adapter(plan)?;
-        if plan.route.scope == SourceScope::Map {
-            return Ok(SourceAcquisition {
-                header: stage_header(plan.job_id, "web_fetch", PipelinePhase::Fetching, 0),
-                source_id: plan.route.source.source_id.clone(),
-                generation: diff.next_generation.clone(),
-                adapter: plan.route.adapter.clone(),
-                scope: plan.route.scope,
-                manifest: diff_manifest(plan, diff, Vec::new()),
-                fetched_items: Vec::new(),
-                artifacts: Vec::new(),
-            });
-        }
+        self.acquire_internal(plan, diff, None).await
+    }
 
-        let manifest_items: Vec<ManifestItem> = diff
-            .added
-            .iter()
-            .chain(diff.modified.iter())
-            .cloned()
-            .collect();
-        let outcome = acquire::acquire_changed_items(
-            plan,
-            &manifest_items,
-            self.fetch.as_ref(),
-            self.render.as_ref(),
-        )
-        .await?;
-
-        let mut header = stage_header(
-            plan.job_id,
-            "web_fetch",
-            PipelinePhase::Fetching,
-            outcome.items.len(),
-        );
-        header.warnings = outcome.warnings;
-
-        Ok(SourceAcquisition {
-            header,
-            source_id: plan.route.source.source_id.clone(),
-            generation: diff.next_generation.clone(),
-            adapter: plan.route.adapter.clone(),
-            scope: plan.route.scope,
-            manifest: diff_manifest(plan, diff, manifest_items),
-            fetched_items: outcome.items,
-            artifacts: Vec::new(),
-        })
+    async fn acquire_with_progress(
+        &self,
+        plan: &SourcePlan,
+        diff: &SourceManifestDiff,
+        progress: Option<&dyn AcquisitionProgressSink>,
+    ) -> Result<SourceAcquisition> {
+        self.acquire_internal(plan, diff, progress).await
     }
 
     async fn normalize(

@@ -19,6 +19,7 @@ fn job(status: &str) -> ServiceJob {
         error_text: Some("raw error must not be exposed".to_string()),
         url: Some("https://example.com/private".to_string()),
         source_type: Some("github".to_string()),
+        source_kind: Some(axon_api::source::SourceKind::Git),
         target: Some("secret-target".to_string()),
         urls_json: Some(json!(["https://example.com/private"])),
         progress_json: None,
@@ -94,6 +95,7 @@ fn task_result_payload_truncates_oversized_result_json() {
 #[test]
 fn source_task_result_preserves_structured_progress_without_leaking_sensitive_values() {
     let mut job = job("completed");
+    job.phase = axon_api::source::PipelinePhase::Embedding;
     job.progress_json = Some(json!({
         "counts": {
             "items_total": 8,
@@ -130,6 +132,8 @@ fn source_task_result_preserves_structured_progress_without_leaking_sensitive_va
     let value = serde_json::to_value(payload).unwrap();
     let progress = &value["progress"];
 
+    assert_eq!(progress["phase"], "embedding");
+    assert_eq!(progress["source_kind"], "git");
     assert_eq!(progress["counts"]["items_done"], 5);
     assert_eq!(progress["counts"]["chunks_done"], 17);
     assert_eq!(progress["current"]["adapter"], "local");
