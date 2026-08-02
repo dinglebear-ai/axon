@@ -5,7 +5,10 @@
 //! provider. The in-memory reservation manager is intentionally not used by
 //! this module.
 
-use axon_api::source::{JobId, JobPriority, ProviderKind, StageId};
+use axon_api::source::{
+    JobId, JobPriority, ProviderId, ProviderKind, ProviderReservationSnapshot,
+    ProviderReservationStatus, ReservationId, StageId, Timestamp,
+};
 use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
@@ -149,6 +152,27 @@ impl<K> Clone for ActiveReservationLease<K> {
 }
 
 impl<K> ActiveReservationLease<K> {
+    #[must_use]
+    pub fn snapshot(
+        &self,
+        priority: JobPriority,
+        requested_units: u32,
+    ) -> ProviderReservationSnapshot {
+        ProviderReservationSnapshot {
+            reservation_id: ReservationId::new(self.reservation_id.clone()),
+            provider_kind: self.scheduler.domain.kind,
+            provider_id: Some(ProviderId::new(self.scheduler.domain.instance_id.clone())),
+            priority,
+            requested_units,
+            granted_units: requested_units,
+            acquired_at: Some(Timestamp::from(chrono::Utc::now())),
+            expires_at: None,
+            status: ProviderReservationStatus::Active,
+            queue_depth: None,
+            cooling: None,
+        }
+    }
+
     pub async fn renew(&self) -> Result<(), SchedulerError> {
         self.scheduler
             .renew(&self.reservation_id, &self.fence)

@@ -24,6 +24,8 @@ pub struct ProviderCallContext {
     pub stage_id: Option<StageId>,
     pub priority: JobPriority,
     pub operation_id: String,
+    pub phase: Option<PipelinePhase>,
+    pub counts: Option<StageCounts>,
 }
 
 impl ProviderCallContext {
@@ -40,6 +42,8 @@ impl ProviderCallContext {
             stage_id,
             priority,
             operation_id: operation_id.into(),
+            phase: None,
+            counts: None,
         }
     }
 
@@ -50,13 +54,21 @@ impl ProviderCallContext {
         priority: JobPriority,
         operation_id: impl Into<String>,
     ) -> Self {
-        Self::new(
+        let mut context = Self::new(
             job_id,
             attempt,
             Some(StageId::for_job_stage(job_id, phase.as_str(), 0)),
             priority,
             operation_id,
-        )
+        );
+        context.phase = Some(phase);
+        context
+    }
+
+    #[must_use]
+    pub fn with_counts(mut self, counts: StageCounts) -> Self {
+        self.counts = Some(counts);
+        self
     }
 
     fn request(&self, units: u32) -> ReservationRequest {
@@ -222,14 +234,20 @@ pub async fn embed(
     batch: EmbeddingBatch,
 ) -> Result<EmbeddingResult, ApiError> {
     let Some(scheduler) = runtime.embedding_scheduler.as_deref() else {
+        record_provider_heartbeat(runtime, &context, None).await;
         return runtime.embedding_provider.embed(batch).await;
     };
     let provider = Arc::clone(&runtime.embedding_provider);
+    let request = context.request(1);
     map_reserved(
         call_reserved::<EmbeddingLane, _, ApiError, _, _>(
             scheduler,
-            context.request(1),
-            move |_lease| async move { provider.embed(batch).await },
+            request,
+            move |lease| async move {
+                let snapshot = lease.snapshot(context.priority, 1);
+                record_provider_heartbeat(runtime, &context, Some(snapshot)).await;
+                provider.embed(batch).await
+            },
         )
         .await,
         ErrorStage::Embedding,
@@ -264,14 +282,20 @@ pub async fn upsert(
     batch: VectorPointBatch,
 ) -> Result<VectorStoreWriteResult, ApiError> {
     let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
+        record_provider_heartbeat(runtime, &context, None).await;
         return runtime.vector_store.upsert(batch).await;
     };
     let store = Arc::clone(&runtime.vector_store);
+    let request = context.request(1);
     map_reserved(
         call_reserved::<VectorLane, _, ApiError, _, _>(
             scheduler,
-            context.request(1),
-            move |_lease| async move { store.upsert(batch).await },
+            request,
+            move |lease| async move {
+                let snapshot = lease.snapshot(context.priority, 1);
+                record_provider_heartbeat(runtime, &context, Some(snapshot)).await;
+                store.upsert(batch).await
+            },
         )
         .await,
         ErrorStage::Upserting,
@@ -417,6 +441,42 @@ pub async fn put_artifact_bytes(
     request: ArtifactBytesWriteRequest,
 ) -> Result<ArtifactHandle, ApiError> {
     runtime.artifact_store.put_bytes(request).await
+}
+
+async fn record_provider_heartbeat(
+    runtime: &TargetLocalSourceRuntime,
+    context: &ProviderCallContext,
+    reservation: Option<ProviderReservationSnapshot>,
+) {
+    let (Some(phase), Some(counts)) = (context.phase, context.counts.clone()) else {
+        return;
+    };
+    let now = Timestamp::from(chrono::Utc::now());
+    if let Err(error) = runtime
+        .jobs
+        .heartbeat(JobHeartbeat {
+            job_id: context.job_id,
+            attempt: context.attempt,
+            worker_id: Some("source-pipeline".to_string()),
+            phase,
+            status: LifecycleStatus::Running,
+            stage_id: context.stage_id,
+            heartbeat_at: now.clone(),
+            sequence: 0,
+            last_progress_at: Some(now),
+            last_event_sequence: None,
+            counts: Some(counts),
+            provider_reservations: reservation.into_iter().collect(),
+        })
+        .await
+    {
+        tracing::warn!(
+            job_id = %context.job_id.0,
+            phase = ?phase,
+            error = %error,
+            "failed to persist provider progress heartbeat"
+        );
+    }
 }
 
 fn map_reserved<T>(

@@ -86,10 +86,14 @@ impl ProgressCoordinator {
         counts: StageCounts,
         message: &str,
     ) {
-        let counts = self.persist(phase, counts, message).await;
-        emitter
-            .running_with_counts(phase, message, Some(counts))
-            .await;
+        let (counts, persisted) = self.persist(phase, counts, message).await;
+        if persisted {
+            emitter
+                .running_with_counts(phase, message, Some(counts))
+                .await;
+        } else {
+            emitter.running(phase, message).await;
+        }
     }
 
     /// Persist a progress checkpoint without emitting a duplicate source event.
@@ -135,7 +139,7 @@ impl ProgressCoordinator {
         phase: PipelinePhase,
         counts: StageCounts,
         message: &str,
-    ) -> StageCounts {
+    ) -> (StageCounts, bool) {
         let counts = {
             let mut state = self.state.lock().await;
             normalize_phase_counts(&mut state.phase_counts, phase, counts)
@@ -158,20 +162,24 @@ impl ProgressCoordinator {
             message: Some(message.to_string()),
             error: None,
         };
-        if let Err(error) = self.writer.update(update).await {
-            tracing::warn!(
-                job_id = %self.job_id.0,
-                source_id = %self.source_id.0,
-                phase = ?phase,
-                adapter = %self.adapter,
-                items_done = counts.items_done,
-                documents_done = counts.documents_done,
-                chunks_done = counts.chunks_done,
-                error = %error,
-                "failed to persist source progress"
-            );
-        }
-        counts
+        let persisted = match self.writer.update(update).await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(
+                    job_id = %self.job_id.0,
+                    source_id = %self.source_id.0,
+                    phase = ?phase,
+                    adapter = %self.adapter,
+                    items_done = counts.items_done,
+                    documents_done = counts.documents_done,
+                    chunks_done = counts.chunks_done,
+                    error = %error,
+                    "failed to persist source progress"
+                );
+                false
+            }
+        };
+        (counts, persisted)
     }
 }
 
@@ -274,16 +282,23 @@ impl AcquisitionProgressSink for AcquisitionBatchProgress<'_> {
 }
 
 /// Generation-global downstream counters accumulated across bounded batches.
+///
+/// A phase total remains `None` while later bounded batches can still expand
+/// it. The runner marks each coordinate final exactly once, after which the
+/// known denominator is stable for every subsequent snapshot in that phase.
 #[derive(Debug, Default)]
 pub(super) struct PipelineProgress {
     documents_total: u64,
     documents_prepared: u64,
+    documents_final: bool,
     chunks_total: u64,
     chunks_batched: u64,
     chunks_embedded: u64,
+    chunks_final: bool,
     vectors_total: u64,
     vectors_built: u64,
     vectors_upserted: u64,
+    vectors_final: bool,
 }
 
 impl PipelineProgress {
@@ -291,26 +306,36 @@ impl PipelineProgress {
         self.documents_total = self.documents_total.saturating_add(documents);
     }
 
+    pub(super) fn finish_documents(&mut self) {
+        self.documents_final = true;
+    }
+
     pub(super) fn preparing_counts(&self) -> StageCounts {
         stage_counts(
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            (self.chunks_total > 0).then_some(self.chunks_total),
+            self.chunks_total(),
             self.chunks_total,
         )
     }
 
-    pub(super) fn prepared(&mut self, documents: u64, chunks: u64) -> StageCounts {
+    pub(super) fn prepared(
+        &mut self,
+        documents: u64,
+        chunks: u64,
+        chunks_final: bool,
+    ) -> StageCounts {
         self.documents_prepared = self.documents_prepared.saturating_add(documents);
         self.chunks_total = self.chunks_total.saturating_add(chunks);
+        self.chunks_final |= chunks_final;
         stage_counts(
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.chunks_total),
+            self.chunks_total(),
             self.chunks_total,
         )
     }
@@ -318,22 +343,22 @@ impl PipelineProgress {
     pub(super) fn batched(&mut self, chunks: u64) -> StageCounts {
         self.chunks_batched = self.chunks_batched.saturating_add(chunks);
         stage_counts(
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.chunks_total),
+            self.chunks_total(),
             self.chunks_batched,
         )
     }
 
     pub(super) fn embedding_counts(&self) -> StageCounts {
         stage_counts(
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.chunks_total),
+            self.chunks_total(),
             self.chunks_embedded,
         )
     }
@@ -343,9 +368,10 @@ impl PipelineProgress {
         self.embedding_counts()
     }
 
-    pub(super) fn vectorized(&mut self, points: u64) -> StageCounts {
+    pub(super) fn vectorized(&mut self, points: u64, vectors_final: bool) -> StageCounts {
         self.vectors_total = self.vectors_total.saturating_add(points);
         self.vectors_built = self.vectors_built.saturating_add(points);
+        self.vectors_final |= vectors_final;
         self.vector_counts(self.vectors_built)
     }
 
@@ -358,13 +384,21 @@ impl PipelineProgress {
         self.upserting_counts()
     }
 
+    fn documents_total(&self) -> Option<u64> {
+        self.documents_final.then_some(self.documents_total)
+    }
+
+    fn chunks_total(&self) -> Option<u64> {
+        self.chunks_final.then_some(self.chunks_total)
+    }
+
     fn vector_counts(&self, done: u64) -> StageCounts {
         stage_counts(
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.documents_total),
+            self.documents_total(),
             self.documents_prepared,
-            Some(self.vectors_total),
+            self.vectors_final.then_some(self.vectors_total),
             done,
         )
     }
@@ -415,11 +449,7 @@ fn normalize_phase_counts(
 }
 
 fn max_total(previous: Option<u64>, current: Option<u64>) -> Option<u64> {
-    match (previous, current) {
-        (Some(previous), Some(current)) => Some(previous.max(current)),
-        (Some(previous), None) => Some(previous),
-        (None, current) => current,
-    }
+    previous.or(current)
 }
 
 fn clamp_done(done: u64, total: Option<u64>) -> u64 {
