@@ -101,6 +101,7 @@ jobs:
           while :; do
             gh_stderr="$(mktemp)"
             if ! runs_json=$(gh run list \
+              --repo "${{ github.repository }}" \
               --workflow=ci.yml \
               --commit "$sha" \
               --branch main \
