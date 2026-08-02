@@ -319,5 +319,4 @@ pub enum LifecycleStatus {
     Skipped,
 }
 
-mod runtime;
-pub use runtime::*;
+include!("enums/runtime.rs");

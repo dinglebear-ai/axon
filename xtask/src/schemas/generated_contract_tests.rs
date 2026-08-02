@@ -87,6 +87,9 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
                 == 64
     }));
     for path in [
+        "crates/axon-api/src/source/enums.rs",
+        "crates/axon-api/src/source/enums/pipeline_phase.rs",
+        "crates/axon-api/src/source/enums/runtime.rs",
         "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/boundary.rs",
         "crates/axon-api/src/source/graph.rs",
