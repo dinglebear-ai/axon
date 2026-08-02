@@ -46,17 +46,21 @@
 //! own embedded `manifest_item`, never positional correspondence.
 
 use axon_api::source::*;
-use axon_core::logging::{log_info, log_warn};
+use axon_core::logging::log_warn;
 use futures_util::stream::{self, StreamExt};
 use serde_json::Value;
 
 use crate::adapter::Result;
 use crate::boundary::{FetchProvider, RenderProvider};
 
+use super::fetch::acquire_via_fetch;
+#[cfg(test)]
+use super::fetch::build_fetch_request;
 use super::options::{
     auto_dispatch_skip, automation_script_ref, cache_policy, effective_render_mode, headers,
     min_markdown_chars, render_metadata, user_agent, verticals_enabled, warc_path,
 };
+use super::render::{acquire_via_auto_switch, acquired_from_rendered, build_render_request};
 use super::vertical::{VerticalAcquire, VerticalOptions};
 
 /// Upper bound on in-flight `acquire_item` calls for [`acquire_concurrent`].
@@ -92,9 +96,9 @@ pub(super) struct AcquireOutcome {
 /// successful `item` (e.g. the `AutoSwitch` Chrome re-render failing, where
 /// the HTTP render is kept as `item` and `warning` explains why).
 #[derive(Debug)]
-struct AcquiredItem {
-    item: Option<AcquiredSourceItem>,
-    warnings: Vec<SourceWarning>,
+pub(super) struct AcquiredItem {
+    pub(super) item: Option<AcquiredSourceItem>,
+    pub(super) warnings: Vec<SourceWarning>,
 }
 
 pub(super) async fn acquire_changed_items(
@@ -311,286 +315,6 @@ async fn acquire_item(
 /// `Http`-mode acquisition. A conditional `304 Not Modified` returns a
 /// sentinel acquired item so the services layer can reuse the previous
 /// committed representation or refetch before publish.
-pub(crate) async fn acquire_via_fetch(
-    fetch: &dyn FetchProvider,
-    item: &ManifestItem,
-    cache_policy: CachePolicy,
-    headers: &[RedactedHeader],
-) -> Result<Option<AcquiredSourceItem>> {
-    let prior_etag = if cache_policy == CachePolicy::Revalidate {
-        item.metadata.get("web_prior_etag").and_then(Value::as_str)
-    } else {
-        None
-    };
-    let sent_prior_validator = prior_etag.is_some();
-    let fetched = fetch
-        .fetch(build_fetch_request(item, prior_etag, headers))
-        .await?;
-    if fetched.status == 304 {
-        if !sent_prior_validator {
-            return Err(ApiError::new(
-                "web.fetch.invalid_304_without_validator",
-                ErrorStage::Fetching,
-                format!(
-                    "received 304 Not Modified for {} without sending a prior validator",
-                    item.canonical_uri
-                ),
-            )
-            .with_source_id(item.source_id.0.clone())
-            .with_context("uri", item.canonical_uri.clone())
-            .with_context("cache_policy", format!("{cache_policy:?}").to_lowercase())
-            .with_context(
-                "has_web_prior_etag",
-                if item.metadata.contains_key("web_prior_etag") {
-                    "true"
-                } else {
-                    "false"
-                },
-            ));
-        }
-        let mut metadata = MetadataMap::new();
-        metadata.insert(
-            "web_fetch_method".to_string(),
-            serde_json::json!("http_fetch_reuse"),
-        );
-        metadata.insert("web_render_mode".to_string(), serde_json::json!("http"));
-        metadata.insert("web_status".to_string(), serde_json::json!(304));
-        metadata.insert("web_reuse_required".to_string(), serde_json::json!(true));
-        if let Some(etag) = prior_etag {
-            metadata.insert("web_etag".to_string(), serde_json::json!(etag));
-        }
-        log_info(&format!(
-            "web_etag_conditional: 304 Not Modified for {} — reusing prior committed content if available",
-            item.canonical_uri,
-        ));
-        return Ok(Some(AcquiredSourceItem {
-            manifest_item: item.clone(),
-            fetch_status: LifecycleStatus::Completed,
-            content_ref: ContentRef::External {
-                uri: format!("reuse://{}", item.source_item_key.0),
-                integrity: item.content_hash.clone(),
-            },
-            raw_artifact_id: None,
-            headers: fetched.headers,
-            fetched_at: fetched.fetched_at,
-            metadata,
-        }));
-    }
-
-    let content_kind = content_kind_for_fetch(&fetched);
-    let mut manifest_item = item.clone();
-    manifest_item.content_kind = Some(content_kind);
-
-    let mut metadata = MetadataMap::new();
-    metadata.insert(
-        "web_fetch_method".to_string(),
-        serde_json::json!("http_fetch"),
-    );
-    metadata.insert("web_render_mode".to_string(), serde_json::json!("http"));
-    metadata.insert("web_status".to_string(), serde_json::json!(fetched.status));
-    // Carry the etag forward on the item-level metadata (already the value
-    // that flows into the persisted `SourceDocument.metadata` via
-    // `web::metadata::web_source_document`'s merge) so a future generation
-    // could attempt a conditional request — once the ledger/discover side
-    // copies this key onto the next generation's `ManifestItem.metadata`.
-    if let Some(etag) = fetched.etag.as_deref().or(prior_etag) {
-        metadata.insert("web_etag".to_string(), serde_json::json!(etag));
-    }
-
-    Ok(Some(AcquiredSourceItem {
-        manifest_item,
-        fetch_status: LifecycleStatus::Completed,
-        content_ref: fetched.content,
-        raw_artifact_id: None,
-        headers: fetched.headers,
-        fetched_at: fetched.fetched_at,
-        metadata,
-    }))
-}
-
-/// `AutoSwitch`: render in `Http` mode (the "fetch" step), and if the
-/// resulting markdown is thin, re-render in `Chrome` mode. A Chrome failure
-/// keeps the original HTTP render rather than failing the whole item, but is
-/// no longer silent: it's logged and returned as a [`SourceWarning`] so
-/// operators see the degradation to thin HTTP (PR #418 review).
-async fn acquire_via_auto_switch(
-    render: &dyn RenderProvider,
-    item: &ManifestItem,
-    min_markdown_chars: usize,
-    automation_script: Option<ArtifactRef>,
-    render_metadata: MetadataMap,
-    mut warnings: Vec<SourceWarning>,
-) -> Result<AcquiredItem> {
-    let first = render
-        .render(build_render_request(
-            item,
-            RenderMode::Http,
-            automation_script.clone(),
-            render_metadata.clone(),
-        ))
-        .await?;
-    if first.markdown.chars().count() >= min_markdown_chars {
-        return Ok(AcquiredItem {
-            item: Some(acquired_from_rendered(item, first, "auto_switch_http")),
-            warnings,
-        });
-    }
-    match render
-        .render(build_render_request(
-            item,
-            RenderMode::Chrome,
-            automation_script,
-            render_metadata,
-        ))
-        .await
-    {
-        Ok(rendered) => Ok(AcquiredItem {
-            item: Some(acquired_from_rendered(item, rendered, "auto_switch_chrome")),
-            warnings,
-        }),
-        Err(err) => {
-            log_warn(&format!(
-                "auto_switch: chrome re-render failed for {} — keeping HTTP result: {err}",
-                item.canonical_uri
-            ));
-            warnings.push(SourceWarning {
-                code: "web.auto_switch.chrome_fallback_failed".to_string(),
-                severity: Severity::Warning,
-                message: format!(
-                    "chrome re-render failed for {} — kept HTTP result: {err}",
-                    item.canonical_uri
-                ),
-                source_item_key: Some(item.source_item_key.clone()),
-                retryable: err.retryable,
-            });
-            Ok(AcquiredItem {
-                item: Some(acquired_from_rendered(
-                    item,
-                    first,
-                    "auto_switch_http_fallback",
-                )),
-                warnings,
-            })
-        }
-    }
-}
-
-/// `prior_etag`, when present, is sent as `If-None-Match` — the caller
-/// decides whether one applies (gated by `etag_conditional` and whether the
-/// incoming item carries a `web_prior_etag`; see [`acquire_via_fetch`]).
-fn build_fetch_request(
-    item: &ManifestItem,
-    prior_etag: Option<&str>,
-    headers: &[RedactedHeader],
-) -> FetchRequest {
-    let mut headers = headers.to_vec();
-    if let Some(etag) = prior_etag {
-        headers.push(RedactedHeader {
-            name: "If-None-Match".to_string(),
-            value: etag.to_string(),
-            redacted: false,
-        });
-    }
-    FetchRequest {
-        uri: item.canonical_uri.clone(),
-        method: "GET".to_string(),
-        headers: RedactedHeaders { headers },
-        body: None,
-        timeout_ms: None,
-        max_bytes: None,
-        credential_refs: Vec::new(),
-        metadata: MetadataMap::new(),
-    }
-}
-
-fn build_render_request(
-    item: &ManifestItem,
-    mode: RenderMode,
-    automation_script: Option<ArtifactRef>,
-    metadata: MetadataMap,
-) -> RenderRequest {
-    RenderRequest {
-        uri: item.canonical_uri.clone(),
-        mode,
-        timeout_ms: None,
-        wait_ms: None,
-        automation_script,
-        credential_refs: Vec::new(),
-        metadata,
-    }
-}
-
-fn acquired_from_rendered(
-    item: &ManifestItem,
-    rendered: RenderedResource,
-    method_tag: &'static str,
-) -> AcquiredSourceItem {
-    let mut manifest_item = item.clone();
-    manifest_item.content_kind = Some(ContentKind::Markdown);
-
-    let mut metadata = MetadataMap::new();
-    metadata.insert(
-        "web_fetch_method".to_string(),
-        serde_json::json!(method_tag),
-    );
-    metadata.insert(
-        "web_render_mode".to_string(),
-        serde_json::json!(render_mode_tag(rendered.render_mode)),
-    );
-
-    AcquiredSourceItem {
-        manifest_item,
-        fetch_status: LifecycleStatus::Completed,
-        content_ref: ContentRef::InlineText {
-            text: rendered.markdown,
-        },
-        raw_artifact_id: None,
-        headers: RedactedHeaders {
-            headers: Vec::new(),
-        },
-        fetched_at: rendered.captured_at,
-        metadata,
-    }
-}
-
-fn render_mode_tag(mode: RenderMode) -> &'static str {
-    match mode {
-        RenderMode::Http => "http",
-        RenderMode::Chrome => "chrome",
-        RenderMode::AutoSwitch => "auto_switch",
-    }
-}
-
-/// Decide `ContentKind` from a raw [`FetchedResource`]. Binary payloads get
-/// `BinaryMetadata`; text payloads are classified from `Content-Type`,
-/// defaulting to `Html` (the common case for a generic web fetch) so
-/// `axon-document`'s `HtmlArticle` chunking profile handles the readability
-/// extraction that used to happen implicitly via the crawl's HTML->markdown
-/// transform.
-fn content_kind_for_fetch(fetched: &FetchedResource) -> ContentKind {
-    if matches!(fetched.content, ContentRef::InlineBytes { .. }) {
-        return ContentKind::BinaryMetadata;
-    }
-    let content_type = fetched
-        .headers
-        .headers
-        .iter()
-        .find(|header| header.name.eq_ignore_ascii_case("content-type"))
-        .map(|header| header.value.to_ascii_lowercase())
-        .unwrap_or_default();
-    if content_type.contains("json") {
-        ContentKind::Json
-    } else if content_type.contains("xml") {
-        ContentKind::Xml
-    } else if content_type.contains("markdown") {
-        ContentKind::Markdown
-    } else if content_type.contains("text/plain") {
-        ContentKind::PlainText
-    } else {
-        ContentKind::Html
-    }
-}
-
 #[cfg(test)]
 #[path = "acquire_tests.rs"]
 mod tests;

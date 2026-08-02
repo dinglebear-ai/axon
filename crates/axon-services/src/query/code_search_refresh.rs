@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use axon_api::source::{LifecycleStatus, SourceGenerationId, SourceId, SourceRequest, SourceScope};
 
 use crate::context::ServiceContext;
-use crate::local_source::local_source_id;
 use crate::source::index_source;
+use crate::source::local_identity::local_source_id;
 use crate::types::{CodeSearchCaller, CodeSearchFreshness};
 
 use super::{

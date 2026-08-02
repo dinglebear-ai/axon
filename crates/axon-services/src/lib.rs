@@ -34,11 +34,6 @@ pub mod feed_target;
 pub mod graph;
 pub use feed_target::{is_feed_target, normalize_feed_target};
 pub mod jobs;
-pub(crate) mod local_source;
-pub use local_source::{
-    LocalSourceIndexInput, LocalSourceIndexOutput, LocalSourceSelectionPolicy,
-    index_local_source_with_job,
-};
 pub mod map;
 pub mod memory;
 pub mod migrate;
@@ -47,6 +42,7 @@ pub mod query;
 pub mod reddit_target;
 pub use reddit_target::is_reddit_target;
 pub mod prune;
+pub(crate) mod reserved_call;
 pub mod reset;
 pub use reset::reset;
 pub mod runtime;
@@ -70,10 +66,6 @@ pub mod transport;
 pub mod types;
 pub mod uploads;
 pub mod watch;
-pub(crate) mod web_source;
-pub use web_source::{
-    WebSourceIndexInput, WebSourceIndexOutput, index_web_source, index_web_source_with_job,
-};
 pub mod youtube_target;
 
 pub use youtube_target::is_youtube_target;
@@ -90,6 +82,9 @@ mod source_pipeline_differential_tests;
 #[cfg(test)]
 #[path = "source_web_job_identity_tests.rs"]
 mod source_web_job_identity_tests;
+#[cfg(test)]
+#[path = "source_web_reuse_tests.rs"]
+mod source_web_reuse_tests;
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod sync_tests;

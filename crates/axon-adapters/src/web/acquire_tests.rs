@@ -257,16 +257,33 @@ async fn chrome_mode_threads_automation_script_into_render_request() {
 
 #[test]
 fn build_fetch_request_omits_conditional_header_without_prior_etag() {
-    let req = build_fetch_request(&item("https://example.com/a"), None, &[]);
+    let req = build_fetch_request(&item("https://example.com/a"), None, None, &[]);
     assert!(req.headers.headers.is_empty());
 }
 
 #[test]
 fn build_fetch_request_adds_if_none_match_with_prior_etag() {
-    let req = build_fetch_request(&item("https://example.com/a"), Some("\"abc\""), &[]);
+    let req = build_fetch_request(&item("https://example.com/a"), Some("\"abc\""), None, &[]);
     assert_eq!(req.headers.headers.len(), 1);
     assert_eq!(req.headers.headers[0].name, "If-None-Match");
     assert_eq!(req.headers.headers[0].value, "\"abc\"");
+    assert!(!req.headers.headers[0].redacted);
+}
+
+#[test]
+fn build_fetch_request_adds_if_modified_since_with_prior_last_modified() {
+    let req = build_fetch_request(
+        &item("https://example.com/a"),
+        None,
+        Some("Wed, 21 Oct 2026 07:28:00 GMT"),
+        &[],
+    );
+    assert_eq!(req.headers.headers.len(), 1);
+    assert_eq!(req.headers.headers[0].name, "If-Modified-Since");
+    assert_eq!(
+        req.headers.headers[0].value,
+        "Wed, 21 Oct 2026 07:28:00 GMT"
+    );
     assert!(!req.headers.headers[0].redacted);
 }
 
@@ -275,6 +292,7 @@ fn build_fetch_request_preserves_custom_headers_with_prior_etag() {
     let req = build_fetch_request(
         &item("https://example.com/a"),
         Some("\"abc\""),
+        None,
         &[RedactedHeader {
             name: "X-Test".to_string(),
             value: "ok".to_string(),

@@ -29,6 +29,7 @@ enum FakeLedgerMode {
     Success,
     PublishFailure,
     HeartbeatLost,
+    ReleaseFailure,
 }
 
 #[derive(Debug, Default)]
@@ -56,6 +57,11 @@ impl FakeLedgerStore {
 
     pub fn with_heartbeat_lost(mut self) -> Self {
         self.mode = FakeLedgerMode::HeartbeatLost;
+        self
+    }
+
+    pub fn with_release_lease_failure(mut self) -> Self {
+        self.mode = FakeLedgerMode::ReleaseFailure;
         self
     }
 
@@ -356,6 +362,13 @@ impl LedgerStore for FakeLedgerStore {
     }
 
     async fn release_lease(&self, lease_id: LeaseId, owner_id: String) -> Result<()> {
+        if self.mode == FakeLedgerMode::ReleaseFailure {
+            return Err(ApiError::new(
+                "source.ledger.release_failed",
+                ErrorStage::Cleaning,
+                "injected lease release failure",
+            ));
+        }
         lease::release_lease(&self.state, lease_id, owner_id).await
     }
 

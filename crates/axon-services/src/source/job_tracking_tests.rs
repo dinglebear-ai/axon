@@ -389,12 +389,9 @@ async fn completed_source_job(store: &Arc<dyn JobStore>) -> JobId {
             attempt: 1,
             priority: axon_api::source::JobPriority::Normal,
             idempotency_key: None,
-            stage_plan: vec![axon_api::source::JobStagePlan {
-                phase: PipelinePhase::Fetching,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: None,
-            }],
+            stage_plan: vec![axon_api::source::JobStagePlan::required(
+                PipelinePhase::Fetching,
+            )],
             request: None,
             auth_snapshot: AuthSnapshot::trusted_system("test"),
             config_snapshot_id: None,

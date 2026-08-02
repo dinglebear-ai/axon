@@ -10,7 +10,17 @@ use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
 use std::future::Future;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
+
+const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_MIN: Duration = Duration::from_millis(20);
+const POLL_MAX: Duration = Duration::from_millis(250);
+const AGING_QUANTUM_SECS: i64 = 30;
+#[cfg(not(test))]
+const RENEW_INTERVAL: Duration = Duration::from_secs(20);
+#[cfg(test)]
+const RENEW_INTERVAL: Duration = Duration::from_millis(20);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderCapacityDomain {
@@ -44,6 +54,7 @@ pub struct ReservationGrant {
     pub units: u32,
 }
 
+mod grant;
 mod reconcile;
 pub use reconcile::Reconciliation;
 
@@ -59,6 +70,8 @@ pub enum SchedulerError {
     StaleFence,
     #[error("scheduler reservation is queued")]
     Queued,
+    #[error("scheduler reservation wait deadline expired")]
+    WaitTimeout,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -82,6 +95,46 @@ pub struct ActiveReservationLease<K> {
     reservation_id: String,
     fence: String,
     _kind: std::marker::PhantomData<fn() -> K>,
+}
+
+struct WaitingReservationGuard {
+    scheduler: ProviderScheduler,
+    reservation_id: String,
+    fence: String,
+    armed: bool,
+}
+
+impl WaitingReservationGuard {
+    fn new(scheduler: ProviderScheduler, reservation_id: String, fence: String) -> Self {
+        Self {
+            scheduler,
+            reservation_id,
+            fence,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for WaitingReservationGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let scheduler = self.scheduler.clone();
+        let reservation_id = self.reservation_id.clone();
+        let fence = self.fence.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = scheduler
+                    .cancel_waiting(&reservation_id, &fence, "waiter_dropped")
+                    .await;
+            });
+        }
+    }
 }
 
 impl<K> Clone for ActiveReservationLease<K> {
@@ -132,10 +185,7 @@ where
     Fut: Future<Output = Result<T, E>>,
 {
     let fence = request.fence.clone();
-    let grant = scheduler.reserve(request).await?;
-    if !grant.granted {
-        return Err(ReservedCallError::Scheduler(SchedulerError::Queued));
-    }
+    let grant = scheduler.reserve_wait(request).await?;
     let lease = ActiveReservationLease {
         scheduler: scheduler.clone(),
         reservation_id: grant.reservation_id,
@@ -145,11 +195,25 @@ where
     scheduler
         .activate(&lease.reservation_id, &lease.fence)
         .await?;
-    let value = match operation(lease.clone()).await {
-        Ok(value) => value,
-        Err(error) => {
-            lease.fail().await?;
-            return Err(ReservedCallError::Provider(error));
+    let operation = operation(lease.clone());
+    tokio::pin!(operation);
+    let mut renewal = tokio::time::interval(RENEW_INTERVAL);
+    renewal.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    renewal.tick().await;
+    let value = loop {
+        tokio::select! {
+            result = &mut operation => {
+                break match result {
+                    Ok(value) => value,
+                    Err(error) => {
+                        lease.fail().await?;
+                        return Err(ReservedCallError::Provider(error));
+                    }
+                };
+            }
+            _ = renewal.tick() => {
+                lease.renew().await?;
+            }
         }
     };
     lease.complete().await?;
@@ -201,164 +265,78 @@ impl ProviderScheduler {
         }
     }
 
-    async fn reserve_locked(
+    pub async fn reserve_wait(
         &self,
-        connection: &mut PoolConnection<Sqlite>,
         request: ReservationRequest,
     ) -> Result<ReservationGrant, SchedulerError> {
-        let domain = domain_name(self.domain.kind)?;
-        self.ensure_capacity(connection, &domain, &request).await?;
-        let id = self.insert_queued(connection, &domain, &request).await?;
-
-        let candidate: Option<(String, i64, String)> = sqlx::query_as(
-            "SELECT reservation_id, requested_units, effective_priority
-             FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
-             ORDER BY CASE effective_priority
-                 WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
-                 WHEN 'background' THEN 3 ELSE 4 END,
-                 enqueue_sequence, reservation_id LIMIT 1",
-        )
-        .bind(&domain)
-        .bind(&self.domain.instance_id)
-        .fetch_optional(&mut **connection)
-        .await?;
-        let Some((candidate_id, candidate_units, candidate_priority)) = candidate else {
-            return Ok(ReservationGrant {
-                reservation_id: id,
-                granted: false,
-                units: 0,
-            });
-        };
-        let active: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(granted_units), 0) FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ? AND status IN ('granted','active')",
-        )
-        .bind(&domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        let interactive_queued: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
-               AND effective_priority = 'interactive'",
-        )
-        .bind(&domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        let limit = if candidate_priority != "interactive" && interactive_queued > 0 {
-            self.config
-                .capacity
-                .saturating_sub(self.config.interactive_reserve)
-        } else {
-            self.config.capacity
-        };
-        if active + candidate_units <= i64::from(limit) {
-            sqlx::query(
-                "UPDATE provider_reservations SET status = 'granted', granted_units = ?,
-                 acquired_at = datetime('now'),
-                 grant_deadline = datetime('now', '+30 seconds'),
-                 expires_at = datetime('now', '+300 seconds'),
-                 lease_owner = ?, authority_id = ?, updated_at = datetime('now')
-                 WHERE reservation_id = ? AND status = 'queued'",
-            )
-            .bind(candidate_units)
-            .bind(&self.domain.authority_id)
-            .bind(&self.domain.authority_id)
-            .bind(&candidate_id)
-            .execute(&mut **connection)
-            .await?;
+        let fence = request.fence.clone();
+        let grant = self.reserve(request).await?;
+        if grant.granted {
+            return Ok(grant);
         }
-        let granted = candidate_id == id && active + candidate_units <= i64::from(limit);
-        Ok(ReservationGrant {
-            reservation_id: id,
-            granted,
-            units: if granted { candidate_units as u32 } else { 0 },
-        })
+        let mut guard =
+            WaitingReservationGuard::new(self.clone(), grant.reservation_id.clone(), fence);
+        let result = self.wait_for_grant(grant.reservation_id).await;
+        if matches!(
+            &result,
+            Ok(_) | Err(SchedulerError::WaitTimeout | SchedulerError::StaleFence)
+        ) {
+            guard.disarm();
+        }
+        result
     }
 
-    async fn ensure_capacity(
+    async fn wait_for_grant(
         &self,
-        connection: &mut PoolConnection<Sqlite>,
-        domain: &str,
-        request: &ReservationRequest,
+        reservation_id: String,
+    ) -> Result<ReservationGrant, SchedulerError> {
+        let started = Instant::now();
+        let mut poll = 0_u32;
+        loop {
+            let grant = self.try_grant_existing(&reservation_id).await?;
+            if grant.granted {
+                return Ok(grant);
+            }
+            if started.elapsed() >= WAIT_TIMEOUT {
+                let changed = sqlx::query(
+                    "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
+                     terminal_reason = 'queue_timeout', updated_at = datetime('now')
+                     WHERE reservation_id = ? AND authority_id = ? AND status = 'queued'",
+                )
+                .bind(&reservation_id)
+                .bind(&self.domain.authority_id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
+                if changed > 0 {
+                    return Err(SchedulerError::WaitTimeout);
+                }
+                continue;
+            }
+            tokio::time::sleep(poll_delay(&reservation_id, poll)).await;
+            poll = poll.saturating_add(1);
+        }
+    }
+
+    async fn cancel_waiting(
+        &self,
+        reservation_id: &str,
+        fence: &str,
+        reason: &str,
     ) -> Result<(), SchedulerError> {
-        let entries: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM provider_reservations WHERE capacity_domain = ?
-             AND instance_id = ? AND status IN ('queued','granted','active')",
-        )
-        .bind(domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        let job_entries: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM provider_reservations WHERE job_id = ?
-             AND status IN ('queued','granted','active')",
-        )
-        .bind(request.job_id.0.to_string())
-        .fetch_one(&mut **connection)
-        .await?;
-        let requested_units: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(requested_units), 0) FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ? AND status IN ('queued','granted','active')",
-        )
-        .bind(domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        if entries >= i64::from(self.config.max_entries)
-            || job_entries >= i64::from(self.config.max_entries)
-            || requested_units + i64::from(request.units) > i64::from(self.config.max_units)
-        {
-            return Err(SchedulerError::QueueFull);
-        }
-        Ok(())
-    }
-
-    async fn insert_queued(
-        &self,
-        connection: &mut PoolConnection<Sqlite>,
-        domain: &str,
-        request: &ReservationRequest,
-    ) -> Result<String, SchedulerError> {
-        let id = format!("sched_{}", Uuid::new_v4());
-        let sequence: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(enqueue_sequence), 0) + 1 FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ?",
-        )
-        .bind(domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        let priority = enum_name(request.priority)?;
-        let kind = enum_name(self.domain.kind)?;
         sqlx::query(
-            "INSERT INTO provider_reservations
-             (reservation_id, job_id, stage_id, provider_kind, provider_id, priority,
-              requested_units, granted_units, status, updated_at, capacity_domain,
-              instance_id, authority_id, enqueue_sequence, requested_priority,
-              effective_priority, attempt, fence)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'queued', datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)",
+            "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
+             terminal_reason = ?, updated_at = datetime('now')
+             WHERE reservation_id = ? AND fence = ? AND authority_id = ?
+               AND status IN ('queued','granted')",
         )
-        .bind(&id)
-        .bind(request.job_id.0.to_string())
-        .bind(request.stage_id.as_ref().map(|stage| stage.0.to_string()))
-        .bind(kind)
-        .bind(&self.domain.instance_id)
-        .bind(&priority)
-        .bind(i64::from(request.units))
-        .bind(domain)
-        .bind(&self.domain.instance_id)
+        .bind(reason)
+        .bind(reservation_id)
+        .bind(fence)
         .bind(&self.domain.authority_id)
-        .bind(sequence)
-        .bind(&priority)
-        .bind(&priority)
-        .bind(i64::from(request.attempt))
-        .bind(&request.fence)
-        .execute(&mut **connection)
+        .execute(&self.pool)
         .await?;
-        Ok(id)
+        Ok(())
     }
 
     pub async fn complete(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
@@ -400,7 +378,8 @@ impl ProviderScheduler {
 
     async fn renew(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
         let changed = sqlx::query(
-            "UPDATE provider_reservations SET renewed_at = datetime('now'), updated_at = datetime('now')
+            "UPDATE provider_reservations SET renewed_at = datetime('now'),
+             expires_at = datetime('now', '+300 seconds'), updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'active'",
         )
         .bind(reservation_id)
@@ -450,6 +429,16 @@ impl ProviderScheduler {
         }
         Ok(())
     }
+}
+
+fn poll_delay(reservation_id: &str, poll: u32) -> Duration {
+    let growth = POLL_MIN
+        .saturating_mul(1_u32.checked_shl(poll.min(4)).unwrap_or(u32::MAX))
+        .min(POLL_MAX);
+    let jitter = reservation_id.bytes().fold(u64::from(poll), |hash, byte| {
+        hash.wrapping_mul(31).wrapping_add(u64::from(byte))
+    }) % 17;
+    growth.saturating_add(Duration::from_millis(jitter))
 }
 
 async fn begin_immediate(connection: &mut PoolConnection<Sqlite>) -> Result<(), SqlxError> {

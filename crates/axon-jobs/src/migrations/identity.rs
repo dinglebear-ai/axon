@@ -207,7 +207,7 @@ pub(super) async fn validate_before_mutation(
     if table_count == 0 {
         return Ok(true);
     }
-    validate_canonical(connection, sets).await?;
+    validate_upgrade_source(connection, sets).await?;
     Ok(false)
 }
 
@@ -223,9 +223,22 @@ pub(super) async fn validate_canonical(
     sets: &[MigrationSet],
 ) -> Result<(), sqlx::Error> {
     validate_epoch(connection).await?;
+    validate_receipt_shape(connection).await?;
     validate_receipts(connection, sets).await?;
     validate_tables(connection).await?;
     validate_foreign_keys(connection).await?;
+    Ok(())
+}
+
+async fn validate_upgrade_source(
+    connection: &mut SqliteConnection,
+    sets: &[MigrationSet],
+) -> Result<(), sqlx::Error> {
+    validate_epoch(connection).await?;
+    validate_receipt_shape(connection).await?;
+    validate_receipt_prefix(connection, sets).await?;
+    validate_table_subset(connection).await?;
+    validate_foreign_key_subset(connection).await?;
     Ok(())
 }
 
@@ -239,10 +252,7 @@ async fn validate_epoch(connection: &mut SqliteConnection) -> Result<(), sqlx::E
     )
 }
 
-async fn validate_receipts(
-    connection: &mut SqliteConnection,
-    sets: &[MigrationSet],
-) -> Result<(), sqlx::Error> {
+async fn validate_receipt_shape(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {
     let columns = pragma_names(
         connection,
         "PRAGMA table_info('axon_applied_migrations')",
@@ -260,8 +270,70 @@ async fn validate_receipts(
     require(
         columns == expected_columns,
         "migration receipt table shape does not match canonical schema",
-    )?;
+    )
+}
 
+async fn validate_receipt_prefix(
+    connection: &mut SqliteConnection,
+    sets: &[MigrationSet],
+) -> Result<(), sqlx::Error> {
+    let rows = sqlx::query(
+        "SELECT namespace, version, name, checksum, schema_epoch FROM axon_applied_migrations",
+    )
+    .fetch_all(&mut *connection)
+    .await?;
+    for row in rows {
+        let namespace = row.get::<String, _>("namespace");
+        let version = row.get::<i64, _>("version");
+        let name = row.get::<String, _>("name");
+        let checksum = row.get::<String, _>("checksum");
+        let epoch = row.get::<i64, _>("schema_epoch");
+        let Some(set) = sets.iter().find(|set| set.namespace == namespace) else {
+            return require(false, format!("unknown migration namespace {namespace}"));
+        };
+        let Some(migration) = set
+            .migrations
+            .iter()
+            .find(|migration| migration.version == version)
+        else {
+            return require(
+                false,
+                format!("unknown migration receipt {namespace}/{version}"),
+            );
+        };
+        require(
+            name == migration.name
+                && checksum == migration_checksum(migration.sql)
+                && epoch == SCHEMA_EPOCH,
+            format!("migration receipt {namespace}/{version} does not match canonical identity"),
+        )?;
+        let lower_versions = set
+            .migrations
+            .iter()
+            .filter(|candidate| candidate.version < version)
+            .map(|candidate| candidate.version)
+            .collect::<Vec<_>>();
+        for lower in lower_versions {
+            let present: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM axon_applied_migrations WHERE namespace = ? AND version = ?",
+            )
+            .bind(&namespace)
+            .bind(lower)
+            .fetch_one(&mut *connection)
+            .await?;
+            require(
+                present == 1,
+                format!("migration receipt gap before {namespace}/{version}"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+async fn validate_receipts(
+    connection: &mut SqliteConnection,
+    sets: &[MigrationSet],
+) -> Result<(), sqlx::Error> {
     let rows = sqlx::query(
         "SELECT namespace, version, name, checksum, schema_epoch FROM axon_applied_migrations",
     )
@@ -299,38 +371,90 @@ async fn validate_receipts(
     )
 }
 
-async fn validate_tables(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {
-    let actual = pragma_names(
-        connection,
-        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
-        "name",
+pub(super) async fn validate_table_subset(
+    connection: &mut SqliteConnection,
+) -> Result<(), sqlx::Error> {
+    let actual = table_inventory(connection).await?;
+    let canonical = canonical_table_inventory();
+    let unknown = actual.difference(&canonical).cloned().collect::<Vec<_>>();
+    require(
+        unknown.is_empty(),
+        format!("table inventory contains unknown tables: {unknown:?}"),
     )
-    .await?;
-    let expected = CANONICAL_TABLES
-        .iter()
-        .map(|name| (*name).to_string())
-        .collect();
+}
+
+async fn validate_tables(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    let actual = table_inventory(connection).await?;
+    let expected = canonical_table_inventory();
     require(
         actual == expected,
         "table inventory does not match canonical schema",
     )
 }
 
+pub(super) async fn validate_foreign_key_subset(
+    connection: &mut SqliteConnection,
+) -> Result<(), sqlx::Error> {
+    let actual = foreign_key_inventory(connection).await?;
+    let canonical = canonical_foreign_key_inventory();
+    let unknown = actual.difference(&canonical).cloned().collect::<Vec<_>>();
+    require(
+        unknown.is_empty(),
+        format!("foreign-key inventory contains unknown entries: {unknown:?}"),
+    )
+}
+
 async fn validate_foreign_keys(connection: &mut SqliteConnection) -> Result<(), sqlx::Error> {
+    let actual = foreign_key_inventory(connection).await?;
+    let expected = canonical_foreign_key_inventory();
+    require(
+        actual == expected,
+        "foreign-key inventory does not match canonical schema",
+    )
+}
+
+async fn table_inventory(
+    connection: &mut SqliteConnection,
+) -> Result<BTreeSet<String>, sqlx::Error> {
+    pragma_names(
+        connection,
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        "name",
+    )
+    .await
+}
+
+fn canonical_table_inventory() -> BTreeSet<String> {
+    CANONICAL_TABLES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
+type ForeignKeyIdentity = (String, String, String, String, String);
+
+async fn foreign_key_inventory(
+    connection: &mut SqliteConnection,
+) -> Result<BTreeSet<ForeignKeyIdentity>, sqlx::Error> {
+    let tables = table_inventory(connection).await?;
     let mut actual = BTreeSet::new();
-    for table in CANONICAL_TABLES {
+    for table in tables {
         let sql = format!("PRAGMA foreign_key_list('{table}')");
         for row in sqlx::query(&sql).fetch_all(&mut *connection).await? {
             actual.insert((
-                (*table).to_string(),
+                table.clone(),
                 row.get::<String, _>("from"),
-                row.get::<String, _>("table").trim_matches('"').to_string(),
+                row.get::<String, _>("table").trim_matches('\"').to_string(),
                 row.get::<String, _>("to"),
                 row.get::<String, _>("on_delete").to_uppercase(),
             ));
         }
     }
-    let expected = CANONICAL_FOREIGN_KEYS
+    Ok(actual)
+}
+
+fn canonical_foreign_key_inventory() -> BTreeSet<ForeignKeyIdentity> {
+    CANONICAL_FOREIGN_KEYS
         .iter()
         .map(|(table, from, target, to, delete)| {
             (
@@ -341,11 +465,7 @@ async fn validate_foreign_keys(connection: &mut SqliteConnection) -> Result<(), 
                 (*delete).to_string(),
             )
         })
-        .collect();
-    require(
-        actual == expected,
-        "foreign-key inventory does not match canonical schema",
-    )
+        .collect()
 }
 
 async fn pragma_names(

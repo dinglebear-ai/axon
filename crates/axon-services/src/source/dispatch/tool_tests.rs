@@ -336,7 +336,7 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
         .await
         .expect("durable request lookup")
         .expect("durable source request");
-    // The generic non-web job must persist its request under `source_request`
+    // The canonical source job must persist its request under `source_request`
     // so a worker recovering/retrying it can parse it (matching
     // `enqueue_source`); a raw SourceRequest here fails the source runner with
     // "source job request is missing `source_request`".
@@ -460,7 +460,7 @@ async fn structured_events(
 }
 
 #[tokio::test]
-async fn non_web_pipeline_emits_structured_phase_completions() {
+async fn canonical_pipeline_emits_structured_phase_completions() {
     use axon_api::source::{LifecycleStatus, PipelinePhase};
 
     let ledger = Arc::new(FakeLedgerStore::new());
@@ -500,7 +500,7 @@ async fn non_web_pipeline_emits_structured_phase_completions() {
 }
 
 #[tokio::test]
-async fn non_web_pipeline_failure_emits_one_structured_terminal_failure() {
+async fn canonical_pipeline_failure_emits_one_structured_terminal_failure() {
     use axon_api::source::{LifecycleStatus, PipelinePhase};
     use axon_vectors::store::FakeVectorMode;
 

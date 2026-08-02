@@ -1,12 +1,12 @@
 use axon_api::source::*;
 use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
-use axon_embedding::reservation::{ProviderReservation, ProviderReservationContext};
 use axon_ledger::store::LedgerStore;
 use axon_vectors::point::{VectorPointBatchBuildContext, VectorPointBatchBuilder};
 use uuid::Uuid;
 
-use super::{NonWebPipelineInput, SourceEventEmitter, TargetLocalSourceRuntime, timestamp};
+use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
+use crate::reserved_call::{self, ProviderCallContext};
 
 const DOCUMENT_BATCH_SIZE: usize = 64;
 const CHUNK_BATCH_SIZE: usize = 512;
@@ -22,9 +22,15 @@ pub(super) struct VectorizeResult {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
+struct VectorPointBuild {
+    batch: VectorPointBatch,
+    skipped_redaction: u64,
+    points_by_document: std::collections::BTreeMap<DocumentId, u32>,
+}
+
 pub(super) async fn prepare_embed_publish(
     runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     documents: Vec<SourceDocument>,
     enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
     generation: &SourceGenerationId,
@@ -139,7 +145,7 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
 
 async fn vectorize_batch(
     runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     documents: Vec<PreparedDocument>,
     collection: CollectionSpec,
     emitter: &SourceEventEmitter,
@@ -155,17 +161,20 @@ async fn vectorize_batch(
         "embedding prepared document batch",
     )
     .await?;
-    let embedding_reservation = reserve_embedding(runtime, input).await?;
-    record_reservation(
+    let embedding_batch = embedding_batch(runtime, input, &documents)?;
+    let embedding_operation = format!("embed:{}", embedding_batch.batch_id.0);
+    let embeddings = reserved_call::embed(
         runtime,
-        input,
-        PipelinePhase::Embedding,
-        &embedding_reservation,
+        ProviderCallContext::for_phase(
+            input.plan.job_id,
+            input.execution.attempt,
+            PipelinePhase::Embedding,
+            input.execution.priority,
+            embedding_operation,
+        ),
+        embedding_batch,
     )
     .await?;
-    let embedding_batch = embedding_batch(runtime, input, &documents)?;
-    let embeddings = runtime.embedding_provider.embed(embedding_batch).await?;
-    drop(embedding_reservation);
 
     super::record_running_phase(
         runtime,
@@ -175,17 +184,30 @@ async fn vectorize_batch(
         "upserting vector point batch",
     )
     .await?;
-    let vector_reservation = reserve_vector(runtime, input).await?;
-    record_reservation(
+    let VectorPointBuild {
+        batch: point_batch,
+        skipped_redaction,
+        points_by_document,
+    } = point_batch(collection, &documents, &embeddings)?;
+    let expected_points = point_batch.points.len() as u64;
+    let upsert_operation = format!("upsert:{}", point_batch.batch_id.0);
+    let write = reserved_call::upsert(
         runtime,
-        input,
-        PipelinePhase::Upserting,
-        &vector_reservation,
+        ProviderCallContext::for_phase(
+            input.plan.job_id,
+            input.execution.attempt,
+            PipelinePhase::Upserting,
+            input.execution.priority,
+            upsert_operation,
+        ),
+        point_batch,
     )
     .await?;
-    let (point_batch, skipped_redaction) = point_batch(collection, &documents, &embeddings)?;
-    let write = runtime.vector_store.upsert(point_batch).await?;
-    drop(vector_reservation);
+    validate_upsert_counts(
+        expected_points,
+        write.points_attempted,
+        write.points_written,
+    )?;
 
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
@@ -203,9 +225,7 @@ async fn vectorize_batch(
             retryable: false,
         });
     }
-    for status in &mut result.document_statuses {
-        status.vector_point_count = status.chunk_count;
-    }
+    apply_vector_point_counts(&mut result.document_statuses, &points_by_document);
     Ok(result)
 }
 
@@ -250,7 +270,7 @@ pub(super) async fn write_document_statuses(
 
 fn embedding_batch(
     runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     documents: &[PreparedDocument],
 ) -> anyhow::Result<EmbeddingBatch> {
     let batch_id = BatchId::new(Uuid::new_v5(
@@ -290,7 +310,7 @@ fn point_batch(
     collection: CollectionSpec,
     documents: &[PreparedDocument],
     embeddings: &EmbeddingResult,
-) -> anyhow::Result<(VectorPointBatch, u64)> {
+) -> anyhow::Result<VectorPointBuild> {
     let by_chunk = embeddings
         .vectors
         .iter()
@@ -299,6 +319,7 @@ fn point_batch(
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut points = Vec::new();
     let mut skipped_redaction = 0u64;
+    let mut points_by_document = std::collections::BTreeMap::new();
     for document in documents {
         let document_embeddings = EmbeddingResult {
             batch_id: embeddings.batch_id.clone(),
@@ -323,11 +344,13 @@ fn point_batch(
             },
         )
         .build_with_skipped_count()?;
+        let document_point_count = u32::try_from(batch.points.len()).unwrap_or(u32::MAX);
+        points_by_document.insert(document.document_id.clone(), document_point_count);
         points.extend(batch.points);
         skipped_redaction += document_skipped;
     }
-    Ok((
-        VectorPointBatch {
+    Ok(VectorPointBuild {
+        batch: VectorPointBatch {
             batch_id: embeddings.batch_id.clone(),
             collection: collection.collection,
             points,
@@ -337,67 +360,33 @@ fn point_batch(
             payload_indexes: collection.payload_indexes,
         },
         skipped_redaction,
-    ))
+        points_by_document,
+    })
 }
 
-async fn reserve_embedding(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-) -> anyhow::Result<ProviderReservation> {
-    Ok(runtime
-        .embedding_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.plan.job_id,
-            stage_id: None,
-            provider_id: Some(runtime.embedding_provider_id.clone()),
-            priority: input.execution.priority,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?)
+fn apply_vector_point_counts(
+    statuses: &mut [DocumentStatus],
+    points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
+) {
+    for status in statuses {
+        status.vector_point_count = points_by_document
+            .get(&status.document_id)
+            .copied()
+            .unwrap_or(0);
+    }
 }
 
-async fn reserve_vector(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-) -> anyhow::Result<ProviderReservation> {
-    Ok(runtime
-        .vector_reservations
-        .reserve_with_context_wait(ProviderReservationContext {
-            job_id: input.plan.job_id,
-            stage_id: None,
-            provider_id: Some(runtime.vector_provider_id.clone()),
-            priority: input.execution.priority,
-            units: 1,
-            ttl_seconds: Some(300),
-        })
-        .await?)
-}
-
-async fn record_reservation(
-    runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
-    phase: PipelinePhase,
-    reservation: &ProviderReservation,
+fn validate_upsert_counts(
+    expected_points: u64,
+    points_attempted: u64,
+    points_written: u64,
 ) -> anyhow::Result<()> {
-    runtime
-        .jobs
-        .heartbeat(JobHeartbeat {
-            job_id: input.plan.job_id,
-            attempt: input.execution.attempt,
-            worker_id: Some("source-pipeline".to_string()),
-            phase,
-            status: LifecycleStatus::Running,
-            stage_id: None,
-            heartbeat_at: timestamp(),
-            sequence: 0,
-            last_progress_at: Some(timestamp()),
-            last_event_sequence: None,
-            counts: None,
-            provider_reservations: vec![reservation.snapshot()],
-        })
-        .await?;
-    Ok(())
+    if points_attempted == expected_points && points_written == expected_points {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "vector upsert short write: expected {expected_points} point(s), attempted {points_attempted}, wrote {points_written}"
+    )
 }
 
 #[cfg(test)]

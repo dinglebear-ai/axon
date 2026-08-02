@@ -1,9 +1,9 @@
 use axon_api::source::*;
 
-use super::{NonWebPipelineInput, timestamp};
+use super::{SourcePipelineInput, timestamp};
 
 pub(super) fn source_summary(
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     status: LifecycleStatus,
     counts: SourceCounts,
     previous: Option<&SourceSummary>,
@@ -24,7 +24,10 @@ pub(super) fn source_summary(
         graph_node_ids: previous
             .map(|source| source.graph_node_ids.clone())
             .unwrap_or_default(),
-        last_refreshed_at: if status == LifecycleStatus::Completed {
+        last_refreshed_at: if matches!(
+            status,
+            LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+        ) {
             Some(timestamp())
         } else {
             previous.and_then(|source| source.last_refreshed_at.clone())

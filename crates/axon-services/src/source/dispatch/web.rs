@@ -2,22 +2,19 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use axon_adapters::SourceAdapter;
-use axon_api::source::{AuthSnapshot, MetadataMap, SourceScope};
+use axon_api::source::{AuthSnapshot, SourceScope};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 
 use super::super::SourceExecutionContext;
 use super::super::result_map::IndexCounts;
-use super::placeholder_job_id;
 use super::web_options::{merge_caller_web_options, web_crawl_options};
-use crate::WebSourceIndexInput;
+use super::{dispatch_materialized, family_source_plan};
 use crate::context::TargetLocalSourceRuntime;
-use crate::web_source::{
-    WebSourceJobExecution, index_web_source_with_execution, web_source_job_create_request,
-};
 
-/// Web source: drive the `WebSourceAdapter`'s discover→acquire→normalize
-/// pipeline directly — no legacy crawl-to-disk handoff.
+/// Web source: adapter-owned discovery/acquisition followed by the same
+/// family-blind executor used by every other source. Conditional HTTP reuse is
+/// selected through `SourceAdapter::reuse_policy`, not a web-specific runner.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_web(
     adapter: Arc<dyn SourceAdapter>,
@@ -33,101 +30,42 @@ pub(crate) async fn dispatch_web(
     max_depth: Option<u32>,
     output: &axon_api::source::OutputPolicy,
     route: &axon_api::source::RoutePlan,
-    source_execution: &SourceExecutionContext,
+    execution: &SourceExecutionContext,
 ) -> anyhow::Result<IndexCounts> {
     log_info(&format!(
         "command=source collection={collection} kind=web scope={scope:?} embed={embed} max_pages={max_pages:?} max_depth={max_depth:?}"
     ));
-    let mut crawl_options = web_crawl_options(cfg, max_pages, max_depth);
-    merge_caller_web_options(
-        &mut crawl_options,
-        &route.validated_options.values,
+    let mut options = web_crawl_options(cfg, max_pages, max_depth);
+    merge_caller_web_options(&mut options, &route.validated_options.values, auth_snapshot)?;
+    let mut canonical_route = route.clone();
+    canonical_route.validated_options = axon_api::source::AdapterOptions { values: options };
+
+    // Map is the declared discovery-only scope. It uses the normal prefix and
+    // ledger publication stages while skipping embedding/vector publication.
+    let mut plan = family_source_plan(
+        input,
+        &canonical_route,
+        embed && scope != SourceScope::Map,
+        max_pages,
+        None,
+    );
+    plan.request.output = output.clone();
+    let materializer = Arc::clone(&adapter);
+    dispatch_materialized(
+        runtime,
+        adapter.as_ref(),
+        plan,
+        collection,
+        owner_id,
         auth_snapshot,
-    )?;
-    let execution_job_id = source_execution
-        .existing_job_id
-        .unwrap_or_else(placeholder_job_id);
-    let index_input = WebSourceIndexInput {
-        source: input.to_string(),
-        scope,
-        map_urls: Vec::new(),
-        crawl_options,
-        output: output.clone(),
-        collection: collection.to_string(),
-        owner_id: owner_id.to_string(),
-        job_id: execution_job_id,
-        embedding_provider_id: runtime.embedding_provider_id.clone(),
-        vector_provider_id: runtime.vector_provider_id.clone(),
-        embedding_model: runtime.embedding_model.clone(),
-        embedding_dimensions: runtime.embedding_dimensions,
-        auth_snapshot: auth_snapshot.cloned(),
-        attempt: source_execution.attempt,
-        embed,
-        fetch_provider: runtime.fetch_provider.clone(),
-        render_provider: runtime.render_provider.clone(),
-        artifact_store: runtime.artifact_store.clone(),
-        document_cache: runtime.document_cache.clone(),
-        event_store: Some(runtime.jobs.clone()),
-        embedding_reservations: runtime.embedding_reservations.clone(),
-        vector_reservations: runtime.vector_reservations.clone(),
-    };
-    let output = if let Some(job_id) = source_execution.existing_job_id {
-        let execution = WebSourceJobExecution {
-            job_id,
-            owns_status: false,
-        };
-        index_web_source_with_execution(
-            index_input,
-            Arc::clone(&adapter),
-            execution,
-            runtime.jobs.as_ref(),
-            runtime.ledger.as_ref(),
-            runtime.embedding_provider.as_ref(),
-            runtime.vector_store.as_ref(),
-        )
-        .await
-    } else {
-        let descriptor = runtime
-            .jobs
-            .create(web_source_job_create_request(
-                &index_input,
-                source_execution.priority,
-                source_execution.idempotency_key.clone(),
-                MetadataMap::new(),
-            ))
-            .await?;
-        let execution = WebSourceJobExecution {
-            job_id: descriptor.job_id,
-            owns_status: true,
-        };
-        index_web_source_with_execution(
-            index_input,
-            Arc::clone(&adapter),
-            execution,
-            runtime.jobs.as_ref(),
-            runtime.ledger.as_ref(),
-            runtime.embedding_provider.as_ref(),
-            runtime.vector_store.as_ref(),
-        )
-        .await
-    }
-    // Both branches above already return `anyhow::Result`, so `.context()`
-    // applies directly and preserves the existing chain. The prior
-    // `.map_err(|e| anyhow::anyhow!(e.to_string()))` round-tripped the error
-    // through a bare string first, discarding whatever chain it already
-    // carried before this frame was even added.
-    .context("web source indexing failed")?;
-    Ok(IndexCounts {
-        job_id: output.job_id,
-        source_id: output.source_id,
-        generation: output.generation,
-        documents_prepared: output.documents_prepared,
-        chunks_prepared: output.chunks_prepared,
-        vector_points_written: output.vector_points_written,
-        removed: output.removed_pages,
-        graph_candidates: output.graph_candidates,
-        warnings: output.warnings,
-        artifacts: output.artifacts,
-        inline: output.inline,
-    })
+        execution,
+        move |plan| async move {
+            materializer
+                .materialize(plan)
+                .await
+                .map_err(anyhow::Error::new)
+        },
+    )
+    .await
+    .context("web source indexing failed")
 }

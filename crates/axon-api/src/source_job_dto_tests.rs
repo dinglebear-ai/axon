@@ -13,12 +13,9 @@ fn job_create_request_serializes_required_contract_fields() {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: None,
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Fetching,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(1),
-        }],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Fetching).with_estimated_items(Some(1)),
+        ],
         request: Some(serde_json::json!({"source": "https://example.com"})),
         auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_contract")),

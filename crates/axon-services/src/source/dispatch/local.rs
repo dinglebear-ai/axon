@@ -1,8 +1,8 @@
-//! Local-path source: fs-aware identity resolution, then the shared non-web
-//! document pipeline (finding C1 — local no longer runs a private
+//! Local-path source: fs-aware identity resolution, then the canonical source
+//! executor. Local no longer runs a private
 //! leasing/diffing/generation/vectorize/publish stack; `LocalSourceAdapter`'s
-//! `discover`/`acquire`/`normalize` and the generic `non_web` runner do the
-//! work every other non-web family already used).
+//! `discover`/`acquire`/`normalize` feed the same executor used by every source
+//! family.
 //!
 //! Local identity depends on filesystem canonicalization (symlink
 //! resolution, absolute-path normalization, file-vs-directory scope) that
@@ -44,15 +44,15 @@ use axon_core::logging::log_info;
 
 use super::{dispatch_materialized, placeholder_job_id};
 use crate::context::TargetLocalSourceRuntime;
-use crate::local_source::local_source_id;
 use crate::source::SourceExecutionContext;
 use crate::source::authorize::snapshot_allows_scope;
 use crate::source::enforce_local_source_policy;
+use crate::source::local_identity::local_source_id;
 use crate::source::result_map::IndexCounts;
 
 const LOCAL_ADAPTER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Local-path source: dispatch through the shared non-web document pipeline.
+/// Local-path source: dispatch through the canonical source executor.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_local(
     adapter: Arc<dyn SourceAdapter>,
@@ -188,7 +188,7 @@ async fn local_source_plan(
         job_id: placeholder_job_id(),
         request,
         route: routed_route,
-        stage_plan: Vec::new(),
+        stage_plan: super::source_stage_plan(embed),
         limits: EffectiveLimits {
             request: SourceLimits::default(),
             adapter_defaults: SourceLimits::default(),

@@ -83,12 +83,12 @@ pub async fn apply_all_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> 
     let fresh = identity::validate_before_mutation(&mut tx, &sets).await?;
     if fresh {
         ensure_applied_table(&mut tx).await?;
-        for set in sets {
-            apply_set(&mut tx, set).await?;
-        }
-        identity::stamp_schema_epoch(&mut tx).await?;
-        identity::validate_canonical(&mut tx, &sets).await?;
     }
+    for set in sets {
+        apply_set(&mut tx, set).await?;
+    }
+    identity::stamp_schema_epoch(&mut tx).await?;
+    identity::validate_canonical(&mut tx, &sets).await?;
     tx.commit().await?;
     Ok(())
 }
@@ -117,6 +117,34 @@ async fn apply_set(
     set: MigrationSet,
 ) -> Result<(), sqlx::Error> {
     for &migration in set.migrations {
+        let existing = sqlx::query(
+            "SELECT name, checksum, schema_epoch FROM axon_applied_migrations \
+             WHERE namespace = ? AND version = ?",
+        )
+        .bind(set.namespace)
+        .bind(migration.version)
+        .fetch_optional(&mut *connection)
+        .await?;
+        if let Some(row) = existing {
+            use sqlx::Row as _;
+            let name: String = row.get("name");
+            let checksum: String = row.get("checksum");
+            let epoch: i64 = row.get("schema_epoch");
+            let expected_checksum = identity::migration_checksum(migration.sql);
+            if name != migration.name
+                || checksum != expected_checksum
+                || epoch != identity::SCHEMA_EPOCH
+            {
+                return Err(sqlx::Error::Configuration(
+                    format!(
+                        "startup.incompatible_store: migration receipt {}/{} does not match the canonical name, checksum, or schema epoch",
+                        set.namespace, migration.version
+                    )
+                    .into(),
+                ));
+            }
+            continue;
+        }
         run_migration(connection, set.namespace, migration).await?;
         record_applied(connection, set.namespace, migration).await?;
     }

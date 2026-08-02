@@ -1,9 +1,10 @@
-//! Generic adapter-owned pipeline for non-web sources.
+//! Generic adapter-owned pipeline for sources.
 
 mod created_generation;
 mod helpers;
 mod metadata;
 mod publish;
+mod reuse;
 mod vectorize;
 use super::events::SourceEventEmitter;
 use super::execution::SourceExecutionContext;
@@ -24,7 +25,7 @@ const PUBLICATION_CONFIG_KEY: &str = "axon_publication_config_snapshot_id";
 /// `web_source`/`local_source` already streamed diffs at before their
 /// collapse into this runner (finding C1).
 const ACQUIRE_BATCH_SIZE: usize = 64;
-pub(super) struct NonWebPipelineInput<'a> {
+pub(super) struct SourcePipelineInput<'a> {
     pub(super) adapter: &'a dyn SourceAdapter,
     pub(super) plan: SourcePlan,
     pub(super) collection: &'a str,
@@ -35,7 +36,7 @@ pub(super) struct NonWebPipelineInput<'a> {
 
 pub(super) async fn index_materialized_source<'a, F, Fut>(
     runtime: &'a TargetLocalSourceRuntime,
-    mut input: NonWebPipelineInput<'a>,
+    mut input: SourcePipelineInput<'a>,
     materialize: F,
 ) -> anyhow::Result<IndexCounts>
 where
@@ -86,13 +87,29 @@ where
         Ok(())
     };
     input.adapter.release(&input.plan);
-    status_result?;
-    result
+    match (result, status_result) {
+        (Ok(output), Ok(())) => Ok(output),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(mut output), Err(status_error)) => {
+            output.warnings.push(deferred_warning(
+                "source.job.terminal_status_deferred",
+                format!(
+                    "generation {} was published, but persisting the terminal job status failed: {status_error}",
+                    output.generation.0
+                ),
+            ));
+            persist_degraded_summary(runtime, &mut output).await;
+            Ok(output)
+        }
+        (Err(error), Err(status_error)) => Err(error.context(format!(
+            "terminal job status update also failed: {status_error}"
+        ))),
+    }
 }
 
 async fn run_with_lease<'a, F, Fut>(
     runtime: &'a TargetLocalSourceRuntime,
-    input: &mut NonWebPipelineInput<'a>,
+    input: &mut SourcePipelineInput<'a>,
     emitter: &'a SourceEventEmitter,
     materialize: F,
 ) -> anyhow::Result<IndexCounts>
@@ -107,7 +124,7 @@ where
     // stamps `jobs.source_id`; if the source row does not exist yet the update
     // fails with a FOREIGN KEY constraint, the job stays Queued, and the
     // terminal handler's Queued -> Failed then masks the real cause with a
-    // spurious `job.invalid_transition`. Seen live on every generic non-web
+    // spurious `job.invalid_transition`. Seen live on every canonical source
     // family (git/feed/youtube/reddit/session/registry); the web/local paths
     // already upsert the source first.
     let running_counts = previous
@@ -178,8 +195,16 @@ where
     match (result, release) {
         (Ok(output), Ok(())) => Ok(output),
         (Err(error), Ok(())) => Err(error),
-        (Ok(_), Err(error)) => {
-            Err(anyhow::Error::new(error).context("failed to release source lease"))
+        (Ok(mut output), Err(error)) => {
+            output.warnings.push(deferred_warning(
+                "source.lease.release_deferred",
+                format!(
+                    "generation {} was published, but releasing the source lease failed: {error}",
+                    output.generation.0
+                ),
+            ));
+            persist_degraded_summary(runtime, &mut output).await;
+            Ok(output)
         }
         (Err(error), Err(release_error)) => Err(error.context(format!(
             "additionally failed to release source lease: {release_error}"
@@ -189,7 +214,7 @@ where
 
 async fn run_generation(
     runtime: &TargetLocalSourceRuntime,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     emitter: &SourceEventEmitter,
     lease: &LeaseGuard,
     previous: Option<SourceSummary>,
@@ -242,6 +267,7 @@ async fn run_generation(
     if !publication_config_unchanged {
         force_publication_refresh(&mut diff);
     }
+    diff = reuse::overlay_trusted_validators(runtime, input, &diff).await?;
 
     if input.plan.request.embed {
         ensure_providers_ready(runtime).await?;
@@ -250,6 +276,7 @@ async fn run_generation(
         .ledger
         .create_generation(manifest.source_id.clone())
         .await?;
+    diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
     runtime.ledger.put_manifest(manifest.clone()).await?;
 
@@ -270,15 +297,21 @@ async fn run_generation(
             .committed_generation(generation.source_id.clone())
             .await?
             .is_some_and(|current| current == generation.generation);
-        if !committed && input.plan.request.embed {
-            let _ = runtime
-                .vector_store
-                .delete(VectorDeleteSelector::Generation {
-                    collection: input.collection.to_string(),
-                    source_id: generation.source_id.clone(),
-                    generation: generation.generation.clone(),
-                })
-                .await;
+        if !committed
+            && input.plan.request.embed
+            && let Err(cleanup_error) = publish::cleanup_failed_generation_vectors(
+                runtime,
+                input,
+                input.collection,
+                &generation,
+            )
+            .await
+        {
+            return result.map_err(|error| {
+                error.context(format!(
+                    "failed-generation vector cleanup also failed: {cleanup_error:#}"
+                ))
+            });
         }
         if !committed && let Err(fail_error) = runtime.ledger.fail_generation(generation).await {
             return result.map_err(|error| {
@@ -291,7 +324,7 @@ async fn run_generation(
     result
 }
 
-fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {
+fn job_create_request(input: &SourcePipelineInput<'_>) -> JobCreateRequest {
     JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
@@ -307,7 +340,7 @@ fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {
         // Wrap as `{"source_request": <..>}` — the shape the source worker
         // (`run_source_request_with_context`) requires. Writing a raw
         // SourceRequest here diverges from `enqueue_source`, so if a worker
-        // ever claimed one of these generic non-web jobs (recovery/retry of
+        // ever claimed one of these canonical source jobs (recovery/retry of
         // an interrupted git/feed/youtube/reddit/session/registry index) it
         // failed with "source job request is missing `source_request`".
         request: Some(serde_json::json!({ "source_request": input.plan.request })),
@@ -325,13 +358,61 @@ fn job_create_request(input: &NonWebPipelineInput<'_>) -> JobCreateRequest {
     }
 }
 
+pub(super) fn successful_status(warnings: &[SourceWarning]) -> LifecycleStatus {
+    if warnings.is_empty() {
+        LifecycleStatus::Completed
+    } else {
+        LifecycleStatus::CompletedDegraded
+    }
+}
+
+pub(super) async fn persist_degraded_summary(
+    runtime: &TargetLocalSourceRuntime,
+    output: &mut IndexCounts,
+) {
+    let update = async {
+        let Some(mut summary) = runtime.ledger.get_source(output.source_id.clone()).await? else {
+            return Ok::<(), axon_error::ApiError>(());
+        };
+        let now = timestamp();
+        summary.status = LifecycleStatus::CompletedDegraded;
+        summary.updated_at = now.clone();
+        summary.last_refreshed_at = Some(now);
+        runtime.ledger.upsert_source(summary).await
+    }
+    .await;
+    if let Err(error) = update {
+        output.warnings.push(deferred_warning(
+            "source.summary.degraded_status_deferred",
+            format!(
+                "generation {} completed with warnings, but persisting its degraded source summary failed: {error}",
+                output.generation.0
+            ),
+        ));
+    }
+}
+
+fn deferred_warning(code: &str, message: String) -> SourceWarning {
+    SourceWarning {
+        code: code.to_string(),
+        severity: Severity::Warning,
+        message,
+        source_item_key: None,
+        retryable: true,
+    }
+}
+
 async fn record_terminal_status(
     jobs: &dyn JobStore,
-    input: &NonWebPipelineInput<'_>,
+    input: &SourcePipelineInput<'_>,
     result: &anyhow::Result<IndexCounts>,
 ) -> anyhow::Result<()> {
     let (status, error, counts) = match result {
-        Ok(output) => (LifecycleStatus::Completed, None, Some(stage_counts(output))),
+        Ok(output) => (
+            successful_status(&output.warnings),
+            None,
+            Some(stage_counts(output)),
+        ),
         Err(error) => (
             LifecycleStatus::Failed,
             Some(terminal_source_error(error)),
