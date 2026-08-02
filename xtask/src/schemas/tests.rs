@@ -19,6 +19,8 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-api/src/source/lifecycle.rs",
         "crates/axon-api/src/source/listing.rs",
         "crates/axon-api/src/source/enums.rs",
+        "crates/axon-api/src/source/enums/pipeline_phase.rs",
+        "crates/axon-api/src/source/enums/runtime.rs",
         "crates/axon-api/src/source/graph.rs",
         "crates/axon-api/src/source/ids.rs",
         "crates/axon-api/src/source/job.rs",
