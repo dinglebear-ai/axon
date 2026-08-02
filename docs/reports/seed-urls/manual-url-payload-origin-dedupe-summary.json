@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-06-11 23:43:54 UTC",
+  "source_file": "docs/reports/seed-urls/manual-url-payload-http-urls.md",
+  "output_file": "docs/reports/seed-urls/manual-url-payload-http-url-origins-deduped.md",
+  "method": "collapse exact http URLs to scheme://host/",
+  "exact_http_url_rows_collapsed": 132018,
+  "distinct_url_origins": 346,
+  "point_occurrences": 2059145
+}
