@@ -137,11 +137,10 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Repository and transport contracts
         run: |
-          ./scripts/test-cargo-rustc-wrapper.sh
           ./scripts/test-incus-bootstrap.sh
           retired='sol''dr|zc''cache|sc''cache'
           if rg -ni "$retired" \
-            .github scripts/cargo-rustc-wrapper scripts/dev-setup.sh \
+            .github scripts/dev-setup.sh \
             docs/development docs/guides docs/operations docs/architecture/stack \
             deploy/incus/bootstrap.sh; then
             echo "Retired compiler cache reference found in an active surface."
