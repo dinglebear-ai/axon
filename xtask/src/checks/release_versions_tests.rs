@@ -739,7 +739,35 @@ fn managed_android_feature_pr_defers_the_release_bump() {
 }
 
 #[test]
-fn managed_android_feature_pr_rejects_mixed_version_file_ownership() {
+fn managed_android_gradle_config_pr_defers_when_version_fields_are_unchanged() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    let gradle_path = fixture.path("apps/android/app/build.gradle.kts");
+    let mut gradle = fs::read_to_string(&gradle_path).unwrap();
+    gradle.push_str(
+        r#"
+dependencies {
+    implementation("androidx.core:core-ktx:1.17.0")
+}
+"#,
+    );
+    fs::write(&gradle_path, gradle).unwrap();
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "build(android): update dependency"]);
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("ordinary Gradle config changes defer the managed release bump");
+}
+
+#[test]
+fn managed_android_feature_pr_rejects_mixed_version_field_ownership() {
     let fixture = Fixture::new();
     fixture.init_repo();
     fixture.git(&["tag", "android-v1.3.2"]);
@@ -748,8 +776,9 @@ fn managed_android_feature_pr_rejects_mixed_version_file_ownership() {
         "package axon\n\nclass Feature\n",
     );
     let gradle_path = fixture.path("apps/android/app/build.gradle.kts");
-    let mut gradle = fs::read_to_string(&gradle_path).unwrap();
-    gradle.push_str("// manual version-file edit\n");
+    let gradle = fs::read_to_string(&gradle_path)
+        .unwrap()
+        .replace("versionCode = 6", "versionCode = 7");
     fs::write(&gradle_path, gradle).unwrap();
     fixture.git(&[
         "add",
@@ -769,14 +798,57 @@ fn managed_android_feature_pr_rejects_mixed_version_file_ownership() {
         GateMode::Pr,
         false,
     )
-    .expect_err("feature PR must not edit release-please-owned version files");
+    .expect_err("feature PR must not edit release-please-owned version fields");
     let message = error.to_string();
     assert!(
-        message.contains("mixes ordinary shipping changes with release-please-owned version files"),
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
         "unexpected error: {message}"
     );
     assert!(message.contains("apps/android/app/build.gradle.kts"));
     assert!(message.contains("apps/android/app/src/main/kotlin/Feature.kt"));
+}
+
+#[test]
+fn managed_android_feature_pr_rejects_a_manual_release_heading() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n\n## [1.3.2]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/src/main/kotlin/Feature.kt",
+        "apps/android/CHANGELOG.md",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(android): mix feature and release notes",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("a feature PR must not add a release heading");
+    let message = error.to_string();
+    assert!(
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/CHANGELOG.md"));
 }
 
 #[test]
@@ -803,7 +875,6 @@ fn android_change_allows_version_code_increase() {
     fs::write(
         fixture.path(".release-please-manifest.json"),
         r#"{
-  ".": "1.0.0",
   "apps/palette-tauri": "5.10.2",
   "apps/android": "1.3.3",
   "apps/chrome-extension": "0.2.0"
@@ -814,6 +885,7 @@ fn android_change_allows_version_code_increase() {
     fixture.git(&[
         "add",
         "apps/android/app/build.gradle.kts",
+        "apps/android/CHANGELOG.md",
         ".release-please-manifest.json",
     ]);
     fixture.git(&["commit", "-m", "bump android version"]);
@@ -897,6 +969,98 @@ fn managed_chrome_asset_pr_defers_the_release_bump() {
 }
 
 #[test]
+fn managed_chrome_config_pr_defers_when_version_fields_are_unchanged() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path("apps/chrome-extension/manifest.json"),
+        r#"{"manifest_version":3,"version":"0.2.0","permissions":["storage"]}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/package.json"),
+        r#"{"name":"axon-chrome-extension","version":"0.2.0","dependencies":{"example":"1.0.0"}}"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "build(chrome): update runtime config"]);
+
+    check(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("ordinary Chrome config changes defer the managed release bump");
+}
+
+#[test]
+fn managed_chrome_pr_rejects_version_bump_mixed_into_manifest_config() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path("apps/chrome-extension/manifest.json"),
+        r#"{"manifest_version":3,"version":"0.2.1","permissions":["storage"]}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/package.json"),
+        r#"{"name":"axon-chrome-extension","version":"0.2.1"}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n\n## [0.2.0]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+        "apps/chrome-extension/CHANGELOG.md",
+        ".release-please-manifest.json",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(chrome): mix permission and release bump",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("ordinary manifest changes must not ride a managed version bump");
+    let message = error.to_string();
+    assert!(
+        message
+            .contains("mixes ordinary shipping changes with release-please-owned version fields"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/chrome-extension/manifest.json"));
+}
+
+#[test]
 fn main_mode_marks_changed_since_latest_tag() {
     let fixture = Fixture::new();
     fixture.init_repo();
@@ -937,7 +1101,6 @@ fn pr_mode_allows_release_please_source_fixup_after_tag_exists() {
     fs::write(
         fixture.path(".release-please-manifest.json"),
         r#"{
-  ".": "1.0.0",
   "apps/palette-tauri": "5.10.2",
   "apps/android": "1.3.2",
   "apps/chrome-extension": "0.2.1"
@@ -1031,14 +1194,11 @@ fn release_manifest_requires_release_please_path() {
 #[test]
 fn release_please_manifest_matches_component_versions() {
     let fixture = Fixture::new();
-    // "." (cli) is deliberately left wrong here too (9.9.9), to prove the
-    // next test's "cli is exempt" behavior isn't just "any mismatch is
-    // ignored" — palette is release-please-managed and must still be
-    // checked, so mismatching it must still produce an error.
+    // Palette is release-please-managed and must agree with its source
+    // version even though the unmanaged CLI is absent from this manifest.
     fs::write(
         fixture.path(".release-please-manifest.json"),
         r#"{
-  ".": "9.9.9",
   "apps/palette-tauri": "9.9.9",
   "apps/android": "1.3.2",
   "apps/chrome-extension": "0.2.0"
@@ -1061,9 +1221,8 @@ fn release_please_manifest_matches_component_versions() {
 fn release_please_manifest_check_skips_unmanaged_cli_component() {
     // cli's release/components.toml entry sets release_please_managed =
     // false (release-please can no longer open PRs for it — see the comment
-    // there and CLAUDE.md's Release Pipeline section). A "." entry that's
-    // missing entirely, or present but wrong, must NOT produce an error:
-    // release-please no longer owns that path at all.
+    // there and CLAUDE.md's Release Pipeline section). The "." entry must be
+    // absent because release-please no longer owns that path at all.
     let fixture = Fixture::new();
     fs::write(
         fixture.path(".release-please-manifest.json"),
@@ -1088,25 +1247,34 @@ fn release_please_manifest_check_skips_unmanaged_cli_component() {
 fn release_please_dispatch_plan_uses_manifest_metadata() {
     let fixture = Fixture::new();
     let release_outputs = r#"{
-  "paths_released": "[\".\", \"apps/palette-tauri\"]",
-  "cli_tag": "v1.0.0",
+  "paths_released": "[\"apps/palette-tauri\"]",
   "palette_tag": "palette-v5.10.2"
 }"#;
     let items = release_please_dispatch_plan(fixture.root(), release_outputs).unwrap();
     assert_eq!(
         items,
-        vec![
-            ReleasePleaseDispatchItem {
-                id: "cli".to_owned(),
-                workflow: "release.yml".to_owned(),
-                tag: "v1.0.0".to_owned(),
-            },
-            ReleasePleaseDispatchItem {
-                id: "palette".to_owned(),
-                workflow: "palette-release.yml".to_owned(),
-                tag: "palette-v5.10.2".to_owned(),
-            },
-        ]
+        vec![ReleasePleaseDispatchItem {
+            id: "palette".to_owned(),
+            workflow: "palette-release.yml".to_owned(),
+            tag: "palette-v5.10.2".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_unmanaged_cli_output() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\".\"]",
+  "cli_tag": "v1.0.0"
+}"#;
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release-please must not dispatch the unmanaged CLI");
+    assert!(
+        error
+            .to_string()
+            .contains("release outputs include unmanaged release path ."),
+        "unexpected error: {error}"
     );
 }
 
@@ -1407,10 +1575,17 @@ impl Fixture {
         )
         .expect("release/components.toml fixture exists");
         write(&self.path("release/components.toml"), &manifest);
+        let release_please_config = fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../release-please-config.json"),
+        )
+        .expect("release-please-config.json fixture exists");
+        write(
+            &self.path("release-please-config.json"),
+            &release_please_config,
+        );
         write(
             &self.path(".release-please-manifest.json"),
             r#"{
-  ".": "1.0.0",
   "apps/palette-tauri": "5.10.2",
   "apps/android": "1.3.2",
   "apps/chrome-extension": "0.2.0"

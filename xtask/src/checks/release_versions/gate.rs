@@ -9,6 +9,8 @@ use super::git::{
 };
 use super::{Component, ComponentPlan, GateMode, ReleaseResult, VersionKind};
 
+mod ownership;
+
 pub(super) fn collect_changed_component_errors(
     root: &Path,
     component: &Component,
@@ -88,24 +90,17 @@ fn collect_managed_pr_ownership_errors(
     let compare_ref = compare_ref_for_component(root, component, base, head, mode)?
         .release_context("PR release check is missing a comparison ref")?;
     let changed = changed_paths_since_ref(root, &compare_ref, head, &component.shipping_paths)?;
-    let version_file_paths = component
-        .version_files
-        .iter()
-        .map(|file| file.path.as_str())
-        .collect::<BTreeSet<_>>();
-    let (changed_version_files, ordinary_shipping_changes): (Vec<_>, Vec<_>) = changed
-        .into_iter()
-        .partition(|path| version_file_paths.contains(path.as_str()));
+    let changes = ownership::classify(root, component, &compare_ref, head, changed)?;
 
-    if changed_version_files.is_empty() {
+    if changes.version_fields.is_empty() {
         return Ok(true);
     }
-    if !ordinary_shipping_changes.is_empty() {
+    if !changes.ordinary.is_empty() {
         errors.push(format!(
-            "{} PR mixes ordinary shipping changes with release-please-owned version files: ordinary [{}]; version files [{}]. Keep feature PRs version-free and let release-please create the version-only release PR.",
+            "{} PR mixes ordinary shipping changes with release-please-owned version fields: ordinary [{}]; version fields [{}]. Keep feature PRs version-free and let release-please create the version-only release PR.",
             component.id,
-            ordinary_shipping_changes.join(", "),
-            changed_version_files.join(", ")
+            changes.ordinary.join(", "),
+            changes.version_fields.join(", ")
         ));
         return Ok(true);
     }

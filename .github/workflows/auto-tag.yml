@@ -150,14 +150,52 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Create and push tag
         run: |
+          set -euo pipefail
+          tag="${{ matrix.candidate_tag }}"
+          expected_sha="${{ github.sha }}"
+          head_sha="$(git rev-parse --verify "HEAD^{commit}")"
+          if [ "$head_sha" != "$expected_sha" ]; then
+            echo "::error::checked-out HEAD $head_sha does not match workflow commit $expected_sha" >&2
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ matrix.candidate_tag }}"
-          git push origin "${{ matrix.candidate_tag }}"
-          echo "Pushed tag ${{ matrix.candidate_tag }}"
+
+          local_target=""
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            local_target="$(git rev-parse --verify "$tag^{commit}")"
+            if [ "$local_target" != "$expected_sha" ]; then
+              echo "::error::local tag $tag resolves to $local_target, expected $expected_sha" >&2
+              exit 1
+            fi
+          fi
+
+          remote_refs="$(git ls-remote --tags origin "refs/tags/$tag" "refs/tags/$tag^{}")"
+          remote_target="$(awk '
+            $2 ~ /\^\{\}$/ { peeled = $1 }
+            $2 !~ /\^\{\}$/ { direct = $1 }
+            END { if (peeled != "") print peeled; else if (direct != "") print direct }
+          ' <<<"$remote_refs")"
+          if [ -n "$remote_target" ] && [ "$remote_target" != "$expected_sha" ]; then
+            echo "::error::remote tag $tag resolves to $remote_target, expected $expected_sha" >&2
+            exit 1
+          fi
+
+          if [ -n "$remote_target" ]; then
+            echo "Remote tag $tag already resolves to $expected_sha."
+          elif [ -n "$local_target" ]; then
+            git push origin "refs/tags/$tag"
+            echo "Pushed existing local tag $tag at $expected_sha."
+          else
+            git tag "$tag" "$expected_sha"
+            git push origin "refs/tags/$tag"
+            echo "Created and pushed tag $tag at $expected_sha."
+          fi
 
       - name: Ensure GitHub Release exists
         env:

@@ -453,6 +453,54 @@ fn auto_tag_creates_github_release_before_explicit_artifact_dispatch() {
 }
 
 #[test]
+fn auto_tag_partial_success_rerun_accepts_the_existing_tag_at_the_same_commit() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.99-test";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo retry-fixture > README.md
+git add README.md
+git commit -m "retry fixture"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+git tag {tag}
+git push origin {tag}
+bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
+"#
+    );
+    let output = std::process::Command::new("bash")
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag tag step");
+
+    assert!(
+        output.status.success(),
+        "a rerun after the tag was pushed must continue to GitHub Release creation and dispatch; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn release_please_fixups_validate_and_forward_pr_branch_refs() {
     let workflow = include_str!("../.github/workflows/release-please.yml");
     let fixups = workflow_job_block(workflow, "release-pr-fixups");
@@ -816,6 +864,27 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
         })
         .unwrap_or(rest.len());
     &rest[..end]
+}
+
+fn workflow_step_script(job: &str, step_name: &str, next_step_name: &str) -> String {
+    let step_marker = format!("      - name: {step_name}\n");
+    let next_marker = format!("      - name: {next_step_name}\n");
+    let step = job
+        .split_once(&step_marker)
+        .unwrap_or_else(|| panic!("missing workflow step {step_name}"))
+        .1
+        .split_once(&next_marker)
+        .unwrap_or_else(|| panic!("missing workflow step {next_step_name}"))
+        .0;
+    let script = step
+        .split_once("        run: |\n")
+        .unwrap_or_else(|| panic!("workflow step {step_name} has no shell script"))
+        .1;
+    script
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {

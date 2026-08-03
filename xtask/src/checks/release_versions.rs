@@ -21,7 +21,7 @@ use error::{ReleaseContext, ReleaseVersionError};
 use manifest::validate_manifest;
 use release_please::{
     ReleasePleaseDispatchItem, ReleasePleaseFixupItem, release_please_dispatch_items,
-    run_cargo_update,
+    run_cargo_update, validate_release_please_ownership,
 };
 
 #[cfg(test)]
@@ -397,6 +397,7 @@ fn load_manifest(root: &Path) -> ReleaseResult<Manifest> {
         );
     }
     validate_manifest(root, &manifest)?;
+    validate_release_please_ownership(root, &manifest.components)?;
     Ok(manifest)
 }
 

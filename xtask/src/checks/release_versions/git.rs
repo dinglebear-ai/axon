@@ -290,7 +290,7 @@ pub(super) fn check_gradle_version_code_increased(
     Ok(())
 }
 
-fn git_show(root: &Path, reference: &str, path: &str) -> ReleaseResult<String> {
+pub(super) fn git_show(root: &Path, reference: &str, path: &str) -> ReleaseResult<String> {
     git_output(root, &["show", &format!("{reference}:{path}")])
 }
 
