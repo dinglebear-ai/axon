@@ -125,7 +125,10 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Assemble release APK
-        run: apps/android/gradlew -p apps/android :app:assembleRelease --no-daemon --stacktrace
+        run: >
+          apps/android/gradlew -p apps/android
+          -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
+          :app:assembleRelease --no-daemon --stacktrace
 
       - name: Sign and package APK
         id: package
