@@ -97,6 +97,7 @@ IGNORED_TOKENS = {
     "GITHUB_ENV",  # GitHub Actions command file, not axon runtime config
     "GITHUB_JOB",  # GitHub Actions job identifier, not axon runtime config
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
+    "GITHUB_RUN_ATTEMPT",  # GitHub Actions rerun counter, not axon runtime config
     "GITHUB_RUN_ID",  # GitHub Actions run identifier, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
 }
