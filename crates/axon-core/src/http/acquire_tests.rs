@@ -120,19 +120,19 @@ fn escalation_outcome_distinguishes_a_real_block_from_a_broken_retry() {
         url: "https://example.gov/".into(),
         status: 403,
         detection: None,
-        escalation: EscalationOutcome::Failed("dns timeout".into()),
+        escalation: EscalationOutcome::RequestFailed("dns timeout".into()),
     };
-    let missing = FetchError::Challenge {
+    let disabled = FetchError::Challenge {
         url: "https://example.gov/".into(),
         status: 403,
         detection: None,
-        escalation: EscalationOutcome::Unavailable,
+        escalation: EscalationOutcome::Disabled,
     };
     assert!(walled.to_string().contains("survived"), "{walled}");
     assert!(broke.to_string().contains("dns timeout"), "{broke}");
     assert!(
-        missing.to_string().contains("tls-fingerprinting"),
-        "operator must be told the feature is absent: {missing}"
+        disabled.to_string().contains("disabled by configuration"),
+        "operator must be told escalation was disabled: {disabled}"
     );
 }
 

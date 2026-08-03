@@ -55,13 +55,14 @@ capability reaches those callers at once:
    body matching a WAF fingerprint (`detect_challenge`) is a *wall*, not
    content — deliberately distinct from an ordinary 404 or timeout.
 3. On a wall, and only on a wall, retry through the browser TLS/HTTP2
-   impersonating client (feature `tls-fingerprinting`, default OFF).
+   impersonating client. TLS fingerprinting is a baseline build capability,
+   not an optional Cargo feature.
    The impersonating client revalidates SSRF on **every redirect hop** — see
    [SSRF on the escalation path](#ssrf-on-the-escalation-path).
 4. Re-classify. A wall that survives escalation returns `FetchError::Challenge`,
-   carrying an `EscalationOutcome` that distinguishes three cases a caller must
-   not confuse: `StillWalled` (a real block), `Failed(reason)` (escalation broke
-   — retrying is reasonable), and `Unavailable` (built without the feature).
+   carrying an `EscalationOutcome` that distinguishes four cases a caller must
+   not confuse: `StillWalled`, `ClientInitializationFailed(reason)`,
+   `RequestFailed(reason)`, and `Disabled` (disabled by configuration).
    Collapsing these is how a transient DNS timeout gets reported as a permanent
    bot wall and an operator abandons a working domain.
 
@@ -100,7 +101,7 @@ What is actually true today, after review:
 | Claim | Reality |
 |---|---|
 | "Web acquisition is unified" | **One** non-test caller: `map/strategy.rs` `discover_root_anchors`. |
-| The escalation ladder fixes the Akamai sites | **Only in a build with `--features tls-fingerprinting`.** That feature is in no default set, is not passed by `config/Dockerfile`, and never runs in CI. A stock binary returns `FetchError::Challenge` for those sites. |
+| The escalation ladder fixes the Akamai sites | TLS fingerprinting is compiled into every supported binary. Release jobs install its native prerequisites and reject a binary whose deterministic client-initialization smoke is not `ready`. |
 | The xtask check enforces unification | It enforces "no *unlisted* acquisition client." It is a source-text scan: blind to a new crate, to `Client::default()`, and to renamed imports. |
 
 Two divergences the first version of this document omitted entirely:
@@ -116,17 +117,13 @@ Two divergences the first version of this document omitted entirely:
   `fetch_web` exists to own — evidence the need is real and that leaving these
   unmigrated invites more copies.
 
-### Open decisions (need an owner's call)
+### Open decisions
 
-1. **Ship `tls-fingerprinting` on by default?** It adds BoringSSL
-   (cmake/clang/perl/go, +8-12 min cold CI) to every build. Until decided, the
-   headline fix does not run in production. `EscalationOutcome::Unavailable`
-   now says so explicitly in the error rather than degrading silently.
-2. **Move `acquire.rs` + `impersonate.rs` to `axon-adapters`?**
+1. **Move `acquire.rs` + `impersonate.rs` to `axon-adapters`?**
    `crates/axon-core/src/CLAUDE.md` forbids "provider clients" and "pipeline
    orchestration" in `axon-core`; a vendor-tuned Chrome TLS profile and a retry
    ladder arguably are both.
-3. **Reconcile with `FetchProvider`.** `crates/axon-adapters/src/boundary.rs`
+2. **Reconcile with `FetchProvider`.** `crates/axon-adapters/src/boundary.rs`
    already defines a fetch seam wired into health, cooldown, and capability
    reporting. `fetch_web` is a free function with none of that — two competing
    abstractions that do not compose.

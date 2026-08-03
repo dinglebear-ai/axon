@@ -7,7 +7,6 @@ use axon_core::http::{
     validate_url, validate_url_with_dns,
 };
 use axon_core::logging::{log_info, log_warn};
-use spider::features::chrome_common::RequestInterceptConfiguration;
 use spider::website::Website;
 use spider_transformations::transformation::content::SelectorConfiguration;
 use std::error::Error;
@@ -73,30 +72,9 @@ pub fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn 
         warn_invalid_certs_once();
         website.with_danger_accept_invalid_certs(true);
     }
-    if matches!(cfg.render_mode, RenderMode::Chrome) {
-        website.with_chrome_intercept(chrome_intercept_config(cfg));
-        website.with_dismiss_dialogs(true);
-        website.configuration.disable_log = true;
-        if cfg.bypass_csp {
-            website.with_csp_bypass(true);
-        }
-    }
+    super::browser::apply_spider_browser_defaults(cfg, &mut website, cfg.render_mode);
 
     Ok(website)
-}
-
-fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
-    let mut intercept = RequestInterceptConfiguration::new(true);
-    intercept.set_blacklist_patterns(Some(
-        ssrf_blacklist_compact_strings()
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
-    ));
-    if cfg.chrome_remote_local_policy {
-        intercept.set_remote_local_policy(true);
-    }
-    intercept
 }
 
 /// Restore Chrome web-automation support for a single-page scrape/render
@@ -404,6 +382,10 @@ pub fn select_output(
     }
 }
 
+fn usable_render_response(status_code: u16, html: &str) -> bool {
+    (200..300).contains(&status_code) || (status_code == 304 && !html.trim().is_empty())
+}
+
 // ── Service-facing entry point ───────────────────────────────────────────────
 
 /// Scrape a single URL and return the canonical 5-field JSON payload.
@@ -416,8 +398,11 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
         .await
         .map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
 
-    let mut website = build_scrape_website(cfg, &normalized)
+    let website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
+    let mut website = super::browser::configure_spider_browser(cfg, website, cfg.render_mode)
+        .await
+        .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
         .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
@@ -427,7 +412,7 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
     let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
-    if !(200..300).contains(&status_code) {
+    if !usable_render_response(status_code, &html) {
         return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());
     }
 
@@ -491,8 +476,11 @@ pub async fn scrape_to_result(
         .await
         .map_err(|e| format!("invalid scrape URL {normalized}: {e}"))?;
 
-    let mut website = build_scrape_website(cfg, &normalized)
+    let website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
+    let mut website = super::browser::configure_spider_browser(cfg, website, cfg.render_mode)
+        .await
+        .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
     apply_automation_scripts(cfg, &mut website).await?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
@@ -503,7 +491,7 @@ pub async fn scrape_to_result(
     let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
-    if !(200..300).contains(&status_code) {
+    if !usable_render_response(status_code, &html) {
         return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());
     }
 

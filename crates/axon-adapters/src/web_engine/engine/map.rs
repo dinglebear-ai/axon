@@ -22,6 +22,7 @@ pub struct MapResult {
     pub urls: Vec<String>,
     pub sitemap_urls: usize,
     pub map_source: String,
+    pub outcome: String,
     pub warning: Option<String>,
 }
 

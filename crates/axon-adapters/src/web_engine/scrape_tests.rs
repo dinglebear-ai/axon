@@ -1,4 +1,14 @@
 use super::*;
+
+#[test]
+fn rendered_not_modified_response_is_usable_when_it_has_content() {
+    assert!(usable_render_response(
+        304,
+        "<html><a href='/news'>News</a></html>"
+    ));
+    assert!(!usable_render_response(304, "  "));
+    assert!(!usable_render_response(403, "<html>blocked</html>"));
+}
 use axon_core::config::ScrapeFormat;
 use httpmock::prelude::*;
 

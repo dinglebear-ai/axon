@@ -50,7 +50,6 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
     if let Some(proxy) = cfg.chrome_proxy.as_deref() {
         website.with_proxies(Some(vec![proxy.to_string()]));
     }
-    website.with_chrome_intercept(super::runtime::chrome_intercept_config(cfg));
     // Wire custom headers so `--header` applies to Chrome re-fetches too.
     if !cfg.custom_headers.is_empty() {
         let map = axon_core::http::parse_custom_headers(&cfg.custom_headers);
@@ -64,14 +63,11 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
         axon_core::http::ssrf_blacklist_compact_strings().to_vec(),
     ));
 
-    if cfg.bypass_csp {
-        website.with_csp_bypass(true);
-    }
-    website.with_dismiss_dialogs(true);
-    website.configuration.disable_log = true;
-    if let Some(ref chrome_url) = cfg.chrome_remote_url {
-        website.with_chrome_connection(Some(chrome_url.clone()));
-    }
+    super::super::browser::apply_spider_browser_defaults(
+        cfg,
+        &mut website,
+        axon_core::config::RenderMode::Chrome,
+    );
     website
 }
 
@@ -83,7 +79,26 @@ async fn fetch_url_with_chrome(
     url: &str,
     min_chars: usize,
 ) -> (Option<String>, Option<CrawlDiagnostic>) {
-    let mut website = build_single_page_website(cfg, url);
+    let website = build_single_page_website(cfg, url);
+    let Ok(mut website) = super::super::browser::configure_spider_browser(
+        cfg,
+        website,
+        axon_core::config::RenderMode::Chrome,
+    )
+    .await
+    else {
+        return (
+            None,
+            Some(
+                CrawlDiagnostic::new(
+                    "chrome_render",
+                    "chrome_configuration_failed",
+                    "shared Chrome configuration failed",
+                )
+                .with_url(url.to_string()),
+            ),
+        );
+    };
     let mut rx = website.subscribe(16);
 
     let collect: tokio::task::JoinHandle<Option<Page>> =
@@ -311,7 +326,7 @@ mod tests {
         cfg.chrome_remote_url = Some("ws://127.0.0.1:9222/devtools/browser/test".to_string());
 
         let website = build_single_page_website(&cfg, "https://example.com/thin");
-        let intercept = super::super::runtime::chrome_intercept_config(&cfg);
+        let intercept = super::super::super::browser::chrome_intercept_config(&cfg);
 
         assert!(intercept.enabled);
         assert!(intercept.remote_local_policy);

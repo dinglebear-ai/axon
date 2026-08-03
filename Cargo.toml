@@ -156,10 +156,6 @@ default = []
 test-helpers = []
 live-qdrant = []
 
-# TLS fingerprinting via wreq+BoringSSL. Requires cmake/clang/perl/go.
-# CI impact: +8-12 min cold build, +400MB target/. See axon_rust-wf4s.
-tls-fingerprinting = ["axon-cli/tls-fingerprinting"]
-
 # QuickJS sandbox for window.__* JS blob extraction. Requires rquickjs.
 # Process-isolation wrapper required. See axon_rust-b6xi.
 quickjs = []

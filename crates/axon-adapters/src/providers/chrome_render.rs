@@ -48,6 +48,7 @@ const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 /// occurrence rather than requiring two consecutive ones.
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 2;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+const REMOTE_CHROME_MAX_CONCURRENT_PAGES: u32 = 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct ChromeRenderConfig {
@@ -105,6 +106,12 @@ impl ChromeRenderProvider {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string)
         };
+        let u64_value = |key| {
+            request
+                .metadata
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+        };
         let mut cfg = Config {
             render_mode: map_render_mode(request.mode),
             format: request
@@ -120,6 +127,8 @@ impl ChromeRenderProvider {
             root_selector: string_value("root_selector"),
             exclude_selector: string_value("exclude_selector"),
             chrome_screenshot: bool_value("chrome_screenshot").unwrap_or(false),
+            chrome_network_idle_timeout_secs: u64_value("chrome_network_idle_timeout_secs")
+                .unwrap_or_else(|| Config::default().chrome_network_idle_timeout_secs),
             automation_script: request
                 .automation_script
                 .as_ref()
@@ -314,7 +323,7 @@ impl RenderProvider for ChromeRenderProvider {
                 render_modes: vec![RenderMode::Http, RenderMode::Chrome, RenderMode::AutoSwitch],
                 browser_pool_limits: BrowserPoolLimits {
                     max_browsers: 1,
-                    max_pages_per_browser: 1,
+                    max_pages_per_browser: REMOTE_CHROME_MAX_CONCURRENT_PAGES,
                     max_page_lifetime_ms: self.config.default_timeout_ms.unwrap_or(30_000),
                 },
                 script_support: true,

@@ -195,8 +195,9 @@ fn clone_http_error(err: &HttpError) -> HttpError {
         HttpError::Network(_) => HttpError::InvalidUrl(String::new()),
         // Same reasoning as Network: the impersonating client performs requests,
         // not validation, so this variant never reaches an audit builder.
-        #[cfg(feature = "tls-fingerprinting")]
-        HttpError::Impersonation(_) => HttpError::InvalidUrl(String::new()),
+        HttpError::ImpersonationInit(_) | HttpError::ImpersonationRequest(_) => {
+            HttpError::InvalidUrl(String::new())
+        }
     }
 }
 
@@ -216,8 +217,8 @@ fn redact_ssrf_reason(err: &HttpError) -> String {
         HttpError::DnsResolution { host, .. } => format!("dns resolution failed for '{host}'"),
         HttpError::Network(_) => "network error during ssrf validation".to_string(),
         // Redacted deliberately: the wreq error text can embed the request URL.
-        #[cfg(feature = "tls-fingerprinting")]
-        HttpError::Impersonation(_) => "impersonated request error".to_string(),
+        HttpError::ImpersonationInit(_) => "impersonating client initialization error".to_string(),
+        HttpError::ImpersonationRequest(_) => "impersonated request error".to_string(),
     }
 }
 

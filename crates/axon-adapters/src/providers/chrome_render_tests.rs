@@ -79,6 +79,10 @@ fn render_request_metadata_configures_advertised_web_options() {
     request
         .metadata
         .insert("chrome_screenshot".to_string(), serde_json::json!(true));
+    request.metadata.insert(
+        "chrome_network_idle_timeout_secs".to_string(),
+        serde_json::json!(1),
+    );
     request
         .metadata
         .insert("format".to_string(), serde_json::json!("rawHtml"));
@@ -95,6 +99,7 @@ fn render_request_metadata_configures_advertised_web_options() {
     assert_eq!(cfg.root_selector.as_deref(), Some("main"));
     assert_eq!(cfg.exclude_selector.as_deref(), Some("aside"));
     assert!(cfg.chrome_screenshot);
+    assert_eq!(cfg.chrome_network_idle_timeout_secs, 1);
     assert_eq!(cfg.format, ScrapeFormat::RawHtml);
     assert_eq!(cfg.output_dir, PathBuf::from("/tmp/axon-output"));
 }

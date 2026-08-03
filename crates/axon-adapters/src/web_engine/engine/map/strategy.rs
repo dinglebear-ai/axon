@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use url::Url;
 
+use axon_api::source::{MetadataMap, RenderMode, RenderRequest};
 use axon_core::config::Config;
 use axon_core::content::extract_anchor_hrefs;
 use axon_core::http::{FetchWebOptions, fetch_web, normalize_url};
@@ -19,7 +20,7 @@ use super::{
     MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
     merge_map_candidate_urls, resolve_map_seed_url,
 };
-use crate::boundary::FetchProvider;
+use crate::boundary::{FetchProvider, RenderProvider};
 
 /// URL count at or above which sitemap/llms discovery is considered sufficient
 /// on its own and anchor discovery is skipped.
@@ -32,6 +33,8 @@ const MIN_DISCOVERY_URLS: usize = 200;
 
 /// Merged-result count below which the map is reported as possibly incomplete.
 const MIN_HEALTHY_MAP_URLS: usize = 5;
+const MAP_ROOT_RENDER_TIMEOUT_MS: u64 = 8_000;
+const MAP_ROOT_NETWORK_IDLE_SECS: u64 = 1;
 
 fn effective_root_anchor_limit(cfg: &Config) -> usize {
     if cfg.max_pages == 0 {
@@ -46,16 +49,17 @@ async fn discover_root_anchors(
     scope_start_url: &str,
     scope: &MapScope,
     fetch: Arc<dyn FetchProvider>,
+    render: Arc<dyn RenderProvider>,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    let html = if let Some(html) = fetch_text(
+    let fast_fetch = if let Some(html) = fetch_text(
         fetch.as_ref(),
         scope_start_url,
         Some(DISCOVERY_MAX_BODY_BYTES),
     )
     .await
     {
-        html
+        Ok((scope_start_url.to_string(), html))
     } else {
         // Preserve the provider boundary for deterministic tests and normal
         // acquisition, then use the unified anti-bot ladder as the production
@@ -72,34 +76,103 @@ async fn discover_root_anchors(
                         "bounded-structure: {scope_start_url} required browser TLS impersonation"
                     ));
                 }
-                doc.body
+                Ok((doc.final_url, doc.body))
             }
-            Err(error) => {
-                log_info(&format!(
-                    "bounded-structure: fetch failed for {scope_start_url}: {error}"
-                ));
-                return (
-                    vec![],
-                    Some(format!(
-                        "bounded-structure discovery failed to fetch {scope_start_url}: {error}"
-                    )),
-                );
-            }
+            Err(error) => Err(error.to_string()),
         }
     };
 
-    let anchor_urls = extract_anchor_hrefs(scope_start_url, &html, root_anchor_limit);
-    let urls = merge_map_candidate_urls(Vec::new(), anchor_urls, scope, true);
-    let mut urls: Vec<String> = urls
-        .into_iter()
-        .filter(|url| !is_excluded_url_path(url, &cfg.exclude_path_prefix))
-        .collect();
-    urls.sort();
+    let mut fast_warning = None;
+    let anchor_urls = match fast_fetch {
+        Ok((final_url, html)) => extract_anchor_hrefs(&final_url, &html, root_anchor_limit),
+        Err(error) => {
+            fast_warning = Some(format!(
+                "bounded-structure discovery failed to fetch {scope_start_url}: {error}"
+            ));
+            Vec::new()
+        }
+    };
+
+    let filter_anchors = |candidates| {
+        let urls = merge_map_candidate_urls(Vec::new(), candidates, scope, true);
+        let mut urls: Vec<String> = urls
+            .into_iter()
+            .filter(|url| !is_excluded_url_path(url, &cfg.exclude_path_prefix))
+            .collect();
+        urls.sort();
+        urls
+    };
+    let mut urls = filter_anchors(anchor_urls);
+
+    if urls.is_empty()
+        && matches!(
+            cfg.render_mode,
+            axon_core::config::RenderMode::Chrome | axon_core::config::RenderMode::AutoSwitch
+        )
+    {
+        log_info(&format!(
+            "bounded-structure: fast discovery empty; rendering root once for {scope_start_url}"
+        ));
+        let mut metadata = MetadataMap::new();
+        metadata.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
+        metadata.insert("block_assets".to_string(), serde_json::json!(true));
+        metadata.insert(
+            "chrome_network_idle_timeout_secs".to_string(),
+            serde_json::json!(MAP_ROOT_NETWORK_IDLE_SECS),
+        );
+        let rendered = render
+            .render(RenderRequest {
+                uri: scope_start_url.to_string(),
+                mode: RenderMode::Chrome,
+                timeout_ms: Some(
+                    cfg.request_timeout_ms
+                        .unwrap_or(MAP_ROOT_RENDER_TIMEOUT_MS)
+                        .min(MAP_ROOT_RENDER_TIMEOUT_MS),
+                ),
+                wait_ms: None,
+                automation_script: None,
+                credential_refs: Vec::new(),
+                metadata,
+            })
+            .await;
+        match rendered {
+            Ok(page) => {
+                if let Some(html) = page.html {
+                    urls = filter_anchors(extract_anchor_hrefs(
+                        &page.final_uri,
+                        &html,
+                        root_anchor_limit,
+                    ));
+                }
+                if urls.is_empty() {
+                    let browser_warning = format!(
+                        "browser root discovery completed for {scope_start_url} but returned no in-scope links"
+                    );
+                    fast_warning = Some(match fast_warning {
+                        Some(fast) => format!("{fast}; {browser_warning}"),
+                        None => browser_warning,
+                    });
+                }
+            }
+            Err(error) => {
+                log_info(&format!(
+                    "bounded-structure: browser render failed for {scope_start_url}: {error}"
+                ));
+                let browser_warning =
+                    format!("browser root discovery failed for {scope_start_url}: {error}");
+                fast_warning = Some(match fast_warning {
+                    Some(fast) => format!("{fast}; {browser_warning}"),
+                    None => browser_warning,
+                });
+            }
+        }
+    }
 
     // Thinness is judged by the caller on the MERGED result — anchors may be
     // sparse while the sitemap layer supplied plenty. Only hard failures (no
     // client, no fetch) are reported from here.
-    (urls, None)
+    let empty = urls.is_empty();
+    (urls, fast_warning.filter(|_| empty))
 }
 
 /// Merge `candidates` into the map scope, then drop scope/locale-excluded URLs.
@@ -124,6 +197,11 @@ fn build_discovery_map_result(
     map_source: &str,
     elapsed_ms: u128,
 ) -> MapResult {
+    let outcome = if urls.is_empty() {
+        "empty"
+    } else {
+        "completed"
+    };
     MapResult {
         summary: CrawlSummary {
             elapsed_ms,
@@ -132,6 +210,7 @@ fn build_discovery_map_result(
         sitemap_urls: raw_sitemap_count,
         urls,
         map_source: map_source.to_string(),
+        outcome: outcome.to_string(),
         warning: None,
     }
 }
@@ -220,6 +299,7 @@ pub async fn discover_site_urls(
     cfg: &Config,
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
+    render: Arc<dyn RenderProvider>,
 ) -> Result<MapResult, Box<dyn Error>> {
     let start = Instant::now();
 
@@ -292,7 +372,7 @@ pub async fn discover_site_urls(
     }
 
     let (anchor_urls, fetch_warning) =
-        discover_root_anchors(cfg, &scope_start_url, &scope, fetch).await;
+        discover_root_anchors(cfg, &scope_start_url, &scope, fetch, render).await;
     let anchors_found = !anchor_urls.is_empty();
 
     // Layers are additive: discovery entries keep priority, anchors fill in the
@@ -314,6 +394,12 @@ pub async fn discover_site_urls(
         })
     });
 
+    let outcome = if urls.is_empty() {
+        if warning.is_some() { "failed" } else { "empty" }
+    } else {
+        "completed"
+    };
+
     Ok(MapResult {
         summary: CrawlSummary {
             elapsed_ms: start.elapsed().as_millis(),
@@ -322,6 +408,7 @@ pub async fn discover_site_urls(
         sitemap_urls: raw_sitemap_count,
         urls,
         map_source,
+        outcome: outcome.to_string(),
         warning,
     })
 }

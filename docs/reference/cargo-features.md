@@ -1,12 +1,13 @@
 # Axon Feature Flags
 
-Optional Cargo features for the webclaw port. All are **disabled by default**.
+Optional Cargo features for the webclaw port. TLS fingerprinting is no longer
+optional: it is a baseline dependency in every supported Axon binary.
 
 ## Feature matrix
 
 | Feature | Description | Deps | CI cost | Status |
 |---------|-------------|------|---------|--------|
-| `tls-fingerprinting` | wreq+BoringSSL TLS browser emulation | wreq, boring-sys (cmake/clang/perl/go) | +8-12min cold build | Placeholder (bead wf4s closed) |
+| TLS fingerprinting (baseline) | wreq+BoringSSL TLS browser emulation | wreq, boring-sys (cmake/clang/perl/go) | +8-12min cold build | Always compiled; release binary smoke enforced |
 | `quickjs` | QuickJS sandbox for inline JS extraction | rquickjs | +deps | Placeholder (bead b6xi closed) |
 | `social-verticals` | Instagram/LinkedIn social extractors | (none) | 0 | Placeholder (bead 2mrr closed) |
 
@@ -21,7 +22,7 @@ Optional Cargo features for the webclaw port. All are **disabled by default**.
 | `AXON_JS_EVAL_ENABLED` | `false` | Enable QuickJS JS evaluation (requires `quickjs` feature) |
 | `AXON_ENABLE_SOCIAL_VERTICALS` | `false` | Enable Instagram/LinkedIn extractors (requires `social-verticals` feature) |
 
-## Adding a real dependency under a feature
+## Adding a real optional dependency under a feature
 
 When a placeholder feature gets real code:
 1. Add the crate to `[dependencies]` with `optional = true`
@@ -32,6 +33,6 @@ When a placeholder feature gets real code:
 
 ## CI note
 
-Adding BoringSSL (`tls-fingerprinting`) requires: `cmake`, `clang`, `perl`, and `go`
-on the CI runner. Consider a dedicated runner or Docker image rather than polluting the
-default runner environment.
+BoringSSL requires `cmake`, `clang`, `perl`, and `go` on every build runner.
+The Linux and Windows release jobs verify those prerequisites and assert the
+built binary reports `tlsFingerprinting=true` with client initialization `ready`.
