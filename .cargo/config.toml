@@ -10,10 +10,9 @@
 # canonical family reference.
 # =============================================================================
 
-# No rustc-wrapper. Compile caching is owned by soldr/zccache at the process
-# boundary (see ~/.local/bin/cargo front door); an in-process wrapper would
-# stack a second cache layer. The ~/.local/bin/axon symlink is maintained by
-# scripts/axon, not by a build-time wrapper.
+# No repository rustc-wrapper. Compile caching is owned by the host's Kache
+# configuration. Artifact installation remains explicit through the Justfile's
+# build, link-bin, and install recipes rather than occurring during compilation.
 
 [env]
 # Local cargo commands are test/dev oriented by default. The root build script
