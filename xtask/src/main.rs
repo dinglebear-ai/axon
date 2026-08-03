@@ -128,10 +128,12 @@ enum Command {
         #[arg(long)]
         version: String,
     },
-    /// Print release-please postprocessing needed for a release PR file list.
+    /// Print release-please postprocessing needed for a release PR branch diff.
     ReleasePleaseFixupPlan {
         #[arg(long)]
-        files: String,
+        base: String,
+        #[arg(long, default_value = "HEAD")]
+        head: String,
         #[arg(long)]
         json: bool,
     },
@@ -231,8 +233,8 @@ fn main() -> Result<()> {
         Command::ReleasePleaseFixups { component, version } => Ok(
             checks::release_versions::release_please_fixups(&root, &component, &version)?,
         ),
-        Command::ReleasePleaseFixupPlan { files, json } => {
-            let items = checks::release_versions::release_please_fixup_plan(&root, &files)?;
+        Command::ReleasePleaseFixupPlan { base, head, json } => {
+            let items = checks::release_versions::release_please_fixup_plan(&root, &base, &head)?;
             checks::release_versions::print_release_please_fixup_plan(&items, json)?;
             Ok(())
         }
