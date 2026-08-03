@@ -396,7 +396,7 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     let tag_step = release.find("Create and push tag").expect("tag step");
     let github_release_step = release
-        .find("Create GitHub release")
+        .find("Ensure GitHub Release exists")
         .expect("GitHub Release step");
     let dispatch_step = release
         .find("Dispatch release workflow")
@@ -410,11 +410,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "gh release create \"$tag\"",
         "--verify-tag",
         "--generate-notes",
-        "--repo \"${{ github.repository }}\" --ref",
+        "--repo \"${{ github.repository }}\"",
+        "--ref \"${{ matrix.candidate_tag }}\"",
     ] {
         assert!(
             release.contains(required),
-            "auto-tag release creation must include {required}"
+            "auto-tag release flow must include {required}"
         );
     }
     for required in [
