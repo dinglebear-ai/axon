@@ -7172,6 +7172,22 @@
     "JobCreateRequest_JobStagePlan": {
       "additionalProperties": false,
       "properties": {
+        "allowed_next": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_PipelinePhase"
+          },
+          "type": "array"
+        },
+        "allowed_skips": {
+          "items": {
+            "$ref": "#/$defs/JobCreateRequest_StageSkipReason"
+          },
+          "type": "array"
+        },
+        "applicability": {
+          "$ref": "#/$defs/JobCreateRequest_StageApplicability",
+          "default": "always"
+        },
         "estimated_items": {
           "format": "uint64",
           "minimum": 0,
@@ -7191,6 +7207,10 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "stage_key": {
+          "default": "",
+          "type": "string"
         }
       },
       "required": [
@@ -7330,6 +7350,28 @@
         "retryable"
       ],
       "type": "object"
+    },
+    "JobCreateRequest_StageApplicability": {
+      "enum": [
+        "always",
+        "when_changed",
+        "when_embedding",
+        "when_scope_matches",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "JobCreateRequest_StageSkipReason": {
+      "enum": [
+        "not_applicable",
+        "disabled",
+        "no_changes",
+        "reused",
+        "empty_input",
+        "unsupported",
+        "canceled"
+      ],
+      "type": "string"
     },
     "JobCreateRequest_TransportKind": {
       "enum": [
@@ -21888,6 +21930,22 @@
     "SourcePlan_JobStagePlan": {
       "additionalProperties": false,
       "properties": {
+        "allowed_next": {
+          "items": {
+            "$ref": "#/$defs/SourcePlan_PipelinePhase"
+          },
+          "type": "array"
+        },
+        "allowed_skips": {
+          "items": {
+            "$ref": "#/$defs/SourcePlan_StageSkipReason"
+          },
+          "type": "array"
+        },
+        "applicability": {
+          "$ref": "#/$defs/SourcePlan_StageApplicability",
+          "default": "always"
+        },
         "estimated_items": {
           "format": "uint64",
           "minimum": 0,
@@ -21907,6 +21965,10 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "stage_key": {
+          "default": "",
+          "type": "string"
         }
       },
       "required": [
@@ -22535,6 +22597,28 @@
         "disabled",
         "ensure",
         "enabled"
+      ],
+      "type": "string"
+    },
+    "SourcePlan_StageApplicability": {
+      "enum": [
+        "always",
+        "when_changed",
+        "when_embedding",
+        "when_scope_matches",
+        "optional"
+      ],
+      "type": "string"
+    },
+    "SourcePlan_StageSkipReason": {
+      "enum": [
+        "not_applicable",
+        "disabled",
+        "no_changes",
+        "reused",
+        "empty_input",
+        "unsupported",
+        "canceled"
       ],
       "type": "string"
     },
@@ -28685,6 +28769,16 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
+        "checksum": "sha256:530f987e2f0f3a7b67c66728e0fded729fc6868f257fd0a858b880b1b7d035a3",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/audit.rs"
+      },
+      {
+        "checksum": "sha256:be64cff2487538e6630fc9cf18a0fe419e94e31185d5551c4f8634270e3da7f2",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/auth.rs"
+      },
+      {
         "checksum": "sha256:fcfda23e0f4a826a24b966ee331351cc2979d65bb824331fb4467624b7906bb8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/boundary.rs"
@@ -28695,7 +28789,7 @@
         "path": "crates/axon-api/src/source/capability.rs"
       },
       {
-        "checksum": "sha256:b595134360cc39310d4c6db91fb9fd8ce43d0d8a5de09d8780a0e834dbc430ab",
+        "checksum": "sha256:2f90a731c1891edc3d44faa45b95f560914598cd7ccfaf98350d2748bbfb38da",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/common.rs"
       },
@@ -28705,9 +28799,19 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:dba63291e2f0e9724d7939ebb06bb57c72bf4701ebabc378fdad1ec05b134a4c",
+        "checksum": "sha256:9d146e2590f64696658beb9043337c53225f56748648d3bbf7856f959de1c6c0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
+      },
+      {
+        "checksum": "sha256:e0694fce6e7d9e994c3fc7d5e92376e00034daf13ce31782c00631a374d0ea5f",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/enums/pipeline_phase.rs"
+      },
+      {
+        "checksum": "sha256:e66bec247b376a34d0e5260977c0fa837583bac8fa997d80d6f7dfd9c8388feb",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/enums/runtime.rs"
       },
       {
         "checksum": "sha256:9996d283cf15c1b9e069e474d048f5e4e9745f01ecfac6189ef2935aa3bc0d28",
@@ -28715,7 +28819,7 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:f3897a8fd1c41a2af742b8dccfc6889618376629da5bfa92a5389c1b38c064ec",
+        "checksum": "sha256:8e169aaadba8eb5c90020b0f1ea18945e11084d165f4aee5b21f722957b6814a",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },
@@ -28730,6 +28834,11 @@
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
       {
+        "checksum": "sha256:2135142a70b1ecf31035f684b38951918c446cb00ce856d9a7eef5e8332401fe",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/job_policy.rs"
+      },
+      {
         "checksum": "sha256:476e1beaf6df536d05126c2ff3ef5570bdab4408989e299c8c4345031011d87b",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/lifecycle.rs"
@@ -28740,6 +28849,16 @@
         "path": "crates/axon-api/src/source/listing.rs"
       },
       {
+        "checksum": "sha256:5cd9e784e709e94d060466cd824e216702a5aaf0c15e621e1c9f7e0625a3920d",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/llm.rs"
+      },
+      {
+        "checksum": "sha256:1379621c768b5ca22fcb63ac058b21220c87cbf63de6991119d141b3b92c6dc8",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/memory.rs"
+      },
+      {
         "checksum": "sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/provider_io.rs"
@@ -28748,6 +28867,16 @@
         "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
+      },
+      {
+        "checksum": "sha256:669dd934873cd850277ecdcfd90dc1bcb29d428372065fe84f72b56ed18d1af1",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/redaction.rs"
+      },
+      {
+        "checksum": "sha256:29620f8d69e94a9e032148161995fb0e95e1f00421e42e35c40d9cc74cb034ba",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/service_ids.rs"
       },
       {
         "checksum": "sha256:83fe783b1205b21b7278851c8118b993c60f6f4b549cac5f4bb1cd16874c3dc8",
@@ -28770,9 +28899,69 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
+        "checksum": "sha256:9c51f69782f900283751c8e3b5fdb37a8d4a2a758618a04fdaa3f7072f2a4399",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/waf_diagnostics.rs"
+      },
+      {
         "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e",
         "kind": "rust_module",
         "path": "crates/axon-error/src/api_error.rs"
+      },
+      {
+        "checksum": "sha256:abf9bc24f7596983e5fc8bd1228156b8360be4ea20b4d48ceb3e8ed5dd974929",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/code.rs"
+      },
+      {
+        "checksum": "sha256:ca9e67a1ed3feb4dbfc66e4ae0717e5254ffeb81b00cff0dde74d37dcd125755",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/context.rs"
+      },
+      {
+        "checksum": "sha256:2aaede11285603cb6b0df29c82ee0d5c727069490c1770f26e97ee9d9f44ee73",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/conversion.rs"
+      },
+      {
+        "checksum": "sha256:2da7a16ea5064986b853f7380acd6b66d03137ba8eeba72fedd7493c238df900",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/cooling.rs"
+      },
+      {
+        "checksum": "sha256:b054137819cb965bb929515d48a412a11f74222e61599d22e0ab211e07dafeec",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/degradation.rs"
+      },
+      {
+        "checksum": "sha256:4498c249c8c1476db9c365d0b097fa35e8db871672f40208787bbb4afcd353a1",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/lib.rs"
+      },
+      {
+        "checksum": "sha256:e5ccc139cf2de5b797cf37d842690176ab57896b4f3954e0e90e75dcd79e50db",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/retry.rs"
+      },
+      {
+        "checksum": "sha256:7e1f574864bbbe1c71622b9a6a2677c14213f45333990916c6b601b508a36f99",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/schema_registry.rs"
+      },
+      {
+        "checksum": "sha256:f06451fe12d909faadd57c975ba6e8ee9cd2ba0ef4525060e17bd12ce686444b",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/severity.rs"
+      },
+      {
+        "checksum": "sha256:afee6d711302dd5b0d8b1d2868f8cab3b50c90534b781773287f7dc6d5e15471",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/stage.rs"
+      },
+      {
+        "checksum": "sha256:7ed75db7b3303a44c3bd48eaf861edda65d480a402b3a75a80e1f9333d48a3f4",
+        "kind": "rust_module",
+        "path": "crates/axon-error/src/testing.rs"
       },
       {
         "checksum": "sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc",
@@ -28785,9 +28974,34 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
+        "checksum": "sha256:b9992bf960847db37dede00b3b8dc9ba4102a292bf943f2a38c6ad1c389b2fed",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/families.rs"
+      },
+      {
+        "checksum": "sha256:e06e9d73ae8b2f88993f0582ca080d31764df3f62d8ae33fd2dc2ee77a39ff58",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/families/bundles.rs"
+      },
+      {
         "checksum": "sha256:e311c00778ae7f149f1d2df39ab5dd62050a261a700607b3ab9286de1b98eb2c",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry.rs"
+      },
+      {
+        "checksum": "sha256:eb080a5f9bee2a1247d7824accc79786f4d8093ff352431a92d00cfc1653ce61",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/registry/canonical_enums.rs"
+      },
+      {
+        "checksum": "sha256:09683a203e931d619a76fff0ab5abb04efbaac1ae9849bd763303d7f364759f8",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/schema_json.rs"
+      },
+      {
+        "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/source_input.rs"
       }
     ]
   }

@@ -91,12 +91,7 @@ async fn watchdog_sweep_reclaims_stale_unified_job() {
             attempt: 1,
             priority: JobPriority::Normal,
             idempotency_key: None,
-            stage_plan: vec![JobStagePlan {
-                phase: PipelinePhase::Fetching,
-                required: true,
-                provider_requirements: Vec::new(),
-                estimated_items: None,
-            }],
+            stage_plan: vec![JobStagePlan::required(PipelinePhase::Fetching)],
             request: None,
             auth_snapshot: AuthSnapshot::trusted_system("test"),
             config_snapshot_id: None,

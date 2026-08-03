@@ -2,7 +2,7 @@
 //!
 //! Services build a routed `SourcePlan` and hand it to the family adapter for
 //! materialization. The returned adapter-owned guard keeps temporary artifacts
-//! alive while the shared non-web document pipeline runs.
+//! alive while the canonical source executor runs.
 
 mod local;
 mod tool;
@@ -18,14 +18,15 @@ use anyhow::Context as _;
 use axon_adapters::sessions::{SessionRoots, SessionSourceAdapter};
 use axon_adapters::{SourceAdapter, acquisition::MaterializedSource};
 use axon_api::source::{
-    AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, SourceLimits, SourcePlan, SourceRequest,
+    AuthSnapshot, ConfigSnapshotId, EffectiveLimits, JobId, JobStagePlan, PipelinePhase,
+    SourceLimits, SourcePlan, SourceRequest, StageApplicability, StageSkipReason,
 };
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use uuid::Uuid;
 
 use super::SourceExecutionContext;
-use super::non_web::{NonWebPipelineInput, index_materialized_source};
+use super::executor::{SourcePipelineInput, index_materialized_source};
 use super::result_map::IndexCounts;
 use crate::context::TargetLocalSourceRuntime;
 pub(crate) use local::dispatch_local;
@@ -33,9 +34,9 @@ pub(crate) use tool::{dispatch_cli_tool, dispatch_mcp_tool};
 pub(crate) use virtual_sources::{dispatch_memory, dispatch_upload};
 pub(crate) use web::dispatch_web;
 
-/// Placeholder job id for a `SourcePlan`/`LocalSourceIndexInput` field that
+/// Placeholder job id for a `SourcePlan` field that
 /// gets overwritten with the real durable job id before any use — every
-/// generic non-web family (`family_source_plan`, below) and `dispatch_web`
+/// source family (`family_source_plan`, below) and `dispatch_web`
 /// (`dispatch/web.rs`) construct their plan with this placeholder and then
 /// immediately replace it once the real (worker-supplied or freshly created)
 /// job id is known, so the placeholder itself is never observed.
@@ -70,7 +71,7 @@ fn family_source_plan(
         job_id: placeholder_job_id(),
         request,
         route: route.clone(),
-        stage_plan: Vec::new(),
+        stage_plan: source_stage_plan(embed),
         limits: EffectiveLimits {
             request: effective.clone(),
             adapter_defaults: SourceLimits::default(),
@@ -80,6 +81,58 @@ fn family_source_plan(
         config_snapshot_id: ConfigSnapshotId::new("cfg_source_dispatch"),
         provider_reservations: Vec::new(),
     }
+}
+
+pub(crate) fn source_stage_plan(embed: bool) -> Vec<JobStagePlan> {
+    let changed = |phase| {
+        JobStagePlan::conditional(
+            phase,
+            StageApplicability::WhenChanged,
+            vec![StageSkipReason::NoChanges, StageSkipReason::NotApplicable],
+        )
+    };
+    let mut stages = vec![
+        JobStagePlan::required(PipelinePhase::Leasing),
+        JobStagePlan::required(PipelinePhase::Discovering),
+        JobStagePlan::required(PipelinePhase::Diffing),
+        changed(PipelinePhase::Fetching),
+        changed(PipelinePhase::Enriching),
+        changed(PipelinePhase::Normalizing),
+        changed(PipelinePhase::Parsing),
+        changed(PipelinePhase::Preparing),
+        changed(PipelinePhase::Batching),
+    ];
+    let embedding_applicability = if embed {
+        StageApplicability::WhenChanged
+    } else {
+        StageApplicability::WhenEmbedding
+    };
+    let embedding_skips = if embed {
+        vec![StageSkipReason::NoChanges, StageSkipReason::EmptyInput]
+    } else {
+        vec![StageSkipReason::Disabled]
+    };
+    for phase in [
+        PipelinePhase::Embedding,
+        PipelinePhase::Vectorizing,
+        PipelinePhase::Upserting,
+    ] {
+        stages.push(JobStagePlan::conditional(
+            phase,
+            embedding_applicability,
+            embedding_skips.clone(),
+        ));
+    }
+    stages.extend([
+        changed(PipelinePhase::Graphing),
+        JobStagePlan::required(PipelinePhase::Publishing),
+        JobStagePlan::conditional(
+            PipelinePhase::Cleaning,
+            StageApplicability::Optional,
+            vec![StageSkipReason::NoChanges, StageSkipReason::NotApplicable],
+        ),
+    ]);
+    stages
 }
 
 /// Git-repository source: adapter-owned materialization followed by the shared
@@ -382,7 +435,7 @@ where
 {
     index_materialized_source(
         runtime,
-        NonWebPipelineInput {
+        SourcePipelineInput {
             adapter,
             plan,
             collection,
@@ -402,10 +455,6 @@ mod tests;
 #[cfg(test)]
 #[path = "dispatch/tool_tests.rs"]
 mod tool_tests;
-
-#[cfg(test)]
-#[path = "dispatch/local_collapse_tests.rs"]
-mod local_collapse_tests;
 
 #[cfg(test)]
 #[path = "dispatch/progress_tests.rs"]

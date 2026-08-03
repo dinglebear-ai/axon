@@ -52,6 +52,14 @@ web-check:
 openapi-check:
     cargo xtask check-openapi-drift
 
+# Refresh schemas and every generated Markdown projection in dependency order.
+generated-contracts-refresh:
+    cargo xtask generated-contracts refresh
+
+# Verify schema provenance and all dependent generated docs without writing.
+generated-contracts-check:
+    cargo xtask generated-contracts check
+
 # Package the Chrome extension into dist/axon-page-scraper-<version>.zip
 package-extension:
     ./apps/chrome-extension/package.sh

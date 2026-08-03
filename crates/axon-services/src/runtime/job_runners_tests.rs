@@ -27,12 +27,9 @@ fn detached_job_request(kind: UnifiedJobKind) -> JobCreateRequest {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: None,
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Planning,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(1),
-        }],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Planning).with_estimated_items(Some(1)),
+        ],
         request: Some(serde_json::json!({"operation": format!("{kind:?}").to_lowercase()})),
         auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_job_runner_test")),

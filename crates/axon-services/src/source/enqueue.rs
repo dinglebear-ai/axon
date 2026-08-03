@@ -23,7 +23,7 @@
 
 use axon_api::source::{
     AdapterRef, AuthScope, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap,
-    SourceIntent, SourceKind, SourceRequest, SourceResult,
+    SourceIntent, SourceKind, SourceRequest, SourceResult, SourceScope,
 };
 use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
@@ -148,7 +148,9 @@ fn job_create_request(request: &SourceRequest, auth_snapshot: AuthSnapshot) -> J
         attempt: 1,
         priority: request.execution.priority,
         idempotency_key: request.idempotency_key.clone(),
-        stage_plan: Vec::new(),
+        stage_plan: super::dispatch::source_stage_plan(
+            request.embed && request.scope != Some(SourceScope::Map),
+        ),
         request: Some(serde_json::json!({ "source_request": request })),
         auth_snapshot,
         config_snapshot_id: None,

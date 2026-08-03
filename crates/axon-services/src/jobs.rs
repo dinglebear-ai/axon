@@ -331,12 +331,7 @@ fn stage_plan_for_operation(operation: OperationKind) -> Vec<JobStagePlan> {
         OperationKind::Reset => PipelinePhase::Cleaning,
         OperationKind::Query | OperationKind::Retrieve => PipelinePhase::Retrieving,
     };
-    vec![JobStagePlan {
-        phase,
-        required: true,
-        provider_requirements: Vec::new(),
-        estimated_items: None,
-    }]
+    vec![JobStagePlan::required(phase)]
 }
 
 fn result_schema_for_operation(operation: OperationKind) -> &'static str {

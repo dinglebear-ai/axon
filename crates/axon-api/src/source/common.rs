@@ -228,10 +228,113 @@ pub enum ChunkProfile {
 #[serde(deny_unknown_fields)]
 pub struct JobStagePlan {
     pub phase: PipelinePhase,
+    #[serde(default)]
+    pub stage_key: String,
+    #[serde(default)]
+    pub applicability: StageApplicability,
     pub required: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_skips: Vec<StageSkipReason>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_next: Vec<PipelinePhase>,
     pub provider_requirements: Vec<ProviderRequirement>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub estimated_items: Option<u64>,
+}
+
+impl JobStagePlan {
+    pub fn required(phase: PipelinePhase) -> Self {
+        Self {
+            phase,
+            stage_key: phase.as_str().to_string(),
+            applicability: StageApplicability::Always,
+            required: true,
+            allowed_skips: Vec::new(),
+            allowed_next: phase.default_successors().to_vec(),
+            provider_requirements: Vec::new(),
+            estimated_items: None,
+        }
+    }
+
+    pub fn conditional(
+        phase: PipelinePhase,
+        applicability: StageApplicability,
+        allowed_skips: Vec<StageSkipReason>,
+    ) -> Self {
+        Self {
+            phase,
+            stage_key: phase.as_str().to_string(),
+            applicability,
+            required: false,
+            allowed_skips,
+            allowed_next: phase.default_successors().to_vec(),
+            provider_requirements: Vec::new(),
+            estimated_items: None,
+        }
+    }
+
+    pub fn restored(
+        phase: PipelinePhase,
+        required: bool,
+        provider_requirements: Vec<ProviderRequirement>,
+        estimated_items: Option<u64>,
+    ) -> Self {
+        let mut plan = if required {
+            Self::required(phase)
+        } else {
+            Self::conditional(
+                phase,
+                StageApplicability::Optional,
+                vec![StageSkipReason::NotApplicable, StageSkipReason::Disabled],
+            )
+        };
+        plan.provider_requirements = provider_requirements;
+        plan.estimated_items = estimated_items;
+        plan
+    }
+
+    pub fn with_stage_key(mut self, stage_key: impl Into<String>) -> Self {
+        self.stage_key = stage_key.into();
+        self
+    }
+
+    pub fn with_estimated_items(mut self, estimated_items: Option<u64>) -> Self {
+        self.estimated_items = estimated_items;
+        self
+    }
+
+    pub fn effective_stage_key(&self) -> &str {
+        if self.stage_key.is_empty() {
+            self.phase.as_str()
+        } else {
+            &self.stage_key
+        }
+    }
+
+    pub fn stable_id(&self, job_id: JobId, ordinal: usize) -> StageId {
+        StageId::for_job_stage(job_id, self.effective_stage_key(), ordinal)
+    }
+
+    pub fn allows_transition_to(&self, next: PipelinePhase) -> bool {
+        if self.allowed_next.is_empty() {
+            self.phase.default_successors().contains(&next)
+        } else {
+            self.allowed_next.contains(&next)
+        }
+    }
+
+    pub fn allows_skip(&self, reason: StageSkipReason) -> bool {
+        if self.required {
+            return false;
+        }
+        if self.allowed_skips.is_empty() {
+            return matches!(
+                reason,
+                StageSkipReason::NotApplicable | StageSkipReason::Disabled
+            );
+        }
+        self.allowed_skips.contains(&reason)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

@@ -7,6 +7,7 @@
 //! local-source runtime.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,7 @@ use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
+use axon_jobs::scheduler::{ProviderCapacityDomain, ProviderScheduler, SchedulerConfig};
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
@@ -284,16 +286,11 @@ const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
 const MAX_BATCH_TOKENS: u32 = 65_536;
 
-/// Vector reservation capacities mirror the `#[cfg(test)]` `new()` constructor
-/// so the production vector-store gate behaves identically to the fixtures
-/// exercised in tests. `[providers.vector]` has no equivalent config-driven
-/// capacity/reserve knobs yet, so these stay hardcoded for the vector pool
-/// only — the embedding pool below is now driven entirely by
-/// `[providers.embedding]` config (see `embedding_reservation_config`).
+/// Durable vector-scheduler capacity. `[providers.vector]` has no equivalent
+/// config-driven capacity/reserve knobs yet, so these remain explicit defaults
+/// for the shared SQLite vector lane.
 const VECTOR_RESERVATION_CAPACITY: u32 = 2;
 const VECTOR_RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
-const VECTOR_RESERVATION_COOLDOWN_AFTER_FAILURES: u32 = 1;
-const VECTOR_RESERVATION_COOLDOWN_SECS: u64 = 30;
 
 impl TargetLocalSourceRuntime {
     /// Build the production target local-source runtime from [`Config`].
@@ -318,7 +315,7 @@ impl TargetLocalSourceRuntime {
         // (`axon_jobs::migrations::apply_all_migrations`), which applies
         // axon-ledger's own migration set FIRST against this pool; no separate
         // migration here.
-        let ledger = SqliteLedgerStore::from_pool(pool);
+        let ledger = SqliteLedgerStore::from_pool(pool.clone());
 
         let identity = resolve_embedding_identity(cfg).await;
         let embedding_provider = build_tei_provider(cfg, &identity);
@@ -328,6 +325,33 @@ impl TargetLocalSourceRuntime {
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
+        let scheduler_authority_id = scheduler_authority_id(&cfg.sqlite_path);
+        let embedding_scheduler = ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Embedding,
+                instance_id: embedding_provider_id.0.clone(),
+                authority_id: scheduler_authority_id.clone(),
+            },
+            scheduler_config(
+                cfg.embed_tei_max_concurrent as u32,
+                cfg.embed_tei_interactive_reserved_requests as u32,
+            ),
+        )?;
+        let vector_scheduler = ProviderScheduler::new(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Vector,
+                instance_id: vector_provider_id.0.clone(),
+                authority_id: scheduler_authority_id,
+            },
+            scheduler_config(
+                VECTOR_RESERVATION_CAPACITY,
+                VECTOR_RESERVATION_INTERACTIVE_RESERVE,
+            ),
+        )?;
+        embedding_scheduler.reconcile().await?;
+        vector_scheduler.reconcile().await?;
 
         let fetch_provider = HttpFetchProvider::new(HttpFetchConfig {
             timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
@@ -351,7 +375,7 @@ impl TargetLocalSourceRuntime {
             web_render_provider,
         ));
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
-        let document_cache = crate::web_source::InProcessWebDocumentCache::new();
+        let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
 
         Ok(Self {
             jobs,
@@ -361,16 +385,8 @@ impl TargetLocalSourceRuntime {
             embedding_reservations: Arc::new(ProviderReservationManager::new(
                 embedding_reservation_config(cfg, embedding_provider_id.clone()),
             )),
-            vector_reservations: Arc::new(ProviderReservationManager::new(
-                ProviderReservationConfig {
-                    provider_id: vector_provider_id.clone(),
-                    provider_kind: ProviderKind::Vector,
-                    capacity: VECTOR_RESERVATION_CAPACITY,
-                    interactive_reserve: VECTOR_RESERVATION_INTERACTIVE_RESERVE,
-                    cooldown_after_failures: VECTOR_RESERVATION_COOLDOWN_AFTER_FAILURES,
-                    cooldown_secs: VECTOR_RESERVATION_COOLDOWN_SECS,
-                },
-            )),
+            embedding_scheduler: Some(Arc::new(embedding_scheduler)),
+            vector_scheduler: Some(Arc::new(vector_scheduler)),
             embedding_provider_id,
             vector_provider_id,
             embedding_model: identity.model,
@@ -383,6 +399,28 @@ impl TargetLocalSourceRuntime {
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
+    }
+}
+
+fn scheduler_authority_id(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    };
+    let stable = std::fs::canonicalize(&absolute).unwrap_or(absolute);
+    format!("sqlite:{}", stable.display())
+}
+
+fn scheduler_config(capacity: u32, interactive_reserve: u32) -> SchedulerConfig {
+    let capacity = capacity.max(1);
+    SchedulerConfig {
+        capacity,
+        interactive_reserve: interactive_reserve.min(capacity),
+        max_entries: capacity.saturating_mul(256).max(256),
+        max_units: capacity.saturating_mul(256).max(256),
     }
 }
 

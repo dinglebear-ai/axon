@@ -4,6 +4,10 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod path_contracts;
+
+use path_contracts::{is_generated_contract_path, is_repo_structure_path};
+
 #[derive(Debug, Parser)]
 pub struct PrePushArgs {
     /// Print the selected plan without running commands.
@@ -345,6 +349,8 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
     });
     let android_app_changed = paths.iter().any(|path| starts(path, &["apps/android/"]));
     let repo_structure_changed = full || paths.iter().any(|path| is_repo_structure_path(path));
+    let generated_contracts_changed =
+        full || categories.rust || paths.iter().any(|path| is_generated_contract_path(path));
 
     let mut plan = Vec::new();
     if full
@@ -380,6 +386,12 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
             command: "cargo test --locked --features test-helpers --test env_config_boundary env_config_boundary_matrix_is_current -- --nocapture",
         });
     }
+    if generated_contracts_changed {
+        plan.push(PlanStep {
+            name: "generated-contracts",
+            command: "cargo xtask generated-contracts check",
+        });
+    }
     if categories.web {
         // TEMP(refactor): skip expensive local web builds during pipeline-unification.
     }
@@ -412,21 +424,6 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
         // TEMP(refactor): skip expensive local Android validation during pipeline-unification.
     }
     dedupe_plan(plan)
-}
-
-fn is_repo_structure_path(path: &str) -> bool {
-    path == "Cargo.toml"
-        || path == "Cargo.lock"
-        || path == "xtask/src/checks/repo_structure.rs"
-        || path == "xtask/src/checks/repo_structure_spec.rs"
-        || path == "xtask/src/checks/repo_structure_tests.rs"
-        || path.starts_with("docs/pipeline-unification/")
-        || path.starts_with("crates/")
-            && (path.ends_with("/Cargo.toml")
-                || path.ends_with("/src/lib.rs")
-                || path.ends_with("/src/CLAUDE.md")
-                || path.ends_with("/src/AGENTS.md")
-                || path.ends_with("/src/GEMINI.md"))
 }
 
 fn dedupe_plan(plan: Vec<PlanStep>) -> Vec<PlanStep> {

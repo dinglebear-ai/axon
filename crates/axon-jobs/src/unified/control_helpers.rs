@@ -64,14 +64,15 @@ pub(super) async fn reset_job_for_retry(
         .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
-    for stage in stage_plan {
+    for (ordinal, stage) in stage_plan.iter().enumerate() {
+        let stage_id = stage.stable_id(job_id, ordinal);
         sqlx::query(
             "INSERT INTO job_stages (
                 stage_id, job_id, phase, status, required, provider_requirements_json,
                 counts_json
             ) VALUES (?, ?, ?, 'queued', ?, ?, NULL)",
         )
-        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(stage_id.0.to_string())
         .bind(job_id.0.to_string())
         .bind(enum_name(stage.phase)?)
         .bind(if stage.required { 1_i64 } else { 0_i64 })
@@ -161,14 +162,15 @@ pub(super) async fn reset_stale_job_for_recovery(
         .execute(&mut *tx)
         .await
         .map_err(sql_error)?;
-    for stage in stage_plan {
+    for (ordinal, stage) in stage_plan.iter().enumerate() {
+        let stage_id = stage.stable_id(job_id, ordinal);
         sqlx::query(
             "INSERT INTO job_stages (
                 stage_id, job_id, phase, status, required, provider_requirements_json,
                 counts_json
             ) VALUES (?, ?, ?, 'queued', ?, ?, NULL)",
         )
-        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(stage_id.0.to_string())
         .bind(job_id.0.to_string())
         .bind(enum_name(stage.phase)?)
         .bind(if stage.required { 1_i64 } else { 0_i64 })

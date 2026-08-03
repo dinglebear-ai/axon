@@ -82,6 +82,12 @@ uuid_id!(JobId);
 uuid_id!(StageId);
 uuid_id!(BatchId);
 
+impl StageId {
+    pub fn for_job_stage(job_id: JobId, stage_key: &str, _ordinal: usize) -> Self {
+        Self(Uuid::new_v5(&job_id.0, stage_key.as_bytes()))
+    }
+}
+
 string_id!(SourceId);
 string_id!(SourceItemKey);
 string_id!(SourceGenerationId);

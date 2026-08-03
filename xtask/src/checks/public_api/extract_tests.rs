@@ -73,6 +73,21 @@ fn recurses_into_nested_and_inline_public_modules() {
 }
 
 #[test]
+fn follows_literal_include_in_the_same_public_module_path() {
+    let dir = crate_with(&[
+        ("lib.rs", "pub mod api;\n"),
+        ("api.rs", "include!(\"api/runtime.rs\");\n"),
+        (
+            "api/runtime.rs",
+            "pub enum Mode { Fast }\npub struct Config;\n",
+        ),
+    ]);
+    let got = paths(dir.path());
+    assert!(got.contains(&"api::Mode (enum)".to_string()));
+    assert!(got.contains(&"api::Config (struct)".to_string()));
+}
+
+#[test]
 fn records_pub_use_reexport_leaves_with_rename_and_group() {
     let dir = crate_with(&[(
         "lib.rs",

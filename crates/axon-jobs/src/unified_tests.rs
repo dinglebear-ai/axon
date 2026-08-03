@@ -174,12 +174,9 @@ fn create_request() -> JobCreateRequest {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: Some("idem-local".to_string()),
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Embedding,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(3),
-        }],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Embedding).with_estimated_items(Some(3)),
+        ],
         request: Some(serde_json::json!({"source": "/tmp/project"})),
         auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::new("cfg_test")),
@@ -197,7 +194,7 @@ fn create_request() -> JobCreateRequest {
 /// `sources(source_id)` with `PRAGMA foreign_keys = ON`, so stamping an
 /// unknown source_id fails with a FOREIGN KEY error — NOT an invalid
 /// transition. This is the store-level invariant behind the live git-index
-/// bug: the generic non-web pipeline stamped `jobs.source_id` in its first
+/// bug: the canonical source pipeline stamped `jobs.source_id` in its first
 /// Running update before upserting the source, and the resulting FK failure
 /// left the job Queued so the terminal handler's Queued -> Failed masked the
 /// real cause. The fix upserts the source first; this test pins why order
@@ -1161,6 +1158,7 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     assert!(queued_cancel.canceled_at.is_some());
 
     let job = store.create(create_request()).await.expect("create job");
+    let original_stage_id = store.stages(job.job_id).await.expect("original stages")[0].stage_id;
     store
         .update_status(JobStatusUpdate {
             source_id: None,
@@ -1223,6 +1221,10 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         .await
         .expect("retry stages");
     assert_eq!(retry_stages.len(), 1);
+    assert_eq!(
+        retry_stages[0].stage_id, original_stage_id,
+        "retry must preserve canonical stage identity"
+    );
     let retry_request: Option<String> =
         sqlx::query_scalar("SELECT request_json FROM jobs WHERE job_id = ?")
             .bind(retry.retry_job.job_id.0.to_string())
@@ -1269,6 +1271,11 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
         })
         .await
         .expect("create running job");
+    let running_stage_id = store
+        .stages(running.job_id)
+        .await
+        .expect("running stages before recovery")[0]
+        .stage_id;
     store
         .update_status(JobStatusUpdate {
             source_id: None,
@@ -1332,13 +1339,18 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
             .map(|heartbeat| heartbeat.status),
         None
     );
+    let recovered_stages = store
+        .stages(running.job_id)
+        .await
+        .expect("recovered stages");
     assert!(
-        store
-            .stages(running.job_id)
-            .await
-            .expect("recovered stages")
+        recovered_stages
             .iter()
             .all(|stage| stage.status == LifecycleStatus::Queued)
+    );
+    assert_eq!(
+        recovered_stages[0].stage_id, running_stage_id,
+        "stale recovery must preserve canonical stage identity across attempts"
     );
     store
         .cancel(

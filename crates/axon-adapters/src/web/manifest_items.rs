@@ -70,8 +70,9 @@ pub(super) async fn page_manifest_item(
         ))
         .await?;
     let content_hash = Some(content_ref_hash(&fetched.content));
+    let last_modified = header_value(&fetched.headers, "Last-Modified");
     let mut item = web_manifest_item(plan, &web, content_hash, fetched.bytes, None);
-    attach_conditional_metadata(&mut item, fetched.etag.as_deref());
+    attach_conditional_metadata(&mut item, fetched.etag.as_deref(), last_modified.as_deref());
     Ok(item)
 }
 
@@ -167,11 +168,29 @@ pub(super) fn web_manifest_item(
     }
 }
 
-pub(crate) fn attach_conditional_metadata(item: &mut ManifestItem, etag: Option<&str>) {
+pub(crate) fn attach_conditional_metadata(
+    item: &mut ManifestItem,
+    etag: Option<&str>,
+    last_modified: Option<&str>,
+) {
     if let Some(etag) = etag {
         item.metadata
             .insert("web_etag".to_string(), serde_json::json!(etag));
     }
+    if let Some(last_modified) = last_modified {
+        item.metadata.insert(
+            "web_last_modified".to_string(),
+            serde_json::json!(last_modified),
+        );
+    }
+}
+
+fn header_value(headers: &RedactedHeaders, name: &str) -> Option<String> {
+    headers
+        .headers
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case(name))
+        .map(|header| header.value.clone())
 }
 
 pub(super) fn bounded_structured_payload(

@@ -40,12 +40,8 @@ fn reset_job_request() -> JobCreateRequest {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: Some("idem-e2e-reset".to_string()),
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Planning,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(1),
-        }],
+        stage_plan: vec![JobStagePlan::required(PipelinePhase::Planning)
+            .with_estimated_items(Some(1))],
         request: Some(serde_json::json!({"operation": "reset"})),
         // Default snapshot grants nothing — a Reset job requires
         // `axon:admin` (see `auth_enforcement::required_scope_for_kind`).
