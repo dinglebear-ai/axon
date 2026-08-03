@@ -38,6 +38,13 @@ const RSS_TWO_ITEMS: &str = r#"<?xml version="1.0"?>
   </item>
 </channel></rss>"#;
 
+fn test_runtime(
+    vectors: Arc<FakeVectorStore>,
+    ledger: Arc<FakeLedgerStore>,
+) -> TargetLocalSourceRuntime {
+    test_runtime_with_jobs(vectors, ledger, Arc::new(FakeJobWatchStore::new()))
+}
+
 fn test_runtime_with_jobs(
     vectors: Arc<FakeVectorStore>,
     ledger: Arc<FakeLedgerStore>,
@@ -52,13 +59,6 @@ fn test_runtime_with_jobs(
         "fake-embedding",
         8,
     )
-}
-
-fn test_runtime(
-    vectors: Arc<FakeVectorStore>,
-    ledger: Arc<FakeLedgerStore>,
-) -> TargetLocalSourceRuntime {
-    test_runtime_with_jobs(vectors, ledger, Arc::new(FakeJobWatchStore::new()))
 }
 
 fn route_for(source: &str) -> axon_api::source::RoutePlan {

@@ -441,4 +441,3 @@ missing_live() {
   failures=$((failures + 1))
   record "$name" "live" "FAIL" "-" "$reason" "-"
 }
-

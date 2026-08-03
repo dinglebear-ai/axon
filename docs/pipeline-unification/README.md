@@ -139,6 +139,8 @@ Execution model, providers, storage, observability, errors, and security.
 | [runtime/storage-contract.md](runtime/storage-contract.md) | SQLite/Qdrant/artifact/cache ownership, retention, cleanup debt, and restore. |
 | [runtime/schema-contract.md](runtime/schema-contract.md) | SQLite table ownership, migration rules, indexes, and integrity requirements. |
 | [runtime/observability-contract.md](runtime/observability-contract.md) | Progress, heartbeat, logs, traces, status, and metrics. |
+| [runtime/source-progress-spec.md](runtime/source-progress-spec.md) | Normative behavior for cumulative progress across every measurable source-pipeline stage. |
+| [runtime/source-progress-contract.md](runtime/source-progress-contract.md) | Code-level ownership, DTO, persistence, rendering, and verification contract for source progress. |
 | [runtime/error-handling.md](runtime/error-handling.md) | Error taxonomy, degradation, retry, and safe failure behavior. |
 | [runtime/security-contract.md](runtime/security-contract.md) | SSRF, local path, secret, redaction, artifact, and tool-execution policy. |
 | [runtime/auth-contract.md](runtime/auth-contract.md) | Caller context, scopes, visibility, and job auth propagation. |

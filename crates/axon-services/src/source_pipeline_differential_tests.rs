@@ -101,9 +101,12 @@ fn expected_shared_phase_spine() -> Vec<PipelinePhase> {
         PipelinePhase::Discovering,
         PipelinePhase::Diffing,
         PipelinePhase::Fetching,
+        PipelinePhase::Enriching,
         PipelinePhase::Normalizing,
         PipelinePhase::Preparing,
+        PipelinePhase::Batching,
         PipelinePhase::Embedding,
+        PipelinePhase::Vectorizing,
         PipelinePhase::Upserting,
         PipelinePhase::Publishing,
     ]

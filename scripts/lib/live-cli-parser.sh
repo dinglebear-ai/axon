@@ -239,4 +239,3 @@ if [ "$MODE" != "scenarios" ]; then
   probe_command_alias "completions" completion
   probe_command_alias "setup plugin-hook" setup hook
 fi
-

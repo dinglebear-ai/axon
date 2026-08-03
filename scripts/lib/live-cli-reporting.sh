@@ -311,4 +311,3 @@ prove_mapped_command_options() {
     "uploads abort") prove_options "$name" "upload abort receipt retained the caller supplied reason" --reason ;;
   esac
 }
-

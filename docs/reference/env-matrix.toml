@@ -3935,54 +3935,6 @@ compatibility = "warn-env-override"
 reason = "Starvation SLO for the interactive job lane. Currently inert: no transport can set JobPriority::Interactive."
 
 [[env]]
-key = "AXON_RUSTC_WRAPPER"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
-
-[[env]]
-key = "AXON_RUSTC_WRAPPER_DELEGATE"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
-
-[[env]]
-key = "AXON_RUSTC_WRAPPER_LOCAL_BIN"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts"]
-secret = false
-url_or_path = true
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
-
-[[env]]
-key = "AXON_RUSTC_WRAPPER_NO_KACHE"
-classification = "external/test-only"
-runtime_placement = "not-runtime"
-surfaces = ["scripts"]
-secret = false
-url_or_path = false
-container_allowed = false
-toml_destination = ""
-compatibility = "advanced"
-reason = "Build-tooling variable read by scripts/cargo-rustc-wrapper; not Axon runtime config."
-
-[[env]]
 key = "AXON_COMPOSE_PROJECT_NAME"
 classification = "compose-env"
 runtime_placement = "compose-interpolation"
