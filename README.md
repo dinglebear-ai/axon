@@ -188,7 +188,7 @@ axon setup init        # create ~/.axon, config.toml, .env
 axon preflight         # check prerequisites, auth, service readiness
 axon doctor            # check Qdrant, TEI, LLM endpoint reachability
 axon smoke             # TEI prewarm + source/ask proof
-axon setup plugin-hook # probe-only SessionStart path (never deploys)
+axon setup plugin-hook # explicit probe-only readiness path (never deploys)
 ```
 
 ### Two-layer config

@@ -214,7 +214,7 @@ pub(super) struct SetupArgs {
 
 #[derive(Debug, Subcommand)]
 pub(super) enum SetupSubcommand {
-    /// Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart
+    /// Explicit probe-only readiness entrypoint for plugin/client integrations
     #[command(name = "plugin-hook", alias = "hook")]
     PluginHook {
         /// Run preflight only; do not run the setup wrapper if preflight fails.

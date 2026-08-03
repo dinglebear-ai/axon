@@ -4069,7 +4069,7 @@
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
       {
-        "checksum": "sha256:e6dfe1646cec0a9ac3818ce6ad9a3ed30de1329a6293df9a62c568671de7c2e4",
+        "checksum": "sha256:fd185f98e57c1818f00b98dbff45a641e50726484b68edfbbf3cfd27cc804525",
         "kind": "markdown_contract",
         "path": "docs/reference/mcp/tool-contract.md"
       },
