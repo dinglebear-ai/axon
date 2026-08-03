@@ -1,84 +1,75 @@
 ---
 title: "Android APK Release Workflow"
 created: 2026-06-09
-updated: 2026-07-30
+updated: 2026-08-03
 ---
 
 # Android APK Release Workflow
 
-Summary of the Android APK release workflow added in PR
-[#195](https://github.com/jmagar/axon/pull/195)
-(`feat: add Android APK release workflow`, branch
-`claude/apk-release-workflow-ibxnpz`).
+Android is a release-please-managed component. Release-please is the sole
+normal owner of its version edits, changelog, `android-v*` tag, and GitHub
+Release. Axon's Android workflow builds and attaches the APK; it does not
+create a competing release record.
 
-## What it is
+## Ownership and sequence
 
-`.github/workflows/android-release.yml` builds, signs, checksums, and publishes
-the Axon Android APK as a GitHub Release. It is modeled on the existing
-`chrome-extension-release` workflow so the Android app versions **independently**
-of the main axon `v*` releases.
+1. An ordinary Android feature/fix PR changes `apps/android` shipping files
+   but leaves `versionName`, `versionCode`, the Android changelog, and
+   `.release-please-manifest.json` alone.
+2. `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`
+   validates current parity and defers the managed version bump.
+3. After green main CI, release-please opens or refreshes the Android release
+   PR. That PR owns the manifest, changelog, `versionName`, and `versionCode`.
+4. Merging the green release PR lets release-please create the `android-v*`
+   tag and GitHub Release.
+5. `.github/workflows/release-please.yml` dispatches
+   `.github/workflows/android-release.yml` at that exact tag with
+   `publish=true`; the workflow signs, checksums, and uploads the APK to the
+   existing Release.
 
-## How it works
+`.github/workflows/auto-tag.yml` must never select Android. Auto-tag is only
+for components with `release_please_managed = false` (currently the CLI).
+
+## Build behavior
 
 | Aspect | Behavior |
-|--------|----------|
-| **Trigger** | Push a tag `android-v<versionName>` (e.g. `android-v1.1`). |
-| **Version guard** | Validates the pushed tag matches `versionName` in `apps/android/app/build.gradle.kts` before building — a release can never ship an APK the tag disagrees with. |
-| **Build** | JDK 17 (temurin), Node/pnpm plus Aurora dependencies for token generation, Gradle + Android SDK, then `apps/android/gradlew -p apps/android :app:assembleRelease`. |
-| **Sign** | zipalign + `apksigner` using release-keystore secrets, then verifies. Falls back to a clearly named `*-unsigned.apk` when secrets are absent. |
-| **Publish** | Uploads APK + SHA256 as a run artifact and, on real tag pushes, creates a GitHub Release with `make_latest: false` (keeps the repo's latest-release badge tracking axon `v*` tags). |
-| **Dry-run** | `workflow_dispatch` runs the same build and uploads the artifact **without** creating a Release. |
+|---|---|
+| Version guard | An `android-v*` dispatch must match `versionName` in `apps/android/app/build.gradle.kts`. |
+| Build | Checks out Aurora, installs its token dependencies, configures JDK/Gradle/Android SDK, and assembles the release APK. |
+| Sign | Uses zipalign and apksigner when all four signing secrets exist. A publish request fails closed if they are missing. |
+| Publish | Uploads APK and SHA256 as a run artifact, then attaches both to the pre-existing release-please GitHub Release. |
+| Dry run | Manual `workflow_dispatch` with `publish=false` builds and uploads a run artifact without changing Releases. |
 
 ## Required configuration
 
-Set under **Settings → Secrets and variables → Actions**.
+Set these under repository Actions secrets and variables.
 
-### Signing secrets (all four → signed APK; otherwise unsigned)
+Signing secrets (all four are required to publish):
 
-- `ANDROID_KEYSTORE_BASE64` — `base64 -w0 release.jks`
+- `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-### Aurora design system (optional)
+Aurora configuration:
 
-The app depends on `tv.tootie.aurora:aurora` via a local Gradle composite build
-(see `apps/android/settings.gradle.kts`), **not** from Maven. To build it in CI:
+- `AURORA_REPO` repository variable (defaults to the configured Aurora source)
+- optional `AURORA_REF`
+- optional `AURORA_TOKEN` for a private checkout
 
-- repository **variable** `AURORA_REPO` — the Aurora repo (`owner/name`); checked
-  out and wired via `AXON_AURORA_ANDROID_PATH`
-- optional variable `AURORA_REF` — pinned branch/tag
-- optional secret `AURORA_TOKEN` — for a private Aurora repo
+## Verification
 
-If `AURORA_REPO` is unset, the build proceeds and Aurora resolves from Maven
-(which only works if it is actually published there).
+Before merging an Android release PR:
 
-## Cutting a release
+```bash
+cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
+```
 
-1. Merge PR #195.
-2. Add the signing secrets (and `AURORA_REPO` if Aurora is needed).
-3. **Run a `workflow_dispatch` dry-run first** — the Android app has never built
-   in CI, so this is the real smoke test for Aurora composite resolution and
-   Android SDK build-tools availability on `ubuntu-latest`.
-4. Bump `versionName` (and `versionCode`) in `apps/android/app/build.gradle.kts`.
-5. Tag and push:
+Then require green Android CI and confirm the generated release PR advances
+the manifest, changelog, `versionName`, and `versionCode` together. After the
+release PR merges, confirm the artifact workflow ran at the release-please tag
+and attached a signed APK plus checksum to the existing GitHub Release.
 
-   ```bash
-   git tag android-v<versionName>
-   git push origin android-v<versionName>
-   ```
-
-## Notes
-
-- Mirrors `chrome-extension-release.yml`: component-specific tag, version
-  validation, checksum, `make_latest: false`, curated release body.
-- The version bump that ships with the PR moves the repo to **5.6.0** across all
-  version-bearing files: `Cargo.toml`, `Cargo.lock`, `README.md`, `CHANGELOG.md`,
-  `plugins/axon/.claude-plugin/plugin.json`, `apps/web/package.json`,
-  `apps/web/package-lock.json`, and the generated `apps/web/openapi/axon.json`
-  (the last three are enforced by the `version_bearing_files_stay_in_sync` test
-  and the `rest-api-parity` OpenAPI check).
-- **Caveat:** the workflow YAML is validated and all PR CI checks are green, but
-  the Android build itself has never run in CI. The `workflow_dispatch` dry-run
-  is where Aurora resolution and build-tools availability get verified
-  end-to-end.
+Directly creating or pushing an Android tag is a break-glass incident action,
+not a normal hotfix shortcut. Never create a second Android version/tag/Release
+lane alongside release-please.

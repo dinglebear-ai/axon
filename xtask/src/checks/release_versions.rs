@@ -1,6 +1,5 @@
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 use std::path::Path;
 
 type ReleaseResult<T> = Result<T, ReleaseVersionError>;
@@ -13,6 +12,7 @@ macro_rules! release_bail {
 
 mod error;
 mod files;
+mod gate;
 mod git;
 mod manifest;
 mod release_please;
@@ -21,7 +21,7 @@ use error::{ReleaseContext, ReleaseVersionError};
 use manifest::validate_manifest;
 use release_please::{
     ReleasePleaseDispatchItem, ReleasePleaseFixupItem, release_please_dispatch_items,
-    run_cargo_update,
+    run_cargo_update, validate_release_please_ownership,
 };
 
 #[cfg(test)]
@@ -30,9 +30,9 @@ use manifest::same_version_file;
 use files::{
     check_component_parity, read_version, read_workspace_package_version, write_version_file,
 };
+use gate::{collect_changed_component_errors, version_from_tag};
 use git::{
-    changed_paths_since_ref, check_gradle_version_code_increased, compare_ref_for_component,
-    component_changed_since_ref, latest_tag, merge_base, tag_exists,
+    changed_paths_since_ref, component_changed_since_ref, latest_tag, merge_base, tag_exists,
 };
 
 #[cfg(test)]
@@ -67,6 +67,7 @@ pub struct ComponentPlan {
     pub last_tag: Option<String>,
     pub release_workflow: String,
     pub shipping_paths: Vec<String>,
+    pub release_please_managed: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -149,10 +150,6 @@ pub fn check(
                 .map(|error| format!("{}: {error}", component.id)),
         );
 
-        if !plan.changed {
-            continue;
-        }
-
         collect_changed_component_errors(root, component, plan, base, head, mode, &mut errors)?;
     }
 
@@ -233,7 +230,7 @@ pub fn release_please_dispatch_plan(
     release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
     let manifest = load_manifest(root)?;
-    release_please_dispatch_items(&manifest.components, release_outputs)
+    release_please_dispatch_items(root, &manifest.components, release_outputs)
 }
 
 pub fn print_release_please_dispatch_plan(
@@ -349,6 +346,12 @@ pub fn bump_component_version(
         .iter()
         .find(|component| component.id == component_id)
         .with_release_context(|| format!("unknown release component {component_id}"))?;
+    if component.release_please_managed {
+        release_bail!(
+            "{} is release-please-managed and cannot be bumped manually",
+            component.id
+        );
+    }
 
     let current = read_version(root, &component.version_source)?;
     let current = Version::parse(&current).with_release_context(|| {
@@ -396,6 +399,7 @@ fn load_manifest(root: &Path) -> ReleaseResult<Manifest> {
         );
     }
     validate_manifest(root, &manifest)?;
+    validate_release_please_ownership(root, &manifest.components)?;
     Ok(manifest)
 }
 
@@ -451,134 +455,10 @@ fn build_plan(
                 last_tag,
                 release_workflow: component.release_workflow.clone(),
                 shipping_paths: component.shipping_paths.clone(),
+                release_please_managed: component.release_please_managed,
             })
         })
         .collect()
-}
-
-fn collect_changed_component_errors(
-    root: &Path,
-    component: &Component,
-    plan: &ComponentPlan,
-    base: Option<&str>,
-    head: &str,
-    mode: GateMode,
-    errors: &mut Vec<String>,
-) -> ReleaseResult<()> {
-    let candidate = Version::parse(&plan.version).with_release_context(|| {
-        format!(
-            "{} version is not valid semver: {}",
-            component.id, plan.version
-        )
-    })?;
-
-    let latest = latest_version_from_plan(component, plan)?;
-    let existing_candidate_tag = tag_exists(root, &plan.candidate_tag)?;
-    let release_fixup_only = release_fixup_only_pr_change(
-        root,
-        component,
-        &candidate,
-        latest.as_ref(),
-        base,
-        head,
-        mode,
-    )?;
-    if !release_fixup_only {
-        if let Some(latest) = latest
-            && candidate <= latest
-        {
-            errors.push(format!(
-                "{} code changed but version {} is not greater than latest {} tag version {}. Let release-please bump {} before merging.",
-                component.id,
-                plan.version,
-                component.tag_prefix,
-                latest,
-                bump_hint(component)
-            ));
-        }
-
-        if existing_candidate_tag {
-            errors.push(format!(
-                "{} code changed but tag {} already exists. Let release-please bump {} before merging.",
-                component.id,
-                plan.candidate_tag,
-                bump_hint(component)
-            ));
-        }
-    }
-
-    if component_has_kind(component, VersionKind::GradleVersionCode)
-        && let Some(compare_ref) = compare_ref_for_component(root, component, base, head, mode)?
-        && let Err(error) = check_gradle_version_code_increased(root, component, &compare_ref)
-    {
-        errors.push(format!("{}: {error}", component.id));
-    }
-
-    Ok(())
-}
-
-fn release_fixup_only_pr_change(
-    root: &Path,
-    component: &Component,
-    candidate: &Version,
-    latest: Option<&Version>,
-    base: Option<&str>,
-    head: &str,
-    mode: GateMode,
-) -> ReleaseResult<bool> {
-    if mode != GateMode::Pr || !component.release_please_managed {
-        return Ok(false);
-    }
-    if latest != Some(candidate) {
-        return Ok(false);
-    }
-    let Some(compare_ref) = compare_ref_for_component(root, component, base, head, mode)? else {
-        return Ok(false);
-    };
-    let changed = changed_paths_since_ref(root, &compare_ref, head, &component.shipping_paths)?;
-    if changed.is_empty() {
-        return Ok(false);
-    }
-    let allowed = component
-        .version_files
-        .iter()
-        .map(|file| file.path.as_str())
-        .collect::<BTreeSet<_>>();
-    Ok(changed.iter().all(|path| allowed.contains(path.as_str())))
-}
-
-fn latest_version_from_plan(
-    component: &Component,
-    plan: &ComponentPlan,
-) -> ReleaseResult<Option<Version>> {
-    plan.last_tag
-        .as_deref()
-        .map(|tag| version_from_tag(component, tag))
-        .transpose()
-}
-
-fn version_from_tag(component: &Component, tag: &str) -> ReleaseResult<Version> {
-    let version = tag
-        .strip_prefix(&component.tag_prefix)
-        .with_release_context(|| format!("{} latest tag has wrong prefix: {tag}", component.id))?;
-    Version::parse(version).with_release_context(|| {
-        format!(
-            "{} latest tag has invalid semver suffix: {tag}",
-            component.id
-        )
-    })
-}
-
-fn bump_hint(component: &Component) -> String {
-    match component.id.as_str() {
-        "android" => "apps/android/app/build.gradle.kts versionName and versionCode".to_owned(),
-        "chrome" => "apps/chrome-extension/manifest.json".to_owned(),
-        _ => format!("the {} version files", component.id),
-    }
-}
-
-fn component_has_kind(component: &Component, kind: VersionKind) -> bool {
-    component.version_files.iter().any(|file| file.kind == kind)
 }
 
 #[cfg(test)]

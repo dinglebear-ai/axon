@@ -93,6 +93,147 @@ pub(super) fn check_manifest_versions(
     Ok(errors)
 }
 
+pub(super) fn validate_release_please_ownership(
+    root: &Path,
+    components: &[Component],
+) -> ReleaseResult<()> {
+    let all_component_paths = components
+        .iter()
+        .map(|component| component.release_please_path.clone())
+        .collect::<BTreeSet<_>>();
+    if all_component_paths.len() != components.len() {
+        let duplicate = components
+            .iter()
+            .find_map(|component| {
+                (components
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.release_please_path == component.release_please_path
+                    })
+                    .count()
+                    > 1)
+                .then_some(component.release_please_path.as_str())
+            })
+            .unwrap_or("<unknown>");
+        release_bail!("duplicate release_please_path {duplicate}");
+    }
+
+    let config_path = root.join("release-please-config.json");
+    let config_content = std::fs::read_to_string(&config_path)
+        .release_context("failed to read release-please-config.json")?;
+    let config: serde_json::Value = serde_json::from_str(&config_content)
+        .release_context("failed to parse release-please-config.json")?;
+    let config_packages = config
+        .get("packages")
+        .and_then(serde_json::Value::as_object)
+        .release_context("release-please-config.json is missing object field packages")?;
+    let config_paths = config_packages.keys().cloned().collect::<BTreeSet<_>>();
+    let manifest_paths = read_release_please_manifest(root)?
+        .into_keys()
+        .collect::<BTreeSet<_>>();
+    let managed_paths = components
+        .iter()
+        .filter(|component| component.release_please_managed)
+        .map(|component| component.release_please_path.clone())
+        .collect::<BTreeSet<_>>();
+
+    validate_owner_paths("release-please-config.json", &managed_paths, &config_paths)?;
+    validate_release_please_tag_prefixes(components, config_packages)?;
+    validate_owner_paths(
+        ".release-please-manifest.json",
+        &managed_paths,
+        &manifest_paths,
+    )
+}
+
+fn validate_release_please_tag_prefixes(
+    components: &[Component],
+    config_packages: &serde_json::Map<String, serde_json::Value>,
+) -> ReleaseResult<()> {
+    for component in components
+        .iter()
+        .filter(|component| component.release_please_managed)
+    {
+        let package = config_packages
+            .get(&component.release_please_path)
+            .and_then(serde_json::Value::as_object)
+            .with_release_context(|| {
+                format!(
+                    "release-please-config.json package {} must be an object",
+                    component.release_please_path
+                )
+            })?;
+        let release_component = package
+            .get("component")
+            .and_then(serde_json::Value::as_str)
+            .with_release_context(|| {
+                format!(
+                    "release-please-config.json package {} is missing string field component",
+                    component.release_please_path
+                )
+            })?;
+        let include_v = package
+            .get("include-v-in-tag")
+            .and_then(serde_json::Value::as_bool)
+            .with_release_context(|| {
+                format!(
+                    "release-please-config.json package {} is missing boolean field include-v-in-tag",
+                    component.release_please_path
+                )
+            })?;
+        let include_component = match package.get("include-component-in-tag") {
+            Some(value) => value.as_bool().with_release_context(|| {
+                format!(
+                    "release-please-config.json package {} field include-component-in-tag must be boolean",
+                    component.release_please_path
+                )
+            })?,
+            None => true,
+        };
+        let separator = package
+            .get("tag-separator")
+            .and_then(serde_json::Value::as_str)
+            .with_release_context(|| {
+                format!(
+                    "release-please-config.json package {} is missing string field tag-separator",
+                    component.release_please_path
+                )
+            })?;
+        let version_prefix = if include_v { "v" } else { "" };
+        let derived_prefix = if include_component {
+            format!("{release_component}{separator}{version_prefix}")
+        } else {
+            version_prefix.to_owned()
+        };
+        if derived_prefix != component.tag_prefix {
+            release_bail!(
+                "release-please-config.json package {} derives tag prefix {}, expected {} from release/components.toml",
+                component.release_please_path,
+                derived_prefix,
+                component.tag_prefix
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_owner_paths(
+    source: &str,
+    expected: &BTreeSet<String>,
+    actual: &BTreeSet<String>,
+) -> ReleaseResult<()> {
+    let missing = expected.difference(actual).cloned().collect::<Vec<_>>();
+    let unexpected = actual.difference(expected).cloned().collect::<Vec<_>>();
+    if !missing.is_empty() || !unexpected.is_empty() {
+        release_bail!(
+            "{source} ownership does not match release/components.toml: missing [{}]; unexpected [{}]",
+            missing.join(", "),
+            unexpected.join(", ")
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn fixups(
     root: &Path,
     components: &[Component],
@@ -103,6 +244,12 @@ pub(super) fn fixups(
         .iter()
         .find(|component| component.id == component_id)
         .with_release_context(|| format!("unknown release component {component_id}"))?;
+    if !component.release_please_managed {
+        release_bail!(
+            "release-please fixups cannot modify unmanaged component {}",
+            component.id
+        );
+    }
 
     match component.id.as_str() {
         "cli" => run_cargo_update(root, "axon", version),
@@ -178,6 +325,7 @@ pub(super) fn fixup_items(
 }
 
 pub(super) fn release_please_dispatch_items(
+    root: &Path,
     components: &[Component],
     release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
@@ -190,7 +338,23 @@ pub(super) fn release_please_dispatch_items(
     let released_paths = parse_paths_released(paths_released)?;
     let mut items = Vec::new();
 
+    for released_path in &released_paths {
+        let component = components
+            .iter()
+            .find(|component| component.release_please_path == *released_path)
+            .with_release_context(|| {
+                format!("release outputs include unknown release path {released_path}")
+            })?;
+        if !component.release_please_managed {
+            release_bail!("release outputs include unmanaged release path {released_path}");
+        }
+    }
+
+    let versions = read_release_please_manifest(root)?;
     for component in components {
+        if !component.release_please_managed {
+            continue;
+        }
         if !released_paths.contains(&component.release_please_path) {
             continue;
         }
@@ -199,6 +363,20 @@ pub(super) fn release_please_dispatch_items(
             .get(&tag_key)
             .and_then(|value| value.as_str())
             .with_release_context(|| format!("release outputs missing {tag_key}"))?;
+        let version = versions
+            .get(&component.release_please_path)
+            .with_release_context(|| {
+                format!(
+                    ".release-please-manifest.json is missing path {}",
+                    component.release_please_path
+                )
+            })?;
+        let expected_tag = format!("{}{}", component.tag_prefix, version);
+        if tag != expected_tag {
+            release_bail!(
+                "release output {tag_key} is {tag}, expected {expected_tag} from release/components.toml and .release-please-manifest.json"
+            );
+        }
         items.push(ReleasePleaseDispatchItem {
             id: component.id.clone(),
             workflow: component.release_workflow.clone(),
@@ -301,3 +479,7 @@ fn parse_paths_released(paths_released: &str) -> ReleaseResult<BTreeSet<String>>
     };
     Ok(paths)
 }
+
+#[cfg(test)]
+#[path = "release_please_tests.rs"]
+mod tests;

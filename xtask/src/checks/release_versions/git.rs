@@ -22,7 +22,8 @@ pub(super) fn latest_tag(root: &Path, prefix: &str) -> ReleaseResult<Option<Stri
 }
 
 pub(super) fn tag_exists(root: &Path, tag: &str) -> ReleaseResult<bool> {
-    let output = Command::new("git")
+    let mut command = git_command_without_local_env()?;
+    let output = command
         .arg("-C")
         .arg(root)
         .args(["rev-parse", "-q", "--verify"])
@@ -193,7 +194,7 @@ pub(super) fn changed_paths_since_ref(
     head: &str,
     paths: &[String],
 ) -> ReleaseResult<Vec<String>> {
-    let mut command = Command::new("git");
+    let mut command = git_command_without_local_env()?;
     command
         .arg("-C")
         .arg(root)
@@ -222,7 +223,8 @@ pub(super) fn merge_base(root: &Path, base: &str, head: &str) -> ReleaseResult<S
 }
 
 fn git_output(root: &Path, args: &[&str]) -> ReleaseResult<String> {
-    let output = Command::new("git")
+    let mut command = git_command_without_local_env()?;
+    let output = command
         .arg("-C")
         .arg(root)
         .args(args)
@@ -236,6 +238,33 @@ fn git_output(root: &Path, args: &[&str]) -> ReleaseResult<String> {
         );
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Build a Git command that honors its explicit `-C <root>` target even when
+/// xtask is launched from a Git hook. Git exports repository-local variables
+/// such as `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_INDEX_FILE` to hooks; those
+/// variables take precedence over `-C` and can silently redirect fixture or
+/// comparison commands back into the caller's real worktree.
+fn git_command_without_local_env() -> ReleaseResult<Command> {
+    let local_env = Command::new("git")
+        .args(["rev-parse", "--local-env-vars"])
+        .output()
+        .release_context("failed to list repository-local Git environment variables")?;
+    if !local_env.status.success() {
+        release_bail!(
+            "git rev-parse --local-env-vars failed: {}",
+            String::from_utf8_lossy(&local_env.stderr).trim()
+        );
+    }
+
+    let mut command = Command::new("git");
+    for variable in String::from_utf8_lossy(&local_env.stdout)
+        .lines()
+        .filter(|variable| !variable.is_empty())
+    {
+        command.env_remove(variable);
+    }
+    Ok(command)
 }
 
 pub(super) fn compare_ref_for_component(
@@ -290,7 +319,7 @@ pub(super) fn check_gradle_version_code_increased(
     Ok(())
 }
 
-fn git_show(root: &Path, reference: &str, path: &str) -> ReleaseResult<String> {
+pub(super) fn git_show(root: &Path, reference: &str, path: &str) -> ReleaseResult<String> {
     git_output(root, &["show", &format!("{reference}:{path}")])
 }
 
