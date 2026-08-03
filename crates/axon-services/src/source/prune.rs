@@ -34,7 +34,7 @@
 //! ## Authorization
 //!
 //! The pruning contract requires `axon:admin` for any destructive execution
-//! (`docs/pipeline-unification/runtime/pruning-contract.md`, "Safety Rules").
+//! (`docs/reference/runtime/pruning.md`, "Safety Rules").
 //! This drain is **not** a user-invoked "delete my data" request — it is
 //! trusted, in-process, system-triggered maintenance that always runs
 //! immediately after `index_source` publishes a new generation, regardless of
@@ -117,7 +117,7 @@ pub async fn drain_cleanup_debt(
 /// `graph_store`/`memory_store` are optional — when `None`, `GraphPrune`/
 /// `MemoryPrune` debt is left pending (the executor step fails closed with
 /// "no store wired", never faked as resolved), matching the "no fake drains"
-/// requirement in `docs/pipeline-unification/runtime/pruning-contract.md`.
+/// requirement in `docs/reference/runtime/pruning.md`.
 ///
 /// This is the job-store-unaware entry point (`job_store` is always `None`,
 /// so any `JobRetention` debt fails closed exactly like an unwired
@@ -153,7 +153,7 @@ pub async fn drain_cleanup_debt_full(
 /// that boundary's debt kind is left pending (the executor step fails closed
 /// with "no store wired", never faked as resolved), matching the "no fake
 /// drains" requirement in
-/// `docs/pipeline-unification/runtime/pruning-contract.md`.
+/// `docs/reference/runtime/pruning.md`.
 ///
 /// Unlike `Vector`/`Ledger`/`Graph`/`Memory` identity, a `JobRetention`
 /// debt's `job_ids` (from `CleanupSelector::JobRows`) have no matching field

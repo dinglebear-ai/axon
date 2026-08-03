@@ -1,7 +1,7 @@
 //! Pipeline/transport stage each error is attributed to.
 //!
 //! Stage values come from the "Stage Values" table in
-//! `docs/pipeline-unification/runtime/error-handling.md`. Serialized JSON names
+//! `docs/reference/api/errors.md`. Serialized JSON names
 //! are stable snake_case and must not change without a schema revision.
 
 use schemars::JsonSchema;

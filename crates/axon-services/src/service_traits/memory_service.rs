@@ -2,7 +2,7 @@
 //! surface (remember/get/search/context/link/update/reinforce/supersede/
 //! contradict/pin/archive/forget/review/compact).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §MemoryService. The production implementation uses the typed
 //! `axon-api::source` requests directly against authoritative SQLite. Every
 //! mutation hands affected `memory://` identities to the canonical source

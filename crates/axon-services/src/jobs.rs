@@ -197,7 +197,7 @@ pub async fn enqueue_operation(
             // JSON payload, with no `AuthSnapshot`/`CallerContext` threaded
             // through. This is a genuinely internal/system-triggered
             // bookkeeping path, not an oversight — see
-            // docs/pipeline-unification/runtime/auth-contract.md.
+            // docs/reference/runtime/auth.md.
             auth_snapshot: AuthSnapshot::trusted_system("runtime"),
             config_snapshot_id: Some(ConfigSnapshotId::new("runtime")),
             requirements: MetadataMap::new(),

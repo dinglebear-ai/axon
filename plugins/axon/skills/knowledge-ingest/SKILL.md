@@ -21,7 +21,7 @@ Chrome rendering or scripted capture-time page steps can collect content. For
 login flows or interactive portal navigation, use host browser automation to
 establish access and discover URLs, then feed discovered URLs/content to Axon.
 
-For finished ingest deliverables, run async Axon commands in blocking mode: `axon crawl ... --wait true`, `axon ingest ... --wait true`, and `axon embed ... --wait true`. If you enqueue instead, include the job ID, status command, and worker requirement in the handoff.
+For finished indexing deliverables, run `axon source <source> --wait true`. If you enqueue instead, include the unified job ID and `axon jobs get <job-id>` in the handoff.
 
 Collect:
 

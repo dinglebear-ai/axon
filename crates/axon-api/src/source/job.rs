@@ -47,7 +47,7 @@ pub struct JobCreateRequest {
     pub metadata: MetadataMap,
     /// Optional cancellation deadline. Past-deadline `running` attempts are
     /// transitioned to `expired` by the worker claim/heartbeat path.
-    /// Per `docs/pipeline-unification/runtime/job-contract.md` "Required Job
+    /// Per `docs/reference/runtime/jobs.md` "Required Job
     /// Fields" (`deadline_at`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_at: Option<Timestamp>,
@@ -87,7 +87,7 @@ pub struct JobHeartbeat {
     pub stage_id: Option<StageId>,
     pub heartbeat_at: Timestamp,
     /// Monotonic heartbeat sequence number for this job, per
-    /// `docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.
+    /// `docs/reference/runtime/events.md`'s `JobHeartbeat` shape.
     #[serde(default)]
     pub sequence: u64,
     /// Timestamp of the last progress-bearing event observed for this job
@@ -156,7 +156,7 @@ pub struct JobCancelResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// User/system identity that requested the cancellation.
-    /// Per `docs/pipeline-unification/runtime/job-contract.md` "Cancellation".
+    /// Per `docs/reference/runtime/jobs.md` "Cancellation".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canceled_by: Option<String>,
     /// Last completed safe point (stage phase) before cancellation unwound.

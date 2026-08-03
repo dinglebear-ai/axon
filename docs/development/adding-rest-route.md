@@ -12,7 +12,7 @@ auth middleware, all mapping into `axon-services`. This guide describes the
 real handler + router + OpenAPI pattern in `crates/axon-web/src/`.
 
 See also: crate guide `crates/axon-web/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/surfaces/rest-contract.md`.
+`docs/reference/rest/routes.md`.
 
 **The core rule:** every REST route maps to a shared service request/result —
 `axon-web` is a thin transport over `axon-services`. Route handlers never

@@ -404,9 +404,8 @@ fn generated_vector_payload_source_inputs_cover_builder_contract_and_api_vector_
         "crates/axon-vectors/src/payload_families.rs",
         "crates/axon-vectors/src/point.rs",
         "crates/axon-api/src/source/vector.rs",
-        "docs/pipeline-unification/sources/metadata-payload.md",
-        "docs/pipeline-unification/sources/chunking-contract.md",
-        "docs/pipeline-unification/schemas/vector-payload-schema.md",
+        "docs/reference/sources/metadata-payload.md",
+        "docs/reference/sources/chunking.md",
     ] {
         assert!(
             inputs.iter().any(|input| input["path"] == path),

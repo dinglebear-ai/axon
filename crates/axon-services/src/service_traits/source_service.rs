@@ -1,7 +1,7 @@
 //! `SourceService` — the unified source lifecycle entrypoint (submit/run_now/
 //! resolve/get/list/items/generations).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §SourceService. Only `submit`/`run_now` wrap a real free function
 //! (`crate::source::index_source`, which is already fully synchronous, so
 //! both trait methods currently wrap the same call). `resolve`/`get`/`list`/

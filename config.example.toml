@@ -24,7 +24,7 @@
 #   CLI flags for command inputs > environment variables > this file > built-in defaults
 #
 # Shape: this file follows the 20-section config contract
-# (docs/pipeline-unification/configuration/config-contract.md). Unknown keys
+# (docs/reference/config/config-toml.md). Unknown keys
 # and stale pre-contract section names (e.g. old top-level [llm]/[tei]/
 # [scrape]/[workers]) fail with a clear deprecation error naming the new
 # section instead of being silently ignored.
@@ -209,7 +209,7 @@
 # interactive-reserved-requests = 1
 # Soft per-tier concurrency ceilings for background/maintenance-priority embed
 # requests. Not yet independently enforced (both currently share one combined
-# non-interactive ceiling — see docs/pipeline-unification/configuration/config-contract.md).
+# non-interactive ceiling — see docs/reference/config/config-toml.md).
 # Env: AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS, AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS
 # background-max-concurrent-requests = 3
 # maintenance-max-concurrent-requests = 1
@@ -502,8 +502,6 @@ min = 1
 #
 # Source chunking and conditional recrawl circuit breakers. Leave unset unless
 # tuning a known large-corpus edge case.
-#   AXON_MAX_TREE_SITTER_FILE_BYTES
-#   AXON_RESIDUAL_GAP_FLOOR
 #   AXON_ETAG_MAX_MISS_RUNS
 #
 # Log rotation is configured via env var only (not TOML), because

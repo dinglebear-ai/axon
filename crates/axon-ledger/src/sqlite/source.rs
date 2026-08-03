@@ -63,7 +63,7 @@ pub(super) async fn get_source(
 /// (see `upsert_source`), so filtering happens in Rust rather than via
 /// `json_extract` `WHERE` clauses — simpler, and correct for the tag/query
 /// substring filters that don't map cleanly onto SQL. The empty-store
-/// assumption in `docs/pipeline-unification/runtime/ledger-contract.md` means
+/// assumption in `docs/reference/runtime/ledger.md` means
 /// this full scan is bounded by the same source-count expectations as the rest
 /// of the ledger.
 pub(super) async fn list_sources(

@@ -16,7 +16,7 @@ Ask at most 1-3 concise questions only if blocked, such as the URL, the focus ar
 ## Axon Collection Plan
 
 Use `axon map` to discover pages, `axon scrape` for content and link evidence,
-`axon screenshot` for rendered state, and `axon endpoints <url> --include-bundles true --capture-network` for API, bundle, and network-surface evidence. Use `axon crawl --render-mode chrome --automation-script ... --wait true` for repeatable click/scroll/load-more capture before escalating to a live browser tool.
+`axon screenshot` for rendered state, and `axon endpoints <url> --include-bundles true --capture-network` for API, bundle, and network-surface evidence. Use `axon source <url> --scope site --render-mode chrome --automation-script ... --wait true` for repeatable click/scroll/load-more capture before escalating to a live browser tool.
 
 For forms, responsive checks, console errors, and detailed reproduction evidence, use Webwright/Playwright or the host browser automation tool after Axon has collected the URL/content/API evidence.
 

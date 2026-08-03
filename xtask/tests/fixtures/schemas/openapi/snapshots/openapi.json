@@ -1819,9 +1819,9 @@
         "path": "crates/axon-web/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7",
+        "checksum": "sha256:a0c59d0bff7363d4f5e306877bc7f654b2d8c07a11e5f245263f4f65b848fdb9",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/openapi-schema.md"
+        "path": "docs/reference/rest/overview.md"
       }
     ],
     "status": "RegistryBacked"

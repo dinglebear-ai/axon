@@ -187,7 +187,7 @@ async function executeCommand(command, tab) {
 
   // These command names once fanned out to per-action routes that were
   // removed server-side and are not part of the extension's required API
-  // surface (docs/pipeline-unification/surfaces/chrome-extension-contract.md
+  // surface (docs/reference/surfaces/chrome-extension.md
   // "Required API Surface") — never fan these out as live requests.
   if (["map", "summarize", "evaluate", "suggest", "extract"].includes(command.name)) {
     return removedServerRouteCommand(command.name);

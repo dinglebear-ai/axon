@@ -5,12 +5,13 @@
 downstream graph and chunking stages consume. It is the home of source-specific
 intelligence — code AST facts, dependency manifests, schemas/OpenAPI, sessions,
 tool calls, skills/agents, env examples, Docker Compose, and config — **before**
-graph persistence or chunking. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-parse/README.md](../../../docs/pipeline-unification/crates/axon-parse/README.md)
+graph persistence or chunking.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/sources/parsing-contract.md](../../../docs/pipeline-unification/sources/parsing-contract.md).
+[../../../docs/reference/sources/parsing.md](../../../docs/reference/sources/parsing.md).
 
-## Status — Phase 7 (wired)
+## Current status
 The parser families below are implemented and now **consumed on the acquisition
 path**: `axon-document`'s `parse.rs` bridge runs `builtins::production_registry()`
 over each `SourceDocument`, so `SourceParseFacts`/`GraphCandidate` flow into

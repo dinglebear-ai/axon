@@ -9620,7 +9620,7 @@
               "string",
               "null"
             ],
-            "description": "User/system identity that requested the cancellation.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Cancellation\"."
+            "description": "User/system identity that requested the cancellation.\nPer `docs/reference/runtime/jobs.md` \"Cancellation\"."
           },
           "cleanup_debt_ids": {
             "type": "array",
@@ -10974,7 +10974,7 @@
       },
       "MobileSessionStatus": {
         "type": "string",
-        "description": "Mobile session lifecycle/sync status.\n\nContract: `docs/pipeline-unification/surfaces/android-contract.md`\n(\"Mobile Session Model\" -- `active`, `archived`, `deleted`, or\n`sync_conflict`).",
+        "description": "Mobile session lifecycle/sync status.\n\nContract: `docs/reference/surfaces/android.md`\n(\"Mobile Session Model\" -- `active`, `archived`, `deleted`, or\n`sync_conflict`).",
         "enum": [
           "active",
           "archived",
@@ -14699,7 +14699,7 @@
       },
       "StreamKind": {
         "type": "string",
-        "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`\n(\"StreamEvent Shape\").",
+        "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/reference/runtime/events.md`\n(\"StreamEvent Shape\").",
         "enum": [
           "progress",
           "token",

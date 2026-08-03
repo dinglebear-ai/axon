@@ -128,7 +128,7 @@ pub(super) fn deprecated_section_error(contents: &str) -> Option<String> {
     hits.sort();
     Some(format!(
         "config.toml uses deprecated section name(s) from before the config contract rewrite:\n{}\n\
-         See docs/pipeline-unification/configuration/config-contract.md for the current 20-section shape.",
+         See docs/reference/config/config-toml.md for the current 20-section shape.",
         hits.join("\n")
     ))
 }

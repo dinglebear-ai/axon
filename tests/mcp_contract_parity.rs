@@ -517,7 +517,7 @@ fn endpoints_action_scope_is_write_not_read() {
 /// read-only token cannot use Axon as a hosted network scanner/executor.
 ///
 /// Per the tool-contract Auth & Visibility table
-/// (docs/pipeline-unification/surfaces/tool-contract.md): LLM *query surfaces*
+/// (docs/reference/mcp/tool-contract.md): LLM *query surfaces*
 /// (query/retrieve/ask/evaluate/suggest/research/summarize) are `axon:read`
 /// even though they invoke the LLM — only actions that fetch arbitrary external
 /// URLs (screenshot/brand/diff, like `endpoints`) or mutate sources stay

@@ -21,7 +21,7 @@ use separate browser automation only when the user confirms authorized access
 and source terms permit automated extraction; feed discovered URLs/content back
 to Axon.
 
-For finished lead-list deliverables, run async Axon commands in blocking mode: `axon extract ... --wait true --json`, `axon crawl ... --wait true`, and `axon ingest ... --wait true` when ingestion is part of the workflow. For public lead sources, pass `--respect-robots true` unless there is an explicit authorized reason not to.
+For finished lead-list deliverables, run `axon extract ... --wait true --json` and `axon source <source> --scope site --wait true` when indexing is required. Respect source terms, rate limits, and robots policy.
 
 Do not collect personal contact info unless the user confirms lawful basis and
 source terms permit it. Do not infer, enrich, guess, de-obfuscate, or use scraped

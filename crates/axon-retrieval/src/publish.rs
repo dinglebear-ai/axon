@@ -1,13 +1,13 @@
 //! Generation publish boundary (`GenerationPublisher`).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §GenerationPublisher (grouped with `RetrievalEngine` under "Retrieval and
 //! Publish Traits" — both traits describe the read/write ends of the same
 //! generation-scoped vector data this crate already owns).
 //!
 //! Nothing in `axon-retrieval` (or elsewhere in this crate's territory)
 //! performs a `publishing` pipeline stage
-//! (`docs/pipeline-unification/foundation/source-pipeline.md`) today — the
+//! (`docs/architecture/source-pipeline.md`) today — the
 //! real implementation is expected to sit on top of `axon-ledger`'s
 //! `LedgerStore::commit_generation`/`SourceGeneration` state once the
 //! runtime cutover lands (issue #298). This file is therefore purely

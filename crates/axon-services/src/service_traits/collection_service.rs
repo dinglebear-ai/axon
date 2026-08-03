@@ -1,7 +1,7 @@
 //! `CollectionService` — Qdrant collection discovery/lifecycle (list/get/
 //! ensure/delete).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §CollectionService. `crate::system::collections::collections` returns only
 //! a `Vec<String>` of collection names — no per-collection vector/sparse
 //! config. `list` wraps it anyway, mapping each name into a placeholder

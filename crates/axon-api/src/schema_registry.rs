@@ -15,7 +15,7 @@
 //! `PHASE_1_DEFERRED_API_DEFS`, which is xtask-local (not exposed from
 //! `axon-api`) because it derives schemas straight from the real
 //! `axon_api::source::*` types via `schemars::JsonSchema`. See
-//! `docs/pipeline-unification/schemas/api-dto-schema.md`'s "DTO Registry
+//! `docs/reference/api/dto.md`'s "DTO Registry
 //! Source" section for the up-to-date description.
 //!
 //! [`removed_dto_names`] below is the one function from the old module that

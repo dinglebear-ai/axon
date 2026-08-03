@@ -1,7 +1,7 @@
 //! Closed `GraphEdgeKind` registry for the SourceGraph.
 //!
 //! The canonical edge-kind list is defined in
-//! `docs/pipeline-unification/sources/source-graph.md` ("Edge Kinds"). This
+//! `docs/reference/sources/source-graph.md` ("Edge Kinds"). This
 //! enum encodes that closed registry exactly. The graph store rejects any edge
 //! whose `edge_kind` string does not parse into one of these variants
 //! ("graph store rejects unknown kinds before write" — graph-schema.md).

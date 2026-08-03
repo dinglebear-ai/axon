@@ -13,8 +13,6 @@ implementation crate). Transports translate requests and render responses;
 they never own source acquisition, parsing, embedding, vector publishing, job
 persistence, auth policy, or cleanup semantics.
 
-> Contract source:
-> [`docs/pipeline-unification/foundation/boundary-map.md`](../pipeline-unification/foundation/boundary-map.md).
 > The crate-ownership rule is in [crate-ownership.md](crate-ownership.md).
 
 ## Boundary registry

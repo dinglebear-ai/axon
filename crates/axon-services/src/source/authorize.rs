@@ -1,7 +1,7 @@
 //! Authorizing stage: turns a routed [`RoutePlan`]'s
 //! `credential_requirements` into an access decision before acquisition.
 //!
-//! Per `docs/pipeline-unification/foundation/source-pipeline.md` Stage
+//! Per `docs/architecture/source-pipeline.md` Stage
 //! Registry, `authorizing` consumes the route plan and produces an
 //! access/execution decision — it must not degrade or mutate. This is the
 //! first real consumer of `RoutePlan::credential_requirements`: previously the

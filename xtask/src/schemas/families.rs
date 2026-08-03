@@ -159,7 +159,7 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-error/src/api_error.rs",
             "xtask/src/schemas/api_defs.rs",
             "xtask/src/schemas/registry.rs",
-            "docs/pipeline-unification/schemas/api-dto-schema.md",
+            "docs/architecture/boundary-map.md",
         ],
     )?;
     let defs = schema_defs(&api_schema_defs(), Some(enum_defs("axon-api")));
@@ -209,7 +209,7 @@ fn error_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-error/src/cooling.rs",
             "crates/axon-error/src/context.rs",
             "crates/axon-api/src/source/status.rs",
-            "docs/pipeline-unification/schemas/error-schema.md",
+            "crates/axon-error/src/CLAUDE.md",
         ],
     )?;
     let defs = schema_defs(

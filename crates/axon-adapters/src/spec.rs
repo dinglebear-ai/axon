@@ -36,7 +36,7 @@ pub enum ParserFamily {
 }
 
 /// Per-scope capability declaration, matching the 17-field contract shape in
-/// `docs/pipeline-unification/sources/adapter-scopes.md#capability-shape`.
+/// `docs/reference/sources/adapter-scopes.md#capability-shape`.
 ///
 /// Field lineage for the two pre-existing fields kept for backward
 /// compatibility with generated-doc consumers (`xtask/src/schemas/adapters.rs`):

@@ -1796,7 +1796,7 @@ export interface components {
             canceled_at?: null | components["schemas"]["Timestamp"];
             /**
              * @description User/system identity that requested the cancellation.
-             *     Per `docs/pipeline-unification/runtime/job-contract.md` "Cancellation".
+             *     Per `docs/reference/runtime/jobs.md` "Cancellation".
              */
             canceled_by?: string | null;
             /** @description Cleanup work created for any published partial side effect. */
@@ -2190,7 +2190,7 @@ export interface components {
         /**
          * @description Mobile session lifecycle/sync status.
          *
-         *     Contract: `docs/pipeline-unification/surfaces/android-contract.md`
+         *     Contract: `docs/reference/surfaces/android.md`
          *     ("Mobile Session Model" -- `active`, `archived`, `deleted`, or
          *     `sync_conflict`).
          * @enum {string}
@@ -3107,7 +3107,7 @@ export interface components {
         };
         /**
          * @description `StreamEvent.kind` — the flat set of streaming event kinds shared by SSE
-         *     and MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`
+         *     and MCP streaming, per `docs/reference/runtime/events.md`
          *     ("StreamEvent Shape").
          * @enum {string}
          */

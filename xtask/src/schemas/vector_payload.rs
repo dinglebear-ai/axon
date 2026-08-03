@@ -44,9 +44,8 @@ pub fn vector_payload_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-vectors/src/point.rs",
             "crates/axon-api/src/source/vector.rs",
             "xtask/src/schemas/vector_payload_markdown.rs",
-            "docs/pipeline-unification/sources/metadata-payload.md",
-            "docs/pipeline-unification/sources/chunking-contract.md",
-            "docs/pipeline-unification/schemas/vector-payload-schema.md",
+            "docs/reference/sources/metadata-payload.md",
+            "docs/reference/sources/chunking.md",
         ],
     )?;
     let schema = schema_bundle(&inputs, &registry);

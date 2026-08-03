@@ -2,7 +2,7 @@
 //! keep it under the monolith line cap; `rest_route_inventory` chains this
 //! const after `REST_ROUTE_INVENTORY`/`WATCH_ROUTES`.
 //!
-//! `docs/pipeline-unification/surfaces/rest-contract.md` "Graph Routes" —
+//! `docs/reference/rest/routes.md` "Graph Routes" —
 //! all read-only, no caller-provided edge writes.
 
 use super::super::{RestRouteAuth, RestRouteInfo};

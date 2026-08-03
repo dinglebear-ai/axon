@@ -4,13 +4,13 @@
 REST, MCP, jobs, watches, apps, and services speak through these types instead of
 inventing surface-local shapes. It currently depends on serialization/schema
 helpers only and must not depend on Axon domain crates, so the retrieval/vector
-layer and the services facade can depend on it without a cycle. Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-api/README.md](../../../docs/pipeline-unification/crates/axon-api/README.md)
+layer and the services facade can depend on it without a cycle.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/foundation/api-contract.md](../../../docs/pipeline-unification/foundation/api-contract.md).
+[../../../docs/reference/api/dto.md](../../../docs/reference/api/dto.md).
 
-## Status — live transport contract
+## Current status
 The full transport-neutral DTO/enum spine is real and tested, not a marker:
 `source.rs` (`SourceIntent`, `SourceRefreshPolicy`, source request/result
 shapes), `mcp_schema.rs` (MCP wire DTOs, generated tool schema), `result.rs`,

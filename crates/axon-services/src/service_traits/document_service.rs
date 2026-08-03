@@ -1,6 +1,6 @@
 //! `DocumentService` — document/chunk read surface (list/get/chunks/chunk).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §DocumentService. All contract DTOs (`DocumentListRequest`,
 //! `DocumentSummary`, `DocumentDetail`, `ChunkListRequest`, `ChunkGetRequest`,
 //! `ChunkSummary`, `ChunkDetail`) already exist in `axon-api::source::listing`

@@ -3,7 +3,7 @@
 //! carries a real byte-accurate `source_range` (unlike the JSON branch in
 //! `metadata.rs`, which chunks a parsed `serde_json::Value` and can only
 //! stamp a synthetic range). Contract:
-//! `docs/pipeline-unification/sources/chunking-contract.md`
+//! `docs/reference/sources/chunking.md`
 //! "Structured Record Chunking".
 
 use crate::chunk::DocumentChunk;

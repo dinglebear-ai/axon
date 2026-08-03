@@ -5,15 +5,15 @@ domain boundary: config loading + effective snapshots, data/path helpers,
 id/clock/time providers, redaction primitives, URL/HTTP-safety (SSRF preflight)
 helpers, local filesystem guards, artifact primitives, diagnostics, and test
 utilities. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-core/README.md](../../../docs/pipeline-unification/crates/axon-core/README.md)
+[../../../crates/axon-core/src/CLAUDE.md](../../../crates/axon-core/src/CLAUDE.md)
 · boundary spec:
-[../../../docs/pipeline-unification/foundation/boundary-map.md](../../../docs/pipeline-unification/foundation/boundary-map.md)
+[../../../docs/architecture/boundary-map.md](../../../docs/architecture/boundary-map.md)
 · shared-utilities spec:
-[../../../docs/pipeline-unification/foundation/shared-utilities-contract.md](../../../docs/pipeline-unification/foundation/shared-utilities-contract.md).
+[../../../crates/axon-core/src/CLAUDE.md](../../../crates/axon-core/src/CLAUDE.md).
 
-## Status — live crate, ongoing slim (Phase 3+)
+## Current status
 `axon-core` currently holds more than the target assigns it, and works today.
-It is being **slimmed continuously from Phase 3 onward** to exactly the primitive
+It is kept intentionally focused on shared primitives and infrastructure; the
 set above. The real **LLM completion backends have already left** for `axon-llm`
 (Gemini headless, Codex app-server, OpenAI-compat, dispatch, concurrency). What
 stays in `llm.rs` is only the LLM **DTO/config layer** (`CompletionRequest`,

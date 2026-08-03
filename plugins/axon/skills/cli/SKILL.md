@@ -46,7 +46,7 @@ mkdir -p .axon
 
 axon search "OpenAI Codex skills metadata" --json --limit 5 > .axon/search.json
 axon scrape "https://developers.openai.com/codex/skills" --output .axon/codex-skills.md
-axon crawl "https://docs.example.com" --max-pages 100 --wait true --output-dir .axon/docs-crawl
+axon source "https://docs.example.com" --scope site --max-pages 100 --wait true --output-dir .axon/docs-crawl
 axon ask "What does the indexed documentation say about optional metadata?"
 ```
 

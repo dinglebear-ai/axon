@@ -1,5 +1,5 @@
 {
-  "description": "Expected CLI/REST/MCP presence per contracted operation (issue #298, docs/pipeline-unification/surfaces/tool-contract.md Crosswalk table). Drift here means a surface added or removed an operation without updating the other two, OR the fixture needs an intentional update after a real cutover step.",
+  "description": "Expected CLI/REST/MCP presence per contracted operation (issue #298, docs/reference/mcp/tool-contract.md Crosswalk table). Drift here means a surface added or removed an operation without updating the other two, OR the fixture needs an intentional update after a real cutover step.",
   "operations": [
     { "op": "source", "cli": true, "rest": true, "mcp": true, "cli_command": "source", "rest_paths": ["/v1/sources"], "mcp_action": "source", "divergence": false, "note": "" },
     { "op": "resolve", "cli": false, "rest": true, "mcp": true, "cli_command": null, "rest_paths": ["/v1/resolve"], "mcp_action": "resolve", "divergence": false, "note": "tool-contract.md crosswalk documents CLI as 'internal/diagnostic' — absence is intentional, not drift." },

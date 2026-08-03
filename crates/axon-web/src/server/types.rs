@@ -11,7 +11,7 @@ pub(super) const ASK_QUERY_MAX_CHARS: usize = 16 * 1024;
 /// routes for shipping with no size control at all; 10 MiB is a conservative
 /// bound generous enough for a real bulk-import bundle without opening an
 /// unbounded-body DoS vector, matching the conservative default the plan
-/// calls for (`docs/pipeline-unification/plans/
+/// calls for (`docs/README.md/
 /// 2026-07-08-rest-memory-surface.md` Task 3).
 pub(super) const MEMORY_IMPORT_EXPORT_BODY_LIMIT: usize = 10 * 1024 * 1024;
 

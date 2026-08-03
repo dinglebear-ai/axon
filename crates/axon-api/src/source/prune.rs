@@ -1,7 +1,7 @@
 //! Transport-neutral prune DTOs.
 //!
 //! Shared wire shapes for `axon-prune`. These mirror the pruning contract in
-//! `docs/pipeline-unification/runtime/pruning-contract.md`:
+//! `docs/reference/runtime/pruning.md`:
 //! `PruneRequest`, `PruneSelector`, `PrunePlan`, `PruneResult` (plus the
 //! supporting `PruneStep`, `PruneEstimate`, `PruneCounts`, and
 //! `PruneStepResult` shapes the plan/result reference). They are data

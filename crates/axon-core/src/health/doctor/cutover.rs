@@ -2,7 +2,7 @@
 //!
 //! The clean-slate cutover contract requires doctor to detect an incompatible
 //! or non-empty store and recommend `axon reset` before unified workers start
-//! (`docs/pipeline-unification/delivery/cutover-contract.md` — "axon doctor must
+//! (`docs/architecture/source-pipeline.md` — "axon doctor must
 //! detect incompatible non-empty stores and recommend wiping/reinitializing").
 //!
 //! This runs core-only probes (read-only SQLite queries + Qdrant HTTP) so it

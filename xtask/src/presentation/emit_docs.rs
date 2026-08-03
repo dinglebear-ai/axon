@@ -8,7 +8,7 @@ pub fn render_markdown(src: &TokenSource) -> String {
     let mut out = markdown_header(src);
     out.push_str("# Presentation Tokens\n\n");
     out.push_str(&format!(
-        "Contract version `{}`, source hash `{}`. See [presentation-contract.md](../../pipeline-unification/surfaces/presentation-contract.md).\n\n",
+        "Contract version `{}`, source hash `{}`. See the [presentation surface](../surfaces/presentation.md).\n\n",
         src.contract_version,
         src.source_hash()
     ));

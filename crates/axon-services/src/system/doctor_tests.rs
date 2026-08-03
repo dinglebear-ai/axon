@@ -16,7 +16,7 @@ async fn test_ctx() -> ServiceContext {
 }
 
 /// `doctor` is a `provider_probe` job-backed operation (see
-/// `docs/pipeline-unification/runtime/job-contract.md`). Running it must
+/// `docs/reference/runtime/jobs.md`). Running it must
 /// create a unified job row that ends up `Completed` — mirrors
 /// `memory::tests::dispatch_covers_full_lifecycle_surface`'s job-tracking
 /// assertion for `MemoryCompaction`.

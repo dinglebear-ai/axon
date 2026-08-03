@@ -6,7 +6,7 @@ New source families enter through one pipeline. There is no per-family command,
 MCP action, or REST route — every source routes through `SourceRequest`.
 
 > Contract source:
-> [`docs/pipeline-unification/sources/new-source-contract.md`](../../pipeline-unification/sources/new-source-contract.md).
+> [`docs/development/adding-source.md`](../../development/adding-source.md).
 > Dev walkthrough: [`docs/development/adding-source-adapter.md`](../../development/adding-source-adapter.md)
 > (+ end-to-end checklist at [`adding-source.md`](../../development/adding-source.md)).
 

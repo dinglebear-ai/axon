@@ -8,11 +8,9 @@ Last Modified: 2026-05-21
 | Surface | Entry point |
 |---|---|
 | CLI | `axon endpoints ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
-
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+| REST | See docs/reference/rest/routes.md |
+| MCP | `{ "action": "endpoints" }` |
+| Service | `Shared domain/service implementation` |
 <!-- END GENERATED ACTION SURFACES -->
 
 

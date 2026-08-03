@@ -2,7 +2,7 @@
 //!
 //! The runtime uses ONE unified SQLite pool for the jobs runtime AND every
 //! domain store (ledger, observe, graph, memory) — see
-//! `docs/pipeline-unification/runtime/storage-contract.md`. Before this runner
+//! `docs/reference/runtime/storage.md`. Before this runner
 //! existed, each crate ran its own migration set against that pool. The
 //! composed runner gives every crate an independent namespace and preserves
 //! dependency order.

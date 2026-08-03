@@ -7,11 +7,11 @@ context assembly. A narrow `memory://` adapter projects authoritative records
 through the canonical source pipeline; this crate does **not** own source
 orchestration or vector publication. Full
 contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-memory/README.md](../../../docs/pipeline-unification/crates/axon-memory/README.md)
+[../../../crates/axon-memory/src/CLAUDE.md](../../../crates/axon-memory/src/CLAUDE.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/memory-contract.md](../../../docs/pipeline-unification/runtime/memory-contract.md).
+[../../../docs/reference/runtime/memory.md](../../../docs/reference/runtime/memory.md).
 
-## Status — live crate, Phase 8 landed
+## Current status
 The full lifecycle is real and tested: `SqliteMemoryStore` (remember, search,
 show, link, supersede, reinforce, decay, review, update, pin, archive, forget,
 compact, import, export) and recall-only `VectorBackedMemoryStore` are live.

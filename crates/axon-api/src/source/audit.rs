@@ -1,7 +1,7 @@
 //! Structured security audit event DTOs.
 //!
 //! Mirrors the "Audit Events" and "SSRF Policy" sections of
-//! `docs/pipeline-unification/runtime/security-contract.md`. These are
+//! `docs/reference/runtime/security.md`. These are
 //! transport-neutral data contracts only — emission/sink wiring lives in
 //! `axon-observe`.
 

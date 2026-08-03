@@ -17,7 +17,7 @@
 //! generic-bound dispatch. This round is purely additive: no inherent
 //! signature changes.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`.
+//! Contract: `docs/architecture/boundary-map.md`.
 
 use async_trait::async_trait;
 use axon_api::source::{

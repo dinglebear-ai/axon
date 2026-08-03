@@ -3,9 +3,9 @@
 //! `LogFieldSet` is the canonical shape backing every structured log line
 //! emitted for source pipeline jobs and interactive operations, per the
 //! "Logs" section of
-//! `docs/pipeline-unification/runtime/observability-contract.md` and the
+//! `docs/reference/runtime/observability.md` and the
 //! `LogFieldSet` `$def` required by
-//! `docs/pipeline-unification/schemas/event-schema.md`. Every log line that
+//! `docs/reference/runtime/events.md`. Every log line that
 //! carries job/source/phase/provider correlation should be constructed
 //! through this type rather than an ad hoc `tracing` field list, so CLI/MCP/
 //! REST logs and durable log sinks agree on field names.

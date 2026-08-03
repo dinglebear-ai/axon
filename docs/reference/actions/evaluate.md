@@ -7,11 +7,9 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon evaluate ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
-
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+| REST | See docs/reference/rest/routes.md |
+| MCP | `{ "action": "evaluate" }` |
+| Service | `Shared domain/service implementation` |
 <!-- END GENERATED ACTION SURFACES -->
 
 

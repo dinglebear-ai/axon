@@ -1,6 +1,6 @@
 //! `axon prune` service — the target-state replacement for the legacy
-//! `dedupe`/`purge` commands (`docs/pipeline-unification/surfaces/command-contract.md`,
-//! `docs/pipeline-unification/runtime/pruning-contract.md`).
+//! `dedupe`/`purge` commands (`docs/reference/cli/commands.md`,
+//! `docs/reference/runtime/pruning.md`).
 //!
 //! This module is the CLI/MCP/REST-neutral entry point for prune: it takes a
 //! [`PruneRequest`], resolves it into a reviewable [`PrunePlan`] via

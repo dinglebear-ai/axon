@@ -6,8 +6,8 @@
 //! redaction-aware context. It depends on no other Axon crate, so every crate
 //! can report failures through it without forming a cycle.
 //!
-//! Contract: `docs/pipeline-unification/crates/axon-error/README.md`; behavior
-//! spec: `docs/pipeline-unification/runtime/error-handling.md`.
+//! Contract: `crates/axon-error/src/CLAUDE.md`; behavior
+//! spec: `docs/reference/api/errors.md`.
 
 pub mod api_error;
 pub mod code;

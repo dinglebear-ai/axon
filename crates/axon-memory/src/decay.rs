@@ -1,7 +1,7 @@
 //! Memory scoring, decay, reinforcement, and status/contradiction penalties.
 //!
 //! Implements the score formula from
-//! `docs/pipeline-unification/runtime/memory-contract.md` ("Score formula"):
+//! `docs/reference/runtime/memory.md` ("Score formula"):
 //!
 //! ```text
 //! base_score =

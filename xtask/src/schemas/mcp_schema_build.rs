@@ -1,6 +1,6 @@
 //! Assembles the contracted `AxonToolInput` / `AxonToolResponse` JSON Schema
 //! bundle from [`super::LIVE_ACTIONS`] per
-//! `docs/pipeline-unification/schemas/mcp-tool-schema.md`. Kept in a
+//! `docs/reference/mcp/tool-schema.md`. Kept in a
 //! separate file from `mcp_action_registry.rs` to stay under the monolith
 //! line cap; `use super::*` gives it the registry types.
 

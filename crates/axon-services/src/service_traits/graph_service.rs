@@ -1,7 +1,7 @@
 //! `GraphService` — entity graph read surface (kinds/resolve/query/get_node/
 //! get_edge).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §GraphService. `axon-services` has no `graph.rs` module and no free
 //! functions that read/query `axon-graph` today — only `source/graph.rs`
 //! *writes* graph candidates during ingest. All five methods are therefore

@@ -6,8 +6,8 @@ search." It is a live, tested crate (`crates/axon-ledger/`), not a design
 document — this page describes the actual `SqliteLedgerStore` implementation.
 
 See also: crate guide `crates/axon-ledger/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/runtime/ledger-contract.md`, crate contract
-`docs/pipeline-unification/crates/axon-ledger/README.md`.
+`docs/reference/runtime/ledger.md`, crate contract
+`crates/axon-ledger/src/CLAUDE.md`.
 
 ## What it owns
 

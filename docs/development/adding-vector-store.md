@@ -13,7 +13,7 @@ see [`adding-provider.md`](adding-provider.md) for the embedding-provider
 side of that boundary.
 
 See also: crate guide `crates/axon-vectors/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/runtime/storage-contract.md`, ledger reference
+`docs/reference/runtime/storage.md`, ledger reference
 [`docs/reference/runtime/ledger.md`](../reference/runtime/ledger.md) (vector
 stores implement the generation-commit side of the ledger's publish model).
 

@@ -8,10 +8,25 @@ use super::crate_contracts_spec::CrateContract;
 pub const CRATE_CONTRACTS_CONT: &[CrateContract] = &[
     CrateContract {
         name: "axon-jobs",
-        modules: &[],
-        // README: axon-jobs must not depend on axon-services (contradiction-review.md:
-        // "axon-jobs may not depend on axon-services" — the composition layer injects
-        // worker functions instead).
+        modules: &[
+            "boundary",
+            "config_snapshot",
+            "config_snapshot_store",
+            "error",
+            "limits",
+            "migrations",
+            "runtime",
+            "scheduler",
+            "state_machine",
+            "status",
+            "store",
+            "unified",
+            "watch_schedule",
+            "watch_store",
+            "workers",
+        ],
+        // The composition layer injects worker functions; axon-jobs does not
+        // depend upward on axon-services or transport crates.
         forbidden_axon_deps: &["axon-services", "axon-cli", "axon-mcp", "axon-web"],
     },
     CrateContract {

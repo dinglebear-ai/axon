@@ -6,7 +6,7 @@
 //! and the memory store. Behavior (scoring, decay math, supersession) lives in
 //! `axon-memory`; only the shapes live here.
 //!
-//! Contract: `docs/pipeline-unification/runtime/memory-contract.md`.
+//! Contract: `docs/reference/runtime/memory.md`.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -512,8 +512,8 @@ pub enum MemoryImportMode {
 /// `MemoryImportRequest`; REST `POST /v1/memories/import`.
 ///
 /// Carries records directly rather than an artifact/upload bundle
-/// reference — no bundle serialization format is specified anywhere in the
-/// pipeline-unification docs. A transport that wants to accept an uploaded
+/// reference — the live memory import contract does not define a bundle
+/// serialization format. A transport that wants to accept an uploaded
 /// bundle can deserialize it into `records` itself; axon-memory does not own
 /// artifact/upload storage (out of this crate's boundary).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]

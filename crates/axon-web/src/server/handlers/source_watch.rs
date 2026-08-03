@@ -1,5 +1,5 @@
 //! `/v1/watches` — the canonical source-request-backed watch surface
-//! (issue #298 REST contract, `docs/pipeline-unification/surfaces/rest-contract.md`
+//! (issue #298 REST contract, `docs/reference/rest/routes.md`
 //! "Watch Routes" table).
 //!
 //! `/v1/watches` is backed by [`axon_services::watch::SqliteWatchStore`]

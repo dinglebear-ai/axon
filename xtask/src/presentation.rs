@@ -1,5 +1,5 @@
 //! `cargo xtask presentation` — the presentation-token generator described
-//! by `docs/pipeline-unification/surfaces/presentation-contract.md`.
+//! by `docs/reference/presentation/tokens.md`.
 //!
 //! Reads the single canonical token source (`presentation/source.json`) and
 //! emits the contract-named platform projections (web/Palette/extension CSS,

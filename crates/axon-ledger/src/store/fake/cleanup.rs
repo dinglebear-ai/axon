@@ -54,7 +54,7 @@ pub(in crate::store) async fn resolve_cleanup_debt(
 /// Idempotent — an unknown `(source_id, generation)` pair deletes nothing and
 /// returns `0`. Callers (the prune drain) are responsible for never passing
 /// the currently committed generation; this is the ledger-side `LedgerPrune`
-/// boundary from `docs/pipeline-unification/runtime/ledger-contract.md`.
+/// boundary from `docs/reference/runtime/ledger.md`.
 pub(in crate::store) async fn delete_generation(
     state: &Arc<Mutex<FakeLedgerState>>,
     source_id: &SourceId,

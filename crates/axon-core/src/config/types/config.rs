@@ -621,7 +621,7 @@ pub struct Config {
     /// Base backoff (before exponential growth + jitter) between retried TEI
     /// embed requests on 429/5xx. Was previously a hardcoded 1000ms literal in
     /// `axon-embedding`'s TEI client — see `[providers.embedding].retry-backoff-ms`
-    /// in `docs/pipeline-unification/configuration/config-contract.md`.
+    /// in `docs/reference/config/config-toml.md`.
     /// Env: `AXON_TEI_RETRY_BACKOFF_MS`. TOML: `embed.tei-retry-backoff-ms`. Clamped 50–60000. Default: 500.
     pub embed_tei_retry_backoff_ms: u64,
 

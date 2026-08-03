@@ -1,6 +1,6 @@
 //! `RetrieveService` — fetch stored document chunks for a URL.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §RetrieveService. The contract's `RetrievalRequest` DTO does not exist in
 //! `axon-api`, and `crate::query::retrieve` module's exact request shape was
 //! not verified against it in this pass — recorded as SKIP per the approved

@@ -26,7 +26,8 @@ Section capture:
 
 ```bash
 mkdir -p .axon/download
-axon crawl "https://docs.example.com/reference" \
+axon source "https://docs.example.com/reference" \
+  --scope site \
   --max-pages 200 \
   --wait true \
   --output-dir .axon/download/reference
@@ -41,7 +42,7 @@ axon screenshot "https://example.com" --output .axon/download/example.png
 ## Guidance
 
 - Start with `map` if you need to choose which paths to capture.
-- Use `crawl` with explicit caps for large sections.
+- Use `source --scope site` with explicit caps for large sections.
 - Expect markdown, manifests, WARC files, and screenshots, not a full offline website mirror.
 - Keep generated captures out of commits unless the user explicitly asks for curated artifacts.
 

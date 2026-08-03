@@ -117,7 +117,7 @@ function formatGenericResult(title, result) {
 
 // map/summarize/evaluate/suggest/extract routes were removed server-side and
 // are not in the extension's required API surface — see
-// docs/pipeline-unification/surfaces/chrome-extension-contract.md.
+// docs/reference/surfaces/chrome-extension.md.
 function removedServerRouteCommand(name) {
   const output = [
     `# ${name}`,

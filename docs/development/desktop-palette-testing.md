@@ -116,27 +116,18 @@ axon status
 ```
 
 That gives the user the current queue view without forcing them to copy a UUID.
-Power users can still inspect a specific job directly:
+Power users can inspect a specific durable job directly:
 
 ```bash
-axon crawl status <job_id> --json
-axon ingest status <job_id> --json
+axon jobs get <job_id> --json
+axon jobs events <job_id> --json
 ```
 
-Current document lookup support by job id:
-
-- Crawl jobs can be traced to filesystem artifacts. `crawl status <job_id>
-  --json` includes `result_json.output_dir` / `output_path` after progress has
-  been persisted; the associated documents are the `manifest.jsonl` entries and
-  markdown files under that directory.
-- Ingest jobs currently expose progress/count metadata, not a per-document
-  manifest. Qdrant payloads include URL/source metadata, but not the originating
-  ingest job id, so there is no first-class `axon ingest documents <job_id>`
-  command today.
-
-If we want job-id document browsing for all async work, add a first-class
-document manifest keyed by job id or stamp embedded Qdrant points with
-`job_id`, then expose it through `axon <kind> documents <job_id>`.
+Source jobs carry the same job id through acquisition, preparation, embedding,
+publication, graphing, and cleanup. The job result links any durable artifacts
+that the operation produced. Use `axon artifacts list --job-id <job_id>` and
+`axon artifacts get <artifact_id>` when the palette needs to expose generated
+files or structured output.
 
 ## Acceptance Criteria
 

@@ -1,44 +1,61 @@
 ---
 name: crawl
-description: Use Axon crawl to capture many pages from a site or scoped documentation section.
+description: Use Axon's unified source command to capture and index many pages from a bounded site or documentation section.
 ---
 
-# Axon Crawl
+# Axon Site Capture
 
-Use `axon crawl` when the user needs many pages from the same site, such as an entire docs section, changelog archive, blog, or product catalog.
+Use the unified source pipeline with `scope=site` when the user needs many
+pages from one site, documentation section, changelog archive, blog, or product
+catalog.
 
-## When To Use
+## When to use
 
-- The user says "crawl", "bulk scrape", "get all pages", or "capture the docs".
-- A single URL is not enough.
-- You need content indexed or saved across a bounded path.
+- The user asks to crawl, bulk capture, or index a docs section.
+- A single page is insufficient.
+- The source can be bounded by URL, depth, page count, or path budget.
 
-## Examples
+## CLI examples
 
 ```bash
 mkdir -p .axon
 
-axon crawl "https://docs.example.com" \
-  --max-pages 100 \
-  --max-depth 3 \
-  --wait true \
-  --output-dir .axon/docs-crawl
+axon source https://docs.example.com   --scope site   --max-pages 100   --max-depth 3   --wait true   --output-dir .axon/docs
 
-axon crawl "https://docs.example.com/reference" \
-  --budget "/reference=200" \
-  --wait true \
-  --output-dir .axon/reference
+axon source https://docs.example.com/reference   --scope site   --budget '/reference=200'   --wait true   --output-dir .axon/reference
 ```
+
+Rendered capture:
+
+```bash
+axon source https://app.example.com/docs   --scope site   --render-mode chrome   --automation-script ./capture.json   --wait true
+```
+
+## MCP
+
+The MCP source DTO supports the source, scope, collection, response mode, and
+detached execution:
+
+```json
+{ "action": "source", "source": "https://docs.example.com", "scope": "site" }
+{ "action": "source", "source": "https://docs.example.com", "scope": "site", "detached": true }
+```
+
+Use the CLI when the task requires page limits, depth, budgets, output files,
+render controls, WARC, headers, selectors, or automation scripts.
 
 ## Guidance
 
-- Scope crawls with path-specific URLs, `--max-pages`, `--max-depth`, `--budget`, or a tight start URL.
-- Use `--wait true` when the answer depends on the completed crawl.
-- Use `axon crawl status <job_id>`, `errors`, `list`, or `recover` for async jobs.
-- Use `map` first if you only need URL discovery.
+- Bound the capture with a scoped start URL and the smallest necessary limits.
+- Use `--wait true` when the answer depends on completed indexing.
+- Use `axon map <url>` first when only URL discovery is needed.
+- Use `axon jobs get <job-id>`, `events`, `cancel`, `retry`, or
+  `recover` for detached lifecycle management.
+- Use `axon watch create <source> --every-seconds N` for recurring refreshes.
 
-## See Also
+## See also
 
 - [map](../map/SKILL.md)
 - [scrape](../scrape/SKILL.md)
 - [extract](../extract/SKILL.md)
+- [using-axon](../using-axon/SKILL.md)

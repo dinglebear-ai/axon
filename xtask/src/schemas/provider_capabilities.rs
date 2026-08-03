@@ -24,8 +24,8 @@ pub(super) fn provider_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             "crates/axon-core/src/boundary.rs",
             "crates/axon-authz/src/policy.rs",
             "crates/axon-observe/src/reservation.rs",
-            "docs/pipeline-unification/runtime/provider-contract.md",
-            "docs/pipeline-unification/schemas/provider-capability-schema.md",
+            "docs/architecture/boundary-map.md",
+            "docs/development/adding-provider.md",
         ],
     )?;
     let defs = schema_defs(&provider_schema_defs(), Some(enum_defs("providers")));

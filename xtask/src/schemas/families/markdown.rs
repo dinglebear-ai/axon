@@ -72,9 +72,8 @@ pub(super) fn cli_markdown(
     out
 }
 
-/// Renders `docs/reference/cli/axon-help.md`. The target design
-/// (`docs/pipeline-unification/delivery/docs-generator-contract.md`'s
-/// `cli-help` family) is a real clap `--help` text renderer; that renderer
+/// Renders `docs/reference/cli/axon-help.md`. The target described by
+/// `docs/reference/cli/overview.md` is a real clap `--help` text renderer; that renderer
 /// does not exist yet — `CliRegistryCommand` (`xtask/src/schemas/cli_registry.rs`)
 /// has no flags/arguments field to render, only path/summary/mutates/async/
 /// auth-scope. Until a flag-level renderer lands, this projects the same
@@ -87,8 +86,7 @@ pub(super) fn cli_help_markdown(inputs: &[SourceInput], commands: &[Value]) -> S
          projected from `docs/reference/cli/commands.json`, not literal `axon <command> \
          --help` output. `CliRegistryCommand` does not carry a flags/arguments registry, \
          so flag-level help text cannot be generated mechanically yet; that requires the \
-         clap/help renderer described as the `cli-help` family target in \
-         `docs/pipeline-unification/delivery/docs-generator-contract.md`. Run \
+         clap/help renderer described in `docs/reference/cli/overview.md`. Run \
          `axon <command> --help` for authoritative flag documentation in the meantime.\n\n",
     );
     out.push_str(&command_table(commands));

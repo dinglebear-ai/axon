@@ -1,6 +1,6 @@
 //! `PruneService` — reviewable destructive cleanup (plan/execute/cleanup debt).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §PruneService. Execution consumes a persisted reviewed plan id and requires
 //! caller-derived authorization; no removed purge/dedupe public operation is
 //! represented here.

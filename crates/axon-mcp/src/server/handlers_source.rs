@@ -23,7 +23,7 @@
 //! `axon:execute` for CLI/MCP tool sources) via
 //! `axon_authz::required_scope_for_safety_class`. Without this boundary, a
 //! caller holding only `axon:write` (explicitly NOT `axon:local` per the auth
-//! contract, `docs/pipeline-unification/runtime/auth-contract.md`) could index
+//! contract, `docs/reference/runtime/auth.md`) could index
 //! an arbitrary local filesystem path through MCP even though the identical
 //! request is refused over REST.
 //!

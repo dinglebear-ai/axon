@@ -38,12 +38,12 @@ pub(super) static ADMIN_WATCH_ROUTES: &[RestRouteSpec] = &[
         "ResetResult",
     ),
     // `POST /v1/watch/{id}/run` was removed per the REST contract's
-    // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
+    // clean-break rule (`docs/reference/rest/routes.md`
     // "Removed Route Behavior") — its canonical replacement is
     // `POST /v1/watches/{watch_id}/exec` below.
     //
     // Canonical source-request-backed watch surface (issue #298 REST
-    // contract, `docs/pipeline-unification/surfaces/rest-contract.md` Watch
+    // contract, `docs/reference/rest/routes.md` Watch
     // Routes).
     write(
         "POST",

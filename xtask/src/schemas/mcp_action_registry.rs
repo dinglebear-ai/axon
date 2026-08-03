@@ -1,5 +1,5 @@
 //! Hand-maintained mirror of the **live** MCP action surface (issue #298
-//! WS-F, `docs/pipeline-unification/schemas/mcp-tool-schema.md`).
+//! WS-F, `docs/reference/mcp/tool-schema.md`).
 //!
 //! `crates/axon-mcp` is read-only territory for this generator: the real
 //! dispatcher table (`MCP_ACTION_SPECS` in
@@ -7,24 +7,21 @@
 //! imported directly. This module is the generator-side registry that
 //! mirrors it by hand (the same pattern already used by
 //! `xtask/src/schemas/cli_registry.rs` for the CLI family). Two safeguards
-//! keep it from silently rotting:
+//! validate the names represented here:
 //!
 //! 1. `mcp_action_registry_tests.rs` calls the already-public
 //!    `axon_mcp::required_scope_for(action, subaction)` oracle for every
 //!    name in [`live_action_names`] (must resolve) and every name in
 //!    `known_non_live_action_names` (must resolve to `__deny__`/removed).
-//!    If a future edit to `MCP_ACTION_SPECS` adds/removes/rescoped an
-//!    action without a matching edit here, that test fails.
+//!    If a represented action is removed or rescoped in `MCP_ACTION_SPECS`
+//!    without a matching edit here, that test fails.
 //! 2. Shared action request DTOs are resolved from the real,
-//!    schemars-derived `axon_api::mcp_schema` types. The two system requests
-//!    owned privately by `axon-mcp` (`reset` and `collections`) are mirrored
-//!    explicitly here and covered by focused generator expectations.
+//!    schemars-derived `axon_api::mcp_schema` types. System requests owned
+//!    privately by `axon-mcp` are mirrored explicitly here and covered by
+//!    focused generator expectations.
 //!
-//! Contract convergence direction: `docs/pipeline-unification/schemas/
-//! mcp-tool-schema.md`'s target `Action` enum has 31 names; the live
-//! dispatcher currently implements the 28 below. Names present only in the
-//! contract are surfaced via `deferred_action_names` / `deferred_actions`
-//! in the generated schema instead of fabricated request schemas.
+//! `CONTRACT_ACTIONS` provides the other coverage boundary: every documented
+//! action must either be live below or appear explicitly in `deferred_actions`.
 
 use serde_json::{Value, json};
 
@@ -215,12 +212,30 @@ pub(super) const LIVE_ACTIONS: &[ActionSpec] = &[
         ]),
     },
     ActionSpec {
+        name: "artifacts",
+        description: "List, inspect, or read artifacts by opaque artifact id",
+        scope: "read",
+        mutates: false,
+        async_job: false,
+        request_dto: "ArtifactsMcpRequest",
+        subaction: SubactionKind::InformalStrings(&["list", "get", "content"]),
+    },
+    ActionSpec {
         name: "ask",
         description: "Answer a question with RAG over indexed content",
         scope: "read",
         mutates: false,
         async_job: false,
         request_dto: "AskRequest",
+        subaction: SubactionKind::None,
+    },
+    ActionSpec {
+        name: "chat",
+        description: "Send a direct prompt to the configured chat-purpose LLM",
+        scope: "read",
+        mutates: false,
+        async_job: false,
+        request_dto: "ChatRequest",
         subaction: SubactionKind::None,
     },
     ActionSpec {
@@ -356,7 +371,7 @@ pub(super) const KNOWN_NON_LIVE_ACTIONS: &[&str] = &[
 ];
 
 /// The contract's target `Action` enum
-/// (`docs/pipeline-unification/schemas/mcp-tool-schema.md`, "Action Enum"),
+/// (`docs/reference/mcp/tool-schema.md`, "Action Enum"),
 /// hardcoded here for the deferred-action delta. That doc is read-only
 /// reference material; this list is this generator's own copy.
 pub(super) const CONTRACT_ACTIONS: &[&str] = &[
@@ -409,7 +424,7 @@ pub(super) fn deferred_actions() -> Vec<Value> {
         .map(|name| {
             json!({
                 "action": name,
-                "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's \
+                "reason": "present in docs/reference/mcp/tool-schema.md's \
                            target Action enum, absent from the live axon-mcp dispatcher \
                            (crates/axon-mcp/src/server.rs); no request DTO exists yet",
             })
@@ -486,7 +501,9 @@ pub(super) fn request_schema_for(request_dto: &str) -> Value {
                 "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
             }
         }),
+        "ArtifactsMcpRequest" => artifacts_request_schema(),
         "AskRequest" => schemars::schema_for!(m::AskRequest).into(),
+        "ChatRequest" => schemars::schema_for!(m::ChatRequest).into(),
         "EvaluateRequest" => schemars::schema_for!(m::EvaluateRequest).into(),
         "SuggestRequest" => schemars::schema_for!(m::SuggestRequest).into(),
         "ResearchRequest" => schemars::schema_for!(m::ResearchRequest).into(),
@@ -501,6 +518,24 @@ pub(super) fn request_schema_for(request_dto: &str) -> Value {
         "GraphRequest" => schemars::schema_for!(m::GraphRequest).into(),
         other => panic!("mcp_action_registry: no request schema mapped for {other}"),
     }
+}
+
+fn artifacts_request_schema() -> Value {
+    let artifact_kind: Value = schemars::schema_for!(axon_api::source::ArtifactKind).into();
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "subaction": { "type": "string", "enum": ["list", "get", "content"], "default": "list" },
+            "artifact_id": { "type": ["string", "null"] },
+            "source_id": { "type": ["string", "null"] },
+            "job_id": { "type": ["string", "null"] },
+            "kind": { "anyOf": [artifact_kind, { "type": "null" }] },
+            "limit": { "type": ["integer", "null"], "minimum": 0 },
+            "cursor": { "type": ["string", "null"] },
+            "response_mode": { "type": ["string", "null"], "enum": ["path", "inline", "both", "auto_inline", null] }
+        }
+    })
 }
 
 /// Real subaction enum variants for `SubactionKind::TypedEnum` actions,

@@ -108,7 +108,7 @@ fn subcommand_alias_is_untouched() {
 #[test]
 fn removed_purge_aliases_route_as_source() {
     // `delete-url` and `delete` were aliases of the removed `purge` command
-    // (docs/pipeline-unification/delivery/surface-removal-contract.md). With
+    // (docs/reference/inventory.md). With
     // `purge` gone and no alias compatibility layer, these tokens are no
     // longer known subcommands and route as bare source arguments like any
     // other unrecognized positional.

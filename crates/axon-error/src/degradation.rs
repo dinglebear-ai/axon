@@ -1,7 +1,7 @@
 //! Graceful-degradation decisions.
 //!
 //! See "Degraded vs Failed" in
-//! `docs/pipeline-unification/runtime/error-handling.md`.
+//! `docs/reference/api/errors.md`.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

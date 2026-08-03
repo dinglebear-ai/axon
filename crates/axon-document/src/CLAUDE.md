@@ -4,11 +4,11 @@
 right chunking strategy and producing `PreparedDocument`/`PreparedChunk` values
 for embedding. It consumes `SourceParseFacts`; it does not embed, persist, or
 acquire. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-document/README.md](../../../docs/pipeline-unification/crates/axon-document/README.md)
+[../../../crates/axon-document/src/CLAUDE.md](../../../crates/axon-document/src/CLAUDE.md)
 · chunking profile registry:
-[../../../docs/pipeline-unification/sources/chunking-contract.md](../../../docs/pipeline-unification/sources/chunking-contract.md).
+[../../../docs/reference/sources/chunking.md](../../../docs/reference/sources/chunking.md).
 
-## Status — Phase 7 (wired)
+## Current status
 `DocumentPreparer` is live and now activates `axon-parse` on the acquisition
 path: when a caller supplies no `parse_facts`, `parse.rs` runs the shared
 `axon-parse` production registry over each `SourceDocument`, flowing real

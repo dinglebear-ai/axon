@@ -6,9 +6,9 @@
 //! never parses source files directly.
 //!
 //! Contracts:
-//! - `docs/pipeline-unification/crates/axon-graph/CLAUDE.md`
-//! - `docs/pipeline-unification/schemas/graph-schema.md`
-//! - `docs/pipeline-unification/sources/source-graph.md`
+//! - `crates/axon-graph/src/CLAUDE.md`
+//! - `docs/reference/sources/graph.md`
+//! - `docs/reference/sources/source-graph.md`
 //!
 //! The closed node/edge/evidence kind registries live in [`node`], [`edge`],
 //! and [`evidence`]. [`SqliteGraphStore`] is the durable implementation of the

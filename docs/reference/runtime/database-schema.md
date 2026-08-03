@@ -19,7 +19,7 @@ See the family contract for declared output paths.
 | `crates/axon-ledger/src/migrations` | `sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8` |
 | `crates/axon-memory/src/migrations` | `sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a` |
 | `crates/axon-observe/src/migrations` | `sha256:ae4a86b45a62940c12d472880ab4facf253c284dcc985721d58ae0c8c7f2f723` |
-| `docs/pipeline-unification/schemas/database-schema.md` | `sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571` |
+| `docs/reference/runtime/storage.md` | `sha256:233d664823aa1f811fc13b98f72e790eb40a7a9e954459a7c11b2220bec1ce03` |
 | `xtask/src/schemas/database_defs.rs` | `sha256:d1848c8f952a77bcc2d440ea403eb7dc82d3023c2ba9fdf380c57a4fcef059ca` |
 | `xtask/src/schemas/database_defs/parser.rs` | `sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b` |
 

@@ -1536,7 +1536,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/reference/runtime/pruning.md`, \"graph orphan\ncleanup\").",
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -1861,7 +1861,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/reference/runtime/pruning.md`, \"graph orphan\ncleanup\").",
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -6088,7 +6088,7 @@
           ]
         },
         "canceled_by": {
-          "description": "User/system identity that requested the cancellation.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Cancellation\".",
+          "description": "User/system identity that requested the cancellation.\nPer `docs/reference/runtime/jobs.md` \"Cancellation\".",
           "type": [
             "string",
             "null"
@@ -6595,7 +6595,7 @@
           ]
         },
         "deadline_at": {
-          "description": "Optional cancellation deadline. Past-deadline `running` attempts are\ntransitioned to `expired` by the worker claim/heartbeat path.\nPer `docs/pipeline-unification/runtime/job-contract.md` \"Required Job\nFields\" (`deadline_at`).",
+          "description": "Optional cancellation deadline. Past-deadline `running` attempts are\ntransitioned to `expired` by the worker claim/heartbeat path.\nPer `docs/reference/runtime/jobs.md` \"Required Job\nFields\" (`deadline_at`).",
           "type": [
             "string",
             "null"
@@ -7976,7 +7976,7 @@
         },
         "sequence": {
           "default": 0,
-          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.",
+          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/reference/runtime/events.md`'s `JobHeartbeat` shape.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -11608,7 +11608,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/reference/runtime/pruning.md`, \"graph orphan\ncleanup\").",
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -17064,7 +17064,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/pipeline-unification/runtime/pruning-contract.md`, \"graph orphan\ncleanup\").",
+          "description": "Name specific graph nodes (by stable key) for `GraphPrune` debt to\ndelete. Added so `GraphStore::delete_nodes` has an identity to target\n(`docs/reference/runtime/pruning.md`, \"graph orphan\ncleanup\").",
           "properties": {
             "kind": {
               "const": "graph_nodes",
@@ -28759,7 +28759,7 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
+        "checksum": "sha256:7257cb2b6ccc31d1abea5ce70a4c7040dcda208534cc34ad788ad07748e694b4",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
@@ -28784,7 +28784,7 @@
         "path": "crates/axon-api/src/source/common.rs"
       },
       {
-        "checksum": "sha256:17790fd7ccfb16f41229ef8c923dfa95a93520e19ed29cc5e083ee34dbee173e",
+        "checksum": "sha256:dc130303085dc3c0a6c2d36cdd6ebf08f0ada852a8bd90130c88813f929a6da0",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/document.rs"
       },
@@ -28814,7 +28814,7 @@
         "path": "crates/axon-api/src/source/ids.rs"
       },
       {
-        "checksum": "sha256:0266cb19a5aecea9c85aec5723ce33d2f882dc449c543b4fa57e9880a34d8d24",
+        "checksum": "sha256:8b34a51bc33833754794dc7f0747df132cb00dceb3b463d8b9abde2af36df377",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job.rs"
       },
@@ -28839,7 +28839,7 @@
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
       {
-        "checksum": "sha256:fbd7cdfd5175b4511170d270bb4d70d511e2875dac0c4ffea86cbe3b6e6cfde3",
+        "checksum": "sha256:5ccef46f422f71aaba26bfd1609117fee7ec7bd9dbe5d863d1b59829ff83b4a8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/prune.rs"
       },
@@ -28854,7 +28854,7 @@
         "path": "crates/axon-api/src/source/state.rs"
       },
       {
-        "checksum": "sha256:e891b0f9215e7c4fb1b5fd44a1793b20475aca9105e519c7d9c9f42137d7cd30",
+        "checksum": "sha256:039354c41f3ad1647f7ec5190c75e801dd4ba85ca51ae37d8213521d6528d777",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/status.rs"
       },
@@ -28864,14 +28864,14 @@
         "path": "crates/axon-api/src/source/vector.rs"
       },
       {
-        "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e",
+        "checksum": "sha256:862b0b769b96a6615052d66ef47c6e23e5b065867ada96de43c5ed4f28f0212e",
         "kind": "rust_module",
         "path": "crates/axon-error/src/api_error.rs"
       },
       {
-        "checksum": "sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc",
+        "checksum": "sha256:7323b61431ae7c46c8477fc4a1a41d35a31dc160f162d807a27561a189fcba67",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
+        "path": "docs/architecture/boundary-map.md"
       },
       {
         "checksum": "sha256:72f433cbcaa5df4d2d072288af00fe77dcd2c8c18ef10f010f85dac2dc29a118",

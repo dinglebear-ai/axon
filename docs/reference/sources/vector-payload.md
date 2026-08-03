@@ -16,12 +16,11 @@ See the family contract for declared output paths.
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:f94bde7fcf24357c13f823f39d19ba44edfb5520f47a808d76b9196ab99f4c52` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e` |
-| `crates/axon-vectors/src/point.rs` | `sha256:f10723828d703802ad6f592d2093f92f87a6e5017ff35b15b0a4b1f722998939` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:386ddfe02f2088a8c3265af56d49e9e8dec3739c1dfdb08b4bd8820439425fa0` |
+| `crates/axon-vectors/src/point.rs` | `sha256:cf7f5d7bc3c21568cda2b7c32b861bc75db50aaa37cdbd3601ecfc7fdc91bcdb` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
-| `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
-| `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
-| `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33` |
+| `docs/reference/sources/chunking.md` | `sha256:ecb4625aae55ad9004f684390e86e027f9e86f8fc59415e2041649b8ce812231` |
+| `docs/reference/sources/metadata-payload.md` | `sha256:7c7f6d65ead427b3c584b3ebf5c343ca1e60f3dd3def9b72b85c887116886f17` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54` |
 
 ## Root Shape

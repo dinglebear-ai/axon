@@ -140,7 +140,7 @@ export class AxonClient {
    * Acquire/refresh a source through the unified pipeline — the canonical
    * ingestion entrypoint. Replaces the removed scrape/crawl/embed/ingest verb
    * routes; REST is a projection over the shared SourceRequest model
-   * (docs/pipeline-unification/surfaces/rest-contract.md).
+   * (docs/reference/rest/routes.md).
    */
   submitSource(body: SourceRequest): Promise<SourceResult> {
     return this.post('/v1/sources', body);

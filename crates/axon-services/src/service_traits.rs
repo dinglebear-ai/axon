@@ -1,6 +1,6 @@
 //! The async orchestration service-trait seam for `axon-services`.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! (14 traits). This module is a scaffold: it defines every contracted trait,
 //! a `Fake<Name>` in-memory implementation of every method (suitable for
 //! transport/parity tests), and — only where a real free function already
@@ -53,7 +53,7 @@ pub use watch_service::{FakeWatchService, WatchService, WatchServiceImpl};
 pub(crate) fn not_implemented(trait_method: &str) -> anyhow::Error {
     anyhow::anyhow!(
         "{trait_method} has no production orchestration yet (FAKE_ONLY/SKIP per \
-         docs/pipeline-unification/foundation/types/service-contract.md); use the \
+         docs/architecture/boundary-map.md); use the \
          Fake implementation for transport/parity tests until a follow-up workstream \
          wires the real free function"
     )

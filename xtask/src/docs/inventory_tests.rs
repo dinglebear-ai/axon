@@ -1,9 +1,9 @@
 use super::*;
 use std::fs;
 
-const SAMPLE_CONTRACT: &str = r#"# Documentation Contract
+const SAMPLE_CONTRACT: &str = r#"# Axon Documentation
 
-## Final Docs Tree
+## Required Living Documentation
 
 ```text
 docs/
@@ -32,15 +32,18 @@ fn parses_flat_and_nested_paths_and_skips_ellipsis() {
 }
 
 #[test]
+fn check_rejects_obsolete_pipeline_contract_root() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("docs/pipeline-unification")).unwrap();
+    let err = check(dir.path()).unwrap_err();
+    assert!(err.to_string().contains("docs/pipeline-unification"));
+}
+
+#[test]
 fn check_reports_every_missing_file() {
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir_all(dir.path().join("docs/pipeline-unification/delivery")).unwrap();
-    fs::write(
-        dir.path()
-            .join("docs/pipeline-unification/delivery/documentation-contract.md"),
-        SAMPLE_CONTRACT,
-    )
-    .unwrap();
+    fs::create_dir_all(dir.path().join("docs")).unwrap();
+    fs::write(dir.path().join("docs/README.md"), SAMPLE_CONTRACT).unwrap();
     let err = check(dir.path()).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("docs/README.md"));
@@ -51,15 +54,9 @@ fn check_reports_every_missing_file() {
 #[test]
 fn check_passes_when_all_files_exist() {
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir_all(dir.path().join("docs/pipeline-unification/delivery")).unwrap();
-    fs::write(
-        dir.path()
-            .join("docs/pipeline-unification/delivery/documentation-contract.md"),
-        SAMPLE_CONTRACT,
-    )
-    .unwrap();
+    fs::create_dir_all(dir.path().join("docs")).unwrap();
+    fs::write(dir.path().join("docs/README.md"), SAMPLE_CONTRACT).unwrap();
     fs::create_dir_all(dir.path().join("docs/reference/cli")).unwrap();
-    fs::write(dir.path().join("docs/README.md"), "x").unwrap();
     fs::write(dir.path().join("docs/reference/cli/commands.md"), "x").unwrap();
     fs::write(dir.path().join("docs/reference/cli/overview.md"), "x").unwrap();
     check(dir.path()).unwrap();

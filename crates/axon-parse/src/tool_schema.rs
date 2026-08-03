@@ -159,7 +159,7 @@ fn push_tool_fact(
 /// parsed document exposes — satisfying the contract's "external-resource
 /// graph nodes" requirement for this parser family using only edge/node
 /// kinds from axon-graph's closed `GraphEdgeKind`/`GraphNodeKind` registries
-/// (`docs/pipeline-unification/sources/source-graph.md`: standalone
+/// (`docs/reference/sources/source-graph.md`: standalone
 /// `cli_tool`/`mcp_tool` source jobs create the reusable `tool` node, a
 /// `tool_call` node, and any `external_resource` nodes with provenance
 /// edges — there is no direct tool -> external_resource edge kind in the

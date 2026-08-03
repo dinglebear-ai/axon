@@ -1,7 +1,7 @@
 //! Closed `GraphNodeKind` registry for the SourceGraph.
 //!
 //! The canonical node-kind list is defined in
-//! `docs/pipeline-unification/sources/source-graph.md` ("Node Kinds"). This
+//! `docs/reference/sources/source-graph.md` ("Node Kinds"). This
 //! enum encodes that closed registry exactly. The graph store rejects any node
 //! whose `node_kind` string does not parse into one of these variants
 //! ("graph store rejects unknown kinds before write" — graph-schema.md).

@@ -48,14 +48,12 @@ RUST_CI_HELPER_SCRIPTS = {
     "scripts/check_shell_completions.sh",
     "xtask/src/pre_push.rs",
     "scripts/enforce_monoliths.py",
-    "scripts/generate_mcp_schema_doc.py",
     "scripts/test-ask-quality-regressions.sh",
     "scripts/test-mcp-oauth-protection.sh",
     "scripts/test-mcp-tools-mcporter.sh",
 }
 
 MCP_CI_HELPER_SCRIPTS = {
-    "scripts/generate_mcp_schema_doc.py",
     "scripts/test-mcp-oauth-protection.sh",
     "scripts/test-mcp-tools-mcporter.sh",
 }

@@ -15,7 +15,7 @@ pub trait LedgerStore: Send + Sync {
     async fn get_source(&self, source_id: SourceId) -> Result<Option<SourceSummary>>;
     /// Bulk-list registered sources (id, canonical URI, kind/adapter, status,
     /// counts, …), filtered and paginated per `request`. The `list_sources`
-    /// entry in `docs/pipeline-unification/runtime/ledger-contract.md`'s
+    /// entry in `docs/reference/runtime/ledger.md`'s
     /// Public Boundary — the only enumeration mechanism callers should use
     /// once a source is ledger-registered (see `axon-services::refresh`).
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>>;
@@ -62,7 +62,7 @@ pub trait LedgerStore: Send + Sync {
     async fn resolve_cleanup_debt(&self, debt_id: CleanupDebtId) -> Result<()>;
     /// Delete ledger rows (generation, manifest, items, document status) for
     /// one superseded generation of `source_id`. This is the `LedgerPrune`
-    /// cleanup-debt boundary from `docs/pipeline-unification/runtime/
+    /// cleanup-debt boundary from `docs/reference/runtime/
     /// ledger-contract.md` — it never touches the committed/current
     /// generation (callers must fence that, same as vector deletes).
     /// Idempotent: deleting an already-deleted or unknown generation is a

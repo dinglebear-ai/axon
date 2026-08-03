@@ -1,7 +1,7 @@
 //! Closed `EvidenceKind` registry for the SourceGraph.
 //!
 //! The canonical evidence-kind list is defined in
-//! `docs/pipeline-unification/sources/source-graph.md` ("Evidence Kinds").
+//! `docs/reference/sources/source-graph.md` ("Evidence Kinds").
 //! Evidence kinds classify *why* a node/edge claim exists; the merge/authority
 //! logic uses [`EvidenceKind::authority`] to rank competing claims.
 

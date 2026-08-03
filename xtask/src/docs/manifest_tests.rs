@@ -44,7 +44,7 @@ fn build_groups_by_family_and_dedupes() {
     let cli = &manifest.families[0];
     assert_eq!(cli.family, "cli");
     assert_eq!(cli.source_inputs.len(), 2);
-    assert_eq!(cli.generated_by, "cargo xtask docs generate --family cli");
+    assert_eq!(cli.generated_by, "cargo xtask schemas cli");
 }
 
 #[test]

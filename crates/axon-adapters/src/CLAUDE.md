@@ -3,14 +3,14 @@
 `axon-adapters` owns **source acquisition**. Each adapter turns a `ResolvedSource`
 (from `axon-route`) into an `AcquisitionManifest` and `SourceDocument` values —
 without bypassing the shared pipeline. It answers "how do I fetch this source
-family, at what declared scope, and what did the fetch return." Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-adapters/README.md](../../../docs/pipeline-unification/crates/axon-adapters/README.md)
+family, at what declared scope, and what did the fetch return."
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/sources/adapter-scopes.md](../../../docs/pipeline-unification/sources/adapter-scopes.md)
-· [../../../docs/pipeline-unification/sources/new-source-contract.md](../../../docs/pipeline-unification/sources/new-source-contract.md).
+[../../../docs/reference/sources/adapter-scopes.md](../../../docs/reference/sources/adapter-scopes.md)
+· [../../../docs/development/adding-source.md](../../../docs/development/adding-source.md).
 
-## Status — live crate, Phase 4 + Phase 9 landed
+## Current status
 The adapter framework (trait, registry, capability, manifest) and per-source
 ports (git, web, local, sessions, reddit, youtube, registry, cli_tool, mcp_tool,
 feed, memory, upload — see `family_matrix.rs`) are real and tested, not markers. Do not add

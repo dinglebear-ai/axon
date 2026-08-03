@@ -4,7 +4,7 @@
 //! `axon_observe::security_audit::emit_security_audit` are well-implemented
 //! but, before this module, nothing in the production dispatch/fetch path
 //! called them — every real caller used the plain `validate_url`, so the
-//! "SSRF Policy" section of `docs/pipeline-unification/runtime/security-contract.md`
+//! "SSRF Policy" section of `docs/reference/runtime/security.md`
 //! ("every fetched URL records requested URL, canonical URL, resolved IP
 //! class, redirect chain position, policy decision, and a redacted-headers
 //! indicator") was satisfied by code that existed but never ran.

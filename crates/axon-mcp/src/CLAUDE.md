@@ -4,11 +4,11 @@
 as a single `axon` tool, generates the tool schema from `axon-api`, extracts the
 caller via `axon-authz`, and maps every call into `axon-services`. Full contract
 (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-mcp/README.md](../../../docs/pipeline-unification/crates/axon-mcp/README.md)
+[../../../crates/axon-mcp/src/CLAUDE.md](../../../crates/axon-mcp/src/CLAUDE.md)
 · surface spec:
-[../../../docs/pipeline-unification/surfaces/tool-contract.md](../../../docs/pipeline-unification/surfaces/tool-contract.md).
+[../../../docs/reference/mcp/tool-contract.md](../../../docs/reference/mcp/tool-contract.md).
 
-## Status — live unified transport
+## Current status
 The single `axon` tool is the live MCP surface. Source acquisition is under
 `action=source`; removed indexing actions are omitted from the live action enum
 and rejected during strict request parsing. Job DTOs use canonical kinds such as

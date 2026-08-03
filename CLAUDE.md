@@ -73,9 +73,7 @@ cargo build --release --bin axon
 MCP docs:
 - `docs/reference/mcp/overview.md` (runtime/design guide)
 - `docs/reference/mcp/tool-schema.md` (current generated runtime snapshot)
-- `docs/pipeline-unification/` records the contracts that produced the current
-  clean-break runtime. Treat future-looking language inside dated delivery
-  documents as historical planning context, not as the live runtime.
+- `docs/architecture/source-pipeline.md` (current shared source runtime)
 
 ## Commands
 
@@ -114,9 +112,9 @@ table. Use `axon prune ...` for cleanup.
 
 ## Architecture
 
-The current source flow is defined by the pipeline-unification contracts and
-generated runtime references linked below. Some older architecture documents
-retain historical terminology and must not override those live contracts.
+The current source flow is defined by the living architecture and generated
+runtime references linked below. Dated plans, reports, sessions, and
+superpowers documents are historical records and must not override them.
 
 ### Workspace layout (Rust crates)
 
@@ -169,7 +167,7 @@ High-level ownership:
   hybrid retrieval, and RAG-facing vector operations.
 - `axon-cli`, `axon-mcp`, `axon-web`: CLI, the single MCP tool, and Axum REST/UI.
 
-See `docs/pipeline-unification/foundation/source-pipeline.md`,
+See `docs/architecture/source-pipeline.md`,
 `docs/reference/job-lifecycle.md`, and `docs/reference/runtime/ledger.md` for
 the current flow. Do not reintroduce removed crates or split source work back
 into command-specific pipelines.

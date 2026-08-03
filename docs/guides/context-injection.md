@@ -1,307 +1,228 @@
 ---
 title: "Context Injection Pipeline"
 created: 2026-03-04
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Context Injection Pipeline
 
-How Axon retrieves, ranks, and assembles the `Context:` block that is injected into the RAG LLM prompt for `ask` and `evaluate`.
+This guide describes the live retrieval and prompt-composition path used by
+`ask` and the RAG arm of `evaluate`.
 
----
+## Current Flow
 
-## Overview
-
-Every `ask` and `evaluate` command goes through the same five-stage pipeline before any LLM call is made:
-
-```
-Query
-  └─► 1. Embed          — TEI converts query text to one or two dense vectors
-  └─► 2. Retrieve       — Qdrant ANN search returns up to N candidate chunks
-  └─► 3. Filter         — Low-signal and allowlist guards narrow the pool
-  └─► 4. Rerank         — Lexical + domain boosts re-order by combined score
-  └─► 5. Build context  — Chunks and full docs assembled into a string
-                              └─► injected as "Context:\n..." into the LLM prompt
+```text
+question
+  -> one query embedding
+  -> Qdrant dense + BM42 sparse search with RRF fusion
+     (or named-dense search when hybrid is disabled)
+  -> strict prefix of ranked chunks, bounded by chunk count and context size
+  -> `Sources:` context containing `Top Chunk` entries
+  -> configured LLM backend
+  -> citation normalization and one repair attempt when needed
 ```
 
-The assembled `context` string is passed directly to the LLM as part of the user message:
+The implementation seam is
+`crates/axon-services/src/query/ask_retrieval.rs`. It calls
+`axon_retrieval::run_query`, renders the returned hits with
+`build_ask_context_from_hits`, and hands the resulting `AskContext` to the
+synthesis code under `crates/axon-services/src/query/synthesis/`.
 
+The current path does **not** run a separate lexical reranker, authority-domain
+boost, minimum cosine-score gate, dual natural-language/keyword search,
+full-document fetch, per-URL diversity pass, or supplemental-chunk backfill.
+Those stages belonged to the retired ask implementation.
+
+## 1. Embed the Question
+
+`axon_retrieval::run_query` constructs the retrieval engine with the active
+vector store and embedding provider. The engine sends one plain-text query
+item through `EmbeddingProvider::embed` and verifies the returned provider id,
+model, and dimensions against the provider capabilities.
+
+There is no second keyword-shaped embedding and no query rewrite at this
+boundary. When hybrid retrieval is enabled, Axon separately computes the BM42
+sparse query vector from the original question.
+
+`ask` requires configured Qdrant and embedding endpoints. The CLI reports an
+error before retrieval when either `QDRANT_URL` or `TEI_URL` is empty.
+
+## 2. Retrieve Ranked Chunks
+
+`retrieval_ask_context_with_hits` requests:
+
+```text
+max(ask_hybrid_candidates, ask_chunk_limit, 1)
 ```
+
+hits from the configured collection. The retrieval engine applies these
+payload filters:
+
+- visibility is `public`, `internal`, or `derived`;
+- `redaction_status` is `clean`;
+- `document_status` is `published`;
+- `embedded_at` respects `--since` and `--before` when supplied.
+
+Plain `query` and `ask` also exclude memory records by `source_kind`; memory
+retrieval has its own explicit path.
+
+### Hybrid mode
+
+Hybrid retrieval is enabled by default. Axon sends named `dense` and `bm42`
+prefetches to Qdrant and asks Qdrant to fuse them with reciprocal-rank fusion
+(RRF). The returned score is the fused ranking score. Axon does not add a
+second rerank score after Qdrant returns the hits.
+
+Hybrid mode requires a collection with the configured sparse vector namespace.
+It does not silently fall back when the collection lacks sparse-vector support.
+Use `--no-hybrid-search` for an intentional named-dense query, or recreate the
+collection through the clean-break reset flow described in
+[Re-indexing](reindexing.md).
+
+### Dense-only mode
+
+`--no-hybrid-search` (or the equivalent transport override) skips BM42 and RRF
+and issues one named-dense Qdrant query. The context builder still consumes the
+hits in the order returned by Qdrant; it does not apply the retired cosine
+threshold or lexical reranker.
+
+## 3. Build the `Sources:` Context
+
+`build_ask_context_from_hits` walks the ranked hit list in order and accepts a
+strict prefix, stopping when either:
+
+- `ask_chunk_limit` entries have been considered; or
+- the next complete entry would exceed `ask_max_context_chars`.
+
+The configured context limit is enforced against the UTF-8 byte length of the
+rendered string, despite the historical `chars` name. Entries are never
+partially truncated. If the first entry does not fit, the context contains only
+the `Sources:` prefix.
+
+Every selected hit is rendered as:
+
+```text
+## Top Chunk [S1]: example.com
+
+<retrieved_content trust="evidence_only">
+<chunk text>
+</retrieved_content>
+```
+
+Entries are separated by `\n\n---\n\n`. URL sources display their hostname in
+the prompt header; non-URL canonical URIs display the raw value. The canonical
+citation retained in the result still carries the complete source, document,
+chunk, generation, job, URI, range, and redaction lineage.
+
+Indexed text is untrusted evidence. Before insertion, Axon defangs source
+headers and `[S#]` patterns inside chunk bodies so a stored document cannot
+forge prompt structure or citation identifiers.
+
+The builder does not fetch complete documents, suppress duplicate URLs, or add
+supplemental entries. Diagnostic fields retained for wire compatibility report
+zero selected full documents and zero supplemental chunks on this path.
+
+## 4. Inject Context and Synthesize
+
+The completion user message is built in
+`crates/axon-services/src/query/synthesis/completion.rs`:
+
+```text
 Question: {query}
 
 Context:
-{context}
+{sources_context}
 ```
 
----
+The system prompt is the embedded `rag-synthesize` contract. It directs the
+model to treat retrieved text as untrusted evidence, answer only from that
+evidence, cite factual statements with `[S#]`, and identify gaps rather than
+inventing unsupported facts.
 
-## Stage 1 — Embed the Query
+The active backend is selected by `AXON_LLM_BACKEND` and can be Gemini
+headless, OpenAI-compatible, or Codex app-server. Interactive CLI answers
+stream by default; `--no-stream`, JSON output, and explain mode use buffered or
+non-synthesis paths as appropriate.
 
-`retrieval.rs → retrieve_ask_candidates`
+After completion, Axon:
 
-Query vectors are encoded with `QUERY_INSTRUCTION` from `src/vector/ops/tei/tei_client.rs`:
+1. parses the source map from the rendered context;
+2. rejects missing or unmapped citations;
+3. requires the configured number of unique citations for non-trivial answers;
+4. canonicalizes and renumbers cited sources in the final `## Sources` list;
+5. retries synthesis once with a citation-repair prompt when validation fails.
 
-```
-Instruct: Given a web search query, retrieve relevant passages that answer the query
-Query: {query}
-```
+If the model reports insufficient evidence, Axon returns an explicit
+insufficient-evidence response with suggested indexing targets. If citation
+repair still fails, the normalized answer retains structured validation
+failure details instead of being presented as fully grounded.
 
-This prefix is applied only to query-side embeddings. Document chunks are embedded as raw text.
+## Follow-up Sessions
 
-`retrieve_ask_candidates` embeds the full user query and, when keyword extraction produces a distinct keyword query, embeds that keyword query too. The full user query uses `tei::EmbedInput::query(...)`, which prepends the query instruction. The keyword form uses `tei::EmbedInput::document(...)` because it is already document-shaped text. The additional keyword vector improves recall for exact terms, identifiers, API names, and short domain phrases.
+For `--follow-up` and `--resume`, the CLI rewrites the retrieval question using
+bounded prior turns and appends a separately delimited history source to the
+synthesis context. Retrieved facts still require citations. Ask-session JSONL
+files live under `$AXON_DATA_DIR/ask-sessions/`.
 
-```
-"how does axon crawl work?"
-        ↓ prepend QUERY_INSTRUCTION
-        ↓ TEI
-[0.023, -0.441, 0.118, ...]   (1024-dim or model-dependent)
-```
+## Explain Mode
 
----
+`axon ask --explain --json` runs the same retrieval pass and skips only the LLM
+call. Its trace reflects the current engine:
 
-## Stage 2 — Retrieve Candidates from Qdrant
+- `retrieval_score` and `rerank_score` are equal because there is no separate
+  reranker;
+- selected hits are `top_chunk`; remaining hits are `not_selected`;
+- full-document planning and fetch lists are empty;
+- `llm_skipped` is `true`.
 
-`retrieval.rs → retrieve_ask_candidates`
+Raw rendered context is omitted from the default explain payload. Use the
+candidate rows, final source order, and byte/character budget counters to debug
+retrieval and context selection.
 
-`qdrant::dispatch_vector_search` searches Qdrant using the dense query vector. Named hybrid collections use the dense vector plus BM42 sparse search with RRF fusion; legacy unnamed collections fall back to dense-only search. When a keyword query vector exists, Axon runs a second search and merges/deduplicates the candidate pool.
+## Active Controls
 
-The number of candidates fetched is controlled by `cfg.ask_candidate_limit` (env: `AXON_ASK_CANDIDATE_LIMIT`, default `250`).
+| Control | Runtime effect |
+|---|---|
+| `providers.vector.hybrid-enabled` / `AXON_HYBRID_SEARCH` | Select hybrid RRF or named-dense retrieval. |
+| `retrieval.ask-hybrid-candidates` / `AXON_ASK_HYBRID_CANDIDATES` | Requested hit count before context selection. |
+| `ask.chunk-limit` / `AXON_ASK_CHUNK_LIMIT` | Maximum top chunks admitted to context. |
+| `ask.max-context-chars` / `AXON_ASK_MAX_CONTEXT_CHARS` | Rendered-context byte budget on the current path. |
+| `ask.min-citations-nontrivial` / `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for a non-trivial answer. |
+| `--collection`, `--since`, `--before` | Per-request collection and time bounds. |
+| `--no-hybrid-search` | Per-request dense-only override. |
 
-Each result comes back with:
-- `score` — retrieval score from Qdrant. Dense-only paths return cosine-style scores; hybrid RRF paths return unitless rank-fusion scores.
-- `url` — source page URL stored in the Qdrant payload
-- `chunk_text` — the raw text of that chunk
+The config and transport DTOs still accept several fields from the retired
+pipeline (`candidate-limit`, `full-docs`, document-fetch/backfill controls,
+`min-relevance-score`, and authority-domain controls). The current
+retrieval-engine ask path does not consult those values, so they must not be
+used to explain current ranking or context behavior.
 
-Chunks with fewer than 40 characters are dropped immediately.
+## Data Flow
 
----
-
-## Stage 3 — Filter
-
-`retrieval.rs → retrieve_ask_candidates`
-
-Two guards run after retrieval:
-
-### Low-signal filter
-
-URLs matching these patterns are dropped unless the query itself is about sessions/logs:
-
-| Pattern | Rationale |
-|---------|-----------|
-| `/docs/sessions/` | AI session export files — noise for most queries |
-| `/.cache/` | Build artefacts, not documentation |
-| `/logs/` (local file path only) | Log files |
-| `.log` (local file path only) | Log files |
-
-The query is allowed to opt-in: if the query contains tokens like `session`, `log`, `history`, or the substring `docs/sessions`, the low-signal filter is bypassed.
-
-### Authoritative domain boost
-
-If `AXON_ASK_AUTHORITATIVE_DOMAINS` is set (comma-separated domains), matching chunks receive the configured `AXON_ASK_AUTHORITATIVE_BOOST`. Matches use exact host or subdomain checks.
-
-When the domain list is empty (the default), no authority boost is applied.
-
----
-
-## Stage 4 — Rerank
-
-`retrieval.rs → apply_mode_aware_rerank`
-
-Cosine/dense-only retrieval paths are re-scored using a combined formula:
-
-```
-rerank_score = retrieval_score
-             + lexical_boost    (capped at 0.30)
-             + docs_boost       (0.04 if path has /docs/, /guides/, /api/, /reference/)
-             + authority_boost  (cfg.ask_authoritative_boost if domain is in authoritative list)
-             + phrase_boost     (0.06 if joined query tokens appear verbatim in chunk text)
-```
-
-**Lexical boost** details:
-- `+0.045` for each query token found in the chunk's URL path tokens
-- `+0.015` for each query token found in the chunk text tokens
-
-Tokens are lowercased, split on non-alphanumeric characters, and stop-words are stripped (`the`, `and`, `for`, `how`, `what`, etc.).
-
-After scoring on cosine/dense-only paths, two post-rerank gates remove candidates that don't meet the bar:
-
-1. `rerank_score < cfg.ask_min_relevance_score` (env: `AXON_ASK_MIN_RELEVANCE_SCORE`, default 0.45) → dropped
-2. `candidate_has_topical_overlap` → dropped if the candidate shares too few tokens with the query
-
-On hybrid RRF paths, Qdrant's fusion order is already the ranking signal. Axon sets `rerank_score = score`, skips the cosine-calibrated minimum relevance threshold, and keeps the topical-overlap guard.
-
-**Topical overlap thresholds:**
-
-| Query token count | Minimum overlap required |
-|-------------------|--------------------------|
-| 1–2 tokens | ≥ 1 token match |
-| 3–4 tokens | ≥ 1 token match, OR coverage ≥ 50% |
-| 5+ tokens | ≥ 2 matches AND coverage ≥ 34% |
-
----
-
-## Stage 5 — Build the Context String
-
-`build.rs → build_context_from_candidates`
-
-The reranked pool is planned in three tiers. Full documents are fetched and budgeted first so complete authoritative pages are not crowded out by loose chunks. Top chunks are inserted next, with chunks from successfully inserted full-document URLs suppressed to avoid duplicating the same source. Supplemental chunks backfill remaining budget. Before the final prompt is emitted, all inserted entries are flattened by score and renumbered so the highest-scoring evidence appears earliest.
-
-Each entry is separated by `\n\n---\n\n`. A running `context_char_count` is maintained; once the count would exceed `cfg.ask_max_context_chars` (env: `AXON_ASK_MAX_CONTEXT_CHARS`), no further entries are added.
-
-### Planned Top Chunks
-
-`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)`
-
-Selects up to `ask_chunk_limit` (env: `AXON_ASK_CHUNK_LIMIT`) chunks from the reranked list, enforcing a diversity constraint of at most 1 chunk per unique URL per selection pass. Each selected chunk is formatted as:
-
-```
-## Top Chunk [S1]: example.com/guide/crawl
-
-<chunk text>
+```text
+question
+  |
+  v
+EmbeddingProvider::embed (one query input)
+  |                         \
+  |                          +-- BM42 sparse query when hybrid=true
+  v
+VectorStore::search
+  |
+  +-- Qdrant dense + sparse prefetch -> RRF
+  |   or named-dense query
+  v
+ranked QueryServiceHit values
+  |
+  v
+strict prefix by chunk limit + context budget
+  |
+  v
+Sources:\n## Top Chunk [S#] ...
+  |
+  v
+LLM completion -> citation normalization/repair -> AskResult
 ```
 
-### Planned Full Documents
-
-`select_context_indices(..., ask_chunk_limit, resolved_full_docs, ...)` → fetched concurrently from Qdrant
-
-For up to `resolved_full_docs` URLs, all stored chunks for that URL are fetched from Qdrant via `qdrant_retrieve_by_url`, capped at `cfg.ask_doc_chunk_limit` chunks per document. `resolved_full_docs` comes from `ask.full-docs` / `AXON_ASK_FULL_DOCS` when explicitly set; otherwise it is adaptive: simple queries use 4 full docs, complex dual-embedding queries use 6, and high-context model families (Gemini, Claude, GPT, and Codex-named models) use at least 4.
-
-Fetches run concurrently up to `cfg.ask_doc_fetch_concurrency` (env: `AXON_ASK_DOC_FETCH_CONCURRENCY`) at a time, and results are re-sorted by original rank order before insertion.
-
-This only runs if `context_char_count < max_context_chars`. Each full doc is formatted as:
-
-```
-## Source Document [S2]: example.com/api/reference
-
-<all chunks concatenated>
-```
-
-### Supplemental Chunks (backfill)
-
-This tier fires only when **both** conditions hold:
-
-1. Context is under 85% of `max_context_chars`
-2. Either no full docs were selected, **or** fewer than 6 top chunks were selected
-
-Supplemental candidates are those remaining in the reranked pool that were not already inserted as full docs. On cosine/dense-only paths, they must satisfy the minimum supplemental score derived from `ask_min_relevance_score`. On hybrid RRF paths, there is no cosine score floor because RRF scores are unitless. Up to `cfg.ask_backfill_chunks` (env: `AXON_ASK_BACKFILL_CHUNKS`) are selected with the same per-URL diversity pass. Each is formatted as:
-
-```
-## Supplemental Chunk [S3]: example.com/changelog
-
-<chunk text>
-```
-
-### Final assembly
-
-Inserted full docs, chunks, and supplemental entries are sorted by score, then their `[S#]` headers are renumbered in final display order:
-
-```rust
-format!("Sources:\n{}", context_entries.join("\n\n---\n\n"))
-```
-
-This string is the `context` that flows into the LLM prompt.
-
----
-
-## How Context Is Injected into the LLM
-
-`streaming.rs → ask_llm_streaming / ask_llm_streaming_tagged`
-
-The final user message sent to the LLM completion backend (Gemini headless by default, or an OpenAI-compatible endpoint when `AXON_LLM_BACKEND=openai-compat`) is:
-
-```
-Question: {query}
-
-Context:
-{context}
-```
-
-The system prompt (`ASK_RAG_SYSTEM_PROMPT`) instructs the model:
-
-- Answer **only** from the retrieved context. No unstated prior knowledge.
-- Perform a relevance check first (keyword overlap ≠ topical alignment).
-- If relevant context exists: answer with inline citations like `[S1]`, `[S4]`.
-- If no relevant context: say so and suggest what to index — **do not hallucinate**.
-- End with a single `## Sources` section.
-
-Temperature is fixed at `0.1` for both RAG and baseline calls, keeping outputs deterministic.
-
----
-
-## Evaluate — Differences from Ask
-
-`evaluate.rs` reuses `build_ask_context` for the RAG arm but adds:
-
-- **Baseline arm**: runs the exact same question with no context (baseline system prompt tells the LLM to use its training knowledge).
-- **Concurrent streaming**: both arms (`with_context` and `without_context`) stream simultaneously via a shared `mpsc::unbounded_channel::<TaggedToken>`, dispatched with `tokio::select!`.
-- **Judge reference**: a second independent retrieval runs after both answers complete (`build_judge_reference`), fetching up to 8 diverse chunks for the judge LLM to use as ground truth. This is separate from the RAG context so the judge has an unbiased reference.
-- **Judge prompt**: the judge receives both answers, timing info, source list, and the reference chunks. It scores each answer on Accuracy, Relevance, Completeness, and Specificity (each X/5), then issues a verdict.
-- **Auto-suggest**: if RAG scores below baseline, `discover_crawl_suggestions` is called automatically and the suggested URLs plus reasons are returned as data. Evaluate does not enqueue crawl jobs by default.
-
----
-
-## Configuration Reference
-
-| Env var | What it controls | Typical default |
-|---------|-----------------|-----------------|
-| `AXON_ASK_CANDIDATE_LIMIT` | Qdrant candidate count per search arm | Model-tiered: 250 large, 150 GPT/Codex, 120 local Gemma, 60 unknown |
-| `AXON_ASK_HYBRID_CANDIDATES` | Hybrid dense/sparse prefetch window per arm | Model-tiered: 200 large, 120 GPT/Codex, 100 local Gemma, 60 unknown |
-| `AXON_ASK_MIN_RELEVANCE_SCORE` | Minimum rerank score to keep a candidate | 0.45 |
-| `AXON_ASK_CHUNK_LIMIT` | Max top chunks | Model-tiered: 50 large, 28 GPT/Codex, 20 local Gemma, 10 unknown |
-| `AXON_ASK_FULL_DOCS` | Explicit max full-document fetches | Unset = adaptive: 4 simple, 6 complex; high-context models floor at 4 |
-| `AXON_ASK_DOC_CHUNK_LIMIT` | Max chunks per full-doc fetch | 96 |
-| `AXON_ASK_DOC_FETCH_CONCURRENCY` | Concurrent Qdrant fetches for full docs | 4 |
-| `AXON_ASK_BACKFILL_CHUNKS` | Max supplemental chunks (Tier 3) | 5 |
-| `AXON_ASK_MAX_CONTEXT_CHARS` | Hard cap on assembled context length | Model-tiered: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown |
-| `AXON_ASK_AUTHORITATIVE_DOMAINS` | Comma-separated domains that receive an authority boost | (empty) |
-| `AXON_ASK_AUTHORITATIVE_BOOST` | Score boost for authoritative domains | 0.0 |
-| `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Minimum unique citations for non-trivial answers | 2 |
-
-Defaults in this table are owned by `src/core/config/parse/build_config.rs` and `src/core/config/types/config_impls.rs`. Re-check both when changing defaults because tests and direct `Config::default()` callers can differ from CLI/env construction.
-
----
-
-## Data Flow Diagram
-
-```
-User query string
-       │
-       ▼
-  tei_embed()  ──────────────────────────────────►  Dense vector
-       │
-       ▼
-  qdrant_search(vector, ask_candidate_limit)  ────►  Vec<ScoredPoint>
-       │
-       ▼  (filter: chunk_text.len() >= 40, low-signal, allowlist)
-  candidates: Vec<AskCandidate>
-       │
-       ▼  rerank_ask_candidates()
-            ├─ lexical boost (url_tokens + chunk_tokens)
-            ├─ docs path boost
-            ├─ authority domain boost
-            └─ verbatim phrase boost
-       │
-       ▼  filter: rerank_score >= min_relevance AND topical_overlap
-  reranked: Vec<AskCandidate>
-       │
-       ├──► select_context_indices → top chunks + full-doc URLs
-       │
-       ├──► qdrant_retrieve_by_url (concurrent) → full docs
-       │              └─ format "## Source Document [Sx]: url\n\ntext"
-       │
-       ├──► top chunks, suppressing chunks for inserted full-doc URLs
-       │              └─ format "## Top Chunk [Sx]: url\n\ntext"
-       │
-       └──► supplemental backfill (if under 85% budget)
-                      └─ format "## Supplemental Chunk [Sx]: url\n\ntext"
-       │
-       ▼
-  flatten by score + renumber source IDs
-       │
-       ▼
-  context = "Sources:\n" + entries.join("\n\n---\n\n")
-       │
-       ▼
-  LLM user message:
-    "Question: {query}\n\nContext:\n{context}"
-```
+See also [the `ask` action reference](../reference/actions/ask.md) and the
+[vector payload contract](../reference/sources/vector-payload.md).

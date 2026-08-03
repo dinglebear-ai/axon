@@ -1,7 +1,7 @@
 //! REST error boundary: render the contract [`ErrorEnvelope`] over [`ApiError`].
 //!
-//! Per `docs/pipeline-unification/runtime/error-handling.md` and
-//! `docs/pipeline-unification/surfaces/rest-contract.md`, every REST failure
+//! Per `docs/reference/api/errors.md` and
+//! `docs/reference/rest/routes.md`, every REST failure
 //! serializes as the shared [`ErrorEnvelope`] whose `error` field is the
 //! transport-neutral [`ApiError`] shape (`code`, `stage`, `retryable`,
 //! `severity`, `visibility`, `details`, …). The HTTP status is derived from the

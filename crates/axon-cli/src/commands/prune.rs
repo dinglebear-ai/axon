@@ -1,5 +1,5 @@
 //! CLI wrapper for `axon prune plan|exec`
-//! (`docs/pipeline-unification/surfaces/command-contract.md`).
+//! (`docs/reference/cli/commands.md`).
 //!
 //! Thin shim over `axon_services::prune` — the CLI owns only target parsing,
 //! the destructive confirmation gate, and output formatting. Prune is

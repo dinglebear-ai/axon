@@ -16,7 +16,7 @@ pub struct ResolveRequest {
 
 /// `action=capabilities` — machine-readable runtime capability document
 /// derived from the live `MCP_ACTION_SPECS` registry and provider doctor
-/// data. See `docs/pipeline-unification/surfaces/tool-contract.md`
+/// data. See `docs/reference/mcp/tool-contract.md`
 /// §Capabilities Action.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -27,7 +27,7 @@ pub const CRATE_NAME: &str = "axon-ledger";
 /// `LedgerPrune` cleanup debt is recorded against the older ones.
 ///
 /// Matches the documented retention policy for `source_generations`
-/// (`docs/pipeline-unification/schemas/database-schema.md`:
+/// (`docs/reference/runtime/database-schema.md`:
 /// `"retention": "last_2_committed_plus_active_cleanup_debt"`) — keep the
 /// newly committed generation plus its immediate predecessor always. A
 /// generation beyond this window is *also* skipped for one more publish cycle

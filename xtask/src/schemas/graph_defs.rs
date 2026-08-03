@@ -8,8 +8,8 @@
 //!   which themselves project the closed `GraphNodeKind`/`GraphEdgeKind`
 //!   Rust enums (see graph-schema.md "Required Kind Registry").
 //! - `GraphMergeRule` is the literal, contract-documented merge-strategy enum
-//!   from `docs/pipeline-unification/schemas/graph-schema.md` ("Merge
-//!   Rules"), not invented data.
+//!   from `docs/reference/sources/source-graph.md` ("Authority, evidence,
+//!   merge"), not invented data.
 //!
 //! `GraphKindRegistry` intentionally stays at the minimal
 //! `{kind, type, requires_evidence}` shape documented in

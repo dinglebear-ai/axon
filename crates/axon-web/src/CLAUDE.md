@@ -4,11 +4,11 @@
 Axum router, route registration, OpenAPI export, SSE progress streams, HTTP auth
 middleware, and static panel serving — all mapping into `axon-services`. Full
 contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-web/README.md](../../../docs/pipeline-unification/crates/axon-web/README.md)
+[../../../crates/axon-web/src/CLAUDE.md](../../../crates/axon-web/src/CLAUDE.md)
 · surface spec:
-[../../../docs/pipeline-unification/surfaces/rest-contract.md](../../../docs/pipeline-unification/surfaces/rest-contract.md).
+[../../../docs/reference/rest/routes.md](../../../docs/reference/rest/routes.md).
 
-## Status — live crate, post Phase 10 cutover
+## Current status
 The router exposes the clean-break REST surface: source lifecycle flows through
 `/v1/sources`, job lifecycle flows through `/v1/jobs`, and prune flows through
 `/v1/prune/*`. Removed direct verb/family routes (`/v1/scrape`, `/v1/crawl`,

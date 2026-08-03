@@ -3,7 +3,7 @@
 //! An [`ErrorCode`] is a dotted string like `provider.unavailable`. The prefix
 //! before the first `.` is its category. Classification (severity + retryable)
 //! follows the "Error Categories" table in
-//! `docs/pipeline-unification/runtime/error-handling.md`.
+//! `docs/reference/api/errors.md`.
 
 use std::fmt;
 

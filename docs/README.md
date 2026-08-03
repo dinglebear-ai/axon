@@ -1,112 +1,251 @@
 # Axon Documentation
 
-Web crawl, scrape, extract, embed, and query — all in one binary backed by a self-hosted RAG stack.
+Axon is one Rust binary with CLI, MCP, REST, and web surfaces over a shared
+services layer, durable job runtime, and unified source pipeline.
 
-> Current runtime docs describe the pre-#298 implementation. The clean-break
-> source-pipeline contracts live in
-> [`pipeline-unification/`](pipeline-unification/README.md) and supersede old
-> command/action/route shapes when that refactor lands.
-
-## What is Axon
-
-Axon is a trimodal application:
-
-| Mode | Entry point | Port | Purpose |
-|------|-------------|------|---------|
-| CLI | `axon <command>` | — | Interactive command-line tool for crawl, scrape, summarize, embed, query, ask |
-| MCP server | `axon mcp` | 8001 | Single-tool MCP server exposing all CLI operations to AI agents |
-| Web panel + HTTP API | `axon serve` | 8001 | Unified HTTP server for web panel, MCP, and direct `/v1` REST routes |
-
-All three modes share the same Rust binary, the same services layer, and the same infrastructure stack.
+The living documentation in this tree describes the current runtime. Generated
+references under `reference/` are the machine-readable source of truth for
+CLI, MCP, REST, DTO, configuration, database, event, graph, vector, and provider
+contracts.
 
 ## Documentation map
 
-Living/reference docs are grouped by intent. Dated, point-in-time records (session logs,
-reviews, plans) live under the history directories at the bottom.
+### `guides/`: setup and task-oriented workflows
 
-### `guides/` — getting started & task-oriented how-to
+| Doc | Purpose |
+|---|---|
+| [Getting Started](guides/getting-started.md) | local and Docker development setup |
+| [Quickstart](guides/quickstart.md) | shortest path to a working Axon stack |
+| [Configuration](guides/configuration.md) | `.env`, `config.toml`, and overrides |
+| [Local Sources](guides/local-sources.md) | index files, directories, and workspaces |
+| [Web Crawls](guides/web-crawls.md) | page and site acquisition |
+| [GitHub Repositories](guides/github-repos.md) | repository source workflow |
+| [Package Registries](guides/package-registries.md) | crates.io, npm, PyPI, and container registries |
+| [Sessions](guides/sessions.md) | Claude, Codex, and Gemini session sources |
+| [Ask/RAG](guides/ask-rag.md) | retrieval, synthesis, and citations |
+| [Reindexing](guides/reindexing.md) | generation and payload-schema refreshes |
 
-| Doc | Description |
-|-----|-------------|
-| [guides/getting-started.md](guides/getting-started.md) | Step-by-step setup for local dev and Docker |
-| [guides/configuration.md](guides/configuration.md) | Configuration reference — `~/.axon/config.toml` and environment variables |
-| [guides/ask-rag.md](guides/ask-rag.md) | The `ask` RAG pipeline — retrieval, synthesis, citations |
-| [guides/reindexing.md](guides/reindexing.md) | Re-indexing and payload schema upgrades |
-| [guides/context-injection.md](guides/context-injection.md) | Context-injection mechanics |
-| [guides/ingest/](guides/ingest/) | Ingest pipeline + per-source deep-dives (GitHub, GitLab, Reddit, YouTube, sessions) |
+### `reference/`: factual and generated runtime contracts
 
-### `reference/` — factual reference
+| Area | Purpose |
+|---|---|
+| [CLI](reference/cli/overview.md) | generated command registry and help |
+| [MCP](reference/mcp/overview.md) | transport, tool contract, and generated schema |
+| [REST](reference/rest/overview.md) | routes, OpenAPI, and schemas |
+| [API](reference/api/dto.md) | DTOs, enums, errors, and stage results |
+| [Configuration](reference/config/config-toml.md) | config and environment schemas |
+| [Runtime](reference/runtime/jobs.md) | jobs, ledger, memory, providers, storage, security |
+| [Sources](reference/sources/adding-source.md) | adapter, parsing, graph, chunk, and payload contracts |
+| [Surfaces](reference/surfaces/web.md) | web, Palette, Android, extension, presentation |
+| [Inventory](reference/inventory.md) | components, actions, workers, tables, scripts |
 
-| Doc | Description |
-|-----|-------------|
-| [reference/actions/](reference/actions/) | CLI reference — one page per command |
-| [reference/mcp/](reference/mcp/) | MCP server: overview, tool schema, transport, connect, deploy, env, tools, patterns |
-| [reference/http-api.md](reference/http-api.md) | HTTP API surface (`axon serve`) |
-| [reference/api-parity.md](reference/api-parity.md) | CLI ↔ MCP ↔ HTTP action parity matrix |
-| [reference/endpoints.md](reference/endpoints.md) | `endpoints` discovery — API/RPC endpoint extraction |
-| [reference/shell-completions.md](reference/shell-completions.md) | Shell completion generation |
-| [reference/cargo-features.md](reference/cargo-features.md) | Cargo feature flag matrix |
-| [reference/spider-feature-flags.md](reference/spider-feature-flags.md) | Spider.rs feature flags and observable behavior |
-| [reference/job-lifecycle.md](reference/job-lifecycle.md) | Async job state machine (SQLite-backed) |
-| [reference/inventory.md](reference/inventory.md) | Complete component + command inventory |
-| [reference/qdrant-payload-schema.md](reference/qdrant-payload-schema.md) | Qdrant point payload contract |
-| [reference/env-matrix.md](reference/env-matrix.md) | Environment variable migration matrix |
+Generated files are marked in their headers. Regenerate them with
+`cargo xtask schemas generate` and `cargo xtask docs generate`; do not edit
+them by hand.
 
-### `architecture/` — system design
+### `architecture/`: current system design
 
-| Doc | Description |
-|-----|-------------|
-| [architecture/overview.md](architecture/overview.md) | System architecture diagrams and data flow |
-| [architecture/stack/](architecture/stack/) | Trimodal architecture, technology choices, prerequisites |
-| [architecture/specs/](architecture/specs/) | Feature specifications (vertical extractors, android, active design notes) |
+- [Overview](architecture/overview.md)
+- [Source Pipeline](architecture/source-pipeline.md)
+- [Crate Structure](architecture/crate-structure.md)
+- [Crate Ownership](architecture/crate-ownership.md)
+- [Boundary Map](architecture/boundary-map.md)
+- [Dependency Layering](architecture/dependency-layering.md)
+- [Repository Structure](architecture/repo-structure.md)
+- [Fetch Unification](architecture/fetch-unification.md)
 
-### `pipeline-unification/` — active future contract
+### `operations/`: production operation
 
-| Doc | Description |
-|-----|-------------|
-| [pipeline-unification/](pipeline-unification/README.md) | Clean-break contract packet for the unified source pipeline tracked by GitHub issue #298 |
+- [Deployment](operations/deployment.md)
+- [Operations](operations/operations.md)
+- [Performance](operations/performance.md)
+- [Security](operations/security.md)
+- [API Token Auth](operations/auth/api-token.md)
+- [MCP Auth](operations/auth/mcp-auth.md)
 
-### `operations/` — running it in production
+### `development/`: contribution and extension workflows
 
-| Doc | Description |
-|-----|-------------|
-| [operations/deployment.md](operations/deployment.md) | Production deployment guide |
-| [operations/operations.md](operations/operations.md) | Operational runbooks and recovery procedures |
-| [operations/performance.md](operations/performance.md) | Tuning guide and benchmark results |
-| [operations/security.md](operations/security.md) | Security model, SSRF guards, port boundaries |
-| [operations/auth/](operations/auth/) | Authentication — MCP auth + static API token |
+- [Contributing](development/contributing.md)
+- [Testing](development/testing.md)
+- [Feature Delivery](development/feature-delivery-framework.md)
+- [Adding a Source](development/adding-source.md)
+- [Adding a Source Adapter](development/adding-source-adapter.md)
+- [Adding a Parser](development/adding-parser.md)
+- [Adding a Provider](development/adding-provider.md)
+- [Adding a Vector Store](development/adding-vector-store.md)
+- [Adding a REST Route](development/adding-rest-route.md)
+- [Adding an MCP Action](development/adding-mcp-action.md)
+- [Release Checklist](development/release-checklist.md)
+- [Repository Rules and Recipes](development/repo/rules.md)
 
-### `development/` — development & repo conventions
+## History directories
 
-| Doc | Description |
-|-----|-------------|
-| [development/contributing.md](development/contributing.md) | Rust build setup, monolith policy, security guardrails |
-| [development/testing.md](development/testing.md) | Test strategy, how to run, coverage targets |
-| [development/release-checklist.md](development/release-checklist.md) | Pre-release quality checklist |
-| [development/feature-delivery-framework.md](development/feature-delivery-framework.md) | Feature development process |
-| [development/desktop-palette-testing.md](development/desktop-palette-testing.md) | Desktop palette testing harness |
-| [development/adding-source.md](development/adding-source.md) | End-to-end checklist for onboarding a new source family |
-| [development/adding-source-adapter.md](development/adding-source-adapter.md) | `SourceAdapter` trait + family-matrix pattern |
-| [development/adding-parser.md](development/adding-parser.md) | `SourceParser`/`ParserRegistry` pattern |
-| [development/adding-provider.md](development/adding-provider.md) | Embedding provider and vector store boundaries |
-| [development/adding-vector-store.md](development/adding-vector-store.md) | `VectorStore` trait + generation-aware semantics |
-| [development/adding-rest-route.md](development/adding-rest-route.md) | Axum handler + router + OpenAPI pattern |
-| [development/adding-mcp-action.md](development/adding-mcp-action.md) | `AxonRequest` + action-dispatch pattern |
-| [development/repo/](development/repo/) | Repo tree, coding rules, Justfile recipes, scripts, memory |
+The following directories are dated records and are intentionally not kept up
+to date. They preserve decisions, investigations, implementation plans, and
+review context. They do not override living or generated documentation.
 
-### History (dated records — not kept up to date)
+- `sessions/`: session logs
+- `plans/`: implementation plans; completed plans remain written history
+- `reports/`: reviews, audits, and investigations
+- `superpowers/`: plans and specifications produced by superpowers workflows
+- `pipeline-unification/`: completed design, contract, plan, and delivery packet
+- `perf/`: dated performance snapshots
+- `archive/`: removed-runtime documentation retained as history
+- `eval/`: evaluation fixtures and notes
 
-- [sessions/](sessions/) — session logs (`YYYY-MM-DD-HH-MM-description.md`)
-- [reports/](reports/) — code reviews, audits, analysis
-- [plans/](plans/) — implementation plans (`plans/complete/` = archived)
-- [superpowers/](superpowers/) — superpowers plans/specs
-- [perf/](perf/) — dated performance snapshots
-- [archive/](archive/) — historical removed-runtime docs (do not edit)
-- [eval/](eval/) — evaluation datasets and fixtures
+## Required Living Documentation
+
+The repository check `cargo xtask docs check` verifies that every named file
+below exists. Directory entries containing `...` are descriptive and are not
+expanded by the check.
+
+```text
+docs/
+  README.md
+  architecture/
+    overview.md
+    repo-structure.md
+    crate-structure.md
+    crate-ownership.md
+    source-pipeline.md
+    boundary-map.md
+    dependency-layering.md
+    fetch-unification.md
+    stack/
+      arch.md
+      pre-reqs.md
+      tech.md
+  reference/
+    inventory.md
+    public-api-surface.md
+    crate-dependency-graph.md
+    source-input-manifest.json
+    cli/
+      overview.md
+      commands.md
+      commands.json
+      axon-help.md
+    rest/
+      overview.md
+      openapi.md
+      openapi.json
+      routes.md
+      schemas.md
+    mcp/
+      overview.md
+      tool-contract.md
+      tool-schema.md
+      tool-schema.json
+      transport.md
+      connect.md
+      deploy.md
+    api/
+      dto.md
+      schemas.json
+      enums.md
+      errors.md
+      errors.schema.json
+      stage-results.md
+    config/
+      config-toml.md
+      config.schema.json
+      env.md
+      env.schema.json
+      examples.md
+    sources/
+      adapter-scopes.md
+      adapter-scopes.json
+      adding-source.md
+      url-normalization.md
+      metadata-payload.md
+      parsing.md
+      chunking.md
+      source-graph.md
+      graph.md
+      graph.schema.json
+      vector-payload.md
+      vector-payload.schema.json
+    runtime/
+      jobs.md
+      ledger.md
+      memory.md
+      observability.md
+      events.md
+      events.schema.json
+      providers.md
+      provider-capabilities.md
+      provider-capabilities.schema.json
+      storage.md
+      schema.md
+      database-schema.md
+      database-schema.json
+      auth.md
+      security.md
+      redaction.md
+      pruning.md
+    surfaces/
+      web.md
+      palette.md
+      android.md
+      chrome-extension.md
+      presentation.md
+    memory/
+      overview.md
+      decay.md
+      review.md
+    operations/
+      doctor.md
+      backup-restore.md
+      reset.md
+      troubleshooting.md
+  guides/
+    getting-started.md
+    quickstart.md
+    configuration.md
+    local-sources.md
+    web-crawls.md
+    github-repos.md
+    package-registries.md
+    sessions.md
+    cli-tool-sources.md
+    mcp-tool-sources.md
+    ask-rag.md
+    ask-query-retrieve-search.md
+    reindexing.md
+  operations/
+    deployment.md
+    operations.md
+    performance.md
+    security.md
+    auth/
+      api-token.md
+      mcp-auth.md
+  development/
+    contributing.md
+    testing.md
+    feature-delivery-framework.md
+    adding-source-adapter.md
+    adding-source.md
+    adding-parser.md
+    adding-provider.md
+    adding-vector-store.md
+    adding-rest-route.md
+    adding-mcp-action.md
+    release-checklist.md
+    repo/
+      repo.md
+      rules.md
+      recipes.md
+      scripts.md
+```
 
 ## Quick links
 
-- **First time?** [guides/getting-started.md](guides/getting-started.md), then [architecture/stack/arch.md](architecture/stack/arch.md)
-- **MCP integration?** [reference/mcp/connect.md](reference/mcp/connect.md), then [reference/mcp/tools.md](reference/mcp/tools.md)
-- **Contributing?** [development/repo/rules.md](development/repo/rules.md), then [development/repo/recipes.md](development/repo/recipes.md)
-- **Deploying?** [reference/mcp/deploy.md](reference/mcp/deploy.md), then [guides/configuration.md](guides/configuration.md)
+- First setup: [Getting Started](guides/getting-started.md)
+- Architecture: [Overview](architecture/overview.md)
+- Current source path: [Source Pipeline](architecture/source-pipeline.md)
+- CLI: [Generated Commands](reference/cli/commands.md)
+- MCP: [Connect](reference/mcp/connect.md)
+- REST: [Routes](reference/rest/routes.md)
+- Deployment: [Deployment](operations/deployment.md)
+- Contribution rules: [Repository Rules](development/repo/rules.md)

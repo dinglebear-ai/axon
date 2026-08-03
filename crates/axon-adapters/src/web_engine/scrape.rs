@@ -481,7 +481,7 @@ pub fn map_scrape_payload(
 /// including the format-selected `output` field (markdown/html/rawHtml/json
 /// per `cfg.format`). Generic HTTP-fetch path only — no vertical-extractor
 /// dispatch (that framework was removed with `axon-extract`; see
-/// `docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md`).
+/// `docs/architecture/crate-structure.md`).
 pub async fn scrape_to_result(
     cfg: &Config,
     url: &str,

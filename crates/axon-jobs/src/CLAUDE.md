@@ -5,11 +5,11 @@ and maintenance work: the `JobStore`/`JobRuntime` + SQLite implementation,
 attempts, reservations, heartbeats, events, leases, cancellation, recovery, the
 watch scheduler, and worker-lane coordination. Full contract (owns / API / deps /
 tests):
-[../../../docs/pipeline-unification/crates/axon-jobs/README.md](../../../docs/pipeline-unification/crates/axon-jobs/README.md)
+[../../../crates/axon-jobs/src/CLAUDE.md](../../../crates/axon-jobs/src/CLAUDE.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/job-contract.md](../../../docs/pipeline-unification/runtime/job-contract.md).
+[../../../docs/reference/runtime/jobs.md](../../../docs/reference/runtime/jobs.md).
 
-## Status — unified runtime
+## Current status
 The crate stores every durable operation in one job model with canonical
 `JobKind`, attempts, stages, events, heartbeats, artifacts, reservations, and
 recovery state. Source watches schedule canonical Source jobs and retain their

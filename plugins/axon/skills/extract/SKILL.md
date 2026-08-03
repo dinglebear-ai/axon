@@ -39,7 +39,7 @@ For broad sites, crawl or map first:
 
 ```bash
 axon map "https://docs.example.com" --json > .axon/docs-map.json
-axon crawl "https://docs.example.com/reference" --max-pages 100 --wait true --output-dir .axon/reference-crawl
+axon source "https://docs.example.com/reference" --scope site --max-pages 100 --wait true --output-dir .axon/reference-crawl
 ```
 
 ## Notes

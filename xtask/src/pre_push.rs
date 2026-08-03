@@ -381,7 +381,8 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
         });
     }
     if categories.web {
-        // TEMP(refactor): skip expensive local web builds during pipeline-unification.
+        // Web builds remain CI-owned; the local pre-push plan stays path-aware
+        // and avoids duplicating the full frontend build.
     }
     if categories.rust {
         plan.push(PlanStep {
@@ -394,7 +395,8 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
                 command: "cargo xtask check-repo-structure",
             });
         }
-        // TEMP(refactor): skip expensive local clippy during pipeline-unification.
+        // Workspace Clippy is covered by `just precommit` and CI rather than
+        // duplicated in this path-aware pre-push plan.
     }
     if !categories.rust && repo_structure_changed {
         plan.push(PlanStep {
@@ -403,13 +405,14 @@ fn command_plan(paths: &[String], categories: &Categories, full: bool) -> Vec<Pl
         });
     }
     if full {
-        // TEMP(refactor): skip expensive full nextest during pipeline-unification.
+        // Full Nextest remains part of `just precommit` and CI.
     }
     if full || categories.openapi || rust_api_changed || categories.android || categories.palette {
-        // TEMP(refactor): skip expensive local OpenAPI/client generation during pipeline-unification.
+        // OpenAPI and client generation remain CI-owned for the path-aware
+        // pre-push plan.
     }
     if android_app_changed {
-        // TEMP(refactor): skip expensive local Android validation during pipeline-unification.
+        // Full Android validation remains CI-owned.
     }
     dedupe_plan(plan)
 }
@@ -420,7 +423,8 @@ fn is_repo_structure_path(path: &str) -> bool {
         || path == "xtask/src/checks/repo_structure.rs"
         || path == "xtask/src/checks/repo_structure_spec.rs"
         || path == "xtask/src/checks/repo_structure_tests.rs"
-        || path.starts_with("docs/pipeline-unification/")
+        || path == "docs/README.md"
+        || path.starts_with("docs/architecture/")
         || path.starts_with("crates/")
             && (path.ends_with("/Cargo.toml")
                 || path.ends_with("/src/lib.rs")
@@ -522,7 +526,6 @@ fn rust_ci_helper_scripts() -> &'static [&'static str] {
         "scripts/check_lefthook_pre_commit_speed.py",
         "scripts/check_shell_completions.sh",
         "scripts/enforce_monoliths.py",
-        "scripts/generate_mcp_schema_doc.py",
         "scripts/test-ask-quality-regressions.sh",
         "scripts/test-mcp-oauth-protection.sh",
         "scripts/test-mcp-tools-mcporter.sh",
@@ -531,7 +534,6 @@ fn rust_ci_helper_scripts() -> &'static [&'static str] {
 
 fn mcp_ci_helper_scripts() -> &'static [&'static str] {
     &[
-        "scripts/generate_mcp_schema_doc.py",
         "scripts/test-mcp-oauth-protection.sh",
         "scripts/test-mcp-tools-mcporter.sh",
     ]

@@ -15,6 +15,10 @@ pub(super) fn mcp_markdown(inputs: &[SourceInput]) -> String {
          `crates/axon-mcp/src/server/authz.rs` (read-only reference for this generator) — see \
          `mcp_action_registry_tests.rs` for the drift guard against that registry.\n\n",
     );
+    out.push_str(
+        "Transport, authorization, response, and task-lifecycle semantics are documented in \
+         [`tool-contract.md`](tool-contract.md).\n\n",
+    );
 
     out.push_str("## Actions\n\n");
     out.push_str("| Action | Scope | Mutates | Async | Request DTO | Grouped | Description |\n");
@@ -50,19 +54,23 @@ pub(super) fn mcp_markdown(inputs: &[SourceInput]) -> String {
         ));
     }
 
+    let deferred = deferred_actions();
     out.push_str("\n## Deferred Actions\n\n");
-    out.push_str(
-        "Contract actions (`docs/pipeline-unification/schemas/mcp-tool-schema.md`'s target \
-         `Action` enum) absent from the live dispatcher. No request schema is fabricated for \
-         these — see `x-axon.deferred_actions` in the generated JSON schema.\n\n",
-    );
-    out.push_str("| Action | Reason |\n|---|---|\n");
-    for entry in deferred_actions() {
-        out.push_str(&format!(
-            "| `{}` | {} |\n",
-            entry["action"].as_str().unwrap_or_default(),
-            entry["reason"].as_str().unwrap_or_default()
-        ));
+    if deferred.is_empty() {
+        out.push_str("None. Every contract action is represented by the live dispatcher.\n");
+    } else {
+        out.push_str(
+            "Contract actions absent from the live dispatcher. No request schema is fabricated \
+             for these; see `x-axon.deferred_actions` in the generated JSON schema.\n\n",
+        );
+        out.push_str("| Action | Reason |\n|---|---|\n");
+        for entry in deferred {
+            out.push_str(&format!(
+                "| `{}` | {} |\n",
+                entry["action"].as_str().unwrap_or_default(),
+                entry["reason"].as_str().unwrap_or_default()
+            ));
+        }
     }
 
     out.push_str("\n## Response Envelope\n\n");

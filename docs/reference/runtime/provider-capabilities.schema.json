@@ -2123,7 +2123,7 @@
         "path": "crates/axon-adapters/src/boundary.rs"
       },
       {
-        "checksum": "sha256:ab773f6d536cea61173e9559822a5c653ac5f3b8d850aebb25c563bbd23019be",
+        "checksum": "sha256:7257cb2b6ccc31d1abea5ce70a4c7040dcda208534cc34ad788ad07748e694b4",
         "kind": "rust_module",
         "path": "crates/axon-api/src/schema_registry.rs"
       },
@@ -2173,14 +2173,14 @@
         "path": "crates/axon-vectors/src/store.rs"
       },
       {
-        "checksum": "sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73",
+        "checksum": "sha256:7323b61431ae7c46c8477fc4a1a41d35a31dc160f162d807a27561a189fcba67",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/runtime/provider-contract.md"
+        "path": "docs/architecture/boundary-map.md"
       },
       {
-        "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f",
+        "checksum": "sha256:01e310f0a9121e606113e25ce1f19590b4597d95b667d29289e0c4079cb2660f",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/provider-capability-schema.md"
+        "path": "docs/development/adding-provider.md"
       }
     ]
   }

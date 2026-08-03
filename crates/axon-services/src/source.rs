@@ -356,7 +356,7 @@ async fn open_cleanup_debt_stores(
 /// Route the classified kind to its dispatch function.
 ///
 /// `embed` and `limits` come straight from the transport-neutral
-/// [`SourceRequest`] — see `docs/pipeline-unification/foundation/source-pipeline.md`
+/// [`SourceRequest`] — see `docs/architecture/source-pipeline.md`
 /// (`SourceRequest` + Validation Checklist: "`embed=false` never writes
 /// vectors"). Every family bridge receives the real `request.embed` instead of
 /// an implicit `true`. `limits.max_pages` and `limits.max_depth` are honored by

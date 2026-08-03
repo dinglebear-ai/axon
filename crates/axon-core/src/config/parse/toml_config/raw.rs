@@ -1,5 +1,5 @@
 //! Wire-format `config.toml` shape: the 20-section contract from
-//! `docs/pipeline-unification/configuration/config-contract.md`.
+//! `docs/reference/config/config-toml.md`.
 //!
 //! This is what `toml::from_str` actually parses. `convert::into_legacy`
 //! folds every field here onto the existing flat [`super::TomlConfig`]

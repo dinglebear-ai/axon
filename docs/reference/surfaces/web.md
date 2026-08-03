@@ -9,8 +9,6 @@ editing, dashboards, and interactive inspection. All authoritative mutations go
 through the REST/SSE routes — the panel never bypasses services or invents
 alternate source semantics.
 
-> Contract source:
-> [`docs/pipeline-unification/surfaces/web-contract.md`](../../pipeline-unification/surfaces/web-contract.md).
 > Implementation: [`crates/axon-web/src/`](../../../crates/axon-web/src/).
 
 ## What the panel hosts

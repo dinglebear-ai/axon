@@ -1,9 +1,9 @@
 # Axon Android
 
-> Current pre-#298 Android client docs. The future Android/mobile contract is
-> `docs/pipeline-unification/surfaces/android-contract.md`; after the
-> source-pipeline cutover, Android route fixtures should assert the shared
-> source/job/memory/graph REST contract.
+The current mobile surface contract is documented in
+[`docs/reference/surfaces/android.md`](../../docs/reference/surfaces/android.md).
+The app consumes the shared REST source, jobs, memory, graph, and session
+contracts.
 
 Native Android client for Axon. The app talks to the Axon HTTP API, uses the
 Aurora Android composite when available, and keeps mobile-specific safety checks

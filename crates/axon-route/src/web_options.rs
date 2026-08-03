@@ -1,7 +1,7 @@
 //! Parsing + validation for the web adapter's real (non-legacy) option set.
 //!
 //! Mirrors the "Web Adapter" required-options table in
-//! `docs/pipeline-unification/sources/adapter-scopes.md` (lines 188-210):
+//! `docs/reference/sources/adapter-scopes.md` (lines 188-210):
 //! `max_pages`, `max_depth`, `include_subdomains`, `respect_robots`, `render_mode`, `headers`,
 //! `discover_sitemaps`, `discover_llms_txt`, `max_llms_txt_urls`,
 //! `max_sitemaps`, `sitemap_since_days`,

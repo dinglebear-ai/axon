@@ -1,7 +1,7 @@
 //! `WatchService` — source-backed recurring watch definitions
 //! (create/update/get/list/exec/pause/resume/delete/history).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §WatchService. The production implementation is backed by
 //! `SqliteWatchStore` (`axon_source_watches` / `axon_source_watch_runs`) and
 //! manual `exec` enqueues a detached `JobKind::Source` job through the unified

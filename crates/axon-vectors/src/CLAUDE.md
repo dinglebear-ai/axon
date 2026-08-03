@@ -4,11 +4,11 @@
 implementation, point-batch construction, collection/index management, and
 payload writes/search/delete. It stores vectors; it never generates them. Full
 contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-vectors/README.md](../../../docs/pipeline-unification/crates/axon-vectors/README.md)
+[../../../crates/axon-vectors/src/CLAUDE.md](../../../crates/axon-vectors/src/CLAUDE.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/storage-contract.md](../../../docs/pipeline-unification/runtime/storage-contract.md).
+[../../../docs/reference/runtime/storage.md](../../../docs/reference/runtime/storage.md).
 
-## Status — live Qdrant store
+## Current status
 Only `query.rs` and `health.rs` remain 3-line markers; the rest of the crate is
 implemented. `qdrant.rs` is a
 **live** `VectorStore` over the Qdrant REST API (reqwest): GET-then-PUT-on-404

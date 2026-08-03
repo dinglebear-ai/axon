@@ -2,7 +2,7 @@
 //!
 //! `axon_api::source::SuccessEnvelope<T>` is the contracted shape for every
 //! non-stream, non-byte REST success response
-//! (`docs/pipeline-unification/surfaces/rest-contract.md` "Shared Response
+//! (`docs/reference/rest/routes.md` "Shared Response
 //! Envelope"). Adoption is intentionally incremental: this helper wraps a
 //! route's result DTO in the envelope without requiring every handler to be
 //! rewritten in one pass. Started on `/v1/query` and `/v1/retrieve`
@@ -12,7 +12,7 @@ use axon_api::source::{MetadataMap, SuccessEnvelope, TraceContext};
 
 use super::json::Json;
 
-/// Matches `docs/pipeline-unification/surfaces/rest-contract.md`'s
+/// Matches `docs/reference/rest/routes.md`'s
 /// "Last Modified" date — the contract's own versioning scheme (a date
 /// string, not semver) until a dedicated version field is introduced there.
 const CONTRACT_VERSION: &str = "2026-06-30";

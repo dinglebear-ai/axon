@@ -1,145 +1,133 @@
-# axon
+# Axon Plugin
 
-Spider-powered self-hosted RAG engine — scrape, map, extract, crawl, embed, and query indexed content via the MCP `axon` tool or the `axon` CLI.
+The Axon Claude plugin connects Claude Code to a running Axon server through
+MCP-over-HTTP. Axon provides grounded retrieval, unified source indexing,
+web search, extraction, durable memory, jobs, watches, graph operations, and
+operational diagnostics through one MCP tool named `axon`.
 
-> Current pre-#298 plugin docs. The future source-pipeline contract lives in
-> `docs/pipeline-unification/`; after that cutover source acquisition should
-> route through the shared source action/model rather than legacy crawl/embed/
-> ingest action families.
+Axon uses SQLite, Qdrant, an embedding provider such as TEI, optional
+Chrome/CDP for rendered acquisition, and configured LLM providers.
 
-Backed by Qdrant (hybrid dense + BM42 sparse + RRF), TEI for embeddings, optional Chrome (headless) for JS-heavy sites, and a configurable LLM backend for `ask`, `research`, and extract fallback. Gemini headless is the default; OpenAI-compatible endpoints such as llama.cpp are supported with `AXON_LLM_BACKEND=openai-compat`.
+## Prerequisite
+
+Run Axon before installing the plugin. Supported application deployments are:
+
+- native Axon in an Incus system container under systemd
+- native Axon on bare metal under systemd
+- the development Compose stack for local work
+
+See [Deployment](../../docs/operations/deployment.md). By default
+`axon serve` listens at `http://127.0.0.1:8001` and exposes MCP at
+`/mcp`.
 
 ## Installation
 
 ```bash
-claude plugin install <path>
+claude plugin install <path-to-repo>/plugins/axon
 ```
 
-The plugin manifest declares a minimal `userConfig` block. Claude Code prompts
-only for connection details for an already-running Axon server.
+The plugin prompts for:
 
-The current plugin prompt surface is intentionally small:
+- `server_url`: the running server, default `http://localhost:8001`
+- `api_token`: bearer token for `${server_url}/mcp`; omit only for an
+  explicitly tokenless loopback development server
 
-- `server_url` — base URL for a running `axon serve` instance, defaulting to `http://localhost:8080`.
-- `api_token` — bearer token sent to `${server_url}/mcp`; leave empty only for loopback/unauthenticated development instances.
+Provider endpoints, source credentials, Qdrant, Chrome, embedding, LLM, and
+runtime settings belong to `~/.axon/.env` and
+`~/.axon/config.toml`, not plugin configuration.
 
-Search providers, ingest credentials, Qdrant, TEI, Chrome, embedding, and LLM backend settings live in the shared Axon host configuration (`~/.axon/.env` and `~/.axon/config.toml`), not in plugin prompts.
+The plugin registers no Claude hooks. Nothing runs automatically at session
+start or when configuration changes.
 
-**The plugin registers no Claude hooks.** The former `SessionStart` /
-`ConfigChange` hooks were removed on 2026-07-27, so nothing runs automatically
-when a session starts. The helper scripts remain in `scripts/` and can be
-invoked directly, or use the equivalent CLI commands:
+## MCP surface
 
-```bash
-axon setup plugin-hook   # probe-only readiness check; never deploys
-axon memory context      # recall memories for the current git project
-```
-
-To provision the stack for the first time, run `/axon-deploy` (or `axon setup` / `axon compose up` on the host directly).
-
-No systemd unit is created. Docker Compose is the only production deployment target. The `.mcp.json` uses HTTP transport and connects Claude Code to `${user_config.server_url}/mcp` with the configured bearer token.
-
-### Session Memory and Auto-Ingest
-
-Memory recall is now explicit — run `axon memory context` yourself (or via
-`scripts/session-start-memory-context.sh`) to print compact recall for the
-current git project. Nothing scans or ingests transcript files automatically at
-session startup. Index transcripts with `axon sessions` or with explicit
-`session:<provider>:<path>` selectors through the unified source pipeline; the
-old prepared-session watcher service is not part of the plugin surface.
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/axon-deploy [up\|restart\|rebuild]` | On-demand deploy/restart/rebuild of the stack (`axon compose …` + `axon doctor`). This is how you provision the stack. |
-
-`~/.axon` is the canonical appdata root for plugin deployments too. Keep `~/.axon/.env`, `~/.axon/config.toml`, jobs, artifacts, output, logs, and service data there.
-
-## MCP Server
-
-The Axon MCP server exposes a single `axon` tool. Hosts generate the concrete
-tool name, so use the current environment's generated name. Requests are routed
-by `action` plus an optional `subaction` for lifecycle families.
+The server exposes one tool named `axon`. Requests use `action` and, for
+lifecycle families, `subaction`.
 
 ```json
 { "action": "doctor" }
-{ "action": "scrape", "url": "https://example.com" }
-{ "action": "ask", "query": "How does axon handle Chrome auto-switching?" }
-{ "action": "crawl", "subaction": "status", "job_id": "<uuid>" }
+{ "action": "source", "source": "https://example.com", "scope": "page" }
+{ "action": "source", "source": "https://docs.example.com", "scope": "site" }
+{ "action": "source", "source": "https://github.com/dinglebear-ai/axon" }
+{ "action": "ask", "query": "How does Axon publish source generations?" }
+{ "action": "jobs", "subaction": "get", "job_id": "<uuid>" }
 ```
 
-Response envelope:
+Large responses default to artifact-backed output; compact results may be
+returned inline. The generated MCP contract is authoritative:
+
+- [Tool Contract](../../docs/reference/mcp/tool-contract.md)
+- [Generated Tool Schema](../../docs/reference/mcp/tool-schema.md)
+
+## Unified source behavior
+
+`action=source` classifies and indexes web pages and sites, local paths, Git
+repositories, package registries, Reddit, YouTube, feeds, session exports,
+tool sources, memory records, and uploads through one pipeline.
 
 ```json
-{ "ok": true, "action": "...", "subaction": "...", "data": { ... } }
+{ "action": "source", "source": "/home/user/project" }
+{ "action": "source", "source": "r/rust" }
+{ "action": "source", "source": "https://youtube.com/watch?v=..." }
+{ "action": "source", "source": "pkg:npm/react" }
+{ "action": "source", "source": "session:claude:/home/user/.claude/projects/..." }
+{ "action": "source", "source": "https://docs.example.com", "scope": "site", "detached": true }
 ```
 
-Default `response_mode: "path"` writes large outputs under the configured Axon appdata root (default `~/.axon/artifacts`) and returns a compact `shape` summary plus an artifact pointer. See the `using-axon` skill for the full action map.
+Use `action=jobs` for detached lifecycle management and `action=watch` for
+recurring refreshes.
+
+## CLI fallback
+
+Use the CLI for scripts, cron, advanced source options, or when MCP is
+unavailable:
+
+```bash
+axon source https://example.com --scope page --wait true
+axon source https://docs.example.com --scope site --max-pages 100 --wait true
+axon source /home/user/project --wait true
+axon jobs get <job-id>
+axon watch create https://docs.example.com --every-seconds 86400
+```
+
+`axon scrape <url>` remains a one-page CLI projection of the same source
+pipeline.
+
+## Memory
+
+Memory recall is explicit. Nothing scans or indexes session transcripts at
+plugin startup.
+
+```json
+{ "action": "memory", "subaction": "remember", "body": "Use unified source jobs.", "project": "axon" }
+{ "action": "memory", "subaction": "context", "project": "axon", "query": "source jobs" }
+```
+
+CLI equivalents:
+
+```bash
+axon memory remember "Use unified source jobs." --project axon
+axon memory context --project axon --query "source jobs"
+axon sessions
+```
+
+## Plugin command
+
+| Command | Purpose |
+|---|---|
+| `/axon-deploy [up\|restart\|rebuild]` | Run the configured deployment workflow and doctor checks |
 
 ## Skills
 
-The plugin ships 25 plain-name Axon skills under `skills/`. Because these
-skills already live inside the Axon plugin namespace, folder names do not carry
-an `axon-` prefix. Every skill includes `agents/openai.yaml` metadata.
+The plugin includes focused skills for retrieval, source collection, structured
+extraction, QA, lead generation, knowledge-base construction, research, and
+memory. The master reference is
+[using-axon](skills/using-axon/SKILL.md).
 
-Action skills cover the core CLI/MCP surfaces; workflow skills cover
-outcome-focused research, monitoring, QA, shopping, and design deliverables.
+## Troubleshooting
 
-| Skill | Purpose |
-|-------|---------|
-| `using-axon` | Unified usage guide for the single `axon` MCP/CLI surface. |
-| `cli`, `crawl`, `download`, `extract`, `map`, `scrape`, `search`, `monitor` | Core Axon command and action workflows. |
-| `company-directories`, `competitive-intel`, `dashboard-reporting`, `deep-research`, `demo-walkthrough`, `knowledge-base`, `knowledge-ingest`, `lead-gen`, `lead-research`, `market-research`, `qa`, `research-papers`, `seo-audit`, `shop`, `website-design-clone`, `workflows` | Outcome-focused Axon workflow skills. |
-
-The `download` skill documents Axon's current composed capture workflow:
-`scrape`, `crawl --output-dir`, and `screenshot`. It is not a promise that Axon
-already has a single offline-site mirroring command that rewrites linked assets
-for fully browsable local copies.
-
-The runtime RAG synthesis prompt is stored under
-`references/rag-synthesize/SKILL.md` and embedded into `ask` synthesis at compile
-time. It is intentionally not exposed as a user-invocable plugin skill.
-
-## Agents
-
-- `researcher` — autonomous discover → fetch → embed → synthesize pipeline. Invoked when the index lacks coverage on a topic and the user wants a grounded, cited answer.
-
-## Layout
-
-```
-plugins/axon/
-├── README.md                  — this file
-├── CHANGELOG.md
-├── .claude-plugin/
-│   └── plugin.json            — plugin manifest and userConfig
-├── .mcp.json                  — MCP server config (HTTP, ${user_config.*})
-├── agents/
-│   └── researcher.md
-├── commands/
-│   └── axon-deploy.md
-├── examples/
-│   └── workflow-output-templates.md
-├── references/
-│   ├── capture-recipes.md
-│   ├── workflow-authoring.md
-│   └── rag-synthesize/
-│       ├── SKILL.md          — runtime RAG synthesis prompt
-│       └── example-response.md
-├── scripts/
-│   ├── plugin-setup.sh
-│   └── session-start-memory-context.sh
-└── skills/
-    ├── using-axon/
-    │   ├── SKILL.md          — meta-skill
-    │   └── agents/openai.yaml
-    ├── cli/SKILL.md
-    ├── crawl/SKILL.md
-    ├── download/SKILL.md
-    ├── extract/SKILL.md
-    ├── map/SKILL.md
-    ├── scrape/SKILL.md
-    ├── search/SKILL.md
-    ├── monitor/SKILL.md
-    └── <workflow-name>/SKILL.md
-```
+1. Run `axon doctor` on the server host.
+2. Verify `${server_url}/healthz` and `${server_url}/mcp` are reachable.
+3. Confirm the bearer token and server auth mode.
+4. Use `{ "action": "help" }` to inspect the live action map.
+5. Use the jobs action for detached-source failures.

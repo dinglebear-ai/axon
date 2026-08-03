@@ -6,11 +6,11 @@ plans. It answers "what would be deleted, is it safe, and what was actually
 removed." It executes against ledger/graph/memory/artifact/vector boundaries via
 trait calls — it never owns those stores. Full contract (owns / API / deps /
 tests):
-[../../../docs/pipeline-unification/crates/axon-prune/README.md](../../../docs/pipeline-unification/crates/axon-prune/README.md)
+[../../../crates/axon-prune/src/CLAUDE.md](../../../crates/axon-prune/src/CLAUDE.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/pruning-contract.md](../../../docs/pipeline-unification/runtime/pruning-contract.md).
+[../../../docs/reference/runtime/pruning.md](../../../docs/reference/runtime/pruning.md).
 
-## Status — live crate, Phase 11 landed
+## Current status
 Cleanup-debt-driven plan/executor/safety-gating (`plan.rs`/`executor.rs`/
 `safety.rs`) is real and tested, not markers. Do not add ledger record
 ownership, source acquisition, embedding, or transport rendering here.

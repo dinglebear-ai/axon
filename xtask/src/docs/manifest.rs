@@ -1,5 +1,5 @@
-//! Source-input manifest: which crates/modules feed each generated doc
-//! family (`docs-generator-contract.md` "Source Input Manifest").
+//! Source-input manifest: which crates/modules feed each generated reference
+//! family.
 //!
 //! The manifest is derived, not hand-maintained: every family's generated
 //! JSON schema artifact under `docs/reference/**/*.json` already carries an
@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -41,7 +41,7 @@ pub struct DocsManifest {
 /// build one `FamilyManifest` per distinct `schemas <slug>` family found.
 pub fn build(root: &Path) -> Result<DocsManifest> {
     let docs_root = root.join("docs/reference");
-    let mut by_family: BTreeMap<String, Vec<SourceInputEntry>> = BTreeMap::new();
+    let mut by_family: BTreeMap<String, (String, Vec<SourceInputEntry>)> = BTreeMap::new();
     if !docs_root.is_dir() {
         return Ok(DocsManifest {
             families: Vec::new(),
@@ -58,20 +58,30 @@ pub fn build(root: &Path) -> Result<DocsManifest> {
         let Ok(value) = serde_json::from_str::<Value>(&content) else {
             continue;
         };
-        let Some(family_slug) = generated_by_family(&value) else {
+        let Some((family_slug, generated_by)) = generated_by_metadata(&value) else {
             continue;
         };
         let inputs = extract_source_inputs(&value);
-        by_family.entry(family_slug).or_default().extend(inputs);
+        let entry = by_family
+            .entry(family_slug.clone())
+            .or_insert_with(|| (generated_by.clone(), Vec::new()));
+        if entry.0 != generated_by {
+            bail!(
+                "source-input manifest: schema family {family_slug:?} has conflicting producers: {:?} and {:?}",
+                entry.0,
+                generated_by
+            );
+        }
+        entry.1.extend(inputs);
     }
 
     let mut families = Vec::with_capacity(by_family.len());
-    for (family, mut inputs) in by_family {
+    for (family, (generated_by, mut inputs)) in by_family {
         inputs.sort_by(|a, b| a.path.cmp(&b.path));
         inputs.dedup_by(|a, b| a.path == b.path);
         let manifest_checksum = checksum_inputs(&inputs);
         families.push(FamilyManifest {
-            generated_by: format!("cargo xtask docs generate --family {family}"),
+            generated_by,
             family,
             source_inputs: inputs,
             manifest_checksum,
@@ -87,11 +97,10 @@ pub fn to_json(manifest: &DocsManifest) -> Result<String> {
     Ok(content)
 }
 
-fn generated_by_family(value: &Value) -> Option<String> {
+fn generated_by_metadata(value: &Value) -> Option<(String, String)> {
     let generated_by = value.get("x-axon")?.get("generated_by")?.as_str()?;
-    generated_by
-        .strip_prefix("cargo xtask schemas ")
-        .map(str::to_string)
+    let family = generated_by.strip_prefix("cargo xtask schemas ")?;
+    Some((family.to_string(), generated_by.to_string()))
 }
 
 fn extract_source_inputs(value: &Value) -> Vec<SourceInputEntry> {

@@ -1,292 +1,147 @@
 ---
-title: "Testing Guide"
-created: 2026-02-26
-updated: 2026-07-30
+title: "Testing"
+updated: 2026-08-02
 ---
 
-# Testing Guide
-Last Modified: 2026-06-01
+# Testing
 
-This document defines how to run tests locally and in CI for `axon`.
+Axon uses layered tests: domain units, fake-boundary contracts, service
+orchestration, transport parity, durable runtime behavior, generated-contract
+checks, and selected live provider smoke tests.
 
-## Goals
-- Keep the default local loop fast.
-- Keep infra-backed tests explicit and reproducible.
-- Ensure CI and local workflows stay aligned.
-
-## Test Lanes
-
-### Fast local lane (default)
-Use this for most edits:
+## Standard commands
 
 ```bash
-just test
+cargo test --locked --workspace
+cargo nextest run --locked --workspace
+cargo clippy --all-targets --locked -- -D warnings
+just precommit
 ```
 
-Behavior:
-- Uses `cargo nextest` when available.
-- Falls back to `cargo test` if `cargo-nextest` is not installed.
-- Enforces lockfile reproducibility (`--locked`).
+Use the narrowest focused test while developing, then run the full repository
+gate before pushing.
 
-### Fastest inner loop (lib-focused)
+## Test locations
+
+| Area | Common location |
+|---|---|
+| API DTOs and schemas | `crates/axon-api/src/**/*tests.rs` |
+| HTTP safety/config/redaction | `crates/axon-core/src/**/*tests.rs` |
+| Authorization | `crates/axon-authz/src/**/*tests.rs` |
+| Source adapters/web engine | `crates/axon-adapters/src/**/*tests.rs` |
+| Parsing/preparation | `crates/axon-parse/src/`, `crates/axon-document/src/` |
+| Jobs/scheduler/watches | `crates/axon-jobs/src/**/*tests.rs` |
+| Source orchestration | `crates/axon-services/src/source*tests.rs` and module tests |
+| MCP | `crates/axon-mcp/src/**/*tests.rs`, `crates/axon-mcp/tests/` |
+| REST/OpenAPI/server | `crates/axon-web/src/**/*tests.rs`, root parity tests |
+| CLI | `crates/axon-cli/src/**/*tests.rs` |
+| Generated contracts | `xtask/src/**/*tests.rs`, `xtask/tests/fixtures/` |
+| Cross-surface contracts | root `tests/` and `tests/fixtures/cross-surface/` |
+
+## Focused examples
 
 ```bash
-just test-fast
+cargo test -p axon-adapters web::acquire::tests --lib -- --nocapture
+cargo test -p axon-jobs scheduler --lib -- --nocapture
+cargo test -p axon-services source_web_reuse_tests --lib -- --nocapture
+cargo test -p axon-mcp --lib
+cargo test -p axon-web --lib
+cargo test -p xtask generated_schema_inputs_never_reference_generated_artifacts
 ```
 
-Use while iterating on library logic; scoped to `--lib` tests only.
+## Fake boundaries
 
-### Infra lane (no-op placeholder)
+External providers and stores should have deterministic fakes covering:
+
+- success and empty results
+- timeout/retry/cooling
+- malformed provider responses
+- partial/degraded completion
+- authorization denial
+- cancellation and recovery
+- publication or commit failure
+
+Prefer injecting a fake boundary over mocking an internal implementation detail.
+
+## Durable job tests
+
+Job tests must verify state transitions and durable side effects, not only
+returned values. Important cases include:
+
+- claim exclusivity
+- attempt append on retry
+- heartbeat and stale recovery
+- cancellation observation
+- provider reservations and cooling
+- completed-degraded semantics
+- immutable authorization snapshots
+- watch execution through the same job store
+- no second per-family queue or lifecycle
+
+## Source pipeline tests
+
+Source tests should distinguish:
+
+- acquisition output
+- manifest diff and generation reuse
+- normalization/preparation
+- embedding/vector writes
+- publication and rollback
+- graph and cleanup debt
+- warnings, artifacts, events, and counts
+
+Cache reuse and conditional refetch tests must assert exact warning counts and
+preservation of refetch artifacts/content.
+
+## Property tests
+
+Current examples include:
+
+- `crates/axon-core/src/http/proptest_tests.rs`: URL/SSRF inputs
+- `crates/axon-adapters/src/web_engine/engine/url_utils_proptest_tests.rs`:
+  discovered URL filtering and normalization
+
+Property tests should be deterministic and bounded for CI.
+
+## Transport tests
+
+When a public operation changes, update and verify:
+
+- CLI command registry/help snapshots
+- MCP schema and golden fixture
+- REST/OpenAPI route and schema inventories
+- cross-surface operation/scope matrices
+- auth and error-envelope behavior
+- generated app bindings when their source contract changes
+
+## Generated documentation and schema tests
 
 ```bash
-just test-infra
+cargo xtask schemas generate --check
+cargo xtask docs generate --check
+cargo xtask docs check
+cargo xtask presentation generate --check
+python3 scripts/generate_action_docs.py --check
+cargo xtask check-public-api
+cargo xtask check-dep-graph
 ```
 
-`worker_e2e` matches zero tests in this workspace — the recipe is currently a
-no-op that prints a notice and exits. It is kept as a stable command name for
-when an ignored infra-backed suite is reintroduced; there is nothing to run
-today.
+Use `--update-fixtures` only for an intentional contract change and review
+every generated diff.
 
-### REST/MCP smoke lane
+## Network and live tests
 
-Use this when touching direct `/v1` REST routes, MCP HTTP routing, artifact
-handles, or Docker/systemd runtime wiring. The smoke must not edit
-`~/.axon/.env` or `~/.axon/config.toml`; pass temporary env overrides in the
-command invocation.
+Tests are offline by default. Live tests must be explicitly gated, bounded, and
+safe to rerun. Never make ordinary unit tests depend on Qdrant, TEI, Chrome,
+GitHub, or public network availability.
 
-```bash
-curl -fsS http://127.0.0.1:8001/v1/status
-curl -fsS -X POST http://127.0.0.1:8001/v1/scrape \
-  -H 'content-type: application/json' \
-  -d '{"url":"https://example.com"}'
-just client-server-smoke
-```
+## Test-only escape hatches
 
-Expected behavior:
-- REST and MCP calls use server-owned workers/state.
-- scrape/crawl responses include server-owned output/artifact handles.
-- token-auth failures, dead server failures, and schema mismatches fail clearly.
+Some HTTP tests use a test-only loopback allowance or local mock server. These
+must remain scoped to test builds and must not weaken production SSRF behavior.
 
-### Integration suite lane (infra-backed, skip-on-missing)
+## Completion standard
 
-A separate set of integration tests targets live Qdrant instances and other external services.
-These tests do **not** use `#[ignore]` — instead each test calls a resolver (e.g. `resolve_test_qdrant_url()`)
-that returns `None` and exits cleanly when the corresponding env var (e.g. `AXON_TEST_QDRANT_URL`) is unset.
-This means they run in `just test` without error, but only exercise real I/O when infra is available.
-
-Start the required services explicitly, then run the full suite normally:
-
-```bash
-just services-up      # Qdrant, TEI, Chrome from docker-compose.yaml
-just test
-```
-
-Integration suites currently covered:
-
-| File | Env var required | What it tests |
-|------|-----------------|---------------|
-| `tests/client_server_mode.rs` | none | CLI server-mode planning and action contracts |
-| `tests/compose_env_contract.rs` | none | Compose/env contract shape |
-| `src/web/server/tests.rs` | none | Web panel/server route helpers |
-| `src/web/server/tests.rs` | none | Direct REST route, removed-route, and auth behavior |
-
-## Test Infrastructure Environment Variables
-
-Set these in `~/.axon/.env`:
-
-| Variable | Default (test containers) | Purpose |
-|----------|--------------------------|---------|
-| `AXON_TEST_QDRANT_URL` | `http://127.0.0.1:53335` | Qdrant integration tests |
-
-The tracked development compose file is `docker-compose.yaml`. It extends the
-production infrastructure definitions and starts the infrastructure stack on
-loopback-bound host ports:
-
-| Service | Image | Test port |
-|---------|-------|-----------|
-| `axon-qdrant` | `qdrant/qdrant:v1.18.2` | `53333` (HTTP), `53334` (gRPC) |
-| `axon-tei` | `ghcr.io/huggingface/text-embeddings-inference:89-1.9` | `52000` (HTTP) |
-| `axon-chrome` | local Chrome image | `6000`, `9222`, `9223` |
-
-The tracked local compose stack does not include Postgres, Redis, or RabbitMQ.
-Current runtime tests should target SQLite jobs plus Qdrant/TEI/Chrome where
-needed.
-
-## Coverage Areas (v0.11.1+)
-
-### Rust: `src/services/`
-
-Integration tests under `tests/` cover the LLM backend and services layer end-to-end:
-
-| File | Tests | What is covered |
-|------|-------|----------------|
-| `tests/services_discovery_services.rs` | 16 | Service discovery contracts |
-| `tests/services_lifecycle_services.rs` | 16 | Service lifecycle state machine |
-| `tests/services_query_services.rs` | 13 | Query service dispatch |
-| `tests/services_system_services.rs` | 8 | System-level service operations |
-| `tests/services_compile_services_smoke.rs` | 1 | Services crate compile smoke |
-
-### Rust: `src/web/`
-
-Web panel and first-party HTTP action tests:
-
-| File | Tests | What is covered |
-|------|-------|----------------|
-| `tests/client_server_mode.rs` | 4 | Server-mode command planning, auth, and artifact behavior |
-| `src/web/server/tests.rs` | (inline) | Panel/server route helper behavior |
-| `src/web/actions/tests.rs` | (inline) | Action API dispatch and job runtime behavior |
-
-### Rust: CLI and MCP contracts
-
-| File | Tests | What is covered |
-|------|-------|----------------|
-| `tests/cli_full_rewire_smoke.rs` | 28 | Full CLI flag rewire smoke (all commands) |
-| `tests/cli_system_rewire_regression.rs` | 11 | System command regression after CLI refactor |
-| `tests/cli_help_contract.rs` | 3 | `--help` output contracts |
-| `tests/mcp_contract_parity.rs` | 24 | MCP tool schema parity with handler implementations |
-| `tests/mcp_option_mappers.rs` | 15 | MCP option field mappers |
-
-### Rust: proptest suites
-
-Property-based tests with randomized inputs:
-
-| File | Subject |
-|------|---------|
-| `src/core/http/proptest_tests.rs` | HTTP SSRF validator (`validate_url`) — arbitrary host/IP/port inputs |
-| `src/crawl/engine/url_utils_proptest.rs` | `is_junk_discovered_url` — arbitrary URL strings |
-| `src/vector/ops/input_proptest.rs` | Vector input chunking — arbitrary text lengths and overlaps |
-
-### TypeScript: `apps/web/`
-
-The current browser surface is a static setup/config panel built by Next. There
-is no checked-in TypeScript test suite under `apps/web` today.
-
-Use `cd apps/web && npm run build` when changing panel assets.
-
-### Desktop palette screenshots
-
-Use [`docs/development/desktop-palette-testing.md`](desktop-palette-testing.md)
-when validating the Windows `axon-palette-tauri.exe` operation output. It
-documents the Windows-MCP capture workflow on agent-os for the Tauri palette
-(`apps/palette-tauri`).
-
-## Test-Only Security Escape Hatches
-
-Several tests deliberately use narrow exceptions that must not be copied into
-production code:
-
-- `src/core/http/client.rs` leaks one `reqwest::Client` per test call with
-  `Box::leak` so each async test gets a client bound to its own Tokio runtime.
-  This is `#[cfg(test)]` only; production uses the process-wide `HTTP_CLIENT`
-  singleton.
-- `src/core/http/ssrf.rs` exposes the `ALLOW_LOOPBACK` thread-local only in
-  test builds. It lets httpmock-based tests reach `127.0.0.1` while keeping
-  `validate_url()` loopback blocking active by default.
-
-These patterns are acceptable only because they are compile-time test scoped.
-New tests that need a bypass should keep it behind `#[cfg(test)]` or a dedicated
-test-helper feature, and production paths should continue to go through the
-normal SSRF and LLM backend validation boundaries.
-
-## Validation Commands
-
-### Compile checks
-```bash
-just check
-just check-tests
-```
-
-### Full pre-push gate
-```bash
-just verify
-```
-
-`just verify` runs:
-- `legacy-runtime-check`
-- `validate-plugin`
-- `web-check`
-- `fmt-check`
-- `clippy`
-- `check`
-- `test`
-
-## CI Mapping
-
-- `test` job: `cargo nextest run --workspace --locked --features test-helpers`, plus ignored `cli_*` infra tests, ignored `github_integration_*` tests, and the ask-quality regression fixture check. There is no separate `test-infra` job — `worker_e2e` matches zero tests, so `just test-infra` (see above) is a no-op and CI does not schedule it.
-- `live-qdrant` job: scheduled/manual-only lane for ignored live-Qdrant tests.
-- `mcp-smoke` job: builds the release binary, starts `docker-compose.prod.yaml` infra plus a CPU TEI container, and runs `scripts/test-mcp-tools-mcporter.sh`.
-- `security` job: explicit `cargo audit --deny warnings` and `cargo deny check` with pinned tool versions.
-- `msrv` job: validates declared MSRV separately.
-
-## MCP Tooling Tests (mcporter)
-
-Use the existing smoke script to validate MCP tool contract coverage and real mcporter behavior in both runtime modes:
-
-```bash
-# wrapper
-just mcp-smoke
-
-# equivalent direct script call
-bash ./scripts/test-mcp-tools-mcporter.sh
-```
-
-Prerequisites:
-- `mcporter` installed (`npm install -g mcporter@0.7.3`).
-- `jq` installed.
-- Debug binary built: `cargo build --bin axon`.
-- MCP config available at [`config/mcporter.json`](../../config/mcporter.json).
-
-Useful direct checks:
-
-```bash
-mcporter --config config/mcporter.json list axon --schema
-mcporter --config config/mcporter.json call axon.axon action:help response_mode:inline --output json
-mcporter --config config/mcporter.json call axon.axon action:crawl subaction:list limit:5 offset:0 --output json
-```
-
-Notes:
-- Script artifacts/logs are written under `.cache/mcporter-test/`.
-- The script generates suite-specific mcporter configs under `.cache/mcporter-test/`.
-- The suite requires Qdrant and TEI to be running.
-- `screenshot` uses a higher mcporter call timeout than the default because Chrome startup can exceed 60s on some machines.
-- CI parity: the `mcp-smoke` workflow job runs this same script in GitHub Actions.
-- Canonical MCP runtime/testing reference: `docs/reference/mcp/overview.md`.
-
-## Recommended Local Setup
-
-```bash
-just nextest-install
-just llvm-cov-install
-```
-
-Optional performance helpers already auto-detected by `just` recipes:
-- `kache`
-- `mold`
-
-## Coverage (branch-level)
-
-Run once per branch before merge:
-
-```bash
-just coverage-branch
-```
-
-## Common Failure Modes
-
-### Integration tests silently skipping
-- Cause: the relevant `AXON_TEST_*` URL for that suite is unset.
-- Fix: start the needed service and set the matching env var. For Qdrant, use `just services-up` and `AXON_TEST_QDRANT_URL=http://127.0.0.1:53333`.
-
-### Lockfile errors in CI/local commands
-- Cause: dependency graph changed but lockfile not updated.
-- Fix: run a lockfile-refreshing command locally, then rerun `just verify`.
-
-### SQLite test path issues
-- Check `AXON_SQLITE_PATH` or the test-specific temporary directory first.
-- Ensure the parent directory exists and is writable.
-
-
-## Pull Request Checklist (Testing)
-- Ran `just test` after code changes.
-- Ran `just services-up && just test` when changing Qdrant/TEI/Chrome-backed integration behavior.
-- Ran `just verify` before opening/updating PR.
+A change is not complete until focused tests, formatting, warning-denied
+Clippy, generated-contract checks, the full workspace suite, and remote CI all
+pass for the final commit.

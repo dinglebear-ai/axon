@@ -25,8 +25,7 @@ Ask at most 1-3 concise questions only if blocked, such as the site URL, require
    "missing."
 4. Run `axon endpoints <url> --include-bundles true --capture-network` when JavaScript bundles, API endpoints, or rendered network behavior could affect indexing or page health.
 5. Search target keywords when provided; scrape top ranking pages for comparison.
-6. Use `axon crawl --render-mode chrome --automation-script ... --wait true` for repeatable rendered capture before escalating to browser/link probing for broken links, console/network failures, or rendered-only SEO evidence.
-7. For public-site crawl checks, pass `--respect-robots true` unless there is an explicit authorized reason not to.
+6. Use `axon source <url> --scope site --render-mode chrome --automation-script ... --wait true` for repeatable rendered capture before escalating to browser/link probing for broken links, console/network failures, or rendered-only SEO evidence. Respect source terms, rate limits, and robots policy.
 
 ## Parallel Work
 

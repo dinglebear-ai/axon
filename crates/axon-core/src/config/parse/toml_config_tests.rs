@@ -191,7 +191,7 @@ fn root_config_example_parses() {
 
 /// Resolves a path under `crates/axon-core/tests/fixtures/`, the config
 /// schema contract's fixture root (see
-/// docs/pipeline-unification/schemas/config-schema.md's "Validation
+/// docs/reference/config/config-toml.md's "Validation
 /// Fixtures").
 fn config_schema_fixture(relative: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

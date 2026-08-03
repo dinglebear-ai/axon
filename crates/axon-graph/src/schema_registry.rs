@@ -2,7 +2,7 @@
 //!
 //! This projects the closed [`crate::node::GraphNodeKind`] and
 //! [`crate::edge::GraphEdgeKind`] enums (the canonical registry mirroring
-//! `docs/pipeline-unification/sources/source-graph.md`) into the flat shape
+//! `docs/reference/sources/source-graph.md`) into the flat shape
 //! the `xtask schemas graph` generator consumes. It must never hand-maintain
 //! a second kind list — `node_kind_registry()`/`edge_kind_registry()` are
 //! derived from `GraphNodeKind::ALL`/`GraphEdgeKind::ALL` so the generated

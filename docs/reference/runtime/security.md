@@ -7,8 +7,6 @@ policy, artifact access scoping, and destructive-operation safeguards. See
 [auth.md](auth.md) for scopes and [redaction.md](redaction.md) for the
 redactor boundary.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/security-contract.md`](../../pipeline-unification/runtime/security-contract.md).
 
 ## Policy boundaries
 

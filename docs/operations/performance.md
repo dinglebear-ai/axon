@@ -1,303 +1,106 @@
 ---
-title: "Performance Tuning Guide"
-created: 2026-02-25
-updated: 2026-07-30
+title: "Performance"
+updated: 2026-08-02
 ---
 
-# Performance Tuning Guide
-Last Modified: 2026-03-03
+# Performance
 
-Version: 1.0.0
-Last Updated: 2026-02-25T01:26:53-05:00
+Axon throughput is bounded by source acquisition, document preparation,
+embedding capacity, Qdrant writes, provider reservations, and the durable job
+scheduler. Tune one constrained boundary at a time and keep correctness gates
+enabled.
 
-## Table of Contents
+## Performance profiles
 
-1. Scope
-2. Throughput Model
-3. Global Performance Profiles
-4. Crawl Tuning
-5. Worker and Queue Tuning
-6. Embedding and Qdrant Tuning
-7. Ask/RAG Tuning
-8. Server-Mode HTTP Tuning
-9. Benchmark Workflow
-10. Symptom -> Tuning Matrix
-11. Source Map
+The CLI exposes `high-stable`, `balanced`, `extreme`, and `max`
+profiles. A profile applies a coordinated baseline; explicit CLI, environment,
+or TOML settings may override individual knobs.
 
-## Scope
+Start with `balanced` or `high-stable`. Use the more aggressive profiles
+only after measuring provider headroom and failure rates.
 
-This document describes available performance controls in Axon and how to tune them safely.
+```bash
+time axon source https://docs.example.com   --scope site   --max-pages 200   --performance-profile high-stable   --wait true
+```
 
-## Throughput Model
+## Acquisition tuning
 
-Overall throughput is constrained by the slowest stage:
+For site sources, bound work with:
 
-1. Crawl fetch/render
-2. Content transform/chunking
-3. TEI embedding throughput
-4. Qdrant upsert/search throughput
-5. LLM response time for `ask`
-
-Tune one bottleneck at a time.
-
-## Global Performance Profiles
-
-Use `--performance-profile`:
-
-- `high-stable` (default)
-- `balanced`
-- `extreme`
-- `max`
-
-Profiles control:
-
-- concurrency limits
-- request timeouts
-- retry count and backoff
-
-Override at runtime:
-
-- `--batch-concurrency`
-- `--concurrency-limit`
-- `--crawl-concurrency-limit`
-- `--backfill-concurrency-limit`
-- `--request-timeout-ms`
-- `--fetch-retries`
-- `--retry-backoff-ms`
-
-## Crawl Tuning
-
-Primary flags:
-
-- `--render-mode` (`http`, `chrome`, `auto-switch`)
 - `--max-pages`
 - `--max-depth`
-- `--include-subdomains`
-- `--discover-sitemaps`
-- `--min-markdown-chars`
-- `--drop-thin-markdown`
-- `--delay-ms`
+- `--budget PATH=N`
+- a narrow start URL or path
+- the appropriate `--render-mode`
 
-Guidance:
+HTTP is cheaper than Chrome. Use `chrome` only when rendered state is required;
+`auto-switch` lets the web engine escalate when HTTP results are inadequate.
+The web engine lives under `crates/axon-adapters/src/web_engine/`.
 
-- Start with `http` when sites are static; use `auto-switch` for mixed sites.
-- Use `delay-ms` to reduce target pressure and avoid defensive throttling.
-- Keep `drop-thin-markdown=true` for higher-quality embedding corpus.
-- Sitemap backfill cap defaults to `512` and is configurable via `scrape.max-sitemaps` in `~/.axon/config.toml` (no CLI flag). Restrict backfill by recency with `--sitemap-since-days <n>`.
+## Embedding tuning
 
-### Adaptive Crawl Concurrency
+Embedding throughput depends on model latency, provider batch limits, token
+volume, and configured concurrency. Watch for:
 
-Adaptive crawl concurrency is opt-in via TOML:
+- HTTP 413: batches are too large
+- HTTP 429/503: provider saturation or throttling
+- long waiting/cooling periods: reservation pressure
+- high GPU memory use: model or batch size exceeds safe capacity
 
-```toml
-[workers.adaptive-concurrency]
-enabled = true
-min = 1
-# max = 64
-```
+Embedding provider code lives in `crates/axon-embedding/`; vector writes and
+Qdrant behavior live in `crates/axon-vectors/`.
 
-Defaults are unchanged when it is disabled. Adaptive mode applies to the main Spider crawl path; sitemap backfill, standalone screenshots, and other fetch helpers keep their existing fixed limits. HTTP `429`, HTTP `5xx`, and broadcast lag apply negative pressure; successful statuses increase after Spider's fixed success threshold. Spider 2.52.0 halves on failure, so Axon does not expose `decrease-factor`, `sync-interval-ms`, or palette controls for this release.
+## Job and provider concurrency
 
-Shrinking the target limits future admission and does not cancel already in-flight requests. Use adaptive mode with polite crawl settings such as robots, delay, max pages, path budgets, or a URL whitelist.
+The unified scheduler enforces queue, concurrency, priority, reservation, and
+cooling rules. Increase concurrency only when Qdrant, TEI, Chrome, CPU, memory,
+and disk all have headroom. Site-scope source jobs use a separate conservative
+Chrome/CDP rail.
 
-## Worker and Queue Tuning
-
-Worker controls:
-
-- `workers.ingest-lanes` in `~/.axon/config.toml`
-
-Watchdog controls:
-
-- `AXON_JOB_STALE_TIMEOUT_SECS`
-- `AXON_JOB_STALE_CONFIRM_SECS`
-
-Operational guidance:
-
-- Increase lanes only when SQLite, Qdrant, and TEI headroom exists.
-- If watchdog reclaim triggers frequently, reduce concurrency or raise stale timeout.
-
-## Embedding and Qdrant Tuning
-
-TEI behavior:
-
-- batch embedding with automatic split on payload-too-large patterns
-- retry on transient overload (`429` or any `5xx`) with exponential backoff
-- client batch sizing via `tei.max-client-batch-size` in `~/.axon/config.toml`
-
-Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
-
-- use `TEI_MAX_BATCH_TOKENS=196608` for the current local profile; reduce it
-  if TEI fails warmup with CUDA OOM
-- use `TEI_MAX_BATCH_REQUESTS=512` to avoid false overloads when multiple real
-  docs batches are in flight
-- keep Axon's client batch around `TEI_MAX_CLIENT_BATCH_SIZE=128`; on the
-  `code.claude.com` docs corpus this reduced TEI calls to 37 and was faster
-  than 96, 192, and 256
-- keep `AXON_EMBED_POOL_MAX_INPUTS=512` for docs-style corpora so small files
-  are pooled before TEI client-side sub-batching
-- `AXON_TEI_MAX_CONCURRENT=8` is a reasonable single-process ceiling when the
-  server batch-request budget is `512`
-- `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320` caps `batch_size * request_concurrency`,
-  so small batches can use more request concurrency without large batches
-  stampeding into TEI overload
-
-Embed pipeline controls:
-
-- `workers.embed-doc-timeout-secs` in `~/.axon/config.toml`
-
-Qdrant controls:
-
-- `search.collection` in `~/.axon/config.toml`
-- `QDRANT_URL`
-- `workers.qdrant-point-buffer=1024` batches points before each pipeline flush
-- upsert batching via `qdrant.upsert-batch-size` in `~/.axon/config.toml`
-  (env override: `AXON_QDRANT_UPSERT_BATCH_SIZE`; default `1024`)
-- upsert fanout via `qdrant.upsert-parallelism` in `~/.axon/config.toml`
-  (env override: `AXON_QDRANT_UPSERT_PARALLELISM`; default `1`).
-  Qdrant's generic bulk-upload guidance suggests `64-256` point batches with
-  `2-4` parallel streams; on the local `code.claude.com` docs corpus,
-  `1024/1` measured faster, so treat `256/2-4` as a large-import tuning profile
-  to validate with `bench-embed`
-- fresh-collection bulk indexing profile via `qdrant.bulk-load=true`
-  (env override: `AXON_QDRANT_BULK_LOAD=true`): Axon creates the collection
-  with `qdrant.bulk-indexing-threshold-kb` and restores
-  `qdrant.indexing-threshold-kb` after the embed pipeline finishes
-- HNSW build cost for new collections via `qdrant.hnsw-m` and
-  `qdrant.hnsw-ef-construct`; lower values can speed indexing but must be
-  validated with exact-vs-approx recall before becoming a quality default
-- fresh payload-index cost via `qdrant.payload-index-profile=core`, which
-  creates only URL/domain/source/schema/time indexes for docs-style collections;
-  keep `full` for mixed code/package/social collections unless evaluated
-
-## Ask/RAG Tuning
-
-Core `ask` tuning lives in `~/.axon/config.toml`:
-
-- `ask.min-relevance-score`
-- `ask.candidate-limit`
-- `ask.chunk-limit`
-
-Additional ask controls now live in TOML as:
-
-- `ask.full-docs`
-- `ask.backfill-chunks`
-- `ask.doc-fetch-concurrency`
-- `ask.doc-chunk-limit`
-- `ask.max-context-chars`
-
-Tuning strategy:
-
-1. For poor recall, raise `ask.candidate-limit` and/or lower `ask.min-relevance-score`.
-2. To reduce latency, lower candidate/chunk limits and context chars.
-3. For low answer quality on long docs, increase `FULL_DOCS` and backfill chunks gradually.
-
-## Server-Mode HTTP Tuning
-
-`axon serve` exposes MCP, `/v1/ask`, direct `/v1` REST routes, and the setup/config panel
-on one Axum listener. External HTTP/MCP clients call those routes directly.
-The bundled CLI no longer performs generic server-mode forwarding.
-
-For high-latency LLM or embedding paths:
-
-- keep TEI/Qdrant local or on low-latency links
-- reduce ask context/candidate limits before increasing worker lanes
-- compare HTTP/MCP latency against the same command run locally in-process
-
-## Benchmark Workflow
-
-Baseline:
+Use job events and metrics rather than elapsed time alone:
 
 ```bash
-./scripts/axon doctor
-./scripts/axon stats
+axon jobs get <job-id>
+axon jobs events <job-id>
+curl -fsS http://127.0.0.1:8001/metrics
 ```
 
-Crawl benchmark:
+## Retrieval and ask tuning
 
-```bash
-time ./scripts/axon crawl https://example.com --wait true --performance-profile high-stable
-```
+Query and ask performance depends on embedding latency, Qdrant candidate count,
+hybrid dense/sparse retrieval, reranking/context assembly, and LLM synthesis.
+Tune retrieval limits before increasing synthesis context. Validate answer
+quality whenever changing hybrid-search, chunking, or reranking settings.
 
-Embedding benchmark:
+## Benchmark method
 
-```bash
-time ./scripts/axon embed docs/architecture/overview.md --wait true
-```
-
-RAG benchmark:
-
-```bash
-time ./scripts/axon ask "summarize architecture" --limit 10
-```
-
-Track:
+Use repeatable source inputs and record:
 
 - total duration
-- pages/chunks processed
-- error/retry frequency
-- worker saturation signals in logs
+- pages/items discovered and changed
+- prepared documents and vector points
+- provider wait/cooling time
+- warning/degradation counts
+- peak CPU, memory, GPU memory, and disk I/O
+- retrieval quality after indexing
 
-### Isolated crawler stress run
-
-Use the dedicated harness for the final live load phase. It defaults to a
-non-mutating JSON plan:
-
-```bash
-scripts/stress-crawler.sh --mode plan \
-  --url https://docs.example.com/
-```
-
-Run a cheap end-to-end check before the heavy pass:
+Example:
 
 ```bash
-scripts/stress-crawler.sh --mode smoke
+/usr/bin/time -v axon source /path/to/project   --performance-profile high-stable   --wait true   --json > /tmp/axon-source-result.json
 ```
 
-Heavy mode requires an explicit target and confirmation. It maps the site
-first, targets at least 500 pages when available, queues concurrent page jobs
-beside the main site crawl, and uses the existing external Qdrant endpoint.
-It never starts a container runtime or Qdrant:
+Run several repetitions and separate cold-cache from warm-cache results.
 
-```bash
-AXON_STRESS_CONFIRM=CRAWL_AND_DELETE_ISOLATED_STATE \
-  scripts/stress-crawler.sh --mode heavy \
-  --url https://docs.example.com/ \
-  --max-pages 500 \
-  --concurrent-jobs 8
-```
+## Safety limits
 
-Each run owns an `axon_stress_*` collection and an isolated
-`AXON_DATA_DIR`/SQLite database. The exit trap deletes both even after failure.
-The retained report contains discovery evidence, per-job latency, p50/p95/max
-latency, document/chunk/vector throughput, terminal counts, graph counts,
-error counts, and Qdrant point verification. Durable scheduler reservations are
-reported as not applicable because source plans currently manage embedding
-capacity in memory rather than requesting rows in `provider_reservations`.
-Prepared chunks are pre-redaction while Qdrant points are post-redaction, so the
-report records secret-policy skips and the resulting point delta explicitly;
-it requires nonzero publication rather than falsely requiring those counts to
-match.
-Failed runs still retain a structured report with terminal/error evidence and
-verified SQLite/Qdrant cleanup. Heavy mode rejects loopback and the
-`axon-qdrant` Compose-service hostname.
+Do not remove SSRF checks, authorization, redaction, cancellation polling,
+generation publication rules, or cleanup-debt handling to gain throughput.
+Those boundaries are part of correctness.
 
-## Symptom -> Tuning Matrix
+## Configuration references
 
-| Symptom | Likely bottleneck | First knobs |
-|---|---|---|
-| crawl is slow but stable | fetch/render | profile -> `extreme`, increase crawl concurrency |
-| many thin pages | rendering mismatch | `--render-mode chrome` or `auto-switch` |
-| embed backlog grows | TEI throughput | lower batch/lane pressure, increase TEI capacity |
-| frequent stale reclaim | worker overload | reduce concurrency, raise stale timeout |
-| `ask` too slow | context size/LLM latency | lower candidate/chunk/context limits |
-| HTTP/MCP action appears slow | upstream TEI/Qdrant/LLM or network latency | compare with local CLI, lower ask context, verify service endpoints |
-
-## Source Map
-
-- `README.md` (profiles and tuning flags)
-- `src/core/config/*`
-- `src/crawl/engine.rs`
-- `src/vector/ops/tei/tei_client.rs`
-- `src/vector/ops/commands/*`
-- `src/web/server/handlers/rest/*` (server-mode REST + ask routes)
-- `src/web/server.rs`
+- [Configuration](../guides/configuration.md)
+- [Runtime providers](../reference/runtime/providers.md)
+- [Runtime jobs](../reference/runtime/jobs.md)
+- [Spider feature flags](../reference/spider-feature-flags.md)

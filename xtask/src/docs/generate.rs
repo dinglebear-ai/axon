@@ -6,8 +6,9 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 
 use super::DocsGenerateArgs;
-use super::artifact::DocsArtifactSet;
+use super::artifact::{DocsArtifactSet, GeneratedDocArtifact};
 use super::families::{self, DocsFamily};
+use super::manifest;
 
 #[derive(Debug, Serialize)]
 struct FamilyReport {
@@ -44,6 +45,10 @@ pub fn run(root: &Path, args: &DocsGenerateArgs) -> Result<()> {
     if sets != rerendered {
         bail!("docs generate: renderer output is not deterministic");
     }
+    let manifest_artifact = render_manifest(root)?;
+    if manifest_artifact != render_manifest(root)? {
+        bail!("docs generate: source-input manifest is not deterministic");
+    }
     if args.print {
         for set in &sets {
             for artifact in &set.artifacts {
@@ -51,12 +56,14 @@ pub fn run(root: &Path, args: &DocsGenerateArgs) -> Result<()> {
                 print!("{}", artifact.content);
             }
         }
+        println!("--- {}", manifest_artifact.path.display());
+        print!("{}", manifest_artifact.content);
         return Ok(());
     }
     if args.check {
-        check(root, &sets)?;
+        check(root, &sets, &manifest_artifact)?;
     } else {
-        write(root, &sets)?;
+        write(root, &sets, &manifest_artifact)?;
     }
     if args.json {
         let reports = sets
@@ -84,7 +91,20 @@ pub fn run_single(root: &Path, family: DocsFamily, args: &DocsGenerateArgs) -> R
     run(root, &args)
 }
 
-fn write(root: &Path, sets: &[DocsArtifactSet]) -> Result<()> {
+fn render_manifest(root: &Path) -> Result<GeneratedDocArtifact> {
+    let content = manifest::to_json(&manifest::build(root)?)?;
+    GeneratedDocArtifact::new(
+        manifest::MANIFEST_PATH,
+        content,
+        "cargo xtask docs generate",
+    )
+}
+
+fn write(
+    root: &Path,
+    sets: &[DocsArtifactSet],
+    manifest_artifact: &GeneratedDocArtifact,
+) -> Result<()> {
     let mut count = 0;
     for set in sets {
         for artifact in &set.artifacts {
@@ -96,11 +116,21 @@ fn write(root: &Path, sets: &[DocsArtifactSet]) -> Result<()> {
             count += 1;
         }
     }
+    let path = root.join(&manifest_artifact.path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, &manifest_artifact.content)?;
+    count += 1;
     println!("docs generate: wrote {count} artifact(s).");
     Ok(())
 }
 
-fn check(root: &Path, sets: &[DocsArtifactSet]) -> Result<()> {
+fn check(
+    root: &Path,
+    sets: &[DocsArtifactSet],
+    manifest_artifact: &GeneratedDocArtifact,
+) -> Result<()> {
     let mut drift = Vec::new();
     for set in sets {
         for artifact in &set.artifacts {
@@ -120,6 +150,19 @@ fn check(root: &Path, sets: &[DocsArtifactSet]) -> Result<()> {
                 Err(err) => return Err(err.into()),
             }
         }
+    }
+    let path = root.join(&manifest_artifact.path);
+    match std::fs::read_to_string(&path) {
+        Ok(existing) if existing == manifest_artifact.content => {}
+        Ok(_) => drift.push(format!(
+            "{} differs; run `cargo xtask docs generate`",
+            manifest_artifact.path.display()
+        )),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => drift.push(format!(
+            "{} is missing; run `cargo xtask docs generate`",
+            manifest_artifact.path.display()
+        )),
+        Err(err) => return Err(err.into()),
     }
     if drift.is_empty() {
         println!("docs generate --check: up to date.");

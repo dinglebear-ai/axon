@@ -189,7 +189,7 @@ fn every_contract_crate_exists_in_the_real_workspace() {
         let crate_dir = root.join("crates").join(contract.name);
         assert!(
             crate_dir.is_dir(),
-            "docs/pipeline-unification/crates/{}/README.md has no matching crates/{} directory",
+            "live contract row for {} has no matching crates/{} directory",
             contract.name,
             contract.name
         );

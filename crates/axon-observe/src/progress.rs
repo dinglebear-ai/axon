@@ -5,9 +5,9 @@
 //! `status=running` shape — the recurring "N of M done" ticks a stage emits
 //! between its start and finish events — so callers stop hand-rolling
 //! `SourceProgressEvent` literals for progress polling. See
-//! `docs/pipeline-unification/runtime/observability-contract.md`
+//! `docs/reference/runtime/observability.md`
 //! (`SourceProgressEvent`) and
-//! `docs/pipeline-unification/schemas/event-schema.md`
+//! `docs/reference/runtime/events.md`
 //! (`SourceProgressEvent` shape).
 
 pub const MODULE_NAME: &str = "progress";

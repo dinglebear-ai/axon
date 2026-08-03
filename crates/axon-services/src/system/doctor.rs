@@ -1,7 +1,7 @@
 //! Service connectivity diagnostics — Qdrant / TEI / LLM reachability.
 //!
 //! `doctor` is a `provider_probe` job-backed operation (see
-//! `docs/pipeline-unification/runtime/job-contract.md`, job kind
+//! `docs/reference/runtime/jobs.md`, job kind
 //! `provider_probe`: "Health/capability check"). Every call creates a
 //! unified job row via `super::job_tracking::track_operation_job`, tracking
 //! the health-check run through the standard Queued -> Running ->

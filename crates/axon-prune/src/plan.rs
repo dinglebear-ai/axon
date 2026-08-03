@@ -7,7 +7,7 @@
 //! emitted in the cleanup-debt execution order defined by the pruning
 //! contract (vector → artifact → graph → memory → ledger → job/cache).
 //!
-//! See `docs/pipeline-unification/runtime/pruning-contract.md`.
+//! See `docs/reference/runtime/pruning.md`.
 
 use axon_api::source::ids::{GraphEdgeId, JobId, MemoryId};
 use axon_api::source::prune::{

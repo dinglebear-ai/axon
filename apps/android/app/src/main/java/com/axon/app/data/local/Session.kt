@@ -24,7 +24,7 @@ data class Session(
     @ColumnInfo(name = "pinned_at") val pinnedAt: Long? = null,
     /**
      * Mobile Session Model fields required by
-     * `docs/pipeline-unification/surfaces/android-contract.md` ("Mobile
+     * `docs/reference/surfaces/android.md` ("Mobile
      * Session Model": `status`, `source_refs`, `draft`, `sync_version`; `id`
      * above already serves as the contract's `session_id`). The server's
      * `MobileSession` DTO (`crates/axon-services/src/mobile_sessions.rs`) now

@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonElement
  * `kind` discriminates the shape carried in [data]: a `SourceProgressEvent`
  * for `"progress"`, a `{"text": ...}` object for `"token"`, the
  * route-specific result DTO for `"final"`, and so on. See
- * `docs/pipeline-unification/surfaces/android-contract.md` "Streaming
+ * `docs/reference/surfaces/android.md` "Streaming
  * Contract" for the per-kind UI handling table.
  */
 @Serializable

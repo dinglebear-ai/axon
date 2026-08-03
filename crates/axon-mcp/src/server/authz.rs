@@ -319,8 +319,8 @@ pub(super) fn check_scope(
 /// `check_scope` calls `axon_authz::scope_satisfies`, which deliberately
 /// treats `axon:read` and `axon:write` as interchangeable for ordinary broad
 /// read/write route gating (OAuth dual-scope compatibility — see
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
-/// paragraph and `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// `docs/reference/runtime/security.md`'s "Contract"
+/// paragraph and `docs/reference/runtime/auth.md`'s
 /// "Scope Rules"). That widening is correct for ordinary routes, but it makes
 /// `mutates_if_upgrade`'s elevation a silent no-op if reused here: a caller
 /// holding only `axon:read` already "satisfies" a required `axon:write`
@@ -435,7 +435,7 @@ pub(super) fn required_scope_for_tool(
 
 /// Conditional scope upgrade (`mutates_if`, axon #298 follow-up).
 ///
-/// `docs/pipeline-unification/surfaces/tool-contract.md`'s Auth and
+/// `docs/reference/mcp/tool-contract.md`'s Auth and
 /// Visibility table classifies `search`/`ask`/`research`/`summarize` as
 /// `axon:read` query-shaped surfaces — and `required_scope_for` above (and
 /// the tests locking it) intentionally keep reporting that nominal class, so

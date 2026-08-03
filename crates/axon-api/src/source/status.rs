@@ -61,7 +61,7 @@ pub struct PageInfo {
 pub use axon_error::{ApiError, ErrorSeverity, ErrorStage, ErrorVisibility};
 
 /// `StreamEvent.kind` — the flat set of streaming event kinds shared by SSE
-/// and MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`
+/// and MCP streaming, per `docs/reference/runtime/events.md`
 /// ("StreamEvent Shape").
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,

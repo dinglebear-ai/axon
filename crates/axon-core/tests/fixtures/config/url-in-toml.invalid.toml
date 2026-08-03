@@ -1,7 +1,7 @@
 # Illustrates the "service URLs stay in .env, not config.toml" contract rule
-# (docs/pipeline-unification/schemas/config-schema.md's Drift Checks:
+# (docs/reference/config/config-toml.md's Drift Checks:
 # "tuning-only key appears only in .env" / URL-in-TOML;
-# docs/pipeline-unification/configuration/env-contract.md's Design Rules).
+# docs/reference/config/env.md's Design Rules).
 #
 # NOT WIRED to a test (2026-07-12 alignment audit, bead axon_rust-ldozg):
 # there is no dedicated semantic "this value looks like a URL" detector in

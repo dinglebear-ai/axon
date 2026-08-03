@@ -471,7 +471,7 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     // `POST /v1/watch/{id}/run` was removed per the REST contract's
-    // clean-break rule (`docs/pipeline-unification/surfaces/rest-contract.md`
+    // clean-break rule (`docs/reference/rest/routes.md`
     // "Removed Route Behavior") — its canonical replacement,
     // `POST /v1/watches/{watch_id}/exec`, lives in `WATCH_ROUTES` below.
 ];

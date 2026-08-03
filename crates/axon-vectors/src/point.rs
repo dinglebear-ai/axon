@@ -178,7 +178,7 @@ impl VectorPointBatchBuilder {
     /// as a `tracing::warn!` line. The skip count is a publish-stage concern
     /// (it reduces the number of vector points actually upserted) and is
     /// distinct from the preparation-stage `chunks_prepared` count — see
-    /// `docs/pipeline-unification/runtime/observability-contract.md`'s
+    /// `docs/reference/runtime/observability.md`'s
     /// `axon_chunks_prepared_total` vs `axon_vector_points_written_total`.
     pub fn build_with_skipped_count(
         self,

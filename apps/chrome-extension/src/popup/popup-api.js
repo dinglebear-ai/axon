@@ -99,7 +99,7 @@ function mostRecentWebTab(tabs) {
 // The extension submits sources to the unified `/v1/sources` pipeline rather
 // than orchestrating scrape/crawl/embed/ingest itself — those legacy routes
 // were removed server-side and fold into source requests (see
-// docs/pipeline-unification/surfaces/chrome-extension-contract.md).
+// docs/reference/surfaces/chrome-extension.md).
 //
 // `SourceRequest.execution` has no per-field defaults once the key is
 // present, so a synchronous ("foreground") request must spell out the whole

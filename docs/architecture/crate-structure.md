@@ -1,23 +1,18 @@
 ---
 title: "Crate Structure"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Crate Structure
 
-Last Modified: 2026-07-26
-
 Axon is a Cargo workspace: a thin root `axon` binary that delegates to
 `axon-cli`, plus 23 focused crates under `crates/`. All crates inherit the
-product version via `version.workspace = true` (currently 7.2.2, edition 2024,
-rust-version 1.94.0).
+product version via `version.workspace = true` (currently 7.2.7, edition 2024,
+rust-version 1.96.0).
 
-> The contract target for this layout lives at
-> [`docs/pipeline-unification/foundation/crate-structure.md`](../pipeline-unification/foundation/crate-structure.md).
-> This document describes the **current** workspace; the dependency-direction
-> rules are enforced by `cargo xtask check-layering` (see
-> [dependency-layering.md](dependency-layering.md)).
+Dependency direction is enforced by `cargo xtask check-layering`; see
+[Dependency Layering](dependency-layering.md).
 
 ## Layering
 
@@ -119,22 +114,18 @@ Authoritative doc: [crate-ownership.md](crate-ownership.md). Enforced by
 
 ## Per-crate maintenance contracts
 
-Every non-trivial crate has `crates/<name>/src/CLAUDE.md` — the agent-facing
-maintenance contract (purpose, public modules, ownership boundaries,
-must-not-own, test commands, gotchas). `AGENTS.md` and `GEMINI.md` in the same
-dir are symlinks to it. The pipeline-unification packet also keeps design
-contracts at `docs/pipeline-unification/crates/<name>/{README.md,CLAUDE.md}`
-(historical design record; the live `src/CLAUDE.md` supersedes).
+Every non-trivial crate has `crates/<name>/src/CLAUDE.md`, the
+agent-facing maintenance contract for purpose, public modules, ownership
+boundaries, test commands, and gotchas. `AGENTS.md` and `GEMINI.md` in the
+same directory are symlinks to it.
 
-## Notes on transitional state
+## Current cleanup state
 
-- The legacy single-purpose crates (`axon-vector`, `axon-crawl`, `axon-ingest`,
-  `axon-code-index`) are removed from the workspace. The live
-  `cargo xtask check-layering` gate checks the current crate graph and exact
-  exception ledger; it does not retain compatibility rules for those removed
-  paths. See [dependency-layering.md](dependency-layering.md).
-- `axon-extract` remains even though the contract disposition said "remove or
-  shrink"; it is still depended on by `axon-adapters` and `axon-services` for
-  vertical extraction.
+- The former single-purpose crates `axon-vector`, `axon-crawl`,
+  `axon-ingest`, and `axon-code-index` are absent from the workspace.
+- `axon-extract` is the focused vertical-extractor implementation crate used
+  by `axon-adapters` and `axon-services`.
+- `cargo xtask check-layering` validates the current graph and exact exception
+  ledger without compatibility rules for removed crates.
 
 If this layout changes, update this file in the same PR.

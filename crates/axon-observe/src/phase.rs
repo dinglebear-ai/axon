@@ -1,8 +1,8 @@
 //! `PipelinePhase` registry: applies-to scope and human-readable meaning for
 //! every canonical phase, per the "Phase Registry" table in
-//! `docs/pipeline-unification/runtime/observability-contract.md` and the
+//! `docs/reference/runtime/observability.md` and the
 //! "Required Phase Enum Values" list in
-//! `docs/pipeline-unification/schemas/event-schema.md`.
+//! `docs/reference/runtime/events.md`.
 //!
 //! `PipelinePhase` itself is owned by `axon_api::source` (the canonical
 //! registry lives in `foundation/types/enum-contract.md`) — this module does

@@ -2,10 +2,10 @@
 //!
 //! `SpanFieldSet` is the canonical bounded field set attached to pipeline
 //! spans/log events, per the "Tracing" section of
-//! `docs/pipeline-unification/runtime/observability-contract.md` (`job_id`,
+//! `docs/reference/runtime/observability.md` (`job_id`,
 //! `source_id`, `adapter`, `scope`, `phase`, `provider_id`, bounded counts,
 //! error code/severity) and the `SpanFieldSet` `$def` required by
-//! `docs/pipeline-unification/schemas/event-schema.md`.
+//! `docs/reference/runtime/events.md`.
 //!
 //! [`sink::tracing_sink::TracingObservabilitySink`](crate::sink::tracing_sink)
 //! builds a `SpanFieldSet` from each `SourceProgressEvent`/`JobHeartbeat` via

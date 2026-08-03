@@ -4,7 +4,7 @@
 //! decode their registered sources into an in-memory `Vec<SourceSummary>` and
 //! then call [`list_page`] so the two implementations can never drift apart on
 //! filter or pagination semantics — see the `list_sources` entry in
-//! `docs/pipeline-unification/runtime/ledger-contract.md`'s Public Boundary.
+//! `docs/reference/runtime/ledger.md`'s Public Boundary.
 
 use axon_api::source::*;
 

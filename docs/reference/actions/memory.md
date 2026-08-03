@@ -7,11 +7,9 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon memory ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
-
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+| REST | `/v1/memories` routes |
+| MCP | `{ "action": "memory" }` |
+| Service | `Shared domain/service implementation` |
 <!-- END GENERATED ACTION SURFACES -->
 
 
@@ -29,7 +27,7 @@ Persistent agent memory. Content and embeddings are stored in the dedicated Qdra
 > `archive`, `forget`, `review`, and `compact` exist in the crate but are not
 > yet exposed as CLI subcommands, MCP subactions, or REST routes. That gap is
 > tracked in Task 9 of
-> `docs/pipeline-unification/plans/2026-07-04-phase-3b-security-error-memory-completion.md`.
+> `docs/reference/runtime/memory.md`.
 > The `axon-memory::graph` module (graph-mirror integration) genuinely is
 > still a marker/design-stage module — see the "Graph mirror" section of
 > `docs/reference/runtime/memory.md` for what is and isn't real there.

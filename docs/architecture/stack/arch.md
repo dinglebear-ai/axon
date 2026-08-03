@@ -1,217 +1,128 @@
 ---
-title: "Architecture Overview -- Axon"
+title: "Architecture Stack"
 created: 2026-04-04
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
-# Architecture Overview -- Axon
+# Architecture Stack
 
-> Current pre-#298 runtime architecture. The target source-pipeline crate and
-> surface model is documented in
-> [`../../pipeline-unification/`](../../pipeline-unification/README.md).
+Axon is a single Rust binary with three supported transport modes and one shared
+runtime:
 
-## Dual-mode design
-
-Axon is a single Rust binary that operates in two modes:
-
-```
-                    +-----------+
-                    |  axon.rs  |  (single binary)
-                    +-----+-----+
-                          |
-          +---------------+
-          |               |
-    +-----+-----+  +-----+-----+
-    |  CLI mode  |  | MCP mode  |
-    | axon <cmd> |  | axon mcp  |
-    +-----+-----+  +-----+-----+
-          |               |
-          +-------+-------+
-                  |
-            +-----+-----+
-            |  Services  |
-            |   Layer    |
-            +-----+-----+
-                  |
-          +-------+-------+
-          |               |
-    +-----+-----+  +-----+-----+
-    |   Jobs    |  |   Vector  |
-    | Framework |  |    Ops    |
-    | (SQLite)  |  |           |
-    +-----------+  +-----+-----+
-                         |
-                   +-----+-----+
-                   |  Qdrant   |
-                   |  (vector  |
-                   |   store)  |
-                   +-----------+
+```text
+                         axon
+                           |
+        +------------------+------------------+
+        |                  |                  |
+   CLI commands       MCP transport       axon serve
+   axon <cmd>         stdio / HTTP         REST + MCP + web
+        |                  |                  |
+        +------------------+------------------+
+                           |
+                     axon-services
+                           |
+        +------------------+------------------+
+        |                  |                  |
+  unified sources     durable jobs       retrieval / memory
+        |                  |                  |
+        +------------------+------------------+
+                           |
+                 SQLite + Qdrant + providers
 ```
 
-All modes share the same services facade (`crates/axon-services/`), ensuring
-consistent behavior across CLI, MCP, and web interfaces.
+## Transport layer
 
-## Services layer
+| Surface | Owner | Contract |
+|---|---|---|
+| CLI | `axon-cli` | generated command registry |
+| MCP | `axon-mcp` | one `axon` tool with action/subaction routing |
+| REST, OpenAPI, bundled panel | `axon-web` | direct `/v1` routes and generated OpenAPI |
 
-The services layer is the API boundary between all consumers (CLI, MCP, web) and the underlying infrastructure:
+Transport crates translate wire or user input into `axon-api` DTOs and call
+`axon-services`. They do not duplicate routing, authorization, job, source,
+retrieval, or storage logic.
 
-```
-CLI handlers  ─┐
-MCP handlers  ─┼── axon-services::{query, ask, sources, ...} ── domain crates, jobs, ...
-Web routes    ─┘
-```
+## Composition and runtime
 
-Each service function:
-- Takes typed input parameters
-- Returns typed result structs from `axon-api` or service/domain result types
-  re-exported by `crates/axon-services`
-- Has no stdout side-effects
-- Can be called from any entry point
+`axon-services` composes domain boundaries and owns the end-to-end service
+context. `axon-jobs` provides the single durable lifecycle, scheduler,
+provider reservations, watch scheduling, workers, heartbeats, and recovery.
+`axon-observe` owns progress, events, traces, and metrics.
 
-## Worker topology
+Workers run inside `axon serve` or `axon jobs worker`. There is no external
+queue broker or family-specific worker process.
 
-Worker types run in-process, processing SQLite-backed jobs:
+## Domain layer
 
-| Worker | Processing |
-|--------|------------|
-| Crawl | Spider-based site crawling with render mode switching |
-| Extract | LLM-powered structured data extraction |
-| Embed | TEI embedding + Qdrant upsert |
-| Ingest | Source ingestion (GitHub, GitLab, Gitea/Forgejo, generic Git, Reddit, YouTube, RSS/Atom/JSON feeds, sessions) |
+- `axon-route`: source identity, canonicalization, adapter and scope routing
+- `axon-adapters`: web, local, git, registry, feed, Reddit, YouTube, session,
+  tool, and upload acquisition
+- `axon-ledger`: source manifests, diffs, generations, leases, publication,
+  and cleanup debt
+- `axon-document`, `axon-parse`, `axon-extract`: parsing, preparation,
+  chunking, and structured extraction
+- `axon-embedding`: embedding-provider boundary
+- `axon-vectors`: vector-store boundary and Qdrant implementation
+- `axon-retrieval`: query, retrieve, ranking, context, and citations
+- `axon-graph`: source graph and evidence
+- `axon-memory`: durable memory lifecycle
+- `axon-llm`: synthesis-provider boundary
+- `axon-prune`: cleanup planning and execution
 
-### Worker deployment
+## Shared contracts
 
-**Docker:** The `axon` container runs the unified server. Jobs are stored in
-SQLite and drained by in-process workers in the same runtime.
+- `axon-api`: transport-neutral DTOs, enums, envelopes, and schemas
+- `axon-authz`: caller context, scopes, visibility, and policy decisions
+- `axon-core`: configuration, paths, HTTP safety, redaction, and shared
+  primitives
+- `axon-error`: typed error taxonomy
 
-**Local dev:** `axon serve` runs workers in-process. Or run individual worker
-commands such as `axon crawl worker` for focused debugging.
+## Storage and providers
 
-## Async job lifecycle
+| Component | Purpose |
+|---|---|
+| SQLite | durable jobs, source ledger, graph, memory, events, snapshots |
+| Qdrant | dense and sparse vectors plus searchable payloads |
+| TEI / OpenAI-compatible endpoint | embeddings |
+| Chrome/CDP | rendered web acquisition and screenshots |
+| LLM provider | optional answer, research, extraction, and summarization synthesis |
 
-```
-Submitted ─> Pending ─> Running ─> Completed
-                 │          │
-                 │          ├─> Failed
-                 │          └─> Cancelled
-                 └─> Stale (watchdog reclaim)
-```
+All stateful boundaries have production and fake implementations where tests
+need deterministic behavior.
 
-Jobs are persisted in SQLite. The `JobBackend` trait abstracts the storage backend.
+## Configuration stack
 
-Key behaviors:
-- `--wait false` (default): fire-and-forget, returns job ID immediately
-- `--wait true`: blocks until completion
-- Stale detection: `AXON_JOB_STALE_TIMEOUT_SECS` (300s) + confirmation grace period
-- Cancel: sets cancellation flag in SQLite, worker checks on next iteration
-
-## Data flow: crawl to RAG
-
-```
-1. axon crawl https://docs.example.com
-   ├── Spider crawls pages (HTTP or Chrome)
-   ├── Auto-switch: HTTP first, Chrome if >60% thin pages
-   ├── Sitemap backfill discovers missed URLs
-   └── Pages saved as markdown
-
-2. axon embed (automatic after crawl)
-   ├── chunk_text(): 2000 chars, 200 overlap
-   ├── TEI generates dense embeddings
-   ├── BM42 sparse vectors computed locally
-   └── Qdrant upsert (named-mode: dense + sparse)
-
-3. axon ask "How does X work?"
-   ├── Hybrid search: dense + BM42 with RRF fusion
-   ├── Candidate selection and re-ranking
-   ├── Context assembly (300K char limit, default)
-   └── Gemini headless generates answer with citations
+```text
+CLI flags
+   -> ~/.axon/config.toml        non-secret behavior and tuning
+   -> .env                       endpoints, credentials, deployment wiring
+   -> compiled defaults
+   -> validated runtime Config
 ```
 
-## MCP request flow
+The effective configuration is resolved by `axon-core` and shared by all
+transports and workers.
 
-```
-MCP Client (Claude Code / Codex / Gemini)
-    │
-    ▼
-Transport (stdio / streamable-http)
-    │
-    ▼
-rmcp framework (JSON-RPC handling)
-    │
-    ▼
-AxonMcpServer::call_tool()
-    │
-    ▼
-Schema parser (serde strict parsing)
-    │
-    ▼
-Action dispatcher (match on action enum)
-    │
-    ▼
-Service function (typed result)
-    │
-    ▼
-Response formatter (artifact or inline)
-    │
-    ▼
-MCP response (canonical envelope)
-```
+## Deployment stack
 
-## Web panel architecture
+The supported application deployments are:
 
-The current web surface is served by `axon serve` on the same listener as MCP
-and the first-party HTTP API.
+1. Incus system container running the native Axon binary under systemd
+2. bare-metal systemd running the native Axon binary
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Embedded assets | TypeScript build output | Setup/config panel |
-| Axum routes | Rust | Panel state, login, config, setup, and ops APIs |
-| MCP route | rmcp + Axum | Streamable HTTP MCP endpoint |
-| Client/server routes | Axum | Direct `/v1` REST routes for external API clients |
+Supporting services such as Qdrant, TEI, and Chrome may run in containers.
+`docker-compose.yaml` is the development stack; `docker-compose.prod.yaml`
+is the canonical infrastructure image and port reference.
 
-The removed Next.js dashboard, command WebSocket bridge, shell WebSocket, and
-download routes are historical surfaces only.
+## Enforcement
 
-### Auth model
+The repository continuously checks the architecture:
 
-The web panel uses local setup/session cookies for panel state. MCP and
-first-party REST routes share the HTTP auth boundary controlled by
-`AXON_HTTP_TOKEN` or `AXON_AUTH_MODE=oauth`.
+- `cargo xtask check-layering`
+- `cargo xtask check-crate-contracts`
+- `cargo xtask check-fetch-divergence`
+- `cargo xtask check-repo-structure`
+- generated CLI, MCP, REST, schema, and public-API drift checks
 
-## Serve runtime
-
-`axon serve` runs one Axum server:
-
-| Route group | Default port | Purpose |
-|-------------|--------------|---------|
-| `/` and `/api/panel/*` | 8001 | Embedded setup/config panel |
-| `/mcp` | 8001 | MCP streamable HTTP |
-| `/v1/ask` | 8001 | Ask endpoint |
-| `/v1/capabilities`, direct `/v1` routes | 8001 | External REST clients and web panel |
-
-Jobs are stored in SQLite and drained by in-process workers when the service
-context is worker-enabled.
-
-## Configuration resolution
-
-```
-CLI flags (highest precedence)
-    │
-    ▼
-Environment variables ($AXON_*)
-    │
-    ▼
-~/.axon/config.toml (tuning knobs, safe to commit)
-    │
-    ▼
-Built-in defaults (lowest precedence)
-```
-
-The `Config` struct in `src/core/config.rs` merges all sources at startup.
-
-## See also
-
-- [TECH.md](tech.md) -- technology choices
-- [PRE-REQS.md](pre-reqs.md) -- prerequisites
-- [../mcp/PATTERNS.md](../../reference/mcp/patterns.md) -- MCP code patterns
-- [../ARCHITECTURE.md](../overview.md) -- detailed architecture doc
+See [Axon Architecture](../overview.md), [Crate Structure](../crate-structure.md),
+and [Source Pipeline](../source-pipeline.md).

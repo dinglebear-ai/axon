@@ -61,19 +61,9 @@ The enforcement checks below live in the `xtask` crate (see `axon_rust-pp5`). Ru
 | `test-mcp-tools-mcporter.sh` | MCP smoke test suite (50+ tool calls) |
 | `live-test-all-commands.sh` | Registry-wide parser checks plus isolated live scenarios; fails on missing command/flag behavioral contracts |
 | `stress-crawler.sh` | Opt-in isolated crawler/embedding/graph stress run with concurrent jobs, metrics, verification, and automatic cleanup |
-| `test-client-server-mode.sh` | CLI client/server smoke against a running `axon serve` |
 | `test-ask-quality-regressions.sh` | RAG answer quality regression tests |
 | `test-mcp-oauth-protection.sh` | MCP OAuth endpoint security tests |
 | `test_qdrant_quality.py` | Qdrant data quality analysis |
-
-## Code generation
-
-| Script | Purpose |
-|--------|---------|
-| `generate_mcp_schema_doc.py` | Regenerate `docs/reference/mcp/tool-schema.md` from source |
-| `mcp_doc_renderer.py` | MCP schema documentation renderer |
-| `mcp_schema_parser.py` | MCP schema parser |
-| `mcp_schema_models.py` | MCP schema model definitions |
 
 ## Data management
 

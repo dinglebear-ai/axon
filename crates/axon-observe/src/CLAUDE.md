@@ -4,13 +4,13 @@
 interactive operations: the observable event schema + stable event names,
 progress/heartbeat emission, tracing span-field conventions, metric
 names/units/labels, and redaction-aware structured log context. Transports
-render observed state; they do not invent alternate status models. Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-observe/README.md](../../../docs/pipeline-unification/crates/axon-observe/README.md)
+render observed state; they do not invent alternate status models.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/observability-contract.md](../../../docs/pipeline-unification/runtime/observability-contract.md).
+[../../../docs/reference/runtime/observability.md](../../../docs/reference/runtime/observability.md).
 
-## Status — live crate, Phase 8+9 landed
+## Current status
 `SourceProgressEvent`/event registry, provider reservation tracking
 (`reservation.rs`), the structured log/span field registries (`log.rs`,
 `span.rs`), typed progress-update helpers (`progress.rs`), and the

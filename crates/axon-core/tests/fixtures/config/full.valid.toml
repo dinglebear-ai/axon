@@ -1,5 +1,5 @@
 # Full valid config.toml fixture — touches all 15 required top-level
-# sections from docs/pipeline-unification/configuration/config-contract.md
+# sections from docs/reference/config/config-toml.md
 # and xtask/src/schemas/config_schema_registry.rs::REQUIRED_CONFIG_SECTIONS.
 #
 # Every key below is a real field on the current wire format

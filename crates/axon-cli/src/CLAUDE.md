@@ -4,13 +4,13 @@
 progress display, human/JSON rendering, and process exit codes. It converts argv
 into `axon-api` request DTOs, calls `axon-services`, and renders the result —
 nothing more. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-cli/README.md](../../../docs/pipeline-unification/crates/axon-cli/README.md)
+[../../../crates/axon-cli/src/CLAUDE.md](../../../crates/axon-cli/src/CLAUDE.md)
 · surface spec:
-[../../../docs/pipeline-unification/surfaces/command-contract.md](../../../docs/pipeline-unification/surfaces/command-contract.md)
+[../../../docs/reference/cli/commands.md](../../../docs/reference/cli/commands.md)
 · help text:
-[../../../docs/pipeline-unification/surfaces/axon-help.md](../../../docs/pipeline-unification/surfaces/axon-help.md).
+[../../../docs/reference/cli/axon-help.md](../../../docs/reference/cli/axon-help.md).
 
-## Status — live crate, Phase 10 surface cutover already applied
+## Current status
 `embed`, `ingest`, `crawl`, `code-search`, `code-search-watch`, `purge`,
 `dedupe`, `refresh`, and `fresh` are already **removed** from the clap tree
 (not aliased) — verified against the live binary, they do not appear in the

@@ -4,7 +4,7 @@ Last Modified: 2026-07-16
 
 Axon exposes direct REST routes under `/v1`. Direct REST is the canonical client/server API; the legacy `POST /v1/actions` action-envelope endpoint has been removed (it now returns `404`, as does `POST /v1/migrate`).
 
-Process health is served unauthenticated at `GET /healthz` and `GET /readyz`. The admin/setup panel is served under `/api/panel/*` (panel-password session auth) — see `docs/operations/security.md` §6 and `src/web/CLAUDE.md` for its route tree.
+Process health is served unauthenticated at `GET /healthz` and `GET /readyz`. The admin/setup panel is served under `/api/panel/*` (panel-password session auth) — see `docs/operations/security.md` §6 and `crates/axon-web/src/CLAUDE.md` for its route tree.
 
 ## Routes
 

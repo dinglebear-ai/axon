@@ -8,8 +8,6 @@ source graph. Parsers enrich records — they do not acquire content, write
 vectors, persist graph rows, or call LLMs unless routed through
 `SourceEnrichment`.
 
-> Contract source:
-> [`docs/pipeline-unification/sources/parsing-contract.md`](../../pipeline-unification/sources/parsing-contract.md).
 > Implementation: [`crates/axon-parse/src/`](../../../crates/axon-parse/src/).
 > Phase 7 wired — `axon-document`'s `parse.rs` bridge runs the production
 > parser registry over each `SourceDocument`.

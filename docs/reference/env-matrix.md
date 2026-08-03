@@ -1,11 +1,12 @@
-# Axon Env Migration Matrix
+# Axon Environment Ownership Matrix
 
-Generated: 2026-05-15 from source-derived inventory.
+Last reviewed: 2026-08-02.
 
-**Current snapshot only.** This file is stale-prone and no longer the
-authoritative future config contract. The target `.env`/`config.toml` split is
-tracked in `docs/pipeline-unification/configuration/`; regenerate this matrix
-from the current env registry before treating it as operational truth.
+This page explains the current `.env`/`config.toml` ownership model and records
+migration classifications for retained and removed keys. The machine-readable
+boundary is `docs/reference/env-matrix.toml`, enforced by
+`scripts/check-env-config-boundary.py`. Generated config and environment
+references live under `docs/reference/config/`.
 
 ## Classification Key
 
@@ -258,21 +259,21 @@ These keys are read directly in source code but already have registry classifica
 
 | Key | Read site | Registry class | Notes |
 |-----|-----------|---------------|-------|
-| `AXON_ASK_AUTHORITATIVE_DOMAINS` | `src/core/config/parse/build_config/config_literal.rs:243` | move-toml → `ask.authoritative-domains` | Registered in migration.rs |
-| `AXON_CHROME_PROXY` | `src/core/config/parse/build_config/config_literal.rs:101` | keep-env | Registered in runtime.rs |
-| `AXON_CHROME_USER_AGENT` | `src/core/http/client.rs:13,20` + `config_literal.rs:105` | move-toml → `chrome.user-agent` | Registered in migration.rs |
-| `AXON_USER_AGENT` | `src/core/http/ua.rs` + `config_literal.rs` | keep-env | General-purpose UA override for all HTTP requests; AXON_CHROME_USER_AGENT falls back to this |
-| `AXON_DOMAINS_DETAILED` | `src/cli/commands/domains.rs:21` | trusted-bootstrap | Registered in advanced.rs |
-| `AXON_DOMAINS_FACET_LIMIT` | `src/cli/commands/domains.rs:30` | trusted-bootstrap | Registered in advanced.rs |
-| `AXON_JOB_WAIT_TIMEOUT_SECS` | `src/jobs/backend.rs:148` | move-toml → `workers.job-wait-timeout-secs` | Registered in migration.rs |
-| `AXON_LOG_FULL_QUERIES` | `src/services/search.rs:45` | trusted-bootstrap | Registered in advanced.rs |
-| `AXON_LOG_MAX_BYTES` | `src/core/logging.rs:272` | move-toml → `logging.max-bytes` | Registered in migration.rs |
-| `AXON_NO_WIPE` | `src/crawl/engine/dir_ops.rs:111` | trusted-bootstrap | Registered in advanced.rs |
-| `AXON_SETUP_SKIP_SMOKE` | `src/services/setup/local/runtime.rs:94` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_ASK_AUTHORITATIVE_DOMAINS` | `crates/axon-core/src/config/parse/build_config/config_literal.rs:243` | move-toml → `ask.authoritative-domains` | Registered in migration.rs |
+| `AXON_CHROME_PROXY` | `crates/axon-core/src/config/parse/build_config/config_literal.rs:101` | keep-env | Registered in runtime.rs |
+| `AXON_CHROME_USER_AGENT` | `crates/axon-core/src/http/client.rs:13,20` + `config_literal.rs:105` | move-toml → `chrome.user-agent` | Registered in migration.rs |
+| `AXON_USER_AGENT` | `crates/axon-core/src/http/ua.rs` + `config_literal.rs` | keep-env | General-purpose UA override for all HTTP requests; AXON_CHROME_USER_AGENT falls back to this |
+| `AXON_DOMAINS_DETAILED` | `crates/axon-cli/src/commands/domains.rs:45` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_DOMAINS_FACET_LIMIT` | `crates/axon-cli/src/commands/domains.rs:54` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_JOB_WAIT_TIMEOUT_SECS` | `crates/axon-jobs/src/backend.rs:148` | move-toml → `workers.job-wait-timeout-secs` | Registered in migration.rs |
+| `AXON_LOG_FULL_QUERIES` | `crates/axon-services/src/search.rs:87` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_LOG_MAX_BYTES` | `crates/axon-core/src/logging.rs:272` | move-toml → `logging.max-bytes` | Registered in migration.rs |
+| `AXON_NO_WIPE` | `crates/axon-adapters/src/web_engine/engine/dir_ops.rs:111` | trusted-bootstrap | Registered in advanced.rs |
+| `AXON_SETUP_SKIP_SMOKE` | `crates/axon-services/src/setup/local/runtime.rs:250` | trusted-bootstrap | Registered in advanced.rs |
 | `AXON_TEST_QDRANT_URL` | tests/ | delete/test-only | Registered in advanced.rs |
-| `COLUMNS` | `src/core/config/help.rs` | hard-default | Standard Unix terminal env |
+| `COLUMNS` | `crates/axon-core/src/config/help.rs` | hard-default | Standard Unix terminal env |
 | `HOME` | multiple | hard-default | Standard Unix env; not user-settable |
-| `NO_COLOR` | `src/core/logging.rs:122` | hard-default | Standard no-color.org env |
+| `NO_COLOR` | `crates/axon-core/src/logging.rs:122` | hard-default | Standard no-color.org env |
 
 ### Keys in .env.example Not in Registry
 
@@ -295,7 +296,7 @@ All keys previously in `.env.example` but missing from registry have been resolv
 
 ## TOML [services] Section — Action Required
 
-`src/core/config/parse/toml_config.rs` still has:
+`crates/axon-core/src/config/parse/toml_config.rs` still has:
 ```rust
 pub services: TomlServicesSection,  // qdrant_url, tei_url, chrome_remote_url
 ```

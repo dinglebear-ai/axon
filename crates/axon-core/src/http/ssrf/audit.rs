@@ -4,7 +4,7 @@
 //! child module of `ssrf` so it can reuse `ssrf`'s private helpers
 //! (`parse_http_url`, `check_ip`) without widening their visibility.
 //!
-//! Per `docs/pipeline-unification/runtime/security-contract.md` ("SSRF
+//! Per `docs/reference/runtime/security.md` ("SSRF
 //! Policy"): every fetched URL records requested URL, canonical URL,
 //! resolved IP class, redirect chain position, policy decision, and a
 //! redacted-headers indicator. This module builds that record; `axon-core`

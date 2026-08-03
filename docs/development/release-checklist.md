@@ -63,8 +63,7 @@ guardrail set.
 
 - [ ] `docker-compose.prod.yaml` starts cleanly with `--env-file ~/.axon/.env`
       (Axon server, Qdrant, TEI, Chrome)
-- [ ] `axon serve` starts and owns in-process crawl/embed/extract/ingest
-      workers
+- [ ] `axon serve` starts and owns the in-process unified job workers
 - [ ] SQLite job/ledger migrations apply cleanly (`crates/axon-jobs/src/migrations`,
       `crates/axon-ledger/src/migrations`, `crates/axon-memory/src/migrations`)
 
@@ -75,9 +74,8 @@ guardrail set.
 - [ ] `docs/reference/mcp/tool-schema.md` regenerated if the MCP tool surface
       changed
 - [ ] New/changed CLI commands are reflected in
-      `docs/pipeline-unification/surfaces/command-contract.md` and
-      `docs/pipeline-unification/surfaces/axon-help.md` if they are covered
-      by the pipeline-unification docs tree
+      `docs/reference/cli/commands.md` and
+      `docs/reference/cli/axon-help.md`
 
 ## Monolith policy
 

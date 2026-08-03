@@ -67,8 +67,8 @@ impl SqliteLedgerStore {
     }
 
     /// Bind the ledger to an already-open, already-migrated SQLite pool — the
-    /// shared runtime pool that also backs `JobStore`. Per the storage contract
-    /// (docs/pipeline-unification), the runtime uses ONE database so
+    /// shared runtime pool that also backs `JobStore`. The runtime uses one
+    /// database so
     /// `jobs.source_id` can FK to `sources(source_id)`; the ledger's contract
     /// tables are created by the composed cross-crate migration runner
     /// (`axon-jobs/src/migrations.rs`), which applies THIS crate's

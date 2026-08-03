@@ -165,9 +165,6 @@ jobs:
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
         run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
-      - name: MCP schema documentation
-        if: ${{ needs.changes.outputs.mcp == 'true' }}
-        run: python3 scripts/generate_mcp_schema_doc.py --check
       - name: Install web dependencies for API parity
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: npm ci --prefix apps/web

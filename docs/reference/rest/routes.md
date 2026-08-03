@@ -7,9 +7,8 @@ the live OpenAPI 3.1.0 spec at
 [`apps/web/openapi/axon.json`](../../../apps/web/openapi/axon.json)
 (83 paths); this page is a navigable summary.
 
-> Path-param naming: the live OpenAPI uses `{id}` for jobs/uploads/mobile; the
-> pipeline-unification contract uses `{job_id}`/`{upload_id}`/`{session_id}`.
-> Both refer to the same path segment.
+> Path-param naming follows the live OpenAPI. Jobs, uploads, and mobile-session
+> routes currently use `{id}`; watch routes use `{watch_id}`.
 
 ## System / capability
 

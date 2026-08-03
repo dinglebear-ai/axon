@@ -4,8 +4,9 @@ Documentation for the Axon MCP server (`axon mcp`).
 
 These docs describe the current clean-break MCP runtime (one `axon` tool with
 action/subaction routing). The design contract is
-`docs/pipeline-unification/surfaces/tool-contract.md`; the generated
-`tool-schema.md` is the current runtime source-of-truth snapshot.
+`docs/reference/mcp/tool-contract.md`; the generated
+`tool-schema.md` and `tool-schema.json` are generated together by
+`cargo xtask schemas mcp` from the current runtime contract.
 
 ## Files
 
@@ -38,4 +39,4 @@ action/subaction routing). The design contract is
 - [../stack/ARCH.md](../../architecture/stack/arch.md) -- trimodal architecture overview
 - [../repo/REPO.md](../../development/repo/repo.md) -- repository structure
 - [../MCP.md](overview.md) -- MCP runtime internals
-- [../MCP-TOOL-SCHEMA.md](tool-schema.md) -- current generated runtime snapshot
+- [tool-schema.md](tool-schema.md) -- current generated runtime snapshot

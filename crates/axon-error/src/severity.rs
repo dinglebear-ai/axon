@@ -1,7 +1,7 @@
 //! Error severity classification.
 //!
 //! Semantics come from the "Severity Semantics" table in
-//! `docs/pipeline-unification/runtime/error-handling.md`.
+//! `docs/reference/api/errors.md`.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

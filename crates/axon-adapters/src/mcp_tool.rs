@@ -5,7 +5,7 @@
 //! both holds execute scope and has allowlisted the resolved `(server,
 //! tool)` pair. This crate has no MCP protocol client (that would be a
 //! network dependency outside `axon-adapters`'s territory — see
-//! `docs/pipeline-unification/sources/adapter-scopes.md`'s note that MCP
+//! `docs/reference/sources/adapter-scopes.md`'s note that MCP
 //! discovery may use a helper such as `mcporter`, but the source identity
 //! and graph evidence describe the server/tool/call/result, not the helper).
 //! Instead, callers that need to actually invoke the tool pass an

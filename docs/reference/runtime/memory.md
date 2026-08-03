@@ -8,7 +8,7 @@ tests) — this page documents the actual `MemoryStore`/`SqliteMemoryStore`
 behavior, not a future design.
 
 See also: crate guide `crates/axon-memory/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/runtime/memory-contract.md`, action surface doc
+`docs/reference/runtime/memory.md`, action surface doc
 `docs/reference/actions/memory.md` (CLI/REST/MCP transport parity, currently
 narrower than the underlying crate — see "CLI/transport parity" below).
 
@@ -150,9 +150,9 @@ fully implemented in `axon-memory`, but `crates/axon-cli/src/commands/
 memory.rs` currently only wires `remember`, `list`, `search`, `show`, `link`,
 `supersede`, and `context` into the CLI's `clap` tree. This is a transport
 wiring gap, not a missing capability — see
-`docs/pipeline-unification/surfaces/command-contract.md` ("Memory Commands")
+`docs/reference/cli/commands.md` ("Memory Commands")
 and Task 9 of
-`docs/pipeline-unification/plans/2026-07-04-phase-3b-security-error-memory-completion.md`,
+`docs/reference/runtime/memory.md`,
 which tracks exposing the full lifecycle across CLI, MCP, and REST as one
 contract.
 

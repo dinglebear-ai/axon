@@ -124,7 +124,7 @@ pub enum CleanupSelector {
     },
     /// Name specific graph nodes (by stable key) for `GraphPrune` debt to
     /// delete. Added so `GraphStore::delete_nodes` has an identity to target
-    /// (`docs/pipeline-unification/runtime/pruning-contract.md`, "graph orphan
+    /// (`docs/reference/runtime/pruning.md`, "graph orphan
     /// cleanup").
     GraphNodes {
         stable_keys: Vec<String>,

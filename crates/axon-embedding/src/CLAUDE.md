@@ -5,11 +5,11 @@
 reservations/cooling, and provider clients (TEI, OpenAI-compatible). It returns
 embeddings only — it never persists them. Full contract (owns / API / deps /
 tests):
-[../../../docs/pipeline-unification/crates/axon-embedding/README.md](../../../docs/pipeline-unification/crates/axon-embedding/README.md)
+[../../../crates/axon-embedding/src/CLAUDE.md](../../../crates/axon-embedding/src/CLAUDE.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/provider-contract.md](../../../docs/pipeline-unification/runtime/provider-contract.md).
+[../../../docs/reference/runtime/provider-capabilities.md](../../../docs/reference/runtime/provider-capabilities.md).
 
-## Status — live crate, Phase 7 landed
+## Current status
 `TeiEmbeddingProvider` (real TEI HTTP client + identity derivation) and
 `FakeEmbeddingProvider` are real and tested, not markers. Do not add
 vector-store writes, Qdrant point construction, or LLM chat behavior here.

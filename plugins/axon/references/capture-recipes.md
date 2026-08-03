@@ -7,7 +7,7 @@ Use these recipes when a workflow needs concrete Axon evidence.
 | Need | Prefer |
 |---|---|
 | Discover URLs | `axon map <url> --json` |
-| Crawl a docs/site section | `axon crawl <url> --output-dir <dir> --wait true` |
+| Capture a docs/site section | `axon source <url> --scope site --output-dir <dir> --wait true` |
 | Fetch selected pages | `axon scrape <url> --json` |
 | Search current web sources | `axon search "<query>" --json` |
 | Search plus cited synthesis | `axon research "<query>" --json` |

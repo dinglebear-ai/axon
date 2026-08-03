@@ -1,6 +1,6 @@
 //! `ResetService` — clean-slate destructive reset (plan/execute).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §ResetService. Planning persists a reusable plan; execution requires that
 //! reviewed plan id, explicit confirmation, and caller-derived admin auth.
 

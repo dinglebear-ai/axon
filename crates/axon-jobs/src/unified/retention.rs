@@ -1,6 +1,6 @@
 //! Differentiated, config-driven retention (R1-03).
 //!
-//! `docs/pipeline-unification/runtime/job-contract.md`'s "Retention" section
+//! `docs/reference/runtime/jobs.md`'s "Retention" section
 //! specifies different windows per data category (terminal job rows, detailed
 //! events, failed-job events, artifacts, provider health) rather than the one
 //! `older_than` cutoff `cleanup_jobs` (`unified/control.rs`) accepts on every

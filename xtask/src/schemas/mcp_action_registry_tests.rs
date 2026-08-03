@@ -138,6 +138,7 @@ fn clean_break_system_actions_have_only_canonical_subactions() {
     assert_eq!(subactions("prune"), ["plan", "exec"]);
     assert_eq!(subactions("reset"), ["plan", "exec"]);
     assert_eq!(subactions("collections"), ["list", "get"]);
+    assert_eq!(subactions("artifacts"), ["list", "get", "content"]);
     assert_eq!(
         subactions("uploads"),
         ["list", "create", "get", "put_content", "complete", "abort"]
@@ -148,16 +149,10 @@ fn clean_break_system_actions_have_only_canonical_subactions() {
 }
 
 #[test]
-fn only_unimplemented_contract_actions_are_deferred() {
+fn all_contract_actions_are_implemented() {
     let names = deferred_actions()
         .into_iter()
         .map(|value| value["action"].as_str().unwrap().to_string())
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(
-        names,
-        ["artifacts", "chat"]
-            .into_iter()
-            .map(str::to_string)
-            .collect()
-    );
+    assert!(names.is_empty(), "unexpected deferred actions: {names:?}");
 }

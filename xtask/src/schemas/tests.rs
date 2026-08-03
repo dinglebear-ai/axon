@@ -93,23 +93,23 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
-        "docs/pipeline-unification/schemas/api-dto-schema.md",
-        "docs/pipeline-unification/schemas/cli-schema.md",
-        "docs/pipeline-unification/schemas/openapi-schema.md",
-        "docs/pipeline-unification/schemas/mcp-tool-schema.md",
-        "docs/pipeline-unification/schemas/config-schema.md",
-        "docs/pipeline-unification/configuration/config-contract.md",
-        "docs/pipeline-unification/schemas/event-schema.md",
-        "docs/pipeline-unification/schemas/error-schema.md",
-        "docs/pipeline-unification/schemas/database-schema.md",
-        "docs/pipeline-unification/schemas/graph-schema.md",
-        "docs/pipeline-unification/runtime/provider-contract.md",
-        "docs/pipeline-unification/sources/metadata-payload.md",
-        "docs/pipeline-unification/sources/chunking-contract.md",
-        "docs/pipeline-unification/schemas/vector-payload-schema.md",
-        "docs/pipeline-unification/schemas/provider-capability-schema.md",
-        "docs/pipeline-unification/sources/adapter-scopes.md",
-        "docs/pipeline-unification/sources/new-source-contract.md",
+        "docs/architecture/boundary-map.md",
+        "docs/reference/cli/overview.md",
+        "docs/reference/rest/overview.md",
+        "docs/reference/mcp/tool-contract.md",
+        "docs/guides/configuration.md",
+        "config.example.toml",
+        ".env.example",
+        "crates/axon-observe/src/CLAUDE.md",
+        "crates/axon-error/src/CLAUDE.md",
+        "docs/reference/runtime/storage.md",
+        "docs/reference/sources/source-graph.md",
+        "docs/development/adding-provider.md",
+        "docs/reference/sources/metadata-payload.md",
+        "docs/reference/sources/chunking.md",
+        "docs/development/adding-provider.md",
+        "docs/development/adding-source-adapter.md",
+        "docs/development/adding-source.md",
     ] {
         if needs_real_fixture(path) {
             copy_workspace_fixture(tmp.path(), path);
@@ -281,11 +281,9 @@ fn needs_real_fixture(path: &str) -> bool {
             | "crates/axon-vectors/src/payload_families.rs"
             | "crates/axon-vectors/src/point.rs"
             | "crates/axon-adapters/fixtures/provider-variant-exceptions.json"
-            | "docs/pipeline-unification/runtime/provider-contract.md"
-            | "docs/pipeline-unification/sources/metadata-payload.md"
-            | "docs/pipeline-unification/sources/chunking-contract.md"
-            | "docs/pipeline-unification/schemas/vector-payload-schema.md"
-            | "docs/pipeline-unification/schemas/provider-capability-schema.md"
+            | "docs/development/adding-provider.md"
+            | "docs/reference/sources/metadata-payload.md"
+            | "docs/reference/sources/chunking.md"
     )
 }
 
@@ -349,7 +347,7 @@ fn generate_writes_all_required_family_artifacts() {
         "docs/reference/rest/schemas.md",
         "docs/reference/mcp/tool-schema.json",
         "crates/axon-mcp/tests/golden/tool-schema.json",
-        "docs/reference/mcp/pipeline-tool-schema.md",
+        "docs/reference/mcp/tool-schema.md",
         "docs/reference/config/config.schema.json",
         "docs/reference/config/env.schema.json",
         "docs/reference/config/config-toml.md",
@@ -512,9 +510,7 @@ fn check_accepts_docs_generated_markdown_header() {
     let tmp = fixture_repo();
     generate(tmp.path()).unwrap();
 
-    let path = tmp
-        .path()
-        .join("docs/reference/mcp/pipeline-tool-schema.md");
+    let path = tmp.path().join("docs/reference/mcp/tool-schema.md");
     let content = std::fs::read_to_string(&path).unwrap();
     let body = content
         .split_once("\n\n")
@@ -1399,7 +1395,7 @@ fn cross_checks_detect_scope_mismatch() {
 
 #[test]
 fn per_crate_generated_artifact_docs_are_checked() {
-    assert!(workspace_path("docs/pipeline-unification/schemas/README.md").exists());
+    assert!(workspace_path("docs/README.md").exists());
 }
 
 #[test]
@@ -2291,6 +2287,46 @@ fn assert_stale_after_with_args(
 
     assert!(err.to_string().contains("schema artifacts are stale"));
     assert!(err.to_string().contains(expected_error_substring));
+}
+
+#[test]
+fn generated_schema_inputs_never_reference_generated_artifacts() {
+    let tmp = fixture_repo();
+    let mut artifacts = Vec::new();
+    for family in all_families() {
+        artifacts.extend(generator_for(family).generate(tmp.path()).unwrap());
+    }
+
+    let mut generated_paths = artifacts
+        .iter()
+        .map(|artifact| artifact.path.to_string_lossy().replace('\\', "/"))
+        .collect::<std::collections::BTreeSet<_>>();
+    generated_paths.extend(crate::docs::generated_output_paths().map(str::to_owned));
+
+    for artifact in artifacts {
+        if artifact.path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let value: serde_json::Value = serde_json::from_str(&artifact.content).unwrap();
+        let Some(inputs) = value
+            .get("x-axon")
+            .and_then(|metadata| metadata.get("source_inputs"))
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for input in inputs {
+            let path = input
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .expect("source input path");
+            assert!(
+                !generated_paths.contains(path),
+                "{} must not hash generated artifact {path}",
+                artifact.path.display()
+            );
+        }
+    }
 }
 
 fn workspace_path(path: &str) -> PathBuf {

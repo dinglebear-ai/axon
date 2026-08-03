@@ -1,6 +1,6 @@
 //! `action=watch` — the source-request-backed watch surface (issue #298
 //! WS-B), mirroring the REST `/v1/watches` routes
-//! (`docs/pipeline-unification/surfaces/rest-contract.md` Watch Routes).
+//! (`docs/reference/rest/routes.md` Watch Routes).
 //!
 //! All MCP watch subactions route through the canonical source-watch store.
 

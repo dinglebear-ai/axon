@@ -7,7 +7,7 @@
 //! `reset` is intentional local-state destruction for the pipeline-unification
 //! empty-DB cutover — NOT migration. Its default is a dry-run plan that mutates
 //! nothing; actual destruction requires an explicit `--yes`. See
-//! `docs/pipeline-unification/delivery/cutover-contract.md` ("Required Reset
+//! `docs/architecture/source-pipeline.md` ("Required Reset
 //! Tooling", reset result shape).
 
 use serde::{Deserialize, Serialize};

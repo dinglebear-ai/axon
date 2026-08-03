@@ -1,12 +1,12 @@
 # Job Lifecycle
-Last Modified: 2026-07-15
+Last Modified: 2026-08-02
 
 The async-job state machine for Axon. Jobs use SQLite persistence and
 in-process Tokio workers; there is no message broker, Postgres, or Redis
 runtime.
 
-For the target contract, see
-[`../pipeline-unification/runtime/job-contract.md`](../pipeline-unification/runtime/job-contract.md).
+For the detailed current runtime contract, see
+[`runtime/jobs.md`](runtime/jobs.md).
 For crate/module ownership, see
 [`../../crates/axon-jobs/src/CLAUDE.md`](../../crates/axon-jobs/src/CLAUDE.md)
 and
@@ -135,7 +135,7 @@ Use the generic jobs surface for lifecycle operations:
 
 ```bash
 axon jobs list
-axon jobs status <job_id>
+axon jobs get <job_id>
 axon jobs cancel <job_id>
 axon jobs recover
 axon jobs cleanup

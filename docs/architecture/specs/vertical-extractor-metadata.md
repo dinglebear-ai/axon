@@ -81,7 +81,7 @@ to be filtered, and all array fields beyond the most common ones are stored but 
 
 ### GitHub verticals (`github_repo`, `github_issue`, `github_pr`, `github_release`)
 
-Uses the shared git provider payload schema from `src/ingest/git_payload.rs`.
+Uses the shared git provider payload schema from `crates/axon-extract/src/git_payload.rs`.
 See [`docs/reference/qdrant-payload-schema.md`](../../reference/qdrant-payload-schema.md) — Git Provider Fields.
 
 ```
@@ -293,7 +293,7 @@ ebay_review_count = <u64>                 # integer
 
 ## Qdrant Indexes
 
-Indexes added to `src/vector/ops/tei/qdrant_store/payload_indexes.rs` for vertical fields.
+Indexes added to `crates/axon-vectors/src/collection.rs` for vertical fields.
 Only fields with filter/facet use cases are indexed; counts and URLs are stored only.
 
 ### Keyword indexes (vertical-specific)
@@ -320,7 +320,7 @@ Previously the `axon scrape` command wrote markdown to a temp directory and call
 `source_type = "scrape"` and no `extra`. The `ScrapedDoc.structured` and any `extra`
 fields were discarded.
 
-The fix: `scrape_one()` in `src/cli/commands/scrape.rs` now returns an
+The fix: `scrape_one()` in `crates/axon-cli/src/commands/scrape.rs` now returns an
 `Option<PreparedDoc>` built directly from the `ScrapeResult`, preserving:
 - `extractor_name` from the vertical
 - `extra` fields from the vertical

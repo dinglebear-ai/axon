@@ -357,7 +357,7 @@ coverage-branch:
 # ── Codegen ───────────────────────────────────────────────────
 
 gen-mcp-schema *ARGS:
-    python3 scripts/generate_mcp_schema_doc.py {{ARGS}}
+    cargo xtask schemas mcp {{ARGS}}
 
 clean:
     cargo clean

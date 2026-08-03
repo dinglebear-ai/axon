@@ -13,7 +13,7 @@ narrower "how do I write the `SourceAdapter` implementation" mechanics, see
 onboarding checklist that sits above it.
 
 Canonical contract:
-`docs/pipeline-unification/sources/new-source-contract.md` (this guide
+`docs/development/adding-source.md` (this guide
 summarizes and links out to the per-area contracts it references — treat the
 contract doc as authoritative if the two ever diverge).
 
@@ -41,21 +41,21 @@ you haven't left a row empty, but note it only checks *declared*, not
 
 | Area | Required work | Owning contract |
 |---|---|---|
-| Source identity | Define source kind, URI forms, canonical URI, source id strategy, and aliases. | `docs/pipeline-unification/sources/url-normalization.md` |
-| Resolver | Add resolver rules and ambiguity handling. | `docs/pipeline-unification/foundation/source-pipeline.md` |
-| Router | Register adapter selection and scope defaults. | `docs/pipeline-unification/sources/adapter-scopes.md` |
+| Source identity | Define source kind, URI forms, canonical URI, source id strategy, and aliases. | `docs/reference/sources/url-normalization.md` |
+| Resolver | Add resolver rules and ambiguity handling. | `docs/architecture/source-pipeline.md` |
+| Router | Register adapter selection and scope defaults. | `docs/reference/sources/adapter-scopes.md` |
 | Adapter | Implement acquisition that emits `SourceDocument` only. | [`adding-source-adapter.md`](adding-source-adapter.md) |
-| Scopes | Declare supported scopes, default scope, map behavior, watch support, and option schema. | `docs/pipeline-unification/sources/adapter-scopes.md` |
-| Ledger | Define item keys, manifest hash inputs, diff behavior, generation semantics, and cleanup debt. | `docs/pipeline-unification/runtime/ledger-contract.md`, [`docs/reference/runtime/ledger.md`](../reference/runtime/ledger.md) |
-| Parsing | Add a parser family or declare parse-free behavior. | `docs/pipeline-unification/sources/parsing-contract.md`, [`adding-parser.md`](adding-parser.md) |
-| Graph | Declare required and optional graph facts. | `docs/pipeline-unification/sources/source-graph.md` |
-| Chunking | Select chunk profile and routing hints. | `docs/pipeline-unification/sources/chunking-contract.md` |
-| Metadata | Define shared and source-specific metadata fields. | `docs/pipeline-unification/sources/metadata-payload.md` |
-| Auth/secrets | Define credential requirements, scopes, and redaction rules. | `docs/pipeline-unification/runtime/auth-contract.md`, `docs/pipeline-unification/runtime/security-contract.md` |
-| Observability | Emit standard phases, counts, heartbeats, warnings, and degradation. | `docs/pipeline-unification/runtime/observability-contract.md` |
-| Error handling | Define retryable, degraded, and terminal failure modes. | `docs/pipeline-unification/runtime/error-handling.md` |
-| Tests | Add resolver, adapter, parser, metadata, graph, and source-job fixtures. | `docs/pipeline-unification/delivery/testing-contract.md` |
-| Docs | Add source help, examples, capability docs, and generated schema coverage. | `docs/pipeline-unification/delivery/documentation-contract.md` |
+| Scopes | Declare supported scopes, default scope, map behavior, watch support, and option schema. | `docs/reference/sources/adapter-scopes.md` |
+| Ledger | Define item keys, manifest hash inputs, diff behavior, generation semantics, and cleanup debt. | `docs/reference/runtime/ledger.md`, [`docs/reference/runtime/ledger.md`](../reference/runtime/ledger.md) |
+| Parsing | Add a parser family or declare parse-free behavior. | `docs/reference/sources/parsing.md`, [`adding-parser.md`](adding-parser.md) |
+| Graph | Declare required and optional graph facts. | `docs/reference/sources/source-graph.md` |
+| Chunking | Select chunk profile and routing hints. | `docs/reference/sources/chunking.md` |
+| Metadata | Define shared and source-specific metadata fields. | `docs/reference/sources/metadata-payload.md` |
+| Auth/secrets | Define credential requirements, scopes, and redaction rules. | `docs/reference/runtime/auth.md`, `docs/reference/runtime/security.md` |
+| Observability | Emit standard phases, counts, heartbeats, warnings, and degradation. | `docs/reference/runtime/observability.md` |
+| Error handling | Define retryable, degraded, and terminal failure modes. | `docs/reference/api/errors.md` |
+| Tests | Add resolver, adapter, parser, metadata, graph, and source-job fixtures. | `docs/development/testing.md` |
+| Docs | Add source help, examples, capability docs, and generated schema coverage. | `docs/README.md` |
 
 ## `SourceAdapterSpec` is the single declaration point
 

@@ -6,8 +6,6 @@ Redaction prevents secrets and sensitive local data from leaking into logs,
 events, artifacts, vector payloads, graph evidence, memory records, generated
 docs, or user-visible errors. Redaction failure **fails closed**.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/redaction-contract.md`](../../pipeline-unification/runtime/redaction-contract.md).
 > Owner: [`crates/axon-core/src/redact`](../../../crates/axon-core/) — the
 > `Redactor` trait + `redact_secrets`. `axon-observe`'s `LogFieldSet` redacts
 > `message` through `redact_secrets` at construction.

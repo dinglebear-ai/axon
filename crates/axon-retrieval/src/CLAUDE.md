@@ -5,11 +5,11 @@
 filters, citations, and context budgets shared by `query`/`search`/`retrieve`
 and the retrieval part of `ask`. Final LLM synthesis stays outside. Full
 contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-retrieval/README.md](../../../docs/pipeline-unification/crates/axon-retrieval/README.md)
+[../../../crates/axon-retrieval/src/CLAUDE.md](../../../crates/axon-retrieval/src/CLAUDE.md)
 · boundary spec:
-[../../../docs/pipeline-unification/foundation/boundary-map.md](../../../docs/pipeline-unification/foundation/boundary-map.md).
+[../../../docs/architecture/boundary-map.md](../../../docs/architecture/boundary-map.md).
 
-## Status — live crate, ask/evaluate/query/retrieve read-plane cutover for #298
+## Current status
 `RetrievalEngine`/`run_query` is real and wired: `axon-services::query::
 query_via_retrieval` routes plain `query` (no LLM) through it, and
 `axon-services::query::ask_retrieval::retrieval_ask_context` routes the

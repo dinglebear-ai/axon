@@ -1,6 +1,6 @@
 {
   "contract_version": "1.0.0",
-  "source_doc": "docs/pipeline-unification/surfaces/presentation-contract.md",
+  "source_doc": "docs/reference/surfaces/presentation.md",
   "colors": [
     { "name": "background", "dark": "#07131c", "light": "#f0f6f8", "note": "aurora-page-bg" },
     { "name": "surface", "dark": "#102330", "light": "#ffffff", "note": "aurora-panel-medium" },

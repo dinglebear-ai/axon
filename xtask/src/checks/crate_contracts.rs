@@ -1,10 +1,7 @@
-//! `cargo xtask check-crate-contracts` — audits real crate structure against
-//! the per-crate implementation contracts in
-//! `docs/pipeline-unification/crates/<name>/README.md`.
+//! `cargo xtask check-crate-contracts` audits the live workspace structure
+//! against the static contract table in `crate_contracts_spec.rs`.
 //!
-//! Four assertions, derived from the README text and the completed vertical
-//! ownership cutover (see
-//! `crate_contracts_spec.rs` for how each crate's data was extracted):
+//! Four assertions are enforced:
 //!
 //! 1. Every documented "Public Modules" file exists under `src/` and is
 //!    declared `pub mod <name>;` in `lib.rs`. This is one-directional
@@ -47,13 +44,13 @@ pub fn check(root: &Path) -> Result<()> {
 
     if violations.is_empty() {
         println!(
-            "check-crate-contracts: OK — {checked} crate(s) match their pipeline-unification contract."
+            "check-crate-contracts: OK — {checked} crate(s) match the live workspace contract."
         );
         return Ok(());
     }
 
     bail!(
-        "check-crate-contracts: {} violation(s) against docs/pipeline-unification/crates/<name>/README.md:\n{}",
+        "check-crate-contracts: {} live workspace contract violation(s):\n{}",
         violations.len(),
         violations.join("\n")
     );

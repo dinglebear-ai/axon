@@ -38,8 +38,8 @@ fn generate_adapter_capability_artifact_for(root: &Path) -> Result<SchemaArtifac
             "crates/axon-adapters/src/spec.rs",
             "crates/axon-adapters/src/web.rs",
             "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
-            "docs/pipeline-unification/sources/adapter-scopes.md",
-            "docs/pipeline-unification/sources/new-source-contract.md",
+            "docs/development/adding-source-adapter.md",
+            "docs/development/adding-source.md",
         ],
     )?;
     let registry = AdapterRegistry::target_defaults();
@@ -70,8 +70,8 @@ fn generate_adapter_capability_markdown_for(root: &Path) -> Result<SchemaArtifac
             "crates/axon-adapters/src/spec.rs",
             "crates/axon-adapters/src/web.rs",
             "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
-            "docs/pipeline-unification/sources/adapter-scopes.md",
-            "docs/pipeline-unification/sources/new-source-contract.md",
+            "docs/development/adding-source-adapter.md",
+            "docs/development/adding-source.md",
         ],
     )?;
     let registry = AdapterRegistry::target_defaults();

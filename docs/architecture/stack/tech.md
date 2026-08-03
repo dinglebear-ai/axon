@@ -105,13 +105,13 @@ Spider-based crawling with three render modes:
 Key Spider features enabled (see `Cargo.toml` for the full list): `basic`, `chrome`, `regex`, `sitemap`, `adblock`, `chrome_stealth`, `chrome_screenshot`, `chrome_store_page`, `chrome_headless_new`, `chrome_simd`, `simd`, `cache_mem`, `ua_generator`, `headers`, `control`, `hedge`.
 
 Features explicitly NOT enabled (see `docs/reference/spider-feature-flags.md`):
-- `firewall`: `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics under CI rate limits; SSRF is guarded by `validate_url()` in `src/core/http/ssrf.rs` instead
+- `firewall`: `spider_firewall`'s build.rs fetches blocklists from `api.github.com` unauthenticated and panics under CI rate limits; SSRF is guarded by `validate_url()` in `crates/axon-core/src/http/ssrf.rs` instead
 - `balance`: silently throttles with zero logging
 - `glob`: causes budget-aware `is_allowed()` to reject first URL with `with_limit(1)`
 
 ## Gemini Headless LLM
 
-LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `src/core/llm/`:
+LLM synthesis operations (`ask`, `evaluate`, `suggest`, `research`, `extract` fallback, `debug`) use the Gemini CLI headless path through `crates/axon-llm/src/`:
 
 - `AXON_HEADLESS_GEMINI_CMD` selects the Gemini CLI command.
 - `AXON_HEADLESS_GEMINI_HOME` selects the source HOME for Gemini auth copying.

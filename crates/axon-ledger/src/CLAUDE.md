@@ -3,12 +3,13 @@
 `axon-ledger` is the SQLite-backed **system of record for source accounting**:
 source records, items, manifests + manifest diffs, generations, document status,
 leases, and cleanup debt. It answers "what sources exist, what is in each
-generation, and what is safe to search." Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-ledger/README.md](../../../docs/pipeline-unification/crates/axon-ledger/README.md)
+generation, and what is safe to search."
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/ledger-contract.md](../../../docs/pipeline-unification/runtime/ledger-contract.md).
+[../../../docs/reference/runtime/ledger.md](../../../docs/reference/runtime/ledger.md).
 
-## Status — live crate, Phase 6 landed
+## Current status
 `LedgerStore` (trait) and `SqliteLedgerStore` (`sqlite.rs`) are real and tested:
 source upsert, generation create/commit/publish with failed-generation state,
 manifest diffing, document status tracking, leases, and cleanup debt recording.

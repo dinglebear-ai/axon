@@ -2,7 +2,7 @@
 //!
 //! Runtime RAG cutover stays in later issue #298 phases. The `RetrievalEngine`
 //! boundary trait (`crate::boundary`) and its fake (`crate::testing`) are now
-//! public — see `docs/pipeline-unification/foundation/types/trait-contract.md`
+//! public — see `docs/architecture/boundary-map.md`
 //! §RetrievalEngine — but nothing outside this crate consumes the trait yet;
 //! existing runtime callers still go through `crate::engine::RetrievalEngine`'s
 //! inherent API and `crate::service::run_query`.

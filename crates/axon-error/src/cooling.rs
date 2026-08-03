@@ -1,7 +1,7 @@
 //! Provider saturation / cool-down classification.
 //!
 //! See "Provider cooling" in
-//! `docs/pipeline-unification/runtime/error-handling.md`.
+//! `docs/reference/api/errors.md`.
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;

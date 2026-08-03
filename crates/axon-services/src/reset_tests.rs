@@ -201,9 +201,8 @@ async fn sqlite_wipe_and_remigrate_yields_fresh_schema() {
 
 #[tokio::test]
 async fn reset_writes_no_unified_job_row_for_itself() {
-    // `reset` is intentionally NOT job-tracked (see docs/pipeline-unification/
-    // plans/2026-07-04-full-durable-job-cutover.md, "Scope Exception: `reset`
-    // Stays Jobless"): its dry-run default must not create/migrate the SQLite
+    // `reset` is intentionally not job-tracked: its dry-run default must not
+    // create or migrate the SQLite
     // DB at all, and any job-backed tracking path
     // (enqueue_operation/start_operation_job/complete_operation_job) does
     // exactly that as a side effect of writing a job row. Prove a real

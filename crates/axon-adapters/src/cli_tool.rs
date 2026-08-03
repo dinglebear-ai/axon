@@ -8,7 +8,7 @@
 //! `env_allowlist`, is bounded by a timeout and an output byte cap, and has
 //! its argv/env/stdout/stderr redacted before being returned for
 //! persistence — see "Tool Execution Policy" in
-//! `docs/pipeline-unification/runtime/security-contract.md`.
+//! `docs/reference/runtime/security.md`.
 //!
 //! [`CliToolSourceAdapter`] wires the above contract into the real
 //! `discover`/`acquire`/`normalize` `SourceAdapter` pipeline. `discover`

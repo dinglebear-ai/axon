@@ -2,7 +2,7 @@
 //!
 //! `axon-error` carries redaction **hints** only — the actual secret detection
 //! and redaction implementation live in `axon-core` or the renderer boundary
-//! (see `docs/pipeline-unification/crates/axon-error/README.md`). An
+//! (see `crates/axon-error/src/CLAUDE.md`). An
 //! [`ErrorContext`] entry marked non-public must never be exposed by `Display`.
 
 use std::collections::BTreeMap;

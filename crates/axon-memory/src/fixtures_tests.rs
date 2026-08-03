@@ -1,5 +1,5 @@
 //! Contract "Testing Contract" required-fixtures check: every fixture named
-//! in `docs/pipeline-unification/runtime/memory-contract.md`'s fixture list
+//! in `docs/reference/runtime/memory.md`'s fixture list
 //! must exist and deserialize into its target DTO. This is a structural
 //! regression guard against fixture/DTO drift, not a behavioral test.
 

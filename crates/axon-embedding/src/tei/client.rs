@@ -240,7 +240,7 @@ impl TeiClient {
     /// error or 429/5xx status), the returned [`ApiError`] carries
     /// [`ProviderCooling`] metadata (`with_provider_cooling`) so the scheduler
     /// backs off this provider instead of hammering it again immediately —
-    /// see "Cooling" in `docs/pipeline-unification/runtime/provider-contract.md`.
+    /// see "Cooling" in `docs/reference/runtime/provider-capabilities.md`.
     async fn send_chunk_with_retries(&self, chunk: &[String]) -> Result<ChunkOutcome, ApiError> {
         let body = EmbedRequest {
             inputs: chunk,

@@ -1,21 +1,14 @@
-//! `cargo xtask docs` — the docs-generator command family described by
-//! `docs-generator-contract.md`.
+//! `cargo xtask docs` — generated-reference and living-doc validation.
 //!
-//! This is the CORE slice plus the example-validation pass: `generate` and
-//! `check` verbs, where `check` also validates marker-annotated fenced
-//! examples (see `examples.rs`). The full contract describes 17 per-family
-//! subcommands, presentation-token generation, README<->CLAUDE.md drift
-//! checks, anchor validation, and CI wiring — those remain intentionally
-//! deferred (see the wave summary in the delivering PR).
+//! The `generate` verb renders governed reference artifacts. The `check`
+//! verb also validates links, removed surfaces, the required living-doc tree,
+//! action-page inventory/drift, and marker-annotated examples.
 //!
-//! `docs generate` does not re-render markdown from scratch (that job
-//! belongs to the frozen `schemas` generator). It post-processes the
-//! already-generated docs under `docs/reference/**` that `schemas generate`
-//! produces: it rewrites their header comment to cite `cargo xtask docs
-//! generate` (per the contract's "Generated Header" section) and emits a
-//! repo-wide source-input manifest built from the `x-axon.source_inputs`
-//! metadata already embedded in each family's generated JSON schema
-//! artifact.
+//! `docs generate` renders the governed Markdown families from the generated
+//! JSON contracts under `docs/reference/**` and emits a repository-wide
+//! source-input manifest from each contract's `x-axon.source_inputs`
+//! metadata. `docs check` recomputes both products in memory and compares
+//! them byte-for-byte with the tracked artifacts.
 
 mod artifact;
 mod examples;
@@ -23,6 +16,10 @@ mod families;
 mod generate;
 mod inventory;
 mod links;
+mod manifest;
+
+#[cfg(test)]
+pub(crate) use families::generated_output_paths;
 
 use std::path::Path;
 
@@ -99,11 +96,9 @@ pub fn run(root: &Path, args: DocsArgs) -> Result<()> {
     }
 }
 
-/// `docs check`: repo-wide link check, the existing removed-surface doc
-/// contract check, a docs-inventory-vs-Final-Docs-Tree diff, and the
-/// marker-annotated example-validation pass. All four run and report; the
-/// first failure's message is what propagates, but every check runs so a
-/// single invocation surfaces everything.
+/// `docs check`: repo-wide links, removed surfaces, required living docs,
+/// action-page inventory/drift, and marker-annotated examples. Every check
+/// runs so one invocation surfaces the full failure set.
 fn check(root: &Path) -> Result<()> {
     let mut failures = Vec::new();
 
@@ -114,6 +109,9 @@ fn check(root: &Path) -> Result<()> {
         failures.push(err.to_string());
     }
     if let Err(err) = inventory::check(root) {
+        failures.push(err.to_string());
+    }
+    if let Err(err) = check_action_pages(root) {
         failures.push(err.to_string());
     }
     if let Err(err) = examples::check(root) {
@@ -129,6 +127,21 @@ fn check(root: &Path) -> Result<()> {
         failures.len(),
         failures.join("\n\n")
     );
+}
+
+fn check_action_pages(root: &Path) -> Result<()> {
+    let output = std::process::Command::new("python3")
+        .arg("scripts/generate_action_docs.py")
+        .arg("--check")
+        .current_dir(root)
+        .output()?;
+    if output.status.success() {
+        println!("action docs: current CLI groups and generated surfaces are in sync.");
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    anyhow::bail!("action docs check failed:\n{stdout}{stderr}")
 }
 
 #[cfg(test)]

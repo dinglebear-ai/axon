@@ -7,8 +7,6 @@ acquisition, preparation, graphing, embedding, publishing, and cleanup. They
 are transport-neutral: CLI, MCP, REST, web, and mobile clients consume the
 same DTO shapes.
 
-> Contract source:
-> [`docs/pipeline-unification/foundation/types/stage-result-contract.md`](../../pipeline-unification/foundation/types/stage-result-contract.md).
 > Live DTO source: [`crates/axon-api/src/source/stage.rs`](../../../crates/axon-api/src/source/stage.rs),
 > `lifecycle.rs`, `vector.rs`, `common.rs`. Machine shape:
 > [`schemas.json`](schemas.json).

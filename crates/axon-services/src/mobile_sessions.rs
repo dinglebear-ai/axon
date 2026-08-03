@@ -24,7 +24,7 @@ pub struct MobileChatItem {
 
 /// Mobile session lifecycle/sync status.
 ///
-/// Contract: `docs/pipeline-unification/surfaces/android-contract.md`
+/// Contract: `docs/reference/surfaces/android.md`
 /// ("Mobile Session Model" -- `active`, `archived`, `deleted`, or
 /// `sync_conflict`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, ToSchema)]

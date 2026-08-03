@@ -12,7 +12,7 @@
 //! This only prunes the conservative, deterministically-known identity: the
 //! removed item's own document-node stable key. Parser-produced graph nodes
 //! (extra candidates from `enriching`) are not derivable here and are left
-//! alone — see the module-level note in `docs/pipeline-unification/runtime/
+//! alone — see the module-level note in `docs/reference/runtime/
 //! pruning-contract.md` ("graph orphan cleanup").
 
 use std::collections::BTreeSet;

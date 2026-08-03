@@ -50,13 +50,13 @@ pub enum AxonRequest {
 }
 
 /// The MCP contract version this server implements. Mirrors the REST
-/// contract's `contract_version` (`docs/pipeline-unification/surfaces/
+/// contract's `contract_version` (`docs/reference/surfaces/
 /// rest-contract.md`, §Shared Response Envelope) so a caller correlating
 /// REST and MCP responses for the same deployment sees the same value.
 pub const MCP_CONTRACT_VERSION: &str = "2026-06-30";
 
 /// `AxonToolResponse` is the MCP `axon` tool's response envelope. Per the
-/// tool contract (`docs/pipeline-unification/surfaces/tool-contract.md`,
+/// tool contract (`docs/reference/mcp/tool-contract.md`,
 /// §Design Rules: "Return structured envelopes for every response"), it is
 /// converging toward the same shared envelope shape REST uses
 /// (`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`

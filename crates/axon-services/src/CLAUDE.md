@@ -4,12 +4,13 @@
 layer. It composes the domain crates (routing, adapters, ledger, parse, graph,
 document, embedding, vector, retrieval, LLM, memory, prune, jobs, authz, observe)
 behind typed service entrypoints, owns `ServiceContext`, and converts `axon-api`
-requests into domain boundary calls. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-services/README.md](../../../docs/pipeline-unification/crates/axon-services/README.md)
+requests into domain boundary calls.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/foundation/types/service-contract.md](../../../docs/pipeline-unification/foundation/types/service-contract.md).
+[../../../docs/architecture/boundary-map.md](../../../docs/architecture/boundary-map.md).
 
-## Status — unified composition layer
+## Current status
 The service registry exposes the canonical action set (source/map/extract/ask/
 query/retrieve/search/memory/graph/jobs/providers/config/status/prune), so each
 CLI, MCP, and REST action maps to one typed service entrypoint. It is a **facade,

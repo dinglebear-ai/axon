@@ -46,7 +46,7 @@ enum Command {
     CheckClaudeSymlinks,
     /// Verify target pipeline crate skeleton structure.
     CheckRepoStructure,
-    /// Audit crate structure/dependencies against docs/pipeline-unification/crates/*/README.md.
+    /// Audit crate structure and dependencies against the live workspace contract.
     /// Standalone (not part of `check`): failures are genuine contract drift, not false positives.
     CheckCrateContracts,
     /// Fail if any symlink in the worktree points to a non-existent target.

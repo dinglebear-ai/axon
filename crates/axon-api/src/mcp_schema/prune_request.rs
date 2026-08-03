@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::ResponseMode;
 
 /// `action=prune` — canonical cleanup planning and execution
-/// (`docs/pipeline-unification/surfaces/tool-contract.md` "Prune, Collections,
+/// (`docs/reference/mcp/tool-contract.md` "Prune, Collections,
 /// Graph, and Providers Actions").
 ///
 /// `subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —

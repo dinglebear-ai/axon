@@ -4,13 +4,14 @@
 through here before acquisition. It resolves inputs to a canonical URI + source
 id, maps known authorities/aliases, validates scopes, and picks the adapter by
 capability. It answers "what canonical source is this, and which adapter (at what
-scope) may acquire it." Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-route/README.md](../../../docs/pipeline-unification/crates/axon-route/README.md)
+scope) may acquire it."
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/sources/url-normalization.md](../../../docs/pipeline-unification/sources/url-normalization.md)
-· [../../../docs/pipeline-unification/sources/adapter-scopes.md](../../../docs/pipeline-unification/sources/adapter-scopes.md).
+[../../../docs/reference/sources/url-normalization.md](../../../docs/reference/sources/url-normalization.md)
+· [../../../docs/reference/sources/adapter-scopes.md](../../../docs/reference/sources/adapter-scopes.md).
 
-## Status — live crate, Phase 4 landed
+## Current status
 URL canonicalization, capability detection, and source resolution/routing
 (`canonical.rs`/`capability.rs`/`resolver.rs`/`router.rs`) are real and tested,
 not markers. Do not add acquisition/fetching, parsing, ledger, or vector

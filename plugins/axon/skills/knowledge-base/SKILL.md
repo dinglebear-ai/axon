@@ -1,85 +1,79 @@
 ---
 name: knowledge-base
-description: Use when crawling docs, ingesting source families, building or refreshing a Qdrant-backed RAG corpus, capturing docs sections, or producing LLM-ready markdown.
+description: Build or refresh a Qdrant-backed Axon knowledge base from web, local, git, registry, feed, Reddit, YouTube, or session sources.
 ---
 
 # Axon Knowledge Base
 
-Use this to turn URLs or topics into organized LLM-ready content.
+Use Axon's unified source pipeline to turn URLs, repositories, local files,
+feeds, communities, videos, package metadata, or AI sessions into an indexed
+corpus with optional saved acquisition artifacts.
 
-## Onboarding Interview
-
-Infer the source, goal, depth, and output location from context. If the source and goal are clear, proceed immediately.
-
-Ask at most 1-3 concise questions only if blocked, such as the source URL/topic, whether the output is reference/RAG/training/docs, or training format if training is requested.
-
-## Axon Collection Plan
-
-Choose the Axon surface by source shape:
+## Collection plan
 
 | Need | Axon surface |
 |---|---|
 | Discover URLs only | `axon map <url>` |
-| Capture a docs site or section as artifacts | `axon crawl <url> --output-dir <dir>` |
-| Fetch selected pages | `axon scrape <url> --output-dir <dir>` |
+| Capture one page | `axon scrape <url> --wait true` |
+| Capture a site or docs section | `axon source <url> --scope site --wait true` |
+| Index a local directory or repository | `axon source <path-or-url> --wait true` |
+| Index Reddit, YouTube, feeds, packages, or sessions | `axon source <selector> --wait true` |
 | Discover topic sources | `axon search` or `axon research` |
-| Ingest repos, RSS, Reddit, YouTube, or sessions | `axon ingest` / `axon sessions` |
-| Refresh existing indexed corpus | `axon refresh [filter] --yes` |
-| Schedule freshness | `axon crawl|scrape|embed|ingest ... --fresh <Nd>` |
-| Reuse indexed content | `axon query`, `axon ask`, `axon retrieve`, `axon sources` |
+| Schedule freshness | `axon watch create <source> --every-seconds N` |
+| Reuse indexed content | `axon query`, `axon ask`, `axon retrieve` |
 
-Choose an explicit workflow output directory and pass it with `--output-dir` or
-`--output` for commands that write files. Do not treat repo-local `.axon/` paths
-as Axon's internal data directory.
+Examples:
 
-For finished knowledge-base deliverables, run async Axon commands in blocking mode: `axon crawl ... --wait true`, `axon ingest ... --wait true`, and `axon embed ... --wait true`. If you intentionally enqueue instead, report the job ID and the exact status command to run next.
+```bash
+axon source https://docs.example.com   --scope site   --max-pages 200   --wait true   --output-dir .axon/docs
 
-## Parallel Work
-
-If appropriate, use sub-agents or equivalent parallel task runners:
-
-- one docs section per researcher
-- official docs, tutorials, community discussions, and references by source type
-- source scraping vs chunk generation vs manifest generation
-
-## Output Modes
-
-- Reference: generated markdown files, `index.md`, and `sources.json`.
-- RAG: scraped markdown/HTML/JSON files, embedded Qdrant collection, `sources`,
-  `retrieve`, and optional generated manifest files.
-- Training: scraped source files plus optional agent-generated JSONL/metadata.
-- Docs corpus: curated markdown artifacts, source index, and table of contents.
-
-## Final Deliverable
-
-```markdown
-# Knowledge Base: [Source]
-
-## Summary
-[What was collected and why]
-
-## Output Structure
-[Files/directories created]
-
-## Coverage
-[Sections, source types, counts]
-
-## Usage Notes
-[How to use in RAG, docs, training, or agent context]
-
-## Sources
-[URLs collected]
-
-## Rerun Inputs
-workflow: knowledge-base
-source: [url/topic]
-goal: [reference/rag/train/docs]
-depth: [quick/thorough/exhaustive]
-output_dir: [explicit path]
+axon source https://github.com/org/repo --wait true
+axon source /home/user/project --wait true
+axon source r/rust --wait true
+axon source https://youtube.com/watch?v=... --wait true
+axon source pkg:crates/serde --wait true
+axon source session:codex:/home/user/.codex/sessions/... --wait true
 ```
 
-## Quality Bar
+Embedding and publication are enabled by default. Use `--skip-embed` only for a
+capture-only deliverable.
 
-- Preserve code examples and formatting.
-- Remove boilerplate navigation where possible.
-- Include source URLs in frontmatter or metadata.
+## MCP source examples
+
+```json
+{ "action": "source", "source": "https://docs.example.com", "scope": "site" }
+{ "action": "source", "source": "https://github.com/org/repo" }
+{ "action": "source", "source": "/home/user/project" }
+```
+
+Use CLI source flags when the workflow needs output files, crawl budgets,
+render controls, WARC, selectors, custom headers, or automation scripts.
+
+## Completion
+
+Run source work with `--wait true` when the deliverable requires a finished
+corpus. When intentionally detached, report the job ID and use the unified jobs
+surface:
+
+```bash
+axon jobs get <job-id>
+axon jobs events <job-id>
+```
+
+## Output modes
+
+- **Reference**: curated Markdown/HTML/JSON acquisition output and source index
+- **RAG**: committed vectors plus optional acquisition artifacts
+- **Training**: collected source files plus separately produced training data
+- **Docs corpus**: bounded, organized documentation capture with provenance
+
+## Final deliverable
+
+Report:
+
+- sources and selectors used
+- collection and output directory
+- source job IDs and terminal status
+- counts, warnings, and degraded stages
+- how to query or ask against the resulting corpus
+- the exact source or watch command needed to refresh it

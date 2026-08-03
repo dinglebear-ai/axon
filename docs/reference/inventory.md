@@ -2,10 +2,10 @@
 
 Complete listing of all Axon components.
 
-> Current runtime inventory. The canonical source-pipeline contract is recorded
-> in [`../pipeline-unification/`](../pipeline-unification/README.md). Removed
-> commands, actions, and routes are clean-break absence requirements, not
-> compatibility surfaces.
+This page inventories the current runtime. Removed commands, actions, and
+routes are absence requirements, not compatibility surfaces. See
+[Source Pipeline](../architecture/source-pipeline.md) for the canonical source
+flow.
 
 ## MCP tools
 
@@ -188,7 +188,5 @@ MCP actions (see the MCP tables above).
 | `scripts/axon` | Wrapper script (auto-sources `~/.axon/.env`, with repo `.env` fallback) |
 | `scripts/dev-setup.sh` | Bootstrap development environment |
 | `scripts/enforce_monoliths.py` | Enforce file/function size limits |
-| `scripts/generate_mcp_schema_doc.py` | Regenerate MCP-TOOL-SCHEMA.md |
 | `scripts/live-test-all-commands.sh` | Parser inventory plus isolated live scenarios and command/flag behavioral coverage ledger |
-| `scripts/test-client-server-mode.sh` | Legacy CLI client/server smoke test if present |
 | `scripts/test-mcp-tools-mcporter.sh` | MCP smoke test suite |

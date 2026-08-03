@@ -1,8 +1,8 @@
 //! Real store/read backing for the `config_snapshots` table (migration
 //! `0025_config_snapshots.sql`).
 //!
-//! `docs/pipeline-unification/schemas/database-schema.md`'s "Required
-//! Tables" registry and `docs/pipeline-unification/runtime/schema-contract.md`
+//! `docs/reference/runtime/database-schema.md`'s "Required
+//! Tables" registry and `docs/reference/runtime/schema.md`
 //! both list `config_snapshots` (owned by `axon-jobs`, PK
 //! `config_snapshot_id`) as a canonical target table — see the migration's
 //! own doc comment for the full contract citation. This module is the

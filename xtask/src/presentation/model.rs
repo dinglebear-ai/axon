@@ -1,6 +1,6 @@
 //! Canonical presentation-token source model: parses `source.json` (the
-//! single canonical token source per docs/pipeline-unification/surfaces/
-//! presentation-contract.md) and computes the contract-version/source-hash
+//! single canonical token source described by
+//! `docs/reference/surfaces/presentation.md`) and computes the contract-version/source-hash
 //! pair every generated artifact must carry.
 
 use anyhow::{Context, Result};

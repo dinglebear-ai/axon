@@ -967,7 +967,7 @@
     "AxonToolResponse": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`AxonToolResponse` is the MCP `axon` tool's response envelope. Per the\ntool contract (`docs/pipeline-unification/surfaces/tool-contract.md`,\n§Design Rules: \"Return structured envelopes for every response\"), it is\nconverging toward the same shared envelope shape REST uses\n(`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`\nare populated on every response; `job`/`watch`/`artifacts`/`pagination`/\n`trace` are populated only where the constructing handler already has\nthat data (most call sites do not yet thread it through — see WS-G\nfollowups), so they stay optional/empty rather than fabricated.",
+      "description": "`AxonToolResponse` is the MCP `axon` tool's response envelope. Per the\ntool contract (`docs/reference/mcp/tool-contract.md`,\n§Design Rules: \"Return structured envelopes for every response\"), it is\nconverging toward the same shared envelope shape REST uses\n(`axon_api::source::SuccessEnvelope`) — `request_id`/`contract_version`\nare populated on every response; `job`/`watch`/`artifacts`/`pagination`/\n`trace` are populated only where the constructing handler already has\nthat data (most call sites do not yet thread it through — see WS-G\nfollowups), so they stay optional/empty rather than fabricated.",
       "properties": {
         "action": {
           "type": "string"
@@ -1070,7 +1070,7 @@
     "CapabilitiesRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`action=capabilities` — machine-readable runtime capability document\nderived from the live `MCP_ACTION_SPECS` registry and provider doctor\ndata. See `docs/pipeline-unification/surfaces/tool-contract.md`\n§Capabilities Action.",
+      "description": "`action=capabilities` — machine-readable runtime capability document\nderived from the live `MCP_ACTION_SPECS` registry and provider doctor\ndata. See `docs/reference/mcp/tool-contract.md`\n§Capabilities Action.",
       "properties": {
         "response_mode": {
           "anyOf": [
@@ -2944,7 +2944,7 @@
     "PruneMcpRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
-      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/pipeline-unification/surfaces/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare source\nid or `collection:<name>`.",
+      "description": "`action=prune` — canonical cleanup planning and execution\n(`docs/reference/mcp/tool-contract.md` \"Prune, Collections,\nGraph, and Providers Actions\").\n\n`subaction` selects `plan` (dry-run, default-safe) or `exec` (destructive —\nrequires `axon:admin` and `confirm: true`). `target` is either a bare source\nid or `collection:<name>`.",
       "properties": {
         "collection": {
           "type": [
@@ -4004,11 +4004,11 @@
     "deferred_actions": [
       {
         "action": "chat",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+        "reason": "present in docs/reference/mcp/tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       },
       {
         "action": "artifacts",
-        "reason": "present in docs/pipeline-unification/schemas/mcp-tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
+        "reason": "present in docs/reference/mcp/tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
       }
     ],
     "generated_by": "cargo xtask schemas mcp",
@@ -4019,12 +4019,12 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:901e8f74737618b4aa1ae2fee254dae508a41f2dceecf281e7fac233b3183dff",
+        "checksum": "sha256:75406caa5f6fd10361bb6fcba373fee7ec663fca3088bd848b70404ae40479ce",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema.rs"
       },
       {
-        "checksum": "sha256:c394e2538620d77f7038919bc9e6c17d562cd4b8a6ae380135158f81375e3656",
+        "checksum": "sha256:5a75455376c01155743f72a3e268905a47a01127ad1a10a2a28fddc2fb3c2891",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/prune_request.rs"
       },
@@ -4034,12 +4034,12 @@
         "path": "crates/axon-api/src/mcp_schema/requests.rs"
       },
       {
-        "checksum": "sha256:74cc0184db8d8f39740e9822a92509b4eb468caa1c731a7e23ea557167dfc5d7",
+        "checksum": "sha256:c46c442785bf7711076578fd203641e9a90fe67e58f6a1ead6cfe098d2014d81",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/discovery.rs"
       },
       {
-        "checksum": "sha256:7410995cbb94cd5d66658b7bb87962c00ed5e22bebf7f9a512d3657e84052be1",
+        "checksum": "sha256:7e84e79c739da7f978de64bf1a87c2bd06204e59a39dad72c637af252d7fd4d8",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/requests/graph.rs"
       },
@@ -4064,17 +4064,17 @@
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:fca993bad9e5de047226bc3853cdc8cd3d20f9f53ab49111270c8aecc20d5ae9",
+        "checksum": "sha256:b783b5dcf54d83d86b0e13e185ed3c3344e5e8f219d6d3e93b7d22b66d0ca454",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },
       {
-        "checksum": "sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024",
+        "checksum": "sha256:e6dfe1646cec0a9ac3818ce6ad9a3ed30de1329a6293df9a62c568671de7c2e4",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md"
+        "path": "docs/reference/mcp/tool-contract.md"
       },
       {
-        "checksum": "sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1",
+        "checksum": "sha256:c84dcb96098a79073d90ce506ec605d6a5ff1f26870d45606bb097543e9e5df3",
         "kind": "rust_module",
         "path": "xtask/src/schemas/mcp_action_registry.rs"
       }

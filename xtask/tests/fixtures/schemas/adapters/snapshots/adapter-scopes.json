@@ -1594,7 +1594,7 @@
         "path": "crates/axon-adapters/src/onboarding.rs"
       },
       {
-        "checksum": "sha256:1f6cb8d9e61ef997ca66cbd545db9b5f6a85e0c387f706425442950093269c9a",
+        "checksum": "sha256:9c9a6a4e359f26b8f350032bcc570c935bb9e7f4b771874df1d88d4d68e698c6",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/spec.rs"
       },
@@ -1604,19 +1604,19 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:0a65275defcc4bae3306cdc940b344cbb25a0c0f2be2d22162fc63c5f2f40740",
+        "checksum": "sha256:f22f101fd4c5b956d124a3ac0c1e2de5bee4af7a59031cb8b7ee147a0ca03f70",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd",
+        "checksum": "sha256:cf589f0f51477dcace24b4779eccf2ec15ac6bab006f2b962ad04ab09189859e",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/sources/adapter-scopes.md"
+        "path": "docs/development/adding-source-adapter.md"
       },
       {
-        "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd",
+        "checksum": "sha256:1cf33f639bf1de7832d4f165e600c613736c62f004d5c8c987b064547e63b590",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/sources/new-source-contract.md"
+        "path": "docs/development/adding-source.md"
       }
     ]
   }

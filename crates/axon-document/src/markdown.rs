@@ -4,7 +4,7 @@
 //! fenced code block), carries full heading-breadcrumb context (not just the
 //! section's own heading), and extracts YAML frontmatter as its own chunk
 //! before sectioning the body. Contract:
-//! `docs/pipeline-unification/sources/chunking-contract.md` "Markdown and
+//! `docs/reference/sources/chunking.md` "Markdown and
 //! Docs Chunking".
 
 use crate::chunk::DocumentChunk;

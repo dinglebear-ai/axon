@@ -3,8 +3,8 @@
 //! Thin wrapper over [`axon_graph::store::GraphStore`] /
 //! [`axon_graph::sqlite::SqliteGraphStore`] for REST (`/v1/graph/*`) and MCP
 //! (`action=graph`) handlers. Contract:
-//! `docs/pipeline-unification/sources/source-graph.md` +
-//! `docs/pipeline-unification/surfaces/{rest-contract,tool-contract}.md`
+//! `docs/reference/sources/source-graph.md` +
+//! `docs/reference/surfaces/{rest-contract,tool-contract}.md`
 //! Graph rows.
 //!
 //! `GraphStore` writes stay parser/source-job owned

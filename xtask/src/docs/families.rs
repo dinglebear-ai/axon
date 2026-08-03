@@ -134,6 +134,11 @@ impl DocsFamily {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn generated_output_paths() -> impl Iterator<Item = &'static str> {
+    DocsFamily::ALL.into_iter().map(DocsFamily::output_path)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceInput {
     pub path: PathBuf,

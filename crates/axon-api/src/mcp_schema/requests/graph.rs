@@ -1,7 +1,7 @@
 //! Graph action request types (issue #298 GQ). Read-only SourceGraph query
 //! surface — mirrors the REST `/v1/graph/*` routes
-//! (`docs/pipeline-unification/surfaces/rest-contract.md` "Graph Routes",
-//! `docs/pipeline-unification/surfaces/tool-contract.md` "Graph subactions").
+//! (`docs/reference/rest/routes.md` "Graph Routes",
+//! `docs/reference/mcp/tool-contract.md` "Graph subactions").
 
 use serde::{Deserialize, Serialize};
 

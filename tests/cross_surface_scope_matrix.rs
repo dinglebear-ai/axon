@@ -4,7 +4,7 @@
 //! For each operation present on both REST and MCP, this asserts the two
 //! transports agree on the auth-scope *class* (`public`/`read`/`write`/
 //! `admin`), cross-checked against
-//! `docs/pipeline-unification/surfaces/tool-contract.md`'s "Auth and
+//! `docs/reference/mcp/tool-contract.md`'s "Auth and
 //! Visibility" operation-class table. Expected values live in
 //! `tests/fixtures/cross-surface/scope_matrix.json` — every row (including
 //! documented `consistent: false` rows) is checked against live system

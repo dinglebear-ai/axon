@@ -12,7 +12,7 @@ per operation. This guide describes the real request-enum + dispatch-match +
 handler pattern in `crates/axon-mcp/src/`.
 
 See also: crate guide `crates/axon-mcp/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/surfaces/tool-contract.md`.
+`docs/reference/mcp/tool-contract.md`.
 
 **The core rule:** every action routes to exactly one `axon-services`
 entrypoint, and the tool schema is generated from shared `axon-api` DTOs —

@@ -23,7 +23,7 @@ use super::rag::required_text;
 /// Conditional scope upgrade (`mutates_if`, axon #298 follow-up).
 ///
 /// `/v1/search` and `/v1/research` are routed under `read_routes` (declared
-/// `axon:read`, matching `docs/pipeline-unification/surfaces/tool-contract.md`'s
+/// `axon:read`, matching `docs/reference/mcp/tool-contract.md`'s
 /// Auth and Visibility table and axon-mcp's `required_scope_for`), but
 /// neither has a non-mutating default form today: [`search`] always calls
 /// `services::search_crawl::search_and_index_sources`, and [`research`] /
@@ -40,8 +40,8 @@ use super::rag::required_text;
 /// broad `scope_satisfies` helper deliberately treats `axon:read` and
 /// `axon:write` as interchangeable for ordinary read/write routes — a
 /// documented OAuth dual-scope compatibility affordance (see
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
-/// paragraph and `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// `docs/reference/runtime/security.md`'s "Contract"
+/// paragraph and `docs/reference/runtime/auth.md`'s
 /// "Scope Rules"). If this elevation check used `scope_satisfies`, a
 /// read-only caller (`axon:read` only) would already satisfy the
 /// `axon:write` requirement, making the whole elevation a silent no-op —

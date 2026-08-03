@@ -7,10 +7,10 @@ Axon exposes MCP through **one** operation tool named `axon`. Callers send an
 the request to `axon-api` DTOs, calls `axon-services`, and returns a typed
 result.
 
-> Live source of truth: [`tool-schema.md`](tool-schema.md) (160 lines) and
-> [`tool-schema.json`](tool-schema.json). Contract source:
-> [`docs/pipeline-unification/surfaces/tool-contract.md`](../../pipeline-unification/surfaces/tool-contract.md).
-> Implementation: `crates/axon-api/src/mcp_schema.rs`, `crates/axon-mcp/src/server.rs`.
+> Generated action/schema truth: [`tool-schema.md`](tool-schema.md) and
+> [`tool-schema.json`](tool-schema.json). This page owns the transport,
+> authorization, response, and task-lifecycle semantics. Implementation:
+> `crates/axon-api/src/mcp_schema.rs`, `crates/axon-mcp/src/server.rs`.
 
 ## Canonical envelope
 
@@ -118,4 +118,4 @@ and are rejected before dispatch. Use `source` for indexing and `prune` for
 cleanup.
 
 If the MCP surface changes, update `crates/axon-api/src/mcp_schema.rs` and
-re-run `python3 scripts/generate_mcp_schema_doc.py` in the same PR.
+re-run `cargo xtask schemas mcp` in the same PR.

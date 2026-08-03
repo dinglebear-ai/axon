@@ -1,10 +1,10 @@
 //! Source enrichment boundary (`SourceEnricher`).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §SourceEnricher. Unlike `SourceAdapter` (which already has eight
 //! per-source-kind concrete implementations), nothing in this crate performs
 //! "enrichment" today — the `enriching` pipeline stage
-//! (`docs/pipeline-unification/foundation/source-pipeline.md`) sits between
+//! (`docs/architecture/source-pipeline.md`) sits between
 //! `fetching`/`acquire` and `normalizing`/`normalize` and has no existing
 //! owner. This file is therefore purely additive: it introduces both the
 //! trait and its first concrete production implementation

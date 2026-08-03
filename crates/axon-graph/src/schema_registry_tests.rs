@@ -30,7 +30,7 @@ fn table_kinds(markdown: &str, heading: &str) -> Vec<String> {
 fn source_graph_md() -> String {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../docs/pipeline-unification/sources/source-graph.md"
+        "/../../docs/reference/sources/source-graph.md"
     );
     std::fs::read_to_string(path).unwrap_or_else(|err| panic!("read {path}: {err}"))
 }

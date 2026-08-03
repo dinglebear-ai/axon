@@ -7,8 +7,6 @@ Source resolution turns a raw user string (`https://example.com/docs`,
 canonical URI, a source kind, an adapter candidate, and an authority level.
 Stable identity across refreshes depends on it.
 
-> Contract source:
-> [`docs/pipeline-unification/sources/url-normalization.md`](../../pipeline-unification/sources/url-normalization.md).
 > Implementation: [`crates/axon-route/src/`](../../../crates/axon-route/src/)
 > (`resolver.rs`, `router.rs`, `canonical.rs`, `source_id.rs`, `authority.rs`,
 > `alias.rs`, `scope.rs`).

@@ -4,7 +4,7 @@
 //! `graph_nodes` / `graph_edges` / `graph_evidence` / `graph_aliases` /
 //! `graph_conflicts` tables created by [`crate::migration::ensure_schema`].
 //!
-//! Contract: `docs/pipeline-unification/crates/axon-graph/CLAUDE.md` and
+//! Contract: `crates/axon-graph/src/CLAUDE.md` and
 //! `schemas/graph-schema.md`. Candidates are validated against the closed kind
 //! registry, merged idempotently by stable key / edge tuple, and conflicts are
 //! preserved as explicit rows rather than silently overwritten.

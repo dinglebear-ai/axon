@@ -201,7 +201,7 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
     // emits; every other field it writes (`source_kind`, `source_adapter`,
     // `source_scope`, `item_canonical_uri`, ...) is already a
     // `VECTOR_SHARED_FIELDS` member. Resolves the gap documented in
-    // `docs/pipeline-unification/sources/metadata-payload.md`'s "Source
+    // `docs/reference/sources/metadata-payload.md`'s "Source
     // Family Classification" section.
     ("upload", &["staged_upload"]),
 ];

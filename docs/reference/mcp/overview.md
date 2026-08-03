@@ -11,8 +11,9 @@ Last Modified: 2026-07-16
 - MCP Apps resource: `ui://axon/status-dashboard`.
 
 The live machine-readable schema is generated at
-`docs/reference/mcp/tool-schema.json`; the markdown reference is
-`docs/reference/mcp/pipeline-tool-schema.md`.
+`docs/reference/mcp/tool-schema.json`; the matching generated Markdown reference
+is `docs/reference/mcp/tool-schema.md`. Both are owned by
+`cargo xtask schemas mcp`.
 
 ## Source Indexing
 

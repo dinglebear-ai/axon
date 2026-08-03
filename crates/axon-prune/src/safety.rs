@@ -6,7 +6,7 @@
 //! - source/generation vector deletes are generation-fenced
 //! - artifact deletes are artifact-id based, never arbitrary path based
 //!
-//! See `docs/pipeline-unification/runtime/pruning-contract.md`.
+//! See `docs/reference/runtime/pruning.md`.
 
 use axon_api::source::ids::SourceGenerationId;
 use axon_api::source::prune::PruneSelector;

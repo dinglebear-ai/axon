@@ -35,12 +35,12 @@
           "checksum": "sha256:8e9985a3dccda4782551a112e420814b3ac74075526773a95f74e2dd8ac00992"
         },
         {
-          "path": "docs/pipeline-unification/sources/adapter-scopes.md",
+          "path": "docs/reference/sources/adapter-scopes.md",
           "kind": "markdown_contract",
           "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd"
         },
         {
-          "path": "docs/pipeline-unification/sources/new-source-contract.md",
+          "path": "docs/development/adding-source.md",
           "kind": "markdown_contract",
           "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
         }
@@ -152,7 +152,7 @@
           "checksum": "sha256:fb723a3423118e28278d56ab821a90db762b499f4cd9ce73a8ac6ca41594db7e"
         },
         {
-          "path": "docs/pipeline-unification/schemas/api-dto-schema.md",
+          "path": "docs/reference/api/dto.md",
           "kind": "markdown_contract",
           "checksum": "sha256:e629926dcfb011802fcddb3a21c32e4019aa921290710593469d3b4159ca38bc"
         },
@@ -199,7 +199,7 @@
           "checksum": "sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7"
         },
         {
-          "path": "docs/pipeline-unification/schemas/cli-schema.md",
+          "path": "docs/reference/cli/commands.md",
           "kind": "markdown_contract",
           "checksum": "sha256:e542f512c3329c4f102fc3b93f57415906a00de3b302d1d836b5d9131e5d1a08"
         },
@@ -236,12 +236,12 @@
       "generated_by": "cargo xtask docs generate --family config",
       "source_inputs": [
         {
-          "path": "docs/pipeline-unification/configuration/config-contract.md",
+          "path": "docs/reference/config/config-toml.md",
           "kind": "markdown_contract",
           "checksum": "sha256:acd46422e9d9e129b9612dfd7b87319d6d4af1de6be9c24472cb0e7a8e7acb4d"
         },
         {
-          "path": "docs/pipeline-unification/schemas/config-schema.md",
+          "path": "docs/reference/config/config-toml.md",
           "kind": "markdown_contract",
           "checksum": "sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24"
         },
@@ -283,7 +283,7 @@
           "checksum": "sha256:ae4a86b45a62940c12d472880ab4facf253c284dcc985721d58ae0c8c7f2f723"
         },
         {
-          "path": "docs/pipeline-unification/schemas/database-schema.md",
+          "path": "docs/reference/runtime/database-schema.md",
           "kind": "markdown_contract",
           "checksum": "sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571"
         },
@@ -355,7 +355,7 @@
           "checksum": "sha256:afee6d711302dd5b0d8b1d2868f8cab3b50c90534b781773287f7dc6d5e15471"
         },
         {
-          "path": "docs/pipeline-unification/schemas/error-schema.md",
+          "path": "docs/reference/api/errors.md",
           "kind": "markdown_contract",
           "checksum": "sha256:e922cf9a9275494393949f37a1ff3325234e7a874bf5a78425eb5c16fc2a6c46"
         }
@@ -377,7 +377,7 @@
           "checksum": "sha256:bdd484ac24fd7b662c75b8917981f8a6ebfe07b5dc59e7f4c518be69de22c046"
         },
         {
-          "path": "docs/pipeline-unification/schemas/event-schema.md",
+          "path": "docs/reference/runtime/events.md",
           "kind": "markdown_contract",
           "checksum": "sha256:11698f7a5004224ceac5d1697af2f880ab9676cfa89e2e25a4cfd2f2308b7596"
         }
@@ -394,7 +394,7 @@
           "checksum": "sha256:bed4a1a35628922b24094d02417bd57a1cfcf284093f2cd87b1b545edc4a66b1"
         },
         {
-          "path": "docs/pipeline-unification/schemas/graph-schema.md",
+          "path": "docs/reference/sources/graph.md",
           "kind": "markdown_contract",
           "checksum": "sha256:3762daffd2a22c2117ad023cce6fa03bcc39c42e58111a31d6c77b02891aa6d4"
         }
@@ -456,7 +456,7 @@
           "checksum": "sha256:fca993bad9e5de047226bc3853cdc8cd3d20f9f53ab49111270c8aecc20d5ae9"
         },
         {
-          "path": "docs/pipeline-unification/schemas/mcp-tool-schema.md",
+          "path": "docs/reference/mcp/tool-schema.md",
           "kind": "markdown_contract",
           "checksum": "sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024"
         },
@@ -478,7 +478,7 @@
           "checksum": "sha256:27cb2ee8ec9a6f0920842885b028266fdf5c551172a8e5da60cb2dd016807e73"
         },
         {
-          "path": "docs/pipeline-unification/schemas/openapi-schema.md",
+          "path": "docs/reference/rest/openapi.md",
           "kind": "markdown_contract",
           "checksum": "sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7"
         }
@@ -545,12 +545,12 @@
           "checksum": "sha256:1ad1fc6409f6ed31032626c3a8d6e1256ed3813ecc6fbf42d7068dc633521362"
         },
         {
-          "path": "docs/pipeline-unification/runtime/provider-contract.md",
+          "path": "docs/reference/runtime/provider-capabilities.md",
           "kind": "markdown_contract",
           "checksum": "sha256:0fe24534b903a4d65eb27a989abb5df1529328490a06a9fb9aba2bb7257e9a73"
         },
         {
-          "path": "docs/pipeline-unification/schemas/provider-capability-schema.md",
+          "path": "docs/reference/runtime/provider-capabilities.md",
           "kind": "markdown_contract",
           "checksum": "sha256:2e011fad6e2eecc65f5d3585d4ccd6ee34581d2e78a456cfb150041b7bdb805f"
         }
@@ -587,17 +587,17 @@
           "checksum": "sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a"
         },
         {
-          "path": "docs/pipeline-unification/schemas/vector-payload-schema.md",
+          "path": "docs/reference/sources/vector-payload.md",
           "kind": "markdown_contract",
           "checksum": "sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8"
         },
         {
-          "path": "docs/pipeline-unification/sources/chunking-contract.md",
+          "path": "docs/reference/sources/chunking.md",
           "kind": "markdown_contract",
           "checksum": "sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8"
         },
         {
-          "path": "docs/pipeline-unification/sources/metadata-payload.md",
+          "path": "docs/reference/sources/metadata-payload.md",
           "kind": "markdown_contract",
           "checksum": "sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33"
         },

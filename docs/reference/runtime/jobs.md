@@ -7,8 +7,6 @@ heartbeats, artifacts, and provider reservations. Source jobs keep one job id
 across resolve, acquire, prepare, embed, publish, graph, and cleanup. There is
 no per-source-family job store.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/job-contract.md`](../../pipeline-unification/runtime/job-contract.md).
 > Implementation: [`crates/axon-jobs/src/`](../../../crates/axon-jobs/src/)
 > (`JobStore`, `ServiceJobRuntime`). Workers run in-process in the same Tokio
 > runtime as `axon serve` — no broker, Postgres, Redis, or AMQP.

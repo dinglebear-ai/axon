@@ -1,13 +1,9 @@
 //! Config + env registry data backing the `config` schema family generator.
 //!
-//! This module is the xtask-local source of truth for the settled 20-section
-//! `config.toml` contract and the `.env` bootstrap/secret contract. It is
-//! intentionally independent of `axon-core`'s runtime config (which has not
-//! yet implemented this shape) so the generator can reflect the contract
-//! ahead of the runtime cutover. See:
-//! - `docs/pipeline-unification/schemas/config-schema.md` (artifact shape)
-//! - `docs/pipeline-unification/configuration/config-contract.md` (20-section
-//!   shape + required key table)
+//! This module projects the live `config.toml` tuning contract and `.env`
+//! bootstrap/secret contract into generated schema artifacts. Keep it aligned
+//! with `config.example.toml`, `docs/guides/configuration.md`, and the parser in
+//! `crates/axon-core/src/config`.
 
 /// One `config.toml` setting from the contract's "Required Config Keys" table.
 pub struct ConfigKeySpec {
@@ -17,22 +13,15 @@ pub struct ConfigKeySpec {
     pub default_json: &'static str,
     pub owner_crate: &'static str,
     pub env_override: Option<&'static str>,
-    /// Whether this key holds secret material. Per the config-contract design
-    /// rule ("Secrets and deployment URLs stay in `.env`"), every key in this
+    /// Whether this key holds secret material. Per the live configuration rule
+    /// ("Secrets and deployment URLs stay in `.env`"), every key in this
     /// registry is non-secret by construction — a secret-shaped tuning knob
     /// belongs in the env var registry instead, not here.
     pub secret: bool,
     /// Whether changing this key requires a process restart to take effect.
     /// Axon has no config hot-reload path today (config is loaded once at
     /// process start — see `crates/axon-core/src/config`), so `true` is the
-    /// conservative, currently-accurate default for every key. The one
-    /// exception (`providers.embedding.batch_size`) matches the literal
-    /// `restart_required: false` worked example in
-    /// `docs/pipeline-unification/schemas/config-schema.md`'s "Config Setting
-    /// Shape" — a per-key decision for whoever implements hot-reload for that
-    /// section, not one this registry invents. Flagged for follow-up: as each
-    /// section lands in the real cutover, its owning crate should confirm
-    /// (and if needed flip) this value rather than inherit the default.
+    /// accurate value for every current key.
     pub restart_required: bool,
     pub description: &'static str,
 }
@@ -66,18 +55,14 @@ type RawConfigKey = (
 //
 // `secret` is `false` for every row by construction — see `ConfigKeySpec::secret`'s
 // doc comment; a secret-shaped key belongs in the env var registry, not here.
-// `restart_required` defaults to `true` (no config hot-reload path exists yet);
-// the one `false` below is the contract's own worked example, not an invented
-// exception — see `ConfigKeySpec::restart_required`'s doc comment.
-// `env_key` is populated only where a target or currently-shipped override name
-// is documented (`docs/pipeline-unification/schemas/config-schema.md`'s worked
-// example, or the currently-shipped env vars in the root `CLAUDE.md` env
-// reference) AND is not itself a token `registry.rs::REMOVED_SURFACE_RULES`
+// `restart_required` is `true` because config is loaded once at process start.
+// `env_key` is populated only where a live override name is documented in
+// `config.example.toml`, `docs/guides/configuration.md`, or the root `CLAUDE.md`
+// reference and is not itself a token `registry.rs::REMOVED_SURFACE_RULES`
 // bans from ever reappearing in generated `docs/reference/config/` output —
 // `AXON_COLLECTION`, `AXON_HYBRID_CANDIDATES`, `AXON_ASK_HYBRID_CANDIDATES`,
 // `AXON_WATCH_TICK_SECS`, and `AXON_WATCH_LEASE_SECS` are legacy env-override
-// names being fully retired in favor of TOML-only keys, so those five stay
-// `None` here even though they're real, currently-shipped overrides today
+// names retired in favor of TOML-only keys, so those five stay `None` here
 // (`config_keys_and_env_vars_do_not_reuse_removed_names` enforces this).
 // Every other key without a documented override is `None` rather than
 // guessed.
@@ -89,8 +74,8 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "\"axon\"",
         "axon-web",
         // NOT `AXON_COLLECTION` — that name is in the removed-surface
-        // registry (`registry.rs::REMOVED_SURFACE_RULES`); the target design
-        // is TOML-only for this key going forward.
+        // registry (`registry.rs::REMOVED_SURFACE_RULES`); this key is
+        // TOML-only.
         None,
         false,
         true,
@@ -218,10 +203,7 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "axon-embedding",
         Some("AXON_EMBEDDING_BATCH_SIZE"),
         false,
-        // Contract's own worked example ("Config Setting Shape" in
-        // config-schema.md) states `restart_required: false` for this exact
-        // key — the one documented exception to the conservative default.
-        false,
+        true,
         "Maximum chunks per embedding request.",
     ),
     (

@@ -378,7 +378,7 @@
         },
         "sequence": {
           "default": 0,
-          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/pipeline-unification/schemas/event-schema.md`'s `JobHeartbeat` shape.",
+          "description": "Monotonic heartbeat sequence number for this job, per\n`docs/reference/runtime/events.md`'s `JobHeartbeat` shape.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -2677,7 +2677,7 @@
       "type": "object"
     },
     "StreamEvent_StreamKind": {
-      "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/pipeline-unification/schemas/event-schema.md`\n(\"StreamEvent Shape\").",
+      "description": "`StreamEvent.kind` — the flat set of streaming event kinds shared by SSE\nand MCP streaming, per `docs/reference/runtime/events.md`\n(\"StreamEvent Shape\").",
       "enum": [
         "progress",
         "token",
@@ -3243,6 +3243,11 @@
     ],
     "source_inputs": [
       {
+        "checksum": "sha256:c844da68777ed7b82af29a09c202889e5ee41e0f32d0de487a2d9e48878bb378",
+        "kind": "markdown_contract",
+        "path": "crates/axon-observe/src/CLAUDE.md"
+      },
+      {
         "checksum": "sha256:0431ae0e49e02633f95b0abbe54dcf0b20b5a4367e0fd4ca2dc1cf3ce3a06342",
         "kind": "rust_module",
         "path": "crates/axon-observe/src/metric.rs"
@@ -3251,11 +3256,6 @@
         "checksum": "sha256:bdd484ac24fd7b662c75b8917981f8a6ebfe07b5dc59e7f4c518be69de22c046",
         "kind": "rust_module",
         "path": "crates/axon-observe/src/schema_registry.rs"
-      },
-      {
-        "checksum": "sha256:11698f7a5004224ceac5d1697af2f880ab9676cfa89e2e25a4cfd2f2308b7596",
-        "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/event-schema.md"
       }
     ]
   }

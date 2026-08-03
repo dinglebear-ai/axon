@@ -1,7 +1,7 @@
 //! `ApiError` — the shared error type for the unified pipeline.
 //!
 //! Field shape follows the "Error Shape" section of
-//! `docs/pipeline-unification/runtime/error-handling.md`. Correlation ids are
+//! `docs/reference/api/errors.md`. Correlation ids are
 //! plain strings here because `axon-error` sits below `axon-api` and cannot see
 //! its typed id newtypes.
 

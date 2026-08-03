@@ -7,8 +7,6 @@ old-generation pruning, orphan cleanup, duplicate policy, and dry-run plans. It
 executes against ledger/graph/memory/artifact/vector boundaries via trait calls
 — it **never** owns those stores. Cleanup is debt-driven and idempotent.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/pruning-contract.md`](../../pipeline-unification/runtime/pruning-contract.md).
 > Implementation: [`crates/axon-prune/src/`](../../../crates/axon-prune/src/).
 > DTOs (`PrunePlan`/`PruneTarget`/`PruneImpact`/`PruneReceipt`/`DedupePlan`)
 > live in `axon-api`.

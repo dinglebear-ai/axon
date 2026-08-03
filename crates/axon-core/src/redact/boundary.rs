@@ -1,7 +1,7 @@
 //! Shared `Redactor` boundary for every public write surface.
 //!
 //! Implements the shared redaction boundary from
-//! `docs/pipeline-unification/runtime/redaction-contract.md`. Every public
+//! `docs/reference/runtime/redaction.md`. Every public
 //! write — vector payloads, job events, artifacts, graph evidence, memory
 //! rows, CLI JSON, MCP responses, REST responses, and trace/log fields —
 //! runs its outgoing value through [`Redactor::redact_json`] (structured

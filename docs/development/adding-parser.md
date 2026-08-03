@@ -13,7 +13,7 @@ real, live `SourceParser`/`ParserRegistry` pattern in
 `crates/axon-parse/src/`.
 
 See also: crate guide `crates/axon-parse/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/sources/parsing-contract.md`.
+`docs/reference/sources/parsing.md`.
 
 Parsers run **after** acquisition and **before** graph persistence or
 chunking — `axon-document`'s `parse.rs` bridge runs

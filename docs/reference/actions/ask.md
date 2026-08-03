@@ -1,5 +1,5 @@
 # axon ask
-Last Modified: 2026-06-13
+Last Modified: 2026-08-02
 
 <!-- BEGIN GENERATED ACTION SURFACES -->
 ## Surfaces
@@ -7,24 +7,28 @@ Last Modified: 2026-06-13
 | Surface | Entry point |
 |---|---|
 | CLI | `axon ask ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
-
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+| REST | See docs/reference/rest/routes.md |
+| MCP | `{ "action": "ask" }` |
+| Service | `Shared domain/service implementation` |
 <!-- END GENERATED ACTION SURFACES -->
 
+`ask` answers a question from content already indexed in Axon. It embeds the
+question, retrieves ranked chunks through the shared retrieval engine, renders
+top-chunk context, calls the configured synthesis backend, and validates the
+answer's citations.
 
-RAG-powered Q&A. Retrieves relevant chunks from the local Qdrant knowledge base, reranks them by relevance, builds a context window, and calls the configured LLM to generate a grounded answer.
+`ask` does not search the live web. Use `research` for web discovery plus
+synthesis, or `source` to add material to the local collection first.
 
-## Related Retrieval Commands
+## Related Commands
 
-| Command | Meaning |
+| Command | Purpose |
 |---|---|
-| `search` | External web discovery; current runtime also auto-queues bounded Source jobs for results. |
-| `query` | Ranked semantic search over content already indexed in Qdrant. |
-| `retrieve` | Stored content lookup/reconstruction by known URL or source identity. |
-| `ask` | RAG synthesis over indexed context with an LLM answer. |
+| `source` | Acquire and index a source through the unified pipeline. |
+| `query` | Return ranked indexed chunks without LLM synthesis. |
+| `retrieve` | Reconstruct stored content for a known canonical URL or source. |
+| `ask` | Synthesize a citation-grounded answer from ranked indexed chunks. |
+| `evaluate` | Compare the RAG answer with a baseline or dense-only RAG lane. |
 
 ## Synopsis
 
@@ -33,288 +37,218 @@ axon ask <question> [FLAGS]
 axon ask --query "<question>" [FLAGS]
 ```
 
-## Arguments
+The positional question and global `--query` flag are alternative input forms.
+`ask` runs synchronously; it does not enqueue a durable source job and does not
+use `--wait`.
 
-| Argument | Description |
-|----------|-------------|
-| `<question>` | Question to answer (positional, or via `--query`) |
+## Important Flags
 
-## Environment Variables
+| Flag | Behavior |
+|---|---|
+| `--collection <name>` | Search this Qdrant collection. The configured/default value is `axon`. |
+| `--since <bound>` | Require `embedded_at` on or after `Nd`, `Nw`, `YYYY-MM-DD`, or RFC3339. |
+| `--before <bound>` | Require `embedded_at` on or before the same supported formats. |
+| `--no-hybrid-search` | Use named-dense search instead of dense+BM42 RRF. |
+| `--diagnostics` | Include retrieval/context health counters. |
+| `--explain` | Return a per-hit retrieval/selection trace and skip LLM synthesis. Use with `--json` for the complete payload. |
+| `--no-stream` | Buffer the answer instead of streaming interactive tokens. |
+| `--follow-up`, `--continue`, `-c` | Include bounded turns from the selected local ask session. |
+| `--session <name>` | Select a named local ask session. |
+| `--resume <name>` | Shorthand for `--follow-up --session <name>`. |
+| `--reset-session` | Delete the selected session before asking. |
+| `--new-session` | Start fresh in an explicit or auto-generated session. |
+| `--list-sessions` | List local ask sessions and exit without running a question. |
+| `--json` | Return the typed result as JSON. |
 
-| Variable | Description |
-|----------|-------------|
-| `TEI_URL` | TEI embeddings base URL. Used to embed the question before Qdrant search. |
-| `QDRANT_URL` | Qdrant base URL. Searched for relevant chunks. |
-| `AXON_LLM_BACKEND` | Answer-generation backend. Defaults to `gemini-headless`; set `openai-compat` for OpenAI-compatible chat completion endpoints. |
-| `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command used by the default Gemini headless backend. Defaults to `gemini`. |
-| `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Optional Gemini model override for answer generation when using Gemini headless. |
-| `AXON_HEADLESS_GEMINI_MODEL` | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL`. |
-| `AXON_OPENAI_BASE_URL` | OpenAI-compatible API root when `AXON_LLM_BACKEND=openai-compat`. |
-| `AXON_SYNTHESIS_OPENAI_MODEL` | Model name for the OpenAI-compatible backend. |
-| `AXON_OPENAI_MODEL` | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL`. |
-| `AXON_OPENAI_API_KEY` | Optional bearer token for the OpenAI-compatible backend. |
+Interactive CLI synthesis streams by default. Explain mode never calls the LLM,
+and JSON output is buffered.
 
-`ask` uses Qdrant + TEI retrieval and the configured LLM backend for synthesis. The default backend is Gemini headless.
-
-## Flags
-
-All global flags apply. Key flags:
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--query <text>` | — | Question text (alternative to positional argument). |
-| `--collection <name>` | `axon` | Qdrant collection to search. Also settable via `AXON_COLLECTION`. |
-| `--no-hybrid-search` | `false` | Disable hybrid (dense + BM42 sparse + RRF) retrieval; force dense-only. Overrides `AXON_HYBRID_SEARCH=true`. |
-| `--since <date>` | — | Filter retrieved context to content indexed on or after this date. Accepts `7d`, `30d`, `1w`, `YYYY-MM-DD`, or RFC3339. |
-| `--before <date>` | — | Filter retrieved context to content indexed on or before this date. Same formats as `--since`. |
-| `--diagnostics` | `false` | Print retrieval diagnostics (candidate pool, reranked pool, chunks selected, full docs, supplemental, context chars, authority ratio, dropped by allowlist, top domains). |
-| `--explain` | `false` | Emit a per-candidate ranking/context trace. Implies diagnostics and skips LLM synthesis; use with `--json` for the full payload. |
-| `--stream` | `true` | Stream answer tokens as they arrive for interactive use. Uses the in-process ask path; JSON and explain output remain buffered. |
-| `--no-stream` | `false` | Disable answer streaming and render only the final response. |
-| `--follow-up` / `--continue` / `-c` | `false` | Include recent turns from the selected local ask session as conversation context. `--continue` and `-c` are aliases. |
-| `--session <name>` | latest | Local ask session name used for saved turns and follow-up context. If omitted, Axon uses the most recently successful ask session, falling back to `default`. |
-| `--reset-session` | `false` | Clear the selected ask session before running this question. Mutually exclusive with `--new-session`. |
-| `--new-session` | `false` | Force a fresh ask session, deleting prior turns for the selected (or auto-generated) session name and running without follow-up context. Mutually exclusive with `--follow-up` and `--reset-session`. |
-| `--resume <name>` | — | Resume a named ask session. Shorthand for `--follow-up --session <name>`. Mutually exclusive with `--session` and `--new-session`. |
-| `--list-sessions` | `false` | Print all local ask sessions (name, turn count, last used, latest marker) and exit. Cannot be combined with a query argument; pair with `--json` for machine-readable output. |
-| `--json` | `false` | Machine-readable JSON output. |
-
-Note: `ask` runs synchronously and does not support `--wait`.
-
-`--limit` is a global flag but is not used by `ask` retrieval. Ask retrieval depth is controlled by `AXON_ASK_*` tuning env vars.
+The global `--limit` flag does not control ask retrieval. The active retrieval
+depth controls are documented under [Active Tuning](#active-tuning).
 
 ## Examples
 
 ```bash
-# Basic ask
-axon ask "how does spider.rs handle JavaScript-heavy sites?"
+# Ask the configured collection
+axon ask "How does the unified source pipeline publish a generation?"
 
-# Using --query flag
-axon ask --query "what is the default chunk size for TEI batch requests?"
+# Use a different collection and a time window
+axon ask "What changed in retrieval?" \
+  --collection engineering \
+  --since 30d
 
-# Specific collection
-axon ask "list all indexed rust crates" --collection rust-libs
+# Compare the current hybrid path with an explicit dense-only query
+axon ask "How is cleanup debt drained?" --no-hybrid-search
 
-# Debug: show retrieved chunks and scores
-axon ask "qdrant HNSW parameters" --diagnostics
+# Inspect retrieval and context selection without synthesis
+axon ask "How are canonical citations built?" --explain --json
 
-# Disable streaming when you need buffered output
-axon ask "how does the ask pipeline choose sources?" --no-stream
+# Buffer the final normalized answer
+axon ask "What is the reset safety contract?" --no-stream
 
-# Continue from recent ask turns in the default local session
-axon ask --follow-up "can you show a concrete example?"
-axon ask --continue "can you show a concrete example?"   # alias
-axon ask -c "can you show a concrete example?"           # short form
+# Continue a local ask session
+axon ask --session pipeline "Summarize the source lifecycle"
+axon ask --resume pipeline "What happens after publish?"
 
-# Resume a specific named session (alias for --follow-up --session NAME)
-axon ask --resume rust-tests "how would that look in this repo?"
-
-# Use a named local session and clear it when changing topics
-axon ask --session rust-tests --reset-session "what is the test sidecar pattern?"
-axon ask --session rust-tests --follow-up "how would that look in this repo?"
-
-# Start a fresh session (auto-named) for a brand-new line of questioning
-axon ask --new-session "what is the architecture of axon's ask pipeline?"
-
-# Overwrite a named session with a fresh thread
-axon ask --new-session --session experiments "let's start over on this topic"
-
-# List local ask sessions (human-readable)
+# Manage local ask sessions
 axon ask --list-sessions
-
-# List sessions as JSON for scripts
-axon ask --list-sessions --json
-
-# Explain ranking/context decisions without calling the LLM
-axon ask "claude marketplace plugins" --explain --json
-
-# JSON output
-axon ask "what are the source acquisition limits?" --json
-
-# Ask the local knowledge base with buffered output
-axon ask --no-stream "what changed in server mode?"
+axon ask --new-session --session experiments "Explain the retrieval boundary"
 ```
 
-## RAG Pipeline
+## Live Retrieval and Context Path
 
-1. Embed the question via TEI
-2. Query Qdrant for top `ask.candidate-limit` candidate chunks. The fallback is model-tiered unless explicitly set.
-3. Apply the score threshold only on cosine/dense paths. `ask.min-relevance-score` (default: 0.45) is used for legacy unnamed-vector collections, named dense searches, named-vector collections with hybrid disabled, and named-vector searches whose sparse query is empty.
-4. Skip that threshold in hybrid/RRF named-vector mode. RRF scores are rank-fusion outputs rather than cosine scores, so ask keeps the loose topical-overlap gate and uses Qdrant's fused ordering.
-5. Rerank by the mode-appropriate score/order; plan top chunks and full-document URLs
-6. Resolve the full-document count. Explicit `ask.full-docs` / `AXON_ASK_FULL_DOCS` wins; otherwise simple queries use 4, complex dual-embedding queries use 6, and high-context Gemini/Claude/GPT/Codex-family models use at least 4.
-7. Fetch full documents first, then insert top chunks while suppressing chunks from already-inserted full-document URLs
-8. Assemble context up to `AXON_ASK_MAX_CONTEXT_CHARS` (model-tiered fallback: 1,000,000 large, 400,000 GPT/Codex, 128,000 local Gemma, 40,000 unknown), flatten sources by score, and renumber citations
-9. Call the configured LLM backend with context + question
-10. Apply response-quality gates (citations + policy checks, including structured `citation_validation` when the model returns it)
-11. Print the normalized answer
+The current `ask` path is implemented by
+`crates/axon-services/src/query/ask_retrieval.rs` and
+`crates/axon-retrieval/src/`:
 
-## Session Lifecycle
+1. Resolve the active vector store and embedding provider.
+2. Embed the question once. There is no keyword rewrite or second query
+   embedding.
+3. When hybrid is enabled, compute a BM42 sparse query and ask Qdrant to fuse
+   the dense and sparse prefetches with RRF. When hybrid is disabled, issue one
+   named-dense query.
+4. Apply the current retrieval filters: allowed visibility, clean redaction,
+   published document status, and optional `embedded_at` bounds. Memory records
+   are excluded from ordinary query/ask retrieval.
+5. Request
+   `max(ask_hybrid_candidates, ask_chunk_limit, 1)` ranked hits.
+6. Walk those hits in order and admit a strict prefix bounded by
+   `ask_chunk_limit` and `ask_max_context_chars`.
+7. Render each selected hit as `## Top Chunk [S#]` inside an
+   `<retrieved_content trust="evidence_only">` boundary.
+8. Send `Question: ...\n\nContext:\nSources: ...` to the configured LLM.
+9. Normalize citations, require unique citations for non-trivial answers, and
+   retry synthesis once when citation validation fails.
 
-The seven session-related flags interact as follows:
+There is no separate lexical/domain reranker after Qdrant, so the retrieval and
+rerank scores exposed for compatibility are equal. There is also no
+full-document fetch or supplemental backfill on this path. Those diagnostic
+counts are zero and their explain-plan lists are empty.
 
-| Flag | Selects which session? | Loads prior turns? | Wipes existing turns? | Exits without running query? |
-|------|------------------------|--------------------|-----------------------|------------------------------|
-| (none) | `latest` pointer, falling back to `default` | No | No | No |
-| `--session <NAME>` | `<NAME>` | No | No | No |
-| `--follow-up` (alias `--continue`, short `-c`) | from `--session` or `latest` | Yes | No | No |
-| `--resume <NAME>` | `<NAME>` | Yes | No | No |
-| `--reset-session` | from `--session` or `latest` | No (after wipe) | Yes (selected session) | No |
-| `--new-session` | from `--session` or auto-`auto-YYYY-MM-DD-HHMMSS` | No | Yes (selected/new) | No |
-| `--list-sessions` | — | — | — | Yes |
+For the full prompt and trust-boundary details, see
+[Context Injection Pipeline](../../guides/context-injection.md).
 
-Mutually exclusive combinations (clap enforces at parse time):
-
-- `--new-session` ⨯ `--follow-up` / `--continue` / `-c`
-- `--new-session` ⨯ `--reset-session`
-- `--new-session` ⨯ `--resume`
-- `--resume` ⨯ `--session` (redundant)
-- `--list-sessions` + any positional query argument is rejected at runtime.
-
-Typical workflows:
-
-```bash
-# Pick up where I left off
-axon ask --continue "what was the second option you mentioned?"
-
-# Switch threads
-axon ask --resume rust-tests "back to the test sidecar conversation"
-
-# Start completely fresh, keep an auto-named history
-axon ask --new-session "let's look at a different topic"
-
-# See all my threads
-axon ask --list-sessions
-```
-
-## Follow-Up Sessions
-
-`axon ask` records successful non-explain turns to local JSONL files under
-`$AXON_DATA_DIR/ask-sessions/` (default: `~/.axon/ask-sessions/`). After each
-successful saved turn, Axon updates `$AXON_DATA_DIR/ask-sessions/latest` with
-the active session name.
-
-If `--session <name>` is omitted, Axon uses the most recently successful ask
-session from that `latest` pointer, falling back to `default` when no prior
-session exists. The human CLI output prints the active `Session:` after timing,
-and JSON output includes `"session": "<name>"`.
-
-Pass `--session <name>` to keep separate threads or to switch explicitly.
-
-`--follow-up` loads the recent turns for the selected session and folds them
-into the retrieval/synthesis question so references like "that" or "the second
-option" can resolve without depending on Gemini CLI's interactive session state.
-Facts still need to come from retrieved Axon context and still need `[S#]`
-citations. Use `--reset-session` to clear a local session before changing
-topics.
-
-## Explain Trace
-
-Use `--diagnostics` for aggregate health counters. Use `--explain --json` when a ranking result looks wrong and you need the per-candidate math and context decisions. Explain mode returns the normal `AskResult` shape with `answer: ""`, `timing_ms.llm: 0`, `explain.llm_skipped: true`, and no Gemini call.
-
-Raw rendered retrieval context is omitted from default explain JSON so CLI, MCP, REST, and runner artifacts do not leak the full prompt fragment by accident. Use `.explain.context.final_source_order` for source ordering metadata, `.explain.context.context_bytes_used` / `.context_bytes_budget` for the concrete budget invariant, `.explain.context.context_chars_used` for Unicode character count, and `.explain.candidates[]` for candidate scores, filter decisions, selected context ranks, insertion modes, and snippets.
-
-When an internal caller explicitly includes rendered context, it is shaped as `.explain.context.rendered_context = { "format": "axon_sources_v1", "content": "...", "bytes_used": N, "chars_used": N }`.
+## Context Shape
 
 ```text
-query
-  |
-  v
-TEI embedding + Qdrant dense/BM42/RRF retrieval
-  |
-  v
-rerank/filter + token/authority policy
-  |
-  v
-corpus-health classification
-  |
-  v
-context selection + bounded full-doc fetch
-  |
-  v
-ask --explain retrieval harness
-  |
-  +--> ranking bug? tune scoring/filtering
-  +--> selection bug? tune context selection
-  +--> corpus gap? source/index better docs
-  +--> fixture mismatch? update tracked fixture notes
+Sources:
+## Top Chunk [S1]: docs.example.com
+
+<retrieved_content trust="evidence_only">
+...
+</retrieved_content>
+
+---
+
+## Top Chunk [S2]: github.com
+
+<retrieved_content trust="evidence_only">
+...
+</retrieved_content>
 ```
 
-Compact example:
+Chunk bodies are defanged before insertion so indexed text cannot manufacture
+`[S#]` keys or source headers. The final structured result carries canonical
+citation lineage for every selected chunk even though the prompt header uses a
+short display source.
 
-```json
-{
-  "query": "claude marketplace plugins",
-  "answer": "",
-  "diagnostics": { "candidate_pool": 15, "reranked_pool": 12 },
-  "explain": {
-    "mode": "explain_only",
-    "retrieval": {
-      "score_kind": "cosine",
-      "vector_mode": "unnamed",
-      "hybrid_search_enabled": true
-    },
-    "candidates": [
-      {
-        "id": "candidate-1",
-        "url": "https://code.claude.com/docs/en/plugins",
-        "retrieval_score": 0.17,
-        "rerank_score": 0.62,
-        "score_components": [
-          { "name": "retrieval_score", "value": 0.17, "status": "applied" },
-          { "name": "authority_boost", "value": 0.35, "status": "applied" }
-        ],
-        "filter_decisions": [{ "kind": "kept" }],
-        "selection_decisions": [{ "kind": "selected_top_chunk" }]
-      }
-    ],
-    "context": {
-      "planned_full_doc_urls": [],
-      "full_doc_fetch_skipped": true,
-      "full_doc_fetch_mode": "cosine",
-      "final_source_order": [
-        { "source_id": "S1", "url": "https://code.claude.com/docs/en/plugins", "tier": "top_chunk" }
-      ],
-      "truncated_by_budget": false
-    },
-    "llm_skipped": true
-  },
-  "timing_ms": { "retrieval": 21, "context_build": 3, "llm": 0, "total": 24 }
-}
-```
+## Citation Policy
 
-`retrieval_score` scale depends on retrieval mode. Cosine/dense paths use cosine-like scores and may apply `ask.min-relevance-score`; RRF paths use rank-fusion scores, mark additive rerank components as `skipped`, and do not apply the cosine threshold.
+The synthesis prompt requires factual statements to cite retrieved `[S#]`
+sources. Axon then normalizes the model output:
 
-## RAG Tuning
+- citations must map to source identifiers in the rendered context;
+- duplicate URL variants collapse to one canonical source entry;
+- non-trivial answers require `ask.min-citations-nontrivial` unique sources
+  when that many relevant sources are available;
+- a self-reported evidence gap becomes an explicit insufficient-evidence
+  response with suggested indexing targets;
+- other validation failures trigger one non-streaming citation-repair attempt;
+- if repair still fails, structured validation-failure details remain in the
+  normalized output.
 
-The core retrieval-selection knobs live in `~/.axon/config.toml` under `[ask]`.
-Env vars with the same names are compatibility overrides, not the normal place
-to store these values.
+Successful normalized answers end with one canonical `## Sources` section.
 
-| TOML key | Env override | Default | Effect |
-|----------|--------------|---------|--------|
-| `ask.min-relevance-score` | `AXON_ASK_MIN_RELEVANCE_SCORE` | `0.45` | Raise to tighten relevance on cosine/dense paths (0.6-0.7 for high-precision); lower if you get "no candidates". Skipped for hybrid/RRF named-vector mode because RRF scores are not cosine scores. |
-| `ask.candidate-limit` | `AXON_ASK_CANDIDATE_LIMIT` | Model-tiered | More candidates = better recall, slower reranking |
-| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Model-tiered | Top chunks eligible for final LLM context |
-| `ask.full-docs` | `AXON_ASK_FULL_DOCS` | Adaptive | Explicit max full-document fetches; unset means 4 simple / 6 complex, with high-context models floored at 4 |
+## Explain Mode
 
-Additional ask controls:
+`--explain` runs the same retrieval and context-selection pass as a normal ask,
+then skips synthesis. The trace is intentionally narrower than the removed
+reranker trace:
 
-| TOML key | Env override | Default | Effect |
-|----------|--------------|---------|--------|
-| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Model-tiered | Total context characters; defaults by model family unless explicitly overridden |
-| `ask.authoritative-domains` | `AXON_ASK_AUTHORITATIVE_DOMAINS` | `` | Optional comma-separated domains to boost in reranking |
-| `ask.authoritative-boost` | `AXON_ASK_AUTHORITATIVE_BOOST` | `0.0` | Score boost for authoritative-domain matches |
-| `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | `2` | Minimum unique citations for non-trivial answers |
+- each candidate's `retrieval_score` and `rerank_score` are the same returned
+  score;
+- selected candidates have `selected_top_chunk`; later candidates have
+  `not_selected`;
+- `planned_full_doc_urls` and full-document errors are empty;
+- final source order contains only `top_chunk` rows;
+- `llm_skipped` is `true` and LLM timing is zero.
 
-## Notes
+The default JSON does not include the raw rendered context. Inspect
+`explain.candidates`, `explain.context.final_source_order`,
+`context_bytes_used`, `context_bytes_budget`, and `context_chars_used` instead.
 
-- LLM answer generation goes through the configured backend. By default this is Gemini headless; `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` is the preferred Gemini model override, with `AXON_HEADLESS_GEMINI_MODEL` kept as a legacy alias.
-- The generic CLI forwarding mode was removed in 5.0.0. `AXON_SERVER_URL` does not route `axon ask` through HTTP; use `axon serve` directly for external REST/MCP clients.
-- If you get "No candidates met relevance threshold", lower `ask.min-relevance-score` in `~/.axon/config.toml` or run `axon <source>` / `axon scrape <url>` to add more content to the collection. This message comes from cosine/dense retrieval paths; hybrid/RRF named-vector mode skips the cosine threshold.
-- `ask` queries the local knowledge base only. To search the live web, use `axon research`.
-- For benchmarking RAG quality vs a baseline, use `axon evaluate`.
-- `ask` enforces citation-quality gates:
-  - Answers must include inline `[S#]` citations from retrieved context.
-  - Non-trivial responses must satisfy `AXON_ASK_MIN_CITATIONS_NONTRIVIAL`.
-  - Failed gates return structured insufficient-evidence output with next-index suggestions.
+## Active Tuning
+
+Normal persistent tuning belongs in `~/.axon/config.toml`; environment values
+override TOML and request/CLI overrides win over both.
+
+| TOML key | Env override | Current effect |
+|---|---|---|
+| `providers.vector.hybrid-enabled` | `AXON_HYBRID_SEARCH` | Enable dense+BM42 RRF. `--no-hybrid-search` overrides it for one CLI call. |
+| `retrieval.ask-hybrid-candidates` | `AXON_ASK_HYBRID_CANDIDATES` | Number of ranked hits requested before context selection; default is model-tiered. |
+| `ask.chunk-limit` | `AXON_ASK_CHUNK_LIMIT` | Maximum top chunks admitted to context; default is model-tiered. |
+| `ask.max-context-chars` | `AXON_ASK_MAX_CONTEXT_CHARS` | Maximum rendered context size; default is model-tiered. The live builder enforces it using UTF-8 bytes. |
+| `ask.min-citations-nontrivial` | `AXON_ASK_MIN_CITATIONS_NONTRIVIAL` | Required unique citations for non-trivial normalized answers; default `2`. |
+
+The config and MCP request DTOs still accept compatibility fields from the
+retired context builder: `candidate-limit`, `full-docs`, `backfill-chunks`,
+document-fetch controls, `min-relevance-score`, and authority-domain controls.
+The current retrieval-engine ask path does not read those values. They do not
+change ranking, filtering, or context assembly.
+
+See the generated [TOML registry](../config/config-toml.md) and
+[environment registry](../config/env.md) for the complete configuration
+surface.
+
+## LLM Backends
+
+`AXON_LLM_BACKEND` selects `gemini-headless`, `openai-compat`, or
+`codex-app-server`. Configure the backend's synthesis model, endpoint, and
+credentials with the corresponding variables in the generated environment
+registry. Retrieval still requires Qdrant plus the configured embedding
+provider. The synthesis model profile can change model-tiered retrieval-depth
+defaults, but it does not replace the vector or embedding providers.
+
+## Local Ask Sessions
+
+Successful non-explain CLI turns are appended to JSONL files under
+`$AXON_DATA_DIR/ask-sessions/` (normally `~/.axon/ask-sessions/`). Axon updates
+the `latest` pointer after each saved turn.
+
+When follow-up mode is active, the CLI uses bounded prior turns to form the
+effective retrieval question and adds a delimited history source to synthesis
+context. History is treated as untrusted context, and retrieved claims still
+need source citations.
+
+| Invocation | Session behavior |
+|---|---|
+| no session flag | Use `latest`, falling back to `default`; do not load history. |
+| `--session NAME` | Select `NAME`; do not load history. |
+| `--follow-up` / `--continue` / `-c` | Load bounded history from the selected/latest session. |
+| `--resume NAME` | Select `NAME` and load its bounded history. |
+| `--reset-session` | Clear the selected session before the question. |
+| `--new-session` | Clear an explicit or auto-generated session and ask without history. |
+| `--list-sessions` | List sessions and exit. |
+
+## Failure Boundaries
+
+- Missing `QDRANT_URL` or `TEI_URL` fails before retrieval.
+- Hybrid search against a collection without the sparse namespace fails; it
+  does not silently downgrade to dense-only.
+- Missing required payload lineage or non-clean redaction status fails closed
+  when hits are mapped.
+- A context budget too small to admit any retrieved chunk leaves no grounded
+  evidence for synthesis; increase `ask.max-context-chars` or reduce chunk
+  size at indexing time.
+- To add missing evidence, run `axon source <SOURCE> --wait true`; to search the
+  live web first, run `axon research <QUERY>`.

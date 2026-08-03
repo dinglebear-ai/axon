@@ -1,48 +1,17 @@
-//! Data tables mirroring `docs/pipeline-unification/crates/<name>/README.md`.
+//! Live workspace crate-contract tables.
 //!
-//! Four categories of workspace crate carry a pipeline-unification contract:
+//! Each row records the public module surface and forbidden production
+//! dependencies for one current workspace crate. Module lists are synchronized
+//! from `crates/<name>/src/lib.rs`; ownership intent is documented in the
+//! crate's `src/CLAUDE.md` and the living architecture pages under
+//! `docs/architecture/`.
 //!
-//! - Crates built fresh for issue #298 (`axon-adapters`, `axon-document`,
-//!   `axon-embedding`, `axon-error`, `axon-graph`, `axon-ledger`, `axon-llm`,
-//!   `axon-memory`, `axon-observe`, `axon-parse`, `axon-prune`,
-//!   `axon-retrieval`, `axon-route`, `axon-vectors`) were built to the
-//!   contract's minimal module list, so `modules` is non-empty and enforced
-//!   against that target list.
-//! - Five pre-existing production crates (`axon-api`, `axon-cli`, `axon-mcp`,
-//!   `axon-services`, `axon-web`) keep their full current-behavior module
-//!   surface until the #298 cutover — the target contract's minimal module
-//!   list (`docs/pipeline-unification/foundation/crate-structure.md`) does not
-//!   apply to them yet. Their `modules` entries below instead list the
-//!   crate's actual, shipped `pub mod` surface (synced 2026-07-12 from
-//!   `crates/<name>/src/lib.rs`), so the check still has teeth: it fails if a
-//!   documented module is renamed/removed without updating the docs, without
-//!   falsely flagging the unfinished #298 refactor as drift.
-//! - The remaining pre-existing crates (`axon-authz`, `axon-core`,
-//!   `axon-jobs`) still carry `modules: &[]` — see
-//!   `docs/pipeline-unification/README.md`'s "Current Implementation
-//!   Snapshot" framing. Only the dependency-direction rule is enforced for
-//!   these until they're similarly reconciled.
-//! - `axon-extract` is a restored transitional crate (removed from the
-//!   clean-break list, then intentionally restored 2026-07-15 as the
-//!   vertical-extractor implementation catalog — see the "Restored-Crate
-//!   Note" in `docs/pipeline-unification/crates/axon-extract/README.md`).
-//!   Its `modules` entry lists only `verticals`, the sole `pub mod` in its
-//!   `lib.rs`; its other files (`context`, `error`, `git_payload`, `types`)
-//!   are private modules whose types are re-exported at the crate root, so
-//!   listing them would false-positive against the literal `pub mod <name>;`
-//!   check.
-//!
-//! `forbidden_axon_deps` is derived only from each README's explicit
-//! "Dependencies Forbidden" text (named crates, or unambiguous category terms
-//! like "transport crates" that consistently mean `axon-cli`/`axon-mcp`/
-//! `axon-web` throughout the contract packet). It intentionally does not
-//! encode the "Dependencies Allowed" list as a closed set — allowed lists are
-//! illustrative, not exhaustive, and treating them as exhaustive would flag
-//! legitimate utility-crate dependencies as violations.
+//! `forbidden_axon_deps` encodes only explicit production dependency
+//! boundaries. Dev and build dependencies remain exempt because tests,
+//! fixtures, and code generation legitimately cross runtime boundaries.
 //!
 //! The table is split across this file and `crate_contracts_spec_cont.rs`
-//! purely to stay under the repo's 500-line monolith cap — there is no
-//! semantic difference between the two halves. Use
+//! solely to stay under the repository's 500-line monolith cap. Use
 //! [`all_crate_contracts`] to iterate the combined table.
 
 pub struct CrateContract {
@@ -144,8 +113,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "service_job",
             "source",
         ],
-        // README: "all domain crates except `axon-error`" — the only axon
-        // dependency this crate may declare is axon-error.
+        // axon-api may depend only on axon-error among Axon crates.
         forbidden_axon_deps: &[
             "axon-adapters",
             "axon-authz",
@@ -172,7 +140,14 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-authz",
-        modules: &[],
+        modules: &[
+            "affinity",
+            "caller",
+            "decision",
+            "http",
+            "policy",
+            "visibility",
+        ],
         forbidden_axon_deps: &[
             "axon-services",
             "axon-jobs",
@@ -191,7 +166,28 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
     },
     CrateContract {
         name: "axon-core",
-        modules: &[],
+        modules: &[
+            "artifacts",
+            "ask_explain",
+            "binary_status",
+            "boundary",
+            "config",
+            "content",
+            "endpoints",
+            "env",
+            "error",
+            "events",
+            "hardening",
+            "health",
+            "http",
+            "llm",
+            "logging",
+            "paths",
+            "redact",
+            "sqlite",
+            "structured",
+            "ui",
+        ],
         forbidden_axon_deps: &[
             "axon-services",
             "axon-jobs",
@@ -266,7 +262,8 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
             "conversion",
             "testing",
         ],
-        // README: "any Axon crate" is forbidden — axon-error is the lowest
+        // axon-error is the lowest-level Axon crate, so all Axon dependencies
+        // are forbidden.
         // layer and may declare zero axon-* dependencies.
         forbidden_axon_deps: &[
             "axon-adapters",
@@ -297,7 +294,7 @@ pub const CRATE_CONTRACTS: &[CrateContract] = &[
         name: "axon-extract",
         // Restored transitional vertical-extractor catalog (see the
         // "Restored-Crate Note" in
-        // docs/pipeline-unification/crates/axon-extract/README.md). Only
+        // crates/axon-extract/src/CLAUDE.md). Only
         // `verticals` is `pub mod` in lib.rs — `context`, `error`,
         // `git_payload`, and `types` are private modules whose types are
         // re-exported at the crate root via `pub use`, so they are not

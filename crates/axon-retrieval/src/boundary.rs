@@ -1,6 +1,6 @@
 //! Retrieval boundary trait — target contract for `RetrievalEngine`.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/trait-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §RetrievalEngine. This trait is defined in a module separate from
 //! `crate::engine::RetrievalEngine` because the concrete struct and the trait
 //! share the bare name `RetrievalEngine` — Rust's type namespace forbids a

@@ -4,7 +4,7 @@
 //! decides *which* generations may be pruned, enforcing the generation-fence:
 //! the current committed generation is never selected.
 //!
-//! See `docs/pipeline-unification/runtime/pruning-contract.md` (generation-fenced
+//! See `docs/reference/runtime/pruning.md` (generation-fenced
 //! deletes).
 
 use axon_api::source::ids::SourceGenerationId;

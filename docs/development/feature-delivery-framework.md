@@ -1,301 +1,171 @@
 ---
 title: "Feature Delivery Framework"
-created: 2026-02-26
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Feature Delivery Framework
-Last Modified: 2026-06-01
 
-## Purpose
+Deliver features through the existing domain boundaries instead of creating a
+transport-owned implementation path. CLI, MCP, REST, and app clients are
+projections over shared DTOs and services.
 
-This document is the source of truth for bringing new Axon features online.
+## 1. Identify the owner
 
-Goals:
-- Enforce one implementation pattern for all new features.
-- Keep business logic out of CLI/MCP/Web adapters.
-- Make feature rollout predictable across one or more surfaces (CLI, MCP, Web).
-- Define objective quality gates before a feature is considered complete.
+Choose the crate that owns the data or behavior:
 
-Change control:
-- If delivery architecture, surface routing rules, or quality gates change, update this file in the same PR.
-- If this file and another delivery/process doc conflict, this file takes precedence until harmonized.
+| Concern | Owner |
+|---|---|
+| DTO, enum, envelope, wire schema | `axon-api` |
+| Error taxonomy | `axon-error` |
+| Auth policy and scope decisions | `axon-authz` |
+| Config, paths, HTTP safety, redaction | `axon-core` |
+| Source resolution | `axon-route` |
+| Acquisition | `axon-adapters` |
+| Parsing and document preparation | `axon-parse`, `axon-document` |
+| Generation and manifest state | `axon-ledger` |
+| Jobs, workers, watches, scheduling | `axon-jobs` |
+| Vector storage or retrieval | `axon-vectors`, `axon-retrieval` |
+| Graph | `axon-graph` |
+| Memory | `axon-memory` |
+| LLM synthesis | `axon-llm` |
+| Cross-domain composition | `axon-services` |
+| CLI presentation | `axon-cli` |
+| MCP transport | `axon-mcp` |
+| REST/OpenAPI/panel transport | `axon-web` |
 
-## Scope
+Single-domain logic stays in the domain crate. Use `axon-services` when an
+operation coordinates multiple owners or participates in the shared runtime.
 
-Applies to all net-new capabilities added after this document.
+## 2. Define the contract first
 
-Does not require immediate refactors of existing legacy command paths. Existing behavior remains valid unless explicitly migrated.
+Before transport work:
 
-## Architecture Standard (New Features)
+1. Add or update transport-neutral DTOs in `axon-api`.
+2. Add typed errors in `axon-error` when the existing taxonomy is
+   insufficient.
+3. Define authorization, execution-affinity, and visibility requirements.
+4. Decide synchronous versus durable-job behavior.
+5. Identify generated schemas or references that must change.
 
-### Rule 1: Service-First
+Avoid raw JSON between layers. Domain/service APIs return typed values and do
+not print to stdout.
 
-All new feature logic must live in `src/services/*`.
+## 3. Implement the domain path
 
-Adapters must be thin:
-- CLI: argument/flag mapping + output formatting only.
-- MCP: schema validation + response envelope only.
-- Web: request parsing + stream/event forwarding only.
+Add the behavior to the owning crate and cover it with focused tests. When
+cross-domain composition is required, expose it through
+`crates/axon-services/src/` without duplicating domain logic.
 
-### Rule 2: Single Orchestrator per Feature
+For source work, preserve the canonical sequence:
 
-Each feature has one orchestration entrypoint in services (for example, `run_fastlearn(...)`).
+```text
+SourceRequest
+  -> route and authorize
+  -> acquire
+  -> diff and generation planning
+  -> normalize/parse/prepare
+  -> embed and vectorize
+  -> publish
+  -> graph
+  -> cleanup debt
+  -> SourceResult
+```
 
-That orchestrator owns:
-- execution lifecycle,
-- timing and metrics,
-- streaming events,
-- retries/timeouts,
-- graceful degradation policy,
-- final result payload.
+Do not create a second source-family job store or publication path.
 
-### Rule 3: Shared Contracts
+## 4. Add transport projections
 
-Define feature contracts once in services and reuse across adapters:
-- request struct,
-- event enum for progress streaming,
-- result struct,
-- error enum.
+### CLI
 
-Contract stability requirements:
-- Keep field names stable across CLI JSON output, MCP payloads, and web events.
-- If a breaking contract change is required, include a migration note in the feature PR and docs.
+- Parser/config ownership: `crates/axon-core/src/config/cli/`
+- Command handlers and rendering: `crates/axon-cli/src/commands/`
+- Generated command registry: `docs/reference/cli/commands.json`
 
-Adapters should map to/from these contracts, not create parallel feature-specific models.
+Keep handlers thin: parse, call the shared service/domain boundary, render.
 
-## Surface Decision Matrix
+### MCP
 
-Use this matrix before implementation:
+- Shared request DTOs: `crates/axon-api/src/mcp_schema/`
+- Action registry/auth classification: `crates/axon-mcp/src/server/authz.rs`
+- Handler dispatch: `crates/axon-mcp/src/server/`
+- Generated wire contract: `docs/reference/mcp/tool-schema.json`
 
-| Surface | Use when | Must include |
-|---|---|---|
-| CLI only | Operator-first capability, local workflows, scripting | command routing, human output, `--json` output parity |
-| MCP only | Tooling/agent integration only | schema enum entry, handler branch, response_mode policy |
-| Web only | UI-native interaction not exposed as command | `src/web` route binding, panel UX |
-| CLI + MCP | Same capability needed by humans and agents | shared service, thin wrappers, output/schema parity |
-| CLI + Web | Feature needs terminal and UI visibility | shared service, consistent progress semantics |
-| MCP + Web | Agent and UI workflows, no shell requirement | shared service, consistent event model |
-| CLI + MCP + Web | Core platform capability | one service orchestrator, all adapters thin |
+MCP exposes one tool named `axon`; add an action/subaction rather than a new
+tool.
 
-Default stance: if unclear, implement `CLI + MCP` first using a shared service. Add Web if a concrete UI flow exists.
+### REST and web
 
-## Delivery Lifecycle
+- Router: `crates/axon-web/src/server/routing.rs`
+- Handlers: `crates/axon-web/src/server/handlers/`
+- OpenAPI registry: `crates/axon-web/src/server/openapi.rs`
+- Generated OpenAPI: `docs/reference/rest/openapi.json`
 
-### Phase 0: Feature Classification
+Apply the same scope, error envelope, and durable-job semantics as CLI/MCP.
 
-Classify the feature before coding:
-- synchronous vs queue-backed async,
-- deterministic vs best-effort,
-- read-only vs mutating,
-- external dependency requirements,
-- surfaces required (CLI/MCP/Web).
+### Client apps
 
-### Phase 1: Contract Design
-
-Define service contracts first:
-- `FeatureRequest`
-- `FeatureEvent`
-- `FeatureResult`
-- `FeatureError`
-
-Design event taxonomy before implementation to guarantee streamability.
-
-### Phase 2: Service Implementation
-
-Implement only in `src/services` first.
-
-Required in service layer:
-- total and phase timing (ms),
-- progress event emitter,
-- cancellation checks for long-running operations,
-- bounded concurrency,
-- graceful partial-failure handling where required,
-- deterministic final result payload.
-
-### Phase 3: Adapter Wiring
-
-Wire each selected surface as a thin wrapper.
-
-### Phase 4: Validation
-
-Run unit + integration + compile checks, then docs update.
-
-### Phase 5: Rollout
-
-Ship only after Definition of Done passes.
-
-## File-Level Integration Checklist
-
-### Shared Service Layer (Required for all new features)
-
-1. Add module and exports:
-- `src/services.rs`
-- `src/services/<feature>.rs`
-
-Also wire the module graph:
-- `src/lib.rs` / module roots as needed (`pub mod services;`)
-
-2. Add service contracts and orchestrator:
-- request/event/result/error types
-- `run_<feature>(...)`
-
-3. Keep direct side-effects isolated behind helper functions.
-
-### CLI Integration (if selected)
-
-1. Add command handler:
-- `src/cli/commands/<feature>.rs`
-
-2. Export in:
-- `src/cli/commands.rs`
-
-3. Route command in:
-- `lib.rs` (`run_once` match arm)
-
-4. Add command kind + parser wiring:
-- `src/core/config/types/enums.rs` (`CommandKind`)
-- `src/core/config/cli.rs` (clap spec)
-- `src/core/config/parse.rs` (arg -> `Config` mapping)
-
-5. Ensure CLI output modes:
-- human-readable mode
-- `--json` mode with stable machine contract
-
-### MCP Integration (if selected)
-
-1. Add schema request shape:
-- `src/mcp/schema.rs` (`AxonRequest` + request struct)
-
-2. Add server handler route:
-- `src/mcp/server.rs` (`handle_<feature>` and match arm)
-
-3. Follow MCP envelope policy:
-- `ok/action/subaction/data`
-- `response_mode` behavior (`path|inline|both`)
-
-4. Keep MCP discoverability in sync:
-- update `handle_help` action map in `src/mcp/server.rs` for new actions/subactions.
-
-5. Update docs:
-- `docs/reference/mcp/tool-schema.md`
-- `docs/reference/mcp/overview.md` if behavior/usage changes
-
-### Web Integration (if selected)
-
-1. Route to service from web runtime:
-- Axum runtime: `src/web.rs`, `src/web/server.rs`, `src/web/server/routing.rs`, and the REST handlers under `src/web/server/handlers/`
-- Static panel assets: `apps/web/app/**` when the browser-facing setup/config UI changes
-
-2. Keep long-running operations server-owned. Browser and CLI clients should
-receive job IDs, artifact handles, or action responses rather than relying on
-host-local output paths.
-
-3. Keep transport mapping in the web layer; business logic stays in services.
-
-### Docs Integration (Always)
-
-1. Add command/feature doc when user-facing:
-- `docs/reference/actions/<feature>.md`
-
-2. Update indexes/references:
-- `docs/README.md`
-- repository `README.md` feature/command tables if needed
-
-3. For major behavior additions, update:
-- `docs/architecture/overview.md`
-
-## Streaming Standard
-
-For long-running work (>3s expected), progress visibility is required.
-
-Minimum stream event types:
-- `started`
-- `phase_started`
-- `progress`
-- `phase_completed`
-- `warning`
-- `error`
-- `completed`
-
-Rules:
-- For streaming-capable surfaces (CLI, Web), emit heartbeat/progress at a steady cadence while waiting on external systems.
-- For non-streaming surfaces (MCP), return phase/timing metadata and artifact pointers so clients can show activity and poll follow-up state when relevant.
-- Include elapsed timing per phase and total timing in final result.
-- Never leave users with silent waits.
-
-## Reliability and Degradation Standard
-
-Define failure policy explicitly per external dependency:
-- hard-fail dependency: abort feature
-- best-effort dependency: warn and continue
-
-For best-effort paths:
-- track failures in result payload,
-- include counts and representative errors,
-- keep primary outcome successful when appropriate.
-
-## Testing Standard
-
-Minimum required tests for new features:
-
-1. Service unit tests:
-- happy path,
-- partial failure path,
-- timeout/cancellation path,
-- deterministic payload shape.
-
-2. Adapter tests:
-- CLI argument mapping and `--json` contract,
-- MCP request parsing and response envelope,
-- Web transport mapping (if applicable).
-
-3. Regression tests:
-- prove existing commands/actions remain intact when feature is additive.
-
-4. Validation commands:
-- `cargo fmt --all`
-- `cargo check -q`
-- targeted `cargo test <feature-or-module>`
-
-## Definition of Done
-
-A feature is complete only when all are true:
-
-1. Core logic is implemented in `src/services`.
-2. Selected adapters are thin and wired.
-3. Streaming/progress is visible for long-running steps.
-4. Timing is captured and surfaced in outputs.
-5. Degradation policy is implemented and tested.
-6. Existing behaviors remain unchanged unless explicitly intended.
-7. Docs are updated across command/MCP/architecture surfaces as needed.
-8. Compile and tests pass.
-
-## PR Review Checklist
-
-Use this checklist before merge:
-
-- Is this feature service-first, or did logic leak into adapters?
-- Is there exactly one orchestration path reused by all surfaces?
-- Are CLI/MCP/Web contracts consistent with the same service result model?
-- Is streaming visible and frequent during slow operations?
-- Are timing fields present and accurate?
-- Is graceful degradation explicit and observable?
-- Are docs and help/schema entries updated?
-- Are tests covering success + failure + partial-failure paths?
-
-## Migration Guidance for Legacy Paths
-
-Legacy feature paths can remain as-is until scheduled refactor work.
-
-When touching a legacy command significantly:
-- prefer extracting new logic into `src/services` instead of expanding legacy adapter logic,
-- migrate incrementally (service extraction first, adapter simplification second),
-- preserve external command behavior unless a deliberate breaking change is approved.
-
-## Initial Implementation Notes
-
-To establish this pattern immediately:
-- Create `src/services/` for all net-new capabilities starting now.
-- Keep existing `research` behavior intact while introducing new service-based capabilities.
-- Use this framework as the checklist for `fastlearn` and future features.
+Regenerate client bindings from OpenAPI/DTO sources. Do not hand-invent a
+parallel wire shape in Android, Palette, Chrome extension, or web code.
+
+## 5. Update generated contracts
+
+Depending on the change, run:
+
+```bash
+cargo xtask schemas generate --update-fixtures
+cargo xtask docs generate
+cargo xtask presentation generate
+cargo xtask gen-api-parity
+python3 scripts/generate_action_docs.py
+cargo xtask gen-public-api
+cargo xtask gen-dep-graph
+```
+
+Generated artifacts have one owner. A generator input must never be one of its
+own outputs or a downstream generated-doc output.
+
+## 6. Test at the right layers
+
+Minimum evidence normally includes:
+
+- domain unit tests
+- fake-boundary or store/provider tests
+- service orchestration tests for cross-domain work
+- CLI/MCP/REST shape and parity tests when transports change
+- authorization and redaction tests for public surfaces
+- durable job recovery/cancellation tests for async work
+- generated schema/docs drift checks
+
+Use live provider tests only when they prove behavior a fake cannot cover.
+
+## 7. Review structural constraints
+
+Before commit:
+
+```bash
+cargo fmt --all -- --check
+cargo xtask check-layering
+cargo xtask check-fetch-divergence
+cargo xtask check-crate-contracts
+cargo xtask check-repo-structure
+cargo xtask docs check
+python3 scripts/enforce_monoliths.py --staged
+```
+
+Then run:
+
+```bash
+just precommit
+```
+
+## Definition of done
+
+A feature is complete when:
+
+- one canonical implementation owns the behavior;
+- every exposed transport uses the same typed contract;
+- auth, redaction, errors, observability, and durable lifecycle are explicit;
+- generated schemas/docs and client bindings are synchronized;
+- no removed compatibility surface is revived;
+- focused tests and the full repository gate pass;
+- review findings are resolved and CI is green.

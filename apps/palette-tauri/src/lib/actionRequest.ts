@@ -77,7 +77,7 @@ export const noBody: BodyBuilder = () => null;
 
 // Page and site requests route through the unified `POST /v1/sources` pipeline (the
 // removed verb routes are documented in
-// docs/pipeline-unification/surfaces/rest-contract.md and the CLI shim at
+// docs/reference/rest/routes.md and the CLI shim at
 // crates/axon-cli/src/commands/source.rs, which this mirrors). `scope` hints
 // single-page vs. full-site acquisition; the server still auto-classifies
 // everything else. `SourceRequest.source` is singular, so — like the CLI —

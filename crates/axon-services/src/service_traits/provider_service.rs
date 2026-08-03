@@ -1,7 +1,7 @@
 //! `ProviderService` — provider capability/health discovery (capabilities/
 //! providers/provider/health/doctor).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §ProviderService. Only `doctor` wraps a real free function
 //! (`crate::system::doctor::doctor`) — and even that returns the
 //! `axon-services`-local `crate::types::DoctorResult`, not the contract's

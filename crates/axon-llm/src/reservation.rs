@@ -1,7 +1,7 @@
 //! Process-wide LLM completion reservation pool.
 //!
 //! Per the provider contract
-//! (`docs/pipeline-unification/runtime/provider-contract.md`, "LlmProvider
+//! (`docs/reference/runtime/provider-capabilities.md`, "LlmProvider
 //! Contract"): "LLM calls use `llm` reservations and cannot consume embedding
 //! capacity." This module gives LLM completion its own
 //! [`ProviderReservationManager`] — a SEPARATE pool from the embedding/vector

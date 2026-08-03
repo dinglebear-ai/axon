@@ -1,100 +1,150 @@
 ---
 title: "Repository Structure"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Repository Structure
 
-Last Modified: 2026-07-19
-
-The Axon repo is a Cargo workspace plus client apps, deployment configs,
-generated docs, and tooling. This page maps the top-level tree and points at
-the authoritative reference for each subtree.
-
-> The contract target for this layout lives at
-> [`docs/pipeline-unification/foundation/repo-structure.md`](../pipeline-unification/foundation/repo-structure.md).
-> This document describes the **current** tree; divergences from the contract
-> target are flagged inline.
+Axon is a Cargo workspace with a thin root binary, 23 focused Rust crates,
+client applications, deployment assets, generated references, integration
+tests, and repository tooling.
 
 ## Top-level layout
 
 ```text
 axon/
-├── src/                  root binary shim (main.rs, lib.rs) + bin/
-├── crates/               Cargo workspace (23 crates) — see crate-structure.md
-├── apps/                 client apps (one per release component)
-│   ├── web/              bundled web panel (shipped with the CLI)
-│   ├── android/          Android APK
-│   ├── chrome-extension/ Chrome extension
-│   └── palette-tauri/    Palette Tauri desktop app (own workspace)
-├── docs/                 architecture/, reference/, guides/, development/,
-│                         operations/, pipeline-unification/ (design record)
-├── xtask/                repo checks + generators (schemas, layering, release)
-├── config/               chrome/, qdrant/, Dockerfile, mcporter.json
-├── deploy/               incus/ (preferred), systemd/ (bare-metal)
-├── migrations/           root-level SQLite migrations (001-003)
-├── tests/                root-level integration tests + fixtures/
-├── scripts/              Python/bash tooling (~60 scripts: lint, schema,
-│                         install, qdrant-quality, ci/, lib/, searxng-research/)
-├── plugins/              axon/ Claude plugin packaging + scripts/
-├── vendor/               vendored deps (e.g. lab-auth) via [patch]
-├── Cargo.toml            workspace root (version.workspace = true)
-├── build.rs              root build script
-├── README.md             project README
-├── CLAUDE.md             agent instructions (AGENTS.md, GEMINI.md symlink here)
-├── Justfile              task runner (verify, fix, precommit, services-up/down)
-├── config.example.toml   non-secret tuning template
-├── .env.example          URLs/secrets/auth template
-├── docker-compose.yaml           dev stack (bind-mounted debug binary)
-├── docker-compose.prod.yaml      canonical infra reference
-├── docker-compose.external-qdrant.yaml  remote-Qdrant override
-├── install.sh / install.ps1      verified one-line installers
-├── rust-toolchain.toml   pins 1.96.0
-├── deny.toml             cargo-deny policy
-├── lefthook.yml          git hooks (monolith + test gates)
-└── release-please-config.json / .release-please-manifest.json
+├── src/                  thin binary shim, integration binaries, root tests
+├── crates/               23 Rust workspace crates
+├── apps/                 web, Android, Chrome extension, Palette desktop app
+├── docs/                 living docs plus dated history directories
+├── xtask/                architecture checks, generators, release tooling
+├── deploy/               Incus and systemd deployment assets
+├── config/               supporting-service configuration and build contexts
+├── migrations/           root compatibility and bootstrap migrations
+├── tests/                cross-surface and repository integration tests
+├── scripts/              CI, validation, install, release, and ops scripts
+├── plugins/              Axon Claude plugin and reusable skills
+├── vendor/               vendored or patched dependencies
+├── Cargo.toml            workspace manifest and shared product version
+├── build.rs              root build integration
+├── Justfile              common development and verification recipes
+├── lefthook.yml          local commit and push gates
+├── .env.example          endpoint, credential, and deployment template
+├── config.example.toml   non-secret runtime tuning template
+├── docker-compose*.yaml  development and infrastructure compositions
+├── install.sh            Linux installer
+└── install.ps1           Windows installer
 ```
 
-## What lives where
+## Root binary
 
-| Path | Purpose | Authoritative reference |
+The root crate intentionally contains only bootstrap glue:
+
+```text
+src/
+├── main.rs
+├── lib.rs
+├── main_tests.rs
+├── README.md
+└── bin/
+    ├── axon-openapi.rs
+    └── axon-route-contracts.rs
+```
+
+`src/lib.rs` re-exports the CLI entry point. Domain and transport behavior
+belongs in workspace crates, not in new root modules.
+
+## Workspace crates
+
+The current crate inventory is maintained in
+[Crate Structure](crate-structure.md) and enforced by
+`cargo xtask check-crate-contracts` and `cargo xtask check-layering`.
+
+Broad ownership groups:
+
+- shared contracts and policy: `axon-api`, `axon-authz`, `axon-core`,
+  `axon-error`
+- acquisition and source processing: `axon-route`, `axon-adapters`,
+  `axon-ledger`, `axon-document`, `axon-parse`, `axon-extract`
+- providers and stores: `axon-embedding`, `axon-vectors`, `axon-llm`,
+  `axon-graph`, `axon-memory`, `axon-prune`
+- runtime and composition: `axon-observe`, `axon-jobs`, `axon-services`
+- transports: `axon-cli`, `axon-mcp`, `axon-web`
+
+Every non-trivial crate keeps its live maintenance contract in
+`crates/<name>/src/CLAUDE.md`, with `AGENTS.md` and `GEMINI.md` symlinked
+to the same file.
+
+## Client applications
+
+| Path | Component | Authoritative documentation |
 |---|---|---|
-| `crates/` | The 23-crate Rust workspace | [crate-structure.md](crate-structure.md) |
-| `apps/` | Client apps, each a separate release component | `apps/*/README.md` |
-| `deploy/incus/` | Preferred deployment (system container) | [deploy/incus/README.md](../../deploy/incus/README.md) |
-| `deploy/systemd/` | Bare-metal systemd unit + walkthrough | [deploy/systemd/README.md](../../deploy/systemd/README.md) |
-| `docs/reference/` | Generated + hand-written reference (source of truth) | [docs/README.md](../README.md) |
-| `docs/pipeline-unification/` | Historical design-contract packet (issue #298) | [its README](../pipeline-unification/README.md) |
-| `xtask/` | `check-layering`, `schemas`, `bump-version`, `check-release-versions` | `xtask/src/` |
-| `config/` | Infra build contexts (chrome Dockerfile, qdrant config) | `config/Dockerfile` |
-| `migrations/` | Root SQLite migrations (jobs, indexes, export tracking) | `migrations/` |
-| `tests/` | Root integration tests + `fixtures/` | — |
-| `vendor/` | `[patch]`-ed dependencies | root `Cargo.toml` `[patch]` |
+| `apps/web/` | bundled web control panel | `docs/reference/surfaces/web.md` |
+| `apps/android/` | Android client | `docs/reference/surfaces/android.md` |
+| `apps/chrome-extension/` | browser capture extension | `docs/reference/surfaces/chrome-extension.md` |
+| `apps/palette-tauri/` | Palette desktop app | `docs/reference/surfaces/palette.md` |
 
-## Divergences from the contract target
+Each app is versioned and released as its own component where applicable.
 
-The pipeline-unification contract specified a tighter target tree. Current
-divergences:
+## Documentation
 
-- **`config/` has no `tei/`** — TEI runs from its container image; no build
-  context is needed.
-- **No root-level `fixtures/` or `examples/`** — fixtures live under `tests/fixtures/`
-  and inside individual crates.
-- **`apps/desktop/`** (contract) does not exist; the desktop app is `palette-tauri/`.
-- **`src/vector/`** exists at the root alongside `src/bin/`. The contract's
-  "root crate keeps only binary/bootstrap glue" rule would prefer these move
-  into a workspace crate; this is grandfathered transitional debt.
-- **Root `Cargo.toml` has no `[workspace.dependencies]`** — each crate pins its
-  own external deps; the shared inheritance is only `version.workspace = true`.
+Living documentation is grouped by purpose:
 
-## Validation
+- `docs/guides/`: setup and task-oriented workflows
+- `docs/reference/`: factual and generated runtime contracts
+- `docs/architecture/`: current system design and ownership
+- `docs/operations/`: deployment, security, performance, and runbooks
+- `docs/development/`: contribution and extension workflows
 
-- `cargo xtask check-layering` — enforces transport→domain-internal reach bans
-  and the PR9 provider-crate surface ban (see
-  [dependency-layering.md](dependency-layering.md)).
-- `cargo xtask check-release-versions --mode pr` — the PR gate for component
-  version parity across shipping paths.
-- `cargo xtask schemas generate --check` — generated-docs drift check.
+Dated records remain in `docs/sessions/`, `docs/plans/`,
+`docs/reports/`, and `docs/superpowers/`. They are historical context, not
+live runtime documentation. See [docs/README.md](../README.md).
 
-If this layout changes, update this file in the same PR.
+## Generated artifacts
+
+`cargo xtask schemas generate` and `cargo xtask docs generate` own the
+machine-readable and rendered references under `docs/reference/`. Generated
+files must not be hand-edited.
+
+Primary outputs include:
+
+- CLI command registry and help
+- MCP tool schema
+- REST/OpenAPI routes and schemas
+- API DTO and enum references
+- configuration and environment schemas
+- database, event, graph, vector-payload, and provider-capability schemas
+- public API and crate dependency snapshots
+
+## Deployment and infrastructure
+
+| Path | Purpose |
+|---|---|
+| `deploy/incus/` | preferred native Axon deployment in an Incus system container |
+| `deploy/systemd/` | bare-metal native Axon deployment |
+| `docker-compose.yaml` | development stack |
+| `docker-compose.prod.yaml` | canonical supporting-service images and ports |
+| `docker-compose.external-qdrant.yaml` | external Qdrant override |
+| `docker-compose.external-providers.yaml` | external embedding/LLM provider override |
+| `config/` | Chrome, Qdrant, and supporting-service configuration |
+
+## Tests and repository tooling
+
+- crate-local unit and integration tests live beside their owners
+- `tests/` contains cross-crate, cross-surface, and workflow tests
+- `xtask/` contains repository policy and generation code
+- `scripts/` contains shell/Python support tools used by CI and operations
+- `Justfile` exposes the supported local workflows
+- `lefthook.yml` runs fast staged checks before commit and push
+
+## Structure rules
+
+1. New domain logic belongs in the owning crate.
+2. Transport crates remain projections over `axon-services` and `axon-api`.
+3. New generated contracts must be registered with `xtask` and checked into
+   `docs/reference/`.
+4. Do not add `mod.rs` files.
+5. Keep root `src/` limited to binary and repository integration glue.
+6. Update this page, [Crate Structure](crate-structure.md), and the owning
+   crate contract whenever the repository shape changes.

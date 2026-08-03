@@ -13,8 +13,8 @@ the `SourceAdapter` trait, and the onboarding checklist a new family must
 satisfy.
 
 See also: crate guide `crates/axon-adapters/src/CLAUDE.md`, behavior contract
-`docs/pipeline-unification/sources/adapter-scopes.md`, onboarding contract
-`docs/pipeline-unification/sources/new-source-contract.md`.
+`docs/reference/sources/adapter-scopes.md`, onboarding contract
+`docs/development/adding-source.md`.
 
 ## Where a new family fits in the pipeline
 

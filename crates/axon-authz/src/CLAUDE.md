@@ -3,12 +3,13 @@
 `axon-authz` owns **caller identity, scope checks, execution-affinity policy, and
 security decisions** shared across CLI, REST, MCP, jobs, and apps. Transports
 *authenticate* callers; this crate *authorizes* them — they must not duplicate
-policy logic. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-authz/README.md](../../../docs/pipeline-unification/crates/axon-authz/README.md)
+policy logic.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/auth-contract.md](../../../docs/pipeline-unification/runtime/auth-contract.md).
+[../../../docs/reference/runtime/auth.md](../../../docs/reference/runtime/auth.md).
 
-## Status — live crate
+## Current status
 The OAuth scope constants (`AXON_READ_SCOPE`/`axon:read`, `AXON_WRITE_SCOPE`/
 `axon:write`, `AXON_FULL_ACCESS_SCOPE`) and the full auth/scope-checking policy
 surface (`policy.rs`, `http.rs` bearer/OAuth bind-mode gating) are real and

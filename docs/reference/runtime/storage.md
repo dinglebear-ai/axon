@@ -7,8 +7,6 @@ graph, memory metadata, watches, small structured state), Qdrant (vector
 retrieval payloads), and filesystem/object store (artifacts, large outputs).
 Config files are for bootstrap, not runtime state.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/storage-contract.md`](../../pipeline-unification/runtime/storage-contract.md).
 > On-disk layout: `~/.axon/` (flat — see [configuration guide](../../guides/configuration.md)).
 
 ## Store registry

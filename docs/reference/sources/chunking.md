@@ -6,8 +6,6 @@ Chunking converts `SourceDocument` values into embedding-ready `PreparedDocument
 chunks. Only `axon-document` emits `PreparedDocument`; all adapters emit
 `SourceDocument`. Each published chunk becomes exactly one vector point.
 
-> Contract source:
-> [`docs/pipeline-unification/sources/chunking-contract.md`](../../pipeline-unification/sources/chunking-contract.md).
 > Implementation: [`crates/axon-document/src/`](../../../crates/axon-document/src/)
 > (`preparer.rs`, `parse.rs` bridge, `chunk_router.rs`, `profile.rs`, `code.rs`).
 

@@ -1,6 +1,6 @@
 //! Bare-`axon <source>` argument routing.
 //!
-//! Per `docs/pipeline-unification/surfaces/command-contract.md`: *if the first
+//! Per `docs/reference/cli/commands.md`: *if the first
 //! positional token is not a canonical command, a removed command, or a global
 //! flag, treat it as `<source>` and route to `SourceRequest`.* So
 //! `axon https://x`, `axon ./dir`, `axon r/rust`, and `axon pkg:npm/foo` all

@@ -8,7 +8,7 @@
 //!
 //! The DEFAULT is a dry-run: it prints the exact plan (stores, paths,
 //! collections, row/point/file counts) and mutates nothing. See
-//! `docs/pipeline-unification/delivery/cutover-contract.md` ("Required Reset
+//! `docs/architecture/source-pipeline.md` ("Required Reset
 //! Tooling", reset result shape).
 
 pub(crate) mod artifacts;

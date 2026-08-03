@@ -1,7 +1,7 @@
 //! Authority ranking and conflict resolution for the SourceGraph.
 //!
 //! Authority levels are defined in
-//! `docs/pipeline-unification/sources/source-graph.md` ("Authority Levels").
+//! `docs/reference/sources/source-graph.md` ("Authority Levels").
 //! This module provides a *ranked* view of authority used by the merge logic to
 //! decide which competing claim wins under the
 //! `keep_highest_authority_with_evidence` conflict policy (graph-schema.md).

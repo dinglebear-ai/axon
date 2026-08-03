@@ -4,13 +4,13 @@
 confidence, authority, merge rules, and graph persistence. It ingests
 evidence-backed `GraphCandidate` values produced by parsers, adapters, the
 resolver, sessions, and memory, and links repos, docs, packages, sessions, tools,
-agents, issues, PRs, and artifacts through one graph model. Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-graph/README.md](../../../docs/pipeline-unification/crates/axon-graph/README.md)
+agents, issues, PRs, and artifacts through one graph model.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/sources/source-graph.md](../../../docs/pipeline-unification/sources/source-graph.md).
+[../../../docs/reference/sources/source-graph.md](../../../docs/reference/sources/source-graph.md).
 
-## Status — live crate, Phase 7 landed
+## Current status
 `SqliteGraphStore` is the real, tested `GraphStore` implementation: node/edge
 upsert with authority + confidence merge rules, evidence-required candidate
 ingestion, and query by source/node kind/edge kind/generation. `FakeGraphStore`

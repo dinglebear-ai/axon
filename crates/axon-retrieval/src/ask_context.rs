@@ -1,6 +1,6 @@
 //! Ask-context DTO for [`crate::boundary::RetrievalEngine::build_ask_context`].
 //!
-//! Required by `docs/pipeline-unification/foundation/types/crate-structure.md`'s
+//! Required by `docs/architecture/crate-structure.md`'s
 //! `axon-retrieval` module list; did not previously exist as a file.
 
 use crate::citation::Citation;

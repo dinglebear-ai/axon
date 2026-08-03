@@ -342,7 +342,6 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
     for file in [
         "scripts/cargo_test_filter_guard.py",
         "scripts/check_shell_completions.sh",
-        "scripts/generate_mcp_schema_doc.py",
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true", "{file} should enable rust jobs");

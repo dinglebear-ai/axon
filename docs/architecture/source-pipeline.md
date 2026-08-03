@@ -1,20 +1,16 @@
 ---
 title: "Source Pipeline"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
 # Source Pipeline
-
-Last Modified: 2026-07-19
 
 All source acquisition, refresh, watch, indexing, graph extraction, embedding,
 publishing, and cleanup flow through one pipeline. CLI, MCP, and REST are thin
 transport projections over the same `SourceRequest` DTO.
 
-> Contract source:
-> [`docs/pipeline-unification/foundation/source-pipeline.md`](../pipeline-unification/foundation/source-pipeline.md).
-> Implementation orchestrator:
+Implementation orchestrator:
 > [`crates/axon-services/src/source.rs`](../../crates/axon-services/src/source.rs)
 > (`index_source` → `index_source_with_auth` → `index_source_inner`).
 

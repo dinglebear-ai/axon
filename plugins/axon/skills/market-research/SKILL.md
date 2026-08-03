@@ -23,7 +23,7 @@ require interaction.
 
 Common sources include company investor relations pages, SEC filings, financial portals, earnings releases, industry reports, and news.
 
-Use `axon research "<topic>" --research-depth N` for the first-pass cited synthesis when a market question is broad. Use `axon extract ... --wait true --json` for finished metric tables, and pass `--respect-robots true` for public-site crawls unless there is an explicit authorized reason not to.
+Use `axon research "<topic>" --research-depth N` for the first-pass cited synthesis when a market question is broad. Use `axon extract ... --wait true --json` for finished metric tables, and respect source terms, rate limits, and robots policy during public-site collection.
 
 ## Parallel Work
 

@@ -33,7 +33,7 @@ fn cli_spec() -> FamilySpec {
             "xtask/src/schemas/cli_registry/part2.rs",
             "xtask/src/schemas/cli_registry/part3.rs",
             "xtask/src/schemas/cli_registry/part4.rs",
-            "docs/pipeline-unification/schemas/cli-schema.md",
+            "docs/reference/cli/overview.md",
         ],
         json_path: "docs/reference/cli/commands.json",
         extra_json: None,
@@ -49,7 +49,7 @@ fn openapi_spec() -> FamilySpec {
         owner_crates: &["axon-web", "axon-api"],
         source_paths: &[
             "crates/axon-web/src/schema_registry.rs",
-            "docs/pipeline-unification/schemas/openapi-schema.md",
+            "docs/reference/rest/overview.md",
         ],
         json_path: "docs/reference/rest/openapi.json",
         extra_json: None,
@@ -75,7 +75,7 @@ fn mcp_spec() -> FamilySpec {
             "crates/axon-api/src/mcp_schema/requests/watch.rs",
             "crates/axon-api/src/mcp_schema/prune_request.rs",
             "crates/axon-api/src/mcp_schema/utility.rs",
-            "docs/pipeline-unification/schemas/mcp-tool-schema.md",
+            "docs/reference/mcp/tool-contract.md",
         ],
         json_path: "docs/reference/mcp/tool-schema.json",
         extra_json: Some(ExtraJsonSpec {
@@ -83,7 +83,7 @@ fn mcp_spec() -> FamilySpec {
             title: "AxonMcpToolSchema",
             id: "https://axon.local/schemas/mcp/tool.schema.json",
         }),
-        markdown_path: "docs/reference/mcp/pipeline-tool-schema.md",
+        markdown_path: "docs/reference/mcp/tool-schema.md",
         extra_markdown_path: None,
     }
 }
@@ -95,8 +95,9 @@ fn config_spec() -> FamilySpec {
         owner_crates: &["axon-core"],
         source_paths: &[
             "xtask/src/schemas/config_schema_registry.rs",
-            "docs/pipeline-unification/schemas/config-schema.md",
-            "docs/pipeline-unification/configuration/config-contract.md",
+            "docs/guides/configuration.md",
+            "config.example.toml",
+            ".env.example",
         ],
         json_path: "docs/reference/config/config.schema.json",
         extra_json: Some(ExtraJsonSpec {
@@ -117,7 +118,7 @@ fn events_spec() -> FamilySpec {
         source_paths: &[
             "crates/axon-observe/src/schema_registry.rs",
             "crates/axon-observe/src/metric.rs",
-            "docs/pipeline-unification/schemas/event-schema.md",
+            "crates/axon-observe/src/CLAUDE.md",
         ],
         json_path: "docs/reference/runtime/events.schema.json",
         extra_json: None,
@@ -145,7 +146,7 @@ fn database_spec() -> FamilySpec {
             "crates/axon-memory/src/migrations",
             "xtask/src/schemas/database_defs.rs",
             "xtask/src/schemas/database_defs/parser.rs",
-            "docs/pipeline-unification/schemas/database-schema.md",
+            "docs/reference/runtime/storage.md",
         ],
         json_path: "docs/reference/runtime/database-schema.json",
         extra_json: None,
@@ -161,7 +162,7 @@ fn graph_spec() -> FamilySpec {
         owner_crates: &["axon-graph", "axon-parse"],
         source_paths: &[
             "crates/axon-graph/src/schema_registry.rs",
-            "docs/pipeline-unification/schemas/graph-schema.md",
+            "docs/reference/sources/source-graph.md",
         ],
         json_path: "docs/reference/sources/graph.schema.json",
         extra_json: None,
@@ -177,7 +178,7 @@ fn vector_payload_spec() -> FamilySpec {
         owner_crates: &["axon-vectors", "axon-api"],
         source_paths: &[
             "crates/axon-vectors/src/lib.rs",
-            "docs/pipeline-unification/schemas/vector-payload-schema.md",
+            "docs/reference/sources/metadata-payload.md",
         ],
         json_path: "docs/reference/sources/vector-payload.schema.json",
         extra_json: None,
@@ -193,7 +194,7 @@ fn providers_spec() -> FamilySpec {
         owner_crates: &["axon-api", "axon-embedding", "axon-llm"],
         source_paths: &[
             "crates/axon-api/src/schema_registry.rs",
-            "docs/pipeline-unification/schemas/provider-capability-schema.md",
+            "docs/development/adding-provider.md",
         ],
         json_path: "docs/reference/runtime/provider-capabilities.schema.json",
         extra_json: None,

@@ -3,13 +3,13 @@
 `axon-llm` owns the **LLM provider boundary** for synthesis, structured
 extraction, judging, enrichment, query rewriting, and streaming completion: the
 `LlmProvider` trait plus OpenAI-compatible, Codex app-server, and Gemini
-CLI/headless implementations. All LLM behavior crosses this trait. Full contract
-(owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-llm/README.md](../../../docs/pipeline-unification/crates/axon-llm/README.md)
+CLI/headless implementations. All LLM behavior crosses this trait.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/provider-contract.md](../../../docs/pipeline-unification/runtime/provider-contract.md).
+[../../../docs/reference/runtime/provider-capabilities.md](../../../docs/reference/runtime/provider-capabilities.md).
 
-## Status — real backends landed (#298 p7uwm)
+## Current status
 The **real LLM completion backends** now live here (relocated from
 `axon-core::llm`): Gemini headless, Codex app-server, OpenAI-compatible, the
 backend-selection dispatch, and the per-backend completion concurrency limiter.

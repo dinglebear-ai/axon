@@ -81,7 +81,7 @@ impl AdapterDefinition {
 }
 
 /// Web adapter option keys: the real (non-legacy) set documented in
-/// `docs/pipeline-unification/sources/adapter-scopes.md`'s "Web Adapter"
+/// `docs/reference/sources/adapter-scopes.md`'s "Web Adapter"
 /// table (lines 188-210), plus the legacy `manifest_path`/`markdown_root`/
 /// `map_urls` disk-handoff keys still used by the current
 /// `axon-services::web_source` bridge. Value parsing/validation for the real

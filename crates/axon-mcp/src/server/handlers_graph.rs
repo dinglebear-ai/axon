@@ -1,7 +1,7 @@
 //! `action=graph` — the read-only SourceGraph query surface (issue #298 GQ),
 //! mirroring the REST `/v1/graph/*` routes
-//! (`docs/pipeline-unification/surfaces/rest-contract.md` "Graph Routes",
-//! `docs/pipeline-unification/surfaces/tool-contract.md` "Graph subactions").
+//! (`docs/reference/rest/routes.md` "Graph Routes",
+//! `docs/reference/mcp/tool-contract.md` "Graph subactions").
 //!
 //! Every subaction here is a pure read. Graph writes stay parser/source-job
 //! owned (`axon_services::source::graph::write_baseline_graph`) — this

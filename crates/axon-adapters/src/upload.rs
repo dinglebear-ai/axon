@@ -6,7 +6,7 @@
 //! same `local_io` helpers) but carries a distinct `SourceKind::Upload`
 //! identity so uploaded content is provenance-tracked separately from a
 //! caller-specified local path, per the "Prepared Uploads" table in
-//! `docs/pipeline-unification/sources/adapter-scopes.md`.
+//! `docs/reference/sources/adapter-scopes.md`.
 //!
 //! The transport-facing upload store is injected through [`UploadSourceProvider`].
 //! Materialization copies the authorized staged artifact into an adapter-owned

@@ -1,6 +1,6 @@
 //! `QueryService` — semantic vector search.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §QueryService. Wraps `crate::query::query(ctx, cfg, text, opts)`,
 //! mirroring the MCP `handle_query` handler
 //! (`crates/axon-mcp/src/server/handlers_query/query.rs`): `limit`/`offset`

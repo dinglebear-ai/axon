@@ -1,9 +1,9 @@
 # Axon Chrome Extension
 
-> Current pre-#298 client docs. The future extension contract is
-> `docs/pipeline-unification/surfaces/chrome-extension-contract.md`; after the
-> source-pipeline cutover this extension should consume shared REST/API
-> contracts rather than owning ingestion semantics.
+The current extension contract is documented in
+[`docs/reference/surfaces/chrome-extension.md`](../../docs/reference/surfaces/chrome-extension.md).
+The extension submits shared REST actions and does not own source acquisition or
+indexing semantics.
 
 An unpacked **Manifest V3** Chrome extension that brings Axon to the page you're
 on. The **side panel** is an Aurora-styled launcher: browse the full Axon action

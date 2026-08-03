@@ -3,7 +3,7 @@
 //! axum's built-in [`axum::Json<T>`] extractor rejects a malformed or
 //! missing-field body with a *raw* `422`/`400` (`Failed to deserialize the JSON
 //! body: missing field ...`) **before** the handler runs, bypassing the REST
-//! [`ErrorEnvelope`]. Per `docs/pipeline-unification/surfaces/rest-contract.md`
+//! [`ErrorEnvelope`]. Per `docs/reference/rest/routes.md`
 //! (§Shared Response Envelope) every non-stream REST failure must serialize as
 //! the contract envelope with a stable `error.code`/`error.stage`.
 //!

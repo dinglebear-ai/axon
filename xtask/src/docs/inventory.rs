@@ -1,18 +1,30 @@
-//! Docs-inventory-vs-Final-Docs-Tree diff.
+//! Required-living-documentation inventory check.
 //!
-//! Parses the ```text fenced tree under "## Final Docs Tree" in
-//! `documentation-contract.md` and reports every named file that does not
-//! yet exist on disk. This is a reporting-only check: it never creates stub
-//! docs, it only fails and lists what's missing.
+//! Parses the ```text fenced tree under "## Required Living Documentation"
+//! in `docs/README.md` and reports every named file that does not exist on
+//! disk. This is a reporting-only check: it never creates stubs.
 
 use std::path::Path;
 
 use anyhow::{Result, bail};
 
-const CONTRACT_PATH: &str = "docs/pipeline-unification/delivery/documentation-contract.md";
-const SECTION_HEADING: &str = "## Final Docs Tree";
+const CONTRACT_PATH: &str = "docs/README.md";
+const SECTION_HEADING: &str = "## Required Living Documentation";
+const FORBIDDEN_STALE_ROOTS: &[&str] = &["docs/pipeline-unification"];
 
 pub fn check(root: &Path) -> Result<()> {
+    let stale_roots = FORBIDDEN_STALE_ROOTS
+        .iter()
+        .copied()
+        .filter(|path| root.join(path).exists())
+        .collect::<Vec<_>>();
+    if !stale_roots.is_empty() {
+        bail!(
+            "docs inventory: obsolete living-doc root(s) must be removed:\n  {}",
+            stale_roots.join("\n  ")
+        );
+    }
+
     let contract_path = root.join(CONTRACT_PATH);
     let content = std::fs::read_to_string(&contract_path)
         .map_err(|err| anyhow::anyhow!("docs inventory: failed to read {CONTRACT_PATH}: {err}"))?;
@@ -26,7 +38,7 @@ pub fn check(root: &Path) -> Result<()> {
     }
     if !missing.is_empty() {
         let mut msg = format!(
-            "docs inventory: {} file(s) from the Final Docs Tree in {CONTRACT_PATH} do not exist yet:\n",
+            "docs inventory: {} required living file(s) from {CONTRACT_PATH} do not exist:\n",
             missing.len()
         );
         for path in &missing {
@@ -35,13 +47,13 @@ pub fn check(root: &Path) -> Result<()> {
         bail!(msg);
     }
     println!(
-        "docs inventory: all {} file(s) from the Final Docs Tree exist.",
+        "docs inventory: all {} required living file(s) exist.",
         expected.len()
     );
     Ok(())
 }
 
-/// Parse the indentation-based `text` tree under `## Final Docs Tree` into a
+/// Parse the indentation-based `text` tree under the required-docs heading into a
 /// flat list of repo-relative file paths. Directory lines (no `.` extension,
 /// or ending in `/`) are used only to build ancestor prefixes; lines that are
 /// purely descriptive placeholders (containing `...`) are skipped.

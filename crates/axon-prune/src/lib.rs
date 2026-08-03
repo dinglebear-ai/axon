@@ -9,8 +9,8 @@
 //! [`executor::PruneTarget`] trait so real wiring lands in a later bead.
 //!
 //! Contract:
-//! - `docs/pipeline-unification/crates/axon-prune/README.md`
-//! - `docs/pipeline-unification/runtime/pruning-contract.md`
+//! - `crates/axon-prune/src/CLAUDE.md`
+//! - `docs/reference/runtime/pruning.md`
 //!
 //! Wire DTOs (`PruneRequest`, `PruneSelector`, `PrunePlan`, `PruneResult`, …)
 //! live in [`axon_api::source::prune`]; this crate produces and consumes them.

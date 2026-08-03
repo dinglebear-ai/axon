@@ -1,314 +1,230 @@
 ---
 name: using-axon
-description: Use Axon for RAG, web search, scrape, crawl, extract, ingest, memory, and grounded answers over indexed docs or web content.
+description: Use Axon for grounded retrieval, unified source indexing, web search, extraction, memory, jobs, watches, and cited answers.
 ---
 
-# axon
+# Using Axon
 
-axon is a self-hosted RAG engine. Two surfaces, same backend
-(Spider.rs/Chrome -> Qdrant, SQLite jobs, SearXNG/Tavily for web search):
+Axon is a self-hosted knowledge and retrieval engine with three projections over
+one backend:
 
-> Current pre-#298 skill behavior. The future clean-break source-pipeline
-> contract lives in `docs/pipeline-unification/`; do not treat legacy
-> scrape/crawl/embed/ingest action families as future compatibility aliases.
+- **MCP, preferred in Claude Code**: one tool named `axon`, routed by
+  `action` and optional `subaction`
+- **CLI**: `axon <command> [flags]`, preferred for scripts and advanced source
+  options
+- **REST**: direct `/v1` routes used by applications and integrations
 
-- **MCP (preferred)** — the Axon MCP server exposes a single tool named `axon`; use the host-generated tool name for the current environment. It is routed by `action` (and `subaction` for lifecycle families). Large results are written to a local artifact file under `~/.axon/artifacts/<context>` and the response returns the file `path` plus a compact `shape` summary; small results (≤ ~8 KB) come back inline. See **Response handling (MCP)** below.
-- **CLI (fallback)** — `axon <command> [flags]`. Use for shell scripting, cron, or when the MCP server is down.
+All three surfaces share the same DTOs, authorization, durable jobs, source
+pipeline, SQLite state, Qdrant vectors, and providers.
 
-Both surfaces accept the same operations and parameters. This skill leads with MCP request shapes; CLI equivalents are listed alongside.
+## Start with help and doctor
 
-## Reach for axon by default
-
-axon already has a large corpus indexed, and **every operation makes it smarter** — so route web and knowledge work through it instead of one-off web fetches, raw browser tools, or giving up after a few tries. When a task involves the web or "what does X say," axon is the default tool, even if the user didn't name it.
-
-| The task / user wants… | Action |
-|---|---|
-| An answer that indexed docs or code might cover | **`ask` FIRST** — before web search, raw fetching, or fumbling. Often returns everything in one shot. |
-| Search the web | `search` (SearXNG/Tavily; auto-indexes every result) |
-| Semantic search over what's indexed | `query` |
-| Fetch / scrape a page or URL | `scrape` |
-| Crawl a docs site — including docs you just relied on to solve something | `crawl` |
-| List a site's URLs | `map` |
-| Pull structured data out of a page | `extract` |
-| Discover a site's API endpoints | `endpoints` |
-| Brand identity (colors, logo, fonts, voice) | `brand` |
-| Summarize a page | `summarize` |
-| Quick multi-source research with synthesis | `research` |
-| Full indexed content of a specific URL | `retrieve` |
-| Embed local files / directories | `embed` |
-| Index a GitHub/GitLab/Gitea/Git repo, Reddit, YouTube, or AI sessions | `ingest` |
-| Remember a durable project fact, decision, or preference | `memory.remember` |
-| Recall previously stored agent memory | `memory.context` at task start, or `memory.search` then `memory.show` when targeted lookup is better |
-
-**`ask` is the highest-leverage habit.** A huge amount is already indexed, so many multi-turn fumbles would have been a single `ask` call. Whenever a question *could* be covered by docs or code that's been indexed, try `ask` before web-searching or giving up. **And after you crawl/scrape/ingest something to solve a task, you've made the index richer — prefer `ask`/`query` next time over re-fetching.**
-
-## Parameter discipline (hard rule)
-
-Only pass parameters the user explicitly asked for. Defaults exist for a reason — do NOT add `max_pages`, `max_depth`, `render_mode`, `include_subdomains`, `since`, `before`, `hybrid_search`, `diagnostics`, `format`, `root_selector`, `exclude_selector`, `limit`, `collection`, or any other knob unless the user named it or the task literally cannot complete without it. The example JSON blocks below show what's *available*, not what to send by default. A bare `{ "action": "scrape", "url": "…" }` or `{ "action": "crawl", "urls": [...] }` is almost always the right call. Same rule for the CLI: never add flags the user didn't ask for.
-
-## When to fall back to the CLI
-
-- The MCP server is offline (`{ "action": "doctor" }` through the current host's Axon MCP tool fails or the tool is missing).
-- You're authoring a shell script, systemd unit, or cron job that runs outside Claude Code.
-- You need axon's built-in `--cron-every-seconds`/`--cron-max-runs` loop.
-- The user explicitly asks for a CLI command.
-
-In every other case, use the MCP tool.
-
-## The pipeline
-
-```
-URL or query → discover → fetch + embed → query / ask
-```
-
-| Starting point | Discover | Fetch + embed (auto-embeds into Qdrant) | Query |
-|---|---|---|---|
-| Single URL | — | `action: "scrape", url` | `query` / `ask` |
-| Whole site / docs | `action: "map", url` | `action: "crawl", urls` | `query` / `ask` |
-| Topic / question | `action: "search", query` (SearXNG/Tavily, auto-queues crawl) | (auto) | `action: "ask", query` |
-| Existing local file/dir | — | `action: "embed", input` | `query` / `ask` |
-| GitHub / GitLab / Gitea / Git repo | — | `action: "ingest", source_type: "github", target: "owner/repo"` | `query` / `ask` |
-| Reddit thread or subreddit | — | `action: "ingest", source_type: "reddit", target: "r/name"` | `query` / `ask` |
-| YouTube video | — | `action: "ingest", source_type: "youtube", target: "<url>"` | `query` / `ask` |
-| RSS/Atom/JSON feed | — | `action: "ingest", source_type: "rss", target: "<url>"` | `query` / `ask` |
-| Past Claude/Codex/Gemini sessions | — | CLI only: `axon sessions` | `query` / `ask` |
-
-`scrape`, `crawl`, `embed`, and the `ingest` paths all auto-embed unless you set `embed: false`.
-
-## Bootstrap: `help` and `doctor`
-
-Once per session, confirm the live action map and that services are healthy:
+Use the live server as the authority for available operations:
 
 ```json
 { "action": "help" }
 { "action": "doctor" }
 ```
 
-`help` returns the full action/subaction map and current defaults — authoritative when names look wrong. `doctor` pings Qdrant, the embedding service (TEI), Chrome, and the Gemini headless LLM backend. It does **not** probe the web-search backend.
+CLI health check:
 
-CLI equivalents: `axon doctor`. (No CLI `help` for the action map — use the MCP one.)
-
-## Persistent agent memory
-
-Use Axon memory for durable project-level facts, preferences, decisions, bugs, and task notes that should be semantically recalled later. This is distinct from bead issue notes and from Memos: Axon memory is optimized for agent recall through Qdrant.
-
-Minimal remember call:
-
-```json
-{ "action": "memory", "subaction": "remember", "body": "Memory content lives in Qdrant; SQLite holds graph metadata.", "project": "axon" }
+```bash
+axon doctor
 ```
 
-Recall:
+## Choose the operation
+
+| Goal | MCP action | CLI |
+|---|---|---|
+| Answer from indexed knowledge | `ask` | `axon ask` |
+| Semantic search | `query` | `axon query` |
+| Retrieve indexed content | `retrieve` | `axon retrieve` |
+| Web search and auto-index results | `search` | `axon search` |
+| Discover URLs | `map` | `axon map` |
+| Index any source | `source` | `axon source` or bare `axon <source>` |
+| One-page web capture | `source` with `scope=page` | `axon scrape` |
+| Site/docs capture | `source` with `scope=site` | `axon source --scope site` |
+| Structured extraction | `extract` | `axon extract` |
+| Multi-source research | `research` | `axon research` |
+| Summarize a page | `summarize` | `axon summarize` |
+| Discover API endpoints | `endpoints` | `axon endpoints` |
+| Screenshot | `screenshot` | `axon screenshot` |
+| Brand extraction | `brand` | `axon brand` |
+| Compare URLs | `diff` | `axon diff` |
+| Durable memory | `memory` | `axon memory ...` |
+| Detached lifecycle | `jobs` | `axon jobs ...` |
+| Recurring refresh | `watch` | `axon watch ...` |
+| Source graph | `graph` | `axon graph ...` |
+
+Use `ask` before re-fetching when the answer may already be indexed.
+
+## Unified source indexing
+
+`source` is the single MCP indexing action. It accepts a source string plus an
+optional acquisition scope, collection, detached mode, and response mode.
 
 ```json
-{ "action": "memory", "subaction": "context", "project": "axon", "query": "memory storage architecture" }
-{ "action": "memory", "subaction": "search", "query": "where is memory stored", "project": "axon" }
-{ "action": "memory", "subaction": "show", "id": "<memory-id>" }
+{ "action": "source", "source": "https://example.com", "scope": "page" }
+{ "action": "source", "source": "https://docs.example.com", "scope": "site" }
+{ "action": "source", "source": "/home/user/project" }
+{ "action": "source", "source": "https://github.com/dinglebear-ai/axon" }
+{ "action": "source", "source": "r/rust" }
+{ "action": "source", "source": "https://youtube.com/watch?v=..." }
+{ "action": "source", "source": "https://example.com/feed.xml" }
+{ "action": "source", "source": "pkg:npm/react" }
+{ "action": "source", "source": "session:claude:/home/user/.claude/projects/..." }
 ```
 
-Use `memory.context` at task start when project memory could help. It returns inline, defanged XML-wrapped content with `trust="evidence_only"` and supports `limit` plus `token_budget`.
+Supported source families include web, local, git, package registries, Reddit,
+YouTube, feeds, AI sessions, uploads, CLI tools, MCP tools, and memory records.
 
-Graph maintenance:
+MCP source calls are synchronous unless `detached: true` is supplied:
 
 ```json
-{ "action": "memory", "subaction": "link", "source_id": "<memory-id>", "target_id": "<memory-id>", "edge_type": "relates_to" }
-{ "action": "memory", "subaction": "supersede", "source_id": "<replacement-memory-id>", "target_id": "<old-memory-id>" }
+{ "action": "source", "source": "https://docs.example.com", "scope": "site", "detached": true }
 ```
 
-`supersede` hides the old memory from future `memory.search` results and records the replacement trail in SQLite.
+For advanced acquisition controls, use the CLI:
 
-CLI equivalents: `axon memory remember "..." --project axon`, `axon memory context --project axon --query "..."`, `axon memory search "..." --project axon`, `axon memory show <memory-id>`, `axon memory link <source-id> <target-id>`, `axon memory supersede <replacement-id> <old-id>`.
+```bash
+axon source https://docs.example.com   --scope site   --max-pages 100   --max-depth 3   --wait true   --output-dir .axon/docs
 
-## Discovery
+axon source https://docs.example.com   --scope site   --render-mode chrome   --automation-script ./capture.json   --wait true
+
+axon source /home/user/project --wait true
+axon source https://github.com/dinglebear-ai/axon --wait true
+axon scrape https://example.com/article --wait true
+```
+
+Embedding is enabled by default. Use `--skip-embed` only when the requested
+result is acquisition output without vector publication.
+
+## Detached jobs
+
+The CLI source command is detached by default unless `--wait true` is used.
+MCP source requests are synchronous by default unless `detached: true` is used.
+
+MCP lifecycle:
 
 ```json
-{ "action": "search", "query": "rust async patterns", "search_time_range": "month" }
+{ "action": "jobs", "subaction": "get", "job_id": "<uuid>" }
+{ "action": "jobs", "subaction": "events", "job_id": "<uuid>" }
+{ "action": "jobs", "subaction": "cancel", "job_id": "<uuid>" }
+{ "action": "jobs", "subaction": "retry", "job_id": "<uuid>" }
+```
+
+CLI lifecycle:
+
+```bash
+axon jobs list
+axon jobs get <job-id>
+axon jobs events <job-id>
+axon jobs cancel <job-id>
+axon jobs retry <job-id>
+axon jobs recover
+```
+
+Do not use removed family-specific status commands. Every source family uses the
+same durable jobs store.
+
+## Watches
+
+Create recurring source refreshes through the watch surface:
+
+```bash
+axon watch create https://docs.example.com --every-seconds 86400
+axon watch list
+axon watch status <watch-id>
+axon watch exec <watch-id>
+axon watch pause <watch-id>
+axon watch resume <watch-id>
+```
+
+Use the equivalent `action=watch` subactions over MCP.
+
+## Query, retrieve, and ask
+
+```json
+{ "action": "query", "query": "provider reservations", "limit": 10 }
+{ "action": "retrieve", "url": "https://example.com/article" }
+{ "action": "ask", "query": "How are provider reservations renewed?" }
+{ "action": "ask", "query": "What changed this week?", "since": "7d" }
+```
+
+`query` returns ranked matches. `retrieve` returns indexed content for a
+specific source or URL. `ask` retrieves, synthesizes, and cites evidence.
+Hybrid dense and sparse retrieval is enabled by default when configured.
+
+Only add filters and diagnostics when the user requests them or they are needed
+to complete the task.
+
+## Search, map, and research
+
+```json
+{ "action": "search", "query": "Rust async cancellation", "search_time_range": "month" }
 { "action": "map", "url": "https://docs.example.com" }
-{ "action": "research", "query": "kubernetes ingress patterns" }
+{ "action": "research", "query": "Current MCP authorization patterns" }
 ```
 
-- `search` — web search via SearXNG (when `AXON_SEARXNG_URL` is set) or Tavily; auto-queues crawl jobs for results. `search_time_range` ∈ `day|week|month|year`.
-- `map` — sitemap-first URL discovery, falls back to fetching the root page and extracting anchors. Fast.
-- `research` — search + LLM synthesis in one shot.
+`search` uses configured web-search providers and indexes results. `map`
+performs bounded URL discovery without full indexing. `research` combines
+search, source acquisition, retrieval, and synthesis.
 
-CLI: `axon search "…"`, `axon map <url>` (bounded sitemap, llms.txt, and root-anchor URL discovery only), `axon suggest "…"` (LLM-suggested URLs to crawl next; also the MCP `suggest` action).
-
-## Fetch + embed
+## Extraction and web utilities
 
 ```json
-{ "action": "scrape", "url": "https://example.com/article" }
-{ "action": "scrape", "url": "https://example.com",
-  "root_selector": "article, main",
-  "exclude_selector": ".sidebar, .ads",
-  "format": "markdown" }
-{ "action": "scrape", "url": "https://example.com", "format": "html", "embed": false }
-
-{ "action": "crawl", "urls": ["https://docs.example.com"],
-  "max_pages": 200, "max_depth": 3, "include_subdomains": true }
-{ "action": "crawl", "urls": ["https://docs.example.com"], "render_mode": "chrome" }
-
-{ "action": "embed", "input": "./docs" }
-{ "action": "embed", "input": "https://example.com" }
-```
-
-Render modes: `http` (fast, no JS), `chrome` (full browser), `auto_switch` (default — start HTTP, escalate to Chrome on JS gate).
-
-Output formats: `markdown` (default), `html`, `rawHtml`, `json`.
-
-CLI: `axon scrape <url>` / `axon crawl <url> --max-pages N --max-depth N` / `axon embed <input>`. Chrome rendering is pre-tuned and rarely needs overriding; the CDP endpoint is set via the `AXON_CHROME_REMOTE_URL` env var, not a CLI flag. Output dir defaults to `.cache/axon-rust/output/` (env `AXON_OUTPUT_DIR`).
-
-## Extract structured data
-
-```json
-{ "action": "extract", "urls": ["https://example.com/pricing"],
-  "prompt": "Extract plan name, price, and features as JSON" }
-{ "action": "extract", "subaction": "status", "job_id": "<uuid>" }
-```
-
-LLM-powered. Pass a natural-language prompt describing the schema you want.
-
-CLI: `axon extract <url> --wait true --json`. When using the CLI, carry the requested fields in the surrounding task instructions or output contract; use the MCP `prompt` field when you need an explicit extraction prompt.
-
-## Web utilities: summarize, endpoints, brand, diff, screenshot
-
-Page-level analysis actions — each takes a `url` (except `diff`) and a bare call is the right default:
-
-```json
-{ "action": "summarize",  "url": "https://example.com/long-article" }
-{ "action": "endpoints",  "url": "https://app.example.com" }
-{ "action": "brand",      "url": "https://example.com" }
-{ "action": "diff",       "url_a": "https://example.com/v1", "url_b": "https://example.com/v2" }
+{ "action": "extract", "urls": ["https://example.com/pricing"], "prompt": "Extract plan, price, and features" }
+{ "action": "summarize", "url": "https://example.com/article" }
+{ "action": "endpoints", "url": "https://app.example.com" }
+{ "action": "brand", "url": "https://example.com" }
+{ "action": "diff", "url_a": "https://example.com/v1", "url_b": "https://example.com/v2" }
 { "action": "screenshot", "url": "https://example.com" }
 ```
 
-- **`summarize`** — fetch a page and return a concise summary (also accepts `urls` for several at once; `root_selector`/`exclude_selector` to scope).
-- **`endpoints`** — discover a site's API endpoints by scanning its JavaScript bundles. Optional knobs (`verify`, `capture_network`, `probe_rpc`, `first_party_only`) — omit unless asked.
-- **`brand`** — extract brand identity (colors, logo, fonts, voice/tone) from a URL.
-- **`diff`** — compare two URLs (`url_a`, `url_b`); reports content/metadata/link changes.
-- **`screenshot`** — full-page capture via headless Chrome (`full_page`, `viewport`, `output` optional).
+Use `axon extract <url> --wait true --json` when a script or file-oriented
+workflow needs the CLI.
 
-CLI: `axon summarize <url>` / `axon endpoints <url>` / `axon brand <url>` / `axon diff <url-a> <url-b>` / `axon screenshot <url>`.
+## Durable memory
 
-## Ingest external sources
+Store facts, decisions, constraints, and preferences that should be recalled
+across sessions:
 
 ```json
-{ "action": "ingest", "source_type": "github", "target": "owner/repo" }
-{ "action": "ingest", "source_type": "github", "target": "owner/repo", "include_source": false }
-
-{ "action": "ingest", "source_type": "gitlab",  "target": "group/project" }
-{ "action": "ingest", "source_type": "gitea",   "target": "https://gitea.example.com/owner/repo" }
-{ "action": "ingest", "source_type": "git",     "target": "https://git.example.com/owner/repo.git" }
-
-{ "action": "ingest", "source_type": "reddit", "target": "r/rust" }
-{ "action": "ingest", "source_type": "reddit", "target": "https://reddit.com/r/rust/comments/abc123/..." }
-
-{ "action": "ingest", "source_type": "youtube", "target": "https://youtube.com/watch?v=abc" }
-{ "action": "ingest", "source_type": "rss",     "target": "https://example.com/feed.xml" }
+{ "action": "memory", "subaction": "remember", "body": "Source jobs are unified.", "project": "axon" }
+{ "action": "memory", "subaction": "context", "project": "axon", "query": "source jobs" }
+{ "action": "memory", "subaction": "search", "project": "axon", "query": "publication" }
+{ "action": "memory", "subaction": "show", "id": "<memory-id>" }
 ```
 
-> **Note:** `source_type: "sessions"` is **not** accepted over MCP (it's rejected server-side). Ingest local AI sessions with the CLI `axon sessions` instead — see below.
+Use `memory.context` when broad project recall can improve a task. Use search
+and show for targeted lookup.
 
-`source_type` ∈ `github | gitlab | gitea | git | reddit | youtube | rss | sessions`:
+## Response handling
 
-- **`github` / `gitlab` / `gitea`** — hosted-forge repos, indexing code + metadata + issues/PRs (or merge requests). `target` is `owner/repo` (or a full URL for self-hosted instances).
-- **`git`** — any generic Git remote by clone URL (code only, no forge API).
-- **`reddit`** — a subreddit (`r/name`) or a specific thread URL.
-- **`youtube`** — a video URL (transcript ingest).
-- **`rss`** — RSS, Atom, or JSON feed URL. Each feed entry is embedded as a document.
-- **`sessions`** — local Claude/Codex/Gemini session transcripts. Use `axon sessions` for local one-shot indexing, or submit a `SourceRequest` whose `source` is `session:<provider>:<path>` for the unified source path. The old prepared-documents HTTP endpoint has been removed.
+Large MCP outputs may be artifact-backed. When a response contains a path or
+artifact pointer:
 
-Lifecycle subactions (`status`, `cancel`, `list`, `cleanup`, `clear`, `recover`) work the same as crawl/embed/extract.
+1. Read or fetch the artifact through the available host tools.
+2. Treat the inline shape as a summary, not the complete result.
+3. Preserve citations, source IDs, job IDs, and warnings in the final answer.
 
-CLI: `axon ingest <target>` with source-specific flags. GitHub: `--include-source`/`--no-source`, `--max-issues`, `--max-prs` (default 100; `0` = unlimited). Reddit: `--sort hot|top|new|rising`, `--time hour|…|all`, `--max-posts`, `--min-score`, `--depth`, `--scrape-links`. Use `axon sessions` for Claude/Codex/Gemini local history, or a `session:<provider>:<path>` source selector when using the unified source path.
+Set `response_mode` only when the user or workflow requires a specific output
+shape.
 
-## Query and RAG
+## Parameter discipline
 
-```json
-{ "action": "query", "query": "embedding pipeline", "limit": 10, "collection": "axon" }
-{ "action": "query", "query": "rate limiting", "since": "7d" }
+- Start with the smallest valid request.
+- Do not invent source limits, render modes, filters, collections, or output
+  paths.
+- Use `scope=page` for one page and `scope=site` for a bounded site capture.
+- Use CLI source flags for advanced web acquisition controls not exposed by the
+  MCP source DTO.
+- Use jobs for lifecycle and watches for recurrence.
+- Treat generated CLI and MCP references as authoritative when examples drift.
 
-{ "action": "ask", "query": "How does axon handle Chrome auto-switching?" }
-{ "action": "ask", "query": "...", "since": "7d" }
-{ "action": "ask", "query": "...", "since": "2026-01-01", "before": "2026-03-01" }
-{ "action": "ask", "query": "...", "diagnostics": true }
-{ "action": "ask", "query": "...", "hybrid_search": false }
-```
+## Authoritative references
 
-- `query` — pure semantic vector search (top-K chunks).
-- `ask` — RAG: retrieve, then synthesize an answer with citations.
-- **Hybrid search** (dense + BM42 sparse + RRF) is on by default; `hybrid_search: false` forces dense-only for A/B comparison or when sparse is misbehaving. Server default: env `AXON_HYBRID_SEARCH`.
-- Temporal filters (`since`/`before`) accept `7d`, `30d`, `YYYY-MM-DD`, or RFC3339. They filter on **indexing date**, not publication date.
-- `collection` overrides the default `axon` collection per request (env `AXON_COLLECTION`).
-
-```json
-{ "action": "retrieve", "url": "https://example.com/article" }
-```
-
-CLI: `axon query "…"` / `axon ask "…" --since 7d --diagnostics` / `axon retrieve <url>`.
-
-`evaluate` — `{ "action": "evaluate", "query": "<question>", "retrieval_ab": true }` (CLI: `axon evaluate "<question>" --retrieval-ab`) compares hybrid-RAG vs dense-only, scored by a separate judge prompt on the configured LLM backend (accuracy/relevance/completeness).
-
-## Inspect the index
-
-```json
-{ "action": "sources" }
-{ "action": "domains" }
-{ "action": "stats" }
-{ "action": "status" }                                 // global queue snapshot
-```
-
-CLI: `axon sources` / `axon domains` / `axon stats` / `axon status`.
-
-## Async jobs
-
-`crawl`, `extract`, `embed`, `ingest` are async by default. `subaction` defaults to `start`, so `{ "action": "crawl", "urls": [...] }` is enough to enqueue; poll with `subaction: "status"`. Full lifecycle subactions and CLI-only surfaces: [`references/async-job-lifecycle.md`](references/async-job-lifecycle.md).
-
-## Response handling (MCP)
-
-The server runs in-process, so responses are size-routed automatically: payloads ≤ ~8 KB come back **inline** in `data`; larger ones are written to a local **artifact file** and the response returns its `path` plus a compact `shape` summary. **Read `shape` first** — it usually answers the question (counts, status, the URLs touched).
-
-When you need the *content*, reach for RAG, not the raw file: everything axon fetches is already embedded, so **`ask`** (synthesized answer), **`query`** (semantic chunks), or **`retrieve`** (a specific URL's indexed content) get you what you need without parsing megabytes of JSON/markdown. Open the artifact `path` from disk only as a last resort — e.g. you need the exact raw bytes the RAG path doesn't surface. There is no current-runtime `artifacts` MCP action; don't send `{ "action": "artifacts", ... }`. The #298 target tracks a future operational artifacts surface. To force a payload in-band instead of a file, set `response_mode: "inline"` (or `"auto_inline"`).
-
-Full response-mode contract and the JSON-RPC error model: [`references/mcp-response-protocol.md`](references/mcp-response-protocol.md).
-
-## MCP resources
-
-- `axon://schema/mcp-tool` — full JSON schema and routing contract (read this when you need exact field types/enums).
-- `ui://axon/status-dashboard` — interactive MCP App widget for live queue status.
-
-## Configuration
-
-This skill names only the handful of env vars that matter at the point of use (`AXON_COLLECTION`, `AXON_SEARXNG_URL`, `AXON_HYBRID_SEARCH`, `AXON_OUTPUT_DIR`, `AXON_DATA_DIR`, …). The **full** surface — every `AXON_*` env var and `~/.axon/config.toml` tuning key — is documented authoritatively and is **not** duplicated here:
-
-- `config.example.toml` (repo root) — all `config.toml` tuning knobs with defaults.
-- `.env.example` (repo root) — service URLs, API keys, and secrets.
-- `docs/guides/configuration.md` — full environment-variable reference + the two-layer (`.env` + `config.toml`) priority model.
-
-Priority: CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.
-
-## Choosing parameters — quick guide
-
-| Situation | Reach for |
-|---|---|
-| User pastes a single URL | `action: "scrape"` |
-| User says "the docs", "the whole site" | `action: "crawl"` with `max_pages` + `max_depth` |
-| User asks a question without naming a source | `action: "ask"` (retrieves over whatever's indexed) |
-| User wants only recent content | `ask` / `query` with `since: "7d"` |
-| User wants citations / verification | `ask` with `diagnostics: true` |
-| Ranking looks wrong | Try `hybrid_search: false` and compare |
-| Need entity/relationship reasoning | `ask` with `diagnostics: true`; graph retrieval is not available in the current runtime |
-| Crawled the wrong thing | `crawl` `subaction: "clear"` or per-family `cleanup` |
-| RAG quality regression | `evaluate` with `retrieval_ab: true` (or CLI `axon evaluate <q> --retrieval-ab`) |
-| Debug "nothing happened" | `action: "doctor"` first, then `action: "status"` |
-
-## Tips and gotchas
-
-- **Read `shape`, then reach for RAG — not the raw artifact.** `path` mode keeps multi-megabyte results out of the conversation; pull the content back with `ask`/`query`/`retrieve` (it's already embedded) rather than reading/grepping the file. There is no `artifacts` action — it was removed precisely because RAG is the intended way to get content.
-- **Don't paste raw `axon <cmd> --help` output.** Most CLI subcommands inherit the entire Chrome flag set even when irrelevant. Use the action tables here instead.
-- **`help` and `doctor` are cheap.** Call `help` once per session to confirm the live action map; call `doctor` whenever something looks wrong.
-- **Async by default.** Lifecycle actions return a `job_id`; poll with `subaction: "status"`. CLI users can pass `--wait true` for synchronous one-shots.
-- **Cache reuse is on by default (CLI).** Disable with `--cache false`; add `--cache-http-only` to force the HTTP path even when the cached job used Chrome.
-- **`graph: true` is deprecated.** Use hybrid search diagnostics and source coverage checks for retrieval debugging.
-- **Temporal filters use indexing date**, not document publication date — useful for "what did I add this week", not "what was published this week".
-- **`evaluate` scores with a separate judge prompt** (distinct role + reference material) on the same configured LLM backend. Available as both the MCP `evaluate` action and `axon evaluate`.
-- **`subaction` defaults to `start`** for lifecycle families — `{ "action": "crawl", "urls": [...] }` is enough to enqueue a job.
+- `docs/reference/cli/commands.md`
+- `docs/reference/mcp/tool-contract.md`
+- `docs/reference/mcp/tool-schema.md`
+- `docs/architecture/source-pipeline.md`

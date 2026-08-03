@@ -12,7 +12,7 @@ use crate::profile::ChunkingProfile;
 
 /// Suggested token budget for a routed profile. Advisory: chunk builders are
 /// not required to hit these exactly, but should treat them as soft targets
-/// (`docs/pipeline-unification/sources/chunking-contract.md` "Size and
+/// (`docs/reference/sources/chunking.md` "Size and
 /// Overlap Rules").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChunkLimits {
@@ -22,7 +22,7 @@ pub struct ChunkLimits {
 
 /// Full routing decision: not just *which* profile, but *how* it should be
 /// chunked (method, parser family, ordered fallback chain, size limits).
-/// Contract shape: `docs/pipeline-unification/sources/chunking-contract.md`
+/// Contract shape: `docs/reference/sources/chunking.md`
 /// `## ChunkRouter`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteDecision {
@@ -45,7 +45,7 @@ pub(crate) const LARGE_DOCUMENT_BYTES: usize = 200_000;
 /// more likely to mis-parse a fragment than a size-based fallback would be
 /// wrong about a huge-but-intact file, so these adapters skip straight to the
 /// first fallback step in the chain regardless of size.
-/// (`docs/pipeline-unification/sources/chunking-contract.md` "Routing order"
+/// (`docs/reference/sources/chunking.md` "Routing order"
 /// item 4, "Source adapter defaults".)
 const FRAGMENT_PRONE_ADAPTERS: &[&str] = &[
     "web_scrape",
@@ -141,7 +141,7 @@ pub(crate) fn source_scope(doc: &SourceDocument) -> Option<&str> {
 
 /// Per-profile method/parser-family/fallback-chain/limits, adjusted for
 /// document size, source adapter, and source scope
-/// (`docs/pipeline-unification/sources/chunking-contract.md` "ChunkRouter"
+/// (`docs/reference/sources/chunking.md` "ChunkRouter"
 /// inputs list; routing order items 4-5, "Source adapter defaults" then
 /// "Size-based fallback"). Adapter is checked first since a fragment-prone
 /// adapter forces the fallback method regardless of size; scope narrows the

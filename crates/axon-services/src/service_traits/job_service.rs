@@ -1,7 +1,7 @@
 //! `JobService` — unified job lifecycle (get/list/events/cancel/retry/
 //! recover/cleanup/clear).
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §JobService. Every method here wraps a `crates/axon-services/src/jobs/
 //! unified_ops.rs` free function 1:1 (all DTOs already match); this is the
 //! highest-confidence trait in the whole service-trait seam since

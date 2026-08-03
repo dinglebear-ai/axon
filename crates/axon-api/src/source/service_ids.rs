@@ -1,5 +1,5 @@
 //! Minimal DTO additions for the `axon-services` service-trait seam
-//! (docs/pipeline-unification/foundation/types/service-contract.md).
+//! (docs/architecture/boundary-map.md).
 //!
 //! These are intentionally small: `ResetId` reuses the existing
 //! `string_id!`-style newtype shape, `DeleteResult` is a generic delete

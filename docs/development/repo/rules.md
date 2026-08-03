@@ -111,18 +111,19 @@ Enforcement: `cargo xtask check-no-mod-rs`.
 - `--json` flag enables machine-readable output on all result-printing commands
 - Structured log output via `tracing` with `env-filter`
 
-### Services layer contract
+### Domain and services contract
 
-- CLI commands, MCP handlers, and HTTP routes all call through `src/services/`
-- Each service function returns a typed result struct (no raw JSON, no stdout side-effects)
-- Service result types live in domain modules under `src/services/types/service/` and are re-exported through `src/services/types/service.rs`
+- CLI, MCP, and REST transports call public domain APIs or the cross-domain facade in `crates/axon-services/src/`.
+- Single-domain behavior stays in its owning crate; `axon-services` coordinates operations that span multiple owners or the durable runtime.
+- Public results use typed DTOs from `axon-api` or the owning domain crate. Library code does not print or return ad hoc raw JSON.
+- Transport crates must not import private/internal operation modules from domain crates.
 
 ## TypeScript code standards (web panel)
 
-- ESM modules, `import` syntax
-- No `any` types
-- Strict mode in `tsconfig.json`
-- Static Next.js export only; runtime APIs are served by Rust under `src/web`
+- ESM modules and strict TypeScript
+- No untyped `any` escapes without an explicit reviewed boundary
+- The web client is a static Next.js export; runtime REST/MCP APIs are served by `crates/axon-web`.
+- Generated OpenAPI/DTO bindings are the wire-contract source of truth.
 
 ## Pre-commit hooks (lefthook)
 

@@ -7,7 +7,7 @@ Axon exposes one MCP operation tool:
 | `axon` | Unified action router for source, retrieval, RAG, jobs, memory, graph, watch, provider, and prune operations | `action` |
 
 The live action set is generated into [tool-schema.json](tool-schema.json) and
-mirrored in [pipeline-tool-schema.md](pipeline-tool-schema.md). Removed legacy
+mirrored in [tool-schema.md](tool-schema.md). Removed legacy
 actions such as `scrape`, `crawl`, `embed`, `ingest`, `code_search`,
 `vertical_scrape`, and `purge` are not valid MCP actions.
 

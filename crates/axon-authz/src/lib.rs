@@ -115,9 +115,9 @@ fn is_fine_grained_axon_scope(scope: &str) -> bool {
 /// (`AXON_FULL_ACCESS_SCOPE`), and existing tokens issued before some route's
 /// classification changed must keep working. See root `CLAUDE.md`'s "MCP
 /// Security Env" section and
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
+/// `docs/reference/runtime/security.md`'s "Contract"
 /// paragraph for the compatibility rationale, and
-/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules" for
+/// `docs/reference/runtime/auth.md`'s "Scope Rules" for
 /// the documented exception.
 ///
 /// A small number of call sites intentionally opt **out** of that widening:
@@ -132,7 +132,7 @@ fn is_fine_grained_axon_scope(scope: &str) -> bool {
 /// before this function is ever consulted — a read-only caller would sail
 /// through a check that exists specifically to stop them (CWE-863,
 /// documented in
-/// `docs/pipeline-unification/runtime/auth-contract.md`'s "Scope Rules").
+/// `docs/reference/runtime/auth.md`'s "Scope Rules").
 /// `has_explicit_scope` closes that hole by requiring the caller to hold the
 /// exact scope string, with no broad-scope widening in either direction.
 ///

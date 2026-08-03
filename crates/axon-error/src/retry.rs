@@ -1,7 +1,7 @@
 //! Machine-readable retry / fail-fast classification.
 //!
 //! Fields come from the "Retry and Cooling" section of
-//! `docs/pipeline-unification/runtime/error-handling.md`.
+//! `docs/reference/api/errors.md`.
 
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;

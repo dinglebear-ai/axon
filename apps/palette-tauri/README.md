@@ -1,9 +1,9 @@
 # Axon Palette Tauri
 
-> Current pre-#298 desktop client docs. The future Palette contract is
-> `docs/pipeline-unification/surfaces/palette-contract.md`; after the
-> source-pipeline cutover, generated DTOs/OpenAPI should drive source/job/graph
-> and memory surfaces.
+The current desktop contract is documented in
+[`docs/reference/surfaces/palette.md`](../../docs/reference/surfaces/palette.md).
+Generated OpenAPI types define the shared source, jobs, graph, and memory wire
+surfaces consumed by the app.
 
 Tauri v2 palette for the Axon HTTP API. The frontend uses React, Aurora registry components installed through the shadcn CLI, and an OpenAPI-generated TypeScript type layer.
 

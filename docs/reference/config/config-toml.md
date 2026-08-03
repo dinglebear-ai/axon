@@ -14,9 +14,10 @@ See the family contract for declared output paths.
 
 | Path | SHA-256 |
 |---|---|
-| `docs/pipeline-unification/configuration/config-contract.md` | `sha256:acd46422e9d9e129b9612dfd7b87319d6d4af1de6be9c24472cb0e7a8e7acb4d` |
-| `docs/pipeline-unification/schemas/config-schema.md` | `sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24` |
-| `xtask/src/schemas/config_schema_registry.rs` | `sha256:7371fdeb0b0c38dd5cb6f05ae438d3e9a37bf23ef755afcd1cc3b2d2f56bb394` |
+| `.env.example` | `sha256:507af81546be54b8948fd001519ac74112ca6953359a0e3edd8f41a296fe3667` |
+| `config.example.toml` | `sha256:125f5de3c168761ee3860a9ad3f8a15ca9f8fa09b599ea4019d0d9c6d430ef1c` |
+| `docs/guides/configuration.md` | `sha256:d3cc887fb9347e14c2f03155898521bd2578a117baca2366a45a8f950644b886` |
+| `xtask/src/schemas/config_schema_registry.rs` | `sha256:0f2e7f379b0b594faa111779c8c05899e34f1f93de32d5daeec75bf67b7e3789` |
 
 ## Root Shape
 

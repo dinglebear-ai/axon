@@ -1,6 +1,6 @@
 //! `ExtractService` — structured extraction, summarize, and research.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §ExtractService. `summarize`/`research` wrap real free functions
 //! (`crate::summarize::summarize`, `crate::search::research_with_context_tracked`);
 //! `summarize` mirrors the MCP `handle_summarize` handler

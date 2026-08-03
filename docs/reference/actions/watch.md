@@ -7,11 +7,9 @@ Last Modified: 2026-05-31
 | Surface | Entry point |
 |---|---|
 | CLI | `axon watch ...` |
-| REST | Not inventoried |
-| MCP | Not exposed as a dedicated MCP action. |
-| Service | `Not inventoried` |
-
-Parity notes: This action page is missing from docs/reference/api-parity.md.
+| REST | `/v1/watches` routes |
+| MCP | `{ "action": "watch" }` |
+| Service | `Shared domain/service implementation` |
 <!-- END GENERATED ACTION SURFACES -->
 
 

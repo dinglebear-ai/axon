@@ -1,7 +1,7 @@
 //! Candidate → durable node/edge merge logic.
 //!
 //! Implements the merge strategies and conflict policy from
-//! `docs/pipeline-unification/schemas/graph-schema.md`:
+//! `docs/reference/sources/graph.md`:
 //!
 //! - `stable_key`: same kind + stable key merge into one node.
 //! - `edge_tuple`: same kind/from/to merge evidence onto one edge.

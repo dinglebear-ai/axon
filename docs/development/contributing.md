@@ -220,13 +220,11 @@ or other non-HTTP schemes, and connect-time DNS-rebinding is closed by
 
 ### Input handling
 
-- Default crawl `--max-pages` is bounded at 2000; use path budgets or
-  explicit `--max-pages 0` only for intentional deep crawls.
-- `AXON_MAX_PENDING_CRAWL_JOBS` caps the queue to prevent runaway crawls.
-- Auto path-prefix scoping limits crawl scope on deep URLs.
-- `--respect-robots` defaults to `false` — legal implications acknowledged.
-- `chunk_text()` splits at 2000 chars with 200-char overlap. Very long pages
-  produce many Qdrant points — monitor collection size after large crawls.
+- Site-scope source jobs are bounded by `--max-pages`, `--max-depth`, path budgets, and the selected start URL. Use `--max-pages 0` only for an intentional uncapped run.
+- Queue, provider, and Chrome concurrency are enforced by the unified scheduler; do not add a source-family queue.
+- Robots behavior is configured with `scrape.respect-robots` in `config.toml`; it is not a CLI flag. Respect source terms, rate limits, and robots policy.
+- Adapters emit `SourceDocument` values. Chunk sizes and overlap are selected by `axon-document` profiles; do not hard-code a second chunker in a transport or adapter.
+- Large source jobs can produce many vector points. Use bounded inputs and inspect job counts, warnings, and provider pressure.
 
 ### Logging
 

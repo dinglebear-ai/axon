@@ -1,7 +1,7 @@
 //! [`SourceRunner`]: executes a claimed unified `Source` job.
 //!
 //! `Source` is the target clean-break job kind for "acquire, normalize, embed,
-//! publish one source" (see `docs/pipeline-unification/runtime/job-contract.md`
+//! publish one source" (see `docs/reference/runtime/jobs.md`
 //! Job Kinds table). Every live entrypoint today (CLI `axon source`, MCP
 //! `handlers_source`, `POST /v1/sources`) calls
 //! [`crate::source::index_source_with_auth`] inline and blocks on the result —

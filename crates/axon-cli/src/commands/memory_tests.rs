@@ -1,6 +1,6 @@
 use super::*;
 
-/// `docs/pipeline-unification/plans/2026-07-08-rest-memory-surface.md` Task 3:
+/// `docs/reference/runtime/memory.md` Task 3:
 /// `import`/`export` must be listed alongside every other memory subaction.
 #[test]
 fn cli_memory_has_import_and_export_subcommands() {

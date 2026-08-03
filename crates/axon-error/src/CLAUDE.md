@@ -4,12 +4,13 @@
 the typed error taxonomy (`ApiError`, `ErrorCode`, `ErrorStage`, `ErrorSeverity`)
 plus retry / cooling / degradation classifications and redaction-aware context.
 Every crate reports failures through it so CLI, REST, MCP, jobs, logs, and
-progress streams render one error shape. Full contract (owns / API / deps / tests):
-[../../../docs/pipeline-unification/crates/axon-error/README.md](../../../docs/pipeline-unification/crates/axon-error/README.md)
+progress streams render one error shape.
+Architecture and ownership:
+[../../../docs/architecture/crate-structure.md](../../../docs/architecture/crate-structure.md)
 · behavior spec:
-[../../../docs/pipeline-unification/runtime/error-handling.md](../../../docs/pipeline-unification/runtime/error-handling.md).
+[../../../docs/reference/api/errors.md](../../../docs/reference/api/errors.md).
 
-## Status — live crate, Phase 1 landed
+## Current status
 `ApiError`/`ErrorCode`/`ErrorStage`/retry-policy taxonomy are real and tested,
 not markers. Do not add transport rendering, provider clients, stores, or job
 scheduling here.

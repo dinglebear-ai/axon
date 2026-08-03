@@ -8,8 +8,6 @@ duplication of policy). It does **not** own OAuth/bearer HTTP middleware, MCP
 transport handshake, source fetching, SSRF client implementation, or redaction
 detectors.
 
-> Contract source:
-> [`docs/pipeline-unification/runtime/auth-contract.md`](../../pipeline-unification/runtime/auth-contract.md).
 > Implementation: [`crates/axon-authz/src/`](../../../crates/axon-authz/src/).
 
 ## `CallerContext`

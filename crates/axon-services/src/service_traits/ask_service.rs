@@ -1,6 +1,6 @@
 //! `AskService` — RAG ask/evaluate/suggest and direct LLM chat.
 //!
-//! Contract: `docs/pipeline-unification/foundation/types/service-contract.md`
+//! Contract: `docs/architecture/boundary-map.md`
 //! §AskService. `ask` mirrors the MCP `handle_ask` handler exactly: every
 //! `AskRequest` override field is threaded through
 //! `crate::transport::apply_ask_overrides` (the same helper the MCP/REST

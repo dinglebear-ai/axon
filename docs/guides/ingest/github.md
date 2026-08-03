@@ -1,193 +1,130 @@
 ---
-title: "GitHub Ingest"
+title: "Git and GitHub Sources"
 created: 2026-02-23
-updated: 2026-07-30
+updated: 2026-08-02
 ---
 
-# GitHub Ingest
-Last Modified: 2026-06-13
+# Git and GitHub Sources
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/github.md`](../../reference/actions/github.md)
+Git repositories enter through the unified source pipeline and the `git`
+source family. GitHub, GitLab, Gitea/Forgejo, and generic HTTPS clone URLs are
+classified automatically.
 
-Ingests a GitHub repository — source code, documentation, issues, pull requests, and wiki pages — into Qdrant via a hybrid approach: shallow `git clone` for repository files, octocrab for metadata/issues/PRs, and a separate shallow `git clone` for wiki pages.
+Current command reference: [axon source](../../reference/actions/source.md).
+Supported adapters and scopes: [Adapter Scopes](../../reference/sources/adapter-scopes.md).
 
-## What Gets Indexed
-
-| Content | Condition |
-|---------|-----------|
-| Source code files | **By default**: `.rs`, `.py`, `.go`, `.ts`, `.js`, `.tsx`, `.jsx`, `.toml`, `.c`, `.cpp`, `.h`, `.hpp`, `.java`, `.kt`, `.rb`, `.php`, `.sh`, `.yaml`, `.yml`, `.json`, `.swift`, `.cs`. Disable with `--no-source`. |
-| Documentation files | Always: `.md`, `.mdx`, `.rst`, `.txt` |
-| Issues | Open and closed, title + body |
-| Pull requests | Open and closed, title + body |
-| Wiki pages | When the repo has a public wiki |
-
-**Excluded** regardless of flags: `target/`, `node_modules/`, `dist/`, `__pycache__/`, `.lock` files, `-lock.json` files. See `is_indexable_source_path()` in `src/ingest/github.rs` for the full list.
-
-### Code Chunking (tree-sitter AST)
-
-Source code files are chunked via **tree-sitter AST-aware splitting** when a grammar is available. This produces chunks aligned to function, struct, class, and method boundaries (500–2000 chars) instead of arbitrary character splits.
-
-| Language | Grammar crate |
-|----------|--------------|
-| Rust | `tree-sitter-rust` |
-| Python | `tree-sitter-python` |
-| JavaScript | `tree-sitter-javascript` |
-| TypeScript / TSX | `tree-sitter-typescript` |
-| Go | `tree-sitter-go` |
-| Bash / shell | `tree-sitter-bash` |
-
-Files in unsupported languages fall back to standard 2000-char prose chunking with 200-char overlap.
-
-Implementation: GitHub file ingest builds one `SourceDocument::try_new_file(SourceOrigin::GitFile, ...)` per file. The shared source-doc planner calls `chunk_file()` / tree-sitter internally, then emits one file-level `PreparedDoc` with per-chunk `chunk_extra` for TEI/Qdrant. Ingest callers should not pre-chunk files or build one `PreparedDoc` per code symbol.
-
-### File Classification
-
-Each file is classified by `classify_file_type()` in `src/vector/ops/input/classify.rs`:
-
-| Type | Detection |
-|------|-----------|
-| `test` | Path contains `test/`, `tests/`, `__tests__/`, or filename matches `*_test.*`, `*_spec.*`, `test_*.*` |
-| `config` | Known config filenames: `Cargo.toml`, `package.json`, `tsconfig.json`, `.eslintrc.*`, etc. |
-| `doc` | Extensions: `.md`, `.mdx`, `.rst`, `.txt` |
-| `source` | Everything else |
-
-Classification is stored in the `code_file_type` metadata field on each chunk.
-
-## Prerequisites
-
-A running Qdrant + TEI stack. `GITHUB_TOKEN` is optional for public repositories and required for private repositories.
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GITHUB_TOKEN` | Optional | Personal access token (classic) with `repo` scope, or fine-grained token with repository contents access. Required for private repos. For public repos it is used for metadata/issues/PR API calls and authenticated clone first; if that clone fails and the repo is public, axon retries clone without the token. |
-| `AXON_COLLECTION` | Optional | Qdrant collection name (default: `axon`) |
-| `TEI_URL` | Required | TEI embedding service URL |
+## Index a repository
 
 ```bash
-# ~/.axon/.env
-GITHUB_TOKEN=ghp_your_token_here
+axon source https://github.com/owner/repo --scope repo --wait true
+axon source https://gitlab.com/group/project --scope repo --wait true
+axon source https://git.example.com/owner/repo.git --wait true
 ```
 
-## URL / Name Parsing
+`repo` is the default git scope. `branch` is also supported by the generic git
+family. Hosted adapters additionally declare issue, pull/merge-request, and
+release scopes where a corresponding vertical extractor exists.
 
-The argument accepts:
-- `owner/repo` — canonical form
-- `https://github.com/owner/repo` — full URL (prefix stripped)
-- `https://github.com/owner/repo.git` — `.git` suffix stripped
+Without `--wait true`, the command returns a detached durable source job. Use
+`axon jobs get <job-id>` and `axon jobs events <job-id>` for lifecycle details.
 
-## How It Works
+## Repository acquisition
 
-1. Validates and normalizes `owner/repo` from the input
-2. Fetches repo metadata via `GET /repos/{owner}/{repo}` — builds `GitHubCommonFields` (owner, name, description, default branch, pushed_at, is_private)
-3. Clones the repository with `git clone --depth=1 --branch <default_branch> --single-branch`
-4. Walks the local clone and filters files through `is_indexable_doc_path()` (always) and `is_indexable_source_path()` (unless `--no-source`)
-5. Reads file contents from disk in bounded parallel batches
-6. File content is normalized as `SourceDocument` values; the source-doc planner chooses tree-sitter code chunking, markdown chunking, or prose fallback and embeds planner-created `PreparedDoc` batches through `embed_prepared_docs()`
-7. Fetches issues (all states) and PRs (all states) via octocrab with automatic pagination
-8. Clones the wiki separately via `git clone --depth=1` and walks `.md`/`.rst`/`.txt` files when GitHub reports a wiki exists
-9. All chunk types carry canonical `git_*`/`code_*` metadata payload via `build_github_payload()` in `src/ingest/github/meta.rs`
+Repository acquisition is owned by
+`crates/axon-adapters/src/git/acquire.rs`:
 
-### Clone Authentication and Fallback
+1. The clone URL is normalized and SSRF-validated.
+2. The hostname is resolved and every resolved address is checked before the
+   external `git` process starts.
+3. Axon performs a shallow HTTPS clone with `--depth=1`, `--no-tags`, redirects
+   disabled, and `GIT_TERMINAL_PROMPT=0`.
+4. The checkout lives in a temporary directory and is removed after
+   acquisition.
+5. The checked-out tree is converted into `SourceDocument` values and continues
+   through the shared document, embedding, vector, ledger, and graph stages.
 
-When `GITHUB_TOKEN` is set, repository file ingest tries an authenticated clone first.
+Private repositories must already be accessible to non-interactive `git` on the
+Axon host, such as through a configured credential helper. Axon does not open an
+interactive credential prompt.
 
-- Private repositories never retry unauthenticated after an authenticated clone failure.
-- Repositories with unknown visibility skip unauthenticated retry when the clone error is an auth or permission failure.
-- Public repositories may retry unauthenticated because stale or over-scoped local credentials should not block public source ingestion.
+## Files and exclusions
 
-Clone error messages redact the configured token before returning/logging.
+The local-tree selector used after clone is implemented under
+`crates/axon-adapters/src/local_select.rs`. It excludes common generated,
+cache, VCS, and dependency directories by default. Add request-specific
+substrings with repeatable `--exclude-path` options:
 
-### File Embed Failure Accounting
+```bash
+axon source https://github.com/owner/repo \
+  --exclude-path vendor/ \
+  --exclude-path docs/generated/ \
+  --wait true
+```
 
-File embedding flushes `PreparedDoc` batches to the vector pipeline. If a batch fails, axon records:
+Adapters emit whole `SourceDocument` values. They do not pre-chunk files.
+`axon-document` selects code, manifest, markdown, schema, or text preparation
+profiles from content kind and path.
 
-- `embed_batches_failed`
-- `embed_files_failed`
-- `embed_docs_failed`
-- `embed_chunks_failed`
-- `file_read_failures`
+## Code preparation
 
-The current threshold is fixed and conservative: any failed embed batch makes the GitHub files sub-task fail after reporting the counters. File read/stat failures are counted and skipped because they usually represent unreadable local paths or files filtered after clone; they do not by themselves fail the sub-task.
+Code-aware preparation is owned by `crates/axon-document/` and parser facts
+from `crates/axon-parse/`:
 
-## Qdrant Metadata Fields
+- supported source files use parser-aware symbol boundaries when available;
+- manifests and structured files use structured profiles;
+- unsupported or failed parsing falls back to deterministic safe chunking;
+- chunks record extraction/fallback metadata rather than pretending parser
+  coverage succeeded.
 
-GitHub chunks carry canonical `git_*`, `code_*`, and `symbol_*` payload fields built by `build_github_payload()` in `src/ingest/github/meta.rs` via the `GitHubPayloadParams` struct. Schema v7 is a clean break: new GitHub ingest no longer emits `gh_*` duplicate fields. Schema v8 adds planner-owned normalized chunk fields such as `chunk_content_kind`, `chunk_locator`, `source_range`, `chunking_fallback`, and `code_chunk_source`.
+See [Chunking](../../reference/sources/chunking.md) and
+[Parsing](../../reference/sources/parsing.md).
 
-### Repository-level fields (all chunk types)
+## Metadata
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `git_owner` | `string` | Repository owner |
-| `git_repo` | `string` | Repository name |
-| `git_default_branch` | `string` | Default branch name |
-| `git_repo_stars` | `integer` | Stargazer count at index time |
-| `git_repo_forks` | `integer` | Fork count at index time |
-| `git_repo_open_issues` | `integer` | Open issue count at index time |
-| `git_repo_language` | `string \| null` | Primary language as reported by GitHub |
-| `git_repo_topics` | `string[]` | Repository topics array |
-| `git_repo_pushed_at` | `string \| null` | Last push timestamp (RFC 3339) |
-| `git_repo_is_fork` | `boolean` | Whether the repository is a fork |
-| `git_repo_is_archived` | `boolean` | Whether the repository is archived |
-| `git_repo_is_private` | `boolean` | Whether the repository is private |
-| `git_repo_description` | `string` | Repository description |
+`crates/axon-adapters/src/git/metadata.rs` stamps approved repository identity
+onto each source document, including:
 
-### File-specific fields (code, doc, wiki chunks)
+- `source_family=code`
+- `source_kind=git`
+- adapter and scope
+- `git_provider`
+- `git_host`
+- `git_owner` when present
+- `git_repo`
+- `git_web_url`
+- canonical item identity
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `git_file_path` / `code_file_path` | `string` | Relative file path within the repo |
-| `git_file_language` / `code_language` | `string` | Human-readable language name (from extension) |
-| `code_file_type` | `string` | `"test"`, `"config"`, `"doc"`, or `"source"` (from `classify_file_type()`) |
-| `code_is_test` | `boolean` | Whether the file is a test file |
-| `code_file_size_bytes` | `integer` | File size in bytes |
-| `code_line_start` / `code_line_end` | `integer` | 1-indexed inclusive source line range for the chunk |
-| `code_chunking_method` | `string` | `"tree_sitter"` or `"prose"` — how the file was chunked |
-| `symbol_name` | `string` | Declaration name for code chunks when known, e.g. `"Response::parse"` |
-| `symbol_kind` | `string` | Declaration kind for code chunks when known, e.g. `"function"` or `"method"` |
-| `symbol_extraction_status` | `string` | File-level symbol extraction status: `"ok"`, `"unsupported"`, `"skipped_large"`, `"none_found"`, or `"prose"` |
-| `chunk_content_kind` | `string` | Planner classification for the individual chunk: `"code"`, `"markdown"`, or `"plain_text"` |
-| `chunk_locator` | `string` | Stable chunk locator, usually `path#Lstart-Lend` for file chunks |
-| `source_range` | `object` | Line and byte range for the chunk within the source document |
-| `chunking_fallback` | `string` | Present when the planner used a safe fallback path |
-| `code_chunk_source` | `string` | Planner source for code metadata: `"tree_sitter"`, `"markdown"`, or `"prose"` |
+Document preparation may add normalized `code_*`, chunk, symbol, language, and
+source-range fields. The generated payload contract is authoritative:
+[Vector Payload](../../reference/sources/vector-payload.md).
 
-### Issue/PR fields
+## GitHub vertical targets
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `git_number` | `integer` | GitHub issue/PR number |
-| `git_state` | `string` | `"open"`, `"closed"`, or `"unknown"` |
-| `git_author` | `string` | Login of the author |
-| `git_updated_at` | `string \| null` | Last-updated timestamp (RFC 3339) |
-| `git_comment_count` | `integer` | Number of comments |
-| `git_labels` | `string[]` | Label names |
-| `git_is_pr` | `boolean` | `true` for pull requests, `false` for issues |
-| `git_merged_at` | `string \| null` | Merge timestamp; `null` if not merged or if issue |
-| `git_is_draft` | `boolean` | Whether the PR was a draft at index time |
+GitHub issue, pull-request, and release URLs are routed through the git family
+without cloning the full repository. The vertical path lives in
+`crates/axon-adapters/src/git/vertical.rs` and dispatches to the corresponding
+extractor in `axon-extract`.
 
-## Known Limitations
+Examples:
 
-| Limitation | Detail |
-|-----------|--------|
-| **Rate limits without token** | File content ingestion uses git clone and does not make one API request per file. Metadata, issues, and PRs still use GitHub API calls and are rate-limited without `GITHUB_TOKEN`. |
-| **Private repos** | Require a token with `repo` (classic) or `contents:read` (fine-grained) scope |
-| **Very large repos** | Clone + local walk avoids per-file API calls, but large repositories still take time to clone, walk, chunk, and embed. |
-| **Binary files** | Excluded by extension list. The list is hardcoded; PRs welcome for additions. |
-| **Forked repos** | Ingests the fork only, not upstream. |
-| **AST chunking coverage** | Only Rust, Python, JavaScript, TypeScript, Go, and Bash have tree-sitter grammars. Other languages fall back to prose chunking. |
+```bash
+axon source https://github.com/owner/repo/issues/123 --wait true
+axon source https://github.com/owner/repo/pull/456 --wait true
+axon source https://github.com/owner/repo/releases/tag/v1.2.3 --wait true
+```
 
-## Troubleshooting
+A vertical extraction failure is surfaced as an acquisition error; it does not
+silently fall back to cloning an unrelated repository scope.
 
-**`403 Forbidden` / rate limit errors**
+## Refresh behavior
 
-Set `GITHUB_TOKEN` in `~/.axon/.env`. Verify the token has `contents:read` access (fine-grained) or `repo` scope (classic).
+Git sources support refresh through the shared source lifecycle. Manifest diff,
+generation publication, vector writes, graph updates, and cleanup debt use the
+same ledger semantics as every other mutable source.
 
-**`repository not found`**
+## Related documentation
 
-Repo is private or doesn't exist. Check the owner/repo spelling and token permissions.
-
-**Slow ingestion on large repos**
-
-Expected — clone, local walk, chunking, and TEI embedding can take minutes for large repositories. Consider skipping source code (`--no-source`) when you only need docs/issues/PR metadata.
+- [Source Pipeline](../../architecture/source-pipeline.md)
+- [Local Sources](../local-sources.md)
+- [Adding a Source Adapter](../../development/adding-source-adapter.md)
+- [Runtime Jobs](../../reference/runtime/jobs.md)

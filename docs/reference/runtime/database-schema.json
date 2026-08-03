@@ -3866,9 +3866,9 @@
         "path": "crates/axon-observe/src/migrations"
       },
       {
-        "checksum": "sha256:e31a1fc6891e61038b174ac8cdaf15840c6825b12093374aae93e4b8e0bef571",
+        "checksum": "sha256:233d664823aa1f811fc13b98f72e790eb40a7a9e954459a7c11b2220bec1ce03",
         "kind": "markdown_contract",
-        "path": "docs/pipeline-unification/schemas/database-schema.md"
+        "path": "docs/reference/runtime/storage.md"
       },
       {
         "checksum": "sha256:d1848c8f952a77bcc2d440ea403eb7dc82d3023c2ba9fdf380c57a4fcef059ca",

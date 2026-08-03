@@ -220,7 +220,7 @@ fields) that this entry is generated from.
   `vertical_cache_ttl_secs` keys.
 - **Breaking:** `config.toml` moves from the old flat/mixed section shape to
   the ~20-section contract in
-  `docs/pipeline-unification/configuration/config-contract.md` (top-level
+  `docs/reference/config/config-toml.md` (top-level
   `server`, `sources`, `pipeline`, `jobs`, `providers`, `retrieval`, `ask`,
   `crawl`, `watch`, `memory`, `graph`, `artifacts`, `prune`, `observability`,
   `security`, and more). Every section is parsed with

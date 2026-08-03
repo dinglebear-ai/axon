@@ -13,8 +13,8 @@ both — pick the section for the boundary you're extending.
 
 See also: crate guides `crates/axon-embedding/src/CLAUDE.md` and
 `crates/axon-vectors/src/CLAUDE.md`; behavior contracts
-`docs/pipeline-unification/runtime/provider-contract.md` and
-`docs/pipeline-unification/runtime/storage-contract.md`.
+`docs/reference/runtime/provider-capabilities.md` and
+`docs/reference/runtime/storage.md`.
 
 **Rule of thumb:** embedding providers generate vectors and never persist
 them; vector stores persist/search vectors and never generate them. Neither

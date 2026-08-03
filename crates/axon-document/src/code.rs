@@ -1,7 +1,7 @@
 //! Code-oriented chunk builders.
 //!
 //! Symbol extraction here is a lightweight keyword heuristic, not a real
-//! tree-sitter/AST parser (see `docs/pipeline-unification/sources/
+//! tree-sitter/AST parser (see `docs/reference/sources/
 //! chunking-contract.md` "Code Chunking" for the target contract). Every
 //! chunk is stamped with `code_language`, `code_chunk_source`, and
 //! `symbol_extraction_status` so callers can tell heuristic output from a

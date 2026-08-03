@@ -4,9 +4,9 @@
 //! [`drain_cleanup_debt`](super::prune::drain_cleanup_debt) run as sub-steps of
 //! one `index_source` call, not as standalone top-level operations — there is
 //! no `axon graph` or `axon prune` CLI/MCP surface yet (see
-//! `docs/pipeline-unification/surfaces/command-contract.md`, which specifies
+//! `docs/reference/cli/commands.md`, which specifies
 //! `prune` as a *future* top-level command still owned by the PR0-skeleton
-//! `axon-prune` crate). Per `docs/pipeline-unification/runtime/job-contract.md`,
+//! `axon-prune` crate). Per `docs/reference/runtime/jobs.md`,
 //! `graph` and `prune` are still real `JobKind`s in the target model, and
 //! "foreground CLI operations still create a job row when they perform ...
 //! graph mutation, pruning, ...". This module satisfies that by recording each
@@ -37,7 +37,7 @@
 //! This means the `parent_job_id`/`root_job_id` these children carry point at
 //! a `Source` job that is already in a terminal state by the time the child
 //! is created. That is intentional here, not a bug: it inverts the usual
-//! fan-out/fan-in expectation from `docs/pipeline-unification/runtime/
+//! fan-out/fan-in expectation from `docs/reference/runtime/
 //! job-contract.md` ("Parent jobs aggregate child status" — i.e. a parent
 //! normally waits on its children) because these children are not gating
 //! whether the source publish succeeded; they are an audit trail for work

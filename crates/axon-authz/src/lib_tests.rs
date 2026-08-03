@@ -5,8 +5,8 @@ use super::{
 
 /// Pins the deliberate `axon:read`/`axon:write` compatibility widening in
 /// `scope_satisfies` (see that function's doc comment and
-/// `docs/pipeline-unification/runtime/security-contract.md`'s "Contract"
-/// paragraph plus `docs/pipeline-unification/runtime/auth-contract.md`'s
+/// `docs/reference/runtime/security.md`'s "Contract"
+/// paragraph plus `docs/reference/runtime/auth.md`'s
 /// "Scope Rules" for the two contracts that document it). This is NOT an
 /// oversight or a bug: it exists so existing OAuth tokens keep working across
 /// route-classification changes.

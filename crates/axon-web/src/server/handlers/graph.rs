@@ -1,5 +1,5 @@
 //! `/v1/graph/*` — the read-only SourceGraph surface (issue #298 GQ,
-//! `docs/pipeline-unification/surfaces/rest-contract.md` "Graph Routes").
+//! `docs/reference/rest/routes.md` "Graph Routes").
 //!
 //! Graph routes expose `SourceGraph`; they do not write arbitrary
 //! caller-provided edges. Normal graph writes come from trusted source jobs
