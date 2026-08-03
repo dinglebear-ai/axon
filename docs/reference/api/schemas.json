@@ -28974,9 +28974,14 @@
         "path": "xtask/src/schemas/api_defs.rs"
       },
       {
-        "checksum": "sha256:bca12e13e3327bcedde7f7e4ff91b8a0f09bd07999a9bd691403e11c03d99b16",
+        "checksum": "sha256:b9992bf960847db37dede00b3b8dc9ba4102a292bf943f2a38c6ad1c389b2fed",
         "kind": "rust_module",
         "path": "xtask/src/schemas/families.rs"
+      },
+      {
+        "checksum": "sha256:e06e9d73ae8b2f88993f0582ca080d31764df3f62d8ae33fd2dc2ee77a39ff58",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/families/bundles.rs"
       },
       {
         "checksum": "sha256:e311c00778ae7f149f1d2df39ab5dd62050a261a700607b3ab9286de1b98eb2c",
@@ -28987,6 +28992,16 @@
         "checksum": "sha256:eb080a5f9bee2a1247d7824accc79786f4d8093ff352431a92d00cfc1653ce61",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry/canonical_enums.rs"
+      },
+      {
+        "checksum": "sha256:09683a203e931d619a76fff0ab5abb04efbaac1ae9849bd763303d7f364759f8",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/schema_json.rs"
+      },
+      {
+        "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da",
+        "kind": "rust_module",
+        "path": "xtask/src/schemas/source_input.rs"
       }
     ]
   }

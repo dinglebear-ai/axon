@@ -217,9 +217,12 @@ modules, literal `#[path]` modules, and literal `include!` files are included
 automatically;
 missing referenced files fail generation. Exact `cfg(test)` items are
 excluded. New split modules must be discovered through this closure, not added
-to another manual path list. `xtask/src/schemas/families.rs` is the intentional
-exception: it is tracked as a leaf because following its modules would attach
-unrelated schema-family generators to the API contract.
+to another manual path list. Generator code that directly shapes the API
+artifact is tracked as explicit leaf inputs: `xtask/src/schemas/families.rs`,
+`xtask/src/schemas/families/bundles.rs`, `xtask/src/schemas/schema_json.rs`, and
+`xtask/src/schemas/source_input.rs`. The family dispatcher is not followed
+because its modules would attach unrelated schema-family generators to the API
+contract.
 
 ## Standard Fixture Layout
 

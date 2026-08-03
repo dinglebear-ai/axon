@@ -140,6 +140,12 @@ fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
             // modules would pull unrelated schema families into API
             // provenance. Track the dispatcher itself as an intentional leaf.
             "xtask/src/schemas/families.rs",
+            // These shared generator helpers directly shape the API bundle,
+            // schema normalization, and source-input metadata. Track them as
+            // narrow leaves without following the family dispatcher's modules.
+            "xtask/src/schemas/families/bundles.rs",
+            "xtask/src/schemas/schema_json.rs",
+            "xtask/src/schemas/source_input.rs",
         ],
         &[
             "crates/axon-api/src/source.rs",

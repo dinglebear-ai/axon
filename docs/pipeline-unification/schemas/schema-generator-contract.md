@@ -274,9 +274,11 @@ Rules:
 - every API domain Rust input is a provenance closure root; production
   out-of-line `mod`, literal `#[path]`, and literal `include!` sources are
   followed transitively, while exact `cfg(test)` items are excluded
-- the central `xtask/src/schemas/families.rs` dispatcher is tracked as an
-  intentional non-closure leaf so unrelated family modules do not contaminate
-  API provenance
+- generator code that directly shapes API bytes is tracked as explicit leaf
+  inputs: `xtask/src/schemas/families.rs`,
+  `xtask/src/schemas/families/bundles.rs`, `xtask/src/schemas/schema_json.rs`,
+  and `xtask/src/schemas/source_input.rs`; the family dispatcher is not followed
+  so unrelated family modules do not contaminate API provenance
 
 ## Validation Harness
 

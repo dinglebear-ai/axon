@@ -94,8 +94,11 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/point.rs",
         "xtask/src/schemas/api_defs.rs",
         "xtask/src/schemas/families.rs",
+        "xtask/src/schemas/families/bundles.rs",
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/registry/canonical_enums.rs",
+        "xtask/src/schemas/schema_json.rs",
+        "xtask/src/schemas/source_input.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
         "docs/pipeline-unification/schemas/api-dto-schema.md",
@@ -684,6 +687,66 @@ fn api_schema_source_inputs_follow_transitive_rust_modules() {
         !inputs
             .iter()
             .any(|input| { input["path"] == "crates/axon-error/src/code_tests.rs" })
+    );
+}
+
+#[test]
+fn api_schema_provenance_tracks_generator_leaf_checksums() {
+    let tmp = fixture_repo();
+    let generator_inputs = [
+        "xtask/src/schemas/families/bundles.rs",
+        "xtask/src/schemas/schema_json.rs",
+        "xtask/src/schemas/source_input.rs",
+    ];
+
+    let artifacts = generator_for(SchemaFamily::Api)
+        .generate(tmp.path())
+        .unwrap();
+    let content = &artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("docs/reference/api/schemas.json"))
+        .expect("API schema artifact")
+        .content;
+    let value: serde_json::Value = serde_json::from_str(content).unwrap();
+    let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+    for path in generator_inputs {
+        assert!(
+            inputs.iter().any(|input| input["path"] == path),
+            "API provenance omitted generator leaf {path}"
+        );
+    }
+
+    let changed_path = generator_inputs[0];
+    let before = inputs
+        .iter()
+        .find(|input| input["path"] == changed_path)
+        .unwrap()["checksum"]
+        .clone();
+    write_fixture(tmp.path(), changed_path, "// changed generator fixture\n");
+
+    let artifacts = generator_for(SchemaFamily::Api)
+        .generate(tmp.path())
+        .unwrap();
+    let content = &artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("docs/reference/api/schemas.json"))
+        .expect("API schema artifact")
+        .content;
+    let value: serde_json::Value = serde_json::from_str(content).unwrap();
+    let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+    let after = inputs
+        .iter()
+        .find(|input| input["path"] == changed_path)
+        .unwrap()["checksum"]
+        .clone();
+
+    assert_ne!(after, before);
+    assert_eq!(
+        after,
+        format!(
+            "sha256:{:x}",
+            Sha256::digest(b"// changed generator fixture\n")
+        )
     );
 }
 

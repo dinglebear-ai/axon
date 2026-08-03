@@ -42,9 +42,11 @@ Use `cargo xtask generated-contracts refresh` after changing schema inputs and
 always processes schema fixtures/artifacts before their Markdown projections.
 For the API schema, every domain Rust provenance input is a closure root.
 Production `mod`, literal `#[path]`, and literal `include!` dependencies are
-followed transitively; exact `cfg(test)` items are excluded. The central family
-dispatcher is one intentional leaf because its child modules own unrelated
-schema families. Do not maintain a hand-written list of split source modules.
+followed transitively; exact `cfg(test)` items are excluded. Repository generator
+code that directly shapes API bytes is tracked as explicit provenance leaves.
+The central family dispatcher is not followed because its child modules own
+unrelated schema families. Do not maintain a hand-written list of split domain
+source modules.
 
 ## Quick Start
 
