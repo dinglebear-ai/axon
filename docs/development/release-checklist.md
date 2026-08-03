@@ -1,7 +1,7 @@
 ---
 title: "Release Checklist — Axon"
 created: 2026-07-07
-updated: 2026-07-30
+updated: 2026-08-03
 ---
 
 # Release Checklist — Axon
@@ -12,17 +12,21 @@ model this checklist enforces; this file is the short operational checklist
 version of it.
 
 Releases are per-component (`cli`, `palette`, `android`, `chrome`) and
-selective — release-please owns release PRs, version bumps, changelogs, tags,
-and GitHub Release records after `CI` is green on `main`. `xtask` only
-validates and postprocesses; it does not cut releases itself.
+selective. Release-please owns release PRs, version bumps, changelogs, tags,
+and GitHub Releases for `palette`, `android`, and `chrome`. The CLI is the only
+unmanaged component: its version is bumped with `xtask`, then auto-tag creates
+its tag and GitHub Release after exact-main CI before dispatching artifacts.
 
 ## Before merging a change that ships in a release
 
-- [ ] Component version-bearing files are in sync for every component whose
-      shipping paths changed (see the table below).
+- [ ] CLI shipping changes include an `xtask bump-version` result and all CLI
+      version-bearing files are in sync.
+- [ ] Ordinary `palette`/`android`/`chrome` feature PRs do **not** edit version
+      files; release-please owns those edits in the generated release PR.
 - [ ] `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`
-      passes — this is the PR gate and fails with the affected component name
-      if code changed but the version did not move.
+      passes. It requires a CLI bump, defers managed feature bumps, rejects
+      mixed managed shipping/version edits, and fully validates generated
+      release PR version parity.
 - [ ] Conventional commit prefixes are correct: `feat!`/`BREAKING CHANGE` →
       major, `feat` → minor, `fix` → patch. `perf`/`refactor` show in the
       Changed changelog section; `chore`/`ci`/`docs`/`test`/`build`/`style`
@@ -106,24 +110,29 @@ See [`contributing.md`](contributing.md#monolith-policy) for the full policy.
       appropriate
 - [ ] No `NEXT_PUBLIC_*` variables leak server-side secrets
 
-## Cutting the release
+## Cutting a managed release (`palette`, `android`, `chrome`)
 
-1. Let release-please open the release PR after green `CI` on `main`.
-2. Review that the release PR updates `.release-please-manifest.json`,
-   component versions, and changelogs correctly.
+1. Let release-please open or refresh the component release PR after green
+   `CI` on `main`.
+2. Review that the release PR updates `.release-please-manifest.json`, the
+   component version files, and its changelog together.
 3. Run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
 4. Merge only after the release/version gate and CI are green.
-5. Confirm the per-component artifact workflow (`release.yml`,
-   `palette-release.yml`, `android-release.yml`,
-   `chrome-extension-release.yml`) ran and attached signed/checksummed
-   assets to the GitHub Release release-please created.
+5. Confirm release-please created the component tag and GitHub Release.
+6. Confirm `palette-release.yml`, `android-release.yml`, or
+   `chrome-extension-release.yml` attached the signed/checksummed artifacts to
+   that existing Release.
 
-To cut a release manually (hotfix/re-release without a code change), push the
-component's tag directly instead of waiting on release-please:
+## Cutting a CLI release
 
-```bash
-git tag vX.Y.Z             && git push origin vX.Y.Z              # cli
-git tag palette-vX.Y.Z     && git push origin palette-vX.Y.Z      # palette
-git tag android-vX.Y.Z     && git push origin android-vX.Y.Z      # android
-git tag chrome-ext-vX.Y.Z  && git push origin chrome-ext-vX.Y.Z   # chrome
-```
+1. Run `cargo xtask bump-version patch|minor|major --component cli` and review
+   every CLI version-bearing file.
+2. Include the bump with the shipping PR and run the PR release-version gate.
+3. Merge only after CI is green.
+4. Confirm auto-tag selected only the unmanaged CLI, waited for exact-main CI,
+   created the `vX.Y.Z` tag and GitHub Release, then dispatched `release.yml`.
+5. Confirm the Linux and Windows assets and checksums were attached.
+
+Direct tags for release-please-managed components are break-glass incident
+operations. Do not use them as a normal hotfix path or create a second owner
+for managed version files, tags, or GitHub Releases.

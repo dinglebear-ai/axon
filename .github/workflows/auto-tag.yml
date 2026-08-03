@@ -5,12 +5,13 @@ name: auto-tag
 # On every push to main this asks `cargo xtask check-release-versions` for the
 # shared release plan. Component metadata lives in `release/components.toml`.
 #
-# For each component, it diffs the component's shipping paths against that
-# component's most recent tag. If the code changed AND the version was bumped
-# (the computed tag does not exist), it waits for CI to pass on this commit,
-# creates the tag, and dispatches the component's release workflow. A component
-# whose code did NOT change since its last tag is skipped — so a CLI-only change
-# never rebuilds android, and an android-only change never cuts a CLI release.
+# For each release-please-unmanaged component, it diffs the component's shipping
+# paths against that component's most recent tag. If the code changed AND the
+# version was bumped (the computed tag does not exist), it waits for CI to pass
+# on this commit, creates the tag and GitHub Release, and dispatches the
+# component's artifact workflow. Release-please-managed components are excluded:
+# their release PR, tag, GitHub Release, and artifact dispatch remain owned by
+# release-please.yml.
 #
 # RELEASE GATES (OPS-M1): before a tag is created we (1) verify the new version
 # is a strictly-monotonic bump over that component's highest existing tag, and
@@ -18,10 +19,10 @@ name: auto-tag
 # this exact commit. This prevents an accidental version edit or a red CI from
 # auto-publishing a broken public release.
 #
-# BUMP ENFORCEMENT: if a component's code changed but its version was NOT bumped
-# (the computed tag already exists), the component's job FAILS with a message
-# naming the component — nothing ships silently. `fail-fast: false` keeps the
-# other components releasing independently; the red job flags the missing bump.
+# BUMP ENFORCEMENT: if an unmanaged component's code changed but its version was
+# NOT bumped (the computed tag already exists), the plan fails before a tag is
+# created. Managed components defer their version edits to release-please and
+# never enter this workflow's matrix.
 #
 # NOTE: tags pushed via GITHUB_TOKEN do NOT trigger other workflows (GitHub
 # security model). We therefore dispatch each release workflow explicitly via
@@ -75,7 +76,12 @@ jobs:
         run: |
           set -euo pipefail
           cargo xtask check-release-versions --head HEAD --mode main --json > release-plan.json
-          matrix=$(jq -c '{include: [.[] | select(.changed == true)]}' release-plan.json)
+          if ! jq -e 'type == "array" and all(.[]; (.release_please_managed | type) == "boolean")' release-plan.json >/dev/null; then
+            echo "::error::release plan must be an array whose items declare boolean release_please_managed ownership" >&2
+            cat release-plan.json >&2
+            exit 1
+          fi
+          matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           cat release-plan.json
 
@@ -153,7 +159,25 @@ jobs:
           git push origin "${{ matrix.candidate_tag }}"
           echo "Pushed tag ${{ matrix.candidate_tag }}"
 
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ matrix.candidate_tag }}"
+          repo="${{ github.repository }}"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            echo "GitHub Release $tag already exists."
+          else
+            gh release create "$tag" --verify-tag --generate-notes --repo "$repo"
+            echo "Created GitHub Release $tag."
+          fi
+
       - name: Dispatch release workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run "${{ matrix.release_workflow }}" --ref "${{ matrix.candidate_tag }}" -f publish=true
+        run: |
+          gh workflow run "${{ matrix.release_workflow }}" \
+            --repo "${{ github.repository }}" \
+            --ref "${{ matrix.candidate_tag }}" \
+            -f publish=true
