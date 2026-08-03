@@ -272,8 +272,12 @@ fn android_ci_setup_does_not_install_unused_emulator_packages() {
 }
 
 #[test]
-fn android_ci_gradle_memory_covers_apk_packaging() {
+fn android_packaging_workflows_own_the_ci_heap_override() {
     let properties = include_str!("../apps/android/gradle.properties");
+    let ci = workflow_job_block(include_str!("../.github/workflows/ci.yml"), "android");
+    let release = include_str!("../.github/workflows/android-release.yml");
+    let heap_override =
+        r#"-Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8""#;
 
     assert!(
         properties.lines().any(|line| {
@@ -281,13 +285,23 @@ fn android_ci_gradle_memory_covers_apk_packaging() {
                 && line.contains("-Xmx2048m")
                 && line.contains("-XX:MaxMetaspaceSize=512m")
         }),
-        "Android CI needs a 2 GiB Gradle heap for debug APK packaging while retaining the metaspace cap"
+        "the release-owned Android project must retain its bounded 2 GiB local default"
     );
     assert!(
         properties
             .lines()
             .any(|line| line.trim() == "org.gradle.workers.max=2"),
         "Android CI must keep Gradle worker concurrency bounded on shared runners"
+    );
+    assert_eq!(
+        ci.matches(heap_override).count(),
+        2,
+        "debug and release APK packaging in CI must each use the 3 GiB runner override"
+    );
+    assert_eq!(
+        release.matches(heap_override).count(),
+        1,
+        "the Android artifact workflow must use the same 3 GiB runner override"
     );
 }
 
