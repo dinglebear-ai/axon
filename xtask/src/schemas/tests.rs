@@ -35,11 +35,14 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-error/src/schema_registry.rs",
         "crates/axon-error/src/api_error.rs",
         "crates/axon-error/src/code.rs",
+        "crates/axon-error/src/conversion.rs",
         "crates/axon-error/src/stage.rs",
+        "crates/axon-error/src/severity.rs",
         "crates/axon-error/src/retry.rs",
         "crates/axon-error/src/degradation.rs",
         "crates/axon-error/src/cooling.rs",
         "crates/axon-error/src/context.rs",
+        "crates/axon-error/src/testing.rs",
         "crates/axon-cli/src/schema_registry.rs",
         "crates/axon-core/src/config/cli.rs",
         "crates/axon-core/src/config/cli/config_args.rs",
@@ -90,6 +93,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/payload_families.rs",
         "crates/axon-vectors/src/point.rs",
         "xtask/src/schemas/api_defs.rs",
+        "xtask/src/schemas/families.rs",
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/registry/canonical_enums.rs",
         "xtask/src/schemas/tests.rs",
@@ -117,10 +121,17 @@ pub(super) fn fixture_repo() -> TempDir {
             | "crates/axon-api/src/schema_registry.rs"
             | "xtask/src/schemas/api_defs.rs"
             | "xtask/src/schemas/registry/canonical_enums.rs" => Some("// fixture\n"),
+            "crates/axon-error/src/lib.rs" => Some(
+                "pub mod api_error;\npub mod code;\npub mod context;\npub mod conversion;\npub mod cooling;\npub mod degradation;\npub mod retry;\npub mod schema_registry;\npub mod severity;\npub mod stage;\npub mod testing;\n",
+            ),
             "crates/axon-error/src/api_error.rs" => {
                 Some("#[cfg(test)]\n#[path = \"api_error_tests.rs\"]\nmod tests;\n")
             }
+            "crates/axon-error/src/code.rs" => {
+                Some("#[cfg(test)]\n#[path = \"code_tests.rs\"]\nmod tests;\n")
+            }
             "xtask/src/schemas/registry.rs" => Some("mod canonical_enums;\n"),
+            path if path.starts_with("crates/axon-error/src/") => Some("// fixture\n"),
             _ => None,
         };
         if let Some(content) = content {
@@ -658,10 +669,21 @@ fn api_schema_source_inputs_follow_transitive_rust_modules() {
         input["path"] == "xtask/src/schemas/registry/canonical_enums.rs"
             && input["kind"] == "rust_module"
     }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-error/src/code.rs" && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "xtask/src/schemas/families.rs" && input["kind"] == "rust_module"
+    }));
     assert!(
         !inputs
             .iter()
             .any(|input| { input["path"] == "crates/axon-error/src/api_error_tests.rs" })
+    );
+    assert!(
+        !inputs
+            .iter()
+            .any(|input| { input["path"] == "crates/axon-error/src/code_tests.rs" })
     );
 }
 

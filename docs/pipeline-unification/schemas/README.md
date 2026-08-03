@@ -211,12 +211,15 @@ Required source input families:
 If any required input cannot be represented in `source_inputs`, the generator is
 not implementation-ready.
 
-Every Rust input in the API DTO manifest is a closure root, including the DTO,
-registry, error, and generator roots. Normal out-of-line modules, literal
-`#[path]` modules, and literal `include!` files are included automatically;
+Every domain Rust input in the API DTO manifest is a closure root, including
+the DTO, registry, error-crate, and generator roots. Normal out-of-line
+modules, literal `#[path]` modules, and literal `include!` files are included
+automatically;
 missing referenced files fail generation. Exact `cfg(test)` items are
 excluded. New split modules must be discovered through this closure, not added
-to another manual path list.
+to another manual path list. `xtask/src/schemas/families.rs` is the intentional
+exception: it is tracked as a leaf because following its modules would attach
+unrelated schema-family generators to the API contract.
 
 ## Standard Fixture Layout
 

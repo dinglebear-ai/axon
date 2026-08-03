@@ -40,10 +40,11 @@ helpers were retired on 2026-07-27; do not reintroduce them.
 Use `cargo xtask generated-contracts refresh` after changing schema inputs and
 `cargo xtask generated-contracts check` to verify them. The aggregate command
 always processes schema fixtures/artifacts before their Markdown projections.
-For the API schema, every Rust provenance input is a closure root. Production
-`mod`, literal `#[path]`, and literal `include!` dependencies are followed
-transitively; exact `cfg(test)` items are excluded. Do not maintain a
-hand-written list of split source modules.
+For the API schema, every domain Rust provenance input is a closure root.
+Production `mod`, literal `#[path]`, and literal `include!` dependencies are
+followed transitively; exact `cfg(test)` items are excluded. The central family
+dispatcher is one intentional leaf because its child modules own unrelated
+schema families. Do not maintain a hand-written list of split source modules.
 
 ## Quick Start
 

@@ -134,11 +134,17 @@ struct ExtraJsonSpec {
 fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let inputs = source_inputs_with_rust_module_closure(
         root,
-        &["docs/pipeline-unification/schemas/api-dto-schema.md"],
+        &[
+            "docs/pipeline-unification/schemas/api-dto-schema.md",
+            // This dispatcher owns the API bundle shape, but following its
+            // modules would pull unrelated schema families into API
+            // provenance. Track the dispatcher itself as an intentional leaf.
+            "xtask/src/schemas/families.rs",
+        ],
         &[
             "crates/axon-api/src/source.rs",
             "crates/axon-api/src/schema_registry.rs",
-            "crates/axon-error/src/api_error.rs",
+            "crates/axon-error/src/lib.rs",
             "xtask/src/schemas/api_defs.rs",
             "xtask/src/schemas/registry.rs",
         ],
