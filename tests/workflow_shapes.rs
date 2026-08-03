@@ -346,9 +346,24 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     assert!(
         plan.contains(
-            "matrix=$(jq -c '{include: [.[] | select(.changed == true)]}' release-plan.json)"
+            "if ! jq -e 'type == \"array\" and all(.[]; (.release_please_managed | type) == \"boolean\")' release-plan.json"
+        ) && plan.contains("exit 1"),
+        "auto-tag must fail closed unless every release-plan item declares boolean release_please_managed ownership"
+    );
+    assert!(
+        plan.contains(
+            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)"
         ),
-        "auto-tag matrix must include only changed components"
+        "auto-tag matrix must include only changed components that release-please does not own"
+    );
+    assert_eq!(
+        plan.matches("matrix=$(jq -c").count(),
+        1,
+        "auto-tag must have exactly one matrix assignment so a broader selector cannot bypass ownership"
+    );
+    assert!(
+        !plan.contains("select(.changed == true)]"),
+        "the former changed-only selector would reintroduce release-please-owned components"
     );
     assert!(
         ci_gate.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#)
@@ -417,6 +432,211 @@ fn auto_tag_uses_validated_xtask_release_plan() {
             "auto-tag CI polling must constrain {required}"
         );
     }
+}
+
+#[test]
+fn auto_tag_creates_github_release_before_explicit_artifact_dispatch() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+
+    let tag_step = release
+        .find("- name: Create and push tag")
+        .expect("auto-tag creates the component tag");
+    let github_release_step = release
+        .find("- name: Ensure GitHub Release exists")
+        .expect("auto-tag idempotently creates the GitHub Release");
+    let dispatch_step = release
+        .find("- name: Dispatch release workflow")
+        .expect("auto-tag dispatches the artifact workflow");
+    assert!(
+        tag_step < github_release_step && github_release_step < dispatch_step,
+        "auto-tag must push the tag, ensure its GitHub Release, then dispatch artifacts"
+    );
+
+    let github_release = &release[github_release_step..dispatch_step];
+    let view = github_release
+        .find("if gh release view \"$tag\" --repo \"$repo\"")
+        .expect("GitHub Release existence check uses the explicit repository");
+    let create = github_release
+        .find("gh release create \"$tag\" --verify-tag --generate-notes --repo \"$repo\"")
+        .expect("missing GitHub Release is created from the verified tag");
+    assert!(
+        view < create,
+        "GitHub Release creation must be guarded by the idempotent existence check"
+    );
+
+    let dispatch = &release[dispatch_step..];
+    assert!(
+        dispatch.contains("gh workflow run \"${{ matrix.release_workflow }}\"")
+            && dispatch.contains("--repo \"${{ github.repository }}\"")
+            && dispatch.contains("--ref \"${{ matrix.candidate_tag }}\"")
+            && dispatch.contains("-f publish=true"),
+        "artifact dispatch must name the workflow, repository, tag ref, and publish input explicitly"
+    );
+}
+
+#[test]
+fn auto_tag_partial_success_rerun_accepts_the_existing_tag_at_the_same_commit() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.99-test";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo retry-fixture > README.md
+git add README.md
+git commit -m "retry fixture"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+git tag {tag}
+git push origin {tag}
+bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag tag step");
+
+    assert!(
+        output.status.success(),
+        "a rerun after the tag was pushed must continue to GitHub Release creation and dispatch; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_partial_success_rerun_accepts_the_existing_tag_after_main_advances() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.97-recovery";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo candidate > README.md
+git add README.md
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+git tag {tag}
+git push origin {tag}
+echo advanced > README.md
+git add README.md
+git commit -m "advance main"
+git push origin HEAD:main
+git switch --detach "$candidate_sha"
+bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+test "$(git rev-parse {tag}^{{commit}})" = "$candidate_sha"
+test "$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 {{ print $1 }}')" != "$candidate_sha"
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag recovery step after main advances");
+
+    assert!(
+        output.status.success(),
+        "a rerun must recover GitHub Release creation and dispatch after its tag was pushed, even when main advanced; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_rejects_a_superseded_main_commit_before_creating_a_tag() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.98-superseded";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo candidate > README.md
+git add README.md
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+echo advanced > README.md
+git add README.md
+git commit -m "advance main"
+git push origin HEAD:main
+git switch --detach "$candidate_sha"
+if bash -euo pipefail -c "$AUTO_TAG_SCRIPT"; then
+  echo "superseded workflow commit unexpectedly passed the tag guard" >&2
+  exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/{tag}" >/dev/null 2>&1; then
+  echo "superseded workflow commit created remote tag {tag}" >&2
+  exit 1
+fi
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag tag step against advanced remote main");
+
+    assert!(
+        output.status.success(),
+        "an obsolete main push run must fail closed before tag creation; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -783,6 +1003,48 @@ fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
         })
         .unwrap_or(rest.len());
     &rest[..end]
+}
+
+fn workflow_step_script(job: &str, step_name: &str, next_step_name: &str) -> String {
+    let step_marker = format!("      - name: {step_name}\n");
+    let next_marker = format!("      - name: {next_step_name}\n");
+    let step = job
+        .split_once(&step_marker)
+        .unwrap_or_else(|| panic!("missing workflow step {step_name}"))
+        .1
+        .split_once(&next_marker)
+        .unwrap_or_else(|| panic!("missing workflow step {next_step_name}"))
+        .0;
+    let script = step
+        .split_once("        run: |\n")
+        .unwrap_or_else(|| panic!("workflow step {step_name} has no shell script"))
+        .1;
+    script
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn command_without_git_local_env(program: &str) -> std::process::Command {
+    let local_env = std::process::Command::new("git")
+        .args(["rev-parse", "--local-env-vars"])
+        .output()
+        .expect("list repository-local Git environment variables");
+    assert!(
+        local_env.status.success(),
+        "git rev-parse --local-env-vars failed: {}",
+        String::from_utf8_lossy(&local_env.stderr)
+    );
+
+    let mut command = std::process::Command::new(program);
+    for variable in String::from_utf8_lossy(&local_env.stdout)
+        .lines()
+        .filter(|variable| !variable.is_empty())
+    {
+        command.env_remove(variable);
+    }
+    command
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {

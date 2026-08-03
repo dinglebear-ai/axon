@@ -752,9 +752,10 @@ and all version-bearing files agree (plus, for release-please-managed
 components, that the release-please manifest agrees too). After
 release-please creates a release for `palette`/`android`/`chrome`,
 `.github/workflows/release-please.yml` dispatches that component's artifact
-workflow. `cli`'s `release.yml` still triggers the normal way, off its
-`vX.Y.Z` tag push — nothing about that trigger changed, only what puts the tag
-there (manual now, not a merged release-please PR).
+workflow. For the unmanaged `cli`, `.github/workflows/auto-tag.yml` selects
+only components whose `release_please_managed` plan field is `false`, waits for
+exact-main CI, creates the `vX.Y.Z` tag and GitHub Release, then dispatches
+`release.yml` to attach the artifacts.
 
 **Implications:**
 
@@ -766,22 +767,16 @@ there (manual now, not a merged release-please PR).
   **not** in any component's shipping paths, so a tooling/docs-only merge cuts
   no release and needs no version bump. `Cargo.toml`, `Cargo.lock`, and
   `rust-toolchain.toml` are CLI shipping paths and are not part of this carve-out.
-- If a component's code changed but its version was **not** bumped (the tag
-  already exists), `cargo xtask check-release-versions --base origin/main --head
-  HEAD --mode pr` fails before merge with a message naming the component —
-  this still applies to `cli`, it just means "someone forgot to run `cargo
-  xtask bump-version patch --component cli`" instead of "release-please hasn't opened its PR
-  yet".
-
-To cut a release manually (e.g. re-release or hotfix without a code change),
-push the component's tag directly:
-
-```bash
-git tag vX.Y.Z         && git push origin vX.Y.Z          # cli
-git tag palette-vX.Y.Z && git push origin palette-vX.Y.Z  # palette
-git tag android-vX.Y.Z && git push origin android-vX.Y.Z  # android
-git tag chrome-ext-vX.Y.Z && git push origin chrome-ext-vX.Y.Z  # chrome
-```
+- An ordinary `palette`/`android`/`chrome` feature PR changes shipping files
+  without touching version files. The PR gate validates current parity and
+  defers the bump to release-please. It rejects a feature PR that mixes those
+  shipping changes with manual version edits. The generated release PR is the
+  only normal place those managed version files move.
+- A `cli` shipping PR must include the manual `cargo xtask bump-version ...`
+  result. The PR gate rejects an unchanged or already-tagged CLI version.
+- Direct tags for release-please-managed components are break-glass incident
+  operations, not a normal release path. Do not use them to bypass the managed
+  release PR, tag, or GitHub Release owner.
 
 ### Version bumping rules
 
@@ -855,8 +850,10 @@ one beyond the heading).
 
 `xtask` is a validation, manual-bump, and release-please postprocessing
 helper: `check-release-versions` verifies component parity and changed
-shipping paths (skipping the release-please-manifest check for `cli`, since
-it has no manifest entry to check against), `bump-version` is the manual
+shipping paths, defers ordinary managed-app feature bumps to release-please,
+and rejects mixed manual version edits (while skipping the
+release-please-manifest check for `cli`, since it has no manifest entry to
+check against). `bump-version` is the manual
 writer for `cli`, `release-please-fixup-plan`/`release-please-fixups` handle
 derived files release-please cannot update directly for
 `palette`/`android`/`chrome`, and `release-please-dispatch-plan` translates
@@ -881,7 +878,7 @@ Short release checklist:
   1. Run `cargo xtask bump-version patch|minor|major --component cli` locally, picking the level yourself.
   2. Review the diff — every file listed above should move together, nothing else.
   3. Include the bump in your PR (or a dedicated bump PR) and run `cargo xtask check-release-versions --base origin/main --head HEAD --mode pr`.
-  4. Merge; `.github/workflows/auto-tag.yml` — unaffected by any of this, since it's driven entirely by `release/components.toml`, not release-please's manifest — detects the bumped-but-untagged `cli` version, creates and pushes the `vX.Y.Z` tag once `CI` is green, and dispatches `release.yml` exactly as it always has.
+  4. Merge; `.github/workflows/auto-tag.yml` detects the bumped-but-untagged unmanaged `cli` version, waits for exact-main CI, creates the `vX.Y.Z` tag and GitHub Release, then dispatches `release.yml` to attach artifacts.
 
 The compatibility command `cargo xtask check-version-sync` still enforces
 **CLI** version parity across `Cargo.toml`, `README.md`, `CHANGELOG.md`,
