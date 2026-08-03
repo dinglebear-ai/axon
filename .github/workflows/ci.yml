@@ -142,7 +142,7 @@ jobs:
       - name: Isolate npm cache
         shell: bash
         run: |
-          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_JOB"
+          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
           mkdir -p "$npm_cache"
           echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
@@ -667,7 +667,7 @@ jobs:
       - name: Isolate npm cache
         shell: bash
         run: |
-          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_JOB"
+          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
           mkdir -p "$npm_cache"
           echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5

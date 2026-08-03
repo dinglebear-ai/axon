@@ -739,7 +739,8 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
 #[test]
 fn ci_isolates_npm_cache_for_exactly_rust_contracts_and_web_panel() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let cache_path = r#"npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_JOB""#;
+    let cache_path =
+        r#"npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB""#;
     let cache_export = r#"echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV""#;
 
     assert_eq!(
@@ -750,7 +751,7 @@ fn ci_isolates_npm_cache_for_exactly_rust_contracts_and_web_panel() {
     assert_eq!(
         workflow.matches(cache_path).count(),
         2,
-        "each isolated cache must be unique to the workflow run and job"
+        "each isolated cache must be unique to the workflow run, attempt, and job"
     );
     assert_eq!(
         workflow.matches("package-manager-cache: false").count(),
