@@ -10580,7 +10580,7 @@
       },
       "MemoryImportRequest": {
         "type": "object",
-        "description": "Bulk-import memory records. Contract: \"Memory DTOs\" —\n`MemoryImportRequest`; REST `POST /v1/memories/import`.\n\nCarries records directly rather than an artifact/upload bundle\nreference — no bundle serialization format is specified anywhere in the\npipeline-unification docs. A transport that wants to accept an uploaded\nbundle can deserialize it into `records` itself; axon-memory does not own\nartifact/upload storage (out of this crate's boundary).",
+        "description": "Bulk-import memory records. Contract: \"Memory DTOs\" —\n`MemoryImportRequest`; REST `POST /v1/memories/import`.\n\nCarries records directly rather than an artifact/upload bundle\nreference — the live memory import contract does not define a bundle\nserialization format. A transport that wants to accept an uploaded\nbundle can deserialize it into `records` itself; axon-memory does not own\nartifact/upload storage (out of this crate's boundary).",
         "required": [
           "records",
           "mode"

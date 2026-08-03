@@ -2053,8 +2053,8 @@ export interface components {
          *     `MemoryImportRequest`; REST `POST /v1/memories/import`.
          *
          *     Carries records directly rather than an artifact/upload bundle
-         *     reference — no bundle serialization format is specified anywhere in the
-         *     pipeline-unification docs. A transport that wants to accept an uploaded
+         *     reference — the live memory import contract does not define a bundle
+         *     serialization format. A transport that wants to accept an uploaded
          *     bundle can deserialize it into `records` itself; axon-memory does not own
          *     artifact/upload storage (out of this crate's boundary).
          */
