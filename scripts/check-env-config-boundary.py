@@ -94,7 +94,10 @@ IGNORED_TOKENS = {
     "OPENAI_COMPAT_SECRET",  # fake secret string literal in runners_tests.rs redaction test, not an env var
     "GEMINI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
     "OPENAI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
+    "GITHUB_ENV",  # GitHub Actions command file, not axon runtime config
+    "GITHUB_JOB",  # GitHub Actions job identifier, not axon runtime config
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
+    "GITHUB_RUN_ID",  # GitHub Actions run identifier, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
 }
 
