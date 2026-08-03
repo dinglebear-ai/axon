@@ -19,7 +19,7 @@ pub(super) fn markdown(family: &str, inputs: &[SourceInput]) -> String {
     );
     out.push_str("## Examples\n\nExamples live under the family fixture tree.\n\n");
     out.push_str("## Fixture Paths\n\nFixture paths are validated by `cargo xtask schemas`.\n\n");
-    out.push_str("## Drift Checks\n\nRun `cargo xtask schemas generate --check`.\n");
+    out.push_str("## Drift Checks\n\nRun `cargo xtask generated-contracts check`.\n");
     out
 }
 
@@ -147,7 +147,7 @@ pub(super) fn registry_projection_markdown(
     );
     out.push_str("## Examples\n\nExamples live under the family fixture tree.\n\n");
     out.push_str("## Fixture Paths\n\nFixture paths are validated by `cargo xtask schemas`.\n\n");
-    out.push_str("## Drift Checks\n\nRun `cargo xtask schemas generate --check`.\n");
+    out.push_str("## Drift Checks\n\nRun `cargo xtask generated-contracts check`.\n");
     out.push_str(&format!(
         "\n## {section}\n\nGenerated from the owner crate schema registry.\n"
     ));

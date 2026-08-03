@@ -91,6 +91,7 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-vectors/src/point.rs",
         "xtask/src/schemas/api_defs.rs",
         "xtask/src/schemas/registry.rs",
+        "xtask/src/schemas/registry/canonical_enums.rs",
         "xtask/src/schemas/tests.rs",
         "xtask/src/schemas/vector_payload_markdown.rs",
         "docs/pipeline-unification/schemas/api-dto-schema.md",
@@ -111,7 +112,20 @@ pub(super) fn fixture_repo() -> TempDir {
         "docs/pipeline-unification/sources/adapter-scopes.md",
         "docs/pipeline-unification/sources/new-source-contract.md",
     ] {
-        if needs_real_fixture(path) {
+        let content = match path {
+            "crates/axon-api/src/source.rs"
+            | "crates/axon-api/src/schema_registry.rs"
+            | "xtask/src/schemas/api_defs.rs"
+            | "xtask/src/schemas/registry/canonical_enums.rs" => Some("// fixture\n"),
+            "crates/axon-error/src/api_error.rs" => {
+                Some("#[cfg(test)]\n#[path = \"api_error_tests.rs\"]\nmod tests;\n")
+            }
+            "xtask/src/schemas/registry.rs" => Some("mod canonical_enums;\n"),
+            _ => None,
+        };
+        if let Some(content) = content {
+            write_fixture(tmp.path(), path, content);
+        } else if needs_real_fixture(path) {
             copy_workspace_fixture(tmp.path(), path);
         } else {
             write_fixture(tmp.path(), path, "fixture");
@@ -558,17 +572,116 @@ fn source_input_checksum_matches_fixture_and_drifts_when_source_changes() {
         .iter()
         .find(|input| input["path"] == "crates/axon-api/src/source.rs")
         .unwrap();
-    let expected = format!("sha256:{:x}", Sha256::digest(b"fixture"));
+    let expected = format!("sha256:{:x}", Sha256::digest(b"// fixture\n"));
     assert_eq!(source["kind"], "rust_module");
     assert_eq!(source["checksum"], expected);
 
     write_fixture(
         tmp.path(),
         "crates/axon-api/src/source.rs",
-        "changed fixture",
+        "// changed fixture\n",
     );
     let err = check(tmp.path()).expect_err("source-input checksum drift should fail");
     assert!(err.to_string().contains("differs"));
+}
+
+#[test]
+fn api_schema_source_inputs_follow_transitive_rust_modules() {
+    let tmp = fixture_repo();
+    let source_path = tmp.path().join("crates/axon-api/src/source.rs");
+    let mut source = std::fs::read_to_string(&source_path).unwrap();
+    source.push_str("\npub mod future_split;\n");
+    source.push_str("#[path = \"source/explicit_split.rs\"]\nmod explicit_split;\n");
+    source.push_str("mod inline {\n    #[path = \"nested_path.rs\"]\n    mod nested_path;\n}\n");
+    source.push_str(
+        "#[path = \"relocated\"]\nmod relocated {\n    #[path = \"inner.rs\"]\n    mod inner;\n}\n",
+    );
+    source.push_str("#[cfg(test)]\n#[path = \"missing_test_only.rs\"]\nmod tests;\n");
+    source.push_str("#[cfg(test)]\ninclude!(\"missing_test_include.rs\");\n");
+    std::fs::write(source_path, source).unwrap();
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/source/explicit_split.rs",
+        "pub struct ExplicitSplit;\n",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/source/inline/nested_path.rs",
+        "pub struct NestedPath;\n",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/relocated/inner.rs",
+        "pub struct RelocatedInner;\n",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/source/future_split.rs",
+        "include!(\"future_split/runtime.rs\");\n",
+    );
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/source/future_split/runtime.rs",
+        "pub enum FutureSplit { Enabled }\n",
+    );
+
+    let artifacts = generator_for(SchemaFamily::Api)
+        .generate(tmp.path())
+        .unwrap();
+    let content = &artifacts
+        .iter()
+        .find(|artifact| artifact.path == Path::new("docs/reference/api/schemas.json"))
+        .expect("API schema artifact")
+        .content;
+    let value: serde_json::Value = serde_json::from_str(content).unwrap();
+    let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-api/src/source/future_split.rs"
+            && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-api/src/source/future_split/runtime.rs"
+            && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-api/src/source/explicit_split.rs"
+            && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-api/src/source/inline/nested_path.rs"
+            && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "crates/axon-api/src/relocated/inner.rs" && input["kind"] == "rust_module"
+    }));
+    assert!(inputs.iter().any(|input| {
+        input["path"] == "xtask/src/schemas/registry/canonical_enums.rs"
+            && input["kind"] == "rust_module"
+    }));
+    assert!(
+        !inputs
+            .iter()
+            .any(|input| { input["path"] == "crates/axon-error/src/api_error_tests.rs" })
+    );
+}
+
+#[test]
+fn api_schema_generation_fails_when_transitive_rust_module_is_missing() {
+    let tmp = fixture_repo();
+    let source_path = tmp.path().join("crates/axon-api/src/source.rs");
+    let mut source = std::fs::read_to_string(&source_path).unwrap();
+    source.push_str("\npub mod missing_split;\n");
+    std::fs::write(source_path, source).unwrap();
+    write_fixture(
+        tmp.path(),
+        "crates/axon-api/src/source/missing_split.rs",
+        "include!(\"missing_split/runtime.rs\");\n",
+    );
+
+    let err = generator_for(SchemaFamily::Api)
+        .generate(tmp.path())
+        .expect_err("missing transitive module should fail closed");
+    assert!(err.to_string().contains("runtime.rs"), "{err:#}");
 }
 
 #[test]

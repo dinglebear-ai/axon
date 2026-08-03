@@ -104,7 +104,8 @@ Adapter capability docs and schemas are generated from the family matrix, not
 hand-written:
 
 ```bash
-cargo xtask schemas generate
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
 ```
 
 Run this after registering a new `SourceAdapterSpec` so generated capability

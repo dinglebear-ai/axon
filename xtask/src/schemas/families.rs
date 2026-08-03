@@ -7,7 +7,7 @@ use super::SchemaFamily;
 use super::artifact::SchemaArtifact;
 use super::rel;
 use super::schema_json::{json_string, schema_defs};
-use super::source_input::source_inputs;
+use super::source_input::{source_inputs, source_inputs_with_rust_module_closure};
 
 #[path = "adapters.rs"]
 pub(crate) mod adapters;
@@ -132,34 +132,15 @@ struct ExtraJsonSpec {
 }
 
 fn api_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
-    let inputs = source_inputs(
+    let inputs = source_inputs_with_rust_module_closure(
         root,
+        &["docs/pipeline-unification/schemas/api-dto-schema.md"],
         &[
-            "crates/axon-api/src/schema_registry.rs",
             "crates/axon-api/src/source.rs",
-            "crates/axon-api/src/source/boundary.rs",
-            "crates/axon-api/src/source/common.rs",
-            "crates/axon-api/src/source/capability.rs",
-            "crates/axon-api/src/source/document.rs",
-            "crates/axon-api/src/source/lifecycle.rs",
-            "crates/axon-api/src/source/listing.rs",
-            "crates/axon-api/src/source/enums.rs",
-            "crates/axon-api/src/source/enums/pipeline_phase.rs",
-            "crates/axon-api/src/source/enums/runtime.rs",
-            "crates/axon-api/src/source/graph.rs",
-            "crates/axon-api/src/source/ids.rs",
-            "crates/axon-api/src/source/job.rs",
-            "crates/axon-api/src/source/job_listing.rs",
-            "crates/axon-api/src/source/provider_io.rs",
-            "crates/axon-api/src/source/prune.rs",
-            "crates/axon-api/src/source/stage.rs",
-            "crates/axon-api/src/source/state.rs",
-            "crates/axon-api/src/source/status.rs",
-            "crates/axon-api/src/source/vector.rs",
+            "crates/axon-api/src/schema_registry.rs",
             "crates/axon-error/src/api_error.rs",
             "xtask/src/schemas/api_defs.rs",
             "xtask/src/schemas/registry.rs",
-            "docs/pipeline-unification/schemas/api-dto-schema.md",
         ],
     )?;
     let defs = schema_defs(&api_schema_defs(), Some(enum_defs("axon-api")));

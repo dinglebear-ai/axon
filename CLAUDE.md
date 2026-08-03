@@ -1,5 +1,5 @@
 # Axon CLI
-Last Modified: 2026-07-27
+Last Modified: 2026-08-02
 
 Unified source acquisition, document preparation, indexing, retrieval, and RAG
 in one Rust binary backed by SQLite, Qdrant, TEI, Chrome/CDP, and a configured
@@ -34,6 +34,16 @@ helpers were retired on 2026-07-27; do not reintroduce them.
 - If a workflow skill asks for baseline tests but the change is non-code, state
   the narrower verification choice and why. Do not spend minutes compiling Axon
   just to prove copied agent skills exist.
+
+## Generated Contract Gate
+
+Use `cargo xtask generated-contracts refresh` after changing schema inputs and
+`cargo xtask generated-contracts check` to verify them. The aggregate command
+always processes schema fixtures/artifacts before their Markdown projections.
+For the API schema, every Rust provenance input is a closure root. Production
+`mod`, literal `#[path]`, and literal `include!` dependencies are followed
+transitively; exact `cfg(test)` items are excluded. Do not maintain a
+hand-written list of split source modules.
 
 ## Quick Start
 

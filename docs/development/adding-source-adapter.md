@@ -149,10 +149,11 @@ Existing families' fixture trees under `crates/axon-adapters/fixtures/
 ## Step 6: Update generated docs/schemas
 
 Adapter capability docs and schemas are generated, not hand-written — run
-`cargo xtask schemas generate` after adding or changing a
+`cargo xtask generated-contracts refresh` after adding or changing a
 `SourceAdapterSpec` so the generated capability docs and
 `schemas/provider-capability-schema.md`/`schemas/vector-payload-schema.md`
-stay in sync with the matrix.
+stay in sync with the matrix. Finish with `cargo xtask generated-contracts
+check`.
 
 ## Boundary reminders
 

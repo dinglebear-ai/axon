@@ -52,7 +52,7 @@ Fixture paths are validated by `cargo xtask schemas`.
 
 ## Drift Checks
 
-Run `cargo xtask schemas generate --check`.
+Run `cargo xtask generated-contracts check`.
 
 ## Env Variables
 

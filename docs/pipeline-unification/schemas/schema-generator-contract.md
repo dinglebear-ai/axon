@@ -1,5 +1,5 @@
 # Schema Generator Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-02
 
 ## Contract
 
@@ -32,12 +32,16 @@ crates/*/tests/fixtures/schema/snapshots/*
 target/schema-check-report.json
 ```
 
-Generator:
+Operator commands:
 
 ```bash
-cargo xtask schemas generate
-cargo xtask schemas generate --check
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
 ```
+
+The aggregate command owns ordering: refresh updates schema fixtures and
+artifacts before dependent Markdown, and check validates those layers in the
+same order without writing.
 
 ## Target `xtask` Layout
 
@@ -87,7 +91,14 @@ Rules:
 
 ## CLI Contract
 
-Required commands:
+Required operator commands:
+
+```bash
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
+```
+
+Required family-level debugging commands:
 
 ```bash
 cargo xtask schemas generate
@@ -256,10 +267,13 @@ Rules:
 
 - source input paths are repo-relative
 - checksums are stable SHA-256 values
-- generated artifacts include all direct schema inputs
+- generated artifacts include all schema-relevant source inputs
 - check mode fails when an input path is missing
 - check mode fails when a schema-relevant source changes but generated artifacts
   are stale
+- every API Rust input is a provenance closure root; production out-of-line
+  `mod`, literal `#[path]`, and literal `include!` sources are followed
+  transitively, while exact `cfg(test)` items are excluded
 
 ## Validation Harness
 
@@ -391,7 +405,7 @@ Aggregate check mode validates:
 Required CI steps for schema work:
 
 ```bash
-cargo xtask schemas generate --check
+cargo xtask generated-contracts check
 cargo xtask check-doc-links
 cargo xtask check-doc-contracts
 ```
@@ -426,7 +440,7 @@ The generator contract drifts when:
 - a family generator emits JSON without matching markdown when the contract
   requires markdown
 - a family generator lacks valid and invalid fixture validation
-- aggregate `--check` omits any family listed in `schemas/README.md`
+- `generated-contracts check` omits any family listed in `schemas/README.md`
 - CI does not run the aggregate schema check for schema-relevant source changes
 
 ## Implementation Task Breakdown
@@ -445,8 +459,9 @@ Implementation should proceed in this order:
 
 ## Acceptance Criteria
 
-- `cargo xtask schemas generate` writes all schema artifacts
-- `cargo xtask schemas generate --check` passes on a clean tree
+- `cargo xtask generated-contracts refresh` writes schema fixtures/artifacts
+  and then every dependent generated reference
+- `cargo xtask generated-contracts check` passes on a clean tree
 - every family generator has source inputs, fixtures, snapshots, and markdown
   output
 - aggregate checks validate cross-schema references

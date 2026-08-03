@@ -1,5 +1,5 @@
 # Schema Contracts
-Last Modified: 2026-06-30
+Last Modified: 2026-08-02
 
 ## Contract
 
@@ -33,12 +33,17 @@ the result should be close enough that remaining work is wiring, not design.
 
 ## Generation Rules
 
-Required command:
+Required refresh and check commands:
 
 ```bash
-cargo xtask schemas generate
-cargo xtask schemas generate --check
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
 ```
+
+The aggregate refresh updates schema fixtures and machine artifacts first,
+then renders every dependent Markdown reference. Its check mode verifies those
+layers in the same order without writing. Family-specific `cargo xtask schemas
+...` and `cargo xtask docs ...` commands remain available for focused debugging.
 
 The generator must:
 
@@ -145,8 +150,9 @@ Rules:
 ## Generator Implementation Contract
 
 The full implementation contract lives in
-[schema-generator-contract.md](schema-generator-contract.md). In short,
-`cargo xtask schemas generate` dispatches to family generators:
+[schema-generator-contract.md](schema-generator-contract.md). In short, the
+schema stage of `cargo xtask generated-contracts refresh` dispatches to
+family generators (also callable directly with `cargo xtask schemas generate`):
 
 ```text
 schemas api
@@ -204,6 +210,13 @@ Required source input families:
 
 If any required input cannot be represented in `source_inputs`, the generator is
 not implementation-ready.
+
+Every Rust input in the API DTO manifest is a closure root, including the DTO,
+registry, error, and generator roots. Normal out-of-line modules, literal
+`#[path]` modules, and literal `include!` files are included automatically;
+missing referenced files fail generation. Exact `cfg(test)` items are
+excluded. New split modules must be discovered through this closure, not added
+to another manual path list.
 
 ## Standard Fixture Layout
 
@@ -277,7 +290,9 @@ The schema directory is implementation-ready when:
 - every schema contract has root shape and required definition/record shapes
 - every schema contract has drift checks
 - every schema contract has acceptance criteria
-- every schema artifact can be generated with `cargo xtask schemas generate`
-- `cargo xtask schemas generate --check` fails on any code/doc drift
+- every schema artifact and dependent reference can be refreshed with `cargo
+  xtask generated-contracts refresh`
+- `cargo xtask generated-contracts check` fails on any schema or dependent-doc
+  drift
 - every generated artifact has a matching markdown reference or an explicit
   reason why JSON-only is enough

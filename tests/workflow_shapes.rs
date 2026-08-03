@@ -584,8 +584,9 @@ fn live_rag_uses_a_dynamic_tei_host_port() {
 fn ci_runs_docs_and_chrome_contract_checks() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let contracts = workflow_job_block(workflow, "rust-contracts");
-    assert!(contracts.contains("docs generate --check"));
-    assert!(contracts.contains("docs check"));
+    assert!(contracts.contains("generated-contracts check"));
+    assert!(!contracts.contains("schemas generate --check"));
+    assert!(!contracts.contains("docs generate --check"));
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));

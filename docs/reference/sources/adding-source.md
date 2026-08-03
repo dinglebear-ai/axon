@@ -91,8 +91,9 @@ requirements carry a `reason`), not correctness.
 
 ## Generated docs
 
-Run `cargo xtask schemas generate` after touching a spec — capability docs and
-the vector-payload / provider-capability schemas are generated, not hand-written.
+Run `cargo xtask generated-contracts refresh` after touching a spec, then
+`cargo xtask generated-contracts check` — capability docs and the
+vector-payload / provider-capability schemas are generated, not hand-written.
 
 ## Rule
 

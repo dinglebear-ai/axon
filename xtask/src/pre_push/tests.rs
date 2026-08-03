@@ -45,7 +45,16 @@ fn rust_changes_keep_runtime_checks() {
     let names = plan_names(&plan);
     assert!(!names.contains(&"version-sync"));
     assert!(names.contains(&"web-assets-placeholder"));
+    assert!(names.contains(&"generated-contracts"));
+    assert!(plan_commands(&plan).contains(&"cargo xtask generated-contracts check"));
     assert!(!names.contains(&"clippy"));
+}
+
+#[test]
+fn api_source_changes_run_the_unified_generated_contract_gate() {
+    let plan = plan_for(&["crates/axon-api/src/source/enums/runtime.rs"]);
+    assert!(plan_names(&plan).contains(&"generated-contracts"));
+    assert!(plan_commands(&plan).contains(&"cargo xtask generated-contracts check"));
 }
 
 #[test]
