@@ -150,10 +150,6 @@ pub fn check(
                 .map(|error| format!("{}: {error}", component.id)),
         );
 
-        if !plan.changed {
-            continue;
-        }
-
         collect_changed_component_errors(root, component, plan, base, head, mode, &mut errors)?;
     }
 
@@ -234,7 +230,7 @@ pub fn release_please_dispatch_plan(
     release_outputs: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseDispatchItem>> {
     let manifest = load_manifest(root)?;
-    release_please_dispatch_items(&manifest.components, release_outputs)
+    release_please_dispatch_items(root, &manifest.components, release_outputs)
 }
 
 pub fn print_release_please_dispatch_plan(
@@ -350,6 +346,12 @@ pub fn bump_component_version(
         .iter()
         .find(|component| component.id == component_id)
         .with_release_context(|| format!("unknown release component {component_id}"))?;
+    if component.release_please_managed {
+        release_bail!(
+            "{} is release-please-managed and cannot be bumped manually",
+            component.id
+        );
+    }
 
     let current = read_version(root, &component.version_source)?;
     let current = Version::parse(&current).with_release_context(|| {

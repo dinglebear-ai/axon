@@ -27,7 +27,12 @@ pub(super) fn collect_changed_component_errors(
         )
     })?;
 
-    if collect_managed_pr_ownership_errors(root, component, base, head, mode, errors)? {
+    if collect_managed_pr_ownership_errors(root, component, plan.changed, base, head, mode, errors)?
+    {
+        return Ok(());
+    }
+
+    if !plan.changed {
         return Ok(());
     }
 
@@ -79,6 +84,7 @@ pub(super) fn collect_changed_component_errors(
 fn collect_managed_pr_ownership_errors(
     root: &Path,
     component: &Component,
+    shipping_changed: bool,
     base: Option<&str>,
     head: &str,
     mode: GateMode,
@@ -100,6 +106,14 @@ fn collect_managed_pr_ownership_errors(
             "{} PR mixes ordinary shipping changes with release-please-owned version fields: ordinary [{}]; version fields [{}]. Keep feature PRs version-free and let release-please create the version-only release PR.",
             component.id,
             changes.ordinary.join(", "),
+            changes.version_fields.join(", ")
+        ));
+        return Ok(true);
+    }
+    if !shipping_changed {
+        errors.push(format!(
+            "{} PR changes release-please-owned version fields without a synchronized managed release version change: version fields [{}]. A generated release PR must update the component version source together with its changelog heading.",
+            component.id,
             changes.version_fields.join(", ")
         ));
         return Ok(true);

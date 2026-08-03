@@ -852,6 +852,76 @@ fn managed_android_feature_pr_rejects_a_manual_release_heading() {
 }
 
 #[test]
+fn managed_android_changelog_only_pr_rejects_a_manual_release_heading() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n\n## [1.3.2]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "docs(android): add manual release heading"]);
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(
+        !android.changed,
+        "a changelog-only edit is not a shipping change"
+    );
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("a manual semver heading must not bypass managed release ownership");
+    let message = error.to_string();
+    assert!(
+        message.contains(
+            "changes release-please-owned version fields without a synchronized managed release version change"
+        ),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/CHANGELOG.md"));
+}
+
+#[test]
+fn managed_android_changelog_only_pr_allows_prose_edits() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.2]\n\n- Clarify the existing release notes.\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "docs(android): clarify release notes"]);
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(
+        !android.changed,
+        "a prose-only changelog edit is not a shipping change"
+    );
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("prose-only changelog edits do not claim release ownership");
+}
+
+#[test]
 fn android_change_allows_version_code_increase() {
     let fixture = Fixture::new();
     fixture.init_repo();
@@ -1244,6 +1314,55 @@ fn release_please_manifest_check_skips_unmanaged_cli_component() {
 }
 
 #[test]
+fn manual_bump_rejects_release_please_managed_components() {
+    let fixture = Fixture::new();
+    let before = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+
+    let error = bump_component_version(fixture.root(), "android", BumpLevel::Patch)
+        .expect_err("release-please-managed components must reject manual bumps");
+
+    assert!(
+        error
+            .to_string()
+            .contains("android is release-please-managed and cannot be bumped manually")
+    );
+    assert_eq!(
+        fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap(),
+        before,
+        "the rejected bump must not mutate managed version files"
+    );
+}
+
+#[test]
+fn release_plan_ignores_inherited_repository_local_git_environment() {
+    let outer = Fixture::new();
+    outer.init_repo();
+    let outer_git_dir = outer.path(".git");
+    let outer_index = outer_git_dir.join("index");
+    let test_binary = std::env::current_exe().expect("resolve the xtask test binary");
+
+    let output = std::process::Command::new(test_binary)
+        .args([
+            "checks::release_versions::tests::managed_android_changelog_only_pr_rejects_a_manual_release_heading",
+            "--exact",
+            "--nocapture",
+        ])
+        .env("GIT_DIR", &outer_git_dir)
+        .env("GIT_WORK_TREE", outer.root())
+        .env("GIT_INDEX_FILE", &outer_index)
+        .env("GIT_PREFIX", "")
+        .output()
+        .expect("run a release-plan regression under hook-like Git environment variables");
+
+    assert!(
+        output.status.success(),
+        "release planning must honor fixture roots under inherited hook variables; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn release_please_dispatch_plan_uses_manifest_metadata() {
     let fixture = Fixture::new();
     let release_outputs = r#"{
@@ -1258,6 +1377,56 @@ fn release_please_dispatch_plan_uses_manifest_metadata() {
             workflow: "palette-release.yml".to_owned(),
             tag: "palette-v5.10.2".to_owned(),
         }]
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_a_tag_with_the_wrong_prefix() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\"apps/palette-tauri\"]",
+  "palette_tag": "desktop-v5.10.2"
+}"#;
+
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release output tags must use the component prefix");
+    let message = error.to_string();
+    assert!(
+        message.contains("palette_tag"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("desktop-v5.10.2"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.2"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn release_please_dispatch_plan_rejects_a_tag_with_the_wrong_manifest_version() {
+    let fixture = Fixture::new();
+    let release_outputs = r#"{
+  "paths_released": "[\"apps/palette-tauri\"]",
+  "palette_tag": "palette-v5.10.3"
+}"#;
+
+    let error = release_please_dispatch_plan(fixture.root(), release_outputs)
+        .expect_err("release output tags must use the release-please manifest version");
+    let message = error.to_string();
+    assert!(
+        message.contains("palette_tag"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.3"),
+        "unexpected error: {message}"
+    );
+    assert!(
+        message.contains("palette-v5.10.2"),
+        "unexpected error: {message}"
     );
 }
 
@@ -1791,7 +1960,24 @@ fn write(path: &Path, content: &str) {
 }
 
 fn git(root: &Path, args: &[&str]) {
-    let status = std::process::Command::new("git")
+    let local_env = std::process::Command::new("git")
+        .args(["rev-parse", "--local-env-vars"])
+        .output()
+        .expect("list repository-local Git environment variables");
+    assert!(
+        local_env.status.success(),
+        "git rev-parse --local-env-vars failed: {}",
+        String::from_utf8_lossy(&local_env.stderr)
+    );
+
+    let mut command = std::process::Command::new("git");
+    for variable in String::from_utf8_lossy(&local_env.stdout)
+        .lines()
+        .filter(|variable| !variable.is_empty())
+    {
+        command.env_remove(variable);
+    }
+    let status = command
         .arg("-C")
         .arg(root)
         .args(args)

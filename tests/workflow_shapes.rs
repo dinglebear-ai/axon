@@ -486,7 +486,8 @@ bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
 test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
 "#
     );
-    let output = std::process::Command::new("bash")
+    let mut command = command_without_git_local_env("bash");
+    let output = command
         .args(["-euo", "pipefail", "-c", &harness])
         .env("AUTO_TAG_SCRIPT", script)
         .output()
@@ -495,6 +496,121 @@ test "$(git rev-parse {tag}^{{commit}})" = "$(git rev-parse HEAD)"
     assert!(
         output.status.success(),
         "a rerun after the tag was pushed must continue to GitHub Release creation and dispatch; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_partial_success_rerun_accepts_the_existing_tag_after_main_advances() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.97-recovery";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo candidate > README.md
+git add README.md
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+git tag {tag}
+git push origin {tag}
+echo advanced > README.md
+git add README.md
+git commit -m "advance main"
+git push origin HEAD:main
+git switch --detach "$candidate_sha"
+bash -euo pipefail -c "$AUTO_TAG_SCRIPT"
+test "$(git rev-parse {tag}^{{commit}})" = "$candidate_sha"
+test "$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 {{ print $1 }}')" != "$candidate_sha"
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag recovery step after main advances");
+
+    assert!(
+        output.status.success(),
+        "a rerun must recover GitHub Release creation and dispatch after its tag was pushed, even when main advanced; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn auto_tag_rejects_a_superseded_main_commit_before_creating_a_tag() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+    let script = workflow_step_script(
+        release,
+        "Create and push tag",
+        "Ensure GitHub Release exists",
+    );
+
+    let tag = "v99.99.98-superseded";
+    let script = script
+        .replace("${{ matrix.candidate_tag }}", tag)
+        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let harness = format!(
+        r#"
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+git init --bare "$root/remote.git"
+git init "$root/checkout"
+cd "$root/checkout"
+git config user.name "Axon Test"
+git config user.email "axon-test@example.invalid"
+echo candidate > README.md
+git add README.md
+git commit -m "candidate"
+candidate_sha="$(git rev-parse HEAD)"
+git remote add origin "$root/remote.git"
+git push origin HEAD:main
+echo advanced > README.md
+git add README.md
+git commit -m "advance main"
+git push origin HEAD:main
+git switch --detach "$candidate_sha"
+if bash -euo pipefail -c "$AUTO_TAG_SCRIPT"; then
+  echo "superseded workflow commit unexpectedly passed the tag guard" >&2
+  exit 1
+fi
+if git ls-remote --exit-code --tags origin "refs/tags/{tag}" >/dev/null 2>&1; then
+  echo "superseded workflow commit created remote tag {tag}" >&2
+  exit 1
+fi
+"#
+    );
+    let mut command = command_without_git_local_env("bash");
+    let output = command
+        .args(["-euo", "pipefail", "-c", &harness])
+        .env("AUTO_TAG_SCRIPT", script)
+        .output()
+        .expect("run auto-tag tag step against advanced remote main");
+
+    assert!(
+        output.status.success(),
+        "an obsolete main push run must fail closed before tag creation; stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -885,6 +1001,27 @@ fn workflow_step_script(job: &str, step_name: &str, next_step_name: &str) -> Str
         .map(|line| line.strip_prefix("          ").unwrap_or(line))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn command_without_git_local_env(program: &str) -> std::process::Command {
+    let local_env = std::process::Command::new("git")
+        .args(["rev-parse", "--local-env-vars"])
+        .output()
+        .expect("list repository-local Git environment variables");
+    assert!(
+        local_env.status.success(),
+        "git rev-parse --local-env-vars failed: {}",
+        String::from_utf8_lossy(&local_env.stderr)
+    );
+
+    let mut command = std::process::Command::new(program);
+    for variable in String::from_utf8_lossy(&local_env.stdout)
+        .lines()
+        .filter(|variable| !variable.is_empty())
+    {
+        command.env_remove(variable);
+    }
+    command
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {

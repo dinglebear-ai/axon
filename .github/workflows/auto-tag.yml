@@ -188,13 +188,25 @@ jobs:
 
           if [ -n "$remote_target" ]; then
             echo "Remote tag $tag already resolves to $expected_sha."
-          elif [ -n "$local_target" ]; then
-            git push origin "refs/tags/$tag"
-            echo "Pushed existing local tag $tag at $expected_sha."
           else
-            git tag "$tag" "$expected_sha"
-            git push origin "refs/tags/$tag"
-            echo "Created and pushed tag $tag at $expected_sha."
+            remote_main="$(git ls-remote --heads origin refs/heads/main | awk 'NR == 1 { print $1 }')"
+            if [ -z "$remote_main" ]; then
+              echo "::error::remote refs/heads/main is missing" >&2
+              exit 1
+            fi
+            if [ "$remote_main" != "$expected_sha" ]; then
+              echo "::error::remote main now resolves to $remote_main, not workflow commit $expected_sha" >&2
+              exit 1
+            fi
+
+            if [ -n "$local_target" ]; then
+              git push origin "refs/tags/$tag"
+              echo "Pushed existing local tag $tag at $expected_sha."
+            else
+              git tag "$tag" "$expected_sha"
+              git push origin "refs/tags/$tag"
+              echo "Created and pushed tag $tag at $expected_sha."
+            fi
           fi
 
       - name: Ensure GitHub Release exists
