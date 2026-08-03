@@ -284,6 +284,7 @@ jobs:
       - name: Run Android contracts, unit tests, lint, and debug APK build
         run: >
           apps/android/gradlew -p apps/android
+          -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
           :app:verifyOpenApiGeneratedClient
           :app:testDebugUnitTest
           :app:lintDebug
@@ -294,6 +295,7 @@ jobs:
         if: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
         run: >
           apps/android/gradlew -p apps/android
+          -Dorg.gradle.jvmargs="-Xmx3072m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8"
           :app:copyReleaseApkToRepoBin
           --no-daemon --stacktrace
 
