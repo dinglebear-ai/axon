@@ -67,6 +67,37 @@ fn reads_component_manifest() {
 }
 
 #[test]
+fn release_plan_serializes_release_please_ownership_for_every_component() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+
+    let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).expect("release plan");
+    let serialized = serde_json::to_value(plans).expect("serialize release plan");
+    let components = serialized.as_array().expect("component array");
+    let ownership = components
+        .iter()
+        .map(|component| {
+            (
+                component["id"].as_str().expect("component id"),
+                component["release_please_managed"]
+                    .as_bool()
+                    .expect("serialized release-please ownership"),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        ownership,
+        [
+            ("cli", false),
+            ("palette", true),
+            ("android", true),
+            ("chrome", true),
+        ]
+    );
+}
+
+#[test]
 fn cargo_package_version_reader_ignores_workspace_version() {
     let content = r#"
 [workspace.package]
@@ -681,6 +712,74 @@ fn android_change_requires_version_code_increase() {
 }
 
 #[test]
+fn managed_android_feature_pr_defers_the_release_bump() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    fixture.git(&["add", "apps/android/app/src/main/kotlin/Feature.kt"]);
+    fixture.git(&["commit", "-m", "feat(android): add feature"]);
+
+    check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect("release-please-managed feature PR defers its version bump");
+
+    let plans =
+        plan(fixture.root(), Some("android-v1.3.2"), "HEAD", GateMode::Pr).expect("release plan");
+    let android = plans.iter().find(|plan| plan.id == "android").unwrap();
+    assert!(android.changed, "the full plan retains the shipping change");
+}
+
+#[test]
+fn managed_android_feature_pr_rejects_mixed_version_file_ownership() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "android-v1.3.2"]);
+    write(
+        &fixture.path("apps/android/app/src/main/kotlin/Feature.kt"),
+        "package axon\n\nclass Feature\n",
+    );
+    let gradle_path = fixture.path("apps/android/app/build.gradle.kts");
+    let mut gradle = fs::read_to_string(&gradle_path).unwrap();
+    gradle.push_str("// manual version-file edit\n");
+    fs::write(&gradle_path, gradle).unwrap();
+    fixture.git(&[
+        "add",
+        "apps/android/app/src/main/kotlin/Feature.kt",
+        "apps/android/app/build.gradle.kts",
+    ]);
+    fixture.git(&[
+        "commit",
+        "-m",
+        "feat(android): mix feature and release ownership",
+    ]);
+
+    let error = check(
+        fixture.root(),
+        Some("android-v1.3.2"),
+        "HEAD",
+        GateMode::Pr,
+        false,
+    )
+    .expect_err("feature PR must not edit release-please-owned version files");
+    let message = error.to_string();
+    assert!(
+        message.contains("mixes ordinary shipping changes with release-please-owned version files"),
+        "unexpected error: {message}"
+    );
+    assert!(message.contains("apps/android/app/build.gradle.kts"));
+    assert!(message.contains("apps/android/app/src/main/kotlin/Feature.kt"));
+}
+
+#[test]
 fn android_change_allows_version_code_increase() {
     let fixture = Fixture::new();
     fixture.init_repo();
@@ -764,7 +863,7 @@ version = "1.1.0"
 }
 
 #[test]
-fn chrome_assets_change_requires_chrome_bump() {
+fn managed_chrome_asset_pr_defers_the_release_bump() {
     let fixture = Fixture::new();
     fixture.init_repo();
     fixture.git(&["tag", "chrome-ext-v0.2.0"]);
@@ -777,15 +876,24 @@ fn chrome_assets_change_requires_chrome_bump() {
     fixture.git(&["add", "apps/chrome-extension/assets/axon-glyph.svg"]);
     fixture.git(&["commit", "-m", "change asset"]);
 
-    let error = check(
+    check(
         fixture.root(),
         Some("chrome-ext-v0.2.0"),
         "HEAD",
         GateMode::Pr,
         false,
     )
-    .expect_err("chrome asset change requires bump");
-    assert!(error.to_string().contains("release version check failed"));
+    .expect("release-please-managed asset PR defers its version bump");
+
+    let plans = plan(
+        fixture.root(),
+        Some("chrome-ext-v0.2.0"),
+        "HEAD",
+        GateMode::Pr,
+    )
+    .expect("release plan");
+    let chrome = plans.iter().find(|plan| plan.id == "chrome").unwrap();
+    assert!(chrome.changed, "the full plan retains the shipping change");
 }
 
 #[test]

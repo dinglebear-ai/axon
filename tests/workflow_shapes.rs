@@ -346,9 +346,24 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     assert!(
         plan.contains(
-            "matrix=$(jq -c '{include: [.[] | select(.changed == true)]}' release-plan.json)"
+            "if ! jq -e 'type == \"array\" and all(.[]; (.release_please_managed | type) == \"boolean\")' release-plan.json"
+        ) && plan.contains("exit 1"),
+        "auto-tag must fail closed unless every release-plan item declares boolean release_please_managed ownership"
+    );
+    assert!(
+        plan.contains(
+            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)"
         ),
-        "auto-tag matrix must include only changed components"
+        "auto-tag matrix must include only changed components that release-please does not own"
+    );
+    assert_eq!(
+        plan.matches("matrix=$(jq -c").count(),
+        1,
+        "auto-tag must have exactly one matrix assignment so a broader selector cannot bypass ownership"
+    );
+    assert!(
+        !plan.contains("select(.changed == true)]"),
+        "the former changed-only selector would reintroduce release-please-owned components"
     );
     assert!(
         ci_gate.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#)
@@ -394,6 +409,47 @@ fn auto_tag_uses_validated_xtask_release_plan() {
             "auto-tag CI polling must constrain {required}"
         );
     }
+}
+
+#[test]
+fn auto_tag_creates_github_release_before_explicit_artifact_dispatch() {
+    let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let release = workflow_job_block(workflow, "release");
+
+    let tag_step = release
+        .find("- name: Create and push tag")
+        .expect("auto-tag creates the component tag");
+    let github_release_step = release
+        .find("- name: Ensure GitHub Release exists")
+        .expect("auto-tag idempotently creates the GitHub Release");
+    let dispatch_step = release
+        .find("- name: Dispatch release workflow")
+        .expect("auto-tag dispatches the artifact workflow");
+    assert!(
+        tag_step < github_release_step && github_release_step < dispatch_step,
+        "auto-tag must push the tag, ensure its GitHub Release, then dispatch artifacts"
+    );
+
+    let github_release = &release[github_release_step..dispatch_step];
+    let view = github_release
+        .find("if gh release view \"$tag\" --repo \"$repo\"")
+        .expect("GitHub Release existence check uses the explicit repository");
+    let create = github_release
+        .find("gh release create \"$tag\" --verify-tag --generate-notes --repo \"$repo\"")
+        .expect("missing GitHub Release is created from the verified tag");
+    assert!(
+        view < create,
+        "GitHub Release creation must be guarded by the idempotent existence check"
+    );
+
+    let dispatch = &release[dispatch_step..];
+    assert!(
+        dispatch.contains("gh workflow run \"${{ matrix.release_workflow }}\"")
+            && dispatch.contains("--repo \"${{ github.repository }}\"")
+            && dispatch.contains("--ref \"${{ matrix.candidate_tag }}\"")
+            && dispatch.contains("-f publish=true"),
+        "artifact dispatch must name the workflow, repository, tag ref, and publish input explicitly"
+    );
 }
 
 #[test]
