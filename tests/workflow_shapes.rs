@@ -278,10 +278,10 @@ fn android_ci_gradle_memory_covers_apk_packaging() {
     assert!(
         properties.lines().any(|line| {
             line.starts_with("org.gradle.jvmargs=")
-                && line.contains("-Xmx2048m")
+                && line.contains("-Xmx3072m")
                 && line.contains("-XX:MaxMetaspaceSize=512m")
         }),
-        "Android CI needs a 2 GiB Gradle heap for debug APK packaging while retaining the metaspace cap"
+        "Android CI needs a 3 GiB Gradle heap for debug APK packaging while retaining the metaspace cap"
     );
     assert!(
         properties
