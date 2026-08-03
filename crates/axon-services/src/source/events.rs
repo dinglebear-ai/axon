@@ -33,21 +33,6 @@ impl SourceEventEmitter {
         }
     }
 
-    pub(crate) fn for_web(
-        jobs: Option<Arc<dyn JobStore>>,
-        job_id: JobId,
-        scope: SourceScope,
-    ) -> Self {
-        Self::new(jobs, Some(job_id)).with_route(
-            SourceKind::Web,
-            scope,
-            AdapterRef {
-                name: "web".to_string(),
-                version: axon_adapters::SOURCE_ADAPTER_CONTRACT_VERSION.to_string(),
-            },
-        )
-    }
-
     pub(crate) fn with_route(
         mut self,
         source_kind: SourceKind,

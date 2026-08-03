@@ -218,3 +218,33 @@ async fn enqueue_source_tool_with_execute_scope_is_routable() {
         result.warnings
     );
 }
+
+#[test]
+fn source_job_create_request_persists_the_canonical_stage_spine() {
+    let request = SourceRequest::new("https://example.com/docs");
+    let create = job_create_request(&request, AuthSnapshot::trusted_system("stage-test"));
+
+    assert!(!create.stage_plan.is_empty());
+    assert_eq!(
+        create.stage_plan.first().map(|stage| stage.phase),
+        Some(axon_api::source::PipelinePhase::Leasing)
+    );
+    assert!(
+        create
+            .stage_plan
+            .iter()
+            .any(|stage| stage.phase == axon_api::source::PipelinePhase::Embedding)
+    );
+    assert!(
+        create
+            .stage_plan
+            .iter()
+            .any(|stage| stage.phase == axon_api::source::PipelinePhase::Publishing)
+    );
+    let keys = create
+        .stage_plan
+        .iter()
+        .map(|stage| stage.effective_stage_key())
+        .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(keys.len(), create.stage_plan.len());
+}

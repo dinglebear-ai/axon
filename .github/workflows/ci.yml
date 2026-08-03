@@ -157,10 +157,7 @@ jobs:
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh
       - name: Generated schema and documentation contracts
-        run: |
-          cargo run --manifest-path xtask/Cargo.toml --no-default-features -- schemas generate --check
-          cargo run --manifest-path xtask/Cargo.toml --no-default-features -- docs generate --check
-          cargo run --manifest-path xtask/Cargo.toml --no-default-features -- docs check
+        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- generated-contracts check
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
         run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr

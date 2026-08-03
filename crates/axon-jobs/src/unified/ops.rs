@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::SqliteUnifiedJobStore;
 use crate::boundary::Result;
 use crate::limits::clamp_page_limit;
-use crate::state_machine::validate_transition;
+use crate::state_machine::{validate_stage_plan, validate_transition};
 use crate::unified::pagination::{
     EventCursor, JobCursor, decode_event_cursor, decode_job_cursor, encode_event_cursor,
     encode_job_cursor,
@@ -83,6 +83,7 @@ impl SqliteUnifiedJobStore {
     }
 
     pub(crate) async fn create_job(&self, request: JobCreateRequest) -> Result<JobDescriptor> {
+        validate_stage_plan(&request.stage_plan)?;
         if let Some(idempotency_key) = request.idempotency_key.as_deref()
             && let Some(summary) = find_by_idempotency_key(&self.pool, idempotency_key).await?
         {
@@ -137,13 +138,14 @@ impl SqliteUnifiedJobStore {
         .await
         .map_err(sql_error)?;
 
-        for stage in request.stage_plan {
+        for (ordinal, stage) in request.stage_plan.into_iter().enumerate() {
+            let stage_id = stage.stable_id(job_id, ordinal);
             sqlx::query(
                 "INSERT INTO job_stages (
                     stage_id, job_id, phase, status, required, provider_requirements_json
                 ) VALUES (?, ?, ?, ?, ?, ?)",
             )
-            .bind(Uuid::new_v4().to_string())
+            .bind(stage_id.0.to_string())
             .bind(job_id.0.to_string())
             .bind(enum_name(stage.phase)?)
             .bind(enum_name(LifecycleStatus::Queued)?)

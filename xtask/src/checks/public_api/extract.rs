@@ -44,12 +44,14 @@ fn walk_file(
         std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
     let ast =
         syn::parse_file(&text).with_context(|| format!("parsing {} as Rust", file.display()))?;
-    walk_items(&ast.items, mod_dir, prefix, out)
+    let include_dir = file.parent().unwrap_or(mod_dir);
+    walk_items(&ast.items, mod_dir, include_dir, prefix, out)
 }
 
 fn walk_items(
     items: &[Item],
     mod_dir: &Path,
+    include_dir: &Path,
     prefix: &[String],
     out: &mut BTreeSet<ApiEntry>,
 ) -> Result<()> {
@@ -66,7 +68,7 @@ fn walk_items(
                 match &m.content {
                     // Inline `pub mod foo { … }`: submodule dir is `mod_dir/foo`.
                     Some((_, inner)) => {
-                        walk_items(inner, &mod_dir.join(&name), &child_prefix, out)?;
+                        walk_items(inner, &mod_dir.join(&name), include_dir, &child_prefix, out)?;
                     }
                     // File `pub mod foo;`: `mod_dir/foo.rs`, submodules in `mod_dir/foo/`.
                     None => {
@@ -96,6 +98,13 @@ fn walk_items(
                     p.push(leaf);
                     record(out, &p, "use");
                 }
+            }
+            Item::Macro(m) if m.mac.path.is_ident("include") => {
+                let include = syn::parse2::<syn::LitStr>(m.mac.tokens.clone())
+                    .context("parsing include! path as a string literal")?;
+                let included = include_dir.join(include.value());
+                walk_file(&included, mod_dir, prefix, out)
+                    .with_context(|| format!("following include! from {}", included.display()))?;
             }
             _ => {}
         }

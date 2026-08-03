@@ -219,7 +219,7 @@ fn source_progress_summary_renders_terminal_shared_counts() {
 
 #[test]
 fn source_progress_summary_renders_terminal_map_item_counts() {
-    let mut job = service_job("completed", PipelinePhase::Complete, None);
+    let mut job = service_job("completed", PipelinePhase::Publishing, None);
     job.result_json = Some(json!({
         "items_total": 381,
         "items_done": 381,
@@ -237,7 +237,7 @@ fn source_progress_summary_renders_terminal_map_item_counts() {
 
 #[test]
 fn source_progress_summary_renders_degraded_terminal_counts() {
-    let mut job = service_job("completed_degraded", PipelinePhase::Complete, None);
+    let mut job = service_job("completed_degraded", PipelinePhase::Publishing, None);
     job.result_json = Some(json!({
         "documents_total": 10,
         "documents_done": 9,

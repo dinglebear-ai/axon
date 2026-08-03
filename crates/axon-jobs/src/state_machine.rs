@@ -1,4 +1,22 @@
-use axon_api::source::{ApiError, ErrorStage, JobId, LifecycleStatus};
+use std::collections::BTreeSet;
+
+use axon_api::source::{ApiError, ErrorStage, JobId, JobStagePlan, LifecycleStatus};
+
+pub(crate) fn validate_stage_plan(stage_plan: &[JobStagePlan]) -> Result<(), ApiError> {
+    let mut keys = BTreeSet::new();
+    for stage in stage_plan {
+        let key = stage.effective_stage_key();
+        if !keys.insert(key.to_string()) {
+            return Err(ApiError::new(
+                "job.stage_plan.duplicate_key",
+                ErrorStage::Planning,
+                format!("stage plan contains duplicate stable key `{key}`"),
+            )
+            .with_context("stage_key", key));
+        }
+    }
+    Ok(())
+}
 
 pub(crate) fn validate_transition(
     job_id: JobId,
@@ -13,10 +31,12 @@ pub(crate) fn validate_transition(
         (from, to),
         (LifecycleStatus::Queued, LifecycleStatus::Blocked)
             | (LifecycleStatus::Queued, LifecycleStatus::Running)
+            | (LifecycleStatus::Queued, LifecycleStatus::Failed)
             | (LifecycleStatus::Queued, LifecycleStatus::Canceling)
             | (LifecycleStatus::Queued, LifecycleStatus::Expired)
             | (LifecycleStatus::Pending, LifecycleStatus::Queued)
             | (LifecycleStatus::Pending, LifecycleStatus::Running)
+            | (LifecycleStatus::Pending, LifecycleStatus::Failed)
             | (LifecycleStatus::Pending, LifecycleStatus::Canceling)
             | (LifecycleStatus::Pending, LifecycleStatus::Expired)
             | (LifecycleStatus::Blocked, LifecycleStatus::Queued)

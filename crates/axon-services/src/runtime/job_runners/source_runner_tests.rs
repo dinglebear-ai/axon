@@ -32,12 +32,9 @@ fn source_job_request(source_request: &SourceRequest) -> JobCreateRequest {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: None,
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Fetching,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(1),
-        }],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Fetching).with_estimated_items(Some(1)),
+        ],
         request: Some(serde_json::json!({
             "source_request": source_request,
         })),

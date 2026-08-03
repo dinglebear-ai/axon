@@ -239,11 +239,13 @@ impl SqliteUnifiedJobStore {
             .job_stages(job_id)
             .await?
             .into_iter()
-            .map(|stage| JobStagePlan {
-                phase: stage.phase,
-                required: stage.required,
-                provider_requirements: stage.provider_requirements,
-                estimated_items: stage.counts.items_total,
+            .map(|stage| {
+                JobStagePlan::restored(
+                    stage.phase,
+                    stage.required,
+                    stage.provider_requirements,
+                    stage.counts.items_total,
+                )
             })
             .collect::<Vec<_>>();
         if let Some(from_phase) = request.from_phase {

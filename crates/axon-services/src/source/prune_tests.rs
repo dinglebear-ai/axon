@@ -155,6 +155,7 @@ fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
         job_id: JobId::new(Uuid::from_u128(1)),
         source_id: SourceId::new(SRC),
         generation: committed.clone(),
+        items_discovered: 2,
         documents_prepared: 1,
         chunks_prepared: 1,
         vector_points_written: 1,

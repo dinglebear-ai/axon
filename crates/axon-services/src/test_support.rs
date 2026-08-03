@@ -3,12 +3,13 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axon_adapters::boundary::FakeAdapterProviders;
+use axon_adapters::boundary::{FakeAdapterProviders, FetchProvider, RenderProvider};
 use axon_adapters::web::WebSourceAdapter;
 use axon_api::source::{
-    AuthSnapshot, JobKind, JobListRequest, JobSummary, SourceGenerationId, SourceListRequest,
-    SourceRequest, SourceSummary,
+    AuthSnapshot, JobKind, JobListRequest, JobSummary, SourceListRequest, SourceRequest,
+    SourceSummary,
 };
+use axon_core::boundary::FakeCoreBoundaries;
 use axon_core::config::Config;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::SqliteJobBackend;
@@ -17,10 +18,9 @@ use axon_jobs::status::JobStatus;
 use axon_jobs::unified::SqliteUnifiedJobStore;
 use axon_jobs::workers::unified::UnifiedClaimedJob;
 use axon_ledger::sqlite::SqliteLedgerStore;
-use axon_ledger::store::{FakeLedgerStore, LedgerStore};
-use axon_vectors::payload::generation_payload_i64;
+use axon_ledger::store::LedgerStore;
 use axon_vectors::store::FakeVectorStore;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
 use crate::runtime::SqliteServiceRuntime;
@@ -45,17 +45,6 @@ pub(crate) async fn sqlite_test_runtime() -> anyhow::Result<SqliteTestRuntime> {
     let runtime: Arc<dyn ServiceJobRuntime> =
         Arc::new(SqliteServiceRuntime::new_for_backend(cfg, backend));
     Ok(SqliteTestRuntime { _tmp: tmp, runtime })
-}
-
-pub(crate) fn committed_generation_payload(generation: &SourceGenerationId) -> Value {
-    json!(
-        generation_payload_i64(generation, "committed_generation")
-            .expect("test generation id is payload-encodable")
-    )
-}
-
-pub(crate) fn is_uncommitted_generation(value: &Value) -> bool {
-    value.is_null()
 }
 
 #[async_trait]
@@ -130,6 +119,7 @@ pub(crate) struct SourceWebJobIdentityHarness {
     /// `Arc<dyn VectorStore>` have no downcast path back to these.
     embedder: Arc<FakeEmbeddingProvider>,
     vectors: Arc<FakeVectorStore>,
+    core: Arc<FakeCoreBoundaries>,
 }
 
 impl SourceWebJobIdentityHarness {
@@ -143,6 +133,14 @@ impl SourceWebJobIdentityHarness {
 
     pub(crate) fn vectors(&self) -> &Arc<FakeVectorStore> {
         &self.vectors
+    }
+
+    pub(crate) fn core(&self) -> &Arc<FakeCoreBoundaries> {
+        &self.core
+    }
+
+    pub(crate) fn ledger(&self) -> &Arc<dyn LedgerStore> {
+        &self.ledger
     }
 
     pub(crate) async fn enqueue_and_claim_source(
@@ -254,15 +252,10 @@ impl SourceWebJobIdentityHarness {
     }
 }
 
-/// Which `LedgerStore` backs a [`SourceWebJobIdentityHarness`]. Both variants
-/// share the same real SQLite-backed `jobs` store; only the ledger differs.
+/// Which `LedgerStore` backs a [`SourceWebJobIdentityHarness`]. Canonical
+/// pipeline tests use the shared SQLite variant so test topology matches
+/// production foreign-key ownership.
 enum LedgerBackend {
-    /// In-memory, non-persisting fake. Fine for web-source dispatch, whose
-    /// `SourceEventEmitter::emit` swallows `jobs.update_status` failures
-    /// (logs a warning, does not propagate) — so a `jobs.source_id` FK
-    /// mismatch against a ledger that never actually writes `sources` rows
-    /// never surfaces.
-    Fake,
     /// A real `SqliteLedgerStore` bound to the *same* pool as `jobs`,
     /// matching the production contract ("the runtime uses ONE database so
     /// `jobs.source_id` can FK to `sources(source_id)`" —
@@ -278,6 +271,9 @@ enum LedgerBackend {
 
 async fn build_source_job_identity_harness(
     ledger_backend: LedgerBackend,
+    fetch_provider: Arc<dyn FetchProvider>,
+    render_provider: Arc<dyn RenderProvider>,
+    vectors: Arc<FakeVectorStore>,
 ) -> anyhow::Result<SourceWebJobIdentityHarness> {
     let tmp = tempfile::tempdir()?;
     let mut cfg = Config::test_default();
@@ -297,11 +293,10 @@ async fn build_source_job_identity_harness(
     let store: Arc<dyn JobStore> = Arc::new(SqliteUnifiedJobStore::new(pool.clone()));
 
     let ledger: Arc<dyn LedgerStore> = match ledger_backend {
-        LedgerBackend::Fake => Arc::new(FakeLedgerStore::new()),
         LedgerBackend::SharedSqlite => Arc::new(SqliteLedgerStore::from_pool(pool)),
     };
-    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let embedder = Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8));
+    let core = Arc::new(FakeCoreBoundaries::new());
     let mut target = TargetLocalSourceRuntime::new(
         Arc::clone(&store),
         ledger.clone(),
@@ -311,15 +306,14 @@ async fn build_source_job_identity_harness(
         "fake-embedding",
         8,
     );
-    let providers = Arc::new(FakeAdapterProviders::new());
-    let web_fetch_provider = Arc::clone(&providers);
-    let web_render_provider = Arc::clone(&providers);
+    target.artifact_store = core.clone();
+    target.document_cache = core.clone();
     target.web_source_adapter = Arc::new(WebSourceAdapter::new(
-        web_fetch_provider,
-        web_render_provider,
+        Arc::clone(&fetch_provider),
+        Arc::clone(&render_provider),
     ));
-    target.fetch_provider = providers.clone();
-    target.render_provider = providers;
+    target.fetch_provider = fetch_provider;
+    target.render_provider = render_provider;
 
     let ctx = ServiceContext::from_runtime(cfg, runtime).with_target_local_source_runtime(target);
     Ok(SourceWebJobIdentityHarness {
@@ -329,11 +323,46 @@ async fn build_source_job_identity_harness(
         ledger,
         embedder,
         vectors,
+        core,
     })
 }
 
 pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJobIdentityHarness> {
-    build_source_job_identity_harness(LedgerBackend::Fake).await
+    let providers = Arc::new(FakeAdapterProviders::new());
+    build_source_job_identity_harness(
+        LedgerBackend::SharedSqlite,
+        providers.clone(),
+        providers,
+        Arc::new(FakeVectorStore::new("fake-vector")),
+    )
+    .await
+}
+
+pub(crate) async fn source_context_with_web_providers(
+    fetch_provider: Arc<dyn FetchProvider>,
+    render_provider: Arc<dyn RenderProvider>,
+) -> anyhow::Result<SourceWebJobIdentityHarness> {
+    build_source_job_identity_harness(
+        LedgerBackend::SharedSqlite,
+        fetch_provider,
+        render_provider,
+        Arc::new(FakeVectorStore::new("fake-vector")),
+    )
+    .await
+}
+
+pub(crate) async fn source_context_with_web_providers_and_vectors(
+    fetch_provider: Arc<dyn FetchProvider>,
+    render_provider: Arc<dyn RenderProvider>,
+    vectors: Arc<FakeVectorStore>,
+) -> anyhow::Result<SourceWebJobIdentityHarness> {
+    build_source_job_identity_harness(
+        LedgerBackend::SharedSqlite,
+        fetch_provider,
+        render_provider,
+        vectors,
+    )
+    .await
 }
 
 /// Same runtime wiring as [`source_context_with_fake_web`], but for exercising
@@ -346,5 +375,12 @@ pub(crate) async fn source_context_with_fake_web() -> anyhow::Result<SourceWebJo
 /// shape covers both families.
 pub(crate) async fn source_context_with_local_sqlite_ledger()
 -> anyhow::Result<SourceWebJobIdentityHarness> {
-    build_source_job_identity_harness(LedgerBackend::SharedSqlite).await
+    let providers = Arc::new(FakeAdapterProviders::new());
+    build_source_job_identity_harness(
+        LedgerBackend::SharedSqlite,
+        providers.clone(),
+        providers,
+        Arc::new(FakeVectorStore::new("fake-vector")),
+    )
+    .await
 }

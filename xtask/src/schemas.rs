@@ -151,6 +151,38 @@ fn selected_families(family: Option<SchemaFamily>) -> Vec<SchemaFamily> {
     family.map_or_else(all_families, |family| vec![family])
 }
 
+pub(crate) fn refresh_generated_contracts(root: &Path) -> Result<()> {
+    let args = SchemaGenerateArgs {
+        update_fixtures: true,
+        ..SchemaGenerateArgs::default()
+    };
+    run_families_with_ci_policy(root, all_families(), &args, true)
+}
+
+#[cfg(test)]
+pub(crate) fn refresh_generated_contracts_fixture(root: &Path) -> Result<()> {
+    // Unit fixtures need the real refresh data flow even under hosted `CI=1`.
+    // Only this test-only seam bypasses the production fixture-write guard.
+    let args = SchemaGenerateArgs {
+        update_fixtures: true,
+        ..SchemaGenerateArgs::default()
+    };
+    run_families_with_ci_policy(root, all_families(), &args, false)
+}
+
+pub(crate) fn check_generated_contracts(root: &Path) -> Result<()> {
+    let args = SchemaGenerateArgs {
+        check: true,
+        ..SchemaGenerateArgs::default()
+    };
+    run_families_with_ci_policy(root, all_families(), &args, true)
+}
+
+#[cfg(test)]
+pub(crate) fn test_fixture_repo() -> tempfile::TempDir {
+    tests::fixture_repo()
+}
+
 fn run_single_family(root: &Path, family: SchemaFamily, args: &SchemaGenerateArgs) -> Result<()> {
     if args.family.is_some() {
         bail!("--family is only valid with aggregate `schemas generate`");
@@ -272,11 +304,11 @@ fn collect_drift(root: &Path, artifacts: &[artifact::SchemaArtifact]) -> Result<
                     &artifact.content,
                 ) => {}
             Ok(_) => drift.push(format!(
-                "{} differs; run `cargo xtask schemas generate`",
+                "{} differs; run `cargo xtask generated-contracts refresh`",
                 artifact.path.display()
             )),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => drift.push(format!(
-                "{} is missing; run `cargo xtask schemas generate`",
+                "{} is missing; run `cargo xtask generated-contracts refresh`",
                 artifact.path.display()
             )),
             Err(err) => return Err(err.into()),

@@ -1,8 +1,8 @@
 use super::*;
-use axon_api::source::{JobId, LifecycleStatus};
+use axon_api::source::{JobId, JobStagePlan, LifecycleStatus, PipelinePhase};
 use uuid::Uuid;
 
-use state_machine::validate_transition;
+use state_machine::{validate_stage_plan, validate_transition};
 
 #[test]
 fn job_state_machine_accepts_only_contract_transitions() {
@@ -10,10 +10,12 @@ fn job_state_machine_accepts_only_contract_transitions() {
     let allowed = [
         (LifecycleStatus::Queued, LifecycleStatus::Blocked),
         (LifecycleStatus::Queued, LifecycleStatus::Running),
+        (LifecycleStatus::Queued, LifecycleStatus::Failed),
         (LifecycleStatus::Queued, LifecycleStatus::Canceling),
         (LifecycleStatus::Queued, LifecycleStatus::Expired),
         (LifecycleStatus::Pending, LifecycleStatus::Queued),
         (LifecycleStatus::Pending, LifecycleStatus::Running),
+        (LifecycleStatus::Pending, LifecycleStatus::Failed),
         (LifecycleStatus::Pending, LifecycleStatus::Canceling),
         (LifecycleStatus::Pending, LifecycleStatus::Expired),
         (LifecycleStatus::Blocked, LifecycleStatus::Queued),
@@ -49,4 +51,20 @@ fn job_state_machine_accepts_only_contract_transitions() {
             .expect_err("terminal transition rejected");
         assert_eq!(err.code, "job.invalid_transition".into());
     }
+}
+
+#[test]
+fn duplicate_stable_stage_keys_are_rejected() {
+    let stages = vec![
+        JobStagePlan::required(PipelinePhase::Fetching),
+        JobStagePlan::required(PipelinePhase::Fetching),
+    ];
+    let err = validate_stage_plan(&stages).expect_err("duplicate stage key must fail");
+    assert_eq!(err.code, "job.stage_plan.duplicate_key".into());
+
+    let distinct = vec![
+        JobStagePlan::required(PipelinePhase::Fetching).with_stage_key("fetch-primary"),
+        JobStagePlan::required(PipelinePhase::Fetching).with_stage_key("fetch-fallback"),
+    ];
+    validate_stage_plan(&distinct).expect("explicit stable keys disambiguate repeated phases");
 }
