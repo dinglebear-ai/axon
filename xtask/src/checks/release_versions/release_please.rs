@@ -140,9 +140,9 @@ fn write_release_version_files(
 pub(super) fn fixup_items(
     root: &Path,
     components: &[Component],
-    files: &str,
+    files: &[String],
 ) -> ReleaseResult<Vec<ReleasePleaseFixupItem>> {
-    let changed_files = files.lines().collect::<BTreeSet<_>>();
+    let changed_files = files.iter().map(String::as_str).collect::<BTreeSet<_>>();
     let versions = read_release_please_manifest(root)?;
     let mut items = Vec::new();
 

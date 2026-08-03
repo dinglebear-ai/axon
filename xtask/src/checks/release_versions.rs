@@ -212,10 +212,12 @@ pub fn release_please_fixups(root: &Path, component_id: &str, version: &str) -> 
 
 pub fn release_please_fixup_plan(
     root: &Path,
-    files: &str,
+    base: &str,
+    head: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseFixupItem>> {
     let manifest = load_manifest(root)?;
-    release_please::fixup_items(root, &manifest.components, files)
+    let changed_files = changed_paths_since_ref(root, base, head, &[".".to_owned()])?;
+    release_please::fixup_items(root, &manifest.components, &changed_files)
 }
 
 pub fn print_release_please_fixup_plan(
