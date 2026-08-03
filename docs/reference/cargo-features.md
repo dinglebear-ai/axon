@@ -18,9 +18,6 @@ optional: it is a baseline dependency in every supported Axon binary.
 | `AXON_ENABLE_VERTICALS` | `true` | Enable per-site vertical extractors |
 | `AXON_AUTO_DISPATCH_SKIP` | (empty) | Comma-separated extractor names to skip in auto-dispatch |
 | `AXON_CHALLENGE_WARMUP` | `true` | Enable Akamai cookie-warmup retry |
-| `AXON_VERTICAL_SCRAPE_AUTO_DISPATCH` | `true` | Auto-dispatch verticals on crawl URLs |
-| `AXON_JS_EVAL_ENABLED` | `false` | Enable QuickJS JS evaluation (requires `quickjs` feature) |
-| `AXON_ENABLE_SOCIAL_VERTICALS` | `false` | Enable Instagram/LinkedIn extractors (requires `social-verticals` feature) |
 
 ## Adding a real optional dependency under a feature
 

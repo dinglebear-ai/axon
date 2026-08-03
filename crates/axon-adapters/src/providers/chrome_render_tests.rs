@@ -34,6 +34,52 @@ fn provider() -> ChromeRenderProvider {
 }
 
 #[tokio::test]
+async fn ninth_render_waits_for_a_page_slot() {
+    let provider = provider();
+    let mut permits = Vec::new();
+    for _ in 0..REMOTE_CHROME_MAX_CONCURRENT_PAGES {
+        permits.push(provider.acquire_page_slot().await.expect("page slot"));
+    }
+
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(20),
+            provider.acquire_page_slot()
+        )
+        .await
+        .is_err(),
+        "the ninth render must wait while all page slots are occupied"
+    );
+
+    permits.pop();
+    let _released_permit = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        provider.acquire_page_slot(),
+    )
+    .await
+    .expect("released capacity should wake waiter")
+    .expect("page slot should remain open");
+}
+
+#[tokio::test]
+async fn http_render_does_not_consume_a_chrome_page_slot() {
+    let provider = provider();
+    let mut permits = Vec::new();
+    for _ in 0..REMOTE_CHROME_MAX_CONCURRENT_PAGES {
+        permits.push(provider.acquire_page_slot().await.expect("page slot"));
+    }
+
+    let permit = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        provider.acquire_page_slot_for(CoreRenderMode::Http),
+    )
+    .await
+    .expect("HTTP render must not wait for Chrome capacity")
+    .expect("capacity must remain open");
+    assert!(permit.is_none());
+}
+
+#[tokio::test]
 async fn render_rejects_private_and_local_schemes_before_browser_bootstrap() {
     for uri in [
         "http://127.0.0.1/admin",

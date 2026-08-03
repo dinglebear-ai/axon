@@ -173,10 +173,19 @@ fn project_manifest(url: &str, manifest: SourceManifest, opts: MapOptions) -> Ma
         .take(limit)
         .collect();
     let mapped_count = urls.len() as u64;
-    let warning = metadata_string(&manifest.metadata, "warning");
+    let mut warning = metadata_string(&manifest.metadata, "warning");
     let outcome = match metadata_string(&manifest.metadata, "map_outcome").as_deref() {
+        Some("completed") => MapOutcome::Completed,
         Some("failed") => MapOutcome::Failed,
         Some("empty") => MapOutcome::Empty,
+        Some(other) => {
+            let drift = format!("unknown map outcome metadata: {other}");
+            warning = Some(match warning {
+                Some(existing) => format!("{existing}; {drift}"),
+                None => drift,
+            });
+            MapOutcome::Failed
+        }
         _ if total == 0 && warning.is_some() => MapOutcome::Failed,
         _ if total == 0 => MapOutcome::Empty,
         _ => MapOutcome::Completed,

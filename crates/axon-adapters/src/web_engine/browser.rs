@@ -9,6 +9,12 @@ use spider::website::Website;
 use std::error::Error;
 use std::time::Duration;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BrowserTimeoutPolicy {
+    FloorForBrowserWork,
+    Exact,
+}
+
 pub(crate) fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
     let mut intercept = RequestInterceptConfiguration::new(true);
     intercept.set_blacklist_patterns(Some(
@@ -23,7 +29,12 @@ pub(crate) fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfigura
     intercept
 }
 
-pub(crate) fn apply_spider_browser_defaults(cfg: &Config, website: &mut Website, mode: RenderMode) {
+pub(crate) fn apply_spider_browser_defaults_with_timeout(
+    cfg: &Config,
+    website: &mut Website,
+    mode: RenderMode,
+    timeout_policy: BrowserTimeoutPolicy,
+) {
     if !matches!(mode, RenderMode::Chrome) {
         return;
     }
@@ -40,7 +51,13 @@ pub(crate) fn apply_spider_browser_defaults(cfg: &Config, website: &mut Website,
         Some(Duration::from_secs(cfg.chrome_network_idle_timeout_secs)),
     )));
     let default_timeout_ms = (cfg.chrome_network_idle_timeout_secs + 30) * 1_000;
-    let timeout_ms = cfg.request_timeout_ms.unwrap_or(default_timeout_ms);
+    let timeout_ms = match (cfg.request_timeout_ms, timeout_policy) {
+        (Some(timeout_ms), BrowserTimeoutPolicy::Exact) => timeout_ms,
+        (Some(timeout_ms), BrowserTimeoutPolicy::FloorForBrowserWork) => {
+            timeout_ms.max(default_timeout_ms)
+        }
+        (None, _) => default_timeout_ms,
+    };
     website.with_request_timeout(Some(Duration::from_millis(timeout_ms)));
     if let Some(selector) = &cfg.chrome_wait_for_selector {
         website.with_wait_for_selector(Some(WaitForSelector::new(
@@ -64,6 +81,7 @@ pub(crate) async fn configure_spider_browser(
     cfg: &Config,
     mut website: Website,
     mode: RenderMode,
+    timeout_policy: BrowserTimeoutPolicy,
 ) -> Result<Website, Box<dyn Error>> {
     if let Some(remote_url) = &cfg.chrome_remote_url {
         let chrome_url = match super::engine::resolve_cdp_ws_url(remote_url).await {
@@ -72,7 +90,7 @@ pub(crate) async fn configure_spider_browser(
         };
         website.with_chrome_connection(Some(chrome_url));
     }
-    apply_spider_browser_defaults(cfg, &mut website, mode);
+    apply_spider_browser_defaults_with_timeout(cfg, &mut website, mode, timeout_policy);
     if matches!(mode, RenderMode::Chrome) {
         website = website
             .build()
@@ -80,3 +98,7 @@ pub(crate) async fn configure_spider_browser(
     }
     Ok(website)
 }
+
+#[cfg(test)]
+#[path = "browser_tests.rs"]
+mod tests;

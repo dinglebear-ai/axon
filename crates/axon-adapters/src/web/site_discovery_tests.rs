@@ -1,5 +1,6 @@
 use super::*;
 use async_trait::async_trait;
+use axon_core::config::Config;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
@@ -120,6 +121,47 @@ impl FetchProvider for BlockedFetch {
 }
 
 #[derive(Clone)]
+struct EmptySitemapFetch;
+
+#[async_trait]
+impl FetchProvider for EmptySitemapFetch {
+    async fn fetch(&self, request: FetchRequest) -> crate::boundary::Result<FetchedResource> {
+        let is_seed = request.uri.ends_with('/');
+        let is_empty_sitemap = request.uri.ends_with("/sitemap.xml");
+        let (status, text) = if is_empty_sitemap {
+            (
+                200,
+                "<?xml version=\"1.0\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\"></urlset>",
+            )
+        } else if is_seed {
+            (200, "<html></html>")
+        } else {
+            (404, "")
+        };
+        Ok(FetchedResource {
+            uri: request.uri.clone(),
+            final_uri: request.uri,
+            status,
+            content: ContentRef::InlineText {
+                text: text.to_string(),
+            },
+            headers: RedactedHeaders {
+                headers: Vec::new(),
+            },
+            fetched_at: Timestamp("2026-08-02T00:00:00Z".to_string()),
+            etag: None,
+            redirect_chain: Vec::new(),
+            bytes: Some(text.len() as u64),
+            metadata: request.metadata,
+        })
+    }
+
+    async fn capabilities(&self) -> crate::boundary::Result<ProviderCapability> {
+        unreachable!("capabilities are not needed by map discovery")
+    }
+}
+
+#[derive(Clone)]
 struct RootNavigationRender {
     calls: Arc<AtomicUsize>,
 }
@@ -147,6 +189,24 @@ impl RenderProvider for RootNavigationRender {
             network: Vec::new(),
             metadata: MetadataMap::new(),
         })
+    }
+
+    async fn capabilities(&self) -> crate::boundary::Result<ProviderCapability> {
+        unreachable!("capabilities are not needed by map discovery")
+    }
+}
+
+#[derive(Clone)]
+struct SlowRender {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl RenderProvider for SlowRender {
+    async fn render(&self, _request: RenderRequest) -> crate::boundary::Result<RenderedResource> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        unreachable!("map deadline must cancel a stalled renderer")
     }
 
     async fn capabilities(&self) -> crate::boundary::Result<ProviderCapability> {
@@ -188,4 +248,97 @@ async fn map_uses_one_root_browser_render_only_after_fast_discovery_is_empty() {
         urls.iter().any(|url| url.ends_with("/calendar")),
         "{urls:?}"
     );
+}
+
+#[tokio::test]
+async fn map_root_browser_render_has_an_outer_deadline() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = httpmock::MockServer::start();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let cfg = Config {
+        discover_sitemaps: false,
+        discover_llms_txt: false,
+        render_mode: axon_core::config::RenderMode::Chrome,
+        request_timeout_ms: Some(20),
+        ..Config::default()
+    };
+
+    let started = std::time::Instant::now();
+    let result = crate::web_engine::engine::discover_site_urls(
+        &cfg,
+        &server.url("/"),
+        Arc::new(BlockedFetch),
+        Arc::new(SlowRender {
+            calls: Arc::clone(&calls),
+        }),
+    )
+    .await
+    .expect("a render timeout is represented in the map result");
+
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    assert!(started.elapsed() < std::time::Duration::from_millis(500));
+    assert_eq!(result.outcome.as_str(), "failed");
+    assert!(
+        result
+            .warning
+            .as_deref()
+            .unwrap_or_default()
+            .contains("timed out"),
+        "{:?}",
+        result.warning
+    );
+}
+
+#[tokio::test]
+async fn sitemap_only_fetch_failure_is_not_reported_as_empty_success() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = httpmock::MockServer::start();
+    let cfg = Config {
+        sitemap_only: true,
+        discover_sitemaps: true,
+        discover_llms_txt: false,
+        render_mode: axon_core::config::RenderMode::Http,
+        ..Config::default()
+    };
+
+    let result = crate::web_engine::engine::discover_site_urls(
+        &cfg,
+        &server.url("/"),
+        Arc::new(BlockedFetch),
+        Arc::new(RootNavigationRender {
+            calls: Arc::new(AtomicUsize::new(0)),
+        }),
+    )
+    .await
+    .expect("sitemap failure is represented in the map result");
+
+    assert_eq!(result.outcome.as_str(), "failed");
+    assert!(result.warning.is_some());
+}
+
+#[tokio::test]
+async fn sitemap_only_successful_empty_sitemap_remains_empty_without_warning() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = httpmock::MockServer::start();
+    let cfg = Config {
+        sitemap_only: true,
+        discover_sitemaps: true,
+        discover_llms_txt: false,
+        render_mode: axon_core::config::RenderMode::Http,
+        ..Config::default()
+    };
+
+    let result = crate::web_engine::engine::discover_site_urls(
+        &cfg,
+        &server.url("/"),
+        Arc::new(EmptySitemapFetch),
+        Arc::new(RootNavigationRender {
+            calls: Arc::new(AtomicUsize::new(0)),
+        }),
+    )
+    .await
+    .expect("a parsed empty sitemap is a valid empty map");
+
+    assert_eq!(result.outcome.as_str(), "empty");
+    assert!(result.warning.is_none(), "{:?}", result.warning);
 }

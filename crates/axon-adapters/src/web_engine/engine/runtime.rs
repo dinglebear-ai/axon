@@ -275,7 +275,13 @@ pub(super) async fn configure_website_with_crawl_id(
         }
     }
 
-    website = super::super::browser::configure_spider_browser(cfg, website, mode).await?;
+    website = super::super::browser::configure_spider_browser(
+        cfg,
+        website,
+        mode,
+        super::super::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await?;
 
     // P3 — spider builder fields previously parsed but never applied.
     if !cfg.url_whitelist.is_empty() {

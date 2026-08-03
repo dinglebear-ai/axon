@@ -72,8 +72,6 @@ pub fn build_scrape_website(cfg: &Config, url: &str) -> Result<Website, Box<dyn 
         warn_invalid_certs_once();
         website.with_danger_accept_invalid_certs(true);
     }
-    super::browser::apply_spider_browser_defaults(cfg, &mut website, cfg.render_mode);
-
     Ok(website)
 }
 
@@ -382,8 +380,9 @@ pub fn select_output(
     }
 }
 
-fn usable_render_response(status_code: u16, html: &str) -> bool {
-    (200..300).contains(&status_code) || (status_code == 304 && !html.trim().is_empty())
+fn usable_render_response(mode: RenderMode, status_code: u16, html: &str) -> bool {
+    (200..300).contains(&status_code)
+        || (matches!(mode, RenderMode::Chrome) && status_code == 304 && !html.trim().is_empty())
 }
 
 // ── Service-facing entry point ───────────────────────────────────────────────
@@ -400,9 +399,14 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
 
     let website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
-    let mut website = super::browser::configure_spider_browser(cfg, website, cfg.render_mode)
-        .await
-        .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
+    let mut website = super::browser::configure_spider_browser(
+        cfg,
+        website,
+        cfg.render_mode,
+        super::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await
+    .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
         .map_err(|e| format!("fetch failed for scrape of {normalized}: {e}"))?;
@@ -412,7 +416,7 @@ pub async fn scrape_payload(cfg: &Config, url: &str) -> Result<serde_json::Value
     let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
-    if !usable_render_response(status_code, &html) {
+    if !usable_render_response(cfg.render_mode, status_code, &html) {
         return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());
     }
 
@@ -464,12 +468,25 @@ pub fn map_scrape_payload(
 
 /// Scrape a single URL and return a typed [`axon_api::job_dto::ScrapeResult`],
 /// including the format-selected `output` field (markdown/html/rawHtml/json
-/// per `cfg.format`). Generic HTTP-fetch path only — no vertical-extractor
-/// dispatch (that framework was removed with `axon-extract`; see
+/// per `cfg.format`). It uses the configured render mode for single-page
+/// acquisition and performs no vertical-extractor dispatch (that framework was removed with `axon-extract`; see
 /// `docs/pipeline-unification/plans/2026-07-04-phase-12-old-crate-removal-final-issue-sync.md`).
 pub async fn scrape_to_result(
     cfg: &Config,
     url: &str,
+) -> Result<axon_api::job_dto::ScrapeResult, Box<dyn Error>> {
+    scrape_to_result_with_timeout_policy(
+        cfg,
+        url,
+        super::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await
+}
+
+pub(crate) async fn scrape_to_result_with_timeout_policy(
+    cfg: &Config,
+    url: &str,
+    timeout_policy: super::browser::BrowserTimeoutPolicy,
 ) -> Result<axon_api::job_dto::ScrapeResult, Box<dyn Error>> {
     let normalized = normalize_url(url);
     validate_url_with_dns(&normalized)
@@ -478,9 +495,10 @@ pub async fn scrape_to_result(
 
     let website = build_scrape_website(cfg, &normalized)
         .map_err(|e| format!("failed to build scrape config for {normalized}: {e}"))?;
-    let mut website = super::browser::configure_spider_browser(cfg, website, cfg.render_mode)
-        .await
-        .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
+    let mut website =
+        super::browser::configure_spider_browser(cfg, website, cfg.render_mode, timeout_policy)
+            .await
+            .map_err(|e| format!("failed to configure browser for {normalized}: {e}"))?;
     apply_automation_scripts(cfg, &mut website).await?;
     let page = fetch_single_page(cfg, &mut website, &normalized)
         .await
@@ -491,7 +509,7 @@ pub async fn scrape_to_result(
     let final_url = page.url;
     let html = page.html;
     let status_code = page.status_code;
-    if !usable_render_response(status_code, &html) {
+    if !usable_render_response(cfg.render_mode, status_code, &html) {
         return Err(format!("scrape failed: HTTP {} for {}", status_code, normalized).into());
     }
 

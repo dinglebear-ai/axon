@@ -101,7 +101,7 @@ What is actually true today, after review:
 | Claim | Reality |
 |---|---|
 | "Web acquisition is unified" | **One** non-test caller: `map/strategy.rs` `discover_root_anchors`. |
-| The escalation ladder fixes the Akamai sites | TLS fingerprinting is compiled into every supported binary. Release jobs install its native prerequisites and reject a binary whose deterministic client-initialization smoke is not `ready`. |
+| The escalation ladder fixes the Akamai sites | TLS fingerprinting is compiled into every supported binary. Release jobs ensure its native prerequisites are available and reject a binary whose deterministic client-initialization smoke is not `ready`. |
 | The xtask check enforces unification | It enforces "no *unlisted* acquisition client." It is a source-text scan: blind to a new crate, to `Client::default()`, and to renamed imports. |
 
 Two divergences the first version of this document omitted entirely:

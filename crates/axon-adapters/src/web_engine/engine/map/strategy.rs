@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use url::Url;
 
@@ -17,7 +17,7 @@ use super::super::sitemap::{
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
-    MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
+    MapDiscoveryOutcome, MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
     merge_map_candidate_urls, resolve_map_seed_url,
 };
 use crate::boundary::{FetchProvider, RenderProvider};
@@ -42,6 +42,67 @@ fn effective_root_anchor_limit(cfg: &Config) -> usize {
     } else {
         cfg.max_pages as usize
     }
+}
+
+async fn render_root_anchor_candidates(
+    cfg: &Config,
+    scope_start_url: &str,
+    root_anchor_limit: usize,
+    render: Arc<dyn RenderProvider>,
+) -> Result<Vec<String>, String> {
+    let mut metadata = MetadataMap::new();
+    metadata.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
+    metadata.insert("block_assets".to_string(), serde_json::json!(true));
+    metadata.insert("exact_browser_timeout".to_string(), serde_json::json!(true));
+    metadata.insert(
+        "chrome_network_idle_timeout_secs".to_string(),
+        serde_json::json!(MAP_ROOT_NETWORK_IDLE_SECS),
+    );
+    let render_timeout_ms = cfg
+        .request_timeout_ms
+        .unwrap_or(MAP_ROOT_RENDER_TIMEOUT_MS)
+        .min(MAP_ROOT_RENDER_TIMEOUT_MS);
+    let rendered = tokio::time::timeout(
+        Duration::from_millis(render_timeout_ms),
+        render.render(RenderRequest {
+            uri: scope_start_url.to_string(),
+            mode: RenderMode::Chrome,
+            timeout_ms: Some(render_timeout_ms),
+            wait_ms: None,
+            automation_script: None,
+            credential_refs: Vec::new(),
+            metadata,
+        }),
+    )
+    .await;
+
+    match rendered {
+        Ok(Ok(page)) => Ok(page.html.map_or_else(Vec::new, |html| {
+            extract_anchor_hrefs(&page.final_uri, &html, root_anchor_limit)
+        })),
+        Ok(Err(error)) => {
+            log_info(&format!(
+                "bounded-structure: browser render failed for {scope_start_url}: {error}"
+            ));
+            Err(format!(
+                "browser root discovery failed for {scope_start_url}: {error}"
+            ))
+        }
+        Err(_) => {
+            let warning = format!(
+                "browser root discovery timed out after {render_timeout_ms}ms for {scope_start_url}"
+            );
+            log_info(&format!("bounded-structure: {warning}"));
+            Err(warning)
+        }
+    }
+}
+
+fn append_warning(existing: Option<String>, warning: String) -> Option<String> {
+    Some(match existing {
+        Some(existing) => format!("{existing}; {warning}"),
+        None => warning,
+    })
 }
 
 async fn discover_root_anchors(
@@ -113,57 +174,18 @@ async fn discover_root_anchors(
         log_info(&format!(
             "bounded-structure: fast discovery empty; rendering root once for {scope_start_url}"
         ));
-        let mut metadata = MetadataMap::new();
-        metadata.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
-        metadata.insert("block_assets".to_string(), serde_json::json!(true));
-        metadata.insert(
-            "chrome_network_idle_timeout_secs".to_string(),
-            serde_json::json!(MAP_ROOT_NETWORK_IDLE_SECS),
-        );
-        let rendered = render
-            .render(RenderRequest {
-                uri: scope_start_url.to_string(),
-                mode: RenderMode::Chrome,
-                timeout_ms: Some(
-                    cfg.request_timeout_ms
-                        .unwrap_or(MAP_ROOT_RENDER_TIMEOUT_MS)
-                        .min(MAP_ROOT_RENDER_TIMEOUT_MS),
-                ),
-                wait_ms: None,
-                automation_script: None,
-                credential_refs: Vec::new(),
-                metadata,
-            })
-            .await;
-        match rendered {
-            Ok(page) => {
-                if let Some(html) = page.html {
-                    urls = filter_anchors(extract_anchor_hrefs(
-                        &page.final_uri,
-                        &html,
-                        root_anchor_limit,
-                    ));
-                }
+        match render_root_anchor_candidates(cfg, scope_start_url, root_anchor_limit, render).await {
+            Ok(candidates) => {
+                urls = filter_anchors(candidates);
                 if urls.is_empty() {
                     let browser_warning = format!(
                         "browser root discovery completed for {scope_start_url} but returned no in-scope links"
                     );
-                    fast_warning = Some(match fast_warning {
-                        Some(fast) => format!("{fast}; {browser_warning}"),
-                        None => browser_warning,
-                    });
+                    fast_warning = append_warning(fast_warning, browser_warning);
                 }
             }
-            Err(error) => {
-                log_info(&format!(
-                    "bounded-structure: browser render failed for {scope_start_url}: {error}"
-                ));
-                let browser_warning =
-                    format!("browser root discovery failed for {scope_start_url}: {error}");
-                fast_warning = Some(match fast_warning {
-                    Some(fast) => format!("{fast}; {browser_warning}"),
-                    None => browser_warning,
-                });
+            Err(browser_warning) => {
+                fast_warning = append_warning(fast_warning, browser_warning);
             }
         }
     }
@@ -196,11 +218,14 @@ fn build_discovery_map_result(
     raw_sitemap_count: usize,
     map_source: &str,
     elapsed_ms: u128,
+    warning: Option<String>,
 ) -> MapResult {
-    let outcome = if urls.is_empty() {
-        "empty"
+    let outcome = if urls.is_empty() && warning.is_some() {
+        MapDiscoveryOutcome::Failed
+    } else if urls.is_empty() {
+        MapDiscoveryOutcome::Empty
     } else {
-        "completed"
+        MapDiscoveryOutcome::Completed
     };
     MapResult {
         summary: CrawlSummary {
@@ -210,8 +235,8 @@ fn build_discovery_map_result(
         sitemap_urls: raw_sitemap_count,
         urls,
         map_source: map_source.to_string(),
-        outcome: outcome.to_string(),
-        warning: None,
+        outcome,
+        warning,
     }
 }
 /// Outcome of the three discovery probes run concurrently before scoping.
@@ -348,11 +373,20 @@ pub async fn discover_site_urls(
     let discovery_urls = scope_and_filter_map_urls(cfg, combined, &scope);
 
     if cfg.sitemap_only {
+        let warning = (sitemap_discovery.failed_fetches > 0
+            && sitemap_discovery.parsed_sitemap_documents == 0)
+            .then(|| {
+                format!(
+                    "sitemap discovery failed to fetch {} candidate(s)",
+                    sitemap_discovery.failed_fetches
+                )
+            });
         return Ok(build_discovery_map_result(
             discovery_urls,
             raw_sitemap_count,
             discovery_source.unwrap_or("sitemap"),
             start.elapsed().as_millis(),
+            warning,
         ));
     }
 
@@ -368,6 +402,7 @@ pub async fn discover_site_urls(
             raw_sitemap_count,
             source,
             start.elapsed().as_millis(),
+            None,
         ));
     }
 
@@ -395,9 +430,13 @@ pub async fn discover_site_urls(
     });
 
     let outcome = if urls.is_empty() {
-        if warning.is_some() { "failed" } else { "empty" }
+        if warning.is_some() {
+            MapDiscoveryOutcome::Failed
+        } else {
+            MapDiscoveryOutcome::Empty
+        }
     } else {
-        "completed"
+        MapDiscoveryOutcome::Completed
     };
 
     Ok(MapResult {
@@ -408,7 +447,7 @@ pub async fn discover_site_urls(
         sitemap_urls: raw_sitemap_count,
         urls,
         map_source,
-        outcome: outcome.to_string(),
+        outcome,
         warning,
     })
 }

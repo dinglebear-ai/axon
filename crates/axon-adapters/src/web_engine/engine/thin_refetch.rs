@@ -63,11 +63,6 @@ fn build_single_page_website(cfg: &Config, url: &str) -> Website {
         axon_core::http::ssrf_blacklist_compact_strings().to_vec(),
     ));
 
-    super::super::browser::apply_spider_browser_defaults(
-        cfg,
-        &mut website,
-        axon_core::config::RenderMode::Chrome,
-    );
     website
 }
 
@@ -84,6 +79,7 @@ async fn fetch_url_with_chrome(
         cfg,
         website,
         axon_core::config::RenderMode::Chrome,
+        super::super::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
     )
     .await
     else {

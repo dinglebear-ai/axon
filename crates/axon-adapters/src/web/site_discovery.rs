@@ -70,7 +70,10 @@ pub(super) async fn manifest_items(
         "map_source".to_string(),
         serde_json::json!(result.map_source),
     );
-    metadata.insert("map_outcome".to_string(), serde_json::json!(result.outcome));
+    metadata.insert(
+        "map_outcome".to_string(),
+        serde_json::json!(result.outcome.as_str()),
+    );
     metadata.insert(
         "sitemap_urls".to_string(),
         serde_json::json!(result.sitemap_urls),
