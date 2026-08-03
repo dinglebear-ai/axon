@@ -1,5 +1,6 @@
 ---
 title: "Static API Token Authentication"
+created: 2026-03-10
 updated: 2026-08-02
 ---
 
