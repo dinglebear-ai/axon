@@ -39,7 +39,8 @@ pub mod youtube;
 
 pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
 pub use adapter::{
-    AcquisitionProgress, AcquisitionProgressSink, SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
+    AcquisitionProgress, AcquisitionProgressSink, GeneratedArchive, ReusePolicy,
+    SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
 };
 pub use capability::{AdapterCapability, AdapterVersion};
 pub use enrichment::{NoopSourceEnricher, SourceEnricher};

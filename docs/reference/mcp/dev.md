@@ -42,8 +42,8 @@ The shared MCP request DTOs live in `crates/axon-api/src/mcp_schema/`.
 4. Regenerate/check schemas:
 
 ```bash
-cargo xtask schemas generate --update-fixtures
-cargo xtask schemas generate --check
+cargo xtask generated-contracts refresh
+cargo xtask generated-contracts check
 ```
 
 5. Run focused MCP tests:

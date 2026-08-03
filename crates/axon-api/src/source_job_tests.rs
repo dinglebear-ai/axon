@@ -190,12 +190,9 @@ fn target_job_management_dtos_round_trip() {
         attempt: 1,
         priority: JobPriority::Background,
         idempotency_key: Some("refresh:src_local".to_string()),
-        stage_plan: vec![JobStagePlan {
-            phase: PipelinePhase::Embedding,
-            required: true,
-            provider_requirements: Vec::new(),
-            estimated_items: Some(10),
-        }],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Embedding).with_estimated_items(Some(10)),
+        ],
         request: Some(serde_json::json!({ "source": "/workspace/axon" })),
         auth_snapshot: AuthSnapshot::default(),
         config_snapshot_id: Some(ConfigSnapshotId::from("cfg_test")),
@@ -283,4 +280,25 @@ fn job_dtos_reject_unknown_fields() {
     let err = serde_json::from_value::<JobCancelRequest>(bad)
         .expect_err("target job cancel request rejects legacy force field");
     assert!(err.to_string().contains("unknown field"), "{err}");
+}
+
+#[test]
+fn legacy_stage_plan_json_gets_stable_defaults() {
+    let plan: JobStagePlan = serde_json::from_value(serde_json::json!({
+        "phase": "embedding",
+        "required": false,
+        "provider_requirements": [],
+        "estimated_items": 3
+    }))
+    .expect("legacy stage plan remains readable");
+
+    assert_eq!(plan.effective_stage_key(), "embedding");
+    assert_eq!(plan.applicability, StageApplicability::Always);
+    assert!(plan.allows_transition_to(PipelinePhase::Vectorizing));
+    assert!(plan.allows_skip(StageSkipReason::NotApplicable));
+    assert_eq!(
+        plan.stable_id(JobId::new(uuid::Uuid::nil()), 9),
+        plan.stable_id(JobId::new(uuid::Uuid::nil()), 0),
+        "stage identity follows the stable key rather than a retry-local ordinal"
+    );
 }

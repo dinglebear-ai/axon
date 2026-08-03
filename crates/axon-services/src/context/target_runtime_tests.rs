@@ -64,6 +64,9 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
         .connect("sqlite::memory:")
         .await
         .expect("in-memory sqlite pool");
+    axon_jobs::migrations::apply_all_migrations(&pool)
+        .await
+        .expect("shared runtime migrations");
 
     let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool)
         .await
@@ -129,4 +132,19 @@ async fn embedding_identity_cache_singleflights_cold_probes_and_can_be_invalidat
     assert_eq!(refreshed.dimensions, 3);
     info.assert_calls_async(2).await;
     embed.assert_calls_async(2).await;
+}
+
+#[test]
+fn scheduler_authority_canonicalizes_equivalent_sqlite_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let nested = dir.path().join("nested");
+    std::fs::create_dir_all(&nested).expect("nested dir");
+    let database = dir.path().join("jobs.db");
+    std::fs::write(&database, []).expect("database placeholder");
+    let equivalent = nested.join("..").join("jobs.db");
+
+    assert_eq!(
+        super::scheduler_authority_id(&database),
+        super::scheduler_authority_id(&equivalent)
+    );
 }

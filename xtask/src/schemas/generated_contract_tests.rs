@@ -6,11 +6,52 @@ use axon_vectors::payload::{
 };
 use jsonschema::validator_for;
 
-use super::{fixture_repo, generate};
+use super::{fixture_repo, generate, seed_schema_fixtures};
 
 fn generated_json(root: &Path, path: &str) -> serde_json::Value {
     let content = std::fs::read_to_string(root.join(path)).unwrap();
     serde_json::from_str(&content).unwrap()
+}
+
+fn write_api_source_module_fixture(root: &Path) {
+    let files = [
+        (
+            "crates/axon-api/src/source.rs",
+            "pub mod boundary;\npub mod document;\npub mod enums;\npub mod graph;\npub mod ids;\npub mod job_listing;\npub mod listing;\npub mod state;\npub mod status;\npub mod vector;\n",
+        ),
+        (
+            "crates/axon-api/src/source/enums.rs",
+            "pub mod pipeline_phase;\ninclude!(\"enums/runtime.rs\");\n",
+        ),
+        (
+            "crates/axon-api/src/source/enums/pipeline_phase.rs",
+            "// fixture\n",
+        ),
+        (
+            "crates/axon-api/src/source/enums/runtime.rs",
+            "// fixture\n",
+        ),
+    ];
+    for (path, content) in files {
+        std::fs::write(root.join(path), content).unwrap();
+    }
+    for module in [
+        "boundary",
+        "document",
+        "graph",
+        "ids",
+        "job_listing",
+        "listing",
+        "state",
+        "status",
+        "vector",
+    ] {
+        std::fs::write(
+            root.join(format!("crates/axon-api/src/source/{module}.rs")),
+            "// fixture\n",
+        )
+        .unwrap();
+    }
 }
 
 fn payload_required_fields_from_source() -> Vec<String> {
@@ -71,6 +112,8 @@ fn generated_adapter_capability_artifact_contains_tool_and_memory_contracts() {
 #[test]
 fn generated_json_contains_source_input_checksums_and_canonical_enums() {
     let tmp = fixture_repo();
+    write_api_source_module_fixture(tmp.path());
+    seed_schema_fixtures(tmp.path());
     generate(tmp.path()).unwrap();
     let value = generated_json(tmp.path(), "docs/reference/api/schemas.json");
 
@@ -87,6 +130,9 @@ fn generated_json_contains_source_input_checksums_and_canonical_enums() {
                 == 64
     }));
     for path in [
+        "crates/axon-api/src/source/enums.rs",
+        "crates/axon-api/src/source/enums/pipeline_phase.rs",
+        "crates/axon-api/src/source/enums/runtime.rs",
         "crates/axon-api/src/source/document.rs",
         "crates/axon-api/src/source/boundary.rs",
         "crates/axon-api/src/source/graph.rs",

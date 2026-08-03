@@ -99,6 +99,19 @@ pub fn run(root: &Path, args: DocsArgs) -> Result<()> {
     }
 }
 
+pub(crate) fn refresh_generated_contracts(root: &Path) -> Result<()> {
+    generate::run(root, &DocsGenerateArgs::default())
+}
+
+pub(crate) fn check_generated_contracts(root: &Path) -> Result<()> {
+    let args = DocsGenerateArgs {
+        check: true,
+        ..DocsGenerateArgs::default()
+    };
+    generate::run(root, &args)?;
+    check(root)
+}
+
 /// `docs check`: repo-wide link check, the existing removed-surface doc
 /// contract check, a docs-inventory-vs-Final-Docs-Tree diff, and the
 /// marker-annotated example-validation pass. All four run and report; the

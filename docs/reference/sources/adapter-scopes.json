@@ -1599,7 +1599,7 @@
         "path": "crates/axon-adapters/src/spec.rs"
       },
       {
-        "checksum": "sha256:76a8a2e7fdfc054adb48edec9c98bcea471b80addf677cfdaf75adaabd647694",
+        "checksum": "sha256:e233c7e052f10a3281f916c8b7fdf3c51554ba59be4918df645d049382d433e5",
         "kind": "rust_module",
         "path": "crates/axon-adapters/src/web.rs"
       },

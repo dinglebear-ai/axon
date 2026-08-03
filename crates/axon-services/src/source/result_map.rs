@@ -25,6 +25,8 @@ pub struct IndexCounts {
     pub job_id: JobId,
     pub source_id: SourceId,
     pub generation: SourceGenerationId,
+    /// Total source items observed in the published manifest.
+    pub items_discovered: u64,
     pub documents_prepared: u64,
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
@@ -45,9 +47,9 @@ pub struct IndexCounts {
 ///
 /// `kind`/`adapter`/`scope` identify the routed family; `counts` carries the
 /// bridge's numeric result; `graph` is the summary of the baseline source-graph
-/// write. Status is always `Completed` here — the bridges return `Ok(..)` only
-/// after a committed generation, and any acquisition or data-plane failure is
-/// surfaced as an `Err` before this is reached.
+/// write. Successful results with non-fatal warnings are
+/// `CompletedDegraded`; warning-free results are `Completed`. Hard acquisition
+/// or data-plane failures are surfaced as an `Err` before this is reached.
 pub fn to_source_result(
     kind: SourceKind,
     adapter: AdapterRef,
@@ -69,7 +71,7 @@ pub fn to_source_result_with_counts(
     authoritative_counts: Option<SourceCounts>,
 ) -> SourceResult {
     let source_counts = authoritative_counts.unwrap_or(SourceCounts {
-        items_total: counts.documents_prepared,
+        items_total: counts.items_discovered,
         items_changed: counts.documents_prepared,
         documents_total: counts.documents_prepared,
         chunks_total: counts.chunks_prepared,
@@ -77,11 +79,16 @@ pub fn to_source_result_with_counts(
         bytes_total: 0,
     });
 
+    let status = if counts.warnings.is_empty() {
+        LifecycleStatus::Completed
+    } else {
+        LifecycleStatus::CompletedDegraded
+    };
     let ledger = LedgerSummary {
         source_id: counts.source_id.clone(),
         generation: counts.generation.clone(),
         committed_generation: Some(counts.generation.clone()),
-        status: LifecycleStatus::Completed,
+        status,
         counts: source_counts.clone(),
     };
 
@@ -92,7 +99,7 @@ pub fn to_source_result_with_counts(
         source_kind: kind,
         adapter,
         scope,
-        status: LifecycleStatus::Completed,
+        status,
         ledger,
         graph,
         counts: source_counts,
@@ -271,3 +278,7 @@ fn failed_result(
         errors: Vec::new(),
     }
 }
+
+#[cfg(test)]
+#[path = "result_map_tests.rs"]
+mod tests;

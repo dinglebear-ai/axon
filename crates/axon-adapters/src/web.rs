@@ -10,9 +10,12 @@
 //! on this path.
 
 mod acquire;
+mod binary;
+mod fetch;
 mod manifest_items;
 mod metadata;
 mod options;
+mod render;
 mod site_discovery;
 mod url_parts;
 mod vertical;
@@ -24,7 +27,9 @@ use async_trait::async_trait;
 use axon_api::source::*;
 use uuid::Uuid;
 
-use crate::adapter::{AcquisitionProgressSink, Result, SourceAdapter};
+use crate::adapter::{
+    AcquisitionProgressSink, GeneratedArchive, Result, ReusePolicy, SourceAdapter,
+};
 use crate::boundary::{FetchProvider, RenderProvider};
 use crate::capability::AdapterCapability;
 
@@ -169,6 +174,47 @@ impl SourceAdapter for WebSourceAdapter {
         progress: Option<&dyn AcquisitionProgressSink>,
     ) -> Result<SourceAcquisition> {
         self.acquire_internal(plan, diff, progress).await
+    }
+
+    fn reuse_policy(&self) -> ReusePolicy {
+        ReusePolicy::ConditionalRequest
+    }
+
+    fn wants_archive(&self, plan: &SourcePlan) -> bool {
+        plan.route
+            .validated_options
+            .values
+            .contains_key("warc_path")
+    }
+
+    fn build_archive(
+        &self,
+        plan: &SourcePlan,
+        items: &[AcquiredSourceItem],
+    ) -> Option<GeneratedArchive> {
+        if items.is_empty()
+            || !plan
+                .route
+                .validated_options
+                .values
+                .contains_key("warc_path")
+        {
+            return None;
+        }
+        let archive = build_warc_archive(items);
+        let mut metadata = MetadataMap::new();
+        metadata.insert(
+            "artifact_role".to_string(),
+            serde_json::json!("source_archive"),
+        );
+        metadata.insert("archive_format".to_string(), serde_json::json!("warc-1.1"));
+        Some(GeneratedArchive {
+            kind: ArtifactKind::Warc,
+            content_type: "application/warc".to_string(),
+            bytes: archive.bytes,
+            content_hash: archive.sha256,
+            metadata,
+        })
     }
 
     async fn normalize(

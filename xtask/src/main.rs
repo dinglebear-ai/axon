@@ -85,6 +85,9 @@ enum Command {
     /// Generate/check the docs-generator core: header rewrite, source-input
     /// manifest, repo-wide link check, and docs-inventory diff.
     Docs(docs::DocsArgs),
+    /// Refresh or verify generated schemas and their dependent documentation
+    /// as one ordered contract surface.
+    GeneratedContracts(generated_contracts::GeneratedContractsArgs),
     /// Generate/check presentation-token artifacts (colors/typography/spacing/icons).
     Presentation(presentation::PresentationArgs),
     /// Verify all releasable components have valid versions and changed shipping paths have bumps.
@@ -198,6 +201,7 @@ fn main() -> Result<()> {
         Command::PrePush(args) => pre_push::run(&root, args),
         Command::Schemas(args) => schemas::run(&root, args),
         Command::Docs(args) => docs::run(&root, args),
+        Command::GeneratedContracts(args) => generated_contracts::run(&root, args),
         Command::Presentation(args) => presentation::run(&root, args),
         Command::CheckReleaseVersions {
             base,
@@ -264,9 +268,14 @@ fn main() -> Result<()> {
     }
 }
 
+#[cfg(test)]
+#[path = "main_tests.rs"]
+mod tests;
+
 mod bench_embed;
 mod checks;
 mod docs;
+mod generated_contracts;
 mod pre_push;
 mod presentation;
 pub mod schemas;

@@ -74,6 +74,22 @@ impl Default for HttpFetchConfig {
     }
 }
 
+fn content_type_requires_binary(content_type: &str) -> bool {
+    let mime = content_type
+        .split(';')
+        .next()
+        .unwrap_or(content_type)
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        mime.as_str(),
+        "application/pdf" | "application/zip" | "application/octet-stream"
+    ) || (mime.starts_with("image/") && mime != "image/svg+xml")
+        || mime.starts_with("audio/")
+        || mime.starts_with("video/")
+        || mime.starts_with("font/")
+}
+
 #[derive(Debug, Clone)]
 pub struct HttpFetchProvider {
     config: HttpFetchConfig,
@@ -182,9 +198,18 @@ impl HttpFetchProvider {
         RedactedHeaders { headers: redacted }
     }
 
-    /// Decode a response body into a [`ContentRef`]: valid UTF-8 stays
-    /// `InlineText`; anything else is base64-encoded `InlineBytes`.
+    /// Decode a response body into a [`ContentRef`]. Binary media types stay
+    /// `InlineBytes` even when their byte sequence happens to be valid UTF-8;
+    /// textual media types use `InlineText` when decoding succeeds.
     fn decode_body(&self, bytes: &[u8], content_type: Option<&str>) -> ContentRef {
+        if content_type.is_some_and(content_type_requires_binary) {
+            return ContentRef::InlineBytes {
+                bytes_base64: BASE64_STANDARD.encode(bytes),
+                mime_type: content_type
+                    .unwrap_or("application/octet-stream")
+                    .to_string(),
+            };
+        }
         match std::str::from_utf8(bytes) {
             Ok(text) => ContentRef::InlineText {
                 text: text.to_string(),

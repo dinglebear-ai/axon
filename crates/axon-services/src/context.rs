@@ -19,6 +19,7 @@ use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::reservation::ProviderReservationConfig;
 use axon_embedding::reservation::ProviderReservationManager;
 use axon_jobs::boundary::JobStore;
+use axon_jobs::scheduler::ProviderScheduler;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use tokio::sync::OnceCell;
@@ -59,14 +60,14 @@ pub struct TargetLocalSourceRuntime {
     pub embedding_model: String,
     pub embedding_dimensions: u32,
     pub embedding_reservations: Arc<ProviderReservationManager>,
-    pub vector_reservations: Arc<ProviderReservationManager>,
+    pub embedding_scheduler: Option<Arc<ProviderScheduler>>,
+    pub vector_scheduler: Option<Arc<ProviderScheduler>>,
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
     source_adapters: Arc<OnceCell<SourceAdapterRegistry>>,
     pub(crate) web_source_adapter: Arc<dyn SourceAdapter>,
-    /// Real acquisition boundary for `WebSourceAdapter` (issue #298 Wave 1b) —
-    /// `dispatch_web` threads these into `WebSourceIndexInput` instead of
-    /// running a `crawl_for_source` acquisition pre-pass.
+    /// Real acquisition boundaries injected into the canonical web adapter.
+    /// The family-blind source executor never performs an out-of-band crawl.
     pub fetch_provider: Arc<dyn FetchProvider>,
     pub render_provider: Arc<dyn RenderProvider>,
     /// Enrichment-stage boundary (source-pipeline.md: `enriching`, between
@@ -122,17 +123,9 @@ impl TargetLocalSourceRuntime {
                     cooldown_secs: 30,
                 },
             )),
-            vector_reservations: Arc::new(ProviderReservationManager::new(
-                ProviderReservationConfig {
-                    provider_id: ProviderId::new("target-local-vector"),
-                    provider_kind: axon_api::source::ProviderKind::Vector,
-                    capacity: 2,
-                    interactive_reserve: 1,
-                    cooldown_after_failures: 1,
-                    cooldown_secs: 30,
-                },
-            )),
             vector_provider_id: ProviderId::new("target-local-vector"),
+            embedding_scheduler: None,
+            vector_scheduler: None,
             embedding_provider_id,
             embedding_model: embedding_model.into(),
             embedding_dimensions,

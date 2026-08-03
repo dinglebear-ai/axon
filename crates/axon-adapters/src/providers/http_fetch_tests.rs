@@ -65,6 +65,47 @@ async fn fetch_returns_body_status_and_etag_on_success() {
 }
 
 #[tokio::test]
+async fn fetch_keeps_valid_utf8_pdf_bytes_out_of_text_content() {
+    let _loopback = axon_core::http::LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/agenda.pdf");
+            then.status(200)
+                .header("content-type", "application/pdf; version=1.7")
+                .body(b"%PDF-1.7\n\0valid-utf8-binary");
+        })
+        .await;
+
+    let provider = provider(Duration::from_secs(5));
+    let resource = provider
+        .fetch(request(format!("{}/agenda.pdf", server.base_url())))
+        .await
+        .expect("PDF fetch should succeed");
+
+    match resource.content {
+        ContentRef::InlineBytes {
+            bytes_base64,
+            mime_type,
+        } => {
+            assert!(!bytes_base64.is_empty());
+            assert_eq!(mime_type, "application/pdf; version=1.7");
+        }
+        other => panic!("expected InlineBytes for PDF, got {other:?}"),
+    }
+}
+
+#[test]
+fn binary_content_type_detection_is_case_and_parameter_insensitive() {
+    assert!(content_type_requires_binary(
+        "Application/PDF; charset=binary"
+    ));
+    assert!(!content_type_requires_binary("image/svg+xml"));
+    assert!(!content_type_requires_binary("text/html; charset=utf-8"));
+    assert!(!content_type_requires_binary("application/json"));
+}
+
+#[tokio::test]
 async fn fetch_timeout_marks_provider_degraded() {
     let _loopback = axon_core::http::LoopbackGuard::allow();
     let server = MockServer::start_async().await;
