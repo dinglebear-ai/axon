@@ -1019,11 +1019,13 @@ fn release_please_dispatch_plan_rejects_object_paths() {
 #[test]
 fn release_please_fixup_plan_uses_component_manifest() {
     let fixture = Fixture::new();
-    let items = release_please_fixup_plan(
-        fixture.root(),
-        "apps/palette-tauri/CHANGELOG.md\napps/android/app/build.gradle.kts\napps/chrome-extension/CHANGELOG.md\n",
-    )
-    .unwrap();
+    let manifest = load_manifest(fixture.root()).unwrap();
+    let files = [
+        "apps/palette-tauri/CHANGELOG.md".to_owned(),
+        "apps/android/app/build.gradle.kts".to_owned(),
+        "apps/chrome-extension/CHANGELOG.md".to_owned(),
+    ];
+    let items = release_please::fixup_items(fixture.root(), &manifest.components, &files).unwrap();
     assert_eq!(
         items,
         vec![
@@ -1041,6 +1043,100 @@ fn release_please_fixup_plan_uses_component_manifest() {
             },
         ]
     );
+}
+
+#[test]
+fn release_please_fixup_plan_derives_changed_files_from_git_refs() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-palette"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "6.0.0",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/CHANGELOG.md"),
+        "# Changelog\n\n## [6.0.0]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", ".release-please-manifest.json"]);
+    fixture.git(&["add", "apps/palette-tauri/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "chore(main): release palette 6.0.0"]);
+
+    let items = release_please_fixup_plan(fixture.root(), "main", "HEAD").unwrap();
+
+    assert_eq!(
+        items,
+        vec![ReleasePleaseFixupItem {
+            id: "palette".to_owned(),
+            version: "6.0.0".to_owned(),
+        }]
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_ignores_changes_added_only_to_an_advanced_base() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-palette"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "6.0.0",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/CHANGELOG.md"),
+        "# Changelog\n\n## [6.0.0]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/palette-tauri/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release palette 6.0.0"]);
+
+    fixture.git(&["checkout", "main"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "chore: advance main with android release"]);
+    fixture.git(&["checkout", "release-palette"]);
+
+    let items = release_please_fixup_plan(fixture.root(), "main", "HEAD").unwrap();
+
+    assert_eq!(
+        items,
+        vec![ReleasePleaseFixupItem {
+            id: "palette".to_owned(),
+            version: "6.0.0".to_owned(),
+        }],
+        "fixup planning must use the release branch diff from the merge base, not base-only changes"
+    );
+}
+
+#[test]
+fn release_please_fixup_plan_rejects_an_invalid_base_ref() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+
+    let error = release_please_fixup_plan(fixture.root(), "missing-base", "HEAD")
+        .expect_err("an invalid base ref must not produce an empty fixup plan");
+
+    assert!(error.to_string().contains("merge-base"));
+    assert!(error.to_string().contains("missing-base"));
 }
 
 #[test]
