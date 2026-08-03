@@ -430,6 +430,8 @@ fn workflow_files_route_only_the_ci_surface_they_own() {
 #[test]
 fn changed_path_router_edits_force_full_ci() {
     for file in [
+        "lefthook.yml",
+        "scripts/clear-git-local-env.sh",
         "scripts/ci/changed_paths.py",
         "tests/ci_changed_paths.rs",
         "tests/workflow_shapes.rs",

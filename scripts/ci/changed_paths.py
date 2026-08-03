@@ -74,6 +74,8 @@ DOC_CI_HELPER_SCRIPTS = {
 }
 
 FULL_CI_ROUTER_PATHS = {
+    "lefthook.yml",
+    "scripts/clear-git-local-env.sh",
     "scripts/ci/changed_paths.py",
     "tests/ci_changed_paths.rs",
     "tests/workflow_shapes.rs",
