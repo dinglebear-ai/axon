@@ -139,11 +139,16 @@ jobs:
       - uses: ./.github/actions/setup-rust-kache
         with:
           components: rustfmt
+      - name: Isolate npm cache
+        shell: bash
+        run: |
+          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_JOB"
+          mkdir -p "$npm_cache"
+          echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          package-manager-cache: false
       # NOT dead: the "Palette OpenAPI type drift" contract step below shells
       # out to pnpm and hard-fails without it. It was removed earlier in this
       # branch as unused because the job's visible install command is `npm ci`.
@@ -659,11 +664,16 @@ jobs:
     if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate npm cache
+        shell: bash
+        run: |
+          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_JOB"
+          mkdir -p "$npm_cache"
+          echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          package-manager-cache: false
       - name: Install web panel dependencies
         run: npm ci --prefix apps/web
       - name: Test web panel
