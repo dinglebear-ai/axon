@@ -272,6 +272,26 @@ fn android_ci_setup_does_not_install_unused_emulator_packages() {
 }
 
 #[test]
+fn android_ci_gradle_memory_covers_apk_packaging() {
+    let properties = include_str!("../apps/android/gradle.properties");
+
+    assert!(
+        properties.lines().any(|line| {
+            line.starts_with("org.gradle.jvmargs=")
+                && line.contains("-Xmx2048m")
+                && line.contains("-XX:MaxMetaspaceSize=512m")
+        }),
+        "Android CI needs a 2 GiB Gradle heap for debug APK packaging while retaining the metaspace cap"
+    );
+    assert!(
+        properties
+            .lines()
+            .any(|line| line.trim() == "org.gradle.workers.max=2"),
+        "Android CI must keep Gradle worker concurrency bounded on shared runners"
+    );
+}
+
+#[test]
 fn lefthook_pre_push_uses_path_aware_router() {
     let lefthook = include_str!("../lefthook.yml");
     let pre_push = lefthook
