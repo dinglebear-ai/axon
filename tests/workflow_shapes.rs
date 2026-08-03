@@ -394,6 +394,30 @@ fn auto_tag_uses_validated_xtask_release_plan() {
             && !release.contains("Wait for CI to pass on this commit"),
         "one shared CI gate must run before the release matrix creates tags"
     );
+    let tag_step = release.find("Create and push tag").expect("tag step");
+    let github_release_step = release
+        .find("Ensure GitHub Release exists")
+        .expect("GitHub Release step");
+    let dispatch_step = release
+        .find("Dispatch release workflow")
+        .expect("release dispatch step");
+    assert!(
+        tag_step < github_release_step && github_release_step < dispatch_step,
+        "auto-tag must create the tag, then the GitHub Release, then dispatch the artifact workflow"
+    );
+    for required in [
+        "gh release view \"$tag\" --repo \"$repo\"",
+        "gh release create \"$tag\"",
+        "--verify-tag",
+        "--generate-notes",
+        "--repo \"${{ github.repository }}\"",
+        "--ref \"${{ matrix.candidate_tag }}\"",
+    ] {
+        assert!(
+            release.contains(required),
+            "auto-tag release flow must include {required}"
+        );
+    }
     for required in [
         "if ! runs_json=$(gh run list",
         "--repo \"${{ github.repository }}\"",
