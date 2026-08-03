@@ -400,10 +400,18 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
     }
 
     assert!(
-        fixups.contains("git checkout \"$branch\"")
-            && fixups.contains("--base \"origin/$base_branch\"")
-            && fixups.contains("--head HEAD"),
-        "fixup planning must compare the checked-out release branch with its reported base branch"
+        fixups.contains("git checkout \"$branch\""),
+        "fixup planning must run from the reported release PR branch"
+    );
+    let (_, after_plan_start) = fixups
+        .split_once("cargo xtask release-please-fixup-plan")
+        .expect("release PR fixup planner invocation exists");
+    let (plan_args, _) = after_plan_start
+        .split_once("cargo xtask check-release-versions")
+        .expect("release version check follows fixup planning");
+    assert!(
+        plan_args.contains("--base \"origin/$base_branch\"") && plan_args.contains("--head HEAD"),
+        "the fixup planner itself must compare the release branch with its reported base branch"
     );
 }
 
