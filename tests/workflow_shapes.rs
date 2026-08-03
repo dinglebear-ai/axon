@@ -383,6 +383,31 @@ fn auto_tag_uses_validated_xtask_release_plan() {
 }
 
 #[test]
+fn release_please_fixups_validate_and_forward_pr_branch_refs() {
+    let workflow = include_str!("../.github/workflows/release-please.yml");
+    let fixups = workflow_job_block(workflow, "release-pr-fixups");
+
+    for (variable, field) in [
+        ("branch", "headBranchName"),
+        ("base_branch", "baseBranchName"),
+    ] {
+        let extraction =
+            format!(r#"{variable}="$(jq -er '.{field} | select(length > 0)' <<<"$pr")""#);
+        assert!(
+            fixups.contains(&extraction),
+            "release PR fixups must fail closed when {field} is missing or empty"
+        );
+    }
+
+    assert!(
+        fixups.contains("git checkout \"$branch\"")
+            && fixups.contains("--base \"origin/$base_branch\"")
+            && fixups.contains("--head HEAD"),
+        "fixup planning must compare the checked-out release branch with its reported base branch"
+    );
+}
+
+#[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let smoke = workflow_job_block(workflow, "smoke-binary");

@@ -1080,6 +1080,54 @@ fn release_please_fixup_plan_derives_changed_files_from_git_refs() {
 }
 
 #[test]
+fn release_please_fixup_plan_ignores_changes_added_only_to_an_advanced_base() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-palette"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "6.0.0",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.0"
+}"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/palette-tauri/CHANGELOG.md"),
+        "# Changelog\n\n## [6.0.0]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/palette-tauri/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release palette 6.0.0"]);
+
+    fixture.git(&["checkout", "main"]);
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.3.3]\n",
+    )
+    .unwrap();
+    fixture.git(&["add", "apps/android/CHANGELOG.md"]);
+    fixture.git(&["commit", "-m", "chore: advance main with android release"]);
+    fixture.git(&["checkout", "release-palette"]);
+
+    let items = release_please_fixup_plan(fixture.root(), "main", "HEAD").unwrap();
+
+    assert_eq!(
+        items,
+        vec![ReleasePleaseFixupItem {
+            id: "palette".to_owned(),
+            version: "6.0.0".to_owned(),
+        }],
+        "fixup planning must use the release branch diff from the merge base, not base-only changes"
+    );
+}
+
+#[test]
 fn release_please_fixup_plan_rejects_an_invalid_base_ref() {
     let fixture = Fixture::new();
     fixture.init_repo();
@@ -1087,8 +1135,8 @@ fn release_please_fixup_plan_rejects_an_invalid_base_ref() {
     let error = release_please_fixup_plan(fixture.root(), "missing-base", "HEAD")
         .expect_err("an invalid base ref must not produce an empty fixup plan");
 
-    assert!(error.to_string().contains("git diff failed"));
-    assert!(error.to_string().contains("missing-base..HEAD"));
+    assert!(error.to_string().contains("merge-base"));
+    assert!(error.to_string().contains("missing-base"));
 }
 
 #[test]

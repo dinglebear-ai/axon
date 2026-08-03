@@ -216,7 +216,8 @@ pub fn release_please_fixup_plan(
     head: &str,
 ) -> ReleaseResult<Vec<ReleasePleaseFixupItem>> {
     let manifest = load_manifest(root)?;
-    let changed_files = changed_paths_since_ref(root, base, head, &[".".to_owned()])?;
+    let compare_ref = merge_base(root, base, head)?;
+    let changed_files = changed_paths_since_ref(root, &compare_ref, head, &[".".to_owned()])?;
     release_please::fixup_items(root, &manifest.components, &changed_files)
 }
 
