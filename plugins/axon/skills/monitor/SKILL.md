@@ -8,7 +8,8 @@ description: Use Axon watch and monitor jobs to track recurring URL changes and 
 Axon has two related surfaces:
 
 - `axon watch` creates recurring URL change-detection jobs.
-- `axon monitor jobs` streams crawl, extract, embed, and ingest job lifecycle events.
+- `axon monitor jobs` streams unified source, extract, watch, map, research,
+  ask, query, retrieve, memory, graph, prune, provider-probe, and reset job events.
 
 Use this skill when the user wants repeated checks, change history, or job monitoring.
 
@@ -51,5 +52,5 @@ axon monitor jobs --watch --jsonl --interval-secs 5
 ## Guidance
 
 - Use `watch` for recurring URL change detection.
-- Use `monitor jobs` for queue visibility while async crawl/extract/embed/ingest jobs run.
+- Use `monitor jobs` for queue visibility while unified durable jobs run.
 - Do not document unsupported hosted webhook/email monitor flows unless Axon implements them.

@@ -7,10 +7,10 @@ Use this reference when adding or reviewing workflow skills.
 - Name the real user outcome in the first paragraph.
 - Define only the blocking onboarding questions.
 - Tell the agent what artifacts to gather with Axon, using current command
-  surfaces: `map` discovers URLs, `crawl` collects sites, `scrape` fetches
-  pages, `search` discovers and auto-indexes web results, `research`
-  synthesizes, `extract` produces structured fields, and `ingest` handles
-  supported source families.
+  surfaces: `map` discovers URLs, `source --scope site` captures/indexes sites,
+  `scrape` fetches one-page output, `search` discovers and auto-indexes web
+  results, `research` synthesizes, `extract` produces structured fields, and
+  `source` handles every durable source family.
 - Specify the final deliverable shape.
 - Include an evidence or citation expectation when claims come from websites.
 - Identify work that can run in parallel.

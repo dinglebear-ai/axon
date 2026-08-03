@@ -59,4 +59,7 @@ Failures come back as standard JSON-RPC 2.0 errors (via rmcp `ErrorData`), not a
 | `-32602` | `invalid_params` | Bad/unknown action, missing field, wrong type, failed URL validation | Fix the payload. Don't retry the same request. |
 | `-32603` | `internal_error` | Service down, timeout, unexpected crash | Run `{ "action": "doctor" }`. Retry may help. |
 
-HTTP-only actions (`debug`, `dedupe`, `migrate`, `watch`, `setup`) sent over MCP are rejected with a message pointing at the HTTP API.
+The generated MCP schema is authoritative for accepted actions and grouped
+subactions. Removed actions such as `dedupe`, `crawl`, `embed`, and `ingest`
+fail strict request parsing; do not infer an HTTP compatibility route from that
+error.

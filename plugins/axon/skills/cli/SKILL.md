@@ -1,6 +1,6 @@
 ---
 name: cli
-description: Route web search, scrape, crawl, extract, ingest, RAG, and watch tasks through the local Axon CLI.
+description: Route web search, source capture/indexing, scrape, extract, RAG, and watch tasks through the local Axon CLI.
 ---
 
 # Axon CLI
@@ -24,9 +24,9 @@ Use `./scripts/axon` only inside the Axon source checkout when you specifically 
 | Synthesize current research | `research` | Need search, scrape, and cited synthesis in one pass. |
 | Read a known page | `scrape` | One or more URLs should become markdown/output files. |
 | Discover URLs | `map` | Known site, unknown page. |
-| Capture a site section | `crawl` | Many pages under a domain or path. |
+| Capture/index a site section | `source URL --scope site` | Many pages under a domain or path. |
 | Structured extraction | `extract` | Need JSON-like records or fields from URLs. |
-| Index durable sources | `ingest` or `embed` | Need content in Qdrant for `query` or `ask`. |
+| Index durable sources | `source` | Need content in Qdrant for `query` or `ask`. |
 | Ask indexed knowledge | `ask` | Answer from the existing Axon knowledge base. |
 | Watch for changes | `watch` | Recurring URL change detection. |
 
@@ -34,9 +34,9 @@ Use `./scripts/axon` only inside the Axon source checkout when you specifically 
 
 1. Search if there is no exact URL.
 2. Scrape or map once you know the target site.
-3. Crawl only when the user needs many pages.
+3. Use `source --scope site` only when the user needs many pages.
 4. Extract when the output should be structured.
-5. Ingest or embed when the content should become durable RAG context.
+5. Use `source` when content should become durable RAG context.
 6. Ask/query after content is indexed.
 
 ## Examples
