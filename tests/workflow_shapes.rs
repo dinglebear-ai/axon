@@ -1,4 +1,13 @@
 use std::collections::HashMap;
+#[cfg(unix)]
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::path::Path;
+use std::process::Command;
+#[cfg(unix)]
+use std::process::Output;
 
 #[test]
 fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_checkout() {
@@ -328,6 +337,119 @@ fn lefthook_pre_push_uses_path_aware_router() {
             "{always_on_heavy_command} must be selected by cargo xtask pre-push, not always run by lefthook"
         );
     }
+}
+
+#[test]
+fn lefthook_cargo_descendants_clear_repository_local_git_environment() {
+    let commands = lefthook_command_runs(include_str!("../lefthook.yml"));
+    let sanitizer = "scripts/clear-git-local-env.sh";
+    let mut cargo_descendant_count = 0;
+
+    for (stage, name, run) in &commands {
+        if run.contains("cargo ") || run.contains("target/debug/xtask") {
+            cargo_descendant_count += 1;
+            assert!(
+                run.contains(sanitizer),
+                "{stage}.{name} can launch Cargo or xtask descendants and must clear Git's \n\
+                 repository-local hook environment first; run block: {run}"
+            );
+        }
+
+        if run.contains("--staged") {
+            assert!(
+                !run.contains(sanitizer),
+                "{stage}.{name} reads the hook's staged index and must retain Git's local \n\
+                 environment; run block: {run}"
+            );
+        }
+    }
+
+    assert_eq!(
+        cargo_descendant_count, 4,
+        "the hook contract should cover pre-commit xtask/rustfmt and both pre-push xtask trees"
+    );
+    for staged_name in ["compose-ports", "monolith"] {
+        assert!(
+            commands
+                .iter()
+                .any(|(_, name, run)| name == staged_name && run.contains("--staged")),
+            "expected staged-index hook command {staged_name}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn git_environment_sanitizer_protects_linked_worktree_common_config() {
+    let temp = tempfile::tempdir().expect("create temporary Git fixture");
+    let primary = temp.path().join("primary");
+    let linked = temp.path().join("linked");
+    let foreign = temp.path().join("foreign");
+    let empty_hooks = temp.path().join("empty-hooks");
+
+    fs::create_dir(&primary).expect("create primary worktree directory");
+    fs::create_dir(&empty_hooks).expect("create empty Git hooks directory");
+    assert_git_success(&primary, &["init", "-q"]);
+    let empty_hooks_arg = empty_hooks.to_string_lossy().into_owned();
+    assert_git_success(
+        &primary,
+        &["config", "core.hooksPath", empty_hooks_arg.as_str()],
+    );
+    assert_git_success(&primary, &["config", "commit.gpgsign", "false"]);
+    assert_git_success(&primary, &["config", "user.name", "Axon Hook Test"]);
+    assert_git_success(
+        &primary,
+        &["config", "user.email", "axon-hook-test@example.invalid"],
+    );
+    assert_git_success(&primary, &["commit", "--allow-empty", "-qm", "initial"]);
+
+    let linked_arg = linked.to_string_lossy().into_owned();
+    assert_git_success(
+        &primary,
+        &["worktree", "add", "-qb", "linked", linked_arg.as_str()],
+    );
+
+    let git_dir = git_stdout(&linked, &["rev-parse", "--absolute-git-dir"]);
+    let git_common_dir = git_stdout(&linked, &["rev-parse", "--git-common-dir"]);
+    let git_work_tree = git_stdout(&linked, &["rev-parse", "--show-toplevel"]);
+    let git_dir = Path::new(git_dir.trim());
+    let common_config = Path::new(git_common_dir.trim()).join("config");
+    let before = fs::read(&common_config).expect("read common config before foreign git init");
+
+    let sanitizer = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/clear-git-local-env.sh");
+    let mode = fs::metadata(&sanitizer)
+        .expect("Git environment sanitizer exists")
+        .permissions()
+        .mode();
+    assert_ne!(
+        mode & 0o111,
+        0,
+        "Git environment sanitizer must remain executable"
+    );
+
+    let status = Command::new(&sanitizer)
+        .args(["git", "init", "-q"])
+        .arg(&foreign)
+        .current_dir(&linked)
+        .env("GIT_DIR", git_dir)
+        .env("GIT_WORK_TREE", git_work_tree.trim())
+        .env("GIT_INDEX_FILE", git_dir.join("index"))
+        .status()
+        .expect("run foreign git init through sanitizer");
+    assert!(
+        status.success(),
+        "sanitized foreign git init failed: {status}"
+    );
+
+    assert!(
+        foreign.join(".git").is_dir(),
+        "sanitized git init must initialize the requested foreign repository"
+    );
+    assert_eq!(
+        fs::read(&common_config).expect("read common config after foreign git init"),
+        before,
+        "foreign git init inherited linked-worktree hook variables and mutated common config"
+    );
 }
 
 #[test]
@@ -958,6 +1080,96 @@ fn ci_workflow_runs_changed_path_classifier_from_trusted_base_when_available() {
     );
 }
 
+fn lefthook_command_runs(yaml: &str) -> Vec<(String, String, String)> {
+    let lines = yaml.lines().collect::<Vec<_>>();
+    let mut commands = Vec::new();
+    let mut stage = String::new();
+    let mut index = 0;
+
+    while index < lines.len() {
+        let line = lines[index];
+        if !line.starts_with(' ') && line.ends_with(':') {
+            stage = line.trim_end_matches(':').to_owned();
+            index += 1;
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if line.starts_with("    ")
+            && !line.starts_with("      ")
+            && trimmed.ends_with(':')
+            && trimmed != "commands:"
+        {
+            let name = trimmed.trim_end_matches(':').to_owned();
+            let mut run = String::new();
+            index += 1;
+            while index < lines.len() {
+                let candidate = lines[index];
+                let candidate_trimmed = candidate.trim();
+                if !candidate.starts_with(' ')
+                    || (candidate.starts_with("    ")
+                        && !candidate.starts_with("      ")
+                        && candidate_trimmed.ends_with(':'))
+                {
+                    break;
+                }
+
+                if let Some(inline) = candidate.strip_prefix("      run:") {
+                    let inline = inline.trim();
+                    if !inline.is_empty() && inline != ">" && inline != "|" {
+                        run.push_str(inline);
+                    }
+                    index += 1;
+                    while index < lines.len() && lines[index].starts_with("        ") {
+                        if !run.is_empty() {
+                            run.push(' ');
+                        }
+                        run.push_str(lines[index].trim());
+                        index += 1;
+                    }
+                    continue;
+                }
+                index += 1;
+            }
+            commands.push((stage.clone(), name, run));
+            continue;
+        }
+        index += 1;
+    }
+
+    commands
+}
+
+#[cfg(unix)]
+fn git_output(cwd: &Path, args: &[&str]) -> Output {
+    command_without_git_local_env("git")
+        .current_dir(cwd)
+        .args(args)
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run git {args:?}: {error}"))
+}
+
+#[cfg(unix)]
+fn assert_git_success(cwd: &Path, args: &[&str]) {
+    let output = git_output(cwd, args);
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[cfg(unix)]
+fn git_stdout(cwd: &Path, args: &[&str]) -> String {
+    let output = git_output(cwd, args);
+    assert!(
+        output.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("Git output is UTF-8")
+}
+
 fn workflow_job_block<'a>(workflow: &'a str, job_name: &str) -> &'a str {
     let marker = format!("\n  {job_name}:\n");
     let start = workflow
@@ -1003,8 +1215,8 @@ fn workflow_step_script(job: &str, step_name: &str, next_step_name: &str) -> Str
         .join("\n")
 }
 
-fn command_without_git_local_env(program: &str) -> std::process::Command {
-    let local_env = std::process::Command::new("git")
+fn command_without_git_local_env(program: &str) -> Command {
+    let local_env = Command::new("git")
         .args(["rev-parse", "--local-env-vars"])
         .output()
         .expect("list repository-local Git environment variables");
@@ -1014,7 +1226,7 @@ fn command_without_git_local_env(program: &str) -> std::process::Command {
         String::from_utf8_lossy(&local_env.stderr)
     );
 
-    let mut command = std::process::Command::new(program);
+    let mut command = Command::new(program);
     for variable in String::from_utf8_lossy(&local_env.stdout)
         .lines()
         .filter(|variable| !variable.is_empty())

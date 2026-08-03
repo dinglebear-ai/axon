@@ -305,6 +305,8 @@ fn workflow_dispatch_and_schedule_enable_everything() {
 #[test]
 fn changed_path_router_edits_force_full_ci() {
     for file in [
+        "lefthook.yml",
+        "scripts/clear-git-local-env.sh",
         "scripts/ci/changed_paths.py",
         "tests/ci_changed_paths.rs",
         "tests/workflow_shapes.rs",

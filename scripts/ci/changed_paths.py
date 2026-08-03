@@ -97,6 +97,8 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         lambda p: starts(p, ".github/workflows/")
         or p
         in {
+            "lefthook.yml",
+            "scripts/clear-git-local-env.sh",
             "scripts/ci/changed_paths.py",
             "tests/workflow_shapes.rs",
             "tests/ci_changed_paths.rs",
