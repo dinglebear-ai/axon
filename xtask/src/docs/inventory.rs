@@ -10,21 +10,7 @@ use anyhow::{Result, bail};
 
 const CONTRACT_PATH: &str = "docs/README.md";
 const SECTION_HEADING: &str = "## Required Living Documentation";
-const FORBIDDEN_STALE_ROOTS: &[&str] = &["docs/pipeline-unification"];
-
 pub fn check(root: &Path) -> Result<()> {
-    let stale_roots = FORBIDDEN_STALE_ROOTS
-        .iter()
-        .copied()
-        .filter(|path| root.join(path).exists())
-        .collect::<Vec<_>>();
-    if !stale_roots.is_empty() {
-        bail!(
-            "docs inventory: obsolete living-doc root(s) must be removed:\n  {}",
-            stale_roots.join("\n  ")
-        );
-    }
-
     let contract_path = root.join(CONTRACT_PATH);
     let content = std::fs::read_to_string(&contract_path)
         .map_err(|err| anyhow::anyhow!("docs inventory: failed to read {CONTRACT_PATH}: {err}"))?;

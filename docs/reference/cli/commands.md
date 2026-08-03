@@ -19,11 +19,11 @@ See the family contract for declared output paths.
 | `crates/axon-core/src/config/cli/config_args.rs` | `sha256:4dd1a47605f798d0504820d3118d205cc335d048febdd97e5656bf7f7e38caa7` |
 | `crates/axon-core/src/config/cli/resources_args.rs` | `sha256:220dffa6f6fd4159b35794c8e1950cfdab0738da9ca5f7b6760b4638347705c2` |
 | `crates/axon-core/src/config/cli/setup_args.rs` | `sha256:a6e7a314ad7ff6bbb9acbad9bb68cf400fc103d18b0e0971c98bfb15adfcd1c7` |
-| `docs/reference/cli/overview.md` | `sha256:2422303e1787d7852f843b982baeff2bd73e210ee7fe4fa309af72e7e851d2bf` |
+| `docs/reference/cli/overview.md` | `sha256:7ee573f4a96aef5b451bf62d78b0cf2ebc01a134b7a2ca986ddf3aa4a3852cc7` |
 | `xtask/src/schemas/cli_registry.rs` | `sha256:98527d3fcb53e4d79f2cb0387d04e48966aca3fb48a50e6e323b1f59685af06b` |
 | `xtask/src/schemas/cli_registry/part1.rs` | `sha256:8e9a1cb2fe10b7989d346bfc7b053855aedd20a54da92cbdab0cb28532c51aa0` |
 | `xtask/src/schemas/cli_registry/part2.rs` | `sha256:95a0e61d6e097be6a01c4f27dff6fa18e7f076d723ac2562d53db6a6437bcc4f` |
-| `xtask/src/schemas/cli_registry/part3.rs` | `sha256:9fe3b32d6ca7e8bf75b66a37c87c9da7f874e50617d79e70f69a8d6ea690b088` |
+| `xtask/src/schemas/cli_registry/part3.rs` | `sha256:f91c1c412b647987b3a10e00a98fb1f6e89e26ee40d6e1c41b5efb5542860042` |
 | `xtask/src/schemas/cli_registry/part4.rs` | `sha256:c58a8a803ac40c73a7d76e3840bbf9e0b1ff516cc522e534afdcde2f808759f7` |
 
 ## Root Shape
@@ -150,7 +150,7 @@ Sourced from `docs/reference/cli/commands.json` (109 commands). `Group` is the t
 | `setup config rewrite` | `setup` | Preview or apply clean-break config key rewrites | yes | `admin` | no |
 | `setup init` | `setup` | Initialize local Axon config, env, and compose assets | yes | `admin` | no |
 | `setup install` | `setup` | Copy the axon binary into ~/.local/bin for terminal use | yes | `admin` | no |
-| `setup plugin-hook` | `setup` | Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart | yes | `admin` | no |
+| `setup plugin-hook` | `setup` | Explicit hook-safe readiness probe for Claude Code clients | yes | `admin` | no |
 | `setup targets` | `setup` | List SSH host aliases discovered from ~/.ssh/config | no | `admin` | no |
 | `smoke` | `smoke` | Run source/ask smoke checks against the running stack | yes | `admin` | no |
 | `source` | `source` | Index a source through the unified pipeline | yes | `write` | yes |

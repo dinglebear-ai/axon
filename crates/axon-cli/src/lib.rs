@@ -205,9 +205,9 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     // CRITICAL ORDERING: the `setup plugin-hook` invocation must apply the
     // Claude Code plugin-option → AXON_* env-var mapping BEFORE parse_args()
     // builds the Config (parse_args reads the AXON_* env vars). This is the
-    // Rust replacement for the bash `plugin-setup.sh` SessionStart hook, which
-    // used to `export` these env vars before exec'ing `axon`. Detect the
-    // invocation from raw argv (the Config doesn't exist yet) and apply the
+    // Rust replacement for the env mapping formerly owned by the bash
+    // `plugin-setup.sh` SessionStart hook. Detect the explicit invocation from
+    // raw argv (the Config doesn't exist yet) and apply the
     // mapping early; doing it in the command handler would be too late.
     if is_plugin_hook_invocation(std::env::args_os()) {
         commands::apply_plugin_options();

@@ -1,129 +1,107 @@
 ---
 title: "Sessions Ingest"
 created: 2026-02-23
-updated: 2026-07-30
+updated: 2026-08-03
 ---
 
 # Sessions Ingest
-Last Modified: 2026-07-15
 
-Version: 1.0.0
-Last Updated: 01:26:53 | 02/25/2026 EST
+`axon sessions` indexes local Claude, Codex, and Gemini conversation exports
+through the same `SourceRequest` pipeline used by every other source. The
+session adapter discovers supported export files, decodes conversational turns,
+redacts secret-shaped tokens, prepares transcript documents, and publishes them
+through the shared embedding, ledger, vector, and graph stages.
 
-> CLI reference (flags, subcommands, examples): [`docs/reference/actions/sessions.md`](../../reference/actions/sessions.md)
+For the exact current flags, see
+[`docs/reference/actions/sessions.md`](../../reference/actions/sessions.md).
 
-Ingests exported AI conversation files (Claude, Codex, Gemini) into Qdrant. Session ingest scans local history paths, redacts secret-like tokens, normalizes each session chunk through the source-doc planner, and embeds planner-created `PreparedDoc` values through the shared TEI/Qdrant pipeline.
+## Supported local roots
 
-## Supported Formats
+| Provider | Default roots | Format |
+|---|---|---|
+| Claude | `~/.claude/projects/` | JSONL |
+| Codex | `~/.codex/sessions/` | JSONL |
+| Gemini | `~/.gemini/history/`, `~/.gemini/tmp/` | JSON |
 
-| Provider | Scan path | File format |
-|----------|-----------|-------------|
-| **Claude** | `~/.claude/projects/` | `.jsonl` per conversation |
-| **Codex** | `~/.codex/sessions/` | `.jsonl` per session |
-| **Gemini** | `~/.gemini/history/`, `~/.gemini/tmp/` | `.json` per conversation |
-
-Each parser (`claude.rs`, `codex.rs`, `gemini.rs`) extracts message pairs (human + assistant turns) into flat text chunks, stripping internal metadata to keep only the conversational content.
-
-## What Gets Indexed
-
-- All human and assistant message turns
-- Session metadata embedded as Qdrant point payload: source path, provider, project name
-- Each changed session file produces one or more Qdrant points
-
-## Size and Safety Limits
-
-Each session file is bounded by `AXON_SESSION_INGEST_MAX_BYTES` (default: 20 MiB). Files above that limit fail closed. Secret-like tokens such as `sk-*`, `ghp_*`, `github_pat_*`, `atk_*`, and long mixed alphanumeric tokens are redacted before embedding.
-
-## How It Works
-
-1. Discovers all session files under each provider's scan path
-2. Dispatches to the matching parser based on path/provider
-3. Parser extracts message turns and formats each session document as redacted plain text
-4. Session text is normalized with the shared source-doc helpers, then embedded via `embed_prepared_docs()` → TEI → Qdrant
-
-Sessions defaults to **async queued execution** when `--wait false` (default): it enqueues an ingest job and returns a job ID.
-
-Use `--wait true` for synchronous execution.
-
-## Auto-Capture vs SessionStart Recall
-
-The Claude plugin SessionStart hook is recall-only: it calls `axon memory context` for the current git project and must stay fast and best-effort. It does not scan or ingest session files.
-
-Automatic capture must use the unified source/watch pipeline. The old
-session-specific watcher, status/smoke helpers, and setup service are not
-supported surfaces.
-
-Use `axon sessions` for a one-shot local ingest, or submit an explicit session
-selector through the source pipeline when a caller needs the transport-neutral
-path:
+With no provider flag, `axon sessions` scans every existing root. Use
+`--claude`, `--codex`, or `--gemini` to select providers; flags may be combined.
+`--project <name>` applies the adapter's project filter.
 
 ```bash
+# Enqueue unified source jobs for every available provider root
+axon sessions
+
+# Index only Codex exports and wait for completion
 axon sessions --codex --wait true
-axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait true
+
+# Filter Claude and Codex exports to an Axon project match
+axon sessions --claude --codex --project axon --wait true
 ```
 
-A session selector has the form `session:<provider>:<path>`, where provider is
-`claude`, `codex`, or `gemini`, and path is a session export file or directory.
-The selector routes through the session source adapter, not through local-path
-indexing, so transcript parsing/redaction stays session-aware.
+Detached execution is the default. It returns unified source job information
+and ensures a worker process is available. Use `axon jobs list/get/cancel` for
+lifecycle control.
 
-## Remote and Server Submission
+## Explicit session selectors
 
-Server/API callers submit session work through `POST /v1/sources` with a
-`SourceRequest` whose `source` is a `session:<provider>:<path>` selector. The
-removed prepared-session endpoint must not be reintroduced as a compatibility
-route.
+Callers that already know a file or directory can use the transport-neutral
+selector shape `session:<provider>:<path>`:
 
-Prepared uploads are a pipeline-unification target for clients that cannot
-expose local paths to the server. That replacement belongs under the staged
-uploads contract plus `POST /v1/sources`; it is not the removed prepared-session
-endpoint.
+```bash
+axon 'session:codex:/home/me/.codex/sessions/2026/07/15/session.jsonl' --wait true
+axon 'session:gemini:/home/me/.gemini/history/' --wait true
+```
 
-## Git Enrichment (repo and branch fields)
+The explicit prefix selects the session adapter instead of generic local-file
+acquisition. A file selector indexes that export; a directory selector
+discovers supported exports beneath that directory.
 
-Session metadata includes project and repository context where it can be resolved. Claude project directories are decoded back to filesystem paths and the git `origin` remote is read once per project directory. The result is shared across all sessions within that project.
+## Indexed content and metadata
 
-### How enrichment works
+Claude and Codex JSONL and Gemini JSON are decoded into redacted transcript
+text. The published session document includes canonical source fields plus the
+session metadata allowlisted by the adapter. Session content is classified as
+internal and secret-shaped tokens are replaced before embedding.
 
-1. The session scanner decodes the Claude CLI project folder name (e.g. `-home-jmagar-workspace-axon-rust`) back to a filesystem path via `decodeProjectPath()`.
-2. `enrichWithGit(projectPath)` walks up the directory tree looking for a `.git` directory.
-3. If a git root is found, `git remote get-url origin` is read and normalized to a GitHub slug when possible.
+Do not rely on legacy `project`, `project_path`, `gh_repo`, or direct-Qdrant
+payload fields. Inspect the generated payload/schema references for the current
+published contract.
 
-### Fallback for hyphenated directory names
+## Server-side submission and uploads
 
-Because the Claude CLI encodes path separators and literal hyphens identically (both become `-`), a single lossless decode is not always possible. When the naively decoded path does not exist on disk, `enrichWithGit` iterates over candidate paths generated by `decodedProjectPathCandidates()` (up to 16 candidates) and uses the first one that exists. This handles projects in directories with real hyphens in their names.
+REST or MCP callers may submit a `SourceRequest` with an explicit session
+selector only when the Axon server can read that path. Remote clients stage an
+export through the live uploads surface and then submit the resulting
+server-owned source reference. See
+[`uploads`](../../reference/actions/uploads.md) and
+[`source`](../../reference/actions/source.md). There is no separate prepared-
+session endpoint or session-specific queue.
 
-### Field shapes
+## Implementation ownership
 
-| Field | Type | Value |
-|-------|------|-------|
-| `project` | `string` | Project/display name derived from the session path |
-| `project_path` | `string \| undefined` | Decoded local project path when resolvable |
-| `gh_repo` | `string \| undefined` | `owner/repo` string parsed from the `origin` remote URL; absent if no remote or parse fails |
+- CLI selection and enqueue: `crates/axon-cli/src/commands/sessions.rs`
+- selector parsing: `crates/axon-services/src/sessions_target.rs`
+- discovery, decoding, redaction, and metadata: `crates/axon-adapters/src/sessions.rs`
+- durable execution: the unified source runner in `axon-services`
 
-## Adding a New Session Format
-
-1. Create `crates/axon-ingest/src/sessions/<provider>.rs` (or add provider parser logic under `crates/axon-ingest/src/sessions.rs` if keeping a single module)
-2. Implement `ingest_<provider>_sessions(cfg, state, multi)` following the pattern in `claude.rs`
-3. Register it in sessions dispatch (`crates/axon-ingest/src/sessions.rs`) with a `cfg.sessions_<provider>` flag check
-4. Add the `--<provider>` flag (e.g. `--claude`, `--codex`, `--gemini`) to `SessionsArgs` in `crates/axon-core/src/config/cli.rs` and wire it through `crates/axon-core/src/config/parse/build_config/`
-5. Update service/API schema surfaces and source-adapter docs when the format
-   is exposed beyond CLI.
-6. Add a unit test with a minimal sample file in `#[cfg(test)]`
+To add a provider, extend the adapter/provider model and its sidecar tests,
+then update the CLI, source capability registry, and generated transport docs.
+Do not create a provider-specific job table or embedding path.
 
 ## Troubleshooting
 
-**No files processed / `0 chunks indexed`**
+**No selected session roots exist**
 
-Session export files don't exist at the scanned paths. Export conversations from the respective app:
-- Claude: Settings → Export Data
-- Codex: `codex export` or check `~/.codex/sessions/` after running sessions
-- Gemini: Check `~/.gemini/history/` after using Gemini CLI
+None of the selected default directories exists on the Axon host. Select a
+provider with an installed history root or use an explicit session selector.
 
-**Parse errors on a `.jsonl` / `.json` file**
+**A transcript is rejected**
 
-The export schema may have changed. Open the file and verify the structure matches what the parser expects, or check `crates/axon-ingest/src/sessions/<provider>.rs` for the expected fields.
+Confirm the provider and extension match: Claude/Codex use `.jsonl`; Gemini
+uses `.json`. The adapter also rejects paths that escape the validated session
+root.
 
-**`gh_repo` missing**
+**A detached job does not finish**
 
-The decoded project directory either does not exist on disk, is not inside a git repository, or has no `origin` remote configured. Run `git remote -v` in the project directory to verify the remote is set up correctly.
+Inspect `axon jobs get <job_id>` and its events. Session jobs use the same
+in-process worker runtime and provider dependencies as other source jobs.

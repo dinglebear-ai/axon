@@ -20,7 +20,7 @@ See the family contract for declared output paths.
 | `crates/axon-vectors/src/point.rs` | `sha256:cf7f5d7bc3c21568cda2b7c32b861bc75db50aaa37cdbd3601ecfc7fdc91bcdb` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/reference/sources/chunking.md` | `sha256:ecb4625aae55ad9004f684390e86e027f9e86f8fc59415e2041649b8ce812231` |
-| `docs/reference/sources/metadata-payload.md` | `sha256:7c7f6d65ead427b3c584b3ebf5c343ca1e60f3dd3def9b72b85c887116886f17` |
+| `docs/reference/sources/metadata-payload.md` | `sha256:eb2fc44bfad48bed2ba4488f9e9626bf12423a5dd04f9687293825dca326a69d` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54` |
 
 ## Root Shape

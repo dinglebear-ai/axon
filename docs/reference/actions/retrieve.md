@@ -34,7 +34,7 @@ axon retrieve <url> [FLAGS]
 
 | Argument | Description |
 |----------|-------------|
-| `<url>` | URL (or URL-like target) used for payload `url` lookup. |
+| `<url>` | URL (or URL-like target) matched against canonical item/source URI fields. |
 
 ## Required Environment Variables
 

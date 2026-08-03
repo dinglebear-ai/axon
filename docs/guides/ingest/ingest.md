@@ -23,7 +23,7 @@ break.
 
 | Doc | Scope |
 |-----|-------|
-| [`docs/guides/ingest/ingest.md`](ingest.md) | Shared ingest job schema, dependencies, and environment variables. |
+| [`docs/guides/ingest/ingest.md`](ingest.md) | Shared source-job, dependency, and configuration model. |
 | [`docs/guides/ingest/github.md`](github.md) | GitHub repository ingestion. |
 | [`docs/guides/ingest/gitlab.md`](gitlab.md) | GitLab project ingestion. |
 | Gitea/Forgejo, generic Git, RSS/Atom/JSON feeds | See `docs/reference/actions/sources.md` for target forms and shared flags. |
@@ -34,27 +34,19 @@ break.
 Command-only operational notes live in `docs/reference/actions/*.md`; do not
 add one-sentence `docs/guides/ingest/` stubs for non-source commands.
 
-## Storage Schema
+## Durable state
 
-Source jobs are persisted in the unified SQLite jobs table. Source-family
-metadata is stored in the source ledger tables created by migrations under
-`crates/axon-jobs/src/migrations/` and used through the SQLite job runtime.
+Source operations are persisted in the unified SQLite `jobs` model with typed
+fields such as `kind`, `intent`, `status`, `phase`, `request_json`, and
+`error_json`, plus attempt, stage, event, heartbeat, artifact, reservation, and
+configuration-snapshot records. See
+[`docs/reference/job-lifecycle.md`](../../reference/job-lifecycle.md) and the
+generated [database schema](../../reference/runtime/database-schema.md).
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | `TEXT` | Job identifier |
-| `source_type` | `TEXT` | One of `github`, `gitlab`, `gitea`, `git`, `reddit`, `youtube`, `rss`, `sessions` |
-| `target` | `TEXT` | The original target string (slug, URL, handle, etc.) |
-| `status` | `TEXT` | `pending`, `running`, `completed`, `failed`, or `canceled` |
-| `config_json` | `TEXT` | Serialized job configuration (flags at submission time) |
-| `result_json` | `TEXT` | Serialized result (chunk counts, errors, etc.) |
-| `error_text` | `TEXT` | Human-readable error message on failure |
-| `created_at` | `INTEGER` | Milliseconds since epoch when the job was enqueued |
-| `updated_at` | `INTEGER` | Last status update / heartbeat |
-| `started_at` | `INTEGER` | When a worker claimed the job |
-| `finished_at` | `INTEGER` | When the job reached a terminal state |
-
-Indexes on status/source fields speed up worker claim and list queries.
+Source identity and publication state do not belong to `axon-jobs`. The
+`axon-ledger` migrations own sources, generations, manifests, items, document
+status, publication state, leases, and cleanup debt. One job id crosses the
+source runner from acquisition through publication and cleanup.
 
 ## External Dependencies
 

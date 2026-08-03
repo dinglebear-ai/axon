@@ -32,14 +32,6 @@ fn parses_flat_and_nested_paths_and_skips_ellipsis() {
 }
 
 #[test]
-fn check_rejects_obsolete_pipeline_contract_root() {
-    let dir = tempfile::tempdir().unwrap();
-    fs::create_dir_all(dir.path().join("docs/pipeline-unification")).unwrap();
-    let err = check(dir.path()).unwrap_err();
-    assert!(err.to_string().contains("docs/pipeline-unification"));
-}
-
-#[test]
 fn check_reports_every_missing_file() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("docs")).unwrap();
@@ -59,5 +51,11 @@ fn check_passes_when_all_files_exist() {
     fs::create_dir_all(dir.path().join("docs/reference/cli")).unwrap();
     fs::write(dir.path().join("docs/reference/cli/commands.md"), "x").unwrap();
     fs::write(dir.path().join("docs/reference/cli/overview.md"), "x").unwrap();
+    fs::create_dir_all(dir.path().join("docs/pipeline-unification")).unwrap();
+    fs::write(
+        dir.path().join("docs/pipeline-unification/historical.md"),
+        "historical",
+    )
+    .unwrap();
     check(dir.path()).unwrap();
 }

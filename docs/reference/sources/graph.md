@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-graph/src/schema_registry.rs` | `sha256:2cea3513107e46e9f801035a71596b4154c02e17b5dbda21b30290585c1563e5` |
-| `docs/reference/sources/source-graph.md` | `sha256:ff699e9f5cb6a3f2cf54a868f1448b2241e33d80444f44a8c1adc5faaba3134e` |
+| `docs/reference/sources/source-graph.md` | `sha256:efb63acca797762f69a603e078815e457f30075dc4cdaa4111c34b3156493215` |
 
 ## Root Shape
 

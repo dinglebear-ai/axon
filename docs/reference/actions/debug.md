@@ -31,7 +31,7 @@ axon debug [context text ...] [FLAGS]
 
 | Variable | Description |
 |----------|-------------|
-| `AXON_LLM_BACKEND` | Completion backend. Defaults to `gemini-headless`; set `openai-compat` for OpenAI-compatible chat completion endpoints. |
+| `AXON_LLM_BACKEND` | Completion backend. Defaults to `gemini-headless`; also supports `openai-compat` and `codex-app-server`. |
 | `AXON_HEADLESS_GEMINI_CMD` | Optional Gemini CLI command. Defaults to `gemini`. |
 | `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` / `AXON_HEADLESS_GEMINI_MODEL` | Optional Gemini synthesis model override; the unprefixed form is a legacy alias. |
 | `AXON_OPENAI_BASE_URL` / `AXON_SYNTHESIS_OPENAI_MODEL` | OpenAI-compatible endpoint/model when `AXON_LLM_BACKEND=openai-compat`. |

@@ -12,7 +12,7 @@ Required tools and versions before developing or deploying.
 
 | Tool | Version | Install | Purpose |
 |------|---------|---------|---------|
-| Rust | 1.94+ | [rustup.rs](https://rustup.rs/) | Compiler (pinned via `rust-toolchain.toml`) |
+| Rust | 1.97.1 | [rustup.rs](https://rustup.rs/) | Compiler (pinned via `rust-toolchain.toml`) |
 | Docker | 24+ | [docs.docker.com](https://docs.docker.com/get-docker/) | Infrastructure services |
 | Docker Compose | v2+ | Bundled with Docker | Service orchestration |
 | just | latest | `cargo install just` | Task runner |
@@ -24,8 +24,8 @@ Required tools and versions before developing or deploying.
 ### Verify
 
 ```bash
-rustc --version          # rustc 1.94.x
-cargo --version          # cargo 1.94.x
+rustc --version          # rustc 1.97.1
+cargo --version          # cargo 1.97.1
 docker --version         # Docker 24+
 docker compose version   # Docker Compose v2+
 just --version           # just x.y.z

@@ -93,22 +93,6 @@ offscreen document for the clipboard write, so no side panel or popup has to
 open. Both actions flash the extension badge and show a Chrome notification.
 Ask opens the side panel because the response needs a visible reading surface.
 
-## Agent OS regression
-
-Run the end-to-end Windows/Chrome smoke test from the repo root:
-
-```bash
-scripts/test-chrome-extension-agent-os.sh
-```
-
-The harness packages the current extension, serves the zip plus local Axon config
-to `agent-os`, installs the latest Windows `axon.exe`, loads the extension into
-Chrome, configures it, runs the installed Scrape/Crawl handlers, then verifies
-clipboard markdown and `axon status`/`crawl list` output. The native Chrome
-context menu itself is not clicked because Windows-MCP cannot currently select
-Chrome's native right-click menu reliably; the test invokes the exact extension
-background handlers that the context menu dispatches.
-
 ## Popup actions (toolbar)
 
 The popup chat still supports inline Axon commands and auto-scrape:

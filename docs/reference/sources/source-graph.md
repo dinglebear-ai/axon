@@ -6,8 +6,8 @@ The source graph records relationships between sources, documents, entities,
 and extracted facts. Edges are never "just true" — they are evidence-backed
 claims with authority and confidence.
 
-> Authoritative schema: [`graph.schema.json`](graph.schema.json). Contract
-> source: [`docs/reference/sources/source-graph.md`](source-graph.md).
+> Authoritative schema: [`graph.schema.json`](graph.schema.json). DTO source:
+> [`crates/axon-api/src/source/graph.rs`](../../../crates/axon-api/src/source/graph.rs).
 > Implementation: [`crates/axon-graph/src/`](../../../crates/axon-graph/src/)
 > (`SqliteGraphStore` is the live tested impl; Phase 7 landed).
 

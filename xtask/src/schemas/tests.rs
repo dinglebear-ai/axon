@@ -958,14 +958,10 @@ fn mcp_schema_is_registry_backed_and_validates_action_branches() {
             "removed action {removed:?} must not appear in the Action enum"
         );
     }
-    // Contract-only actions with no live DTO surface as `deferred_actions`,
-    // not fabricated schemas.
+    // Every contract action is live and typed; no fabricated or deferred
+    // request schema remains.
     let deferred = value["x-axon"]["deferred_actions"].as_array().unwrap();
-    assert!(
-        deferred
-            .iter()
-            .any(|entry| entry["action"] == "chat" || entry["action"] == "watches")
-    );
+    assert!(deferred.is_empty());
     // Every live action has an if/then discriminator branch.
     let branches = value["$defs"]["ActionDiscriminatorRules"]["oneOf"]
         .as_array()

@@ -76,9 +76,9 @@ axon sources --domain docs.rs --all --json
 
 ## Notes
 
-- `sources` uses Qdrant facet aggregation on `url`.
+- `sources` uses Qdrant facet aggregation on `item_canonical_uri`.
 - If facet results hit the configured limit, human output prints a truncation hint.
-- `--domain` uses exact `payload.domain` matching. `example.com` does not include `docs.example.com`.
+- `--domain` uses exact `web_domain` matching. `example.com` does not include `docs.example.com`.
 - `--domain` output is bounded by default via `--limit`; use `--all` only for explicit export.
 - REST/MCP domain-filtered sources use `next_cursor` pagination. CLI `--domain` starts at the first page; `--all` raises the one-page cap for explicit exports.
 - Domain-filtered REST/MCP calls reject numeric `offset`; pass the returned `next_cursor` as `cursor` instead.

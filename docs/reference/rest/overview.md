@@ -11,7 +11,7 @@ taxonomy.
 
 > The machine-readable source of truth is the live OpenAPI 3.1.0 spec at
 > [`apps/web/openapi/axon.json`](../../../apps/web/openapi/axon.json)
-> (`info.title: "Axon REST API"`, `version: 7.1.5`, 83 paths). The route-contract
+> (`info.title: "Axon REST API"`, `version: 7.2.7`, 83 paths). The route-contract
 > schema at [`openapi.json`](openapi.json) (`AxonOpenApiSchema`) is the
 > generator-checked shape contract.
 

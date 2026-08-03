@@ -24,7 +24,7 @@ canonical upstream reference is
 
 ### System prerequisites
 
-- Rust stable ≥ 1.86 (`rustup update stable`)
+- Rust 1.97.1, as pinned by `rust-toolchain.toml` (`rustup toolchain install 1.97.1`)
 - `clang` and `mold` for fast Linux builds: `apt install clang mold`
 - `mingw-w64` for Windows cross-compilation: `apt install mingw-w64`
 - `just` command runner (optional): `cargo install just`

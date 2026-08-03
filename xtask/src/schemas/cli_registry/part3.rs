@@ -47,7 +47,7 @@ fn commands_compose_setup() -> Vec<CliRegistryCommand> {
         // setup
         c(
             &["setup", "plugin-hook"],
-            "Hook-safe preflight/setup entrypoint for Claude Code plugin SessionStart",
+            "Explicit hook-safe readiness probe for Claude Code clients",
             None,
             true,
             false,

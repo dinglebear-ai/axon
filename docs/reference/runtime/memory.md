@@ -138,10 +138,10 @@ crate that is still design-stage; everything else described on this page
 active memories matching a query/project/repo/file seed, joins their bodies,
 and truncates to `token_budget` (estimated via whitespace-split word count,
 not a tokenizer) if the assembled context exceeds it — truncation is recorded
-in the result's `exclusions` list. This is what the CLI's `axon memory
-context` and the Claude Code SessionStart recall hook
-(`docs/reference/actions/memory.md` → "Claude Plugin SessionStart Recall")
-both call through the service layer.
+in the result's `exclusions` list. The CLI's `axon memory context` command
+calls through the service layer. The plugin registers no SessionStart hook;
+the optional standalone helper is documented under
+[`docs/reference/actions/memory.md`](../actions/memory.md#session-recall-helper).
 
 ## CLI/transport parity
 

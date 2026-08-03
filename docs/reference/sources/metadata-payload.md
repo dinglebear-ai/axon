@@ -8,8 +8,8 @@ surface for filtering, grouping, pruning, and citation — prose-only fields are
 not allowed for values clients need to filter on.
 
 > Authoritative schema:
-> [`vector-payload.schema.json`](vector-payload.schema.json). Contract source:
-> [`docs/reference/sources/metadata-payload.md`](metadata-payload.md).
+> [`vector-payload.schema.json`](vector-payload.schema.json). DTO source:
+> [`crates/axon-api/src/source/`](../../../crates/axon-api/src/source/).
 > Live enforcement: [`crates/axon-vectors/src/payload.rs`](../../../crates/axon-vectors/src/payload.rs)
 > (`VECTOR_REQUIRED_FIELDS`) and `payload_families.rs` (`VECTOR_SOURCE_FAMILIES`).
 > A payload missing any required field is rejected **before** it reaches Qdrant.

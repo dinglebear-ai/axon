@@ -1614,7 +1614,7 @@
         "path": "docs/development/adding-source-adapter.md"
       },
       {
-        "checksum": "sha256:1cf33f639bf1de7832d4f165e600c613736c62f004d5c8c987b064547e63b590",
+        "checksum": "sha256:112ca08ce9f5610c54a49362e2ceac20bd082b3c07d05cc3c83120c1c012845d",
         "kind": "markdown_contract",
         "path": "docs/development/adding-source.md"
       }

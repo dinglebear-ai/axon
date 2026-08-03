@@ -39,7 +39,6 @@ axon source https://github.com/owner/repo --scope repo --wait true
 axon source r/rust --scope subreddit --wait true
 axon source https://www.reddit.com/r/rust/comments/POST_ID/TITLE --scope thread --wait true
 axon source https://www.youtube.com/watch?v=VIDEO_ID --scope video --wait true
-axon source https://www.youtube.com/playlist?list=PLAYLIST_ID --scope playlist --wait true
 ```
 
 See [Source Pipeline](../../architecture/source-pipeline.md) and [Adapter Scopes](../sources/adapter-scopes.md).

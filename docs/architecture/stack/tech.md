@@ -10,7 +10,7 @@ updated: 2026-07-30
 
 | Component | Technology | Version | Purpose |
 |-----------|-----------|---------|---------|
-| Core binary | Rust | 1.94+ (edition 2024) | CLI, MCP server, workers, HTTP server |
+| Core binary | Rust | 1.97.1 (edition 2024) | CLI, MCP server, workers, HTTP server |
 | Web panel assets | TypeScript | Node 24+ | Embedded setup/config panel assets |
 | Scripts | Bash + Python | -- | Maintenance, testing, analysis |
 
@@ -23,7 +23,7 @@ updated: 2026-07-30
 | `spider` | 2.x | Web crawling engine (HTTP + Chrome rendering) |
 | `spider_agent` | 2.47+ | Tavily search integration |
 | `spider_transformations` | 2.x | Content transformation (markdown, readability) |
-| `rmcp` | 1.5+ | MCP server framework (stdio + streamable-http) |
+| `rmcp` | 3.1.0 (exact pin) | MCP server framework (stdio + streamable HTTP) |
 | `axum` | 0.8 | HTTP server for web panel, MCP, and first-party action routes |
 | `tokio` | 1.x | Async runtime (multi-threaded) |
 | `sqlx` | 0.8 | SQLite async driver |

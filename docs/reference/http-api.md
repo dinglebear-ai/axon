@@ -57,7 +57,9 @@ forwarding: values may include bearer tokens or cookies for the target origin.
 Axon rejects hop-by-hop and internal forwarding headers such as `Connection`,
 `Host`, `Content-Length`, `Forwarded`, and `X-Forwarded-*`.
 
-Domain filters are exact host matches against indexed `payload.domain` values. `example.com` does not include `docs.example.com` unless that exact host is requested.
+Domain filters are exact host matches against indexed `web_domain` values.
+`example.com` does not include `docs.example.com` unless that exact host is
+requested.
 
 Artifacts:
 

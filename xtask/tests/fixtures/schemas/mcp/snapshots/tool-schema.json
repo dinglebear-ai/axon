@@ -18,7 +18,9 @@
         "collections",
         "reset",
         "uploads",
+        "artifacts",
         "ask",
+        "chat",
         "evaluate",
         "suggest",
         "research",
@@ -431,6 +433,31 @@
           "if": {
             "properties": {
               "action": {
+                "const": "artifacts"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ArtifactsMcpRequest"
+              },
+              "subaction": {
+                "$ref": "#/$defs/ArtifactsSubaction"
+              }
+            },
+            "required": [
+              "subaction"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
                 "const": "ask"
               }
             },
@@ -447,6 +474,30 @@
             "properties": {
               "body": {
                 "$ref": "#/$defs/AskRequest"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "chat"
+              }
+            },
+            "required": [
+              "action"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "subaction"
+              ]
+            },
+            "properties": {
+              "body": {
+                "$ref": "#/$defs/ChatRequest"
               }
             }
           }
@@ -745,6 +796,94 @@
         }
       ],
       "type": "object"
+    },
+    "ArtifactsMcpRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cursor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "job_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "enum": [
+                "raw_content",
+                "normalized_content",
+                "manifest",
+                "report",
+                "screenshot",
+                "warc",
+                "provider_trace"
+              ],
+              "title": "ArtifactKind",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "enum": [
+            "path",
+            "inline",
+            "both",
+            "auto_inline",
+            null
+          ],
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subaction": {
+          "default": "list",
+          "enum": [
+            "list",
+            "get",
+            "content"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ArtifactsSubaction": {
+      "enum": [
+        "list",
+        "get",
+        "content"
+      ],
+      "type": "string"
     },
     "AskRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1087,6 +1226,46 @@
       "type": "object"
     },
     "CapabilitiesRequest_ResponseMode": {
+      "enum": [
+        "path",
+        "inline",
+        "both",
+        "auto_inline"
+      ],
+      "type": "string"
+    },
+    "ChatRequest": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`action=chat` — direct completion through the configured chat-purpose LLM.",
+      "properties": {
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "response_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChatRequest_ResponseMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ChatRequest",
+      "type": "object"
+    },
+    "ChatRequest_ResponseMode": {
       "enum": [
         "path",
         "inline",
@@ -4001,18 +4180,9 @@
   "x-axon": {
     "clean_break": true,
     "contract_version": "2026-06-30",
-    "deferred_actions": [
-      {
-        "action": "chat",
-        "reason": "present in docs/reference/mcp/tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      },
-      {
-        "action": "artifacts",
-        "reason": "present in docs/reference/mcp/tool-schema.md's target Action enum, absent from the live axon-mcp dispatcher (crates/axon-mcp/src/server.rs); no request DTO exists yet"
-      }
-    ],
+    "deferred_actions": [],
     "generated_by": "cargo xtask schemas mcp",
-    "live_action_count": 29,
+    "live_action_count": 31,
     "owner_crates": [
       "axon-mcp",
       "axon-api"

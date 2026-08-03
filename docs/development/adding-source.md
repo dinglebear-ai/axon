@@ -12,10 +12,8 @@ narrower "how do I write the `SourceAdapter` implementation" mechanics, see
 [`adding-source-adapter.md`](adding-source-adapter.md); this page is the
 onboarding checklist that sits above it.
 
-Canonical contract:
-`docs/development/adding-source.md` (this guide
-summarizes and links out to the per-area contracts it references — treat the
-contract doc as authoritative if the two ever diverge).
+This guide is the canonical onboarding checklist and links to the narrower
+contracts owned by each pipeline stage.
 
 ## Every source enters through one pipeline
 
@@ -46,11 +44,11 @@ you haven't left a row empty, but note it only checks *declared*, not
 | Router | Register adapter selection and scope defaults. | `docs/reference/sources/adapter-scopes.md` |
 | Adapter | Implement acquisition that emits `SourceDocument` only. | [`adding-source-adapter.md`](adding-source-adapter.md) |
 | Scopes | Declare supported scopes, default scope, map behavior, watch support, and option schema. | `docs/reference/sources/adapter-scopes.md` |
-| Ledger | Define item keys, manifest hash inputs, diff behavior, generation semantics, and cleanup debt. | `docs/reference/runtime/ledger.md`, [`docs/reference/runtime/ledger.md`](../reference/runtime/ledger.md) |
+| Ledger | Define item keys, manifest hash inputs, diff behavior, generation semantics, and cleanup debt. | [`docs/reference/runtime/ledger.md`](../reference/runtime/ledger.md) |
 | Parsing | Add a parser family or declare parse-free behavior. | `docs/reference/sources/parsing.md`, [`adding-parser.md`](adding-parser.md) |
-| Graph | Declare required and optional graph facts. | `docs/reference/sources/source-graph.md` |
+| Graph | Declare required and optional graph facts. | [`docs/reference/sources/source-graph.md`](../reference/sources/source-graph.md) |
 | Chunking | Select chunk profile and routing hints. | `docs/reference/sources/chunking.md` |
-| Metadata | Define shared and source-specific metadata fields. | `docs/reference/sources/metadata-payload.md` |
+| Metadata | Define shared and source-specific metadata fields. | [`docs/reference/sources/metadata-payload.md`](../reference/sources/metadata-payload.md) |
 | Auth/secrets | Define credential requirements, scopes, and redaction rules. | `docs/reference/runtime/auth.md`, `docs/reference/runtime/security.md` |
 | Observability | Emit standard phases, counts, heartbeats, warnings, and degradation. | `docs/reference/runtime/observability.md` |
 | Error handling | Define retryable, degraded, and terminal failure modes. | `docs/reference/api/errors.md` |

@@ -83,4 +83,4 @@ axon domains --domain https://docs.rs/std --json
 - If fast facet lookup fails, the command automatically falls back to detailed full-scroll mode.
 - Fast-mode output includes a tip for enabling detailed mode.
 - `--domain` uses a bounded Qdrant scroll with `limit=1`; it does not depend on the top-N domain facet cap.
-- `--domain` matches exact `payload.domain`. `example.com` does not include `docs.example.com`.
+- `--domain` matches exact `web_domain`. `example.com` does not include `docs.example.com`.

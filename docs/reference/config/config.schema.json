@@ -154,7 +154,7 @@
       "owner_crate": "axon-embedding",
       "removed": false,
       "replacement": null,
-      "restart_required": false,
+      "restart_required": true,
       "secret": false,
       "section": "providers",
       "type": "integer"

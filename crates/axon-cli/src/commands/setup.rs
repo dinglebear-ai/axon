@@ -319,8 +319,8 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     // covers any direct caller that bypasses the early path.
     apply_plugin_options();
 
-    // The SessionStart hook NEVER deploys — provisioning is the `/axon-deploy`
-    // slash command. The hook only probes whether the stack is already serving:
+    // This explicit readiness command never deploys; provisioning is the
+    // `/axon-deploy` slash command. It only probes whether the stack is serving:
     //   - /readyz up   → already deployed; exit silently (success)
     //   - /readyz down → advise running /axon-deploy; exit success (non-blocking)
     // It never runs preflight or `docker compose`.

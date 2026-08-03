@@ -1,10 +1,9 @@
 //! Claude Code plugin-option → `AXON_*` env-var mapping.
 //!
 //! This is the Rust port of the env-var mapping that used to live in the bash
-//! `plugin-setup.sh` SessionStart hook. It runs before `parse_args()` builds the
-//! `Config` (which reads the `AXON_*` env vars), preserving the old hook's
-//! pre-Config timing where the bash script `export`ed these before exec'ing
-//! `axon`.
+//! `plugin-setup.sh` SessionStart hook. For the explicit `setup plugin-hook`
+//! invocation it runs before `parse_args()` builds the `Config` (which reads
+//! the `AXON_*` env vars), preserving the old pre-Config mapping behavior.
 
 /// Mapping of `CLAUDE_PLUGIN_OPTION_*` env vars (set by Claude Code from the
 /// plugin's `userConfig`) to the `AXON_*` env vars the rest of the binary reads.

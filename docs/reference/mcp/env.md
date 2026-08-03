@@ -47,7 +47,8 @@ The MCP server reads existing Axon stack variables at startup:
 | `TEI_URL` | Embedding generation |
 | `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Model override for Gemini synthesis completions |
 | `AXON_HEADLESS_GEMINI_MODEL` | Legacy alias for `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` |
-| `AXON_LLM_BACKEND` | LLM backend selector: `gemini-headless` (default) or `openai-compat` |
+| `AXON_LLM_BACKEND` | LLM backend selector: `gemini-headless` (default), `openai-compat`, or `codex-app-server` |
+| `AXON_CODEX_CMD` | Trusted host-side override for the Codex CLI command used by `codex-app-server` |
 | `AXON_OPENAI_BASE_URL` | OpenAI-compatible `/v1` base URL when `AXON_LLM_BACKEND=openai-compat` |
 | `AXON_SYNTHESIS_OPENAI_MODEL` | OpenAI-compatible synthesis model name |
 | `AXON_OPENAI_MODEL` | Legacy alias for `AXON_SYNTHESIS_OPENAI_MODEL` |

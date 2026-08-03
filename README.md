@@ -9,10 +9,10 @@ Reddit subreddit, a YouTube transcript, or an AI session export — enters
 through one unified pipeline backed by SQLite, Qdrant, Hugging Face TEI, and
 Chrome/CDP.
 
-Axon runs as a **native binary under systemd**: an Incus system container is the
-preferred deployment, bare-metal systemd is a supported alternative. The
-infrastructure it depends on (Qdrant, TEI, Chrome) typically runs as containers
-or on external hosts; Axon reaches them by URL.
+Axon runs as a **native binary under systemd**. The standard topology runs the
+server on the host while an Incus infrastructure container supplies TEI and
+Chrome; Qdrant may be remote. A guest Axon service is supported only with a
+guest-exclusive SQLite database. Axon reaches every provider by URL.
 
 ## The unified source pipeline
 
@@ -40,26 +40,24 @@ stage order, ownership boundaries, transport projections, and execution modes.
 
 ## Deployment contract
 
-**Supported ways to run the axon binary:**
+**Maintained deployment topologies:**
 
-- **Incus system container (preferred).** `deploy/incus/bootstrap.sh` brings up
-  one Incus system container that runs axon native under a systemd unit
-  (`axon-native.service`) and Qdrant/TEI/Chrome as nested containers, with GPU
-  passthrough. See [`deploy/incus/README.md`](deploy/incus/README.md) for the
-  profile, storage, and GPU details.
-- **Bare-metal systemd (supported).** Install the binary, drop in
+- **Native systemd server.** Install the binary, drop in
   [`deploy/systemd/axon.service`](deploy/systemd/axon.service), enable it. See
   [`deploy/systemd/README.md`](deploy/systemd/README.md) for the walkthrough.
+- **Incus infrastructure container.** `deploy/incus/bootstrap.sh` provisions
+  TEI and Chrome in nested containers and installs (but normally disables) a
+  guest `axon-native.service`. Enable the guest server only with an
+  Incus-exclusive database. See [`deploy/incus/README.md`](deploy/incus/README.md).
 
-Both paths run `/usr/local/bin/axon serve`, which hosts the HTTP API (`/v1/*`),
+The active server runs `/usr/local/bin/axon serve`, which hosts the HTTP API (`/v1/*`),
 MCP-over-HTTP (`/mcp`), the web control panel, and the in-process worker runtime
 in one process on `127.0.0.1:8001` by default.
 
-**Not supported as an axon deployment path:** running the axon binary itself in
-a Docker container as the production deployment. (Container images are still
-published to GHCR for users who want them, and `docker-compose.prod.yaml`
-remains the canonical reference for infra image versions and ports — but the
-supported production deployments are the two above.)
+Release container images remain available for users who choose them, and
+`docker-compose.prod.yaml` is the canonical infrastructure image/port
+reference. The maintained deployment walkthroughs are native systemd and
+Incus.
 
 **Not supported at all:** Postgres, Redis, RabbitMQ, AMQP, external worker
 services, Neo4j graph retrieval, or multiple competing `.env`/`config.toml`
@@ -114,23 +112,18 @@ Controls: `AXON_INSTALL_DRY_RUN`, `AXON_INSTALL_PREFIX`, `AXON_VERSION`,
 claude plugin install <path-to-this-repo>
 ```
 
-The plugin ships no binary — install `axon` first. Its `SessionStart` hook runs
-`scripts/plugin-setup.sh`, which syncs `CLAUDE_PLUGIN_OPTION_*` settings into
-process env and delegates to `axon setup plugin-hook`. That subcommand is
-**probe-only and never deploys**: it checks `/readyz` and exits silently when the
-stack is up, or prints a one-line `run /axon-deploy` advisory when it is down.
-Provisioning is the `/axon-deploy` slash command (or `axon setup`).
+The plugin ships no binary and registers no hooks—install `axon` first. Run
+`axon setup plugin-hook` explicitly for a probe-only readiness check; it never
+deploys. Provisioning is the `/axon-deploy` slash command (or `axon setup`).
 
 ## Deploy
 
-### Incus (preferred)
+### Incus infrastructure
 
-`deploy/incus/bootstrap.sh` is an idempotent 19-step bootstrap that: launches an
-`images:debian/bookworm` system container under `axon-container-profile`, applies
-GPU passthrough, builds axon from the repo's Dockerfile `runtime` stage, installs
-`axon-native.service`, brings up Qdrant/TEI/Chrome as nested containers, and
-optionally exposes axon's port to the host via an Incus `proxy` device. A host
-`axon-incus-bootstrap.service` unit re-runs it on host boot.
+`deploy/incus/bootstrap.sh` launches the required Ubuntu 26.04 system container,
+applies GPU passthrough, deploys the validated host-built Axon binary, and
+brings up TEI and Chrome as nested containers. The guest Axon unit is disabled
+by default because a host and guest must never share the same SQLite/WAL files.
 
 ```bash
 incus profile create axon-container-profile
@@ -140,9 +133,8 @@ AXON_ENV_FILE=/home/you/.axon/.env \
 ./deploy/incus/bootstrap.sh
 ```
 
-See [`deploy/incus/README.md`](deploy/incus/README.md) for the split-model
-rationale (axon native, infra nested), storage fork (`~/.axon-incus`), and the
-`nvidia-procfs` fragility note.
+See [`deploy/incus/README.md`](deploy/incus/README.md) for the host-server versus
+guest-exclusive modes, storage ownership, and GPU requirements.
 
 ### Bare-metal systemd
 
@@ -359,8 +351,9 @@ axon memory context               # recall relevant memories for a query
 Memory lives in its own Qdrant collection (`axon_memory`, or
 `AXON_MEMORY_COLLECTION`) with a decay model: `base_score` blended from
 semantic/confidence/salience/scope/reinforcement, multiplied by a
-half-life decay unless pinned. The Claude plugin's `SessionStart` hook calls
-`axon memory context` for session recall (gated by `AXON_SESSION_MEMORY_*`).
+half-life decay unless pinned. Run `axon memory context` explicitly when a
+client wants project-relevant recall; the plugin does not register a
+`SessionStart` hook.
 
 ## CLI
 
@@ -376,7 +369,7 @@ axon memory / sources / domains / stats / status
 axon serve / mcp / doctor / preflight / smoke / config
 ```
 
-For the authoritative, always-current full registry — 110 commands across 49
+For the authoritative, always-current full registry — 109 commands across 49
 groups with summaries and async/mutates markers — see the generated
 [`docs/reference/cli/commands.md`](docs/reference/cli/commands.md) and the
 machine-readable [`docs/reference/cli/commands.json`](docs/reference/cli/commands.json).
