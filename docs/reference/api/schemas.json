@@ -28789,7 +28789,7 @@
         "path": "crates/axon-api/src/source/document.rs"
       },
       {
-        "checksum": "sha256:69ddadba30632a6060c23b3d790100c3d82774daf14f4a72ef933b1822f1d015",
+        "checksum": "sha256:c2f14ab270c6f03b60d440dbd45711b52a1ab221d53b3fb4eb6e68a5dcb344be",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums.rs"
       },
