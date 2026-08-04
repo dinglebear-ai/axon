@@ -559,10 +559,11 @@ jobs:
   windows-build:
     name: windows-build (axon.exe)
     # Cross-compiled from Linux with the mingw-w64 (x86_64-pc-windows-gnu)
-    # toolchain. A previous cargo-zigbuild attempt failed because zig does not
-    # bundle the Windows platform headers (sched.h / windows.h) that
-    # aws-lc-sys's jitterentropy code needs; mingw-w64 ships those headers, so
-    # aws-lc-sys and ring both cross-build cleanly (the resulting axon.exe was
+    # toolchain plus NASM for BoringSSL's x86_64 assembly. A previous
+    # cargo-zigbuild attempt failed because zig does not bundle the Windows
+    # platform headers (sched.h / windows.h) that aws-lc-sys's jitterentropy
+    # code needs; mingw-w64 ships those headers, so aws-lc-sys and ring both
+    # cross-build cleanly (the resulting axon.exe was
     # smoke-tested on Windows 11: it runs, loads the full CLI, and resolves
     # native C:\ paths). Running on the Linux runner avoids the slow
     # GitHub-hosted Windows VM and its 2x minute billing.
@@ -593,10 +594,11 @@ jobs:
           # the same toolchain cargo uses under the repo override.
           toolchain: 1.97.1
           targets: x86_64-pc-windows-gnu
-      - name: Install mingw-w64
+      - name: Install mingw-w64 and NASM
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mingw-w64
+          sudo apt-get install -y --no-install-recommends mingw-w64 nasm
+          nasm -v
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: axon-windows-gnu

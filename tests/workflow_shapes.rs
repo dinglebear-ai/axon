@@ -694,6 +694,11 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
+    assert!(
+        windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
+            && windows_build.contains("nasm -v"),
+        "the Windows GNU cross-build must install and verify NASM for BoringSSL assembly"
+    );
 }
 
 #[test]
