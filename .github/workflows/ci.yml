@@ -158,6 +158,7 @@ jobs:
           cargo xtask check-dep-graph
           cargo xtask check-redaction-logs
           cargo xtask check-sqlite-migrations
+          python3 scripts/refresh_generated_contracts_staged.py --self-test
       - name: Kache degradation gate self-test
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh

@@ -278,6 +278,7 @@ fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
 
     for file in [
         "scripts/check_lefthook_pre_commit_speed.py",
+        "scripts/refresh_generated_contracts_staged.py",
         "scripts/enforce_monoliths.py",
         "scripts/test-ask-quality-regressions.sh",
     ] {
