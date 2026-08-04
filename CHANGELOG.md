@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Pin the shared Rust cache action to upstream Kache 0.13.0 so hosted and self-hosted jobs use the same daemon protocol and S3 cache epoch.
+- Let release-only smoke builds use the existing fallback web panel without rebuilding frontend assets, while web changes still reuse the single uploaded web artifact.
 
 ## [7.2.10] - 2026-08-04
 
