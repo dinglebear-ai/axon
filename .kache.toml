@@ -1,0 +1,2 @@
+[cache]
+exclude = ["$CARGO_HOME/registry/src/**/boring-sys2-*/**"]
