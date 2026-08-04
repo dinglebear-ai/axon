@@ -23,6 +23,7 @@
 //! `apply_automation_scripts` for the actual Chrome-only execution gate.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -33,6 +34,7 @@ use axon_error::ErrorStage;
 use axon_error::{RetryPolicy, RetryScope};
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use chrono::Utc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::boundary::{RenderProvider, Result};
 
@@ -48,6 +50,7 @@ const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 /// occurrence rather than requiring two consecutive ones.
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 2;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
+const REMOTE_CHROME_MAX_CONCURRENT_PAGES: u32 = 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct ChromeRenderConfig {
@@ -64,6 +67,7 @@ pub struct ChromeRenderConfig {
 pub struct ChromeRenderProvider {
     config: ChromeRenderConfig,
     health: ProviderReservationManager,
+    page_slots: Arc<Semaphore>,
 }
 
 impl ChromeRenderProvider {
@@ -76,11 +80,34 @@ impl ChromeRenderProvider {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
-        Self { config, health }
+        Self {
+            config,
+            health,
+            page_slots: Arc::new(Semaphore::new(REMOTE_CHROME_MAX_CONCURRENT_PAGES as usize)),
+        }
     }
 
     pub fn config(&self) -> &ChromeRenderConfig {
         &self.config
+    }
+
+    async fn acquire_page_slot(&self) -> std::result::Result<OwnedSemaphorePermit, ApiError> {
+        self.page_slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| self.error("render.capacity_closed", "Chrome page capacity is closed"))
+    }
+
+    async fn acquire_page_slot_for(
+        &self,
+        mode: CoreRenderMode,
+    ) -> std::result::Result<Option<OwnedSemaphorePermit>, ApiError> {
+        if matches!(mode, CoreRenderMode::Chrome | CoreRenderMode::AutoSwitch) {
+            self.acquire_page_slot().await.map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     fn error(&self, code: &str, message: impl Into<String>) -> ApiError {
@@ -105,6 +132,12 @@ impl ChromeRenderProvider {
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string)
         };
+        let u64_value = |key| {
+            request
+                .metadata
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+        };
         let mut cfg = Config {
             render_mode: map_render_mode(request.mode),
             format: request
@@ -120,6 +153,8 @@ impl ChromeRenderProvider {
             root_selector: string_value("root_selector"),
             exclude_selector: string_value("exclude_selector"),
             chrome_screenshot: bool_value("chrome_screenshot").unwrap_or(false),
+            chrome_network_idle_timeout_secs: u64_value("chrome_network_idle_timeout_secs")
+                .unwrap_or_else(|| Config::default().chrome_network_idle_timeout_secs),
             automation_script: request
                 .automation_script
                 .as_ref()
@@ -198,6 +233,7 @@ impl RenderProvider for ChromeRenderProvider {
             )
         })?;
         let mut cfg = self.build_config(&request);
+        let _page_permit = self.acquire_page_slot_for(cfg.render_mode).await?;
         if crate::web_engine::chrome_bootstrap::chrome_runtime_requested(&cfg) {
             let bootstrap =
                 crate::web_engine::chrome_bootstrap::bootstrap_chrome_runtime(&cfg).await;
@@ -209,14 +245,28 @@ impl RenderProvider for ChromeRenderProvider {
             }
         }
         let render_mode = cfg.render_mode;
+        let timeout_policy = if request
+            .metadata
+            .get("exact_browser_timeout")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        {
+            crate::web_engine::browser::BrowserTimeoutPolicy::Exact
+        } else {
+            crate::web_engine::browser::BrowserTimeoutPolicy::FloorForBrowserWork
+        };
 
         // `Box<dyn Error>` (the web-engine's error type) is not `Send`, so it
         // must not live across an `.await` — convert to an owned `String`
         // (`Send`) immediately, synchronously, right after the outer await
         // resolves.
-        let outcome = crate::web_engine::scrape::scrape_to_result(&cfg, &request.uri)
-            .await
-            .map_err(|err| err.to_string());
+        let outcome = crate::web_engine::scrape::scrape_to_result_with_timeout_policy(
+            &cfg,
+            &request.uri,
+            timeout_policy,
+        )
+        .await
+        .map_err(|err| err.to_string());
 
         match outcome {
             Ok(result) => {
@@ -314,7 +364,7 @@ impl RenderProvider for ChromeRenderProvider {
                 render_modes: vec![RenderMode::Http, RenderMode::Chrome, RenderMode::AutoSwitch],
                 browser_pool_limits: BrowserPoolLimits {
                     max_browsers: 1,
-                    max_pages_per_browser: 1,
+                    max_pages_per_browser: REMOTE_CHROME_MAX_CONCURRENT_PAGES,
                     max_page_lifetime_ms: self.config.default_timeout_ms.unwrap_or(30_000),
                 },
                 script_support: true,

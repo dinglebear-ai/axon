@@ -85,7 +85,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 workspace = true
 [features]
 test-util = []
-tls-fingerprinting = ["axon-adapters/tls-fingerprinting"]
 
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }

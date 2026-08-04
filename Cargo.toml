@@ -33,7 +33,7 @@ resolver = "2"
 # `axon` package keeps an explicit `version` too (the release checker reads it as
 # a string); `cargo xtask bump-version patch --component cli` moves both in lockstep.
 [workspace.package]
-version = "7.2.9"
+version = "7.2.10"
 edition = "2024"
 rust-version = "1.97.1"
 keywords = ["rag", "mcp", "qdrant", "embeddings", "crawler"]
@@ -84,7 +84,7 @@ lab-auth = { path = "vendor/lab-auth" }
 
 [package]
 name = "axon"
-version = "7.2.9"
+version = "7.2.10"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -155,10 +155,6 @@ rmcp = { version = "=3.1.0", features = [
 default = []
 test-helpers = []
 live-qdrant = []
-
-# TLS fingerprinting via wreq+BoringSSL. Requires cmake/clang/perl/go.
-# CI impact: +8-12 min cold build, +400MB target/. See axon_rust-wf4s.
-tls-fingerprinting = ["axon-cli/tls-fingerprinting"]
 
 # QuickJS sandbox for window.__* JS blob extraction. Requires rquickjs.
 # Process-isolation wrapper required. See axon_rust-b6xi.

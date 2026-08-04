@@ -15,6 +15,24 @@ use super::is_excluded_url_path;
 use super::url_utils::{MapScope, canonicalize_url_for_dedupe, normalize_map_candidate_url};
 use crate::boundary::FetchProvider;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MapDiscoveryOutcome {
+    Completed,
+    #[default]
+    Empty,
+    Failed,
+}
+
+impl MapDiscoveryOutcome {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Completed => "completed",
+            Self::Empty => "empty",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 /// The unified result of a `map` operation.
 #[derive(Debug, Default)]
 pub struct MapResult {
@@ -22,6 +40,7 @@ pub struct MapResult {
     pub urls: Vec<String>,
     pub sitemap_urls: usize,
     pub map_source: String,
+    pub outcome: MapDiscoveryOutcome,
     pub warning: Option<String>,
 }
 

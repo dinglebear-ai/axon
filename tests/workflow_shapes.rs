@@ -898,12 +898,68 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(contracts.contains("generated-contracts check"));
     assert!(!contracts.contains("schemas generate --check"));
     assert!(!contracts.contains("docs generate --check"));
+    assert!(contracts.contains("needs.changes.outputs.docs_contracts == 'true'"));
+    assert!(
+        !contracts.contains("needs.changes.outputs.docs == 'true'"),
+        "prose-only docs must not compile rust-contracts"
+    );
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
     assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
+}
+
+#[test]
+fn generated_contracts_refresh_before_commit_and_ci_stays_read_only() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let contracts = workflow_job_block(workflow, "rust-contracts");
+    let lefthook = include_str!("../lefthook.yml");
+    let refresher = include_str!("../scripts/refresh_generated_contracts_staged.py");
+
+    assert!(
+        contracts.contains("python3 scripts/refresh_generated_contracts_staged.py --self-test"),
+        "CI must exercise the staged-path classifier without mutating the checkout"
+    );
+    assert!(contracts.contains("generated-contracts check"));
+    assert!(
+        !contracts.contains("contents: write") && !contracts.contains("git push"),
+        "CI must remain a read-only generated-contract drift backstop"
+    );
+    assert!(
+        lefthook.contains("pre-commit:\n  parallel: false")
+            && lefthook.contains("generated-contracts:")
+            && lefthook.contains("python3 scripts/refresh_generated_contracts_staged.py"),
+        "pre-commit must refresh generated contracts serially before the commit is created"
+    );
+    for invariant in [
+        r#""generated-contracts","#,
+        r#"return ["git", f"--git-dir={git_dir}", f"--work-tree={ROOT}"]"#,
+        r#"git_prefix(), "add", "-A""#,
+        "generated-contract refresh is not idempotent",
+        "generated-contract refresh changed paths outside the generated-output allowlist",
+    ] {
+        assert!(
+            refresher.contains(invariant),
+            "generated-contract refresher must preserve invariant: {invariant}"
+        );
+    }
+}
+
+#[test]
+fn ci_app_and_web_jobs_use_narrow_impact_categories() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let aurora = workflow_job_block(workflow, "aurora-primitive-inventory");
+    assert!(aurora.contains("needs.changes.outputs.aurora_inventory == 'true'"));
+    assert!(!aurora.contains("needs.changes.outputs.docs == 'true'"));
+
+    let web = workflow_job_block(workflow, "web-panel");
+    assert!(web.contains("needs.changes.outputs.web == 'true'"));
+    assert!(
+        !web.contains("needs.changes.outputs.release == 'true'"),
+        "a manifest/release-contract change must not rebuild the web panel"
+    );
 }
 
 #[test]

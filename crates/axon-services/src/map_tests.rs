@@ -20,6 +20,7 @@ fn parse_map_result_valid_full() {
         "thin_pages": 0u32,
         "elapsed_ms": 100u64,
         "map_source": "sitemap",
+        "outcome": "completed",
         "warning": null,
         "urls": [
             "https://example.com/a",
@@ -51,6 +52,7 @@ fn parse_map_result_with_warning() {
         "thin_pages": 0u32,
         "elapsed_ms": 50u64,
         "map_source": "bounded-structure",
+        "outcome": "completed",
         "warning": "too few urls found",
         "urls": ["https://example.com/"]
     });
@@ -130,6 +132,7 @@ fn parse_map_result_empty_urls_array() {
         "thin_pages": 0u32,
         "elapsed_ms": 0u64,
         "map_source": "bounded-structure",
+        "outcome": "empty",
         "warning": null,
         "urls": []
     });
@@ -149,6 +152,7 @@ fn parse_map_result_round_trips_via_serde() {
         thin_pages: 0,
         elapsed_ms: 300,
         map_source: "bounded-structure".to_string(),
+        outcome: crate::types::MapOutcome::Completed,
         warning: Some("low coverage".to_string()),
         urls: vec![
             "https://example.com/a".to_string(),
@@ -209,6 +213,7 @@ fn unsupported_map_result_is_degraded_with_zero_urls_and_no_vectors() {
     assert_eq!(result.map_source, "unsupported");
     assert_eq!(result.returned_url_count, 0);
     assert_eq!(result.total, 0);
+    assert_eq!(result.outcome, crate::types::MapOutcome::Failed);
     assert!(result.urls.is_empty());
     assert!(result.warning.is_some());
 }

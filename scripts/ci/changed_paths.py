@@ -6,13 +6,20 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
 
 OUTPUT_KEYS = [
     "all",
+    "routing_fallback",
+    "full_ci",
+    "ci_all",
+    "codeql_all",
     "docs",
+    "docs_contracts",
+    "aurora_inventory",
     "workflow",
     "rust",
     "web",
@@ -46,6 +53,7 @@ RUST_CI_HELPER_SCRIPTS = {
     "scripts/cargo_test_filter_guard.py",
     "scripts/check_lefthook_pre_commit_speed.py",
     "scripts/check_shell_completions.sh",
+    "scripts/refresh_generated_contracts_staged.py",
     "xtask/src/pre_push.rs",
     "scripts/enforce_monoliths.py",
     "scripts/generate_mcp_schema_doc.py",
@@ -62,6 +70,33 @@ MCP_CI_HELPER_SCRIPTS = {
 
 DOC_CI_HELPER_SCRIPTS = {
     "scripts/check_aurora_primitive_inventory.py",
+}
+
+FULL_CI_ROUTER_PATHS = {
+    "scripts/ci/changed_paths.py",
+    "tests/ci_changed_paths.rs",
+    "tests/workflow_shapes.rs",
+    "xtask/src/pre_push.rs",
+}
+
+WORKFLOW_CATEGORY_PATHS = {
+    "android": {".github/workflows/android-release.yml"},
+    "palette": {".github/workflows/palette-release.yml"},
+    "chrome": {".github/workflows/chrome-extension-release.yml"},
+    "compose": {".github/workflows/compose-smoke.yml"},
+    "docker": {".github/workflows/docker-image.yml"},
+}
+
+COMPOSE_INPUTS = {
+    ".env.example",
+    "docker-compose.yaml",
+    "docker-compose.prod.yaml",
+    "docker-compose.external-providers.yaml",
+    "docker-compose.external-qdrant.yaml",
+    "docker-compose.llama.yaml",
+    "scripts/build-on-steamy.sh",
+    "scripts/test-ask-gemma4.sh",
+    "scripts/test-build-on-steamy-safety.sh",
 }
 
 VERSION_FILES = {
@@ -87,36 +122,59 @@ VERSION_FILES = {
 
 def classify(event: str, paths: list[str]) -> dict[str, bool]:
     if event in {"schedule", "workflow_dispatch"}:
-        return {key: True for key in OUTPUT_KEYS}
+        result = {key: True for key in OUTPUT_KEYS}
+        result["routing_fallback"] = False
+        return result
 
     if not paths:
-        return {key: True for key in OUTPUT_KEYS}
+        result = {key: True for key in OUTPUT_KEYS}
+        result["routing_fallback"] = True
+        return result
 
     workflow = any_match(
         paths,
-        lambda p: starts(p, ".github/workflows/")
-        or p
-        in {
-            "scripts/ci/changed_paths.py",
-            "tests/workflow_shapes.rs",
-            "tests/ci_changed_paths.rs",
-            "xtask/src/pre_push.rs",
-        },
+        lambda p: starts(p, ".github/workflows/") or p in FULL_CI_ROUTER_PATHS,
     )
+    full_ci = any_match(paths, lambda p: p in FULL_CI_ROUTER_PATHS)
+    ci_all = any_match(paths, lambda p: p == ".github/workflows/ci.yml")
+    codeql_all = any_match(paths, lambda p: p == ".github/workflows/codeql.yml")
     docs = any_match(
         paths,
         lambda p: starts(p, "docs/", "openwiki/")
         or p in {"README.md", "CHANGELOG.md"}
         or p in DOC_CI_HELPER_SCRIPTS,
     )
+    docs_contracts = any_match(
+        paths,
+        lambda p: starts(p, "docs/reference/")
+        or p in DOC_CI_HELPER_SCRIPTS,
+    )
+    aurora_inventory = any_match(
+        paths,
+        lambda p: p
+        in {
+            "docs/reference/aurora-primitive-inventory.json",
+            "scripts/check_aurora_primitive_inventory.py",
+        },
+    )
     # Release builds are reserved for component version changes, explicit
     # release configuration, main, scheduled runs, or a full-CI PR label.
     version_files = any_match(paths, lambda p: p in VERSION_FILES)
     openapi = any_match(paths, lambda p: starts(p, "apps/web/openapi/"))
     web = any_match(paths, lambda p: starts(p, "apps/web/", "assets/")) or openapi
-    android = any_match(paths, lambda p: starts(p, "apps/android/")) or openapi
-    palette = any_match(paths, lambda p: starts(p, "apps/palette-tauri/")) or openapi
-    chrome = any_match(paths, lambda p: starts(p, "apps/chrome-extension/", "assets/"))
+    android = any_match(
+        paths,
+        lambda p: starts(p, "apps/android/") or p in WORKFLOW_CATEGORY_PATHS["android"],
+    ) or openapi
+    palette = any_match(
+        paths,
+        lambda p: starts(p, "apps/palette-tauri/") or p in WORKFLOW_CATEGORY_PATHS["palette"],
+    ) or openapi
+    chrome = any_match(
+        paths,
+        lambda p: starts(p, "apps/chrome-extension/", "assets/")
+        or p in WORKFLOW_CATEGORY_PATHS["chrome"],
+    )
     mcp = any_match(
         paths,
         lambda p: starts(
@@ -154,12 +212,25 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     )
     compose = any_match(
         paths,
-        lambda p: starts(p, "config/", "scripts/")
-        or p
-        in {".dockerignore", ".env.example", "docker-compose.yaml", "docker-compose.prod.yaml", "docker-compose.llama.yaml"},
+        lambda p: p in COMPOSE_INPUTS
+        or starts(p, "config/chrome/")
+        or p in WORKFLOW_CATEGORY_PATHS["compose"],
     )
-    docker = rust or web or compose or any_match(paths, lambda p: p in {".dockerignore", "config/Dockerfile"})
-    security = any_match(paths, lambda p: p in {"Cargo.lock", "deny.toml"} or starts(p, ".cargo/", "vendor/")) or rust
+    docker = any_match(
+        paths,
+        lambda p: p
+        in {".dockerignore", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
+        or p.endswith("/Cargo.toml")
+        or p.endswith("/build.rs")
+        or p == "build.rs"
+        or starts(p, "config/Dockerfile")
+        or p in WORKFLOW_CATEGORY_PATHS["docker"],
+    )
+    security = any_match(
+        paths,
+        lambda p: p in {"Cargo.lock", "deny.toml"}
+        or starts(p, ".cargo/", "vendor/"),
+    ) or rust
 
     codeql_actions = workflow
     codeql_javascript_typescript = web or palette or any_match(
@@ -169,11 +240,26 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     # gating on the prefix triggered a full Python analyze on unrelated changes.
     codeql_python = any_match(paths, lambda p: p.endswith(".py"))
     codeql_rust = rust or palette
-    codeql_java_kotlin = android or any_match(paths, lambda p: p.endswith((".java", ".kt", ".kts")))
+    codeql_java_kotlin = android or any_match(
+        paths, lambda p: p.endswith((".java", ".kt", ".kts"))
+    )
+
+    if codeql_all or full_ci:
+        codeql_actions = True
+        codeql_javascript_typescript = True
+        codeql_python = True
+        codeql_rust = True
+        codeql_java_kotlin = True
 
     result = {
         "all": False,
+        "routing_fallback": False,
+        "full_ci": full_ci,
+        "ci_all": ci_all,
+        "codeql_all": codeql_all,
         "docs": docs,
+        "docs_contracts": docs_contracts,
+        "aurora_inventory": aurora_inventory,
         "workflow": workflow,
         "rust": rust,
         "web": web,
@@ -193,10 +279,6 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "codeql_rust": codeql_rust,
         "codeql_java_kotlin": codeql_java_kotlin,
     }
-
-    if workflow:
-        for key in OUTPUT_KEYS:
-            result[key] = True
 
     return result
 
@@ -269,7 +351,16 @@ def main() -> int:
     parser.add_argument("--write-changed-files", type=Path)
     args = parser.parse_args()
 
-    paths = read_paths(args.changed_files) if args.changed_files else resolve_paths(args.event)
+    paths = (
+        read_paths(args.changed_files)
+        if args.changed_files
+        else resolve_paths(args.event)
+    )
+    if not paths and args.event not in {"schedule", "workflow_dispatch"}:
+        print(
+            "::warning::changed-path resolution returned no files; enabling conservative full CI",
+            file=sys.stderr,
+        )
     if args.write_changed_files:
         args.write_changed_files.write_text("\n".join(paths) + ("\n" if paths else ""))
 
