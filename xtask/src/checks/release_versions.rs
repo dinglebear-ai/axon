@@ -57,6 +57,30 @@ pub enum BumpLevel {
     Major,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReleaseDriver {
+    AxonNative,
+    ReleasePlease,
+}
+
+impl ReleaseDriver {
+    const fn is_axon_native(self) -> bool {
+        matches!(self, Self::AxonNative)
+    }
+
+    const fn is_release_please(self) -> bool {
+        matches!(self, Self::ReleasePlease)
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::AxonNative => "axon-native",
+            Self::ReleasePlease => "release-please",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ComponentPlan {
     pub id: String,
@@ -67,7 +91,7 @@ pub struct ComponentPlan {
     pub last_tag: Option<String>,
     pub release_workflow: String,
     pub shipping_paths: Vec<String>,
-    pub release_please_managed: bool,
+    pub release_driver: ReleaseDriver,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,23 +110,13 @@ struct Component {
     shipping_paths: Vec<String>,
     version_source: VersionFile,
     version_files: Vec<VersionFile>,
-    /// Whether release-please still opens release PRs for this component.
-    /// Defaults to `true`. `cli` sets this to `false`: release-please's
-    /// candidate-PR build crashes on any Cargo workspace member using
-    /// `version.workspace = true` (upstream bug, still open:
-    /// googleapis/release-please#2478), which made it impossible to release
-    /// the root Cargo workspace package through release-please at all — see
-    /// CLAUDE.md's Release Pipeline section. `cli` is bumped manually via
-    /// `cargo xtask bump-version patch --component cli`; a component with this set to `false`
-    /// is exempt from `check_manifest_versions`'s
-    /// `.release-please-manifest.json` consistency check, since it has no
-    /// entry there to be consistent with.
-    #[serde(default = "default_release_please_managed")]
-    release_please_managed: bool,
-}
-
-fn default_release_please_managed() -> bool {
-    true
+    /// The system that owns this component's normal version, tag, GitHub
+    /// Release, and artifact-dispatch lifecycle. Every component must declare
+    /// this explicitly so an omitted owner fails closed. `cli` uses
+    /// `axon-native` because release-please's Cargo workspace plugin cannot
+    /// handle `version.workspace = true` (googleapis/release-please#2111).
+    /// Axon's xtask + auto-tag pipeline owns that component end to end instead.
+    release_driver: ReleaseDriver,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -329,12 +343,11 @@ pub fn check_cli_parity_only(root: &Path) -> ReleaseResult<()> {
 }
 
 /// Manually bump one component's version-bearing files. The only supported
-/// use today is `cli`: release-please can no longer manage it because its
-/// candidate-PR build crashes on any Cargo workspace member using
-/// `version.workspace = true` (upstream bug, still open:
-/// googleapis/release-please#2478) — see `release/components.toml`'s comment
-/// and CLAUDE.md's Release Pipeline section. `palette`/`android`/`chrome`
-/// remain entirely release-please-managed and are not expected to need this.
+/// use today is `cli`, whose release driver is Axon's native xtask + auto-tag
+/// pipeline. release-please cannot drive the root Cargo workspace while its
+/// cargo-workspace plugin lacks `version.workspace = true` support
+/// (googleapis/release-please#2111). `palette`/`android`/`chrome` remain
+/// release-please-driven and are not expected to need this.
 pub fn bump_component_version(
     root: &Path,
     component_id: &str,
@@ -346,10 +359,11 @@ pub fn bump_component_version(
         .iter()
         .find(|component| component.id == component_id)
         .with_release_context(|| format!("unknown release component {component_id}"))?;
-    if component.release_please_managed {
+    if !component.release_driver.is_axon_native() {
         release_bail!(
-            "{} is release-please-managed and cannot be bumped manually",
-            component.id
+            "{} uses {} as its release driver and cannot be bumped manually",
+            component.id,
+            component.release_driver.as_str()
         );
     }
 
@@ -455,7 +469,7 @@ fn build_plan(
                 last_tag,
                 release_workflow: component.release_workflow.clone(),
                 shipping_paths: component.shipping_paths.clone(),
-                release_please_managed: component.release_please_managed,
+                release_driver: component.release_driver,
             })
         })
         .collect()

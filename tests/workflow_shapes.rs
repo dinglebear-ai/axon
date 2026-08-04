@@ -346,15 +346,15 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     assert!(
         plan.contains(
-            "if ! jq -e 'type == \"array\" and all(.[]; (.release_please_managed | type) == \"boolean\")' release-plan.json"
+            "if ! jq -e 'type == \"array\" and all(.[]; ((.release_driver | type) == \"string\") and (.release_driver == \"axon-native\" or .release_driver == \"release-please\"))' release-plan.json"
         ) && plan.contains("exit 1"),
-        "auto-tag must fail closed unless every release-plan item declares boolean release_please_managed ownership"
+        "auto-tag must fail closed unless every release-plan item declares a known release driver"
     );
     assert!(
         plan.contains(
-            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)"
+            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_driver == \"axon-native\")]}' release-plan.json)"
         ),
-        "auto-tag matrix must include only changed components that release-please does not own"
+        "auto-tag matrix must include only changed axon-native components"
     );
     assert_eq!(
         plan.matches("matrix=$(jq -c").count(),
