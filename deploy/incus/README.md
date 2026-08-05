@@ -1,15 +1,17 @@
-# Axon Incus deployment — nested Docker for qdrant/tei/chrome, native axon
+# Axon Incus deployment — host TEI, nested Chrome/qdrant, optional native axon
 
-One Incus system container (`axon-container-profile`) runs:
+The Incus host owns GPU-backed TEI. One Incus system container
+(`axon-container-profile`) runs:
 
-- **tei/chrome as nested Docker containers**, via
-  a full Docker Engine + Compose internally, using `docker-compose.prod.yaml`
-  largely unchanged.
+- **Chrome and optional bundled qdrant as nested Docker containers**, using
+  `docker-compose.prod.yaml`;
+- **TEI externally on the Incus host by default**, reached through
+  `AXON_EXTERNAL_TEI_URL`; nested GPU TEI requires the explicit
+  `AXON_INCUS_TEI_MODE=bundled` override; and
 - **the axon binary deployed atomically into Incus**, with
   `axon-native.service` disabled by default. Dookie's host service owns the
-  shared SQLite queue; TEI and Chrome remain inside Incus. Set
-  `AXON_INCUS_RUN_SERVER=true` only when the guest uses an Incus-exclusive
-  database that host processes never open.
+  shared SQLite queue. Set `AXON_INCUS_RUN_SERVER=true` only when the guest
+  uses an Incus-exclusive database that host processes never open.
 
 The container base is Ubuntu 26.04, matching dookie's glibc baseline. This is
 intentional: host-built Axon binaries can be deployed directly into the native
@@ -25,10 +27,10 @@ See `docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md` for the
 (retained, harmless) Incus 6.3+/Zabbly upgrade this deployment builds on, and
 `axon_rust-4m749` (beads epic) for the full architecture history — including
 the same-day pivot to native Incus OCI containers and revert back to nested
-Docker for qdrant/tei/chrome, after native OCI's GPU-compute path was found
-genuinely broken (`CUDA_ERROR_OUT_OF_MEMORY` during TEI warmup) on this
-host/Incus version. See bead `axon_rust-4m749.2`'s comments for the full
-diagnostic trail if you're wondering why qdrant/tei/chrome aren't native OCI.
+Docker for qdrant/chrome. TEI now runs on the Incus host, avoiding the nested
+NVIDIA cgroup boundary entirely. The earlier nested-GPU diagnostic trail is
+retained in bead `axon_rust-4m749.2` for installations that explicitly opt in
+to `AXON_INCUS_TEI_MODE=bundled`.
 
 ## Why axon is native, not nested-Docker
 
@@ -44,9 +46,8 @@ Running axon as a native binary via systemd sidesteps that hop entirely.
 `bootstrap.sh` atomically installs a validated host-built binary and refreshes
 `axon-native.service`, but leaves the service disabled unless explicitly
 enabled. SQLite WAL files cannot coordinate a queue safely across an Incus bind
-mount: host and guest can retain different WAL inode generations. Dookie
-therefore runs Axon's server on the host and reaches Incus-hosted TEI/Chrome
-through loopback proxy devices.
+mount: host and guest can retain different WAL inode generations. Dookie therefore runs Axon's server and TEI on the host. Chrome remains
+inside Incus and is exposed through loopback proxy devices.
 
 ## Migrating a legacy guest to Ubuntu 26.04
 
@@ -107,17 +108,13 @@ incus profile edit axon-container-profile < deploy/incus/profile.yaml
 
 Key config, and why:
 
-- `limits.memory: 24GiB` (hard) — derived as 16GiB qdrant (its own existing
-  production cap, justified by its own OOM history) + 2GiB TEI + 2GiB chrome
-  + 1GiB axon + 1GiB dockerd overhead, +~14% headroom. Re-verify this still
-  matches dookie's actual available headroom before relying on it — it was
-  derived once, not continuously monitored.
-- `nvidia.runtime: "true"` + `nvidia.driver.capabilities: all` — gives the
-  OUTER Incus container GPU/driver visibility (`nvidia-smi` works directly
-  in it). The GPU-compute workload (TEI) runs in a NESTED Docker container
-  inside this one, and gets its own GPU access via the nested dockerd's own
-  `nvidia-container-toolkit` — this is a real, working double-hop, confirmed
-  end-to-end with the actual production TEI image (bead `.2`).
+- `limits.memory: 24GiB` (hard) — retains headroom for the optional bundled
+  qdrant and bundled-TEI modes. Dookie's normal external-qdrant/external-TEI
+  deployment uses materially less memory, but the conservative cap keeps the
+  explicit bundled modes available without silently changing the profile.
+- `nvidia.runtime: "true"` + `nvidia.driver.capabilities: all` retain the
+  GPU path only for the explicit `AXON_INCUS_TEI_MODE=bundled` fallback. The
+  normal deployment keeps TEI on the Incus host and skips nested NVIDIA setup.
 - `security.nesting: "true"`, `security.privileged: "false"`,
   `security.syscalls.intercept.{mknod,setxattr}: "true"` — required for the
   nested Docker Engine to function inside an unprivileged Incus container.
@@ -146,7 +143,7 @@ UID 1000 to:
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `~/.axon-incus` | `/mnt/axon-data` | jobs.db, config.toml, .env, qdrant storage, TEI cache, artifacts, logs, screenshots — everything `docker-compose.prod.yaml` expects under `${AXON_HOME}` |
+| `~/.axon-incus` | `/mnt/axon-data` | jobs.db, config.toml, .env, optional bundled qdrant/TEI data, artifacts, logs, screenshots — everything the guest expects under `${AXON_HOME}` |
 | `~/.axon-incus-gemini` | `/mnt/axon-gemini` (read-only) | Gemini CLI auth (`oauth_creds.json`, `gemini-credentials.json`, etc.) |
 
 **This is a deliberate, permanent fork from `~/.axon`, not a temporary
@@ -180,7 +177,7 @@ needed.
   has no visibility into the host filesystem outside its declared disk
   devices at all.
 
-### Known fragility — nvidia-procfs device
+### Bundled TEI only — nvidia-procfs device
 
 A third device, `nvidia-procfs` (bind-mounting
 `/proc/driver/nvidia/gpus/<pci-address>` from host to the same path in the
@@ -197,10 +194,10 @@ incus config device add <container> nvidia-procfs disk \
   path=/proc/driver/nvidia/gpus/0000:03:00.0
 ```
 
-This is a required boot-time step in `bootstrap.sh` (bead `.5`), not a
-one-time fix — see that bead for the automated version.
+This boot-time step runs only when `AXON_INCUS_TEI_MODE=bundled`; external
+host TEI skips it entirely.
 
-### Required — nvidia-container-toolkit inside the container
+### Bundled TEI only — nvidia-container-toolkit inside the container
 
 The nested Docker Engine needs its own `nvidia-container-toolkit` + CDI
 registration to expose the GPU to `docker run --gpus all` — the outer
