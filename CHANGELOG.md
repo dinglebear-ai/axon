@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Pin the shared Rust cache action to upstream Kache 0.13.0 so hosted and self-hosted jobs use the same daemon protocol and S3 cache epoch.
+- Let release-only smoke builds use the existing fallback web panel without rebuilding frontend assets, while web changes still reuse the single uploaded web artifact.
+
+### Fixed
+- Align map smoke fixtures with the required `outcome` field and accept Axon's explicit terminal map error when a live MCP smoke target cannot be acquired.
+
+### Security
+- Upgrade `rkyv` and `rkyv_derive` to 0.8.17, resolving RUSTSEC-2026-0233, RUSTSEC-2026-0234, and RUSTSEC-2026-0235.
+
+## [7.2.10] - 2026-08-04
+
+### Fixed
+- Browser-backed government map discovery now survives initial HTTP/TLS failures, reports TLS/browser build capabilities, and returns explicit terminal failures instead of false success.
+- Pre-commit now refreshes and stages deterministic generated contracts automatically for relevant staged inputs, while CI remains a read-only drift backstop. Partial staging and unexpected generator output fail closed.
+
+## [7.2.9] - 2026-08-03
+
 ## [7.2.8] - 2026-08-02
 
 ## [7.2.7] - 2026-07-31

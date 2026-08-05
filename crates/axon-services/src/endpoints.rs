@@ -117,14 +117,16 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
             // Under --probe-rpc a failed/non-HTML fetch is recoverable: we still
             // synthesize + probe MCP candidates (same-host, plus mcp.<apex> when
             // --probe-rpc-subdomains).
-            Err(e) if options.probe_rpc => (String::new(), false, Some(e.to_string())),
+            Err(e) if options.probe_rpc || options.capture_network => {
+                (String::new(), false, Some(e.to_string()))
+            }
             Err(e) => return Err(e),
         };
     let fetch_failed = fetch_error.is_some();
     if fetch_failed {
         emit_endpoint_log(
             &tx,
-            "endpoint discovery: initial fetch failed; continuing with synthesized MCP probing",
+            "endpoint discovery: initial fetch failed; continuing with requested fallback probes",
         )
         .await;
     } else {
@@ -184,7 +186,7 @@ pub async fn discover_with_capture_provider<P: NetworkCaptureProvider + Sync>(
         ));
     }
 
-    if options.capture_network && !fetch_failed {
+    if options.capture_network {
         emit_endpoint_log(&tx, "endpoint discovery starting network capture").await;
         merge_network_capture(
             cfg,

@@ -13,6 +13,40 @@ fn store() -> (SqliteMemoryStore, Arc<FixedClock>) {
     (store, clock)
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn file_store_waits_for_a_transient_external_writer() {
+    let path = std::env::temp_dir().join(format!(
+        "axon-memory-busy-timeout-{}.db",
+        uuid::Uuid::new_v4()
+    ));
+    let clock = Arc::new(FixedClock::at_2026());
+    let store = SqliteMemoryStore::open(&path.to_string_lossy(), clock)
+        .expect("open file-backed memory store");
+
+    let locker = rusqlite::Connection::open(&path).expect("open competing connection");
+    locker
+        .execute_batch("BEGIN IMMEDIATE")
+        .expect("hold SQLite writer lock");
+    let release = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        locker.execute_batch("COMMIT").expect("release writer lock");
+    });
+
+    let remembered = store
+        .remember(request(MemoryType::Fact, "waited for writer", "axon"))
+        .await;
+    release.join().expect("writer release thread");
+    assert!(
+        remembered.is_ok(),
+        "memory writes must wait for transient SQLite writers: {remembered:?}"
+    );
+
+    drop(store);
+    for suffix in ["", "-shm", "-wal"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+    }
+}
+
 fn request(memory_type: MemoryType, body: &str, scope_value: &str) -> MemoryRequest {
     MemoryRequest {
         memory_type,

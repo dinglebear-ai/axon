@@ -64,8 +64,33 @@ pub(super) async fn run_providers(
     }
 }
 
-pub(super) fn run_capabilities(_cfg: &Config) -> Result<(), Box<dyn Error>> {
-    print_value(axon_services::types::ServerInfo::rest_capabilities())
+pub(super) fn build_capabilities(cfg: &Config) -> serde_json::Value {
+    let mut value = serde_json::to_value(axon_services::types::ServerInfo::rest_capabilities())
+        .expect("ServerInfo serialization is infallible");
+    let chrome_target = cfg
+        .chrome_remote_url
+        .clone()
+        .unwrap_or_else(|| "local-launcher".to_string());
+    let tls_client_initialization = match axon_core::http::impersonating_client() {
+        Ok(_) => "ready".to_string(),
+        Err(error) => format!("initialization-failed: {error}"),
+    };
+    value["build"] = serde_json::json!({
+        "tlsFingerprinting": true,
+        "tlsClientInitialization": tls_client_initialization,
+        "chrome": true,
+        "chromeTarget": chrome_target,
+        "browserLaunchCapability": if cfg.chrome_remote_url.is_some() {
+            "remote-cdp-configured"
+        } else {
+            "local-launcher-compiled"
+        },
+    });
+    value
+}
+
+pub(super) fn run_capabilities(cfg: &Config) -> Result<(), Box<dyn Error>> {
+    print_value(build_capabilities(cfg))
 }
 
 fn provider_summaries(payload: &serde_json::Value) -> Vec<serde_json::Value> {

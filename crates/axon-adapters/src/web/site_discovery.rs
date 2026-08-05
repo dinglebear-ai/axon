@@ -10,7 +10,7 @@ use std::sync::Arc;
 use axon_api::source::*;
 
 use crate::adapter::Result;
-use crate::boundary::FetchProvider;
+use crate::boundary::{FetchProvider, RenderProvider};
 
 use super::manifest_items::web_manifest_item;
 use super::options::build_discovery_config;
@@ -32,10 +32,11 @@ pub(super) async fn manifest_items(
     plan: &SourcePlan,
     refresh_content: bool,
     fetch: Arc<dyn FetchProvider>,
+    render: Arc<dyn RenderProvider>,
 ) -> Result<ManifestDiscovery> {
     let start_url = plan.route.source.canonical_uri.clone();
     let cfg = build_discovery_config(plan);
-    let result = crate::web_engine::engine::discover_site_urls(&cfg, &start_url, fetch)
+    let result = crate::web_engine::engine::discover_site_urls(&cfg, &start_url, fetch, render)
         .await
         .map_err(|err| {
             ApiError::new(
@@ -68,6 +69,10 @@ pub(super) async fn manifest_items(
     metadata.insert(
         "map_source".to_string(),
         serde_json::json!(result.map_source),
+    );
+    metadata.insert(
+        "map_outcome".to_string(),
+        serde_json::json!(result.outcome.as_str()),
     );
     metadata.insert(
         "sitemap_urls".to_string(),

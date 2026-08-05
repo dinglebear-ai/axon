@@ -2,7 +2,7 @@ use crate::context::ServiceContext;
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::source::dispatch::web_options::web_crawl_options;
 use crate::source::routing::resolve_source_route;
-use crate::types::{MapOptions, MapResult};
+use crate::types::{MapOptions, MapOutcome, MapResult};
 use axon_api::source::{
     LifecycleStatus, MetadataMap, SourceIntent, SourceKind, SourceManifest, SourceRequest,
     SourceResult, SourceScope,
@@ -173,6 +173,23 @@ fn project_manifest(url: &str, manifest: SourceManifest, opts: MapOptions) -> Ma
         .take(limit)
         .collect();
     let mapped_count = urls.len() as u64;
+    let mut warning = metadata_string(&manifest.metadata, "warning");
+    let outcome = match metadata_string(&manifest.metadata, "map_outcome").as_deref() {
+        Some("completed") => MapOutcome::Completed,
+        Some("failed") => MapOutcome::Failed,
+        Some("empty") => MapOutcome::Empty,
+        Some(other) => {
+            let drift = format!("unknown map outcome metadata: {other}");
+            warning = Some(match warning {
+                Some(existing) => format!("{existing}; {drift}"),
+                None => drift,
+            });
+            MapOutcome::Failed
+        }
+        _ if total == 0 && warning.is_some() => MapOutcome::Failed,
+        _ if total == 0 => MapOutcome::Empty,
+        _ => MapOutcome::Completed,
+    };
 
     MapResult {
         url: url.to_string(),
@@ -184,7 +201,8 @@ fn project_manifest(url: &str, manifest: SourceManifest, opts: MapOptions) -> Ma
         elapsed_ms: metadata_u64(&manifest.metadata, "elapsed_ms"),
         map_source: metadata_string(&manifest.metadata, "map_source")
             .unwrap_or_else(|| "adapter".to_string()),
-        warning: metadata_string(&manifest.metadata, "warning"),
+        outcome,
+        warning,
         urls,
     }
 }
@@ -242,6 +260,7 @@ pub(crate) fn unsupported_map_result(url: &str, reason: impl Into<String>) -> Ma
         thin_pages: 0,
         elapsed_ms: 0,
         map_source: "unsupported".to_string(),
+        outcome: MapOutcome::Failed,
         warning: Some(reason.into()),
         urls: Vec::new(),
     }

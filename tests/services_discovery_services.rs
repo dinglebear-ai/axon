@@ -69,6 +69,7 @@ fn maps_map_payload_to_map_result() {
         "thin_pages": 0u32,
         "elapsed_ms": 450u64,
         "map_source": "sitemap",
+        "outcome": "completed",
         "warning": null,
         "urls": ["https://example.com/a", "https://example.com/b", "https://example.com/c"],
     });
@@ -91,6 +92,7 @@ fn maps_map_payload_preserves_urls_array() {
         "thin_pages": 0u32,
         "elapsed_ms": 200u64,
         "map_source": "bounded-structure",
+        "outcome": "completed",
         "warning": null,
         "urls": ["https://example.com/one", "https://example.com/two"],
     });
@@ -111,6 +113,7 @@ fn maps_map_payload_with_empty_urls() {
         "thin_pages": 0u32,
         "elapsed_ms": 50u64,
         "map_source": "sitemap",
+        "outcome": "empty",
         "warning": null,
         "urls": [],
     });
@@ -129,6 +132,7 @@ fn maps_map_payload_rejects_missing_required_field() {
         "pages_seen": 0u32,
         "thin_pages": 0u32,
         "elapsed_ms": 0u64,
+        "outcome": "empty",
         "warning": null,
         "urls": []
         // map_source intentionally omitted

@@ -55,6 +55,8 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
     // version_files rather than the broad docs category.
     assert_eq!(out["version_files"], "false");
     assert_eq!(out["rust"], "false");
+    assert_eq!(out["docs_contracts"], "false");
+    assert_eq!(out["aurora_inventory"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
     assert_eq!(out["docker"], "false");
@@ -73,7 +75,13 @@ fn agent_skill_changes_skip_expensive_runtime_categories() {
     );
     for key in [
         "all",
+        "routing_fallback",
+        "full_ci",
+        "ci_all",
+        "codeql_all",
         "docs",
+        "docs_contracts",
+        "aurora_inventory",
         "workflow",
         "rust",
         "web",
@@ -122,7 +130,7 @@ fn rust_core_changes_skip_pr_release_but_enable_runtime_and_codeql() {
     assert_eq!(out["mcp"], "false");
     assert_eq!(out["security"], "true");
     assert_eq!(out["codeql_rust"], "true");
-    assert_eq!(out["docker"], "true");
+    assert_eq!(out["docker"], "false");
 }
 
 #[test]
@@ -140,7 +148,7 @@ fn workspace_crate_changes_enable_rust_runtime_gates() {
     assert_eq!(out["rust"], "true");
     assert_eq!(out["release"], "false");
     assert_eq!(out["security"], "true");
-    assert_eq!(out["docker"], "true");
+    assert_eq!(out["docker"], "false");
     assert_eq!(out["codeql_rust"], "true");
 }
 
@@ -191,33 +199,32 @@ fn android_changes_enable_kotlin_codeql_only_for_app_language() {
 }
 
 #[test]
-fn compose_and_docker_inputs_route_to_container_smoke_only() {
+fn compose_inputs_do_not_force_an_application_image_build() {
     for file in [
         ".env.example",
         "docker-compose.yaml",
         "docker-compose.prod.yaml",
+        "docker-compose.external-providers.yaml",
+        "docker-compose.external-qdrant.yaml",
         "docker-compose.llama.yaml",
-        ".dockerignore",
-        "config/chrome/Dockerfile",
-        "scripts/sync-openapi.ts",
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(
             out["compose"], "true",
             "{file} should enable compose checks"
         );
-        assert_eq!(out["docker"], "true", "{file} should enable docker checks");
+        assert_eq!(out["docker"], "false", "{file} is not an image build input");
         assert_eq!(out["android"], "false", "{file} should not enable Android");
         assert_eq!(out["palette"], "false", "{file} should not enable palette");
     }
 }
 
 #[test]
-fn shared_assets_route_to_web_chrome_and_docker() {
+fn shared_assets_route_to_web_and_chrome_without_rebuilding_the_image() {
     let out = classify("pull_request", &["assets/logo.png"]);
     assert_eq!(out["web"], "true");
     assert_eq!(out["chrome"], "true");
-    assert_eq!(out["docker"], "true");
+    assert_eq!(out["docker"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
 }
@@ -233,12 +240,28 @@ fn chrome_extension_changes_enable_the_chrome_gate() {
 }
 
 #[test]
-fn dockerfile_change_routes_to_image_and_compose_smoke() {
+fn dockerfile_change_routes_to_image_smoke_without_compose_validation() {
     let out = classify("pull_request", &["config/Dockerfile"]);
     assert_eq!(out["docker"], "true");
-    assert_eq!(out["compose"], "true");
+    assert_eq!(out["compose"], "false");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
+}
+
+#[test]
+fn image_build_inputs_enable_image_smoke_without_product_apps() {
+    for file in [
+        ".dockerignore",
+        "Cargo.toml",
+        "Cargo.lock",
+        "crates/axon-core/Cargo.toml",
+        "config/Dockerfile",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["docker"], "true", "{file} affects image packaging");
+        assert_eq!(out["android"], "false");
+        assert_eq!(out["palette"], "false");
+    }
 }
 
 #[test]
@@ -248,18 +271,21 @@ fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
         &["scripts/check_aurora_primitive_inventory.py"],
     );
     assert_eq!(aurora["docs"], "true");
+    assert_eq!(aurora["docs_contracts"], "true");
+    assert_eq!(aurora["aurora_inventory"], "true");
     assert_eq!(aurora["android"], "false");
     assert_eq!(aurora["palette"], "false");
 
     for file in [
         "scripts/check_lefthook_pre_commit_speed.py",
+        "scripts/refresh_generated_contracts_staged.py",
         "scripts/enforce_monoliths.py",
         "scripts/test-ask-quality-regressions.sh",
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true", "{file} should enable Rust CI jobs");
         assert_eq!(out["security"], "true", "{file} should enable security");
-        assert_eq!(out["docker"], "true", "{file} should enable image smoke");
+        assert_eq!(out["docker"], "false", "{file} is not an image build input");
     }
 
     for file in [
@@ -299,6 +325,69 @@ fn workflow_dispatch_and_schedule_enable_everything() {
         ] {
             assert_eq!(out[key], "true", "{event} should enable {key}");
         }
+        assert_eq!(out["routing_fallback"], "false");
+    }
+}
+
+#[test]
+fn empty_pull_request_diff_is_an_explicit_conservative_fallback() {
+    let out = classify("pull_request", &[]);
+    assert_eq!(out["all"], "true");
+    assert_eq!(out["routing_fallback"], "true");
+}
+
+#[test]
+fn release_workflow_changes_do_not_enable_unrelated_product_builds() {
+    let out = classify("pull_request", &[".github/workflows/release.yml"]);
+    assert_eq!(out["workflow"], "true");
+    assert_eq!(out["codeql_actions"], "true");
+    for key in [
+        "all",
+        "full_ci",
+        "ci_all",
+        "codeql_all",
+        "rust",
+        "web",
+        "android",
+        "palette",
+        "chrome",
+        "docker",
+        "compose",
+        "mcp",
+        "security",
+        "release",
+        "version_files",
+        "openapi",
+        "codeql_javascript_typescript",
+        "codeql_python",
+        "codeql_rust",
+        "codeql_java_kotlin",
+    ] {
+        assert_eq!(out[key], "false", "release.yml must not enable {key}");
+    }
+}
+
+#[test]
+fn workflow_files_route_only_the_ci_surface_they_own() {
+    for (file, enabled) in [
+        (".github/workflows/ci.yml", "ci_all"),
+        (".github/workflows/codeql.yml", "codeql_all"),
+        (".github/workflows/android-release.yml", "android"),
+        (".github/workflows/palette-release.yml", "palette"),
+        (".github/workflows/chrome-extension-release.yml", "chrome"),
+        (".github/workflows/compose-smoke.yml", "compose"),
+        (".github/workflows/docker-image.yml", "docker"),
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["workflow"], "true", "{file} is a workflow change");
+        assert_eq!(out[enabled], "true", "{file} must enable {enabled}");
+        for key in [
+            "full_ci", "web", "android", "palette", "chrome", "docker", "compose", "mcp", "openapi",
+        ] {
+            if key != enabled {
+                assert_eq!(out[key], "false", "{file} must not enable {key}");
+            }
+        }
     }
 }
 
@@ -311,29 +400,8 @@ fn changed_path_router_edits_force_full_ci() {
         "xtask/src/pre_push.rs",
     ] {
         let out = classify("pull_request", &[file]);
-        for key in [
-            "all",
-            "workflow",
-            "rust",
-            "web",
-            "android",
-            "palette",
-            "chrome",
-            "docker",
-            "compose",
-            "mcp",
-            "security",
-            "release",
-            "version_files",
-            "openapi",
-            "codeql_actions",
-            "codeql_javascript_typescript",
-            "codeql_python",
-            "codeql_rust",
-            "codeql_java_kotlin",
-        ] {
-            assert_eq!(out[key], "true", "{file} should enable {key}");
-        }
+        assert_eq!(out["full_ci"], "true", "{file} should force full CI");
+        assert_eq!(out["workflow"], "true", "{file} changes CI routing");
     }
 }
 

@@ -6,7 +6,7 @@ updated: 2026-08-03
 
 # Android APK Release Workflow
 
-Android is a release-please-managed component. Release-please is the sole
+Android is a release-please-driven component. Release-please is the sole
 normal owner of its version edits, changelog, `android-v*` tag, and GitHub
 Release. Axon's Android workflow builds and attaches the APK; it does not
 create a competing release record.
@@ -28,7 +28,7 @@ create a competing release record.
    existing Release.
 
 `.github/workflows/auto-tag.yml` must never select Android. Auto-tag is only
-for components with `release_please_managed = false` (currently the CLI).
+for components whose `release_driver = "axon-native"` (currently the CLI).
 
 ## Build behavior
 

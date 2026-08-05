@@ -67,10 +67,21 @@ pub struct MapResult {
     pub elapsed_ms: u64,
     /// How the URLs were discovered: `"sitemap"`, `"crawl"`, or `"bounded-structure"`.
     pub map_source: String,
+    /// Machine-readable completion state. A failed acquisition must never be
+    /// represented as a successful zero-URL map.
+    pub outcome: MapOutcome,
     /// Optional user-visible warning (e.g. too few URLs found).
     pub warning: Option<String>,
     /// The discovered URLs (deduplicated, sorted), after offset/limit pagination.
     pub urls: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MapOutcome {
+    Completed,
+    Empty,
+    Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

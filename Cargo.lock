@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "axon-adapters"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "axon-error",
  "chrono",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "anyhow",
  "axon-api",
@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "axon-document"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "axon-embedding"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "axon-error"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "chrono",
  "schemars",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "axon-core",
  "axon-graph",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "axon-graph"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ledger"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "axon-llm"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "axon-memory"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "axon-observe"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "axon-parse"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "axon-api",
  "axon-graph",
@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "axon-prune"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "axon-retrieval"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "axon-route"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vectors"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "7.2.8"
+version = "7.2.10"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -5905,9 +5905,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv"
-version = "0.8.16"
+version = "0.8.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73389e0c99e664f919275ab5b5b0471391fe9a8de61e1dff9b1eaf56a90f16e3"
+checksum = "815cc8a37159a463064825246cadb07961e25cd9885908606f6d08a98d8f8874"
 dependencies = [
  "bytes",
  "hashbrown 0.17.1",
@@ -5923,9 +5923,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv_derive"
-version = "0.8.16"
+version = "0.8.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d2ed0b54125315fb36bd021e82d314d1c126548f871634b483f46b31d13cac6"
+checksum = "c0ed1a78a1b19d184b0daa629dd9a024573173ec7d485b287cb369fb3607cc1c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7643,7 +7643,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
