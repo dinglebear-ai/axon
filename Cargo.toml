@@ -185,6 +185,17 @@ lto = false
 codegen-units = 256
 strip = true
 
+[profile.dev]
+# CI recompiles from scratch on every job (CARGO_INCREMENTAL=0 is required
+# under the kache rustc-wrapper), and full DWARF is a large share of that
+# time — which the build then discards anyway via -C strip=debuginfo.
+# "line-tables-only" keeps file/line in panics and backtraces, which is what
+# CI logs are read for. Override with CARGO_PROFILE_DEV_DEBUG=full for a
+# debugger session. Matches labby, cortex, yarr and soma.
+# The per-package spider override below is unaffected: opt-level and debug are
+# independent knobs.
+debug = "line-tables-only"
+
 [profile.dev.package.spider]
 opt-level = 2
 
