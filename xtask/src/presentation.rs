@@ -52,6 +52,14 @@ pub fn run(root: &Path, args: PresentationArgs) -> Result<()> {
     }
 }
 
+pub(crate) fn refresh_generated_contracts(root: &Path) -> Result<()> {
+    generate(root, false)
+}
+
+pub(crate) fn check_generated_contracts(root: &Path) -> Result<()> {
+    generate(root, true)
+}
+
 /// One (path, contents) artifact this generator owns.
 fn artifacts(root: &Path, src: &TokenSource) -> Vec<(PathBuf, String)> {
     let css = emit_css::render(src);

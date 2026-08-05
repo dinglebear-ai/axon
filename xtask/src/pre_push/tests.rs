@@ -60,6 +60,27 @@ fn api_source_changes_run_the_unified_generated_contract_gate() {
 }
 
 #[test]
+fn every_presentation_source_and_output_runs_the_unified_gate() {
+    for path in [
+        "xtask/src/presentation/source.json",
+        "docs/reference/presentation/tokens.md",
+        "docs/reference/presentation/tokens.schema.json",
+        "docs/reference/presentation/README.md",
+        "apps/web/src/styles/axon-tokens.css",
+        "apps/palette-tauri/src/styles/axon-tokens.css",
+        "apps/chrome-extension/src/styles/axon-tokens.css",
+        "apps/android/app/src/main/java/com/axon/app/ui/theme/generated/AxonTokens.kt",
+        "crates/axon-cli/src/ui/tokens.rs",
+    ] {
+        let plan = plan_for(&[path]);
+        assert!(
+            plan_names(&plan).contains(&"generated-contracts"),
+            "presentation contract path {path} skipped the unified gate"
+        );
+    }
+}
+
+#[test]
 fn every_aggregate_generated_contract_output_runs_the_unified_gate() {
     let outputs = [
         "docs/reference/api/schemas.json",

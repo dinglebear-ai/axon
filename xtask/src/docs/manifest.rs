@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -85,6 +85,38 @@ pub fn to_json(manifest: &DocsManifest) -> Result<String> {
     let mut content = serde_json::to_string_pretty(manifest)?;
     content.push('\n');
     Ok(content)
+}
+
+/// Refresh the tracked source-input manifest from the generated schema
+/// artifacts currently on disk.
+pub(super) fn refresh(root: &Path) -> Result<()> {
+    let content = to_json(&build(root)?)?;
+    let path = root.join(MANIFEST_PATH);
+    let parent = path
+        .parent()
+        .context("source-input manifest path must have a parent")?;
+    std::fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    std::fs::write(&path, content).with_context(|| format!("writing {}", path.display()))?;
+    println!("docs generate: wrote {MANIFEST_PATH}.");
+    Ok(())
+}
+
+/// Compare the tracked source-input manifest byte-for-byte with the manifest
+/// derived from the generated schema artifacts currently on disk.
+pub(super) fn check(root: &Path) -> Result<()> {
+    let expected = to_json(&build(root)?)?;
+    let path = root.join(MANIFEST_PATH);
+    match std::fs::read_to_string(&path) {
+        Ok(actual) if actual == expected => {
+            println!("docs generate --check: {MANIFEST_PATH} is up to date.");
+            Ok(())
+        }
+        Ok(_) => bail!("{MANIFEST_PATH} differs; run `cargo xtask generated-contracts refresh`"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            bail!("{MANIFEST_PATH} is missing; run `cargo xtask generated-contracts refresh`")
+        }
+        Err(error) => Err(error).with_context(|| format!("reading {}", path.display())),
+    }
 }
 
 fn generated_by_family(value: &Value) -> Option<String> {
