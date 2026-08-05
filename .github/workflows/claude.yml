@@ -18,6 +18,10 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: [self-hosted, unraid]
+    # No green-run history to measure (every run to date was skipped by the
+    # @claude guard above). An agent session is open-ended by nature, so this is
+    # a hang guard rather than a fitted bound.
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: read
