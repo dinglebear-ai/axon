@@ -795,6 +795,9 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
         plan_args.contains("--base \"origin/$base_branch\"") && plan_args.contains("--head HEAD"),
         "the fixup planner itself must compare the release branch with its reported base branch"
     );
+    let fixup_position = fixups
+        .find("cargo xtask release-please-fixups")
+        .expect("release PR fixup invocation exists");
     let commit_position = fixups
         .find("git commit -m \"chore: apply release-please fixups\"")
         .expect("generated fixups are committed");
@@ -805,8 +808,10 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
         .find("git push origin HEAD:\"$branch\"")
         .expect("validated fixups are pushed");
     assert!(
-        commit_position < check_position && check_position < push_position,
-        "release fixups must be committed before HEAD validation and pushed only after validation"
+        fixup_position < commit_position
+            && commit_position < check_position
+            && check_position < push_position,
+        "release PR fixups must be applied, committed, checked at HEAD, then pushed"
     );
 }
 

@@ -1209,6 +1209,53 @@ fn pr_mode_allows_release_please_source_fixup_after_tag_exists() {
 }
 
 #[test]
+fn release_please_fixups_must_be_committed_before_pr_validation() {
+    let fixture = Fixture::new();
+    fixture.init_repo();
+    fixture.git(&["tag", "chrome-ext-v0.2.0"]);
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.3.2",
+  "apps/chrome-extension": "0.2.1"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/chrome-extension/CHANGELOG.md"),
+        "# Changelog\n\n## [0.2.1]\n\n## [0.2.0]\n",
+    )
+    .unwrap();
+    fixture.git(&[
+        "add",
+        ".release-please-manifest.json",
+        "apps/chrome-extension/CHANGELOG.md",
+    ]);
+    fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
+
+    release_please_fixups(fixture.root(), "chrome", "0.2.1").unwrap();
+    let error = check(fixture.root(), Some("HEAD~1"), "HEAD", GateMode::Pr, false)
+        .expect_err("dirty source fixups must not make a changelog-only HEAD valid");
+    assert!(
+        error.to_string().contains(
+            "changes release-please-owned version fields without a synchronized managed release version change"
+        ),
+        "unexpected error: {error}"
+    );
+
+    fixture.git(&[
+        "add",
+        "apps/chrome-extension/manifest.json",
+        "apps/chrome-extension/package.json",
+    ]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+    check(fixture.root(), Some("HEAD~2"), "HEAD", GateMode::Pr, false)
+        .expect("the committed release-please sources and changelog validate together");
+}
+
+#[test]
 fn main_mode_marks_unchanged_when_latest_tag_points_at_head() {
     let fixture = Fixture::new();
     fixture.init_repo();
