@@ -1,9 +1,12 @@
 # Hook strategy:
-#   pre-commit — fast, staged-file-scoped checks only. Target <30s.
+#   pre-commit — staged-file-scoped checks only. Target <30s once xtask is warm.
+#     Relevant contract inputs refresh and stage their deterministic outputs in
+#     the same commit; a cold xtask build is bounded separately at ten minutes.
+#     Commands run serially so later checks reuse that build and never race the
+#     generator over the Git index. Anything requiring a workspace compile
+#     (clippy, test) belongs on pre-push, not on every WIP commit.
 #     Every command is wrapped with scripts/with_timeout.sh so a single
 #     misbehaving check can't wedge a commit indefinitely.
-#     Anything that requires a workspace compile (clippy, test) belongs on
-#     pre-push so it runs once before publishing, not on every WIP commit.
 #   pre-push — temporary pipeline-unification guardrail only. Keep this under
 #     one minute while the refactor is landing; run heavier validation
 #     explicitly when a slice needs it.
@@ -15,8 +18,13 @@
 #   - The same script runs in CI as a standalone job.
 
 pre-commit:
-  parallel: true
+  parallel: false
   commands:
+    generated-contracts:
+      glob: "**/*"
+      run: >
+        scripts/with_timeout.sh 600 --
+        python3 scripts/refresh_generated_contracts_staged.py
     compose-ports:
       glob: "{docker-compose,compose}*.{yaml,yml}"
       run: scripts/with_timeout.sh 30 -- python3 scripts/check_compose_port_bindings.py --staged

@@ -28,11 +28,10 @@ pub enum HttpError {
     /// Network-level error from reqwest.
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
-    /// The browser-impersonating (wreq/BoringSSL) client failed to build, or a
-    /// request made through it failed. Kept distinct from [`Self::Network`] so
-    /// callers can tell "the fingerprinting path failed" from "the normal
-    /// client failed" when deciding whether a fallback is worth attempting.
-    #[cfg(feature = "tls-fingerprinting")]
+    /// The browser-impersonating (wreq/BoringSSL) client could not initialize.
+    #[error("impersonating client initialization failed: {0}")]
+    ImpersonationInit(String),
+    /// A request made through an initialized impersonating client failed.
     #[error("impersonated request failed: {0}")]
-    Impersonation(String),
+    ImpersonationRequest(String),
 }

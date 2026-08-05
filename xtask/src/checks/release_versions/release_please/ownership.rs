@@ -39,18 +39,22 @@ pub(super) fn validate(root: &Path, components: &[Component]) -> ReleaseResult<(
     let manifest_paths = read_release_please_manifest(root)?
         .into_keys()
         .collect::<BTreeSet<_>>();
-    let managed_paths = components
+    let release_please_paths = components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
         .map(|component| component.release_please_path.clone())
         .collect::<BTreeSet<_>>();
 
-    validate_owner_paths("release-please-config.json", &managed_paths, &config_paths)?;
+    validate_owner_paths(
+        "release-please-config.json",
+        &release_please_paths,
+        &config_paths,
+    )?;
     validate_release_please_tag_prefixes(components, config_packages)?;
     validate_release_please_extra_files(components, config_packages)?;
     validate_owner_paths(
         ".release-please-manifest.json",
-        &managed_paths,
+        &release_please_paths,
         &manifest_paths,
     )
 }
@@ -61,7 +65,7 @@ fn validate_release_please_extra_files(
 ) -> ReleaseResult<()> {
     for component in components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
     {
         let package = config_packages
             .get(&component.release_please_path)
@@ -170,7 +174,7 @@ fn validate_release_please_tag_prefixes(
 ) -> ReleaseResult<()> {
     for component in components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
     {
         let package = config_packages
             .get(&component.release_please_path)

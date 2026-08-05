@@ -1,7 +1,7 @@
 use super::*;
-use crate::checks::release_versions::{Component, VersionFile, VersionKind};
+use crate::checks::release_versions::{Component, ReleaseDriver, VersionFile, VersionKind};
 
-fn component(id: &str, path: &str, managed: bool) -> Component {
+fn component(id: &str, path: &str, release_driver: ReleaseDriver) -> Component {
     let version_path = if path == "." {
         format!("{id}.json")
     } else {
@@ -22,7 +22,7 @@ fn component(id: &str, path: &str, managed: bool) -> Component {
         shipping_paths: vec![id.to_owned()],
         version_source: version_file.clone(),
         version_files: vec![version_file],
-        release_please_managed: managed,
+        release_driver,
     }
 }
 
@@ -43,8 +43,8 @@ fn ownership_requires_config_and_manifest_to_match_managed_paths() {
     validate_release_please_ownership(
         root.path(),
         &[
-            component("cli", ".", false),
-            component("palette", "apps/palette", true),
+            component("cli", ".", ReleaseDriver::AxonNative),
+            component("palette", "apps/palette", ReleaseDriver::ReleasePlease),
         ],
     )
     .expect("declared ownership matches both release-please files");
@@ -66,7 +66,11 @@ fn ownership_rejects_repo_prefixed_extra_file_paths() {
 
     let error = validate_release_please_ownership(
         root.path(),
-        &[component("palette", "apps/palette", true)],
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
     )
     .expect_err("extra-file paths are resolved relative to their package");
     let message = error.to_string();
@@ -93,7 +97,11 @@ fn ownership_rejects_missing_direct_version_source_extra_file() {
 
     let error = validate_release_please_ownership(
         root.path(),
-        &[component("palette", "apps/palette", true)],
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
     )
     .expect_err("every directly-updatable version source needs an extra-file");
     assert!(
@@ -119,7 +127,11 @@ fn ownership_rejects_unexpected_extra_file() {
 
     let error = validate_release_please_ownership(
         root.path(),
-        &[component("palette", "apps/palette", true)],
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
     )
     .expect_err("extra-files must not claim non-version files");
     assert!(
@@ -130,7 +142,7 @@ fn ownership_rejects_unexpected_extra_file() {
 }
 
 #[test]
-fn ownership_rejects_unmanaged_path_in_release_please_config() {
+fn ownership_rejects_axon_native_path_in_release_please_config() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(
         root.path().join("release-please-config.json"),
@@ -146,11 +158,11 @@ fn ownership_rejects_unmanaged_path_in_release_please_config() {
     let error = validate_release_please_ownership(
         root.path(),
         &[
-            component("cli", ".", false),
-            component("palette", "apps/palette", true),
+            component("cli", ".", ReleaseDriver::AxonNative),
+            component("palette", "apps/palette", ReleaseDriver::ReleasePlease),
         ],
     )
-    .expect_err("release-please config must not own unmanaged cli");
+    .expect_err("release-please config must not own axon-native cli");
     assert!(error.to_string().contains("release-please-config.json"));
     assert!(error.to_string().contains("unexpected [.]"));
 }
@@ -167,7 +179,11 @@ fn ownership_rejects_missing_managed_manifest_path() {
 
     let error = validate_release_please_ownership(
         root.path(),
-        &[component("palette", "apps/palette", true)],
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
     )
     .expect_err("managed palette path must be present in release-please manifest");
     assert!(error.to_string().contains(".release-please-manifest.json"));
@@ -191,8 +207,8 @@ fn ownership_rejects_two_components_claiming_one_release_path() {
     let error = validate_release_please_ownership(
         root.path(),
         &[
-            component("palette", "apps/shared", true),
-            component("android", "apps/shared", true),
+            component("palette", "apps/shared", ReleaseDriver::ReleasePlease),
+            component("android", "apps/shared", ReleaseDriver::ReleasePlease),
         ],
     )
     .expect_err("a release-please path must have exactly one component owner");
@@ -236,7 +252,11 @@ fn ownership_rejects_release_please_tag_configuration_drift() {
 
         let error = validate_release_please_ownership(
             root.path(),
-            &[component("palette", "apps/palette", true)],
+            &[component(
+                "palette",
+                "apps/palette",
+                ReleaseDriver::ReleasePlease,
+            )],
         )
         .expect_err("release-please tag settings must derive the component tag prefix");
         let message = error.to_string();
@@ -247,10 +267,10 @@ fn ownership_rejects_release_please_tag_configuration_drift() {
 }
 
 #[test]
-fn dispatch_rejects_release_output_for_unmanaged_component() {
+fn dispatch_rejects_release_output_for_axon_native_component() {
     let components = [
-        component("cli", ".", false),
-        component("palette", "apps/palette", true),
+        component("cli", ".", ReleaseDriver::AxonNative),
+        component("palette", "apps/palette", ReleaseDriver::ReleasePlease),
     ];
     let outputs = r#"{
         "paths_released": "[\".\", \"apps/palette\"]",
@@ -259,13 +279,21 @@ fn dispatch_rejects_release_output_for_unmanaged_component() {
     }"#;
 
     let error = release_please_dispatch_items(Path::new("."), &components, outputs)
-        .expect_err("release-please must not dispatch an unmanaged component");
-    assert!(error.to_string().contains("unmanaged release path ."));
+        .expect_err("release-please must not dispatch an axon-native component");
+    assert!(
+        error
+            .to_string()
+            .contains("release outputs include path . owned by axon-native")
+    );
 }
 
 #[test]
 fn dispatch_rejects_unknown_release_output_path() {
-    let components = [component("palette", "apps/palette", true)];
+    let components = [component(
+        "palette",
+        "apps/palette",
+        ReleaseDriver::ReleasePlease,
+    )];
     let outputs = r#"{
         "paths_released": "[\"apps/unknown\"]",
         "palette_tag": "palette-v1.0.0"
@@ -281,11 +309,15 @@ fn dispatch_rejects_unknown_release_output_path() {
 }
 
 #[test]
-fn fixups_reject_unmanaged_component() {
+fn fixups_reject_axon_native_component() {
     let root = tempfile::tempdir().unwrap();
-    let components = [component("cli", ".", false)];
+    let components = [component("cli", ".", ReleaseDriver::AxonNative)];
 
     let error = fixups(root.path(), &components, "cli", "1.0.1")
-        .expect_err("release-please fixups must not write unmanaged components");
-    assert!(error.to_string().contains("unmanaged component cli"));
+        .expect_err("release-please fixups must not write axon-native components");
+    assert!(
+        error
+            .to_string()
+            .contains("release-please fixups cannot modify component cli driven by axon-native")
+    );
 }

@@ -52,21 +52,21 @@ pub(super) fn collect_changed_component_errors(
             && candidate <= latest
         {
             errors.push(format!(
-                "{} code changed but version {} is not greater than latest {} tag version {}. Let release-please bump {} before merging.",
+                "{} code changed but version {} is not greater than latest {} tag version {}. {} before merging.",
                 component.id,
                 plan.version,
                 component.tag_prefix,
                 latest,
-                bump_hint(component)
+                bump_guidance(component)
             ));
         }
 
         if existing_candidate_tag {
             errors.push(format!(
-                "{} code changed but tag {} already exists. Let release-please bump {} before merging.",
+                "{} code changed but tag {} already exists. {} before merging.",
                 component.id,
                 plan.candidate_tag,
-                bump_hint(component)
+                bump_guidance(component)
             ));
         }
     }
@@ -90,7 +90,7 @@ fn collect_managed_pr_ownership_errors(
     mode: GateMode,
     errors: &mut Vec<String>,
 ) -> ReleaseResult<bool> {
-    if mode != GateMode::Pr || !component.release_please_managed {
+    if mode != GateMode::Pr || !component.release_driver.is_release_please() {
         return Ok(false);
     }
     let compare_ref = compare_ref_for_component(root, component, base, head, mode)?
@@ -130,7 +130,7 @@ fn release_fixup_only_pr_change(
     head: &str,
     mode: GateMode,
 ) -> ReleaseResult<bool> {
-    if mode != GateMode::Pr || !component.release_please_managed {
+    if mode != GateMode::Pr || !component.release_driver.is_release_please() {
         return Ok(false);
     }
     if latest != Some(candidate) {
@@ -171,6 +171,16 @@ pub(super) fn version_from_tag(component: &Component, tag: &str) -> ReleaseResul
             component.id
         )
     })
+}
+
+fn bump_guidance(component: &Component) -> String {
+    if component.release_driver.is_axon_native() {
+        return format!(
+            "Run cargo xtask bump-version patch|minor|major --component {}",
+            component.id
+        );
+    }
+    format!("Let release-please bump {}", bump_hint(component))
 }
 
 fn bump_hint(component: &Component) -> String {

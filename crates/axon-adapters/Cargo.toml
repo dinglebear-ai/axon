@@ -11,9 +11,6 @@ homepage.workspace = true
 repository.workspace = true
 publish = false
 
-[features]
-tls-fingerprinting = ["axon-core/tls-fingerprinting"]
-
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"

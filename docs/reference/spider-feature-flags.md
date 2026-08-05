@@ -1,6 +1,7 @@
 # Spider.rs Feature Flags
 
-> **Webclaw port feature flags** (tls-fingerprinting, quickjs, social-verticals) are documented in
+> **Webclaw port capabilities and feature flags** (baseline TLS fingerprinting,
+> optional quickjs and social-verticals) are documented in
 > [`docs/reference/cargo-features.md`](cargo-features.md) — that file also covers runtime env-var gates.
 
 **Total feature entries tracked in this inventory: 89 (includes the `basic` meta-feature; +6 rows vs. the previous count, added to track spider 2.52.0's `__basic` force-enabled set — see "Transitively Enabled via `basic` → `__basic`" below)**

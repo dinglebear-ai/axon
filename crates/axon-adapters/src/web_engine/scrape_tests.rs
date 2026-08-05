@@ -1,4 +1,17 @@
 use super::*;
+
+#[test]
+fn rendered_not_modified_response_is_usable_when_it_has_content() {
+    let html = "<html><a href='/news'>News</a></html>";
+    assert!(usable_render_response(RenderMode::Chrome, 304, html));
+    assert!(!usable_render_response(RenderMode::Http, 304, html));
+    assert!(!usable_render_response(RenderMode::Chrome, 304, "  "));
+    assert!(!usable_render_response(
+        RenderMode::Chrome,
+        403,
+        "<html>blocked</html>"
+    ));
+}
 use axon_core::config::ScrapeFormat;
 use httpmock::prelude::*;
 
@@ -356,7 +369,13 @@ fn single_page_chrome_render_uses_ssrf_request_interception() {
         render_mode: RenderMode::Chrome,
         ..Config::default()
     };
-    let website = build_scrape_website(&cfg, "https://example.com/").expect("website config");
+    let mut website = build_scrape_website(&cfg, "https://example.com/").expect("website config");
+    crate::web_engine::browser::apply_spider_browser_defaults_with_timeout(
+        &cfg,
+        &mut website,
+        cfg.render_mode,
+        crate::web_engine::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    );
     let intercept = &website.configuration.chrome_intercept;
     assert!(intercept.enabled);
     let blacklist = intercept
@@ -539,8 +558,14 @@ fn test_build_scrape_website_chrome_mode_sets_dismiss_dialogs() {
         render_mode: RenderMode::Chrome,
         ..Config::default()
     };
-    let website = build_scrape_website(&cfg, "https://example.com")
+    let mut website = build_scrape_website(&cfg, "https://example.com")
         .expect("build_scrape_website should succeed");
+    crate::web_engine::browser::apply_spider_browser_defaults_with_timeout(
+        &cfg,
+        &mut website,
+        cfg.render_mode,
+        crate::web_engine::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    );
     assert_eq!(website.configuration.dismiss_dialogs, Some(true));
     assert!(website.configuration.disable_log);
 }
@@ -552,8 +577,14 @@ fn test_build_scrape_website_chrome_mode_with_csp_bypass() {
         bypass_csp: true,
         ..Config::default()
     };
-    let website = build_scrape_website(&cfg, "https://example.com")
+    let mut website = build_scrape_website(&cfg, "https://example.com")
         .expect("build_scrape_website should succeed");
+    crate::web_engine::browser::apply_spider_browser_defaults_with_timeout(
+        &cfg,
+        &mut website,
+        cfg.render_mode,
+        crate::web_engine::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    );
     assert!(website.configuration.bypass_csp);
 }
 
@@ -564,8 +595,14 @@ fn test_build_scrape_website_http_mode_skips_chrome_options() {
         bypass_csp: true,
         ..Config::default()
     };
-    let website = build_scrape_website(&cfg, "https://example.com")
+    let mut website = build_scrape_website(&cfg, "https://example.com")
         .expect("build_scrape_website should succeed");
+    crate::web_engine::browser::apply_spider_browser_defaults_with_timeout(
+        &cfg,
+        &mut website,
+        cfg.render_mode,
+        crate::web_engine::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    );
     assert_eq!(website.configuration.dismiss_dialogs, None);
     assert!(!website.configuration.disable_log);
     assert!(!website.configuration.bypass_csp);

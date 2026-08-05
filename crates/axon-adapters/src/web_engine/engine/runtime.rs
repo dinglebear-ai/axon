@@ -7,9 +7,6 @@ use axon_core::config::{Config, RenderMode};
 use axon_core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings};
 use spider::CaseInsensitiveString;
 use spider::configuration::RedirectPolicy;
-use spider::features::chrome_common::{
-    RequestInterceptConfiguration, ScreenShotConfig, ScreenshotParams, WaitForSelector,
-};
 use spider::url::Url;
 use spider::utils::hedge::HedgeConfig;
 use spider::website::Website;
@@ -66,114 +63,6 @@ pub async fn resolve_cdp_ws_url(remote_url: &str) -> Option<String> {
     }
 
     Some(parsed.to_string())
-}
-
-async fn apply_browser_settings(
-    cfg: &Config,
-    mut website: Website,
-    mode: RenderMode,
-) -> Result<Website, Box<dyn Error>> {
-    // Always resolve and pin the Chrome connection URL when configured.
-    // Spider reads CHROME_URL from the environment as a fallback (CHROM_BASE), which
-    // may contain an unresolvable Docker hostname. By always calling with_chrome_connection
-    // here, we ensure spider uses axon's normalised localhost URL for all render modes —
-    // including AutoSwitch, which also spawns Chrome internally when needed.
-    if let Some(ref remote_url) = cfg.chrome_remote_url {
-        // If remote_url is already a ws:// URL (threaded from the bootstrap
-        // probe), resolve_cdp_ws_url returns it directly with no second fetch.
-        // Otherwise it discovers via /json/version and normalises any Docker
-        // hostname to 127.0.0.1. Inside Docker, resolve_cdp_ws_url returns None
-        // and we fall back to the discovery URL (spider.rs fetches it itself).
-        let chrome_url = match resolve_cdp_ws_url(remote_url).await {
-            Some(ws_url) => {
-                axon_core::logging::log_info(&format!("[Chrome] CDP WebSocket resolved: {ws_url}"));
-                ws_url
-            }
-            None => cdp_discovery_url(remote_url).unwrap_or_else(|| remote_url.to_string()),
-        };
-        website.with_chrome_connection(Some(chrome_url));
-    }
-
-    if matches!(mode, RenderMode::Chrome) {
-        // CDP path — primary browser mode. chromiumoxide connects directly via CDP,
-        // giving access to stealth, fingerprint, intercept, and network-idle features.
-        website
-            .with_chrome_intercept(chrome_intercept_config(cfg))
-            .with_stealth(true)
-            .with_fingerprint(true);
-        // Dismiss browser dialogs (alert/confirm/prompt) automatically — without this
-        // they block page capture indefinitely in headless Chrome.
-        website.with_dismiss_dialogs(true);
-        // Disable Chrome's log domain — reduces protocol noise with no functional downside.
-        website.configuration.disable_log = true;
-        if cfg.bypass_csp {
-            website.with_csp_bypass(true);
-        }
-        // `idle_network0` calls `wait_for_network_idle()` — waits until the network
-        // has been fully quiet for 500 ms. This is essential for CSR frameworks
-        // (React, Vue, etc.) that run XHR/fetch calls during hydration AFTER the
-        // initial HTML load. `idle_network` (EventLoadingFinished) fires too early.
-        website.with_wait_for_idle_network0(Some(spider::configuration::WaitForIdleNetwork::new(
-            Some(Duration::from_secs(cfg.chrome_network_idle_timeout_secs)),
-        )));
-        // Chrome needs more time than HTTP: the base_timeout budget is consumed
-        // by page load + network-idle wait + stealth mouse movement (triggered when
-        // spider detects WAF/Cloudflare headers). With the default 20s HTTP timeout
-        // and a 15s network-idle window, only ~5s remains for mouse movement — not
-        // enough, causing "mouse movement timeout exceeded" warnings.
-        // Floor: network_idle_secs + 30s covers page load, idle wait, and movement.
-        let chrome_min_timeout_ms = (cfg.chrome_network_idle_timeout_secs + 30) * 1_000;
-        let chrome_timeout_ms = cfg
-            .request_timeout_ms
-            .map(|t| t.max(chrome_min_timeout_ms))
-            .unwrap_or(chrome_min_timeout_ms);
-        website.with_request_timeout(Some(Duration::from_millis(chrome_timeout_ms)));
-        if let Some(ref selector) = cfg.chrome_wait_for_selector {
-            website.with_wait_for_selector(Some(WaitForSelector::new(
-                Some(Duration::from_secs(cfg.chrome_network_idle_timeout_secs)),
-                selector.clone(),
-            )));
-        }
-        if cfg.chrome_screenshot {
-            website.with_screenshot(Some(ScreenShotConfig::new(
-                ScreenshotParams::default(),
-                false,
-                true,
-                Some(std::path::PathBuf::from(&cfg.output_dir)),
-            )));
-        } else {
-            // spider 2.46.0 has a default screenshot save path when screenshot
-            // config is None. Explicitly set save=false/bytes=false to avoid
-            // unintended filesystem writes (and noisy filename-too-long errors
-            // from malformed discovered URLs).
-            website.with_screenshot(Some(ScreenShotConfig::new(
-                ScreenshotParams::default(),
-                false,
-                false,
-                None,
-            )));
-        }
-        website = website
-            .build()
-            .map_err(|e| format!("failed to build website with chrome settings: {e}"))?;
-    }
-    Ok(website)
-}
-
-pub(super) fn chrome_intercept_config(cfg: &Config) -> RequestInterceptConfiguration {
-    let mut intercept = RequestInterceptConfiguration::new(true);
-    intercept.set_blacklist_patterns(Some(chrome_intercept_blacklist_patterns()));
-    if cfg.chrome_remote_local_policy {
-        intercept.set_remote_local_policy(true);
-    }
-    intercept
-}
-
-fn chrome_intercept_blacklist_patterns() -> Vec<String> {
-    ssrf_blacklist_compact_strings()
-        .iter()
-        .map(ToString::to_string)
-        .collect()
 }
 
 pub(super) fn apply_limit_and_behavior_settings(
@@ -386,7 +275,13 @@ pub(super) async fn configure_website_with_crawl_id(
         }
     }
 
-    website = apply_browser_settings(cfg, website, mode).await?;
+    website = super::super::browser::configure_spider_browser(
+        cfg,
+        website,
+        mode,
+        super::super::browser::BrowserTimeoutPolicy::FloorForBrowserWork,
+    )
+    .await?;
 
     // P3 — spider builder fields previously parsed but never applied.
     if !cfg.url_whitelist.is_empty() {
