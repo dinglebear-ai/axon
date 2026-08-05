@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pin the shared Rust cache action to upstream Kache 0.13.0 so hosted and self-hosted jobs use the same daemon protocol and S3 cache epoch.
 - Let release-only smoke builds use the existing fallback web panel without rebuilding frontend assets, while web changes still reuse the single uploaded web artifact.
 
+### Fixed
+- Align map smoke fixtures with the required `outcome` field and accept Axon's explicit terminal map error when a live MCP smoke target cannot be acquired.
+
 ### Security
 - Upgrade `rkyv` and `rkyv_derive` to 0.8.17, resolving RUSTSEC-2026-0233, RUSTSEC-2026-0234, and RUSTSEC-2026-0235.
 
