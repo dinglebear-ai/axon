@@ -97,6 +97,11 @@ jobs:
         with:
           toolchain: 1.97.1
           install-tauri-deps: "true"
+          s3-access-key: ${{ secrets.KACHE_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+          s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.KACHE_S3_BUCKET }}
+          s3-prefix: ${{ vars.KACHE_S3_PREFIX }}
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
       # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
