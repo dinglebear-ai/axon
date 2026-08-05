@@ -30,6 +30,8 @@ jobs:
   automerge:
     name: auto-merge session logs
     runs-on: ubuntu-latest
+    # Slowest observed green run: 11s (a single gh auto-merge API call).
+    timeout-minutes: 10
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository

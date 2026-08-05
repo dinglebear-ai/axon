@@ -16,6 +16,8 @@ jobs:
   changes:
     name: changes
     runs-on: ci-pool-ops
+    # Slowest observed green run: 1.9 min (changed-path classification only).
+    timeout-minutes: 15
     outputs:
       compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.full_ci == 'true' }}
       docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -64,6 +66,8 @@ jobs:
   compose-config:
     name: compose-config
     runs-on: ci-pool-system
+    # Slowest observed green run: 19s (compose config validation only).
+    timeout-minutes: 20
     needs: [changes]
     if: ${{ needs.changes.outputs.compose == 'true' }}
     steps:
@@ -100,6 +104,10 @@ jobs:
   image-build-smoke:
     name: image-build-smoke
     runs-on: ci-pool-system
+    # Slowest observed green run: 2.9 min, but that is a warm buildx cache — the
+    # Dockerfile runs a full cargo build inside the container, so a cache miss is
+    # far slower than anything measured here.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.docker == 'true' }}
     steps:
@@ -122,6 +130,8 @@ jobs:
     name: compose-smoke-gate
     runs-on: ci-pool-ops
     if: always()
+    # Slowest observed green run: 44s (result aggregation only).
+    timeout-minutes: 10
     needs:
       - changes
       - compose-config
