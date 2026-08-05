@@ -717,6 +717,16 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
             "{name} must not reinstall web dependencies"
         );
     }
+    assert!(
+        binary_smoke_build.contains("needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')"),
+        "release-only smoke builds must accept the intentionally skipped web job"
+    );
+    assert!(
+        binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'success' }}")
+            && binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'skipped' }}")
+            && binary_smoke_build.contains("AXON_ALLOW_FALLBACK_WEB_ASSETS=1"),
+        "release-only smoke builds must use fallback web assets without rebuilding the panel"
+    );
 }
 
 #[test]

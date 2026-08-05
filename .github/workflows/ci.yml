@@ -994,14 +994,26 @@ jobs:
     name: binary-smoke-build
     runs-on: ubuntu-24.04
     needs: [changes, rust-contracts, web-panel]
-    if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
+    if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')) && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache
+        with:
+          s3-access-key: ${{ secrets.KACHE_S3_ACCESS_KEY }}
+          s3-secret-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
+          s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
+          s3-bucket: ${{ vars.KACHE_S3_BUCKET }}
+          s3-prefix: ${{ vars.KACHE_S3_PREFIX }}
       - uses: actions/download-artifact@v5
+        if: ${{ needs.web-panel.result == 'success' }}
         with:
           name: axon-web-assets
           path: apps/web/out
+      - name: Use fallback web assets for release-only smoke
+        if: ${{ needs.web-panel.result == 'skipped' }}
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: cargo build axon
         run: cargo build --locked --bin axon
       - name: Upload smoke binary
