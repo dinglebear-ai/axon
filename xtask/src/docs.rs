@@ -23,6 +23,7 @@ mod families;
 mod generate;
 mod inventory;
 mod links;
+mod manifest;
 
 use std::path::Path;
 

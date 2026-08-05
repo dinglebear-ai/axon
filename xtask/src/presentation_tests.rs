@@ -1,4 +1,5 @@
 use super::*;
+use sha2::{Digest, Sha256};
 
 #[test]
 fn source_parses_and_hashes_deterministically() {
@@ -65,6 +66,23 @@ fn generation_is_idempotent_in_memory() {
 }
 
 #[test]
+fn check_rejects_stale_and_missing_generated_artifacts() {
+    let dir = tempfile::tempdir().unwrap();
+    generate(dir.path(), false).unwrap();
+    generate(dir.path(), true).unwrap();
+
+    let path = dir.path().join("apps/web/src/styles/axon-tokens.css");
+    fs::write(&path, "stale\n").unwrap();
+    let stale = generate(dir.path(), true).expect_err("stale artifact must fail check");
+    assert!(stale.to_string().contains("out of date"), "{stale:#}");
+
+    generate(dir.path(), false).unwrap();
+    fs::remove_file(&path).unwrap();
+    let missing = generate(dir.path(), true).expect_err("missing artifact must fail check");
+    assert!(missing.to_string().contains("out of date"), "{missing:#}");
+}
+
+#[test]
 fn css_emit_defines_every_color_token_in_both_modes() {
     let src = TokenSource::load().expect("source.json parses");
     let css = emit_css::render(&src);
@@ -113,6 +131,42 @@ fn headers_carry_contract_version_and_source_hash() {
     assert!(header::rust_header(&src).contains(&hash));
     assert!(header::kotlin_header(&src).contains(&hash));
     assert!(header::markdown_header(&src).contains(&hash));
+}
+
+#[test]
+fn presentation_schema_carries_source_manifest_provenance() {
+    let src = TokenSource::load().expect("source.json parses");
+    let schema: serde_json::Value =
+        serde_json::from_str(&emit_docs::render_schema(&src)).expect("schema parses");
+    assert_eq!(
+        schema["x-axon"]["generated_by"],
+        "cargo xtask presentation generate"
+    );
+    assert_eq!(schema["x-axon"]["contract_version"], src.contract_version);
+
+    let inputs = schema["x-axon"]["source_inputs"]
+        .as_array()
+        .expect("presentation source inputs");
+    for path in [
+        "docs/pipeline-unification/surfaces/presentation-contract.md",
+        "xtask/src/presentation/emit_docs.rs",
+        "xtask/src/presentation/model.rs",
+        "xtask/src/presentation/source.json",
+    ] {
+        assert!(
+            inputs.iter().any(|input| input["path"] == path),
+            "missing presentation provenance for {path}: {inputs:?}"
+        );
+    }
+    let source = inputs
+        .iter()
+        .find(|input| input["path"] == "xtask/src/presentation/source.json")
+        .expect("canonical token source provenance");
+    assert_eq!(source["kind"], "json_source");
+    assert_eq!(
+        source["checksum"],
+        format!("sha256:{:x}", Sha256::digest(model::SOURCE_JSON.as_bytes()))
+    );
 }
 
 fn super_camel(name: &str) -> String {

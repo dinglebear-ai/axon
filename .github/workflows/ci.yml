@@ -113,7 +113,7 @@ jobs:
     name: rust-contracts
     runs-on: ci-pool-rust
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -1069,7 +1069,7 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
+          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}"
           require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
           require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"

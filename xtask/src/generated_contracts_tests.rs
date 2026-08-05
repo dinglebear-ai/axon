@@ -17,7 +17,7 @@ fn checksum(root: &Path, path: &str) -> String {
 }
 
 #[test]
-fn generated_contracts_runs_schemas_before_dependent_docs() {
+fn generated_contracts_runs_schema_and_presentation_producers_before_dependent_docs() {
     for (command, check) in [
         (GeneratedContractsCommand::Refresh, false),
         (GeneratedContractsCommand::Check, true),
@@ -30,13 +30,19 @@ fn generated_contracts_runs_schemas_before_dependent_docs() {
                 Ok(())
             },
             |actual_check| {
+                calls.borrow_mut().push(("presentation", actual_check));
+                Ok(())
+            },
+            |actual_check| {
                 calls.borrow_mut().push(("docs", actual_check));
                 Ok(())
             },
         )
         .unwrap();
-
-        assert_eq!(*calls.borrow(), [("schemas", check), ("docs", check)]);
+        assert_eq!(
+            *calls.borrow(),
+            [("schemas", check), ("presentation", check), ("docs", check),]
+        );
     }
 }
 

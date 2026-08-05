@@ -139,21 +139,7 @@ mod enabled {
     }
 
     fn generated_artifact_drift(root: &Path) -> Result<Vec<String>> {
-        let mut drifted = BTreeSet::new();
-        for args in [
-            ["diff", "--name-only", "--"].as_slice(),
-            ["diff", "--cached", "--name-only", "--"].as_slice(),
-        ] {
-            for path in generated_artifact_diff(root, args)? {
-                drifted.insert(path);
-            }
-        }
-
-        Ok(drifted.into_iter().collect())
-    }
-
-    fn generated_artifact_diff(root: &Path, diff_args: &[&str]) -> Result<Vec<String>> {
-        let mut args = diff_args.to_vec();
+        let mut args = vec!["status", "--porcelain=v1", "--untracked-files=all", "--"];
         args.extend(GENERATED_ARTIFACTS);
         let command_label = format!("git {}", args.join(" "));
         let output = Command::new("git")
@@ -173,12 +159,17 @@ mod enabled {
 
         let stdout = String::from_utf8(output.stdout)
             .with_context(|| format!("`{command_label}` returned non-UTF-8 output"))?;
-        Ok(stdout
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.is_empty())
-            .map(str::to_owned)
-            .collect())
+        let mut drifted = BTreeSet::new();
+        for line in stdout.lines() {
+            let path = line.get(3..).unwrap_or_default().trim();
+            let path = path
+                .rsplit_once(" -> ")
+                .map_or(path, |(_, destination)| destination);
+            if !path.is_empty() {
+                drifted.insert(path.to_owned());
+            }
+        }
+        Ok(drifted.into_iter().collect())
     }
 
     fn command_exists(root: &Path, program: &str) -> Result<bool> {
@@ -255,5 +246,62 @@ mod enabled {
             .chain(args.iter().copied())
             .collect::<Vec<_>>()
             .join(" ")
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn git(root: &Path, args: &[&str]) {
+            let status = Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .status()
+                .expect("git runs");
+            assert!(status.success(), "git {args:?} failed");
+        }
+
+        fn write(root: &Path, path: &str) {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().expect("generated artifact parent")).unwrap();
+            fs::write(path, "generated\n").unwrap();
+        }
+
+        #[test]
+        fn drift_detection_rejects_required_output_recreated_as_untracked() {
+            let repo = tempfile::tempdir().unwrap();
+            git(repo.path(), &["init", "--quiet"]);
+            git(repo.path(), &["config", "user.name", "Axon Test"]);
+            git(
+                repo.path(),
+                &["config", "user.email", "axon-test@example.invalid"],
+            );
+            git(repo.path(), &["config", "commit.gpgsign", "false"]);
+            git(repo.path(), &["config", "core.hooksPath", ".git/no-hooks"]);
+
+            for path in GENERATED_ARTIFACTS {
+                write(repo.path(), path);
+            }
+            git(repo.path(), &["add", "."]);
+            git(
+                repo.path(),
+                &["commit", "--quiet", "-m", "seed generated outputs"],
+            );
+
+            let removed = GENERATED_ARTIFACTS[0];
+            git(repo.path(), &["rm", "--quiet", removed]);
+            git(
+                repo.path(),
+                &["commit", "--quiet", "-m", "remove generated output"],
+            );
+            write(repo.path(), removed);
+
+            let drifted = generated_artifact_drift(repo.path()).unwrap();
+            assert!(
+                drifted.iter().any(|path| path == removed),
+                "untracked regenerated output must be reported: {drifted:?}"
+            );
+        }
     }
 }

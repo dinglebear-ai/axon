@@ -31,6 +31,13 @@ pub fn run(root: &Path, args: GeneratedContractsArgs) -> Result<()> {
         },
         |check| {
             if check {
+                crate::presentation::check_generated_contracts(root)
+            } else {
+                crate::presentation::refresh_generated_contracts(root)
+            }
+        },
+        |check| {
+            if check {
                 crate::docs::check_generated_contracts(root)
             } else {
                 crate::docs::refresh_generated_contracts(root)
@@ -44,17 +51,25 @@ fn refresh_fixture(root: &Path) -> Result<()> {
     run_with(
         GeneratedContractsCommand::Refresh,
         |_| crate::schemas::refresh_generated_contracts_fixture(root),
+        |_| crate::presentation::refresh_generated_contracts(root),
         |_| crate::docs::refresh_generated_contracts(root),
     )
 }
 
-fn run_with<S, D>(command: GeneratedContractsCommand, mut schemas: S, mut docs: D) -> Result<()>
+fn run_with<S, P, D>(
+    command: GeneratedContractsCommand,
+    mut schemas: S,
+    mut presentation: P,
+    mut docs: D,
+) -> Result<()>
 where
     S: FnMut(bool) -> Result<()>,
+    P: FnMut(bool) -> Result<()>,
     D: FnMut(bool) -> Result<()>,
 {
     let check = matches!(command, GeneratedContractsCommand::Check);
     schemas(check)?;
+    presentation(check)?;
     docs(check)
 }
 

@@ -58,6 +58,13 @@ pub fn run(root: &Path, args: &DocsGenerateArgs) -> Result<()> {
     } else {
         write(root, &sets)?;
     }
+    if args.family.is_none() {
+        if args.check {
+            super::manifest::check(root)?;
+        } else {
+            super::manifest::refresh(root)?;
+        }
+    }
     if args.json {
         let reports = sets
             .iter()
