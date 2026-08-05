@@ -766,23 +766,29 @@ fn linux_smoke_artifact_uses_a_pinned_compatible_runtime() {
 }
 
 #[test]
-fn toml_fmt_installs_rust_before_mise_cargo_tools() {
+/// taplo used to be installed as `cargo:taplo-cli` through mise, which compiled
+/// it from source on every run and therefore needed a Rust toolchain staged
+/// first. It is now a pinned prebuilt binary, so the job must carry neither —
+/// installing Rust here again would restore the cost this replaced.
+fn toml_fmt_uses_a_pinned_prebuilt_taplo() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let toml_fmt = workflow_job_block(workflow, "toml-fmt");
-    let rust_setup = toml_fmt
-        .find("uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8")
-        .expect("toml-fmt Rust setup");
-    let mise_install = toml_fmt
-        .find("uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d")
-        .expect("toml-fmt mise install");
 
     assert!(
-        toml_fmt.contains("toolchain: 1.97.1"),
-        "toml-fmt must use the repository-pinned Rust toolchain"
+        !toml_fmt.contains("dtolnay/rust-toolchain") && !toml_fmt.contains("setup-rust-kache"),
+        "toml-fmt must not stage a Rust toolchain: taplo is a prebuilt binary"
     );
     assert!(
-        rust_setup < mise_install,
-        "toml-fmt must install cargo before mise invokes the cargo taplo backend"
+        !toml_fmt.contains("uses: jdx/mise-action"),
+        "taplo must not be compiled from source via the mise cargo backend"
+    );
+    assert!(
+        toml_fmt.contains("sha256="),
+        "the taplo download must be checksum-pinned"
+    );
+    assert!(
+        toml_fmt.contains("taplo") && toml_fmt.contains("version=\"0.10.0\""),
+        "the taplo release must be version-pinned"
     );
 }
 
@@ -997,7 +1003,10 @@ fn compose_and_docker_workflows_use_changed_path_classifier() {
     assert!(compose.contains("git show \"${{ github.event.pull_request.base.sha }}:$classifier\""));
     assert!(compose.contains("python3 \"$AXON_CHANGED_PATHS\""));
     assert!(compose.contains("needs.changes.outputs.compose == 'true'"));
-    assert!(compose.contains("needs.changes.outputs.docker == 'true'"));
+    // image-build-smoke runs a full in-container cargo build, so it is gated on
+    // the narrow `docker_build` output (real image inputs only) rather than the
+    // broad `docker` output, which any rust/web change would have set.
+    assert!(compose.contains("needs.changes.outputs.docker_build == 'true'"));
     assert!(compose.contains("compose-smoke-gate:"));
     assert!(compose.contains("require_success_or_intentional_skip compose-config"));
     assert!(compose.contains("require_success_or_intentional_skip image-build-smoke"));
