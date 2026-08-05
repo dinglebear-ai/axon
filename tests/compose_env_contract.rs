@@ -452,6 +452,46 @@ fn shell_scripts_share_canonical_env_resolution() {
     );
 }
 
+#[test]
+fn incus_bootstrap_defaults_to_host_owned_tei() {
+    let bootstrap = fs::read_to_string("deploy/incus/bootstrap.sh")
+        .expect("Incus bootstrap should be readable");
+    let env = fs::read_to_string("deploy/incus/axon-incus-bootstrap.env.example")
+        .expect("Incus bootstrap env example should be readable");
+
+    assert!(
+        bootstrap.contains("TEI_MODE=\"${AXON_INCUS_TEI_MODE:-external}\""),
+        "Incus bootstrap should default TEI to the host-owned external provider"
+    );
+    assert!(
+        bootstrap.contains("AXON_EXTERNAL_TEI_URL must be set"),
+        "external TEI mode should fail closed without a reachable provider URL"
+    );
+    assert!(
+        bootstrap.contains("docker_services=\"axon-chrome\"")
+            && bootstrap.contains("docker_services=\"axon-tei $docker_services\""),
+        "nested TEI should be added only by the explicit bundled mode"
+    );
+    assert!(
+        bootstrap
+            .contains("docker compose --env-file .env -f docker-compose.prod.yaml stop axon-tei")
+            && bootstrap.contains(
+                "docker compose --env-file .env -f docker-compose.prod.yaml rm -f axon-tei"
+            ),
+        "external mode should remove stale nested TEI state"
+    );
+    assert!(
+        !bootstrap.contains("up -d axon-tei axon-chrome")
+            && !bootstrap.contains("up -d axon-qdrant axon-tei axon-chrome"),
+        "bootstrap must not start nested TEI unconditionally"
+    );
+    assert!(
+        env.contains("AXON_INCUS_TEI_MODE=external")
+            && env.contains("AXON_EXTERNAL_TEI_URL=http://10.47.200.1:52000"),
+        "dookie example should point the guest at host TEI through incusbr0"
+    );
+}
+
 fn env_example_keys() -> BTreeSet<String> {
     const ENV_EXAMPLE: &str = include_str!("../.env.example");
 
