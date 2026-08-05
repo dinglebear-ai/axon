@@ -77,6 +77,8 @@ FULL_CI_ROUTER_PATHS = {
     "tests/ci_changed_paths.rs",
     "tests/workflow_shapes.rs",
     "xtask/src/pre_push.rs",
+    "lefthook.yml",
+    "scripts/clear-git-local-env.sh",
 }
 
 WORKFLOW_CATEGORY_PATHS = {
@@ -133,9 +135,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
 
     workflow = any_match(
         paths,
-        lambda p: starts(p, ".github/workflows/")
-        or p in FULL_CI_ROUTER_PATHS
-        or p in {"lefthook.yml", "scripts/clear-git-local-env.sh"},
+        lambda p: starts(p, ".github/workflows/") or p in FULL_CI_ROUTER_PATHS,
     )
     full_ci = any_match(paths, lambda p: p in FULL_CI_ROUTER_PATHS)
     ci_all = any_match(paths, lambda p: p == ".github/workflows/ci.yml")
