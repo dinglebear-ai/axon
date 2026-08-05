@@ -285,6 +285,10 @@ jobs:
         env:
           KACHE_GATE_REQUIRE_DAEMON: "1"
         run: ./scripts/kache-gate.sh
+      - name: Clean up npm cache
+        if: always()
+        shell: bash
+        run: rm -rf "${NPM_CONFIG_CACHE:-}"
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
@@ -688,6 +692,10 @@ jobs:
           name: axon-web-assets
           path: apps/web/out
           if-no-files-found: error
+      - name: Clean up npm cache
+        if: always()
+        shell: bash
+        run: rm -rf "${NPM_CONFIG_CACHE:-}"
 
   chrome-extension:
     name: chrome-extension
