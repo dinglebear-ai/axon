@@ -162,6 +162,10 @@ jobs:
       - name: Kache degradation gate self-test
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh
+      - name: Use direct rustc for long contract compilation
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
       - name: Generated schema and documentation contracts
         run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- generated-contracts check
       - name: Release version contracts
