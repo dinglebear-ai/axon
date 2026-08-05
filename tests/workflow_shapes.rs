@@ -817,6 +817,26 @@ fn rust_ci_uses_the_repository_toolchain_pin() {
 }
 
 #[test]
+fn kache_wrapper_uses_a_verified_absolute_path() {
+    let setup = include_str!("../.github/actions/setup-rust-kache/action.yml");
+    assert!(
+        setup.contains(r#"kache_bin="$(command -v kache)""#)
+            && setup.contains(r#"kache_bin="$(readlink -f "$kache_bin")""#),
+        "the shared Rust setup must resolve the installed wrapper to an absolute path"
+    );
+    assert!(
+        setup.contains(r#"echo "RUSTC_WRAPPER=$kache_bin""#)
+            && setup.contains(r#"echo "CARGO_BUILD_RUSTC_WRAPPER=$kache_bin""#),
+        "Cargo wrapper variables must use the verified executable path"
+    );
+    assert!(
+        !setup.contains(r#"echo "RUSTC_WRAPPER=kache""#)
+            && !setup.contains(r#"echo "CARGO_BUILD_RUSTC_WRAPPER=kache""#),
+        "the shared Rust setup must not rely on repeated PATH lookup for the wrapper"
+    );
+}
+
+#[test]
 fn kache_daemon_probe_is_pipefail_safe() {
     let setup = include_str!("../.github/actions/setup-rust-kache/action.yml");
     assert!(

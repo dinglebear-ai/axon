@@ -234,9 +234,24 @@ runs:
         fi
         mkdir -p "$cache_dir"
 
+        # Cargo resolves a bare RUSTC_WRAPPER through PATH for every compiler
+        # process. Persistent farm jobs have observed transient ENOENT failures
+        # late in otherwise healthy builds. Resolve the installed executable once
+        # and give Cargo an absolute path for every compiler invocation.
+        kache_bin="$(command -v kache)"
+        [ -n "$kache_bin" ] && [ -x "$kache_bin" ] || {
+          echo "::error::kache executable is unavailable after installation"
+          exit 1
+        }
+        kache_bin="$(readlink -f "$kache_bin")"
+        [ -n "$kache_bin" ] && [ -x "$kache_bin" ] || {
+          echo "::error::kache executable could not be resolved to an absolute path"
+          exit 1
+        }
+
         {
-          echo "RUSTC_WRAPPER=kache"
-          echo "CARGO_BUILD_RUSTC_WRAPPER=kache"
+          echo "RUSTC_WRAPPER=$kache_bin"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=$kache_bin"
           echo "KACHE_CACHE_DIR=$cache_dir"
           # Incremental compilation and a compile wrapper do not compose.
           echo "CARGO_INCREMENTAL=0"
