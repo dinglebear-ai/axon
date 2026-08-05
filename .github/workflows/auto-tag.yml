@@ -5,12 +5,12 @@ name: auto-tag
 # On every push to main this asks `cargo xtask check-release-versions` for the
 # shared release plan. Component metadata lives in `release/components.toml`.
 #
-# For each release-please-unmanaged component, it diffs the component's shipping
-# paths against that component's most recent tag. If the code changed AND the
-# version was bumped (the computed tag does not exist), it waits for CI to pass
-# on this commit, creates the tag and GitHub Release, and dispatches the
-# component's artifact workflow. Release-please-managed components are excluded:
-# their release PR, tag, GitHub Release, and artifact dispatch remain owned by
+# For each axon-native component, it diffs the component's shipping paths
+# against that component's most recent tag. If the code changed AND the version
+# was bumped (the computed tag does not exist), it waits for CI to pass on this
+# commit, creates the tag and GitHub Release, and dispatches the component's
+# artifact workflow. release-please-driven components are excluded: their
+# release PR, tag, GitHub Release, and artifact dispatch remain owned by
 # release-please.yml.
 #
 # RELEASE GATES (OPS-M1): before a tag is created we (1) verify the new version
@@ -19,9 +19,9 @@ name: auto-tag
 # this exact commit. This prevents an accidental version edit or a red CI from
 # auto-publishing a broken public release.
 #
-# BUMP ENFORCEMENT: if an unmanaged component's code changed but its version was
-# NOT bumped (the computed tag already exists), the plan fails before a tag is
-# created. Managed components defer their version edits to release-please and
+# BUMP ENFORCEMENT: if an axon-native component's code changed but its version
+# was NOT bumped (the computed tag already exists), the plan fails before a tag
+# is created. release-please-driven components defer their version edits and
 # never enter this workflow's matrix.
 #
 # NOTE: tags pushed via GITHUB_TOKEN do NOT trigger other workflows (GitHub
@@ -76,12 +76,12 @@ jobs:
         run: |
           set -euo pipefail
           cargo xtask check-release-versions --head HEAD --mode main --json > release-plan.json
-          if ! jq -e 'type == "array" and all(.[]; (.release_please_managed | type) == "boolean")' release-plan.json >/dev/null; then
-            echo "::error::release plan must be an array whose items declare boolean release_please_managed ownership" >&2
+          if ! jq -e 'type == "array" and all(.[]; ((.release_driver | type) == "string") and (.release_driver == "axon-native" or .release_driver == "release-please"))' release-plan.json >/dev/null; then
+            echo "::error::release plan must declare release_driver as axon-native or release-please for every component" >&2
             cat release-plan.json >&2
             exit 1
           fi
-          matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)
+          matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_driver == "axon-native")]}' release-plan.json)
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           cat release-plan.json
 

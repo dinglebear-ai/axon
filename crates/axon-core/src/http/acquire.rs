@@ -24,7 +24,7 @@
 //!    a body matching a WAF fingerprint ([`detect_challenge`]) is a *wall*, not
 //!    content — distinct from an ordinary 404 or timeout.
 //! 3. On a wall, and only on a wall, retry through the browser TLS/HTTP2
-//!    impersonating client (feature `tls-fingerprinting`).
+//!    impersonating client, which is compiled into every supported Axon build.
 //! 4. Re-classify. A wall that survives escalation is returned as
 //!    [`FetchError::Challenge`] so callers can surface it, rather than letting
 //!    a denial page flow downstream as if it were a thin page.
@@ -34,7 +34,6 @@ use crate::http::client::http_client;
 use crate::http::error::HttpError;
 use crate::http::normalize::normalize_url;
 use crate::http::ssrf::validate_url;
-#[cfg(feature = "tls-fingerprinting")]
 use crate::logging::log_warn;
 
 /// Default body budget for challenge fingerprint scanning.
@@ -96,22 +95,22 @@ pub enum EscalationOutcome {
     StillWalled,
     /// Impersonation ran and broke (DNS, TLS, timeout, SSRF block). The site is
     /// NOT known to be permanently walled — retrying is reasonable.
-    Failed(String),
-    /// Impersonation was unavailable: the `tls-fingerprinting` feature is not
-    /// compiled in, or the caller disabled it. Nothing is known about whether
-    /// the wall would survive a browser-fingerprinted request.
-    Unavailable,
+    ClientInitializationFailed(String),
+    /// The client initialized, but the impersonated request failed.
+    RequestFailed(String),
+    /// The caller explicitly disabled escalation by configuration.
+    Disabled,
 }
 
 impl std::fmt::Display for EscalationOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::StillWalled => write!(f, "wall survived browser TLS impersonation"),
-            Self::Failed(reason) => write!(f, "impersonated retry failed: {reason}"),
-            Self::Unavailable => write!(
-                f,
-                "impersonation unavailable (build without the `tls-fingerprinting` feature)"
-            ),
+            Self::ClientInitializationFailed(reason) => {
+                write!(f, "impersonating client initialization failed: {reason}")
+            }
+            Self::RequestFailed(reason) => write!(f, "impersonated request failed: {reason}"),
+            Self::Disabled => write!(f, "impersonation disabled by configuration"),
         }
     }
 }
@@ -195,17 +194,23 @@ pub async fn fetch_web(url: &str, opts: &FetchWebOptions) -> Result<WebDocument,
         // Escalation ran and broke: do NOT present that as a permanent wall.
         // An operator told "bot challenge" gives up on the domain; told
         // "escalation failed: dns timeout" they retry.
-        Escalation::Failed(reason) => Err(FetchError::Challenge {
+        Escalation::ClientInitializationFailed(reason) => Err(FetchError::Challenge {
             url: url.to_string(),
             status,
             detection,
-            escalation: EscalationOutcome::Failed(reason),
+            escalation: EscalationOutcome::ClientInitializationFailed(reason),
         }),
-        Escalation::Unavailable => Err(FetchError::Challenge {
+        Escalation::RequestFailed(reason) => Err(FetchError::Challenge {
             url: url.to_string(),
             status,
             detection,
-            escalation: EscalationOutcome::Unavailable,
+            escalation: EscalationOutcome::RequestFailed(reason),
+        }),
+        Escalation::Disabled => Err(FetchError::Challenge {
+            url: url.to_string(),
+            status,
+            detection,
+            escalation: EscalationOutcome::Disabled,
         }),
     }
 }
@@ -247,29 +252,22 @@ fn finish(
 }
 
 /// Outcome of attempting the impersonated retry.
-#[cfg_attr(
-    not(feature = "tls-fingerprinting"),
-    allow(
-        dead_code,
-        reason = "only Unavailable is constructed without the feature"
-    )
-)]
 enum Escalation {
     /// The impersonating client returned a response.
     Fetched(WebDocument),
     /// Escalation ran and failed for an infrastructure reason (DNS, TLS,
-    /// timeout, SSRF block). Distinct from `Unavailable` so a transient network
-    /// fault is never reported to an operator as a permanent bot wall.
-    Failed(String),
-    /// The `tls-fingerprinting` feature is not compiled in, or the caller
-    /// disabled escalation.
-    Unavailable,
+    /// timeout, SSRF block). Distinct from a surviving wall so a transient
+    /// network fault is never reported to an operator as a permanent block.
+    ClientInitializationFailed(String),
+    /// The client initialized but the request or response body failed.
+    RequestFailed(String),
+    /// The caller disabled escalation.
+    Disabled,
 }
 
-#[cfg(feature = "tls-fingerprinting")]
 async fn escalate(url: &str, opts: &FetchWebOptions) -> Escalation {
     if !opts.allow_escalation {
-        return Escalation::Unavailable;
+        return Escalation::Disabled;
     }
     match crate::http::impersonate::fetch_html_impersonated(url).await {
         Ok(resp) => Escalation::Fetched(WebDocument {
@@ -278,18 +276,19 @@ async fn escalate(url: &str, opts: &FetchWebOptions) -> Escalation {
             final_url: resp.final_url,
             escalated: true,
         }),
+        Err(HttpError::ImpersonationInit(reason)) => {
+            log_warn(&format!(
+                "acquire: impersonating client initialization failed for {url}: {reason}"
+            ));
+            Escalation::ClientInitializationFailed(reason)
+        }
         Err(e) => {
             log_warn(&format!(
-                "acquire: impersonated retry failed for {url}: {e}"
+                "acquire: impersonated request failed for {url}: {e}"
             ));
-            Escalation::Failed(e.to_string())
+            Escalation::RequestFailed(e.to_string())
         }
     }
-}
-
-#[cfg(not(feature = "tls-fingerprinting"))]
-async fn escalate(_url: &str, _opts: &FetchWebOptions) -> Escalation {
-    Escalation::Unavailable
 }
 
 #[cfg(test)]

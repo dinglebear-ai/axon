@@ -468,15 +468,15 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     );
     assert!(
         plan.contains(
-            "if ! jq -e 'type == \"array\" and all(.[]; (.release_please_managed | type) == \"boolean\")' release-plan.json"
+            "if ! jq -e 'type == \"array\" and all(.[]; ((.release_driver | type) == \"string\") and (.release_driver == \"axon-native\" or .release_driver == \"release-please\"))' release-plan.json"
         ) && plan.contains("exit 1"),
-        "auto-tag must fail closed unless every release-plan item declares boolean release_please_managed ownership"
+        "auto-tag must fail closed unless every release-plan item declares a known release driver"
     );
     assert!(
         plan.contains(
-            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_please_managed == false)]}' release-plan.json)"
+            "matrix=$(jq -c '{include: [.[] | select(.changed == true and .release_driver == \"axon-native\")]}' release-plan.json)"
         ),
-        "auto-tag matrix must include only changed components that release-please does not own"
+        "auto-tag matrix must include only changed axon-native components"
     );
     assert_eq!(
         plan.matches("matrix=$(jq -c").count(),
@@ -516,6 +516,30 @@ fn auto_tag_uses_validated_xtask_release_plan() {
             && !release.contains("Wait for CI to pass on this commit"),
         "one shared CI gate must run before the release matrix creates tags"
     );
+    let tag_step = release.find("Create and push tag").expect("tag step");
+    let github_release_step = release
+        .find("Ensure GitHub Release exists")
+        .expect("GitHub Release step");
+    let dispatch_step = release
+        .find("Dispatch release workflow")
+        .expect("release dispatch step");
+    assert!(
+        tag_step < github_release_step && github_release_step < dispatch_step,
+        "auto-tag must create the tag, then the GitHub Release, then dispatch the artifact workflow"
+    );
+    for required in [
+        "gh release view \"$tag\" --repo \"$repo\"",
+        "gh release create \"$tag\"",
+        "--verify-tag",
+        "--generate-notes",
+        "--repo \"${{ github.repository }}\"",
+        "--ref \"${{ matrix.candidate_tag }}\"",
+    ] {
+        assert!(
+            release.contains(required),
+            "auto-tag release flow must include {required}"
+        );
+    }
     for required in [
         "if ! runs_json=$(gh run list",
         "--repo \"${{ github.repository }}\"",
@@ -996,12 +1020,68 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(contracts.contains("generated-contracts check"));
     assert!(!contracts.contains("schemas generate --check"));
     assert!(!contracts.contains("docs generate --check"));
+    assert!(contracts.contains("needs.changes.outputs.docs_contracts == 'true'"));
+    assert!(
+        !contracts.contains("needs.changes.outputs.docs == 'true'"),
+        "prose-only docs must not compile rust-contracts"
+    );
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
     assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
+}
+
+#[test]
+fn generated_contracts_refresh_before_commit_and_ci_stays_read_only() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let contracts = workflow_job_block(workflow, "rust-contracts");
+    let lefthook = include_str!("../lefthook.yml");
+    let refresher = include_str!("../scripts/refresh_generated_contracts_staged.py");
+
+    assert!(
+        contracts.contains("python3 scripts/refresh_generated_contracts_staged.py --self-test"),
+        "CI must exercise the staged-path classifier without mutating the checkout"
+    );
+    assert!(contracts.contains("generated-contracts check"));
+    assert!(
+        !contracts.contains("contents: write") && !contracts.contains("git push"),
+        "CI must remain a read-only generated-contract drift backstop"
+    );
+    assert!(
+        lefthook.contains("pre-commit:\n  parallel: false")
+            && lefthook.contains("generated-contracts:")
+            && lefthook.contains("python3 scripts/refresh_generated_contracts_staged.py"),
+        "pre-commit must refresh generated contracts serially before the commit is created"
+    );
+    for invariant in [
+        r#""generated-contracts","#,
+        r#"return ["git", f"--git-dir={git_dir}", f"--work-tree={ROOT}"]"#,
+        r#"git_prefix(), "add", "-A""#,
+        "generated-contract refresh is not idempotent",
+        "generated-contract refresh changed paths outside the generated-output allowlist",
+    ] {
+        assert!(
+            refresher.contains(invariant),
+            "generated-contract refresher must preserve invariant: {invariant}"
+        );
+    }
+}
+
+#[test]
+fn ci_app_and_web_jobs_use_narrow_impact_categories() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let aurora = workflow_job_block(workflow, "aurora-primitive-inventory");
+    assert!(aurora.contains("needs.changes.outputs.aurora_inventory == 'true'"));
+    assert!(!aurora.contains("needs.changes.outputs.docs == 'true'"));
+
+    let web = workflow_job_block(workflow, "web-panel");
+    assert!(web.contains("needs.changes.outputs.web == 'true'"));
+    assert!(
+        !web.contains("needs.changes.outputs.release == 'true'"),
+        "a manifest/release-contract change must not rebuild the web panel"
+    );
 }
 
 #[test]

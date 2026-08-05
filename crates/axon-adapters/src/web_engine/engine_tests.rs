@@ -745,7 +745,7 @@ fn test_spider_max_page_bytes_wiring() {
 #[test]
 fn chrome_remote_local_policy_defaults_disabled() {
     let cfg = default_cfg();
-    let intercept = runtime::chrome_intercept_config(&cfg);
+    let intercept = crate::web_engine::browser::chrome_intercept_config(&cfg);
 
     assert!(intercept.enabled);
     assert!(!intercept.remote_local_policy);
@@ -756,7 +756,7 @@ fn chrome_remote_local_policy_defaults_disabled() {
 fn chrome_remote_local_policy_can_be_enabled() {
     let mut cfg = default_cfg();
     cfg.chrome_remote_local_policy = true;
-    let intercept = runtime::chrome_intercept_config(&cfg);
+    let intercept = crate::web_engine::browser::chrome_intercept_config(&cfg);
 
     assert!(intercept.enabled);
     assert!(intercept.remote_local_policy);
@@ -816,6 +816,28 @@ fn remote_local_policy_disables_inline_autoswitch_thin_refetch() {
         None,
         "remote-local-policy must use the Spider-backed Chrome refetch path instead of raw inline CDP"
     );
+}
+
+#[test]
+fn spider_chrome_paths_share_one_browser_configurator() {
+    for (name, source) in [
+        ("crawl", include_str!("engine/runtime.rs")),
+        ("scrape", include_str!("scrape.rs")),
+        ("thin-refetch", include_str!("engine/thin_refetch.rs")),
+    ] {
+        assert!(
+            source.contains("configure_spider_browser"),
+            "{name} must use the shared Chrome configurator"
+        );
+        assert!(
+            !source.contains("with_chrome_connection"),
+            "{name} must not configure a private Chrome connection"
+        );
+        assert!(
+            !source.contains("with_chrome_intercept"),
+            "{name} must not configure private Chrome interception"
+        );
+    }
 }
 
 fn assert_chrome_intercept_has_loopback_blacklist(

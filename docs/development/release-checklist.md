@@ -6,16 +6,16 @@ updated: 2026-08-03
 
 # Release Checklist — Axon
 
-Pre-release checklist for the current release-please-driven pipeline. See the
+Pre-release checklist for the current per-component release-driver pipeline. See the
 root `CLAUDE.md` "Release Pipeline" section for the full component/version
 model this checklist enforces; this file is the short operational checklist
 version of it.
 
 Releases are per-component (`cli`, `palette`, `android`, `chrome`) and
 selective. Release-please owns release PRs, version bumps, changelogs, tags,
-and GitHub Releases for `palette`, `android`, and `chrome`. The CLI is the only
-unmanaged component: its version is bumped with `xtask`, then auto-tag creates
-its tag and GitHub Release after exact-main CI before dispatching artifacts.
+and GitHub Releases for `palette`, `android`, and `chrome`. The primary CLI is
+Axon-native-driven: `xtask` synchronizes its version, then auto-tag creates its
+tag and GitHub Release after exact-main CI before dispatching artifacts.
 
 ## Before merging a change that ships in a release
 
@@ -110,7 +110,7 @@ See [`contributing.md`](contributing.md#monolith-policy) for the full policy.
       appropriate
 - [ ] No `NEXT_PUBLIC_*` variables leak server-side secrets
 
-## Cutting a managed release (`palette`, `android`, `chrome`)
+## Cutting a release-please-driven release (`palette`, `android`, `chrome`)
 
 1. Let release-please open or refresh the component release PR after green
    `CI` on `main`.
@@ -129,10 +129,10 @@ See [`contributing.md`](contributing.md#monolith-policy) for the full policy.
    every CLI version-bearing file.
 2. Include the bump with the shipping PR and run the PR release-version gate.
 3. Merge only after CI is green.
-4. Confirm auto-tag selected only the unmanaged CLI, waited for exact-main CI,
+4. Confirm auto-tag selected only the Axon-native CLI, waited for exact-main CI,
    created the `vX.Y.Z` tag and GitHub Release, then dispatched `release.yml`.
 5. Confirm the Linux and Windows assets and checksums were attached.
 
-Direct tags for release-please-managed components are break-glass incident
+Direct tags for release-please-driven components are break-glass incident
 operations. Do not use them as a normal hotfix path or create a second owner
 for managed version files, tags, or GitHub Releases.

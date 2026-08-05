@@ -2,7 +2,7 @@
 
 Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Version: 7.2.8
+Version: 7.2.10
 
 Every source — a web page, a site, a local checkout, a Git repo, a package, a
 Reddit subreddit, a YouTube transcript, or an AI session export — enters
@@ -501,11 +501,12 @@ Required before a production release:
 - Self-hosted RTX 4070 smoke for Qwen3 TEI cold/warm timing.
 
 Releases are per-component. Three of four (`palette`, `android`, `chrome`) are
-release-please-managed; `cli` is bumped manually with
+release-please-driven; `cli` is bumped manually with
 `cargo xtask bump-version patch|minor|major --component cli` (release-please can't handle
-`version.workspace = true`). Ordinary managed-app PRs leave version files
-alone for release-please; auto-tag selects only the unmanaged CLI and creates
-its tag and GitHub Release before dispatching artifact builds. The PR gate is:
+`version.workspace = true`; see [release-please#2111](https://github.com/googleapis/release-please/issues/2111)). Ordinary
+release-please-driven app PRs leave version files alone for release-please;
+auto-tag selects only the Axon-native CLI and creates its tag and GitHub
+Release before dispatching artifact builds. The PR gate is:
 
 ```bash
 cargo xtask check-release-versions --base origin/main --head HEAD --mode pr

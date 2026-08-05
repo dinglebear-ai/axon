@@ -3,8 +3,7 @@
 mod audit;
 
 pub use audit::{validate_resolved_ips_with_audit, validate_url_with_audit};
-// Shared by both reqwest and the optional wreq resolver so every resolver denial is audited.
-#[cfg(not(test))]
+// Shared by both reqwest and the wreq resolver so every resolver denial is audited.
 pub(crate) use audit::record_resolver_denial;
 
 use spider::url::Url;

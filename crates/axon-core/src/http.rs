@@ -14,7 +14,6 @@ pub(crate) mod client;
 mod conditional;
 pub(crate) mod error;
 mod headers;
-#[cfg(feature = "tls-fingerprinting")]
 pub(crate) mod impersonate;
 pub(crate) mod normalize;
 #[cfg(test)]
@@ -39,7 +38,6 @@ pub use client::{build_client, fetch_html, http_client};
 pub use conditional::{Probe, conditional_probe};
 pub use error::HttpError;
 pub use headers::{parse_custom_headers, validate_custom_header_policy};
-#[cfg(feature = "tls-fingerprinting")]
 pub use impersonate::{fetch_html_impersonated, impersonating_client};
 pub use normalize::normalize_url;
 #[cfg(any(test, feature = "test-util"))]
