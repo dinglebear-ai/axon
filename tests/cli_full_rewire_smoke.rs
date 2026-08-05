@@ -162,6 +162,7 @@ fn smoke_map_map_payload_wraps_value() {
         "thin_pages": 0u32,
         "elapsed_ms": 100u64,
         "map_source": "sitemap",
+        "outcome": "completed",
         "warning": null,
         "urls": ["https://docs.example.com/page1"]
     });
