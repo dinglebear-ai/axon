@@ -135,6 +135,12 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      # NOT dead: the "Palette OpenAPI type drift" contract step below shells
+      # out to pnpm and hard-fails without it. It was removed earlier in this
+      # branch as unused because the job's visible install command is `npm ci`.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
