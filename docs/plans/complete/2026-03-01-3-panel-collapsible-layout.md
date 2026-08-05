@@ -675,7 +675,7 @@ git commit -m "feat(web): 3-panel collapsible layout — chat left, editor right
 
 **Step 1: Open the workspace in browser**
 
-Navigate to `https://axon.tootie.tv` (the running container dev server).
+Navigate to `https://axon.example.internal` (the running container dev server).
 
 Check:
 - [ ] Chat is on the LEFT of the editor by default

@@ -14,9 +14,9 @@ Resolved 10 issues (2 major, 8 minor) across 8 files. Focus areas: code deduplic
 
 ### #87 [Minor] `commands/doctor.md` - Hardcoded private Tailscale IP
 
-**Problem:** Documentation contained a real Tailscale IP `100.74.16.82` in TEI URL examples, leaking internal network topology.
+**Problem:** Documentation contained a real Tailscale IP `198.51.100.1` in TEI URL examples, leaking internal network topology.
 
-**Fix:** Replaced all instances of `100.74.16.82` with `<TEI-HOST>` placeholder and `$TEI_URL/health` for health check examples.
+**Fix:** Replaced all instances of `198.51.100.1` with `<TEI-HOST>` placeholder and `$TEI_URL/health` for health check examples.
 
 **File:** `commands/doctor.md`
 

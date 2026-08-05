@@ -168,7 +168,7 @@ Designed and implemented a first-class workspace file explorer for the Axon web 
 
 ## Next Steps
 
-1. **Smoke test in container**: `docker exec axon-web printenv AXON_WORKSPACE` → verify `/workspace` is set; navigate to `https://axon.tootie.tv/workspace`
+1. **Smoke test in container**: `docker exec axon-web printenv AXON_WORKSPACE` → verify `/workspace` is set; navigate to `https://axon.example.internal/workspace`
 2. **"Open in Pulse" wiring**: Add `?pulse=<path>` query param handler to `apps/web/app/page.tsx` if desired
 3. **Crawl output tab**: Consider second root in file explorer pointing to `AXON_WORKER_OUTPUT_DIR` to browse scraped markdown
 4. **Update MEMORY.md**: Add workspace file explorer to Web UI Pages section

@@ -26,7 +26,7 @@ The merged PR was #185, "Improve ask retrieval evaluation tooling".
 ## Sequence of Events
 
 1. Investigated `docker-compose.llama.yaml`, llama.cpp runtime wiring, Gemma 4 E4B Q4 feasibility on 12 GB VRAM, and expected context limits.
-2. Confirmed Axon LLM action configuration and the distinction between the existing `cli-api.tootie.tv` provider and local llama.cpp.
+2. Confirmed Axon LLM action configuration and the distinction between the existing `cli-api.example.internal` provider and local llama.cpp.
 3. Ran and refined an `axon ask` benchmark plan using the current model, `gemini-3.5-flash-low`, local Gemma 4 E4B Q4, then additional `gpt-5.4-mini` and `gemini-3.1-flash-lite` profiles.
 4. Created Qdrant-derived benchmark questions with full answer keys for grading.
 5. Built orchestration around `scripts/run-ask-model-comparison.sh`, including JSON output, per-question timing, richer profile/config metadata, and more informative run summaries.
@@ -50,7 +50,7 @@ The merged PR was #185, "Improve ask retrieval evaluation tooling".
 
 ## Technical Decisions
 
-- Keep the OpenAI-compatible provider shape for `cli-api.tootie.tv` profiles while adding separate model profiles.
+- Keep the OpenAI-compatible provider shape for `cli-api.example.internal` profiles while adding separate model profiles.
 - Use JSON run metadata instead of TSV for benchmark outputs.
 - Keep capped models from receiving oversized contexts by modeling limits explicitly instead of relying on generic "large model" heuristics.
 - Preserve source chunks during heading-context augmentation and truncate only synthetic breadcrumb text when the chunk budget is tight.
@@ -89,7 +89,7 @@ Repository reads were performed with `bd list --all --sort updated --reverse --l
 - Axon CLI and runner scripts for model comparison.
 - Git, GitHub CLI, cargo, taplo, and the env-boundary checker.
 - PR review toolkit agents and five follow-up remediation agents.
-- llama.cpp/Gemma, `cli-api.tootie.tv`, Qdrant-backed retrieval, and Axon `ask --explain` during evaluation work.
+- llama.cpp/Gemma, `cli-api.example.internal`, Qdrant-backed retrieval, and Axon `ask --explain` during evaluation work.
 
 ## Commands Executed
 
@@ -123,7 +123,7 @@ git pull --ff-only
 ## Behavior Changes
 
 - `axon ask` benchmarking now captures richer provider/model/run configuration and per-question timing.
-- The runner supports multiple profiles, including additional `cli-api.tootie.tv` models and local Gemma.
+- The runner supports multiple profiles, including additional `cli-api.example.internal` models and local Gemma.
 - Capped-model behavior is safer for local Gemma hardware.
 - Ask explain/context structures are available through typed service response types.
 - Markdown chunking with heading context better preserves original chunk content.

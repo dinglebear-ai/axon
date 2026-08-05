@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a Windows .exe on dookie (no repo sync) and ship it to steamy's Desktop via scp.
+# Build a Windows .exe on devhost (no repo sync) and ship it to winhost's Desktop via scp.
 set -Eeuo pipefail
 
 usage() {
@@ -7,11 +7,11 @@ usage() {
 Usage: scripts/build-windows.sh [--target palette-tauri|axon] [--no-ship] [--dry-run]
 
 Build a Windows executable on the local machine (cross-compile via MinGW) and
-copy it to Steamy's Windows Desktop over SSH/SCP.
+copy it to Winhost's Windows Desktop over SSH/SCP.
 
 Defaults:
   --target    palette-tauri
-  --host      steamy-wsl
+  --host      winhost-wsl
   --desktop   /mnt/c/Users/jmaga/OneDrive/Desktop
 
 Environment overrides:
@@ -33,7 +33,7 @@ repo_root() {
 target="palette-tauri"
 ship=1
 dry_run=0
-host="${STEAMY_HOST:-steamy-wsl}"
+host="${STEAMY_HOST:-winhost-wsl}"
 desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
 
 while (($#)); do

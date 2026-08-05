@@ -373,10 +373,10 @@ fi
 set_env_if_missing AXON_HTTP_TOKEN "$(gen_secret)"
 ok "Secrets verified"
 
-# Qdrant runs on tootie by default so its large resident working set does not
-# compete with local builds on dookie.
-set_env_if_missing QDRANT_URL "http://100.120.242.29:53333"
-set_env_if_missing AXON_QDRANT_URL "http://100.120.242.29:53333"
+# Qdrant runs on nashost by default so its large resident working set does not
+# compete with local builds on devhost.
+set_env_if_missing QDRANT_URL "http://198.51.100.5:53333"
+set_env_if_missing AXON_QDRANT_URL "http://198.51.100.5:53333"
 
 # ── Test infrastructure URLs — static values, backfill if absent ──────────────
 set_env_if_missing AXON_TEST_QDRANT_URL "http://127.0.0.1:53335"

@@ -7,7 +7,7 @@ Commit: 4e4a9d2
 
 ## Session Overview
 
-Three-part session: (1) built and verified the fully containerized Docker stack (`axon-workers` + `axon-web`), shut down local dev servers; (2) fixed pre-existing Rust test failures caused by Docker hostname not resolving from the host; (3) updated stale TypeScript snapshots. Ended with creating a SWAG reverse proxy config for `axon.tootie.tv` pointing at the containerized Next.js UI on `dookie` (Tailscale `100.88.16.79:49010`), including an `axon-web` port binding fix to expose it on `0.0.0.0`.
+Three-part session: (1) built and verified the fully containerized Docker stack (`axon-workers` + `axon-web`), shut down local dev servers; (2) fixed pre-existing Rust test failures caused by Docker hostname not resolving from the host; (3) updated stale TypeScript snapshots. Ended with creating a SWAG reverse proxy config for `axon.example.internal` pointing at the containerized Next.js UI on `devhost` (Tailscale `198.51.100.4:49010`), including an `axon-web` port binding fix to expose it on `0.0.0.0`.
 
 ---
 
@@ -17,8 +17,8 @@ Three-part session: (1) built and verified the fully containerized Docker stack 
 2. **Clarified `axon serve` role** — corrected mischaracterization of `:49000` as "legacy"; it is the active WebSocket API backend the Next.js app depends on.
 3. **Killed local dev servers** — `target/debug/axon serve --port 3939` (pid 1242280) and Next.js `next-server` (pid 4009188 + 1718080) shut down; only containerized processes remain.
 4. **Killed stale background curl** — WebSocket test curl (bg8klyztf) left open holding a WS connection; killed via TaskStop.
-5. **SWAG proxy config** — created `axon.subdomain.conf` for `axon.tootie.tv` → `100.88.16.79:49010` with MCP + Authelia; first attempt had no auth, recreated from scratch with `auth_method: authelia`.
-6. **Port binding fix** — `axon-web` was bound to `127.0.0.1:49010`; changed to `0.0.0.0:49010` so SWAG on `squirts` can reach it over Tailscale.
+5. **SWAG proxy config** — created `axon.subdomain.conf` for `axon.example.internal` → `198.51.100.4:49010` with MCP + Authelia; first attempt had no auth, recreated from scratch with `auth_method: authelia`.
+6. **Port binding fix** — `axon-web` was bound to `127.0.0.1:49010`; changed to `0.0.0.0:49010` so SWAG on `edgehost` can reach it over Tailscale.
 7. **Rust test fixes** — applied `normalize_local_service_url()` to 5 test helper files; 426/0 confirmed with `--test-threads=1`.
 8. **TypeScript snapshot update** — regenerated stale snapshots for `pulse-chat-pane-layout.test.ts`; 85/85 passing.
 9. **Committed and pushed** — `a3b3b76` + `4e4a9d2` (changelog sha fix).
@@ -58,7 +58,7 @@ Three-part session: (1) built and verified the fully containerized Docker stack 
 | `.env.example` | Clarified `AXON_TEST_PG_URL` comment — documents auto-normalization fallback |
 | `apps/web/__tests__/__snapshots__/pulse-chat-pane-layout.test.ts.snap` | Regenerated stale snapshots (2 updated) |
 | `CHANGELOG.md` | New entries for `a3b3b76` session work |
-| SWAG `axon.subdomain.conf` | Created on `squirts` via SWAG MCP — `axon.tootie.tv` → `100.88.16.79:49010`, Authelia + MCP enabled |
+| SWAG `axon.subdomain.conf` | Created on `edgehost` via SWAG MCP — `axon.example.internal` → `198.51.100.4:49010`, Authelia + MCP enabled |
 
 ---
 
@@ -105,7 +105,7 @@ git push                                              # → cec02a8..a3b3b76
 | `axon-web` build | `docker compose build axon-web` failed (`lstat apps/web/docker: no such file`) | Builds successfully |
 | Rust integration tests | `password authentication failed` when `AXON_PG_URL` contained Docker hostname | Correctly rewrites to `127.0.0.1:53432` |
 | TS snapshot tests | 2 failing (`pulse-chat-pane-layout`) | 85/85 passing |
-| Public access | No reverse proxy | `axon.tootie.tv` via SWAG on squirts, Authelia-protected |
+| Public access | No reverse proxy | `axon.example.internal` via SWAG on edgehost, Authelia-protected |
 | Local dev servers | `axon serve --port 3939` + `next-server` running as local processes | Fully containerized; no local processes |
 
 ---
@@ -133,7 +133,7 @@ None (no `axon embed/retrieve/query` calls during this session).
 
 ## Risks and Rollback
 
-- **`0.0.0.0` port exposure**: `axon-web` is now reachable from any network interface on `dookie`. Mitigated by Authelia on the SWAG proxy. If direct port access is a concern, add a host firewall rule or revert to `127.0.0.1:49010`.
+- **`0.0.0.0` port exposure**: `axon-web` is now reachable from any network interface on `devhost`. Mitigated by Authelia on the SWAG proxy. If direct port access is a concern, add a host firewall rule or revert to `127.0.0.1:49010`.
 - **Rollback docker-compose**: revert `0.0.0.0:49010` → `127.0.0.1:49010` and `dockerfile: ../../docker/web/Dockerfile` → `dockerfile: docker/web/Dockerfile`; `docker compose up -d axon-web`.
 - **Rollback test normalization**: remove the `normalize_local_service_url()` calls and import from the 5 test files; tests will skip when Docker hostnames can't be resolved (original behavior).
 

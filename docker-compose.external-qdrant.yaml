@@ -1,7 +1,7 @@
 name: ${AXON_COMPOSE_PROJECT_NAME:-axon}
 
 # Override for deployments that point axon at an existing EXTERNAL qdrant
-# instance (this homelab: tootie, kept off dookie for RAM reasons) instead of
+# instance (this homelab: nashost, kept off devhost for RAM reasons) instead of
 # running the bundled axon-qdrant service from docker-compose.prod.yaml.
 # qdrant ships mandatory in the base file — this override is an explicit,
 # visible opt-out for this specific deployment, not a default.

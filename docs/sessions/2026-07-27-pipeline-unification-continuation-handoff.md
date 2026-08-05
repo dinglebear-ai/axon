@@ -288,7 +288,7 @@ branch:
 - Incus container is `axon`; Axon runs natively under
   `axon-native.service`, not inside Docker. TEI and Chrome remain the intended
   Docker services in the Incus container. Llama was stopped.
-- External service target was `http://100.88.16.79:40090`; `/readyz` showed
+- External service target was `http://198.51.100.4:40090`; `/readyz` showed
   SQLite/Qdrant/TEI ready.
 - Artifact content failures were fixed by setting
   `AXON_OUTPUT_DIR=/mnt/axon-data` in the container’s `/mnt/axon-data/.env`,

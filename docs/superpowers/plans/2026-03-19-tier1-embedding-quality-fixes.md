@@ -223,10 +223,10 @@ measures query-document relevance instead of query-query distance."
 
 - [ ] **Step 1: Write a verification test (manual)**
 
-Before removing, verify TEI is currently prepending by querying a known document. This is a manual check, not automated. Skip if TEI is not reachable (external service on steamy-wsl).
+Before removing, verify TEI is currently prepending by querying a known document. This is a manual check, not automated. Skip if TEI is not reachable (external service on winhost-wsl).
 
 ```bash
-curl -s http://steamy-wsl:52000/info | python3 -m json.tool | grep -A5 "default_prompt"
+curl -s http://winhost-wsl:52000/info | python3 -m json.tool | grep -A5 "default_prompt"
 ```
 
 Expected: shows the instruction string. After the change, this should return empty/null.
@@ -256,7 +256,7 @@ Replace the description to say:
 - `--default-prompt` has been removed from TEI config
 - `QUERY_INSTRUCTION` constant in `tei_client.rs` is prepended in Rust at query time
 - Document embeds do NOT get the prefix
-- The `TEI_URL` service at steamy-wsl must be restarted after this config change
+- The `TEI_URL` service at winhost-wsl must be restarted after this config change
 
 - [ ] **Step 4: Restart TEI (if accessible)**
 
@@ -265,7 +265,7 @@ Replace the description to say:
 docker compose -f docker-compose.services.yaml restart axon-tei
 ```
 
-If TEI runs on steamy-wsl (external), coordinate restart separately. The Rust changes (Tasks 1–2) are safe to deploy before the TEI restart — they just send a slightly longer query string. After TEI restart, the double-prefix problem is eliminated.
+If TEI runs on winhost-wsl (external), coordinate restart separately. The Rust changes (Tasks 1–2) are safe to deploy before the TEI restart — they just send a slightly longer query string. After TEI restart, the double-prefix problem is eliminated.
 
 - [ ] **Step 5: Commit**
 
@@ -311,7 +311,7 @@ The `cortex` collection has ~7,063,563 points. Re-indexing requires re-scraping 
 - [ ] **Step 2: Pre-migration checklist**
 
 Before starting re-index:
-1. Confirm TEI has been restarted without `--default-prompt`: `curl http://steamy-wsl:52000/info | grep default_prompt` → should be empty/null
+1. Confirm TEI has been restarted without `--default-prompt`: `curl http://winhost-wsl:52000/info | grep default_prompt` → should be empty/null
 2. Confirm the `QUERY_INSTRUCTION` Rust changes (Tasks 1–2) are deployed
 3. Confirm Qdrant is healthy: `./scripts/axon doctor`
 4. Note the current point count: `./scripts/axon stats`

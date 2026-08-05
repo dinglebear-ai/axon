@@ -7,7 +7,7 @@
 
 ## 2. Timeline of major activities
 - User reported visible red graphical glitches and a horizontal seam (“two hemispheres”) below the omnibox.
-- Reproduced the issue via browser tooling and screenshots from `http://dookie:3000/`.
+- Reproduced the issue via browser tooling and screenshots from `http://devhost:3000/`.
 - Isolated layer behavior by toggling canvas/main visibility and sampling layout metrics.
 - Applied fix to force opaque canvas base fill in frame and cached background layer.
 - Reloaded and verified seam was no longer visible.

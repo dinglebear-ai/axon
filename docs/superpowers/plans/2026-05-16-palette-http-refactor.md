@@ -2034,7 +2034,7 @@ bd create --title="palette v0.4: OAuth auth flow for AXON_MCP_AUTH_MODE=oauth de
 - Update CHANGELOG and crate docstring
 
 # Why
-v0.3 explicitly drops the AXON_LITE-style subprocess fallback. For OAuth-mode deployments (production server at axon.tootie.tv), there's currently no path for the palette to authenticate." --type=feature --priority=3
+v0.3 explicitly drops the AXON_LITE-style subprocess fallback. For OAuth-mode deployments (production server at axon.example.internal), there's currently no path for the palette to authenticate." --type=feature --priority=3
 ```
 
 - [ ] **Step 10.3: File the v0.4 ask-streaming follow-up bead**

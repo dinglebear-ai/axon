@@ -46,7 +46,7 @@ Systematic ADB-based testing of the Axon Android app on an emulator (Pixel 6, AP
 - **`JobListResponse` wrapper required** — server wraps job arrays as `{"jobs":[...],"limit":N,"offset":N}`; decoding directly to `List<ServiceJob>` silently fails with a JSON mismatch.
 - **`AnimatedVisibility` scope matters in Kotlin** — inside a `Row`, the compiler resolves to `RowScope.AnimatedVisibility` extension; inside a `Box`, it resolves to the global composable. The `Row`-scoped extension is designed for row-intrinsic animations and gave the overlay 0 measured width.
 - **FAB ring clips at screen right edge** — items fan outward from the bottom-right FAB position. With the FAB anchored at the right margin, the arc has nowhere to go but off-screen for some items. Not blocking but worth addressing.
-- **Gemini synthesis stream reset after ~2 min** — `INTERNAL_ERROR` RST_STREAM; likely the Gemini subprocess exceeded available time or the HTTP/2 keepalive expired between dookie and the emulator. App error state renders correctly.
+- **Gemini synthesis stream reset after ~2 min** — `INTERNAL_ERROR` RST_STREAM; likely the Gemini subprocess exceeded available time or the HTTP/2 keepalive expired between devhost and the emulator. App error state renders correctly.
 
 ## Technical Decisions
 
@@ -133,7 +133,7 @@ No bead activity observed. This session was a bug-fixing and testing pass; no ne
   Fix: Separate commands — `input text "what"` + `KEYCODE_SPACE` + `input text "is"` + `KEYCODE_SPACE` + `input text "axon"`.
 
 - **Ask stream reset: `INTERNAL_ERROR` after ~2 minutes**
-  Root cause: Gemini synthesis running with 14902 chars of context; the HTTP/2 stream was reset (either Gemini subprocess timeout or TCP keepalive expiry between dookie and emulator). Not a bug in the app.
+  Root cause: Gemini synthesis running with 14902 chars of context; the HTTP/2 stream was reset (either Gemini subprocess timeout or TCP keepalive expiry between devhost and emulator). Not a bug in the app.
   App behavior: displayed "Error: stream was reset: INTERNAL_ERROR" in the AXON bubble — correct.
 
 ## Behavior Changes (Before/After)

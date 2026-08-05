@@ -28,7 +28,7 @@
 #                                 qdrant is not started.
 # bundled-qdrant mode:            explicit opt-in for other installations.
 #
-# Optional: set AXON_INCUS_PUBLISH_LISTEN (e.g. "100.88.16.79:40090") to have
+# Optional: set AXON_INCUS_PUBLISH_LISTEN (e.g. "198.51.100.4:40090") to have
 # this script manage the Incus `proxy` device that exposes axon's HTTP port
 # to the host for SWAG/Cloudflare. Scope this to a specific interface
 # address, never 0.0.0.0 — the whole point is to expose axon only on the
@@ -84,8 +84,8 @@ fi
 ### 2. Container: create if missing.
 if ! incus info "$CONTAINER_NAME" >/dev/null 2>&1; then
   log "creating container $CONTAINER_NAME from Ubuntu 26.04 (host glibc-compatible)"
-  # Keep the native axon service ABI-compatible with dookie.  A Debian 12
-  # guest provides glibc 2.36 while dookie's host-built binary requires the
+  # Keep the native axon service ABI-compatible with devhost.  A Debian 12
+  # guest provides glibc 2.36 while devhost's host-built binary requires the
   # host's Ubuntu 26.04 glibc baseline, forcing a second container-only build.
   incus launch images:ubuntu/26.04 "$CONTAINER_NAME" -p default -p "$PROFILE_NAME"
 else
@@ -245,7 +245,7 @@ incus file push -r "$REPO_ROOT/config" "$CONTAINER_NAME$DEPLOY_PATH/"
 ### `external: true`). The real network name comes from DOCKER_NETWORK in the
 ### env file (defaults to "axon") — must match compose's own resolution
 ### exactly, not be hardcoded, since a deployment can override it (e.g.
-### dookie's existing ~/.axon/.env sets DOCKER_NETWORK=jakenet). Reuse the
+### devhost's existing ~/.axon/.env sets DOCKER_NETWORK=jakenet). Reuse the
 ### repo's own env-file parser (handles quoting/comments/export prefix
 ### correctly) instead of a one-off grep, in a subshell so it doesn't leak
 ### the whole env file into this script's environment.
@@ -257,7 +257,7 @@ docker_network_name="$(
   printf '%s' "${DOCKER_NETWORK:-axon}"
 )"
 # This deployment specifically relies on a non-default DOCKER_NETWORK value
-# (dookie's ~/.axon/.env sets jakenet) — a silently-swallowed parse failure
+# (devhost's ~/.axon/.env sets jakenet) — a silently-swallowed parse failure
 # here would fall through to the "axon" default and misroute the whole stack
 # onto the wrong bridge with no visible error. Surface it instead.
 if [ -s "$docker_network_load_err" ]; then
@@ -269,7 +269,7 @@ incus exec "$CONTAINER_NAME" -- docker network inspect "$docker_network_name" >/
   || incus exec "$CONTAINER_NAME" -- docker network create "$docker_network_name" >/dev/null
 
 ### 11. Memory-headroom check before starting bundled qdrant. This is the
-### mandatory gate — dookie has a real, documented qdrant OOM-crashloop
+### mandatory gate — devhost has a real, documented qdrant OOM-crashloop
 ### history; a config-integrity checksum alone would not have caught it.
 if [ "$MODE" = "bundled-qdrant" ]; then
   avail_kb="$(incus exec "$CONTAINER_NAME" -- awk '/MemAvailable/{print $2}' /proc/meminfo)"
@@ -338,7 +338,7 @@ if [ "$healthy" != "1" ]; then
 fi
 
 ### 15. Deploy the already-validated host binary. The Ubuntu guest shares
-### dookie's glibc baseline, so an in-container rebuild is both unnecessary
+### devhost's glibc baseline, so an in-container rebuild is both unnecessary
 ### and a source of artifact drift. Nested Docker remains for TEI/Chrome only.
 [ -x "$HOST_AXON_BINARY" ] || fatal "host Axon binary not executable: $HOST_AXON_BINARY (build it first or set AXON_INCUS_BINARY)"
 host_arch="$(uname -m)"
@@ -432,7 +432,7 @@ fi
 ### actually uses, not every interface on the shared host. This device does
 ### not survive a container recreate (confirmed 2026-07-08 — the prior
 ### working deployment had it added by hand, outside any script, and losing
-### it was the reason "axon.tootie.tv" 502'd after a redeploy), hence
+### it was the reason "axon.example.internal" 502'd after a redeploy), hence
 ### managing it here on every run.
 if [ "$RUN_INCUS_SERVER" != "true" ]; then
   log "removing mcp-publish because axon-native is disabled"

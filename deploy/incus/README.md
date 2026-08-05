@@ -6,12 +6,12 @@ One Incus system container (`axon-container-profile`) runs:
   a full Docker Engine + Compose internally, using `docker-compose.prod.yaml`
   largely unchanged.
 - **the axon binary deployed atomically into Incus**, with
-  `axon-native.service` disabled by default. Dookie's host service owns the
+  `axon-native.service` disabled by default. Devhost's host service owns the
   shared SQLite queue; TEI and Chrome remain inside Incus. Set
   `AXON_INCUS_RUN_SERVER=true` only when the guest uses an Incus-exclusive
   database that host processes never open.
 
-The container base is Ubuntu 26.04, matching dookie's glibc baseline. This is
+The container base is Ubuntu 26.04, matching devhost's glibc baseline. This is
 intentional: host-built Axon binaries can be deployed directly into the native
 service, rather than maintaining a second binary built against an older guest
 glibc.
@@ -44,7 +44,7 @@ Running axon as a native binary via systemd sidesteps that hop entirely.
 `bootstrap.sh` atomically installs a validated host-built binary and refreshes
 `axon-native.service`, but leaves the service disabled unless explicitly
 enabled. SQLite WAL files cannot coordinate a queue safely across an Incus bind
-mount: host and guest can retain different WAL inode generations. Dookie
+mount: host and guest can retain different WAL inode generations. Devhost
 therefore runs Axon's server on the host and reaches Incus-hosted TEI/Chrome
 through loopback proxy devices.
 
@@ -72,8 +72,8 @@ incus rename "$container" "$retired"
 
 # Use the same explicit listener value if the recorded mcp-publish device had
 # one. Do not publish 0.0.0.0.
-AXON_INCUS_PUBLISH_LISTEN="100.88.16.79:40090" \
-  AXON_EXTERNAL_QDRANT_URL=http://100.120.242.29:53333 \
+AXON_INCUS_PUBLISH_LISTEN="198.51.100.4:40090" \
+  AXON_EXTERNAL_QDRANT_URL=http://198.51.100.5:53333 \
     deploy/incus/bootstrap.sh external-qdrant
 ```
 
@@ -110,7 +110,7 @@ Key config, and why:
 - `limits.memory: 24GiB` (hard) — derived as 16GiB qdrant (its own existing
   production cap, justified by its own OOM history) + 2GiB TEI + 2GiB chrome
   + 1GiB axon + 1GiB dockerd overhead, +~14% headroom. Re-verify this still
-  matches dookie's actual available headroom before relying on it — it was
+  matches devhost's actual available headroom before relying on it — it was
   derived once, not continuously monitored.
 - `nvidia.runtime: "true"` + `nvidia.driver.capabilities: all` — gives the
   OUTER Incus container GPU/driver visibility (`nvidia-smi` works directly
@@ -220,11 +220,11 @@ don't survive a restart — see above).
 When `AXON_INCUS_RUN_SERVER=true`, `bootstrap.sh` manages an Incus `proxy`
 device (`mcp-publish`) that forwards
 a host-side address to axon's `127.0.0.1:8001` inside the container, when
-`AXON_INCUS_PUBLISH_LISTEN` is set (e.g. `100.88.16.79:40090`, dookie's
+`AXON_INCUS_PUBLISH_LISTEN` is set (e.g. `198.51.100.4:40090`, devhost's
 Tailscale IP — matching what SWAG's `axon.subdomain.conf` proxies to).
 **Scope this to a specific interface address, never `0.0.0.0`** — the point
 is to expose axon only on the address the reverse proxy actually reaches,
 not every interface on the shared host. This device does not survive a
 container recreate; losing it (recreating the container without setting the
-env var again) is exactly what took `axon.tootie.tv` down with a 502 after a
+env var again) is exactly what took `axon.example.internal` down with a 502 after a
 2026-07-08 redeploy — SWAG had nothing left to reach.

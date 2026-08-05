@@ -14,7 +14,7 @@ Investigated stuck GitHub ingest jobs, diagnosed root causes (orphaned worker + 
 | ~04:40 | Confirmed TEI had restarted at 05:02, spending ~4 min reloading model weights |
 | ~04:45 | Killed worker PID 2385498, reset 6 running jobs to pending via SQL |
 | ~04:50 | Restarted ingest worker; second worker also died when TEI retries exhausted |
-| ~05:07 | TEI confirmed back online via `ssh steamy-wsl docker logs tei_max` |
+| ~05:07 | TEI confirmed back online via `ssh winhost-wsl docker logs tei_max` |
 | ~05:10 | Killed orphaned workers, reset 12 more stuck jobs, restarted cleanly |
 | ~05:15 | Discovered console log is WARN-only; real INFO logs at `$AXON_DATA_DIR/axon/logs/axon.log` |
 | ~05:20 | Identified the logging gap: zero visibility during git clone, file enumeration, AST chunking, embedding phases |
@@ -28,7 +28,7 @@ Investigated stuck GitHub ingest jobs, diagnosed root causes (orphaned worker + 
 - **Wrong log file**: We were watching `/tmp/axon-ingest-worker.log` (stderr redirect, WARN only) — missed all INFO-level progress for 30+ minutes.
 - **Heartbeat is silent**: `spawn_heartbeat_task` in `crates/jobs/common/job_ops.rs:211` fires a silent `UPDATE axon_ingest_jobs SET updated_at = NOW()` every 30s. No log output. Its only purpose is stale-job watchdog prevention.
 - **Tree-sitter confirmed working**: URLs in logs show per-function line ranges (e.g., `input.rs#L299-L311`) — these only exist when `line_range_for_chunk` runs post-AST-chunking. Prose chunking produces larger arbitrary ranges.
-- **TEI restart root cause**: `tei_max` on `steamy-wsl` had restarted and spent ~4 minutes re-downloading `model.safetensors` before accepting requests. Workers exhausted their retry budget during this window.
+- **TEI restart root cause**: `tei_max` on `winhost-wsl` had restarted and spent ~4 minutes re-downloading `model.safetensors` before accepting requests. Workers exhausted their retry budget during this window.
 - **AMQP queue depth**: After multiple restarts, RabbitMQ accumulated 448 messages. Safe because `claim_next_pending` uses `WHERE status='pending'` — duplicates are harmless.
 
 ## Technical Decisions
@@ -64,7 +64,7 @@ docker exec axon-postgres psql -U axon -d axon -c \
    FROM axon_ingest_jobs WHERE status='running' ORDER BY updated_at DESC;"
 
 # Check TEI health
-ssh steamy-wsl "docker logs tei_max --tail 30"
+ssh winhost-wsl "docker logs tei_max --tail 30"
 
 # Read real INFO logs
 tail -f /home/jmagar/appdata/axon/logs/axon.log | grep "github\|ingest"
@@ -88,7 +88,7 @@ just dev
 | Command | Expected | Actual | Status |
 |---|---|---|---|
 | `cargo check -p axon` | Clean compile | `Finished dev profile` | ✓ PASS |
-| `ssh steamy-wsl docker logs tei_max --tail 30` | Constant `Success` stream | 30 consecutive `Success` entries, inference 33–105ms | ✓ PASS |
+| `ssh winhost-wsl docker logs tei_max --tail 30` | Constant `Success` stream | 30 consecutive `Success` entries, inference 33–105ms | ✓ PASS |
 | DB progress query | Active jobs with phase + file counts | 6 running jobs all `embedding_batch` with live counts | ✓ PASS |
 | TEI retry check | No 429/503 errors | Zero retry entries in TEI logs | ✓ PASS |
 

@@ -5,28 +5,28 @@ usage() {
   cat <<'EOF'
 Usage: scripts/build-on-steamy.sh [--target palette-tauri|axon] [--no-sync] [--dry-run] [--destructive-sync]
 
-Build the latest local Axon checkout on steamy-wsl and place the Windows .exe
-on Steamy's desktop.
+Build the latest local Axon checkout on winhost-wsl and place the Windows .exe
+on Winhost's desktop.
 
 Defaults:
   --target palette-tauri
-  --host steamy-wsl
-  --remote-repo /home/jmagar/.cache/axon/build-on-steamy/axon_rust
+  --host winhost-wsl
+  --remote-repo /home/jmagar/.cache/axon/build-on-winhost/axon_rust
   --desktop /mnt/c/Users/jmaga/OneDrive/Desktop
 
 Sync safety:
   The default remote repo is a disposable mirror marked with:
-    .build-on-steamy-disposable
+    .build-on-winhost-disposable
 
   rsync uses --delete --delete-excluded only when the remote target has that
   marker, or when --destructive-sync is passed explicitly. Use --dry-run to
   preview the rsync change/deletion set without building.
 
 Environment overrides:
-  STEAMY_HOST
-  STEAMY_AXON_REPO (custom paths must already contain the marker unless
+  WINHOST_HOST
+  WINHOST_AXON_REPO (custom paths must already contain the marker unless
                     --destructive-sync is passed)
-  STEAMY_DESKTOP
+  WINHOST_DESKTOP
 EOF
 }
 
@@ -74,7 +74,7 @@ die() {
 }
 
 need_cmd() {
-  command -v "$1" >/dev/null 2>&1 || die "required command not found on steamy-wsl: $1"
+  command -v "$1" >/dev/null 2>&1 || die "required command not found on winhost-wsl: $1"
 }
 
 ensure_windows_target() {
@@ -154,7 +154,7 @@ remote_repo="$1"
 default_remote_repo="$2"
 destructive_sync="$3"
 dry_run="$4"
-sentinel='.build-on-steamy-disposable'
+sentinel='.build-on-winhost-disposable'
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -182,10 +182,10 @@ target="palette-tauri"
 sync_tree=1
 dry_run=0
 destructive_sync=0
-host="${STEAMY_HOST:-steamy-wsl}"
-default_remote_repo="/home/jmagar/.cache/axon/build-on-steamy/axon_rust"
-remote_repo="${STEAMY_AXON_REPO:-$default_remote_repo}"
-desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
+host="${WINHOST_HOST:-winhost-wsl}"
+default_remote_repo="/home/jmagar/.cache/axon/build-on-winhost/axon_rust"
+remote_repo="${WINHOST_AXON_REPO:-$default_remote_repo}"
+desktop="${WINHOST_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
 
 while (($#)); do
   case "$1" in
@@ -252,7 +252,7 @@ if [[ "$sync_tree" -eq 1 ]]; then
     -az
     --delete
     --delete-excluded
-    --filter 'P .build-on-steamy-disposable'
+    --filter 'P .build-on-winhost-disposable'
     --exclude '.git/' \
     --exclude '.cache/' \
     --exclude '.beads/' \
@@ -272,7 +272,7 @@ if [[ "$sync_tree" -eq 1 ]]; then
     log 'Dry-run: previewing sync changes/deletions; build will be skipped'
     rsync_args=(-n --itemize-changes "${rsync_args[@]}")
   else
-    log 'Syncing current checkout to Steamy disposable mirror'
+    log 'Syncing current checkout to Winhost disposable mirror'
   fi
 
   rsync "${rsync_args[@]}"

@@ -212,4 +212,4 @@ Branch `feat/qdrant-affinity-tei-burst` (PR #197):
 2. After merge, **recreate the prod stack** so compose changes (OOM shield, qdrant CPUs, `AXON_FS_NAMESPACE`) apply to fresh containers: `docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml up -d`.
 3. Run `axon doctor` after any TEI/container recreate — it now catches the 32-vs-256 permit drift.
 4. Optional: consider whether the collection's `max_optimization_threads: 4` should be reverted to 2 once steady-state behavior is observed.
-5. Host memory over-commit on dookie (48 GiB, routinely ≥46 used with stacked builds + sessions) remains the systemic risk behind the OOM kills — worth a separate look (fewer parallel heavy builds, or more RAM for the VM).
+5. Host memory over-commit on devhost (48 GiB, routinely ≥46 used with stacked builds + sessions) remains the systemic risk behind the OOM kills — worth a separate look (fewer parallel heavy builds, or more RAM for the VM).

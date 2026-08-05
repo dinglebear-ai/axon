@@ -20,7 +20,7 @@ Full visual redesign of the Axon Android app (`apps/android/`) aligned with the 
 - Aurora composite resolution is configurable with `-PaxonAuroraAndroidPath=/path/to/aurora-design-system/android` or `AXON_AURORA_ANDROID_PATH`; if unset, Gradle probes the sibling checkout and worktree layouts, then falls back to Maven resolution.
 - `androidx.security:security-crypto` remains on `1.1.0-alpha06` because stable `1.0.0` lacks `androidx.security.crypto.MasterKey`, which the encrypted token/header stores use. `EncryptedTokenStoreTest` and `ModeOptionsApplicatorTest` cover the secure persistence paths.
 - `:app:lintDebug` excludes only the local Aurora composite task `:android:aurora:lintAnalyzeDebug` to avoid a known `androidx.lifecycle.lint.NonNullableMutableLiveDataDetector` / Kotlin analysis API crash. App lint still remains in the task graph.
-- Cleartext HTTP is scoped to this homelab's Tailscale domains: `manatee-triceratops.ts.net` and `manatee-triceratops.tailvpn.net`, not all `*.ts.net` hosts.
+- Cleartext HTTP is scoped to this homelab's Tailscale domains: `example.ts.net` and `example-tailnet.tailvpn.net`, not all `*.ts.net` hosts.
 
 ---
 

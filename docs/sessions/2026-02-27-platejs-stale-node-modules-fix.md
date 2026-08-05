@@ -14,7 +14,7 @@ Fixed a Next.js 16.1.6 (Turbopack) build error caused by missing `@platejs/code-
 
 1. **Build error reported** — `Module not found: Can't resolve '@platejs/code-block/react'` in `components/editor/plugins/extended-nodes-kit.tsx` (Next.js 16.1.6 / Turbopack)
 2. **First fix: `transpilePackages`** — Added all 9 `@platejs/*` packages + `platejs` to `transpilePackages` in `next.config.ts`. Necessary for Turbopack to resolve ESM subpath exports (e.g., `/react`).
-3. **Verified browser** — Navigated to `axon.tootie.tv` via Chrome DevTools MCP — build error persisted despite `transpilePackages`.
+3. **Verified browser** — Navigated to `axon.example.internal` via Chrome DevTools MCP — build error persisted despite `transpilePackages`.
 4. **Container restart / image rebuild** — Neither fixed it; error survived both.
 5. **Root cause found** — `docker inspect axon-web` revealed two anonymous volumes mounted over `/app/node_modules` and `/app/.next`, both created from a stale image layer. The anonymous `node_modules` volume only contained 3 of the 9 `@platejs` packages (those present when the image was originally built).
 6. **Manual fix** — `docker exec axon-web sh -c "CI=true pnpm install --frozen-lockfile"` (run as root) populated the anonymous volume with all packages. Server started: `✓ Ready in 1026ms`.
@@ -78,7 +78,7 @@ Fixed a Next.js 16.1.6 (Turbopack) build error caused by missing `@platejs/code-
 | Command | Expected | Actual | Status |
 |---------|----------|--------|--------|
 | `docker exec axon-web sh -c "CI=true pnpm install --frozen-lockfile"` | Exit 0, all packages installed | Success | ✅ |
-| Browser: `axon.tootie.tv` after fix | `✓ Ready`, no build errors | `✓ Ready in 1026ms`, `GET / 200` | ✅ |
+| Browser: `axon.example.internal` after fix | `✓ Ready`, no build errors | `✓ Ready in 1026ms`, `GET / 200` | ✅ |
 | `docker compose build axon-web` | Build includes `20-pnpm-install` | Success | ✅ |
 
 ---

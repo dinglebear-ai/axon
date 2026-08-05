@@ -328,7 +328,7 @@ pub fn parse_profiles(input: &str) -> Result<Vec<Profile>> {
 
 fn profile_for(name: &str) -> Result<Profile> {
     let cli_api = std::env::var("CLI_API_BASE_URL")
-        .unwrap_or_else(|_| "https://cli-api.tootie.tv/v1".to_string());
+        .unwrap_or_else(|_| "https://cli-api.example.internal/v1".to_string());
     let gemma_base = std::env::var("GEMMA_OPENAI_BASE_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8080/v1".to_string());
     let mut env = BTreeMap::new();

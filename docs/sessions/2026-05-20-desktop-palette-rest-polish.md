@@ -113,7 +113,7 @@ Continue polishing and refining the Axon desktop app until Axon operations are f
 
 ## Decisions Not Taken
 
-- Did not run a fresh Steamy visual session in this slice; verification focused on source, build, tests, and live REST route behavior.
+- Did not run a fresh Winhost visual session in this slice; verification focused on source, build, tests, and live REST route behavior.
 - Did not wire destructive admin operations like migrate/dedupe as normal palette actions.
 - Did not refactor `ui_commands.rs::submit()` despite the warning-level monolith notice because it was not a hard failure.
 
@@ -126,14 +126,14 @@ Continue polishing and refining the Axon desktop app until Axon operations are f
 
 ## Open Questions
 
-- Whether the next packaged Windows/Linux artifact should be retested on Steamy after CI produces fresh binaries.
+- Whether the next packaged Windows/Linux artifact should be retested on Winhost after CI produces fresh binaries.
 - Whether the palette should expose admin operations with additional confirmation UI.
 - Whether `ui_commands.rs::submit()` should be split before it approaches the hard monolith limit.
 
 ## Next Steps
 
 Started but not completed:
-- Fresh visual QA of the newly built palette on Steamy/WSLg and Windows packaged artifacts.
+- Fresh visual QA of the newly built palette on Winhost/WSLg and Windows packaged artifacts.
 
 Follow-on tasks:
 - Push the desktop palette changes once the user confirms the broader dirty worktree staging strategy.
