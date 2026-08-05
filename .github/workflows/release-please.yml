@@ -88,13 +88,17 @@ jobs:
               version="$(jq -r '.version' <<<"$fixup")"
               cargo xtask release-please-fixups --component "$component" --version "$version"
             done < <(jq -c '.[]' fixup-plan.json)
+            fixups_committed=false
+            if ! git diff --quiet; then
+              git add --update
+              git commit -m "chore: apply release-please fixups"
+              fixups_committed=true
+            fi
             cargo xtask check-release-versions \
               --base "origin/$base_branch" \
               --head HEAD \
               --mode pr
-            if ! git diff --quiet; then
-              git add --update
-              git commit -m "chore: apply release-please fixups"
+            if [[ "$fixups_committed" == true ]]; then
               git push origin HEAD:"$branch"
             fi
             git checkout "$base_ref"
