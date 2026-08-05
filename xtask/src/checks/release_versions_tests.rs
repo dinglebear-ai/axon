@@ -67,32 +67,32 @@ fn reads_component_manifest() {
 }
 
 #[test]
-fn release_plan_serializes_release_please_ownership_for_every_component() {
+fn release_plan_serializes_release_driver_for_every_component() {
     let fixture = Fixture::new();
     fixture.init_repo();
 
     let plans = plan(fixture.root(), None, "HEAD", GateMode::Main).expect("release plan");
     let serialized = serde_json::to_value(plans).expect("serialize release plan");
     let components = serialized.as_array().expect("component array");
-    let ownership = components
+    let drivers = components
         .iter()
         .map(|component| {
             (
                 component["id"].as_str().expect("component id"),
-                component["release_please_managed"]
-                    .as_bool()
-                    .expect("serialized release-please ownership"),
+                component["release_driver"]
+                    .as_str()
+                    .expect("serialized release driver"),
             )
         })
         .collect::<Vec<_>>();
 
     assert_eq!(
-        ownership,
+        drivers,
         [
-            ("cli", false),
-            ("palette", true),
-            ("android", true),
-            ("chrome", true),
+            ("cli", "axon-native"),
+            ("palette", "release-please"),
+            ("android", "release-please"),
+            ("chrome", "release-please"),
         ]
     );
 }
@@ -1001,7 +1001,12 @@ version = "1.1.0"
 
     let error = check(fixture.root(), Some("v1.2.0"), "HEAD", GateMode::Pr, false)
         .expect_err("version downgrade should fail even when tag does not exist");
-    assert!(error.to_string().contains("not greater than latest"));
+    let message = error.to_string();
+    assert!(message.contains("not greater than latest"));
+    assert!(
+        message.contains("Run cargo xtask bump-version patch|minor|major --component cli"),
+        "Axon-native CLI guidance must name its actual release driver: {message}"
+    );
 }
 
 #[test]
@@ -1262,10 +1267,26 @@ fn release_manifest_requires_release_please_path() {
 }
 
 #[test]
+fn release_manifest_requires_release_driver() {
+    let fixture = Fixture::new();
+    let path = fixture.path("release/components.toml");
+    let content = fs::read_to_string(&path).unwrap();
+    fs::write(
+        &path,
+        content.replace("release_driver = \"axon-native\"", ""),
+    )
+    .unwrap();
+
+    let err = plan(fixture.root(), Some("origin/main"), "HEAD", GateMode::Pr)
+        .expect_err("missing release_driver must fail closed");
+    assert!(err.to_string().contains("release_driver"));
+}
+
+#[test]
 fn release_please_manifest_matches_component_versions() {
     let fixture = Fixture::new();
-    // Palette is release-please-managed and must agree with its source
-    // version even though the unmanaged CLI is absent from this manifest.
+    // Palette is release-please-driven and must agree with its source
+    // version even though the Axon-native CLI is absent from this manifest.
     fs::write(
         fixture.path(".release-please-manifest.json"),
         r#"{
@@ -1288,11 +1309,10 @@ fn release_please_manifest_matches_component_versions() {
 }
 
 #[test]
-fn release_please_manifest_check_skips_unmanaged_cli_component() {
-    // cli's release/components.toml entry sets release_please_managed =
-    // false (release-please can no longer open PRs for it — see the comment
-    // there and CLAUDE.md's Release Pipeline section). The "." entry must be
-    // absent because release-please no longer owns that path at all.
+fn release_please_manifest_check_skips_axon_native_cli_component() {
+    // cli's release/components.toml entry sets release_driver =
+    // "axon-native" because Axon's own xtask + auto-tag pipeline owns it. The
+    // "." entry must be absent because release-please does not own that path.
     let fixture = Fixture::new();
     fs::write(
         fixture.path(".release-please-manifest.json"),
@@ -1314,18 +1334,16 @@ fn release_please_manifest_check_skips_unmanaged_cli_component() {
 }
 
 #[test]
-fn manual_bump_rejects_release_please_managed_components() {
+fn manual_bump_rejects_release_please_driven_components() {
     let fixture = Fixture::new();
     let before = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
 
     let error = bump_component_version(fixture.root(), "android", BumpLevel::Patch)
-        .expect_err("release-please-managed components must reject manual bumps");
+        .expect_err("release-please-driven components must reject manual bumps");
 
-    assert!(
-        error
-            .to_string()
-            .contains("android is release-please-managed and cannot be bumped manually")
-    );
+    assert!(error.to_string().contains(
+        "android uses release-please as its release driver and cannot be bumped manually"
+    ));
     assert_eq!(
         fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap(),
         before,
@@ -1431,18 +1449,18 @@ fn release_please_dispatch_plan_rejects_a_tag_with_the_wrong_manifest_version() 
 }
 
 #[test]
-fn release_please_dispatch_plan_rejects_unmanaged_cli_output() {
+fn release_please_dispatch_plan_rejects_axon_native_cli_output() {
     let fixture = Fixture::new();
     let release_outputs = r#"{
   "paths_released": "[\".\"]",
   "cli_tag": "v1.0.0"
 }"#;
     let error = release_please_dispatch_plan(fixture.root(), release_outputs)
-        .expect_err("release-please must not dispatch the unmanaged CLI");
+        .expect_err("release-please must not dispatch the Axon-native CLI");
     assert!(
         error
             .to_string()
-            .contains("release outputs include unmanaged release path ."),
+            .contains("release outputs include path . owned by axon-native"),
         "unexpected error: {error}"
     );
 }

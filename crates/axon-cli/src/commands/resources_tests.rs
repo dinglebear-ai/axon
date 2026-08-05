@@ -25,3 +25,15 @@ fn chat_message_rejects_empty_input() {
             .contains("MESSAGE")
     );
 }
+
+#[test]
+fn capabilities_report_required_acquisition_build_features() {
+    let cfg = Config::test_default();
+    let value = discovery::build_capabilities(&cfg);
+
+    assert_eq!(value["build"]["tlsFingerprinting"], true);
+    assert_eq!(value["build"]["tlsClientInitialization"], "ready");
+    assert_eq!(value["build"]["chrome"], true);
+    assert!(value["build"].get("chromeTarget").is_some());
+    assert!(value["build"].get("browserLaunchCapability").is_some());
+}

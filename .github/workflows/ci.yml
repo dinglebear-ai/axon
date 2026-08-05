@@ -50,20 +50,25 @@ jobs:
     runs-on: ci-pool-ops
     outputs:
       all: ${{ steps.classify.outputs.all }}
+      routing_fallback: ${{ steps.classify.outputs.routing_fallback }}
+      full_ci: ${{ steps.classify.outputs.full_ci }}
+      ci_all: ${{ steps.classify.outputs.ci_all }}
       docs: ${{ steps.classify.outputs.docs }}
+      docs_contracts: ${{ steps.classify.outputs.docs_contracts }}
+      aurora_inventory: ${{ steps.classify.outputs.aurora_inventory }}
       workflow: ${{ steps.classify.outputs.workflow }}
-      rust: ${{ steps.classify.outputs.rust }}
-      web: ${{ steps.classify.outputs.web }}
-      android: ${{ steps.classify.outputs.android }}
-      palette: ${{ steps.classify.outputs.palette }}
-      chrome: ${{ steps.classify.outputs.chrome }}
-      docker: ${{ steps.classify.outputs.docker }}
-      compose: ${{ steps.classify.outputs.compose }}
-      mcp: ${{ steps.classify.outputs.mcp }}
-      security: ${{ steps.classify.outputs.security }}
-      release: ${{ steps.classify.outputs.release }}
-      version_files: ${{ steps.classify.outputs.version_files }}
-      openapi: ${{ steps.classify.outputs.openapi }}
+      rust: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      web: ${{ steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      android: ${{ steps.classify.outputs.android == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      palette: ${{ steps.classify.outputs.palette == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      chrome: ${{ steps.classify.outputs.chrome == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      mcp: ${{ steps.classify.outputs.mcp == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      security: ${{ steps.classify.outputs.security == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      release: ${{ steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      version_files: ${{ steps.classify.outputs.version_files == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      openapi: ${{ steps.classify.outputs.openapi == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -79,7 +84,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all docs workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -113,7 +118,7 @@ jobs:
     name: rust-contracts
     runs-on: ci-pool-rust
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -153,6 +158,7 @@ jobs:
           cargo xtask check-dep-graph
           cargo xtask check-redaction-logs
           cargo xtask check-sqlite-migrations
+          python3 scripts/refresh_generated_contracts_staged.py --self-test
       - name: Kache degradation gate self-test
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh
@@ -222,7 +228,7 @@ jobs:
     name: aurora-primitive-inventory
     runs-on: ci-pool-ops
     needs: [changes]
-    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}
+    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Check Aurora primitive inventory guard
@@ -540,7 +546,7 @@ jobs:
     name: web-panel
     runs-on: ci-pool-typescript
     needs: [changes]
-    if: ${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -1069,8 +1075,8 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
-          require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.docs == 'true' }}"
+          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
+          require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}"
           require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
           require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
@@ -1078,7 +1084,7 @@ jobs:
           require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' }}"
           require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
           require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
-          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
+          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"

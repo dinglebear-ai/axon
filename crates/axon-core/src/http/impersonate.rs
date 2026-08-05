@@ -1,8 +1,7 @@
 //! Browser TLS + HTTP/2 fingerprint impersonation via `wreq` (BoringSSL).
 //!
-//! Feature-gated behind `tls-fingerprinting` (OFF by default) because `wreq`
-//! builds BoringSSL, which needs cmake/clang/perl/go and adds roughly 8-12
-//! minutes to a cold CI build.
+//! This is a baseline acquisition capability in every Axon binary. `wreq`
+//! builds BoringSSL and therefore requires cmake, clang, perl, and go.
 //!
 //! ## Why this exists
 //!
@@ -295,7 +294,7 @@ fn build_impersonating_client() -> Result<Client, String> {
 /// them. This path is only used after a bot-wall classification, so the small
 /// client-construction cost does not affect ordinary acquisition requests.
 pub fn impersonating_client() -> Result<Client, HttpError> {
-    build_impersonating_client().map_err(HttpError::Impersonation)
+    build_impersonating_client().map_err(HttpError::ImpersonationInit)
 }
 
 /// A response from the browser-impersonating client.
@@ -322,7 +321,7 @@ pub async fn fetch_html_impersonated(url: &str) -> Result<ImpersonatedResponse, 
         .get(normalized.as_ref())
         .send()
         .await
-        .map_err(|e| HttpError::Impersonation(e.to_string()))?;
+        .map_err(|e| HttpError::ImpersonationRequest(e.to_string()))?;
 
     let status = response.status().as_u16();
     // Capture the POST-redirect URL. Losing it would attribute bytes fetched from
@@ -332,7 +331,7 @@ pub async fn fetch_html_impersonated(url: &str) -> Result<ImpersonatedResponse, 
     let body = response
         .text()
         .await
-        .map_err(|e| HttpError::Impersonation(e.to_string()))?;
+        .map_err(|e| HttpError::ImpersonationRequest(e.to_string()))?;
 
     Ok(ImpersonatedResponse {
         body,

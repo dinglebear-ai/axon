@@ -184,6 +184,60 @@ async fn fake_network_capture_merges_observed_requests() {
 
 #[tokio::test]
 #[serial]
+async fn network_capture_runs_when_initial_http_fetch_is_blocked() {
+    struct FakeCapture;
+
+    impl NetworkCaptureProvider for FakeCapture {
+        async fn capture(
+            &self,
+            _cfg: &Config,
+            url: &str,
+            _max_requests: usize,
+        ) -> Result<Vec<CapturedRequest>, EndpointError> {
+            Ok(vec![CapturedRequest {
+                url: format!("{}/api/from-browser", url.trim_end_matches('/')),
+                method: Some("GET".to_string()),
+            }])
+        }
+    }
+
+    let _loopback = LoopbackGuard::allow();
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/");
+            then.status(403).body("Access denied");
+        })
+        .await;
+
+    let report = discover_with_capture_provider(
+        &Config::test_default(),
+        &server.base_url(),
+        EndpointOptions {
+            include_bundles: false,
+            capture_network: true,
+            ..EndpointOptions::default()
+        },
+        &FakeCapture,
+        None,
+    )
+    .await
+    .expect("browser capture must not depend on a successful HTTP fetch");
+
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("initial fetch failed"))
+    );
+    assert!(report.endpoints.iter().any(|endpoint| {
+        endpoint.source == EndpointSourceKind::NetworkCapture
+            && endpoint.value.ends_with("/api/from-browser")
+    }));
+}
+
+#[tokio::test]
+#[serial]
 async fn fake_network_capture_keeps_third_party_unless_filtered() {
     struct FakeCapture {
         third_party_url: String,

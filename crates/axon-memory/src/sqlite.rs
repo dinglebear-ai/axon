@@ -17,6 +17,7 @@ pub mod recall;
 pub mod rows;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -51,7 +52,7 @@ impl SqliteMemoryStore {
     /// Open a store whose schema is owned by the composed runtime migration.
     pub fn open_migrated(path: &str, clock: Arc<dyn Clock>) -> Result<Self> {
         let conn = Connection::open(path).map_err(|e| store_error(format!("open: {e}")))?;
-        Ok(Self::from_migrated_connection(conn, clock))
+        Self::from_migrated_connection(conn, clock)
     }
 
     /// Create an in-memory store (for tests).
@@ -61,11 +62,17 @@ impl SqliteMemoryStore {
     }
 
     fn from_connection(conn: Connection, clock: Arc<dyn Clock>) -> Result<Self> {
+        configure_connection(&conn)?;
         ensure_schema(&conn).map_err(|e| store_error(format!("migrate: {e}")))?;
-        Ok(Self::from_migrated_connection(conn, clock))
+        Ok(Self::from_configured_connection(conn, clock))
     }
 
-    fn from_migrated_connection(conn: Connection, clock: Arc<dyn Clock>) -> Self {
+    fn from_migrated_connection(conn: Connection, clock: Arc<dyn Clock>) -> Result<Self> {
+        configure_connection(&conn)?;
+        Ok(Self::from_configured_connection(conn, clock))
+    }
+
+    fn from_configured_connection(conn: Connection, clock: Arc<dyn Clock>) -> Self {
         Self {
             conn: Arc::new(Mutex::new(conn)),
             clock,
@@ -135,6 +142,17 @@ impl SqliteMemoryStore {
             None => Ok(None),
         }
     }
+}
+
+/// Apply the same transient-writer policy as the shared sqlx job pool.
+///
+/// The memory store uses a dedicated rusqlite connection against the unified
+/// database. Without a busy handler, a worker heartbeat or job-status update
+/// can win SQLite's single-writer race and make an otherwise valid memory
+/// mutation fail immediately with `database is locked`.
+fn configure_connection(conn: &Connection) -> Result<()> {
+    conn.busy_timeout(Duration::from_secs(30))
+        .map_err(|error| store_error(format!("configure busy timeout: {error}")))
 }
 
 #[async_trait]

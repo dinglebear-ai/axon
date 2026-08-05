@@ -50,6 +50,14 @@ jobs:
       - uses: ./.github/actions/setup-rust-kache
         with:
           toolchain: 1.97.1
+      - name: Install TLS fingerprinting build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang perl golang-go
+          cmake --version
+          clang --version
+          perl --version
+          go version
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
@@ -60,6 +68,15 @@ jobs:
         run: npm ci && npm run build
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
+      - name: Verify release acquisition capabilities
+        run: |
+          set -euo pipefail
+          target/release/axon capabilities > capabilities.json
+          jq -e '
+            .build.tlsFingerprinting == true and
+            .build.tlsClientInitialization == "ready" and
+            .build.chrome == true
+          ' capabilities.json
       - name: Package
         run: |
           set -euo pipefail
@@ -117,6 +134,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-axon-windows
+      - name: Verify TLS fingerprinting build prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($tool in @('cmake', 'clang', 'perl', 'go')) {
+            if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
+              throw "required TLS fingerprinting build prerequisite is missing: $tool"
+            }
+          }
+          cmake --version
+          clang --version
+          perl --version
+          go version
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: lts/*
@@ -133,6 +163,20 @@ jobs:
           # rustc wrapper ("%1 is not a valid Win32 application", os error 193).
           # Disable it here, matching the palette-windows job.
           CARGO_BUILD_RUSTC_WRAPPER: ""
+      - name: Verify release acquisition capabilities
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $capabilities = (& target/release/axon.exe capabilities | ConvertFrom-Json)
+          if (-not $capabilities.build.tlsFingerprinting) {
+            throw 'release binary does not contain TLS fingerprinting'
+          }
+          if ($capabilities.build.tlsClientInitialization -ne 'ready') {
+            throw "TLS client smoke failed: $($capabilities.build.tlsClientInitialization)"
+          }
+          if (-not $capabilities.build.chrome) {
+            throw 'release binary does not contain Chrome support'
+          }
       - name: Package
         shell: pwsh
         run: |

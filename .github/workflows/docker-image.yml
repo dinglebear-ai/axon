@@ -15,7 +15,7 @@ jobs:
     name: changes
     runs-on: [self-hosted, unraid]
     outputs:
-      docker: ${{ steps.classify.outputs.docker }}
+      docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.full_ci == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:

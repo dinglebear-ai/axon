@@ -1,6 +1,7 @@
 mod predict;
 pub use predict::predict_crawl_output_dir;
 pub mod automation;
+pub(crate) mod browser;
 pub mod chrome_bootstrap;
 pub mod engine;
 pub mod manifest;
