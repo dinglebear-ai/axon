@@ -118,7 +118,9 @@ jobs:
   rust-contracts:
     name: rust-contracts
     runs-on: ci-pool-rust
-    timeout-minutes: 30
+    # 60, not 30: this job has been measured at 34 min on a green main push
+    # (run 30817832097). A 30-minute cap would hard-fail builds that pass.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
