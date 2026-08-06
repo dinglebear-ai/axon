@@ -1,10 +1,13 @@
 use super::{
-    build_map_request, parse_map_result, source_result_map_failure, unsupported_map_result,
+    append_source_warnings, build_map_request, parse_map_result, source_result_map_failure,
+    source_status_projects_manifest, unsupported_map_result,
 };
 use crate::source::result_map::{adapter_ref, degraded_no_data_plane};
 use crate::source::routing::resolve_source_route;
 use crate::types::MapOptions;
-use axon_api::source::{SourceIntent, SourceKind, SourceScope};
+use axon_api::source::{
+    LifecycleStatus, Severity, SourceIntent, SourceKind, SourceScope, SourceWarning,
+};
 use serde_json::json;
 
 // ── parse_map_result ──────────────────────────────────────────────────────
@@ -162,6 +165,47 @@ fn parse_map_result_round_trips_via_serde() {
     let v = serde_json::to_value(&original).unwrap();
     let parsed = parse_map_result(v).unwrap();
     assert_eq!(original, parsed);
+}
+
+#[test]
+fn completed_degraded_source_result_still_projects_the_committed_manifest() {
+    assert!(source_status_projects_manifest(&LifecycleStatus::Completed));
+    assert!(source_status_projects_manifest(
+        &LifecycleStatus::CompletedDegraded
+    ));
+    assert!(!source_status_projects_manifest(&LifecycleStatus::Failed));
+}
+
+#[test]
+fn source_warnings_are_preserved_alongside_manifest_warnings() {
+    let mut mapped = crate::types::MapResult {
+        url: "https://example.com".to_string(),
+        returned_url_count: 1,
+        total: 1,
+        sitemap_urls: 1,
+        pages_seen: 0,
+        thin_pages: 0,
+        elapsed_ms: 1,
+        map_source: "sitemap".to_string(),
+        outcome: crate::types::MapOutcome::Completed,
+        warning: Some("manifest warning".to_string()),
+        urls: vec!["https://example.com/a".to_string()],
+    };
+    append_source_warnings(
+        &mut mapped,
+        &[SourceWarning {
+            code: "source.job.terminal_status_deferred".to_string(),
+            severity: Severity::Warning,
+            message: "terminal status deferred".to_string(),
+            source_item_key: None,
+            retryable: true,
+        }],
+    );
+
+    assert_eq!(
+        mapped.warning.as_deref(),
+        Some("manifest warning; terminal status deferred")
+    );
 }
 
 // ── source-pipeline routing (source-pipeline.md SourceRequest.intent=map) ──

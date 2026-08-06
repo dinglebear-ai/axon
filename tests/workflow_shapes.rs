@@ -875,6 +875,24 @@ fn kache_migration_inputs_have_cargo_rerun_triggers() {
 }
 
 #[test]
+fn mcp_oauth_smoke_builds_before_server_readiness_polling() {
+    let script = include_str!("../scripts/test-mcp-oauth-protection.sh");
+    let build = script
+        .find("cargo build --quiet --bin axon")
+        .expect("OAuth smoke prebuilds the Axon binary");
+    let launch = script
+        .find(r#""${AXON_BIN}" mcp --transport http"#)
+        .expect("OAuth smoke launches the prebuilt binary");
+    let readiness = script
+        .rfind("\nwait_for_server\n")
+        .expect("OAuth smoke starts readiness polling");
+
+    assert!(build < launch && launch < readiness);
+    assert!(script.contains("CARGO_TARGET_DIR"));
+    assert!(!script.contains("cargo run --quiet --bin axon"));
+}
+
+#[test]
 fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let web = workflow_job_block(workflow, "web-panel");

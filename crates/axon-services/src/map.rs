@@ -5,7 +5,7 @@ use crate::source::routing::resolve_source_route;
 use crate::types::{MapOptions, MapOutcome, MapResult};
 use axon_api::source::{
     LifecycleStatus, MetadataMap, SourceIntent, SourceKind, SourceManifest, SourceRequest,
-    SourceResult, SourceScope,
+    SourceResult, SourceScope, SourceWarning,
 };
 use axon_core::config::Config;
 use std::error::Error;
@@ -50,7 +50,7 @@ pub async fn discover_with_context(
     }
 
     let result = crate::source::index_source(request, ctx).await?;
-    if result.status != LifecycleStatus::Completed {
+    if !source_status_projects_manifest(&result.status) {
         let mapped = source_result_map_failure(url, &result);
         emit_complete(&tx, mapped.returned_url_count).await;
         return Ok(mapped);
@@ -73,9 +73,33 @@ pub async fn discover_with_context(
         .get_manifest(result.source_id, generation)
         .await?
         .ok_or_else(|| format!("map source generation did not write a manifest for {url}"))?;
-    let mapped = project_manifest(url, manifest, opts);
+    let mut mapped = project_manifest(url, manifest, opts);
+    append_source_warnings(&mut mapped, &result.warnings);
     emit_complete(&tx, mapped.returned_url_count).await;
     Ok(mapped)
+}
+
+fn source_status_projects_manifest(status: &LifecycleStatus) -> bool {
+    matches!(
+        status,
+        LifecycleStatus::Completed | LifecycleStatus::CompletedDegraded
+    )
+}
+
+fn append_source_warnings(mapped: &mut MapResult, warnings: &[SourceWarning]) {
+    let source_warning = warnings
+        .iter()
+        .map(|warning| warning.message.as_str())
+        .filter(|message| !message.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ");
+    if source_warning.is_empty() {
+        return;
+    }
+    mapped.warning = Some(match mapped.warning.take() {
+        Some(existing) if !existing.is_empty() => format!("{existing}; {source_warning}"),
+        _ => source_warning,
+    });
 }
 
 fn source_result_map_failure(url: &str, result: &SourceResult) -> MapResult {

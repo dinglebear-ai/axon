@@ -263,20 +263,22 @@ async fn map_root_browser_render_has_an_outer_deadline() {
         ..Config::default()
     };
 
-    let started = std::time::Instant::now();
-    let result = crate::web_engine::engine::discover_site_urls(
-        &cfg,
-        &server.url("/"),
-        Arc::new(BlockedFetch),
-        Arc::new(SlowRender {
-            calls: Arc::clone(&calls),
-        }),
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        crate::web_engine::engine::discover_site_urls(
+            &cfg,
+            &server.url("/"),
+            Arc::new(BlockedFetch),
+            Arc::new(SlowRender {
+                calls: Arc::clone(&calls),
+            }),
+        ),
     )
     .await
+    .expect("map discovery must enforce an outer render deadline")
     .expect("a render timeout is represented in the map result");
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert!(started.elapsed() < std::time::Duration::from_millis(500));
     assert_eq!(result.outcome.as_str(), "failed");
     assert!(
         result

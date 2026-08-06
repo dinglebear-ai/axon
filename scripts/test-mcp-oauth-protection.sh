@@ -16,6 +16,11 @@ RESP3_BODY="$(mktemp)"
 RESP4_HEADERS="$(mktemp)"
 RESP4_BODY="$(mktemp)"
 TOKEN="${AXON_HTTP_TOKEN:-ci-mcp-token}"
+TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT_DIR}/target}"
+if [[ "${TARGET_DIR}" != /* ]]; then
+  TARGET_DIR="${ROOT_DIR}/${TARGET_DIR}"
+fi
+AXON_BIN="${TARGET_DIR}/debug/axon"
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
@@ -74,6 +79,11 @@ assert_not_status_code() {
 
 (
   cd "${ROOT_DIR}"
+  cargo build --quiet --bin axon
+)
+
+(
+  cd "${ROOT_DIR}"
   GOOGLE_OAUTH_CLIENT_ID="ci-smoke-client" \
   GOOGLE_OAUTH_CLIENT_SECRET="ci-smoke-secret" \
   GOOGLE_OAUTH_ALLOWED_EMAILS="ci@example.com" \
@@ -81,7 +91,7 @@ assert_not_status_code() {
   AXON_HTTP_HOST="${HOST}" \
   AXON_HTTP_PORT="${PORT}" \
   AXON_HTTP_TOKEN="${TOKEN}" \
-  cargo run --quiet --bin axon -- mcp --transport http
+  "${AXON_BIN}" mcp --transport http
 ) >"${LOG_FILE}" 2>&1 &
 SERVER_PID=$!
 
