@@ -10,7 +10,7 @@
 - Reviewed high-impact density surfaces with `rg` + file reads across shell/editor/ai-elements components.
 - Applied first tightening pass to shell/composer/editor/tool surfaces.
 - Ran `pnpm biome check` and `pnpm vitest` targeted tests; all passed.
-- Performed live viewport verification on `https://axon.tootie.tv` with DevTools emulation and DOM measurements.
+- Performed live viewport verification on `https://axon.example.internal` with DevTools emulation and DOM measurements.
 - Applied second pass for remaining suggestions (MCP/log dialogs, shared conversation/message primitives, cortex pane) and re-verified.
 
 ## 3. Key findings with path:line references

@@ -54,8 +54,8 @@ remove it after the detector runs normally with the current AGP/Kotlin pair.
 The app rejects arbitrary `http://` server URLs. Cleartext is accepted only for
 the Tailscale domains declared in `app/src/main/res/xml/network_security_config.xml`:
 
-- `manatee-triceratops.ts.net`
-- `manatee-triceratops.tailvpn.net`
+- `example.ts.net`
+- `example-tailnet.tailvpn.net`
 
 Use `https://` for any other host.
 

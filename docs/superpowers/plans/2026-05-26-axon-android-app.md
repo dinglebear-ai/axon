@@ -733,7 +733,7 @@ private val KEY_SERVER_URL  = stringPreferencesKey("server_url")
 private val KEY_TOKEN       = stringPreferencesKey("token")
 private val KEY_COLLECTION  = stringPreferencesKey("collection")
 
-const val DEFAULT_SERVER_URL = "https://axon.tootie.tv"
+const val DEFAULT_SERVER_URL = "https://axon.example.internal"
 const val DEFAULT_COLLECTION = "axon"
 
 data class AxonSettings(
@@ -1839,4 +1839,4 @@ mcp__claude-in-mobile__get_logs  package: com.axon.app
 - **SourcesRequest.collection**: Currently not passed to `GET /v1/sources` (GET has no body). The `?collection=` query param can be added to `AxonClient.sources()` if needed — omitted for now as the collection defaults server-side from `AXON_COLLECTION` env.
 - **No pagination on Sources**: `SourcesScreen` loads 100 items on init. Add infinite scroll as a follow-up.
 - **Search uses `/v1/query`** (vector search), not `/v1/search` (web search via Tavily) — this matches the mobile use case of searching the indexed knowledge base.
-- **AuroraCard/AuroraCallout/AuroraItem API**: Verify exact parameter names match the Aurora library version by checking component source in `aurora-design-system/android/aurora/src/main/kotlin/tv/tootie/aurora/components/` if compile errors occur. The Aurora library uses `public` Kotlin API (`explicitApi()` enforced).
+- **AuroraCard/AuroraCallout/AuroraItem API**: Verify exact parameter names match the Aurora library version by checking component source in `aurora-design-system/android/aurora/src/main/kotlin/tv/nashost/aurora/components/` if compile errors occur. The Aurora library uses `public` Kotlin API (`explicitApi()` enforced).

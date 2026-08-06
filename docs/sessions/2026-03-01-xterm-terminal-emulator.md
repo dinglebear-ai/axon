@@ -159,7 +159,7 @@ git push  # → feat/crawl-download-pack -> feat/crawl-download-pack
 
 ## Next Steps
 
-- Verify terminal renders in-browser at `https://axon.tootie.tv/terminal`
+- Verify terminal renders in-browser at `https://axon.example.internal/terminal`
 - Test command execution: `scrape https://example.com` → output streams in terminal
 - Test history: submit a command, press Up arrow → command appears
 - Test Ctrl+C: start `crawl`, press Ctrl+C → cancel dispatched

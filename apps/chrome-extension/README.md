@@ -132,7 +132,7 @@ field; the extension sends it as:
 Authorization: Bearer <token>
 ```
 
-The default Axon server is `http://100.88.16.79:8001` (a Tailscale address);
+The default Axon server is `http://198.51.100.4:8001` (a Tailscale address);
 configure it from Options. If Chrome and Axon are on the same machine, use
 `http://127.0.0.1:8001`.
 

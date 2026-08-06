@@ -78,7 +78,7 @@ Continued development and optimization of `scripts/searxng-research` — a multi
 ## Risks and Rollback
 
 - **SearXNG reliability**: All engines can CAPTCHA simultaneously. Mitigation: Tavily is ready to swap in (`TAVILY_API_KEY` in `.env`). Rollback: revert search function to Tavily API calls.
-- **Ollama dependency**: Script assumes `steamy-wsl:11434` is reachable. Fallback: OpenAI-compatible endpoint for query gen (slower but works).
+- **Ollama dependency**: Script assumes `winhost-wsl:11434` is reachable. Fallback: OpenAI-compatible endpoint for query gen (slower but works).
 - **No persistent changes to Rust codebase**: All changes are in bash scripts — zero risk to core axon binary.
 
 ## Decisions Not Taken

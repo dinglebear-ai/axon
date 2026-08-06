@@ -167,6 +167,6 @@ No Axon crawl/embed/retrieve operations were performed during implementation. Th
 ## Next Steps
 
 1. **Deploy:** `docker compose build axon-workers && docker compose up -d axon-workers` to pick up the new Rust binary with `/ws/shell`
-2. **Smoke test** in browser at `https://axon.tootie.tv/terminal`: verify `ls`, `vim`, `htop`, Ctrl+C all work
+2. **Smoke test** in browser at `https://axon.example.internal/terminal`: verify `ls`, `vim`, `htop`, Ctrl+C all work
 3. **Optional:** Add session timeout to `shell.rs` — kill idle PTY sessions after N minutes to reclaim thread pool slots
 4. **Optional:** Add `onCancelCurrent` handler that sends `\x03` to PTY (currently a no-op; Ctrl+C through xterm works naturally but the toolbar CANCEL button is dead)

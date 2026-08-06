@@ -35,7 +35,7 @@ All changes: `cargo check` clean, no clippy warnings.
 ## Key Findings
 
 - **`suggest` root cause** (`client.rs:61-111`): `scroll_url_set` fetched all `chunk_index==0` points from Qdrant, then `suggest.rs` only used the first 500 for the LLM prompt. No early exit existed.
-- **TEI host** (`http://100.74.16.82:52000`): Running `Qwen/Qwen3-Embedding-0.6B` (embedding, `pooling: last_token`). Rerank endpoint returns HTTP 424 — model type mismatch. Cross-encoder requires a separate TEI instance.
+- **TEI host** (`http://198.51.100.1:52000`): Running `Qwen/Qwen3-Embedding-0.6B` (embedding, `pooling: last_token`). Rerank endpoint returns HTTP 424 — model type mismatch. Cross-encoder requires a separate TEI instance.
 - **`query` had zero reranking**: Raw cosine similarity only, no lexical boost, no diversity selection, snippets were first 140 chars (often mid-sentence markdown).
 - **`rerank_ask_candidates`** existed in `ranking.rs` with URL token boost (+0.045/token, cap 0.30), chunk text token boost (+0.015/token), and path structural boost (+0.04 for `/docs/`, `/api/`, etc.) — but `query` never called it.
 - **TS reference impl** (`~/workspace/axon/src/utils/snippet.ts`, `deduplication.ts`): Uses 10× over-fetch, sentence-level snippet extraction with boilerplate stripping, and per-URL group scoring with phrase boost (+0.08).
@@ -76,10 +76,10 @@ Rust lacks regex lookbehind without the `fancy-regex` crate. Simple `split(|c| m
 
 ```bash
 # Verify TEI capabilities
-curl -s http://100.74.16.82:52000/info
+curl -s http://198.51.100.1:52000/info
 # → model_type: {embedding: {pooling: last_token}} — no reranker
 
-curl -s -o /dev/null -w "%{http_code}" -X POST http://100.74.16.82:52000/rerank \
+curl -s -o /dev/null -w "%{http_code}" -X POST http://198.51.100.1:52000/rerank \
   -H "Content-Type: application/json" \
   -d '{"query":"test","texts":["hello world"]}'
 # → 424 Failed Dependency (endpoint exists, wrong model type)

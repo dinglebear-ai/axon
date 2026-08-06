@@ -8,7 +8,7 @@
 
 ## Session Overview
 
-Diagnosed and fixed a 502 Bad Gateway error on `axon.tootie.tv` where Pulse chat (`/api/pulse/chat`) was failing. Root cause was a missing `claude` binary in the `axon-web` container. Refactored the entire `axon-web` Docker setup: switched base image to `node:24-slim`, installed Claude/Codex/Gemini CLIs inside the image, dropped to non-root `node` user, added `~/.ssh` mount, and introduced `AXON_WORKSPACE` for host workspace bind-mount. Fixed two pre-commit hook failures (rustfmt + clippy) blocking the commit.
+Diagnosed and fixed a 502 Bad Gateway error on `axon.example.internal` where Pulse chat (`/api/pulse/chat`) was failing. Root cause was a missing `claude` binary in the `axon-web` container. Refactored the entire `axon-web` Docker setup: switched base image to `node:24-slim`, installed Claude/Codex/Gemini CLIs inside the image, dropped to non-root `node` user, added `~/.ssh` mount, and introduced `AXON_WORKSPACE` for host workspace bind-mount. Fixed two pre-commit hook failures (rustfmt + clippy) blocking the commit.
 
 ---
 
@@ -76,8 +76,8 @@ docker compose exec axon-web which claude   # → not found
 docker compose up -d --build axon-web
 
 # Tested SSH from container
-docker compose exec axon-web ssh dookie   # refused (host issue)
-docker compose exec axon-web ssh tootie   # OK
+docker compose exec axon-web ssh devhost   # refused (host issue)
+docker compose exec axon-web ssh nashost   # OK
 
 # Fixed pre-commit failures
 cargo fmt
@@ -146,7 +146,7 @@ None — this session was infrastructure/Docker/Rust fixes. No Axon embed/retrie
 ## Open Questions
 
 - Is `@openai/codex@0.105.0` the correct latest stable? The npm `@latest` tag was pointing to `0.106.0` which had a broken tarball. Worth monitoring for a working `0.106.x` release.
-- `dookie` SSH host refused connection — unknown if that's expected (host down, wrong hostname, firewall) or a new issue.
+- `devhost` SSH host refused connection — unknown if that's expected (host down, wrong hostname, firewall) or a new issue.
 - `gemini-cli@latest` was installed without pinning — could break on future release. Consider pinning once a stable version is identified.
 
 ---

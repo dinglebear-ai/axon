@@ -17,7 +17,7 @@ beads: none
 Started as venting about sccache repeatedly printing "server looks like it shut down unexpectedly, compiling locally." Expanded into: diagnose/fix that, answer whether ZFS→XFS is feasible, fix the underlying memory pressure, delete junk Qdrant collections, build a container-restart→gotify watcher, then `/vibin:quick-push` the resulting changes and save a session doc.
 
 ## Session Overview
-Diagnosed and fixed two distinct memory-pressure failures on dookie that were *not* what they appeared to be: an sccache "crash" that was actually a cgroup soft-throttle stall, and a Qdrant 11.9G RSS "memory hog" that was actually a 206-restart OOM crashloop against a too-small container cap. Raised both limits live without data loss, garbage-collected 38 junk Qdrant collections (75→37), built a persistent docker-restart→gotify watcher, and shipped the in-repo infra/doc changes as axon 5.5.4.
+Diagnosed and fixed two distinct memory-pressure failures on devhost that were *not* what they appeared to be: an sccache "crash" that was actually a cgroup soft-throttle stall, and a Qdrant 11.9G RSS "memory hog" that was actually a 206-restart OOM crashloop against a too-small container cap. Raised both limits live without data loss, garbage-collected 38 junk Qdrant collections (75→37), built a persistent docker-restart→gotify watcher, and shipped the in-repo infra/doc changes as axon 5.5.4.
 
 ## Sequence of Events
 1. Investigated sccache: server up 6 days, but `memory.events` showed `high=102841` throttle hits against `MemoryHigh=12G`; root-caused as cgroup soft-throttle stalls (not crashes) and raised the soft cap to 15G live; captured the drop-in into chezmoi.

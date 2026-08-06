@@ -99,7 +99,7 @@ services:
       # (drop the file in ${LLAMA_CPP_MODELS_DIR}; it mounts at /models).
       - LLAMA_ARG_SPEC_DRAFT_MODEL
     volumes:
-      # NOT derived from AXON_HOME by default. On dookie the shared ~/.axon/.env
+      # NOT derived from AXON_HOME by default. On devhost the shared ~/.axon/.env
       # sets AXON_HOME=/mnt/axon-data, which only exists *inside* the axon Incus
       # container — deriving from it on the host silently points at a nonexistent
       # path and re-downloads the whole model. Override LLAMA_CPP_CACHE_DIR if the

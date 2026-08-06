@@ -11,7 +11,7 @@ function memoryItem(overrides: Partial<MemoryItem> = {}): MemoryItem {
   return {
     id: 'mem-1',
     memory_type: 'fact',
-    title: 'Qdrant runs on tootie',
+    title: 'Qdrant runs on nashost',
     body: 'The vector store lives on the NAS.',
     project: 'axon',
     repo: null,
@@ -107,7 +107,7 @@ describe('MemoryTab', () => {
       '/v1/memories/search',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(host.textContent).toContain('Qdrant runs on tootie');
+    expect(host.textContent).toContain('Qdrant runs on nashost');
     expect(host.textContent).toContain('Second memory');
     expect(host.textContent).toContain('2 matches for "qdrant"');
   });

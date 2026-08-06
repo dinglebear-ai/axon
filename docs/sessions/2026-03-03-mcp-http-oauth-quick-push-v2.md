@@ -110,13 +110,13 @@ Three-phase session: (1) Axon status check, (2) quick-push workflow to commit MC
 
 - Should `enforce_monoliths.py` inline comment parsing be fixed? Currently a shared global hook
 - 5 high-severity Dependabot alerts on `main` (reported by GitHub on push) — need triage
-- Axon MCP endpoint returning 502 (`axon.tootie.tv`) — host down, needs investigation
+- Axon MCP endpoint returning 502 (`axon.example.internal`) — host down, needs investigation
 - Plugin marketplace cache sync timing — does it auto-refresh or require manual reload?
 
 ## Next Steps
 
 - [ ] Split OAuth handler functions before 2026-03-10 allowlist expiry
 - [ ] Fix `~/.claude/hooks/enforce_monoliths.py` inline comment parsing
-- [ ] Investigate Axon MCP 502 (axon.tootie.tv host error)
+- [ ] Investigate Axon MCP 502 (axon.example.internal host error)
 - [ ] Triage 5 Dependabot high-severity alerts
 - [ ] Embed this session doc once Axon services are available

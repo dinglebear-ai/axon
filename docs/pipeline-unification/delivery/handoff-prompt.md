@@ -17,7 +17,7 @@ Use a workflow to finish the Axon pipeline-unification refactor (GitHub issue #2
 ## Current verified state (git fetch first, confirm main SHA)
 - PHASE 9 DONE: all 8 source families have adapters + services bridges merged on main. Adapters in crates/axon-adapters/src/{local,web,git,feed,youtube,reddit,sessions,registry_sources}.rs; bridges in crates/axon-services/src/{local,web,git,feed,youtube,reddit,registry,sessions}_source.rs (each: resolve→lease→discover→diff→generation→vectorize→publish, mirroring local_source; #[cfg(test)] integration tests over fake LedgerStore/EmbeddingProvider/VectorStore). The vector-payload contract (crates/axon-vectors/src/payload.rs + payload_families.rs) recognizes families code/web/package/session/graph/memory/feed/social/media + their fields.
 - Bridges are #[allow(dead_code)] pub(crate) — NOTHING in production (CLI/MCP/REST) calls them yet. That wiring IS Phase 10.
-- PRs this era: #319 web, #320 five adapters, #321 git adapter, #322 six bridges. Bead axon_rust-8s8uq (closed). Live tracker: https://axon.tootie.tv/pipeline-unification.
+- PRs this era: #319 web, #320 five adapters, #321 git adapter, #322 six bridges. Bead axon_rust-8s8uq (closed). Live tracker: https://axon.example.internal/pipeline-unification.
 
 ## Phase 10 — Surface Cutover (the big one)
 Goal: hard-break public surfaces so `axon <source>` is the one entrypoint calling the new bridges.

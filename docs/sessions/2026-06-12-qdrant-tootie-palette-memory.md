@@ -14,15 +14,15 @@ beads: axon_rust-gns7, axon_rust-mbf3, axon_rust-1j7u
 
 ## User Request
 
-Move Qdrant off the local VM to `tootie`, recover from transfer and job-queue issues, inspect indexed seed URLs, add richer repo/project metadata to memory payloads, and polish the Axon palette result UI where code blocks and white borders looked rough.
+Move Qdrant off the local VM to `nashost`, recover from transfer and job-queue issues, inspect indexed seed URLs, add richer repo/project metadata to memory payloads, and polish the Axon palette result UI where code blocks and white borders looked rough.
 
 ## Session Overview
 
-The session started as homelab operations around Qdrant placement on `tootie`, shifted into Axon reindexing and seed URL inspection, then finished with code changes. The final code work added auto-filled memory metadata, polished palette markdown/code rendering, split monolithic files to satisfy policy, committed the changes, and pushed `main`.
+The session started as homelab operations around Qdrant placement on `nashost`, shifted into Axon reindexing and seed URL inspection, then finished with code changes. The final code work added auto-filled memory metadata, polished palette markdown/code rendering, split monolithic files to satisfy policy, committed the changes, and pushed `main`.
 
 ## Sequence of Events
 
-1. Qdrant was moved toward `tootie` after local OOM issues, with the compose target corrected to `/mnt/cache/compose/qdrant` and appdata corrected to `/mnt/cache/appdata/qdrant`.
+1. Qdrant was moved toward `nashost` after local OOM issues, with the compose target corrected to `/mnt/cache/compose/qdrant` and appdata corrected to `/mnt/cache/appdata/qdrant`.
 2. The interrupted/unsafe rsync path was abandoned when reindexing became necessary; Qdrant was brought up fresh and the jobs database was wiped.
 3. Existing Qdrant payloads were inspected for `seed_url`, then seed URLs were deduplicated and separated conceptually into web URLs vs repository origins.
 4. A stuck crawl job for `https://modelcontextprotocol.io` was recovered by restarting Axon workers; the crawl and embed jobs completed.
@@ -39,7 +39,7 @@ The session started as homelab operations around Qdrant placement on `tootie`, s
 
 ## Technical Decisions
 
-- Reindexing made rsyncing old Qdrant data unnecessary, so the operational path favored a fresh Qdrant data directory on `tootie`.
+- Reindexing made rsyncing old Qdrant data unnecessary, so the operational path favored a fresh Qdrant data directory on `nashost`.
 - Memory runtime metadata is detected at `remember` normalization time from cwd and git commands, keeping the public request schema unchanged.
 - The palette now centralizes Streamdown configuration in `apps/palette-tauri/src/lib/streamdownConfig.ts` so ask, evaluate, markdown output, research, and reader views share one code renderer.
 - Monolith remediation used narrow sibling modules: `OperationResultViewShared.tsx` for reusable palette rendering helpers and `runtime_metadata.rs` for git/cwd memory detection.
@@ -129,7 +129,7 @@ The maintenance pass was intentionally conservative: no plans were moved, no bra
 
 | area | before | after |
 |---|---|---|
-| Qdrant operations | Local Qdrant contributed to OOM pressure | Qdrant was brought up fresh on `tootie` paths for compose and appdata |
+| Qdrant operations | Local Qdrant contributed to OOM pressure | Qdrant was brought up fresh on `nashost` paths for compose and appdata |
 | Memory payloads | Manual memories did not auto-fill repo/workspace/git context | Memory captures `project`, `repo`, `workspace`, `git_branch`, `git_commit`, `git_dirty`, and `cwd` |
 | Palette research/code output | Research summaries could render default nested white code-block chrome | Research, reader, ask, evaluate, and generic markdown share a quieter Streamdown/Shiki renderer |
 | Result UI borders | Several nested surfaces used hard default borders | Result surfaces use softer Aurora-tokenized mixed borders |

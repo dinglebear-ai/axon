@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXT_DIR="$ROOT/apps/chrome-extension"
 PORT="${AXON_AGENT_OS_STAGING_PORT:-8766}"
-HOST_IP="${AXON_AGENT_OS_HOST_IP:-100.88.16.79}"
+HOST_IP="${AXON_AGENT_OS_HOST_IP:-198.51.100.4}"
 TARGET_URL="${AXON_AGENT_OS_TARGET_URL:-https://code.claude.com}"
 EXPECTED_FINAL_URL="${AXON_AGENT_OS_EXPECTED_FINAL_URL:-https://claude.com/product/claude-code}"
 COLLECTION_DB="${AXON_AGENT_OS_SQLITE_NAME:-regression-jobs.db}"
@@ -143,7 +143,7 @@ Get-Content -Raw (Join-Path \$extDir 'manifest.json')`);
 \$env:Path="\$bin;\$env:Path"
 \$env:AXON_SQLITE_PATH=Join-Path (Join-Path \$homeDir '.axon') '${sqliteName}'
 \$env:QDRANT_URL='http://127.0.0.1:1'
-\$env:TEI_URL='http://100.88.16.79:52000'
+\$env:TEI_URL='http://198.51.100.4:52000'
 \$env:AXON_CHROME_REMOTE_URL=''
 \$launcher=Join-Path \$homeDir 'axon-regression-serve.ps1'
 \$axonPath=Join-Path \$bin 'axon.exe'
@@ -154,7 +154,7 @@ Remove-Item -Force \$sqlitePath -ErrorAction SilentlyContinue
   ('\$env:Path = ' + "'\$bin;'" + ' + \$env:Path'),
   ('\$env:AXON_SQLITE_PATH = ' + "'\$sqlitePath'"),
   "\`$env:QDRANT_URL = 'http://127.0.0.1:1'",
-  "\`$env:TEI_URL = 'http://100.88.16.79:52000'",
+  "\`$env:TEI_URL = 'http://198.51.100.4:52000'",
   "\`$env:AXON_CHROME_REMOTE_URL = ''",
   ('& ' + "'\$axonPath'" + ' serve mcp')
 )
@@ -198,7 +198,7 @@ for (\$i = 0; \$i -lt 45; \$i++) {
   ('\$env:Path = ' + "'\$bin;'" + ' + \$env:Path'),
   ('\$env:AXON_SQLITE_PATH = ' + "'\$sqlitePath'"),
   "\`$env:QDRANT_URL = 'http://127.0.0.1:1'",
-  "\`$env:TEI_URL = 'http://100.88.16.79:52000'",
+  "\`$env:TEI_URL = 'http://198.51.100.4:52000'",
   "\`$env:AXON_CHROME_REMOTE_URL = ''",
   ('& ' + "'\$axonPath'" + ' crawl worker')
 )
@@ -241,7 +241,7 @@ for (\$i = 0; \$i -lt 20; \$i++) {
 \$env:Path="\$bin;\$env:Path"
 \$env:AXON_SQLITE_PATH=Join-Path (Join-Path \$homeDir '.axon') '${sqliteName}'
 \$env:QDRANT_URL='http://127.0.0.1:1'
-\$env:TEI_URL='http://100.88.16.79:52000'
+\$env:TEI_URL='http://198.51.100.4:52000'
 \$env:AXON_CHROME_REMOTE_URL=''
 Get-Process axon -ErrorAction SilentlyContinue | Stop-Process -Force
 \$out=Join-Path \$homeDir 'axon-regression-serve.log'
@@ -298,7 +298,7 @@ Expand-Archive -Path \$extZip -DestinationPath \$extDir -Force
 \$env:Path="\$bin;\$env:Path"
 \$env:AXON_SQLITE_PATH=Join-Path \$axonHome '${sqliteName}'
 \$env:QDRANT_URL='http://127.0.0.1:1'
-\$env:TEI_URL='http://100.88.16.79:52000'
+\$env:TEI_URL='http://198.51.100.4:52000'
 \$env:AXON_CHROME_REMOTE_URL=''
 \$out=Join-Path \$homeDir 'axon-regression-serve.log'
 \$err=Join-Path \$homeDir 'axon-regression-serve.err.log'
@@ -427,7 +427,7 @@ node \$path`);
 \$env:Path="\$bin;\$env:Path"
 \$env:AXON_SQLITE_PATH=Join-Path (Join-Path \$env:USERPROFILE '.axon') '${sqliteName}'
 \$env:QDRANT_URL='http://127.0.0.1:1'
-\$env:TEI_URL='http://100.88.16.79:52000'
+\$env:TEI_URL='http://198.51.100.4:52000'
 \$env:AXON_CHROME_REMOTE_URL=''
 \$clip=Get-Clipboard -Raw
 if (\$clip.Length -lt 1000) { throw "clipboard markdown too short: \$($clip.Length)" }

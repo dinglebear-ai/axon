@@ -79,7 +79,7 @@ Added an MCP Servers popup to the reboot shell header (matching the terminal/log
 | Type extraction fix | `statusMap[name]` is a string | `Object.fromEntries(...map(([k,v]) => [k, v.status]))` | ✅ (code review) |
 | POST ping verb | No SSE hang | `method: 'POST'` + `redirect: 'manual'` | ✅ (code review) |
 | `cfg.headers` forwarded | Auth headers reach probe | `checkHttpServer(name, cfg.url, cfg.headers)` | ✅ (code review) |
-| End-to-end status for `https://axon.tootie.tv/mcp` | Yellow "auth required" (no token) or green "online" (with token) | Not live-tested | ⚠️ needs runtime verify |
+| End-to-end status for `https://axon.example.internal/mcp` | Yellow "auth required" (no token) or green "online" (with token) | Not live-tested | ⚠️ needs runtime verify |
 
 ---
 
@@ -107,7 +107,7 @@ None — no Axon embed/crawl/query operations performed in this session.
 
 ## Open Questions
 
-- Does the axon MCP server at `https://axon.tootie.tv/mcp` respond to an unauthenticated `POST` with a JSON-RPC `ping` with a clean 401 (not a redirect or hang)? Needs runtime verification to confirm the yellow dot appears correctly.
+- Does the axon MCP server at `https://axon.example.internal/mcp` respond to an unauthenticated `POST` with a JSON-RPC `ping` with a clean 401 (not a redirect or hang)? Needs runtime verification to confirm the yellow dot appears correctly.
 - Should the dialog re-poll status periodically (e.g. every 30 s) so the dot updates after OAuth completes in Claude CLI?
 - Is there a way to surface the OAuth login URL in the UI so users can trigger the flow from the dialog rather than waiting for Pulse to do it?
 
@@ -115,6 +115,6 @@ None — no Axon embed/crawl/query operations performed in this session.
 
 ## Next Steps
 
-- [ ] Live-test status indicator against `https://axon.tootie.tv/mcp` after dev server restarts
+- [ ] Live-test status indicator against `https://axon.example.internal/mcp` after dev server restarts
 - [ ] Consider periodic status re-poll in `RebootMcpDialog` (30 s interval while dialog is open)
 - [ ] Consider adding "Open OAuth Login" button for `auth-required` servers — fetch `/.well-known/oauth-authorization-server`, build auth URL, open in new tab

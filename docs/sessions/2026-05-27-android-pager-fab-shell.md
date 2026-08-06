@@ -19,7 +19,7 @@ Continue implementing all 22 Android code-review beads from PR #142, then build 
 
 ## Session Overview
 
-Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) across three commits (v4.12.0 → v4.12.2). Key work: FormKeys dependency-inversion (moved 9 `*FormKeys` objects from UI to data layer), bug fixes for CRLF injection in HeadersField, Job cancellation in DocumentViewModel, answer-text cap in AskViewModel, plus two new test suites (DocumentViewModelTest, SettingsViewModelTest). Also replaced the build-on-steamy.sh rsync-the-world pipeline with a lean build-windows.sh that cross-compiles locally on dookie and ships only the .exe via scp.
+Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) across three commits (v4.12.0 → v4.12.2). Key work: FormKeys dependency-inversion (moved 9 `*FormKeys` objects from UI to data layer), bug fixes for CRLF injection in HeadersField, Job cancellation in DocumentViewModel, answer-text cap in AskViewModel, plus two new test suites (DocumentViewModelTest, SettingsViewModelTest). Also replaced the build-on-steamy.sh rsync-the-world pipeline with a lean build-windows.sh that cross-compiles locally on devhost and ships only the .exe via scp.
 
 ## Sequence of Events
 
@@ -47,13 +47,13 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 
 12. **Code-review cleanup pass (v4.12.2)** — AxonClient, StringChunking, IngestScreen, SettingsScreen, SummarizeScreen, libs.versions.toml all received reviewer-requested cleanup (unused imports, null-safety, accessibility content descriptions, library version pins).
 
-13. **build-windows.sh rewrite** — Replaced build-on-steamy.sh (rsync entire repo → build → ship exe) with build-windows.sh (cross-compile locally on dookie via MinGW, scp only the .exe). Fixed operator-precedence bug in `repo_root()` function.
+13. **build-windows.sh rewrite** — Replaced build-on-steamy.sh (rsync entire repo → build → ship exe) with build-windows.sh (cross-compile locally on devhost via MinGW, scp only the .exe). Fixed operator-precedence bug in `repo_root()` function.
 
 14. **tauri.conf.json version sync** — Synced stuck-at-4.8.1 tauri.conf.json version to 4.12.2 along with Cargo.toml, package.json files.
 
 ## Key Findings
 
-- `build-on-steamy.sh` was rsyncing hundreds of MB of repo files to steamy just to build a ~28 MB .exe — dookie already had `x86_64-w64-mingw32-gcc` and the `x86_64-pc-windows-gnu` rustup target installed, making a full rsync completely unnecessary.
+- `build-on-steamy.sh` was rsyncing hundreds of MB of repo files to winhost just to build a ~28 MB .exe — devhost already had `x86_64-w64-mingw32-gcc` and the `x86_64-pc-windows-gnu` rustup target installed, making a full rsync completely unnecessary.
 - Bash operator precedence `A || B && C` parses as `(A || B) && C`, not `A || (B && C)`. The `repo_root()` fallback path in build-windows.sh had this bug causing `pwd` to always run and embed a newline in the path, which broke pnpm (`ENOENT: no such file or directory, lstat '...path\n'`). Fixed by grouping: `{ cd ... && pwd; }`.
 - `HeadersField.kt` — Edit tool string-matching failures when old_string contained Kotlin regex escape sequences (`\r`, `\n`). Fixed by using Write tool to rewrite the entire file.
 - `SummarizeOptionsForm.kt` — First edit attempt failed because old_string missed the `AuroraTextField` import line. Fixed after re-reading the file.
@@ -63,7 +63,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 
 - **FormKeys in data layer, not UI layer**: The `ModeOptionsRepository` was importing from the UI package to read form keys. Moving key definitions to `data.repository.options` breaks the upward dependency and makes the repository truly independent of the UI layer.
 - **Stand-in test pattern for ViewModels**: Tests use plain Kotlin classes that mirror the ViewModel's state machine logic without Robolectric or instrumented test infrastructure. This keeps tests runnable on JVM without Android SDK setup.
-- **MinGW cross-compilation over rsync**: Building on the machine that already has all dependencies (dookie) and shipping only the ~28 MB artifact is strictly better than shipping the entire source tree (~hundreds of MB) to another machine to build there.
+- **MinGW cross-compilation over rsync**: Building on the machine that already has all dependencies (devhost) and shipping only the ~28 MB artifact is strictly better than shipping the entire source tree (~hundreds of MB) to another machine to build there.
 - **`.take(500)` on ask answers**: Simple, zero-overhead cap that prevents unbounded growth in follow-up turn history without affecting the display path (answers are streamed and displayed in full; only the stored-for-context copy is capped).
 
 ## Files Changed
@@ -83,7 +83,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 | modified | `apps/android/app/src/main/java/com/axon/app/data/repository/ModeOptionsRepository.kt` | Caller-wins limit; added `_resetVersion` StateFlow + `resetVersion` public accessor |
 | created | `apps/android/app/src/test/java/com/axon/app/ui/document/DocumentViewModelTest.kt` | 6 stand-in tests for DocumentViewModel |
 | created | `apps/android/app/src/test/java/com/axon/app/ui/settings/SettingsViewModelTest.kt` | 5 stand-in tests for SettingsViewModel |
-| created | `scripts/build-windows.sh` | Cross-compile .exe on dookie, scp to steamy Desktop |
+| created | `scripts/build-windows.sh` | Cross-compile .exe on devhost, scp to winhost Desktop |
 | deleted | `scripts/build-on-steamy.sh` | Superseded by build-windows.sh (was rsyncing entire repo) |
 | modified | `apps/palette-tauri/src-tauri/tauri.conf.json` | Version sync 4.8.1 → 4.12.2 |
 | modified | `Cargo.toml` | Version 4.12.1 → 4.12.2 |
@@ -165,7 +165,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 | DocumentViewModel | No job cancellation; concurrent loads possible | Cancels prior `fetchJob` before launching new one |
 | SettingsViewModel | Local `ConnectionState` sealed class shadows shared class | Renamed to `TestConnectionState` |
 | QueryRequest apply() | Form limit always applied, overwriting explicit caller values | Caller's non-default limit wins; form limit is fallback only |
-| Windows build pipeline | Rsync entire repo to steamy, build there, ship exe back | Cross-compile on dookie (MinGW), scp only the .exe |
+| Windows build pipeline | Rsync entire repo to winhost, build there, ship exe back | Cross-compile on devhost (MinGW), scp only the .exe |
 
 ## Risks and Rollback
 
