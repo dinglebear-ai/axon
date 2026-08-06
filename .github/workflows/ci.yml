@@ -1152,7 +1152,13 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes, binary-smoke-build]
-    if: ${{ needs.binary-smoke-build.result == 'success' }}
+    # always() is required, not decorative: a skipped ancestor (web-panel, on any
+    # PR that touches no web files) propagates through the needs graph and skips
+    # this job even though binary-smoke-build succeeded and the condition below
+    # is true. ci-gate then correctly fails with "binary-smoke was skipped even
+    # though its required condition is true". The explicit result check still
+    # gates execution.
+    if: ${{ always() && needs.binary-smoke-build.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v5
         with:
