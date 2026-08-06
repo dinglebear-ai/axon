@@ -29,11 +29,11 @@ Traced the MCP Apps widget failure through three distinct root causes — null a
 7. Added `window.__AXON_INITIAL_STATUS__` placeholder in HTML and dynamic injection in `read_resource` via `system::full_status()`
 8. Removed the `await` timeout approach in favour of pure fire-and-forget per spec
 9. Set up basic-host test client from `modelcontextprotocol/ext-apps` repo to test without claude.ai dependency
-10. Debugged connection failures: CORS (added `localhost:8080` to `AXON_MCP_ALLOWED_ORIGINS`), auth (proxy with injected bearer token), sandbox URL hardcoded to `localhost:8081` (changed to `10.1.0.6:8081` in `implementation.ts`), streaming proxy buffering SSE (switched to `http-proxy` library)
+10. Debugged connection failures: CORS (added `localhost:8080` to `AXON_MCP_ALLOWED_ORIGINS`), auth (proxy with injected bearer token), sandbox URL hardcoded to `localhost:8081` (changed to `192.0.2.6:8081` in `implementation.ts`), streaming proxy buffering SSE (switched to `http-proxy` library)
 11. Used `agent-browser` to inspect the live DOM — found iframe present but empty
 12. Checked network requests via `performance.getEntriesByType('resource')` — 343KB widget HTML fetched successfully but not rendering
-13. **Root cause found**: `sandbox.ts:4` hardcoded `ALLOWED_REFERRER_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1)/` — sandbox threw on init for `10.1.0.6` referrer, never set up postMessage relay
-14. Fixed referrer pattern to include `10.1.0.6`, rebuilt sandbox bundle
+13. **Root cause found**: `sandbox.ts:4` hardcoded `ALLOWED_REFERRER_PATTERN = /^http:\/\/(localhost|127\.0\.0\.1)/` — sandbox threw on init for `192.0.2.6` referrer, never set up postMessage relay
+14. Fixed referrer pattern to include `192.0.2.6`, rebuilt sandbox bundle
 15. Rebuilt local axon binary (`cargo build --release`) — local binary was stale (only `cargo check` had run)
 16. Widget rendered with full job queue data: 19 crawl, 18 embed, 0 extract/ingest
 
@@ -61,8 +61,8 @@ Traced the MCP Apps widget failure through three distinct root causes — null a
 | `src/mcp/server/handlers_system.rs` | `InlineHint::Default` → `InlineHint::Document` for status handler |
 | `src/mcp/server.rs` | Added `use crate::services::system;`; `read_resource` for status dashboard now dynamically injects `window.__AXON_INITIAL_STATUS__` JSON |
 | `src/mcp/assets/status_dashboard.html` | Added `<script>window.__AXON_INITIAL_STATUS__ = null;</script>` placeholder before module script; replaced `await app.connect()` with fire-and-forget + immediate render from initial data |
-| `/tmp/ext-apps/examples/basic-host/src/sandbox.ts` | Added `10.1.0.6` to `ALLOWED_REFERRER_PATTERN` (local test only, not committed to axon) |
-| `/tmp/ext-apps/examples/basic-host/src/implementation.ts` | Changed `SANDBOX_PROXY_BASE_URL` from `localhost:8081` to `10.1.0.6:8081` (local test only) |
+| `/tmp/ext-apps/examples/basic-host/src/sandbox.ts` | Added `192.0.2.6` to `ALLOWED_REFERRER_PATTERN` (local test only, not committed to axon) |
+| `/tmp/ext-apps/examples/basic-host/src/implementation.ts` | Changed `SANDBOX_PROXY_BASE_URL` from `localhost:8081` to `192.0.2.6:8081` (local test only) |
 | `/tmp/ext-apps/examples/basic-host/serve.ts` | Added `http-proxy` based `/mcp-proxy` route with bearer token injection (local test only) |
 | `~/.axon/.env` | Added `localhost:8080` to `AXON_MCP_ALLOWED_ORIGINS` |
 
@@ -95,9 +95,9 @@ agent-browser screenshot /tmp/widget-final.png
 | `artifact_handle.url: null` | `InlineHint::Default` fell to `path` mode; artifacts are local files with no HTTP URL | Changed to `InlineHint::Document` |
 | Widget stuck "Connecting..." | `await app.connect()` blocks; host never completes postMessage handshake | Fire-and-forget `app.connect().catch(() => {})` |
 | basic-host: "Failed to connect" | `CORS 403` — origin `localhost:8080` not in `AXON_MCP_ALLOWED_ORIGINS` | Added `localhost:8080` to `.env` |
-| `forbidden: host not allowed` | Host header allowlist built from bind host + allowed origins; needed `10.1.0.6:8002` in origins | Added to `AXON_MCP_ALLOWED_ORIGINS` env |
+| `forbidden: host not allowed` | Host header allowlist built from bind host + allowed origins; needed `192.0.2.6:8002` in origins | Added to `AXON_MCP_ALLOWED_ORIGINS` env |
 | SSE proxy hung | Manual `fetch + arrayBuffer()` buffers entire response; SSE never ends | Switched to `http-proxy` library |
-| Sandbox empty despite 343KB fetch | `ALLOWED_REFERRER_PATTERN` rejected `10.1.0.6` referrer; sandbox threw before postMessage setup | Added `10.1.0.6` to pattern in sandbox.ts |
+| Sandbox empty despite 343KB fetch | `ALLOWED_REFERRER_PATTERN` rejected `192.0.2.6` referrer; sandbox threw before postMessage setup | Added `192.0.2.6` to pattern in sandbox.ts |
 | Widget still "Connecting..." after sandbox fix | Local axon binary was stale (`cargo check` ≠ `cargo build --release`) | `cargo build --release --bin axon` |
 
 ## Behavior Changes (Before/After)

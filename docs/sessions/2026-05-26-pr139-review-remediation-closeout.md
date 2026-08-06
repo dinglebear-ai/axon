@@ -17,14 +17,14 @@ The session started with investigation and implementation around Axon LLM contex
 
 ## Session Overview
 
-The PR #139 branch was carried through the remaining review remediation: palette REST/Tauri fixes, OpenAI-compatible backend snapshot safety, ask warning behavior, Steamy build script safety, CI coverage, docs alignment, and review-gate cleanup. The Beads epic `axon_rust-8jiv` and swarm `axon_rust-mfa2` were closed after all 34 child beads were recorded and closed.
+The PR #139 branch was carried through the remaining review remediation: palette REST/Tauri fixes, OpenAI-compatible backend snapshot safety, ask warning behavior, Winhost build script safety, CI coverage, docs alignment, and review-gate cleanup. The Beads epic `axon_rust-8jiv` and swarm `axon_rust-mfa2` were closed after all 34 child beads were recorded and closed.
 
 ## Sequence of Events
 
 1. Investigated Axon context injection and local Gemma/Gemma-family expectations for GPU use.
 2. Wired and configured OpenAI-compatible LLM support under `AXON_` settings for llama.cpp rather than Ollama.
 3. Fixed palette behavior: REST payload formatting, JSON rendering, fixed command bar behavior, hide-on-blur behavior, click-outside handling, Aurora alignment, async job status display, settings error visibility, native bridge hardening, and GitHub ingest contract alignment.
-4. Added Steamy Windows build helper behavior and then made the sync path disposable/safety-checked by default.
+4. Added Winhost Windows build helper behavior and then made the sync path disposable/safety-checked by default.
 5. Ran PR-review-toolkit agents, created Beads for every concrete finding, researched them with Lavra, implemented waves of fixes, and closed all child beads.
 6. Ran a final review gate, created seven additional review-gate beads, fixed them, pushed the branch, pushed Beads state, and corrected accidental `.broadcastr` branch pollution.
 7. Saved this session note using the `save-to-md` workflow.
@@ -35,7 +35,7 @@ The PR #139 branch was carried through the remaining review remediation: palette
 - The renderer must not own arbitrary HTTP authority. The Tauri bridge now owns saved Axon config and accepts constrained path/method/body inputs.
 - Queued job config snapshots must fail closed on invalid `llm_backend`; silently falling back to process defaults can run queued work under the wrong backend.
 - GitHub ingest uses the server-side `repo` field, while other ingest providers use target-like values. Tests need to follow server deserialization types, not generic naming.
-- A safety helper is needed around `rsync --delete` for Steamy builds so custom remote workdirs are explicitly disposable before deletion can occur.
+- A safety helper is needed around `rsync --delete` for Winhost builds so custom remote workdirs are explicitly disposable before deletion can occur.
 
 ## Technical Decisions
 
@@ -54,7 +54,7 @@ The PR branch currently differs from `origin/main` by 165 paths according to `gi
 | modified | `.env.example`, `config.example.toml`, `docs/CONFIG.md`, `docs/env-migration-matrix.md`, `docs/mcp/ENV.md`, `README.md`, `CHANGELOG.md` | - | Document and expose `AXON_LLM_BACKEND=openai-compat` and `AXON_OPENAI_*` config. | `git diff --name-status origin/main...HEAD` |
 | modified | `.github/workflows/ci.yml`, `.github/workflows/compose-smoke.yml`, `lefthook.yml` | - | Add palette CI, Tauri crate tests, llama compose validation, and helper script linting. | `git log origin/main..HEAD` |
 | created | `docker-compose.llama.yaml` | - | Provide llama.cpp OpenAI-compatible runtime path. | `git diff --stat origin/main...HEAD` |
-| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `scripts/test-build-on-steamy-safety.sh` | - | Add Steamy Windows build workflow, Gemma smoke test helper, and destructive-sync safety test. | `bash -n`, `shellcheck`, safety test verification from session |
+| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `scripts/test-build-on-steamy-safety.sh` | - | Add Winhost Windows build workflow, Gemma smoke test helper, and destructive-sync safety test. | `bash -n`, `shellcheck`, safety test verification from session |
 | modified/created | `apps/palette-tauri/**` | - | Palette UI, Aurora styling, Tauri bridge hardening, tests, icons, settings fallback, async job display, request formatting, and dependency cleanup. | `pnpm --dir apps/palette-tauri test/typecheck/vite:build`; Tauri cargo tests |
 | modified | `src/core/config/**`, `src/services/llm_backend/**`, `src/services/debug.rs`, `src/services/search/synthesis.rs`, `src/vector/ops/commands/suggest.rs` | - | Add and route OpenAI-compatible LLM backend support. | `cargo test config_snapshot --lib`; backend tests in diff |
 | modified/created | `src/jobs/config_snapshot.rs`, `src/jobs/config_snapshot/ingest.rs`, `src/jobs/workers/runners_tests.rs` | - | Snapshot non-secret LLM backend config and reject invalid snapshot values. | `cargo test config_snapshot --lib` |
@@ -75,7 +75,7 @@ The PR branch currently differs from `origin/main` by 165 paths according to `gi
 | `axon_rust-8jiv.29` | Review gate: correct palette GitHub ingest REST field | Created, commented, closed | closed | Corrected GitHub ingest from generic `target` back to server contract `repo`. |
 | `axon_rust-8jiv.30` | Review gate: keep palette repairable after settings load errors | Created, commented, closed | closed | Ensured settings UI can recover from malformed persisted config. |
 | `axon_rust-8jiv.31` | Review gate: run Tauri cargo tests in CI | Created, commented, closed | closed | Added CI coverage for Rust-side palette bridge behavior. |
-| `axon_rust-8jiv.32` | Review gate: test Steamy destructive sync safety | Created, commented, closed | closed | Added executable regression coverage for disposable remote sync preflight. |
+| `axon_rust-8jiv.32` | Review gate: test Winhost destructive sync safety | Created, commented, closed | closed | Added executable regression coverage for disposable remote sync preflight. |
 | `axon_rust-8jiv.33` | Review gate: remove stale palette client abstraction and deps | Created, commented, closed | closed | Removed obsolete renderer-side authority and unused HTTP deps. |
 | `axon_rust-8jiv.34` | Review gate: omit empty ask warnings from serialized responses | Created, commented, closed | closed | Kept the healthy ask response shape stable. |
 
@@ -141,7 +141,7 @@ Before writing this note, `git status --branch --short` showed an unrelated loca
 | Palette Tauri bridge | Renderer-side URL/token plumbing and broad HTTP capability were present. | Native bridge owns saved config and accepts constrained path/method/body requests. |
 | Queued job snapshots | Invalid `llm_backend` snapshot values could fall back silently. | Snapshot replay fails closed with an explicit error. |
 | Ask warnings | Retrieval degradation was mostly logs/diagnostics. | User-facing warnings are carried when present and omitted when empty. |
-| Steamy builds | Remote sync risked destructive deletes without enough proof of disposability. | Script uses safer disposable defaults and a regression test covers custom path preflight. |
+| Winhost builds | Remote sync risked destructive deletes without enough proof of disposability. | Script uses safer disposable defaults and a regression test covers custom path preflight. |
 
 ## Verification Evidence
 
@@ -155,7 +155,7 @@ Before writing this note, `git status --branch --short` showed an unrelated loca
 | `pnpm --dir apps/palette-tauri typecheck` | Palette TypeScript typecheck passes. | Passed earlier in session. | pass |
 | `pnpm --dir apps/palette-tauri vite:build` | Palette frontend build passes. | Passed earlier in session. | pass |
 | `cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml` | Tauri crate tests pass. | Passed earlier in session. | pass |
-| `scripts/test-build-on-steamy-safety.sh` | Steamy destructive-sync safety test passes. | Passed earlier in session. | pass |
+| `scripts/test-build-on-steamy-safety.sh` | Winhost destructive-sync safety test passes. | Passed earlier in session. | pass |
 | `go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/ci.yml .github/workflows/compose-smoke.yml` | Workflow lint passes. | Passed earlier in session. | pass |
 
 ## Risks and Rollback

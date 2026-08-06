@@ -54,7 +54,7 @@ pub async fn mcp_http_router(
                     format!("[::1]:{port}"),
                 ];
                 for origin in &cfg_arc.mcp_allowed_origins {
-                    // Extract hostname from origin URL (e.g. "https://axon.tootie.tv" → "axon.tootie.tv")
+                    // Extract hostname from origin URL (e.g. "https://axon.example.internal" → "axon.example.internal")
                     if let Ok(uri) = origin.parse::<axum::http::Uri>()
                         && let Some(authority) = uri.authority()
                     {

@@ -76,7 +76,7 @@ The PR branch also carried a CI sparse-checkout fix:
 
 At save time, `/home/jmagar/workspace/axon` was dirty before this session note was added. Existing unrelated changes were left untouched:
 
-- Deleted palette demo screenshots and older report assets under `docs/palette-demo/`, `docs/production-readiness-sprint-report-2026-05-12.md`, and `docs/reports/2026-03-12-axon-tootie-chat-audit.png`.
+- Deleted palette demo screenshots and older report assets under `docs/palette-demo/`, `docs/production-readiness-sprint-report-2026-05-12.md`, and `docs/reports/2026-03-12-axon-nashost-chat-audit.png`.
 - Modified Rust files under `src/ingest/*` and `src/vector/ops/input*`.
 - Untracked plan: `docs/superpowers/plans/2026-06-13-normalized-pre-chunk-documents.md`.
 

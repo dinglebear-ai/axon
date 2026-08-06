@@ -26,7 +26,7 @@ The session started from questions about whether the newly configured GitHub sel
 ## Sequence of Events
 
 1. Checked GitHub Actions run `25941789327` after the desktop workflow was triggered.
-2. Verified `build (self-hosted linux)` completed successfully on the `dookie-axon` runner and that the Windows job was still running at that point.
+2. Verified `build (self-hosted linux)` completed successfully on the `devhost-axon` runner and that the Windows job was still running at that point.
 3. Inspected the runner service, process user, Actions logs, `/home/jmagar/.cargo/config.toml`, and repo `.cargo/config.toml`.
 4. Removed duplicate repo-local `build.jobs = 20` and moved selected Axon build tuning into global Cargo config.
 5. Timed warm dev and release builds of the `axon` binary.
@@ -85,7 +85,7 @@ Additional dirty files observed after later concurrent work:
 | Command | Result |
 | --- | --- |
 | `gh run view 25941789327 --json status,conclusion,jobs` | Self-hosted Linux job completed successfully; Windows job was still in progress at that time. |
-| `gh api repos/jmagar/axon/actions/runners ...` | `dookie-axon` was online with labels `self-hosted`, `X64`, `Linux`, `axon`, `dookie`; `STEAMY` was offline. |
+| `gh api repos/jmagar/axon/actions/runners ...` | `devhost-axon` was online with labels `self-hosted`, `X64`, `Linux`, `axon`, `devhost`; `WINHOST` was offline. |
 | `systemctl --user show github-actions-runner-axon.service ...` | Runner working directory was `/home/jmagar/.github-runners/axon`. |
 | `ps -o pid,user,comm,args -p 406449,406465` | Runner processes were owned by `jmagar`. |
 | `cargo metadata --manifest-path apps/desktop/Cargo.toml --no-deps --format-version 1` | Cargo accepted the config layering. |
@@ -162,8 +162,8 @@ After:
 ## Open Questions
 
 - Whether global sccache improves full Axon clean-build wall time enough to justify `profile.dev.incremental = false` for all Rust repos on this host.
-- Whether the Windows self-hosted runner `STEAMY` should be brought online for native Windows palette builds instead of relying on `windows-latest`.
-- Whether CI workflows beyond `desktop.yml` should move selected Linux jobs to `dookie-axon`.
+- Whether the Windows self-hosted runner `WINHOST` should be brought online for native Windows palette builds instead of relying on `windows-latest`.
+- Whether CI workflows beyond `desktop.yml` should move selected Linux jobs to `devhost-axon`.
 
 ## Next Steps
 

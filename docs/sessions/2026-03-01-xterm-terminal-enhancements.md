@@ -11,7 +11,7 @@ Implemented 7 xterm.js terminal enhancements in `terminal-emulator.tsx` and reso
 1. `allowProposedApi: true` required for search decorations
 2. `navigator.clipboard?.` optional chaining for HTTP (non-secure) contexts
 
-All enhancements verified working via Chrome DevTools against `http://10.1.0.6:49010/terminal`.
+All enhancements verified working via Chrome DevTools against `http://192.0.2.6:49010/terminal`.
 
 ---
 

@@ -51,13 +51,13 @@ fn compose_uses_external_qdrant_overlay_for_remote_url() {
     let env_path = dir.path().join(".env");
     std::fs::write(
         &env_path,
-        "QDRANT_URL=http://100.120.242.29:53333\nTEI_URL=http://127.0.0.1:52000\n",
+        "QDRANT_URL=http://198.51.100.5:53333\nTEI_URL=http://127.0.0.1:52000\n",
     )
     .unwrap();
 
     assert_eq!(
         runtime::external_qdrant_url(&env_path).unwrap().as_deref(),
-        Some("http://100.120.242.29:53333")
+        Some("http://198.51.100.5:53333")
     );
 }
 

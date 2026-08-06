@@ -1,7 +1,7 @@
 # Session Log — Sidebar Provider Logos + Conversation Density
 
 ## 1. Session overview
-- Investigated missing provider logos in the sidebar conversation list on `axon.tootie.tv`.
+- Investigated missing provider logos in the sidebar conversation list on `axon.example.internal`.
 - Confirmed mismatch between expected implementation and live UI behavior using Chrome DevTools.
 - Implemented real provider logo rendering (Anthropic/Google/OpenAI) and moved logo position to the leading side of each row.
 - Compacted sidebar row typography and spacing to increase visible session rows.
@@ -62,7 +62,7 @@
 
 ## 10. Risks and rollback
 - Risk: concurrent edits/automation in dirty worktree can overwrite in-progress UI changes.
-- Risk: deployment/runtime overlay issues on `axon.tootie.tv` can temporarily mask visual verification.
+- Risk: deployment/runtime overlay issues on `axon.example.internal` can temporarily mask visual verification.
 - Rollback: revert `apps/web/components/shell/axon-sidebar.tsx` and remove `apps/web/public/logos/*.svg` if needed.
 - Rollback scope: confined to web UI presentation and one test callsite.
 

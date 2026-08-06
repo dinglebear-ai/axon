@@ -77,7 +77,7 @@ Branch: `feat/sidebar`
 
 ## 12. Open questions
 - Should local branch be rebased/merged to eliminate current `3/1` divergence with `origin/feat/sidebar`?
-- Are current OAuth env values (`issuer`, redirect URI) intended for this environment (`axon.tootie.tv`) during local container runs?
+- Are current OAuth env values (`issuer`, redirect URI) intended for this environment (`axon.example.internal`) during local container runs?
 - Should pre-commit hook failures in unrelated tests be remediated now or tracked separately?
 
 ## 13. Next steps

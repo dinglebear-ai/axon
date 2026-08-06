@@ -8,7 +8,7 @@
 Three related changes to the Axon web UI:
 1. Moved the MCP servers page route from `/mcp` to `/settings/mcp`
 2. Moved navigation buttons (MCP Servers, Agents, Settings) from the fixed top-right header into the sidebar
-3. Fixed Pulse chat 403 "Forbidden origin" — root cause was `AXON_WEB_ALLOWED_ORIGINS` set to `http://localhost:3000` while the app was accessed at `http://dookie:3000`, plus the dev server defaulting to port 3000 instead of the container port 49010
+3. Fixed Pulse chat 403 "Forbidden origin" — root cause was `AXON_WEB_ALLOWED_ORIGINS` set to `http://localhost:3000` while the app was accessed at `http://devhost:3000`, plus the dev server defaulting to port 3000 instead of the container port 49010
 
 ## Timeline
 
@@ -16,9 +16,9 @@ Three related changes to the Axon web UI:
 2. **Sidebar migration** — Removed 3 header buttons from `app-shell.tsx`, added them as `PAGE_LINKS` entries in `pulse-sidebar.tsx`
 3. **Reference updates** — Updated all `/mcp` hrefs in `landing-cards.tsx`, `page-impl-content.tsx`, and test import in `__tests__/mcp-types.test.ts`
 4. **Origin debugging** — Found `AXON_WEB_ALLOWED_ORIGINS=http://localhost:3000` in `.env.local`, updated to `http://localhost:49010`, but user still got 403
-5. **Root cause** — User accesses app via `http://dookie:3000` (hostname mismatch + port mismatch). `proxy.ts` is loaded as Next.js middleware via Turbopack (confirmed in `.next/dev/server/middleware.js` compiled artifact)
+5. **Root cause** — User accesses app via `http://devhost:3000` (hostname mismatch + port mismatch). `proxy.ts` is loaded as Next.js middleware via Turbopack (confirmed in `.next/dev/server/middleware.js` compiled artifact)
 6. **Port fix** — Added `--port 49010` to `dev` and `start` scripts in `package.json` to match container port
-7. **Final origin fix** — Set `AXON_WEB_ALLOWED_ORIGINS=http://dookie:49010,http://localhost:49010`
+7. **Final origin fix** — Set `AXON_WEB_ALLOWED_ORIGINS=http://devhost:49010,http://localhost:49010`
 
 ## Key Findings
 
@@ -31,7 +31,7 @@ Three related changes to the Axon web UI:
 ## Technical Decisions
 
 - **Route `/settings/mcp`** over `/servers` or `/config/mcp` — user chose `/settings/mcp` to group config pages under settings
-- **Both origins in allowlist** — `http://dookie:49010,http://localhost:49010` covers both access patterns
+- **Both origins in allowlist** — `http://devhost:49010,http://localhost:49010` covers both access patterns
 - **Port pinned in package.json** — `--port 49010` in both `dev` and `start` scripts ensures local dev matches container behavior
 
 ## Files Modified
@@ -45,7 +45,7 @@ Three related changes to the Axon web UI:
 | `apps/web/app/settings/page-impl-content.tsx` | Updated `router.push('/mcp')` → `router.push('/settings/mcp')` |
 | `apps/web/__tests__/mcp-types.test.ts` | Updated import path `@/app/mcp/mcp-types` → `@/app/settings/mcp/mcp-types` |
 | `apps/web/package.json` | Added `--port 49010` to `dev` and `start` scripts |
-| `apps/web/.env.local` | Updated `AXON_WEB_ALLOWED_ORIGINS` to `http://dookie:49010,http://localhost:49010` |
+| `apps/web/.env.local` | Updated `AXON_WEB_ALLOWED_ORIGINS` to `http://devhost:49010,http://localhost:49010` |
 
 ## Behavior Changes (Before/After)
 
@@ -61,7 +61,7 @@ Three related changes to the Axon web UI:
 | Command | Expected | Actual | Status |
 |---------|----------|--------|--------|
 | `vitest run __tests__/mcp-types.test.ts` | 17 tests pass | 17 passed (12ms) | PASS |
-| `grep AXON_WEB_ALLOWED_ORIGINS .env.local` | Contains dookie:49010 | `http://dookie:49010,http://localhost:49010` | PASS |
+| `grep AXON_WEB_ALLOWED_ORIGINS .env.local` | Contains devhost:49010 | `http://devhost:49010,http://localhost:49010` | PASS |
 | `grep '"dev"' package.json` | Contains --port 49010 | `"dev": "next dev --port 49010"` | PASS |
 
 ## Source IDs + Collections Touched

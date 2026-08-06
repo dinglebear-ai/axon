@@ -13,12 +13,12 @@ Debugged and fully fixed the Reboot UI terminal component. The terminal was perm
 ## Timeline
 
 1. **Continued from prior session** — prior work had added `process.loadEnvFile()` to `shell-server.mjs` and changed `use-shell-session.ts` to bypass the Turbopack WS proxy by connecting directly to port 49000 (Rust serve).
-2. **Opened Chrome DevTools MCP** — navigated to `http://dookie:49010/reboot`, opened terminal drawer.
-3. **Identified 403 root cause** — console showed `ws://dookie:49000/ws/shell?token=...` failing with `Unexpected response code: 403`.
+2. **Opened Chrome DevTools MCP** — navigated to `http://devhost:49010/reboot`, opened terminal drawer.
+3. **Identified 403 root cause** — console showed `ws://devhost:49000/ws/shell?token=...` failing with `Unexpected response code: 403`.
 4. **Traced to `shell_ws_upgrade` in `crates/web.rs`** — handler only allowed loopback IPs, rejected all remote browser connections.
 5. **Fixed Rust handler** — added token-based auth path for non-loopback connections (same `AXON_WEB_API_TOKEN` credential used by `/ws`).
 6. **Rebuilt and restarted `axon serve`** — killed old PID 2612150, started new binary on port 49000.
-7. **Confirmed CONNECTED status** — terminal showed green "CONNECTED" dot and shell prompt `jmagar@dookie ~ `.
+7. **Confirmed CONNECTED status** — terminal showed green "CONNECTED" dot and shell prompt `jmagar@devhost ~ `.
 8. **Investigated background transparency** — walked DOM ancestry, confirmed all xterm elements have `rgba(0,0,0,0)` computed bg. Dark appearance is the glassmorphism dialog container (`rgba(3,7,18,0.22)`) over the dark page background (`#030817`) — correct and intentional.
 9. **Verified end-to-end via WS injection** — intercepted WebSocket constructor, sent `echo DEVTOOLS_TEST\r` directly through the captured `__shellWs`, observed output in terminal.
 10. **Confirmed `ls /tmp | head -5`** — live PTY output returned, new prompt appeared.
@@ -29,7 +29,7 @@ Debugged and fully fixed the Reboot UI terminal component. The terminal was perm
 
 | Finding | Location | Detail |
 |---------|----------|--------|
-| `shell_ws_upgrade` loopback-only restriction | `crates/web.rs:198` | Only checked `addr.ip().is_loopback()`. Browser at `dookie` is NOT loopback → 403. |
+| `shell_ws_upgrade` loopback-only restriction | `crates/web.rs:198` | Only checked `addr.ip().is_loopback()`. Browser at `devhost` is NOT loopback → 403. |
 | `TerminalLoadingPlaceholder` dark bg | `terminal-emulator-wrapper.tsx:52` | `style={{ background: '#030712' }}` — visible while xterm.js bundle loads. Not the steady-state issue. |
 | All xterm elements transparent | Chrome DevTools eval | `rgba(0,0,0,0)` on `.xterm`, `.xterm-viewport`, `.xterm-screen`, `canvas`. CSS injection working. |
 | Overview ruler canvas is 8px wide | Chrome DevTools eval | `canvas[style]` with `width: 8px` is the ruler, not a WebGL renderer canvas. DOM renderer active. |
@@ -111,7 +111,7 @@ window.__shellWs.send(JSON.stringify({ type: 'input', data: 'ls /tmp | head -5\r
 |--------|--------|-------|
 | Terminal WS connection | 403 Forbidden from Rust server for all browser connections | Accepts connections with valid `AXON_WEB_API_TOKEN` |
 | Status indicator | Permanently "RECONNECTING..." | Green "CONNECTED" dot |
-| Shell prompt | Never appeared | `jmagar@dookie ~ ` visible immediately |
+| Shell prompt | Never appeared | `jmagar@devhost ~ ` visible immediately |
 | PTY I/O | No input/output | Full bidirectional — commands execute, output returns |
 | Terminal background | Dark (placeholder or WebGL canvas) | Transparent xterm + glassmorphism dialog container |
 
@@ -125,7 +125,7 @@ window.__shellWs.send(JSON.stringify({ type: 'input', data: 'ls /tmp | head -5\r
 | `cargo build --bin axon` | Build success | `Finished dev profile in 53.81s` | ✅ |
 | Port 49000 listening | axon process bound | `tcp LISTEN ... axon,pid=2615321` | ✅ |
 | Terminal status indicator | "CONNECTED" | Green dot + "CONNECTED" text | ✅ |
-| Shell prompt in xterm rows | Prompt present | `jmagar@dookie ~ ` in `.xterm-rows` | ✅ |
+| Shell prompt in xterm rows | Prompt present | `jmagar@devhost ~ ` in `.xterm-rows` | ✅ |
 | `echo DEVTOOLS_TEST` round-trip | Output visible | "DEVTOOLS_TEST" returned in terminal | ✅ |
 | `ls /tmp \| head -5` | Live PTY output | 5 `/tmp` entries returned | ✅ |
 | xterm background transparency | `rgba(0,0,0,0)` | All xterm elements transparent | ✅ |

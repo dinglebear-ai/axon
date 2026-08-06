@@ -16,7 +16,7 @@ Continued from previous session. The Pulse context bar (a narrow progress bar be
 | Time | Activity |
 |------|----------|
 | Start | Resumed from context-compacted session. Previous work had removed a duplicate toolbar context bar and switched to char-based context measurement. |
-| Early | Attempted Chrome DevTools MCP verification — discovered remote Chrome (100.120.242.29:9222) is a completely separate instance from the user's browser. Cannot inspect user's session DOM. |
+| Early | Attempted Chrome DevTools MCP verification — discovered remote Chrome (198.51.100.5:9222) is a completely separate instance from the user's browser. Cannot inspect user's session DOM. |
 | Mid | Identified root cause #1: `workspaceMode === 'pulse'` guard on the bar was false because bar was added to omnibox which checks the _omnibox_ mode badge (e.g. "SCRAPE"), not the Pulse workspace state. |
 | Mid | Identified root cause #2: bar track was nearly invisible at `rgba(255,135,175,0.12)` opacity. |
 | Mid | Identified root cause #3: at 4.6% width with no `min-width`, the fill could collapse to sub-pixel. |
@@ -27,7 +27,7 @@ Continued from previous session. The Pulse context bar (a narrow progress bar be
 
 ## Key Findings
 
-- **Remote Chrome ≠ User's Browser**: The `chrome-devtools-mcp` is connected to `http://100.120.242.29:9222` (Tailscale Axon Chrome). This is NOT the user's desktop Chrome at `dookie:3000`. Cannot inspect user's DOM via DevTools MCP.
+- **Remote Chrome ≠ User's Browser**: The `chrome-devtools-mcp` is connected to `http://198.51.100.5:9222` (Tailscale Axon Chrome). This is NOT the user's desktop Chrome at `devhost:3000`. Cannot inspect user's DOM via DevTools MCP.
 - **`workspaceMode` in omnibox is the omnibox badge state** (`omnibox.tsx:47`), NOT whether PulseWorkspace is active. When user switches back to Scrape mode, `workspaceMode !== 'pulse'` so bar was hidden even with active Pulse session.
 - **`workspaceContext` is only non-null when PulseWorkspace is mounted** — set via `updateWorkspaceContext` in `pulse-workspace.tsx:559` after each chat turn, and cleared on unmount at `pulse-workspace.tsx:583`.
 - **API confirmed working**: `fetch('/api/pulse/chat', ...)` returned `metadata: { contextCharsTotal: 36640, contextBudgetChars: 800000, elapsedMs: 11927 }` in DevTools eval.

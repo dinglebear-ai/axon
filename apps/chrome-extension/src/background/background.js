@@ -9,7 +9,7 @@
 // the grant first.
 importScripts("../redaction/capture-redaction.js", "../auth/host-permissions.js");
 
-const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
+const DEFAULT_AXON_URL = "http://198.51.100.4:8001";
 const AUTO_SCRAPE_HISTORY_KEY = "autoScrapeHistory";
 const AUTO_SCRAPE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 // `SourceRequest.execution` has no per-field defaults once the key is

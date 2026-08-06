@@ -205,10 +205,10 @@ export default async ({ page }: { page: Page }) => {
 Status: Completed
 
 # navigate_page response
-Successfully navigated to http://dookie:3000.
+Successfully navigated to http://devhost:3000.
 ## Pages
 1: about:blank
-2: http://dookie:3000/ [selected]
+2: http://devhost:3000/ [selected]
 
 ## Assistant
 

@@ -1,4 +1,4 @@
-const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
+const DEFAULT_AXON_URL = "http://198.51.100.4:8001";
 
 const openSidebarButton = document.querySelector("#open-sidebar");
 const openOptionsButton = document.querySelector("#open-options");

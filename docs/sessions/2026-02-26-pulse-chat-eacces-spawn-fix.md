@@ -21,7 +21,7 @@ as `6f8f7c7` before this session's work began.
 | Time | Activity |
 |------|---------|
 | Session start | Carried pre-commit fix: `cargo fmt` on `processor.rs:346` (line too long), confirmed all three `_with_pool` re-exports in `refresh/mod.rs` are used by `crates/cli/commands/refresh/schedule.rs:9-11`. Committed as `6f8f7c7`. |
-| Phase 1 | Navigated to axon.tootie.tv via Chrome DevTools. Sent "hello, what model are you?" to Pulse chat. Got 502 Bad Gateway from Cloudflare on `POST /api/pulse/chat`. |
+| Phase 1 | Navigated to axon.example.internal via Chrome DevTools. Sent "hello, what model are you?" to Pulse chat. Got 502 Bad Gateway from Cloudflare on `POST /api/pulse/chat`. |
 | Phase 2 | Root cause layer 1: `axon-web` container was running a stale image (built at 18:27, before claude install was added). Fixed by `docker compose up -d --build axon-web`. |
 | Phase 3 | Root cause layer 2: `axon serve` was binding to `127.0.0.1:49000` (loopback only). `axon-web` on Docker bridge sends to `172.18.0.7:49000` → ECONNREFUSED. Root cause: `crates/web.rs:57` defaults to `127.0.0.1`. Fix: `AXON_SERVE_HOST=0.0.0.0`. |
 | Phase 4 | User requested env var consolidation: "ALL env vars live SOLELY in the .env UNLESS necessary for an override." Moved `AXON_SERVE_HOST` from docker-compose `environment:` block to `.env` and `.env.example`. |

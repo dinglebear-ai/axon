@@ -53,7 +53,7 @@ touched, so no version bump or release trigger per the repo's release rules.
   images qdrant `v1.18.2` / tei `89-1.9`.
 - Root `CLAUDE.md` omitted 2 of 4 compose files, including
   `docker-compose.external-qdrant.yaml` — this homelab's actual mode (Qdrant on
-  tootie). Following the docs verbatim would start a bundled Qdrant that OOMs.
+  nashost). Following the docs verbatim would start a bundled Qdrant that OOMs.
 - `axon-extract/src/CLAUDE.md` was the worst: its "add a vertical" steps pointed
   at a `registry.rs` and `list()` that no longer exist — dispatch moved to
   `axon-adapters::vertical_registry` (`crates/axon-adapters/src/vertical_registry.rs`).

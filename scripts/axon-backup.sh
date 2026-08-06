@@ -24,7 +24,7 @@
 #   0 2 * * 0 /home/user/workspace/axon/scripts/axon-backup.sh --yes >> ~/.axon/logs/backup.log 2>&1
 #
 # ZFS replication note:
-#   If you replicate the axon host's ZFS datasets to a backup box (e.g. shart),
+#   If you replicate the axon host's ZFS datasets to a backup box (e.g. backuphost),
 #   these backups land there automatically — no separate scp step required.
 
 set -euo pipefail

@@ -1096,7 +1096,7 @@ TDD: RED → GREEN → REFACTOR for every module. Tests written before implement
    - Full re-extraction on re-embed? Or diff-based?
    - How to garbage-collect orphaned entities with no remaining MENTIONED_IN edges?
 
-6. **GPU resource contention** — TEI and Qwen 3.5 2B both need VRAM. TEI currently allocates ~11.8GB with aggressive batch settings on steamy-wsl. 2B model uses ~2.5 GiB VRAM (much less than 4B's ~5 GiB). If running locally (not on steamy-wsl), no contention. If co-located with TEI, tune TEI (`--max-concurrent-requests 64 --max-batch-tokens 32768`) or schedule graph extraction during off-peak embed times.
+6. **GPU resource contention** — TEI and Qwen 3.5 2B both need VRAM. TEI currently allocates ~11.8GB with aggressive batch settings on winhost-wsl. 2B model uses ~2.5 GiB VRAM (much less than 4B's ~5 GiB). If running locally (not on winhost-wsl), no contention. If co-located with TEI, tune TEI (`--max-concurrent-requests 64 --max-batch-tokens 32768`) or schedule graph extraction during off-peak embed times.
 
 7. **Query logging for ranking** — Qdrant doesn't track query history. A Postgres query log table (`axon_query_log`) could record queries + result point IDs + user feedback, enabling query frequency as a ranking signal and taxonomy growth from real usage patterns. Deferred — not blocking for v1.
 

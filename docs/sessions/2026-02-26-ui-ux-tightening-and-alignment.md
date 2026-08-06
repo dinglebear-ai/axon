@@ -8,7 +8,7 @@
 ## 2. Timeline of major activities
 - Added and refined Pulse/omnibox UX elements (model/permission tools popover, keyboard hints, source panel persistence, request replacement notice).
 - Introduced/updated tests for virtualization, preserve-workspace behavior, and snapshots.
-- Reproduced alignment issue in live page (`http://dookie:3000`) and measured DOM geometry.
+- Reproduced alignment issue in live page (`http://devhost:3000`) and measured DOM geometry.
 - Reworked user message row alignment strategy and re-verified with fresh live-run metrics.
 
 ## 3. Key findings with `path:line` references
@@ -39,7 +39,7 @@
 - `pnpm --dir apps/web exec vitest run __tests__/pulse-chat-pane-layout.test.ts __tests__/pulse-ui-smoke.test.ts` → initial failure due snapshot mismatch after class change.
 - `pnpm --dir apps/web exec vitest run __tests__/pulse-chat-pane-layout.test.ts -u` → snapshots updated, tests passed.
 - `pnpm --dir apps/web exec vitest run __tests__/omnibox.test.ts __tests__/omnibox-snapshot.test.tsx __tests__/pulse-ui-smoke.test.ts` → passed.
-- Chrome DevTools MCP on `http://dookie:3000`: sent prompts and measured geometry via `evaluate_script`; observed `gapToRowRight: 0` on pre-response user message.
+- Chrome DevTools MCP on `http://devhost:3000`: sent prompts and measured geometry via `evaluate_script`; observed `gapToRowRight: 0` on pre-response user message.
 - `axon status --json` → succeeded and returned local job state JSON.
 
 ## 7. Behavior changes (before/after)

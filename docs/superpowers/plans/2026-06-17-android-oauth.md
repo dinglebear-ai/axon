@@ -1297,7 +1297,7 @@ No row has `RESCUED=N` and `TEST=N` with silent user impact.
 - Unit tests and builds: passed with `:app:testDebugUnitTest :app:assembleDebug :app:assembleRelease`.
 - Install: passed with `:app:installDebug` on `emulator-5554`.
 - Settings auth-mode screen: `/tmp/axon-android-oauth/settings-auth-mode.png`.
-- OAuth dynamic registration: passed after adding `com.axon.app://oauth2redirect` to the live `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` operator config; `https://axon.tootie.tv/register` returned `HTTP 200`, a dynamic `client_id`, the Android redirect URI, and `token_endpoint_auth_method=none`.
+- OAuth dynamic registration: passed after adding `com.axon.app://oauth2redirect` to the live `AXON_MCP_AUTH_ALLOWED_REDIRECT_URIS` operator config; `https://axon.example.internal/register` returned `HTTP 200`, a dynamic `client_id`, the Android redirect URI, and `token_endpoint_auth_method=none`.
 - Live Axon service: restarted on this worktree's `target/debug/axon` (`5.16.1`) and returned to healthy after the redirect allowlist change.
 - OAuth browser handoff: browser UI handoff was captured at `/tmp/axon-android-oauth/oauth-browser.png`; end-to-end Google account completion remains a manual operator step.
 - Bearer fallback: passed; `/tmp/axon-android-oauth/bearer-fallback.png` shows `Connected.` in Bearer mode.

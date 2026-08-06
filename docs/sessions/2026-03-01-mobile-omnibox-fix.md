@@ -14,7 +14,7 @@ Diagnosed and fixed a three-bug root-cause chain causing the omnibox input to re
 
 ## Timeline
 
-1. **Chrome DevTools setup** — navigated to `http://10.1.0.6:49010`, emulated iPhone 14 Pro (390×844, deviceScaleFactor=3)
+1. **Chrome DevTools setup** — navigated to `http://192.0.2.6:49010`, emulated iPhone 14 Pro (390×844, deviceScaleFactor=3)
 2. **Visual inspection** — omnibox rendered as a ~160px tall box instead of a compact 44px single-line bar
 3. **Sidebar root cause** — JS eval revealed `main` element was only 130px wide; sidebar was 260px (no mobile auto-collapse)
 4. **Textarea root cause** — further eval showed textarea width = 24px, scrollHeight = 160px (cap) even when empty
@@ -71,7 +71,7 @@ Diagnosed and fixed a three-bug root-cause chain causing the omnibox input to re
 
 ```bash
 # Identify server IP
-hostname -I  # → 10.1.0.6
+hostname -I  # → 192.0.2.6
 
 # DevTools: measure layout dimensions
 # (JS eval via chrome-devtools MCP)

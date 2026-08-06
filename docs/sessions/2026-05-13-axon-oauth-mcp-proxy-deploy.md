@@ -5,7 +5,7 @@
 This session investigated a Claude `/mcp` reconnect failure:
 
 ```text
-Failed to reconnect to plugin:axon:axon: HTTP 401 at https://axon.tootie.tv/mcp
+Failed to reconnect to plugin:axon:axon: HTTP 401 at https://axon.example.internal/mcp
 ```
 
 The user could authenticate, but reconnect discovery failed after auth.
@@ -23,25 +23,25 @@ There were two related discovery problems.
 First, Axon generated a `WWW-Authenticate` challenge pointing at:
 
 ```text
-https://axon.tootie.tv/mcp/.well-known/oauth-protected-resource
+https://axon.example.internal/mcp/.well-known/oauth-protected-resource
 ```
 
 but the OAuth metadata router is mounted at:
 
 ```text
-https://axon.tootie.tv/.well-known/oauth-protected-resource
+https://axon.example.internal/.well-known/oauth-protected-resource
 ```
 
 The code fix in `src/mcp/auth.rs` makes `oauth_resource_url_from_parts()` return the public origin, not `origin + /mcp`.
 
-Second, the SWAG reverse proxy on `squirts` routed protected-resource metadata paths through `/.well-known/oauth-protected-resource/mcp`, which Axon served as the embedded web app HTML. Exact `location = ...` blocks from `/mnt/appdata/swag/nginx/mcp-server.conf` overrode the broader regex block in `/mnt/appdata/swag/nginx/proxy-confs/axon.subdomain.conf`.
+Second, the SWAG reverse proxy on `edgehost` routed protected-resource metadata paths through `/.well-known/oauth-protected-resource/mcp`, which Axon served as the embedded web app HTML. Exact `location = ...` blocks from `/mnt/appdata/swag/nginx/mcp-server.conf` overrode the broader regex block in `/mnt/appdata/swag/nginx/proxy-confs/axon.subdomain.conf`.
 
 ## Remote SWAG Changes
 
 Host:
 
 ```text
-squirts
+edgehost
 ```
 
 Reviewed:
@@ -64,7 +64,7 @@ Changed `/mnt/appdata/swag/nginx/mcp-server.conf` so:
 - `/.well-known/oauth-protected-resource/mcp` rewrites back to `/.well-known/oauth-protected-resource`.
 - `/mcp/.well-known/oauth-protected-resource` rewrites back to `/.well-known/oauth-protected-resource`.
 
-Verification on `squirts`:
+Verification on `edgehost`:
 
 ```text
 docker exec swag nginx -t
@@ -75,11 +75,11 @@ passed, then SWAG was reloaded.
 Public checks after reload returned JSON for:
 
 ```text
-https://axon.tootie.tv/.well-known/oauth-protected-resource
-https://axon.tootie.tv/.well-known/oauth-protected-resource/mcp
-https://axon.tootie.tv/mcp/.well-known/oauth-protected-resource
-https://axon.tootie.tv/.well-known/oauth-authorization-server
-https://axon.tootie.tv/.well-known/oauth-authorization-server/mcp
+https://axon.example.internal/.well-known/oauth-protected-resource
+https://axon.example.internal/.well-known/oauth-protected-resource/mcp
+https://axon.example.internal/mcp/.well-known/oauth-protected-resource
+https://axon.example.internal/.well-known/oauth-authorization-server
+https://axon.example.internal/.well-known/oauth-authorization-server/mcp
 ```
 
 ## Axon Deploy
@@ -101,7 +101,7 @@ docker compose --env-file ~/.axon/.env up -d axon --no-deps --force-recreate
 At deploy-time verification, the container was healthy and public `/mcp` returned:
 
 ```text
-WWW-Authenticate: Bearer resource_metadata="https://axon.tootie.tv/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer resource_metadata="https://axon.example.internal/.well-known/oauth-protected-resource"
 ```
 
 Valid bearer requests reached the MCP handler and returned the expected raw GET response:
