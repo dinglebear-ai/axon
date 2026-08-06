@@ -245,7 +245,11 @@ jobs:
   android:
     name: android
     runs-on: ci-pool-system
-    timeout-minutes: 30
+    # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
+    # main runs, but both timed out at exactly 30m once the per-runner cargo
+    # registries were isolated and had to repopulate from cold. GitHub reports a
+    # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -378,7 +382,11 @@ jobs:
   palette-tauri:
     name: palette-tauri
     runs-on: ci-pool-rust
-    timeout-minutes: 30
+    # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
+    # main runs, but both timed out at exactly 30m once the per-runner cargo
+    # registries were isolated and had to repopulate from cold. GitHub reports a
+    # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
