@@ -118,9 +118,18 @@ jobs:
   rust-contracts:
     name: rust-contracts
     runs-on: ci-pool-rust
-    # 60, not 30: this job has been measured at 34 min on a green main push
-    # (run 30817832097). A 30-minute cap would hard-fail builds that pass.
-    timeout-minutes: 60
+    # 240, not 60. Measured across the last 40 ci.yml runs, this job's SUCCESSFUL
+    # durations are: 14 15 16 16 22 29 32 34 36 40 42 43 58 59 62 70 75 88 93 96
+    # 109 114 186 (minutes). 9 of 23 green runs (39%) exceed 60 minutes, and the
+    # 60-minute cap already killed a passing run on this branch — job 92500921363
+    # concluded `cancelled` at exactly 60m19s with steps 1-13 green and step 14
+    # ("REST and workflow contracts") cut off mid-flight.
+    #
+    # The 34-minute figure this comment used to cite was one sample, not the
+    # distribution. The real problem is the 14->186 min spread (kache cache hit
+    # rate); until that is narrowed, the bound has to clear the observed worst
+    # case rather than the typical one.
+    timeout-minutes: 240
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -553,6 +562,8 @@ jobs:
   smoke-binary:
     name: smoke-binary
     runs-on: ci-pool-rust
+    # Slowest observed green run: 12.6 min.
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
     env:
@@ -627,7 +638,9 @@ jobs:
   clippy:
     name: clippy
     runs-on: ci-pool-rust
-    timeout-minutes: 30
+    # 60, not 30: slowest green run measured at 34.9 min, so a 30-minute cap
+    # would hard-fail a build that passes.
+    timeout-minutes: 60
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -645,7 +658,9 @@ jobs:
   test:
     name: test
     runs-on: ci-pool-rust
-    timeout-minutes: 30
+    # 90, not 30: slowest green run measured at 53.3 min, and 4 of 15 green runs
+    # exceed 30 min. A 30-minute cap would hard-fail builds that pass.
+    timeout-minutes: 90
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -1042,6 +1057,8 @@ jobs:
   binary-smoke-build:
     name: binary-smoke-build
     runs-on: ubuntu-24.04
+    # Slowest observed green run: 9.6 min.
+    timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')) && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
