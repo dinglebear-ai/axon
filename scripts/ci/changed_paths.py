@@ -94,9 +94,9 @@ COMPOSE_INPUTS = {
     "docker-compose.external-providers.yaml",
     "docker-compose.external-qdrant.yaml",
     "docker-compose.llama.yaml",
-    "scripts/build-on-steamy.sh",
+    "scripts/build-on-winhost.sh",
     "scripts/test-ask-gemma4.sh",
-    "scripts/test-build-on-steamy-safety.sh",
+    "scripts/test-build-on-winhost-safety.sh",
 }
 
 VERSION_FILES = {

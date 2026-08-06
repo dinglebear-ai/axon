@@ -52,7 +52,7 @@ export WINHOST_DESKTOP="$tmp/Desktop"
 
 unmarked="$tmp/unmarked"
 mkdir -p "$unmarked"
-if "$repo_root/scripts/build-on-steamy.sh" --target axon --remote-repo "$unmarked" >"$tmp/unmarked.out" 2>"$tmp/unmarked.err"; then
+if "$repo_root/scripts/build-on-winhost.sh" --target axon --remote-repo "$unmarked" >"$tmp/unmarked.out" 2>"$tmp/unmarked.err"; then
   echo "expected unmarked custom remote repo to fail" >&2
   exit 1
 fi
@@ -62,7 +62,7 @@ grep -q "refusing destructive rsync into unmarked target" "$tmp/unmarked.err"
 marked="$tmp/marked"
 mkdir -p "$marked"
 touch "$marked/.build-on-winhost-disposable"
-"$repo_root/scripts/build-on-steamy.sh" --target axon --remote-repo "$marked" >"$tmp/marked.out" 2>"$tmp/marked.err"
+"$repo_root/scripts/build-on-winhost.sh" --target axon --remote-repo "$marked" >"$tmp/marked.out" 2>"$tmp/marked.err"
 
 grep -q -- "--delete" "$RSYNC_LOG"
 [[ -f "$WINHOST_DESKTOP/axon.exe" ]] || { echo "expected built axon.exe on fake desktop" >&2; exit 1; }

@@ -1805,7 +1805,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 
 - **build-windows.sh** — new cross-compile script that builds the Palette Tauri
   or `axon.exe` Windows executable on devhost and ships it to Winhost's Desktop
-  via `scp`, replacing the old `build-on-steamy.sh` repo-sync approach.
+  via `scp`, replacing the old `build-on-winhost.sh` repo-sync approach.
 
 ### Fixed
 
@@ -1894,7 +1894,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 - Android: `DocumentScreen`, `SourcesScreen`, `MapTab`, `ResearchTab` wired into
   the expanded nav graph.
 - Android: `libs.versions.toml` dependency updates for new form/nav requirements.
-- `scripts/build-on-steamy.sh`: minor fixes to sync paths.
+- `scripts/build-on-winhost.sh`: minor fixes to sync paths.
 
 ## [4.11.0] - 2026-05-27
 
@@ -2069,7 +2069,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 - OpenAI-compatible LLM backend support for llama.cpp-style endpoints via
   `AXON_LLM_BACKEND=openai-compat`, `AXON_OPENAI_BASE_URL`,
   `AXON_OPENAI_API_KEY`, and `AXON_OPENAI_MODEL`.
-- Tauri palette deployment helper `scripts/build-on-steamy.sh` for building a
+- Tauri palette deployment helper `scripts/build-on-winhost.sh` for building a
   Windows executable and placing it on Winhost's desktop.
 - Job progress presentation helpers and additional ask/query logging around
   retrieval, context assembly, and LLM synthesis.

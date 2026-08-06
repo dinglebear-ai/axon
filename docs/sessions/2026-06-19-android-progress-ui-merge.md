@@ -106,7 +106,7 @@ PR #237 changed the following files relative to its first parent:
 | M | `apps/palette-tauri/package.json` |
 | A | `apps/palette-tauri/scripts/copy-artifacts.mjs` |
 | M | `lefthook.yml` |
-| M | `scripts/build-on-steamy.sh` |
+| M | `scripts/build-on-winhost.sh` |
 | M | `scripts/build-windows.sh` |
 | M | `scripts/cargo-rustc-wrapper` |
 | M | `scripts/test-cargo-rustc-wrapper.sh` |
