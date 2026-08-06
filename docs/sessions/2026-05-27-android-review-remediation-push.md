@@ -15,14 +15,14 @@ Build the latest Windows `.exe`, then ship the current working tree with `/quick
 
 ## Session Overview
 
-Short orientation session. Inspected the `build-on-steamy.sh` script to confirm it syncs the working directory (not a specific git branch). User declined the build after learning it would include unstaged changes from `feat/android-pager-fab-shell`. Session concluded with `/quick-push`: bumped the project version from `4.11.0` to `4.12.0` (minor — new Android features), updated `CHANGELOG.md`, and prepared all staged files for commit and push.
+Short orientation session. Inspected the `build-on-winhost.sh` script to confirm it syncs the working directory (not a specific git branch). User declined the build after learning it would include unstaged changes from `feat/android-pager-fab-shell`. Session concluded with `/quick-push`: bumped the project version from `4.11.0` to `4.12.0` (minor — new Android features), updated `CHANGELOG.md`, and prepared all staged files for commit and push.
 
 ## Sequence of Events
 
-1. **Build inquiry.** User requested "BUILD THE LATEST .exe". Read `scripts/build-on-steamy.sh` to understand what it builds (default target: `palette-tauri`; syncs working-directory to winhost-wsl via rsync then cross-compiles for `x86_64-pc-windows-gnu`).
+1. **Build inquiry.** User requested "BUILD THE LATEST .exe". Read `scripts/build-on-winhost.sh` to understand what it builds (default target: `palette-tauri`; syncs working-directory to winhost-wsl via rsync then cross-compiles for `x86_64-pc-windows-gnu`).
 2. **Sync question.** User asked whether the script syncs `main` or the current branch. Confirmed it rsyncs the working directory as-is (including unstaged modifications), not a specific git ref.
 3. **Worktree audit.** User asked to list all open worktrees. `git worktree list` showed one worktree: `~/workspace/axon_rust` on `feat/android-pager-fab-shell`. No stale worktrees.
-4. **Build declined.** User declined the `build-on-steamy.sh` run after understanding it would bundle uncommitted Android changes.
+4. **Build declined.** User declined the `build-on-winhost.sh` run after understanding it would bundle uncommitted Android changes.
 5. **Quick-push.** User invoked `/quick-push`. Detected changes across 29 files: Android repository layer, option forms, nav graph, ViewModels, screens, and tooling.
 6. **Version bump.** Bumped `4.11.0 → 4.12.0` (minor) across `Cargo.toml`, `apps/palette-tauri/src-tauri/Cargo.toml`, `apps/web/package.json`, `apps/palette-tauri/package.json`. Ran `cargo check` to update `Cargo.lock` — succeeded.
 7. **CHANGELOG update.** Added `## [4.12.0] - 2026-05-27` entry documenting the new pager + FAB shell, complete operation mode coverage (Map/Research/SearchWeb/Summarize), and the new `options` form-keys package.
@@ -30,7 +30,7 @@ Short orientation session. Inspected the `build-on-steamy.sh` script to confirm 
 
 ## Key Findings
 
-- `scripts/build-on-steamy.sh` rsyncs the on-disk working tree, not a git branch — any uncommitted changes go along for the build.
+- `scripts/build-on-winhost.sh` rsyncs the on-disk working tree, not a git branch — any uncommitted changes go along for the build.
 - Only one worktree exists (`~/workspace/axon_rust`); no `.worktrees/` directory was present.
 - Version files were out of sync prior to this bump: root `Cargo.toml` was at `4.11.0` but `apps/palette-tauri/src-tauri/Cargo.toml` was at `4.9.0` and the two `package.json` files were at `4.9.0` / `4.8.1` — all brought to `4.12.0`.
 - `axon_rust-ivjr` (pager shell + FAB) has all 18 children closed but the parent bead remains `in_progress`; closing is deferred until PR #142 merges.
@@ -87,7 +87,7 @@ Short orientation session. Inspected the `build-on-steamy.sh` script to confirm 
 | modified | `apps/android/app/src/main/java/com/axon/app/ui/tools/ResearchTab.kt` | Nav wiring |
 | modified | `apps/android/app/src/main/res/xml/data_extraction_rules.xml` | Backup exclusions |
 | modified | `apps/android/gradle/libs.versions.toml` | Dependency updates |
-| modified | `scripts/build-on-steamy.sh` | Minor path fixes |
+| modified | `scripts/build-on-winhost.sh` | Minor path fixes |
 
 ## Beads Activity
 
@@ -135,6 +135,6 @@ Short orientation session. Inspected the `build-on-steamy.sh` script to confirm 
 
 - **Merge PR #142** once CI passes on the pushed commit — all 18 review findings are addressed.
 - **Close `axon_rust-ivjr`** after PR #142 merges to main.
-- **Build Windows .exe** via `./scripts/build-on-steamy.sh` after the branch is merged or from a clean state.
+- **Build Windows .exe** via `./scripts/build-on-winhost.sh` after the branch is merged or from a clean state.
 - **`axon_rust-21u8.10`** (SSE for research + summarize) remains open/deferred — requires server-side SSE endpoint.
 - **`axon_rust-3lt7`** (decouple `AxonClient.JobKind` from UI layer) is a follow-on cleanup bead, not blocking.
