@@ -16,7 +16,7 @@
   "name": "@axon/admin-panel",
   "description": "Web administration panel for the Axon RAG engine.",
   "author": "dinglebear.ai <hello@dinglebear.ai>",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "homepage": "https://axon.dinglebear.ai",
   "repository": {
     "type": "git",

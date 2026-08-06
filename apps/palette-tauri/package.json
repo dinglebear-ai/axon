@@ -36,7 +36,7 @@
   "name": "axon-palette-tauri",
   "description": "Tauri command palette for the Axon REST API.",
   "author": "dinglebear.ai <hello@dinglebear.ai>",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "homepage": "https://axon.dinglebear.ai",
   "repository": {
     "type": "git",

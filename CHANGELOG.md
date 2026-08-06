@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
+- Relicense Dinglebear-owned original work under AGPL-3.0-only and document separate commercial licensing; third-party material retains its original terms.
+- Run Axon's long contract and Palette Tauri compilation directly through rustc after Kache setup, avoiding ephemeral wrapper loss while preserving cache self-tests and degradation gates.
 - Pin the shared Rust cache action to upstream Kache 0.13.0 so hosted and self-hosted jobs use the same daemon protocol and S3 cache epoch.
 - Let release-only smoke builds use the existing fallback web panel without rebuilding frontend assets, while web changes still reuse the single uploaded web artifact.
 
