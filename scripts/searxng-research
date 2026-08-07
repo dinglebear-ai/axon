@@ -2,18 +2,18 @@
 # searxng-research — user query + 2 complementary → scrape 9 → gap 2 → scrape 6 + backfill 9
 #
 # Usage: scripts/searxng-research <query>
-#   SEARXNG_URL=https://s.tootie.tv scripts/searxng-research "rust async patterns"
+#   SEARXNG_URL=https://s.example.internal scripts/searxng-research "rust async patterns"
 #
 # Env overrides:
 #   SEARXNG_QUERY_MODEL  — model for query generation (default: qwen3.5:4b)
-#   SEARXNG_QUERY_URL    — Ollama base URL for query gen (default: http://steamy-wsl:11434)
+#   SEARXNG_QUERY_URL    — Ollama base URL for query gen (default: http://winhost-wsl:11434)
 #
 # Output: markdown streamed to stdout
 
 set -euo pipefail
 
 QUERY="${*:?Usage: $(basename "$0") <query>}"
-SEARXNG_URL="${SEARXNG_URL:-https://s.tootie.tv}"
+SEARXNG_URL="${SEARXNG_URL:-https://s.example.internal}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 AXON="${AXON:-$SCRIPT_DIR/axon}"
@@ -26,7 +26,7 @@ ts() { echo $(( $(date +%s%3N) - t0 ))ms; }
 
 # Small/fast local model for query generation (Ollama native API, think:false)
 QUERY_MODEL="${SEARXNG_QUERY_MODEL:-qwen3.5:4b}"
-QUERY_URL="${SEARXNG_QUERY_URL:-http://steamy-wsl:11434}"
+QUERY_URL="${SEARXNG_QUERY_URL:-http://winhost-wsl:11434}"
 
 UA="${AXON_CHROME_USER_AGENT:-Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36}"
 
@@ -43,7 +43,7 @@ cat > "$_py_gen" <<'PYEOF'
 import sys, json, re, urllib.request, os
 
 query    = sys.argv[1]
-base_url = (os.environ.get('SEARXNG_QUERY_URL') or 'http://steamy-wsl:11434').rstrip('/')
+base_url = (os.environ.get('SEARXNG_QUERY_URL') or 'http://winhost-wsl:11434').rstrip('/')
 model    = os.environ.get('SEARXNG_QUERY_MODEL') or 'qwen3.5:4b'
 
 prompt = (

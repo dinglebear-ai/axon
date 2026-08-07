@@ -13,7 +13,7 @@ transcript: not captured
 
 ## User Request
 
-Continue the palette polish and action-help work, build a current Windows executable/installer onto the Steamy desktop, dispatch PR review agents for the full PR, address all review findings, and save this session to markdown.
+Continue the palette polish and action-help work, build a current Windows executable/installer onto the Winhost desktop, dispatch PR review agents for the full PR, address all review findings, and save this session to markdown.
 
 ## Session Overview
 
@@ -27,7 +27,7 @@ The final code state before this session note was clean at `b3e1093c`, pushed to
 2. Executed the work plan in the palette worktree and opened PR #206.
 3. Continued palette polish around result layout, code block rendering, syntax highlighting, help density, and response space.
 4. Built a Windows artifact, initially copying the root CLI `axon.exe`, which was the wrong artifact for the palette GUI.
-5. Corrected the build by producing the Tauri palette GUI executable and NSIS installer, then copied both to the Windows desktop path on `steamy-wsl`.
+5. Corrected the build by producing the Tauri palette GUI executable and NSIS installer, then copied both to the Windows desktop path on `winhost-wsl`.
 6. Dispatched PR review toolkit agents and addressed all actionable findings.
 7. Re-ran focused frontend tests, typecheck, Rust formatting, web build, Windows cross-build, and the pre-push hook.
 8. Committed and pushed the review fixes in `b3e1093c`.
@@ -120,7 +120,7 @@ CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc \
   CARGO_BUILD_RUSTC_WRAPPER= \
   pnpm --dir apps/palette-tauri exec tauri build \
     --target x86_64-pc-windows-gnu --bundles nsis --ci
-rsync -av --progress ... steamy-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/
+rsync -av --progress ... winhost-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/
 git status --short
 git worktree list --porcelain
 git branch -vv
@@ -156,7 +156,7 @@ git branch -r -vv
 | `cargo build --release --locked --target x86_64-pc-windows-gnu --bin axon` | Passed, but identified as the wrong artifact for the GUI request. |
 | Tauri GUI cross-build | Produced `apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe`. |
 | NSIS installer cross-build | Produced `apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis/Axon Palette_5.9.1_x64-setup.exe`. |
-| Desktop copy | Copied GUI exe and installer to `steamy-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/`. |
+| Desktop copy | Copied GUI exe and installer to `winhost-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/`. |
 | GUI exe SHA256 | `debb9c4d595ea32e34c357bc44e39b5d76abe2ae88394c47419710b6cee0bfb1`. |
 | Installer SHA256 | `e5ca10e2fec058a9f7cb7f3a34b2d0a04d36292cb89d9688f9116e4a2fe8f47f`. |
 | Pre-push hook | Ran clippy and full nextest suite: 2809 passed, 6 skipped. |
@@ -181,8 +181,8 @@ git branch -r -vv
 - PR: https://github.com/jmagar/axon/pull/206
 - Branch: `codex/palette-action-help`
 - Commit: `b3e1093c23518f420e7891db494041d8395ad306`
-- Desktop installer path: `steamy-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/Axon Palette_5.9.1_x64-setup.exe`
-- Desktop GUI exe path: `steamy-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/axon-palette-tauri.exe`
+- Desktop installer path: `winhost-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/Axon Palette_5.9.1_x64-setup.exe`
+- Desktop GUI exe path: `winhost-wsl:/mnt/c/Users/jmaga/OneDrive/Desktop/axon-palette-tauri.exe`
 
 ## Open Questions
 
@@ -193,6 +193,6 @@ git branch -r -vv
 ## Next Steps
 
 1. Watch PR #206 CI and address any live CI failures.
-2. Test the copied installer directly on Windows/Steamy if SmartScreen or installer paths need attention.
+2. Test the copied installer directly on Windows/Winhost if SmartScreen or installer paths need attention.
 3. Add editable action options/flags in the next palette iteration.
 4. Consider a small cleanup pass for stale worktrees and stale local plan pointers once active PR branches are merged.

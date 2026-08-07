@@ -11,7 +11,7 @@
 
 Continuation session that completed and pushed the work from prior agents (settings redesign, MCP page, agents page, PlateJS theming, 72 tests). Key new work:
 
-1. **Chrome DevTools verification** — Screenshots confirmed all 3 new/modified pages operational on `https://axon.tootie.tv`
+1. **Chrome DevTools verification** — Screenshots confirmed all 3 new/modified pages operational on `https://axon.example.internal`
 2. **MCP server status indicators** — `/api/mcp/status` endpoint + animated dot + label on each McpServerCard
 3. **Omnibox nav → page header** — Moved Network/Bot/Settings2 icons from omnibox to fixed top-right header; removed from omnibox entirely
 4. **CSS `!important` fix** — Replaced with `:root` specificity increase for Biome compliance
@@ -38,7 +38,7 @@ Continuation session that completed and pushed the work from prior agents (setti
 
 ## Key Findings
 
-- **`localhost:49010` unreachable from Chrome container** — Chrome runs in Docker; verification must use `https://axon.tootie.tv` (external domain).
+- **`localhost:49010` unreachable from Chrome container** — Chrome runs in Docker; verification must use `https://axon.example.internal` (external domain).
 - **`!important` in Biome v2** — `noImportantStyles` is a warning (not error), pre-commit hook passes but shows warning. Fix: increase selector specificity with `:root` prefix.
 - **`hidden lg:flex` mistake** — First implementation of nav icons in page header used `hidden lg:flex`, making them invisible below `lg` breakpoint. User explicitly noticed. Fix: plain `flex` (no breakpoint).
 - **PulseToolbar `isDesktop` gate** — Nav icons in `pulse-toolbar.tsx` only render when `isDesktop=true` (set by `PulseWorkspace` via `useBreakpoint`). This is correct — toolbar only shows in desktop workspace mode.

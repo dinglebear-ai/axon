@@ -22,7 +22,7 @@ Debugged and resolved a cascade of ingest worker failures: stale release binary 
 | ~18:12 | All 6 lanes started, jobs began running |
 | ~18:09 | All jobs fail: `Service Error: client error (Connect)` — ~20s after start |
 | ~18:10 | Diagnosed: Tailscale MagicDNS (100.100.100.100) down; `~.` catch-all eating all external DNS |
-| ~18:10 | Fix: `resolvectl domain tailscale0 manatee-triceratops.ts.net` — removed `~.` catch-all |
+| ~18:10 | Fix: `resolvectl domain tailscale0 example.ts.net` — removed `~.` catch-all |
 | ~18:11 | DNS confirmed fixed: `api.github.com` resolves via enp8s0/1.1.1.1 |
 | ~18:11 | Reset 38 DNS-failed jobs back to `pending` via psql UPDATE |
 | ~18:12 | Worker restarted; all 38 re-enqueued; jobs now running and hitting TEI successfully |
@@ -45,11 +45,11 @@ Debugged and resolved a cascade of ingest worker failures: stale release binary 
 - Returns `(chunks, text)` tuple so `text` ownership is preserved for line-range computation
 
 ### 3. Tailscale MagicDNS Outage
-- `tailscale0` link had `DNS Domain: manatee-triceratops.ts.net lan ~.` (catch-all `~.`)
+- `tailscale0` link had `DNS Domain: example.ts.net lan ~.` (catch-all `~.`)
 - `100.100.100.100` (MagicDNS) was down — all DNS queries timed out
 - `dig @1.1.1.1 api.github.com` worked fine — upstream DNS healthy
 - `resolvectl query api.github.com` failed: `All attempts to contact name servers or networks failed`
-- TEI (Tailscale IP `100.74.16.82:52000`) was reachable because it uses IP directly, not DNS
+- TEI (Tailscale IP `198.51.100.1:52000`) was reachable because it uses IP directly, not DNS
 
 ### 4. axon ingest recover vs orphaned pending
 - `axon ingest recover` → `reclaim_stale_running_jobs` — only reclaims jobs stuck in `running` state
@@ -60,7 +60,7 @@ Debugged and resolved a cascade of ingest worker failures: stale release binary 
 
 ## Technical Decisions
 
-- **Scoped Tailscale DNS instead of disabling it**: Changed `tailscale0` domain scope from `~.` (catch-all) to `manatee-triceratops.ts.net` only, so `.ts.net` names still resolve via MagicDNS while external DNS falls through to 1.1.1.1 on enp8s0. Non-destructive fix.
+- **Scoped Tailscale DNS instead of disabling it**: Changed `tailscale0` domain scope from `~.` (catch-all) to `example.ts.net` only, so `.ts.net` names still resolve via MagicDNS while external DNS falls through to 1.1.1.1 on enp8s0. Non-destructive fix.
 - **psql UPDATE instead of `axon ingest recover`**: `recover` only handles stale running jobs. Direct SQL `SET status='pending', error_text=NULL, started_at=NULL, finished_at=NULL, result_json=NULL` was the correct reset pattern.
 - **Restarted worker to trigger startup sweep**: Rather than manually publishing to AMQP, restarting the worker triggers `reenqueue_orphaned_pending_jobs` which handles re-publication cleanly.
 
@@ -80,7 +80,7 @@ Debugged and resolved a cascade of ingest worker failures: stale release binary 
 
 ```bash
 # Check TEI health
-curl -v --max-time 5 http://100.74.16.82:52000/health
+curl -v --max-time 5 http://198.51.100.1:52000/health
 # → HTTP 200 OK
 
 # Check DNS resolution
@@ -94,7 +94,7 @@ dig +time=3 api.github.com @100.100.100.100
 # → communications error to 100.100.100.100#53: timed out
 
 # Fix: scope Tailscale DNS to .ts.net only
-sudo resolvectl domain tailscale0 manatee-triceratops.ts.net
+sudo resolvectl domain tailscale0 example.ts.net
 
 # Verify fix
 resolvectl query api.github.com
@@ -135,7 +135,7 @@ RUST_LOG=info ./target/release/axon ingest worker > /tmp/axon-ingest-worker.log 
 
 | Command | Expected | Actual | Status |
 |---------|----------|--------|--------|
-| `curl http://100.74.16.82:52000/health` | HTTP 200 | HTTP 200 | ✅ |
+| `curl http://198.51.100.1:52000/health` | HTTP 200 | HTTP 200 | ✅ |
 | `curl https://api.github.com/zen` | Response body | "Practicality beats purity." | ✅ |
 | Worker startup log | `re-enqueued N orphaned` | `re-enqueued 38 orphaned pending job(s)` | ✅ |
 | DB status after restart | 6 running, pending jobs | 6 running, 28 pending | ✅ |
@@ -155,7 +155,7 @@ No new embeddings initiated this session (ingest jobs embed their own chunks via
 ### DNS Change
 - **Risk**: If Tailscale MagicDNS recovers, `.ts.net` resolution still works (it's explicitly scoped). No regression.
 - **Caveat**: `resolvectl domain` changes are **not persistent** across reboots or network-manager events. Tailscale daemon may reset this on reconnect.
-- **Permanent fix**: Add `Domains = manatee-triceratops.ts.net` (without `~.`) in Tailscale admin DNS settings, or configure systemd-resolved to override the catch-all.
+- **Permanent fix**: Add `Domains = example.ts.net` (without `~.`) in Tailscale admin DNS settings, or configure systemd-resolved to override the catch-all.
 
 ### Job State Mutations
 - **Rollback**: No clean rollback — jobs that complete successfully are committed to Qdrant. Jobs that fail again will need the same psql reset pattern.

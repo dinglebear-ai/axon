@@ -9,7 +9,7 @@ Repo: /home/jmagar/workspace/axon_rust
 - Added per-conversation agent logos (Anthropic/OpenAI/Google) to sidebar conversation rows.
 
 ## 2. Timeline of major activities
-- Ran Chrome DevTools MCP checks on `https://axon.tootie.tv` to reproduce session restore and selector issues.
+- Ran Chrome DevTools MCP checks on `https://axon.example.internal` to reproduce session restore and selector issues.
 - Traced session list/detail flow and found assistant context mismatch between list and detail lookup.
 - Added/updated tests, then implemented assistant-mode session lookup and hydration fixes.
 - Traced model-option resolver and hardened it against agent-picker misclassification.

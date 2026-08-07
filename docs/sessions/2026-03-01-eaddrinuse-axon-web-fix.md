@@ -179,5 +179,5 @@ None — no Axon crawl/embed/retrieve operations were performed during this debu
 - Verify `pkill` is available post-rebuild: `docker exec axon-web which pkill`
 - Consider adding `procps` to the workers `Dockerfile` too if those containers need process
   management utilities
-- The `allowedDevOrigins` warning (`Cross origin request detected from axon.tootie.tv`) should
+- The `allowedDevOrigins` warning (`Cross origin request detected from axon.example.internal`) should
   be addressed in `next.config.ts` to avoid warnings on every request

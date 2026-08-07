@@ -1,6 +1,6 @@
 # Chat + Tool Calling Render Audit (apps/web)
 Date: 2026-03-12
-Environment: production `https://axon.tootie.tv` + source review in `apps/web`
+Environment: production `https://axon.example.internal` + source review in `apps/web`
 Reviewer: Codex
 
 ## Scope
@@ -13,7 +13,7 @@ Audit of conversation rendering for:
 - density, clarity, and visual quality
 
 ## Method
-1. Runtime inspection with Chrome DevTools on `https://axon.tootie.tv`.
+1. Runtime inspection with Chrome DevTools on `https://axon.example.internal`.
 2. Session list and session payload inspection via network panel (`/api/sessions/*`).
 3. Source audit for event ingestion and message rendering:
 - `apps/web/components/reboot/axon-message-list.tsx`
@@ -26,7 +26,7 @@ Audit of conversation rendering for:
 - `apps/web/lib/sessions/codex-jsonl-parser.ts`
 - `apps/web/components/ai-elements/chain-of-thought.tsx`
 
-## Runtime Evidence (axon.tootie.tv)
+## Runtime Evidence (axon.example.internal)
 - App loaded and session list populated.
 - Multiple sessions render only user turns or minimal assistant output.
 - Example API response with both roles present:
@@ -34,7 +34,7 @@ Audit of conversation rendering for:
 - Example API response with only user messages (large Codex transcript):
   - `/api/sessions/5e57fa05359e` response body is dominated by user content and lacks replayed tool/thinking structures.
 - Screenshot captured:
-  - `docs/reports/2026-03-12-axon-tootie-chat-audit.png`
+  - `docs/reports/2026-03-12-axon-nashost-chat-audit.png`
 
 ## Findings
 

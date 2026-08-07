@@ -26,13 +26,13 @@ Install the Axon Chrome extension into the Windows-accessible Chrome session, te
 2. Confirmed Chrome assigned extension ID `olhlogeonhmnpjkjkkjbkmojjafgfgpp`.
 3. Opened `chrome-extension://olhlogeonhmnpjkjkkjbkmojjafgfgpp/sidepanel.html` through CDP and verified the `Axon Chat` UI rendered.
 4. Sent `ask what is Axon?` through the UI; first run failed with a missing bearer token error.
-5. Configured extension storage with `axonUrl=http://100.88.16.79:8001` and the local `AXON_MCP_HTTP_TOKEN`, then reran the ask.
+5. Configured extension storage with `axonUrl=http://198.51.100.4:8001` and the local `AXON_MCP_HTTP_TOKEN`, then reran the ask.
 6. Verified `/v1/ask` returned a real RAG answer with sources and rendered in the chat.
 7. Patched markdown rendering for bold and italic inline content, redeployed the unpacked extension folder, reloaded Chrome, and confirmed the answer rendered without literal `**...**`.
 
 ## Key Findings
 
-- The Windows MCP-visible Chrome profile lives under `C:\Users\Docker`; it is not the same filesystem view as `steamy-wsl:/mnt/c/Users/jmaga`.
+- The Windows MCP-visible Chrome profile lives under `C:\Users\Docker`; it is not the same filesystem view as `winhost-wsl:/mnt/c/Users/jmaga`.
 - Chrome 148 exposed CDP successfully from the cloned debug profile on `127.0.0.1:9222`.
 - The installed extension ID was `olhlogeonhmnpjkjkkjbkmojjafgfgpp`.
 - Auto-scrape cooldown is implemented in `apps/chrome-extension/background.js:1` through `apps/chrome-extension/background.js:41`.
@@ -96,7 +96,7 @@ Install the Axon Chrome extension into the Windows-accessible Chrome session, te
 
 ## Open Questions
 
-- Whether the user's normal Steamy Chrome profile should also receive the refreshed unpacked extension install.
+- Whether the user's normal Winhost Chrome profile should also receive the refreshed unpacked extension install.
 - Whether extension settings should be seeded automatically from Axon config rather than manually entered or injected per browser profile.
 
 ## Next Steps

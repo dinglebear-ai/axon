@@ -86,21 +86,21 @@ write_override_env() {
       ;;
     gemini-flash)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
-      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
+      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}"
       append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       ;;
     gpt-5.4-mini)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
-      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
+      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}"
       append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
       ;;
     gemini-3.1-flash-lite)
       append_env_override "$env_file" AXON_LLM_BACKEND "openai-compat"
-      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}"
+      append_env_override "$env_file" AXON_OPENAI_BASE_URL "${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}"
       append_env_override "$env_file" AXON_SYNTHESIS_OPENAI_MODEL "${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}"
       copy_env_key_from_base "$env_file" AXON_OPENAI_API_KEY
       append_env_override "$env_file" AXON_LLM_COMPLETION_CONCURRENCY "1"
@@ -129,7 +129,7 @@ cli_api_overrides_json() {
   local model="$1"
   jq -n \
     --arg backend "openai-compat" \
-    --arg base_url "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" \
+    --arg base_url "${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}" \
     --arg model "$model" \
     --arg concurrency "1" \
     '{
@@ -235,7 +235,7 @@ profile_label() {
 profile_provider() {
   case "$1" in
     current) echo "current-config" ;;
-    gemini-flash|gpt-5.4-mini|gemini-3.1-flash-lite) echo "${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}" ;;
+    gemini-flash|gpt-5.4-mini|gemini-3.1-flash-lite) echo "${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}" ;;
     gemma-local) echo "${GEMMA_OPENAI_BASE_URL:-http://127.0.0.1:8080/v1}" ;;
     *) echo "$1" ;;
   esac

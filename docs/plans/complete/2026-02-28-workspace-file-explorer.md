@@ -899,7 +899,7 @@ Expected: The env var is set and `/workspace` contains your actual workspace fil
 
 ```bash
 # From the host:
-curl "https://axon.tootie.tv/api/workspace?action=list&path=" | jq '.items[:5]'
+curl "https://axon.example.internal/api/workspace?action=list&path=" | jq '.items[:5]'
 ```
 
 Expected: Array of file/directory entries from the workspace root.
@@ -907,20 +907,20 @@ Expected: Array of file/directory entries from the workspace root.
 **Step 3: Test path traversal is blocked**
 
 ```bash
-curl "https://axon.tootie.tv/api/workspace?action=list&path=../../etc" | jq .
+curl "https://axon.example.internal/api/workspace?action=list&path=../../etc" | jq .
 ```
 
 Expected: `{ "error": "Directory not found" }` (because after normalization it's outside workspace).
 
 ```bash
-curl "https://axon.tootie.tv/api/workspace?action=list&path=../secret" | jq .
+curl "https://axon.example.internal/api/workspace?action=list&path=../secret" | jq .
 ```
 
 Expected: `{ "error": "Path is outside workspace" }`.
 
 **Step 4: Navigate to the page**
 
-Open `https://axon.tootie.tv/workspace` in browser and verify:
+Open `https://axon.example.internal/workspace` in browser and verify:
 - [ ] Directory tree loads with workspace root contents
 - [ ] Clicking a directory expands it and loads children
 - [ ] Clicking a `.md` file shows Plate.js rendered markdown

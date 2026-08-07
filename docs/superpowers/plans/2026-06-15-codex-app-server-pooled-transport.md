@@ -14,7 +14,7 @@ daemon" below — the live benchmark says it would be over-engineering for synth
 
 ---
 
-## Live grounding (codex-cli 0.136.0, dookie, 2026-06-15)
+## Live grounding (codex-cli 0.136.0, devhost, 2026-06-15)
 
 Probed `codex app-server` directly (`/tmp/codex_isolated_probe.py`, mirroring
 `src/core/llm/codex_app_server/home.rs` isolation):

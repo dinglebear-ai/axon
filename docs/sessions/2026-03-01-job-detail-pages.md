@@ -125,13 +125,13 @@ None — this session did not perform any Axon embed/query/scrape operations. Se
 
 ## Open Questions
 
-- Does the `/docs` page fully populate now that the container was recreated? Not verified via screenshot — user should navigate to `https://axon.tootie.tv/docs` to confirm.
+- Does the `/docs` page fully populate now that the container was recreated? Not verified via screenshot — user should navigate to `https://axon.example.internal/docs` to confirm.
 - Are there embed jobs that need to be linked to their parent crawl job? Currently the detail pages are independent — no cross-linking between a crawl job and the embed job spawned from it.
 - The `elapsedMs` field comes from `result_json.elapsed_ms` which is only set on completion. For running crawl jobs, duration is computed from `startedAt` to `Date.now()`. This approximation may diverge if the worker pauses.
 
 ## Next Steps
 
-- Navigate to `https://axon.tootie.tv/docs` to verify `/docs` page shows indexed domains
-- Navigate to `https://axon.tootie.tv/jobs` and click a job row to verify detail page loads
+- Navigate to `https://axon.example.internal/docs` to verify `/docs` page shows indexed domains
+- Navigate to `https://axon.example.internal/jobs` and click a job row to verify detail page loads
 - Consider adding a "Cancel" button to the detail page for running jobs (Redis key `axon:crawl:cancel:{id}`)
 - Consider linking crawl job → embed job on the detail page (join via `output_dir` matching embed `input`)

@@ -33,7 +33,7 @@ Two features — Files-view enhancements (split-pane, bulk multi-select ingest, 
 12. The merge commit's pre-commit hook caught a real monolith-policy violation: `FilesView.tsx` was 1195 lines (limit 500) — already live on `main` since #393's squash-merge bypassed local hooks server-side. Dispatched an agent to split it into 8 files; the split caught and fixed a real bug (wrong lookup key for the active SFTP connection) before it could ship.
 13. Verified the merge (Rust + frontend test suites, clippy, fmt, typecheck), committed, and pushed — retried twice more after the pre-push hook's internal 600s timeout was exceeded by genuine, unrelated concurrent `cargo` activity from other sessions/worktrees on the same machine.
 14. Merged #394 into `main` once CI went green.
-15. Rebuilt the Windows exe from updated `main` (cross-compiled `x86_64-pc-windows-gnu`) and delivered it plus `WebView2Loader.dll` to the user's desktop via `steamy-wsl`, verified by SHA-256.
+15. Rebuilt the Windows exe from updated `main` (cross-compiled `x86_64-pc-windows-gnu`) and delivered it plus `WebView2Loader.dll` to the user's desktop via `winhost-wsl`, verified by SHA-256.
 16. Ran this `save-to-md` session-log workflow: moved both completed plans to `docs/plans/complete/`, removed the two now-merged worktrees and their local branches, wrote this log.
 
 ## Key Findings
@@ -90,7 +90,7 @@ No bead activity observed. This repo's CLAUDE.md documents `bd` as the required 
 
 ## Tools and Skills Used
 
-- **Shell commands**: git (branch/worktree/merge/conflict-resolution/commit/push), cargo (build/test/clippy/fmt/clean/check), pnpm (install/test/typecheck/build), gh CLI (PR create/merge/checks/view), ssh/scp (agent-os and steamy-wsl delivery), Playwright (headless Firefox screenshots for CSS/layout verification).
+- **Shell commands**: git (branch/worktree/merge/conflict-resolution/commit/push), cargo (build/test/clippy/fmt/clean/check), pnpm (install/test/typecheck/build), gh CLI (PR create/merge/checks/view), ssh/scp (agent-os and winhost-wsl delivery), Playwright (headless Firefox screenshots for CSS/layout verification).
 - **Skills**: `/writing-plans` (plan authoring, x2 initial + x2 revision), `/lavra-eng-review` (plan review, x2), `/vibin:work-it` (full worktree→PR→review→merge pipeline), `vibin:worktree-setup` (dedicated worktree creation/sync), `save-to-md` (this log).
 - **Subagents/agents**: `lavra:review:architecture-strategist`, `lavra:review:security-sentinel`, `lavra:review:performance-oracle`, `lavra:review:pattern-recognition-specialist`, `lavra:review:code-simplicity-reviewer`, `lavra:review:kieran-typescript-reviewer` (6 per PR, 12 total code reviews), plus general-purpose implementation/fix/splitter agents dispatched via the `Agent` tool. Several agents hit transient rate-limit errors mid-task and were resumed successfully.
 - **MCP/other tools**: `mcp__plugin_zsnoop-mcp_zsnoop` (checked for ZFS snapshots of a deleted file — none existed), `mcp__labby__codemode` / `agent_os_windows_mcp` (attempted native GUI screenshot automation on `agent-os`; hit a codemode durability-size limit on screenshots, worked around via direct SSH + PowerShell + `schtasks` instead).

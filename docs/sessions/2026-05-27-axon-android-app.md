@@ -178,7 +178,7 @@ git rm --cached apps/android/local.properties
 
 ## Open Questions
 
-- Does the Axon server's `/v1/actions` (sources) response format match `[[url, count], ...]` on the current production build at `axon.tootie.tv`? The parser was hardened but not live-tested.
+- Does the Axon server's `/v1/actions` (sources) response format match `[[url, count], ...]` on the current production build at `axon.example.internal`? The parser was hardened but not live-tested.
 - CodeRabbit rate-limited on PR #141; a full CodeRabbit review will fire on the next push. Any findings there are unresolved.
 - Visual testing via `claude-in-mobile` through the lab MCP gateway was planned but not executed this session (app needs to be installed on a device first).
 

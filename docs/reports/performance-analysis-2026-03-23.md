@@ -79,7 +79,7 @@ static TEI_CONCURRENCY: LazyLock<Semaphore> =
 
 Default is 8 concurrent in-flight TEI requests across the entire process. With `AXON_EMBED_LANES=2` workers each running at default `AXON_EMBED_DOC_CONCURRENCY` (~8 docs), up to 16 embed futures are competing for 8 semaphore permits. This means half the pipeline is always blocked waiting for permits.
 
-The CLAUDE.md documentation notes TEI is on steamy-wsl (RTX 4070) with a `--max-batch-tokens 163,840` budget. TEI's GPU can handle significantly more than 8 concurrent requests since they're batched on the server side.
+The CLAUDE.md documentation notes TEI is on winhost-wsl (RTX 4070) with a `--max-batch-tokens 163,840` budget. TEI's GPU can handle significantly more than 8 concurrent requests since they're batched on the server side.
 
 **Recommendation:** Raise the default to 16–24 and document the tuning guidance more prominently. The clamp ceiling of 64 is appropriate. Expose via `AXON_TEI_MAX_CONCURRENT` (already done) but update the default.
 

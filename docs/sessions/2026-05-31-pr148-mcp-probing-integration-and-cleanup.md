@@ -34,7 +34,7 @@ A set of housekeeping/integration asks: explain the stale `axon_rust` worktree, 
 
 ## Key Findings
 - **`axon_rust` worktree**: a dangling registration — `/home/jmagar/workspace/axon_rust/.worktrees/mcp-candidate-probing` dir was gone (old repo path before rename to `axon`); `git worktree prune` cleared it.
-- **bd `git add` warnings**: bd's auto-backup (auto-enabled with a git remote) tried to `git add .beads/issues.jsonl`, but `.beads/` is repo-gitignored (Dolt at `100.75.111.118:3311` is the source of truth) → add failed each mutation. `.beads/config.yaml` is itself gitignored, so `backup.enabled: false` is a machine-local fix.
+- **bd `git add` warnings**: bd's auto-backup (auto-enabled with a git remote) tried to `git add .beads/issues.jsonl`, but `.beads/` is repo-gitignored (Dolt at `198.51.100.2:3311` is the source of truth) → add failed each mutation. `.beads/config.yaml` is itself gitignored, so `backup.enabled: false` is a machine-local fix.
 - **PR #148 conflicts were trivial**: only version/doc files (`Cargo.toml`, `Cargo.lock`, `README.md`, `CHANGELOG.md`, `apps/web/package.json`). The feature code (`src/services/endpoints/*`, config, MCP, web) auto-merged with main's `#145` work — no code conflicts.
 - **Two pre-existing main `test` breakages** (red on main, not caused by this PR; PR #149's CI ran on its pre-merge head and never saw them):
   - `tests/compose_env_contract.rs:151` read `plugins/README.md`, deleted by the plugin split (`cf410712`) and moved to `plugins/axon/README.md`.

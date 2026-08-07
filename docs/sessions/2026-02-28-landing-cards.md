@@ -142,7 +142,7 @@ git show --stat 7ca6184
 
 ## Next Steps
 
-1. **Smoke test in browser**: Navigate to `https://axon.tootie.tv` → verify 3 cards render correctly before a command is run
+1. **Smoke test in browser**: Navigate to `https://axon.example.internal` → verify 3 cards render correctly before a command is run
 2. **"Open in Pulse" wiring**: Consider `?pulse=<path>` query param handler in `page.tsx` to re-enable workspace deep-linking
 3. **MCP status badges**: Wire `/api/mcp/status` into the MCP card for live connectivity indicators
 4. **Update MEMORY.md**: Update Web UI Pages entry to mention landing cards

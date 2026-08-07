@@ -6,8 +6,8 @@ Requires=incus.service
 
 [Service]
 Type=oneshot
-# Mode is fixed at install time — this deployment (dookie) always uses the
-# external-qdrant override, since qdrant lives on tootie for RAM reasons.
+# Mode is fixed at install time — this deployment (devhost) always uses the
+# external-qdrant override, since qdrant lives on nashost for RAM reasons.
 # AXON_EXTERNAL_QDRANT_URL and AXON_ENV_FILE are read from the environment
 # file below rather than hardcoded here.
 # No leading "-": this file is required, not optional. external-qdrant mode

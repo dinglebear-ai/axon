@@ -16,7 +16,7 @@ This document covers how to validate the Tauri palette
 > older versions of this document was never committed to the repository. Use the
 > Windows-MCP approach below instead.
 
-Palette testing runs on **agent-os** (Claude's Windows 11 VM on tootie,
+Palette testing runs on **agent-os** (Claude's Windows 11 VM on nashost,
 reachable via `ssh agent-os`). Use the `vibin:desktop-app-testing` skill or
 drive agent-os directly via the Windows-MCP tool available through Labby.
 
@@ -45,7 +45,7 @@ pnpm --dir apps/palette-tauri exec tauri build \
 2. Copy the runtime config to the Windows user:
 
 ```powershell
-# Run from dookie
+# Run from devhost
 scp ~/.axon/.env agent-os:'C:/Users/User/.axon/.env'
 scp ~/.axon/config.toml agent-os:'C:/Users/User/.axon/config.toml'
 ```

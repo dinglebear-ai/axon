@@ -30,8 +30,8 @@ internal const val REDACTED_SECRET_VALUE = "••••••••"
 private const val TAG = "SettingsViewModel"
 
 private val CLEARTEXT_TAILNET_SUFFIXES = setOf(
-    "manatee-triceratops.ts.net",
-    "manatee-triceratops.tailvpn.net",
+    "example.ts.net",
+    "example-tailnet.tailvpn.net",
 )
 
 internal fun validateAxonServerUrl(value: String) {

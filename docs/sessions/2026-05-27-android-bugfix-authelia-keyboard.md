@@ -29,9 +29,9 @@ Continued from a compacted prior session. Fixed three bugs found during live emu
 7. **Built and installed APK on emulator.** All 36 unit tests passed; emulator confirmed status polling now shows "completed" and "Pages crawled: 1".
 8. **Rcloned APK to Google Drive** (first time).
 9. **User reported Ask broken on real device** — "no response received from server".
-10. **Investigated.** Server healthy, SSE stream worked from dookie via curl. Checked nginx access logs on squirts; found `174.225.198.53` (user's device) getting HTTP 302 then 200/1125 bytes (Authelia login page HTML).
+10. **Investigated.** Server healthy, SSE stream worked from devhost via curl. Checked nginx access logs on edgehost; found `174.225.198.53` (user's device) getting HTTP 302 then 200/1125 bytes (Authelia login page HTML).
 11. **Root-caused Authelia intercept.** OkHttp sends Bearer token but no Authelia session cookie. Authelia redirected to login page. OkHttp followed the redirect, SSE parser found no `data:` lines, stream appeared empty.
-12. **Fixed axon.subdomain.conf on squirts.** Added `location ^~ /v1/` block bypassing Authelia with `proxy_buffering off`; axon enforces its own Bearer token auth. Tested nginx config, reloaded.
+12. **Fixed axon.subdomain.conf on edgehost.** Added `location ^~ /v1/` block bypassing Authelia with `proxy_buffering off`; axon enforces its own Bearer token auth. Tested nginx config, reloaded.
 13. **User confirmed Ask works** after SWAG reload.
 14. **Fixed keyboard covering inputs.** `enableEdgeToEdge()` in `MainActivity` disables `adjustResize`. Added `consumeWindowInsets(innerPadding).imePadding()` to `NavHost` modifier in `AxonNavGraph.kt`.
 15. **Built, installed, committed, pushed, rcloned** updated APK.
@@ -42,7 +42,7 @@ Continued from a compacted prior session. Fixed three bugs found during live emu
 - `AxonModels.kt:197-203` — `CrawlStatusResponse` assumed flat shape; actual API returns `{"job":{...}}` wrapper with `id` (not `job_id`), `error_text` (not `error`), and `pages_crawled` nested under `result_json`.
 - `AxonRepository.kt:132` — `r.status.ifBlank { "unknown" }` was the visible symptom; all fields defaulted to `""` because `ignoreUnknownKeys = true` silently dropped the `"job"` wrapper.
 - `apps/android/app/src/test/java/.../AxonRepositoryTest.kt:206-227` — existing crawlStatus tests used flat mock JSON that never matched production, so they passed while masking the bug.
-- `nginx/access.log` on squirts — `174.225.198.53` (user device) received `302 → 200/1125` for every `/v1/ask/stream` POST; `76.213.118.20` (dookie) received `200` directly. Authelia was the differentiator.
+- `nginx/access.log` on edgehost — `174.225.198.53` (user device) received `302 → 200/1125` for every `/v1/ask/stream` POST; `76.213.118.20` (devhost) received `200` directly. Authelia was the differentiator.
 - `AxonNavGraph.kt:98-103` — `Modifier.padding(innerPadding)` alone does not handle keyboard insets when `enableEdgeToEdge()` is active; `consumeWindowInsets` + `imePadding()` required.
 
 ## Technical Decisions
@@ -61,7 +61,7 @@ Continued from a compacted prior session. Fixed three bugs found during live emu
 | modified | `apps/android/app/src/main/java/com/axon/app/data/remote/AxonClient.kt` | `crawlStatus()` decodes `CrawlStatusWrapper` and unwraps `.job` |
 | modified | `apps/android/app/src/test/java/com/axon/app/data/repository/AxonRepositoryTest.kt` | Update two crawlStatus tests to real JSON shape; add two new tests |
 | modified | `apps/android/app/src/main/java/com/axon/app/ui/nav/AxonNavGraph.kt` | Add `consumeWindowInsets(innerPadding).imePadding()` to NavHost modifier |
-| modified | `/mnt/appdata/swag/nginx/proxy-confs/axon.subdomain.conf` (on squirts) | Add `location ^~ /v1/` bypassing Authelia; include `proxy_buffering off` |
+| modified | `/mnt/appdata/swag/nginx/proxy-confs/axon.subdomain.conf` (on edgehost) | Add `location ^~ /v1/` bypassing Authelia; include `proxy_buffering off` |
 
 ## Beads Activity
 
@@ -84,7 +84,7 @@ No bead activity observed this session. The work was a direct continuation of th
 - **curl** — verify live API shapes (`/v1/crawl/{id}`, `/v1/ask/stream` headers, `/healthz`)
 - **Gradle** — `assembleDebug`, `testDebugUnitTest`
 - **rclone** — upload APK to `gdrive:` remote (run twice)
-- **SSH to squirts** — read/write SWAG nginx config, `docker exec swag nginx -t`, `nginx -s reload`
+- **SSH to edgehost** — read/write SWAG nginx config, `docker exec swag nginx -t`, `nginx -s reload`
 - **save-to-md skill** — this session documentation
 
 ## Commands Executed
@@ -97,9 +97,9 @@ No bead activity observed this session. The work was a direct continuation of th
 | `curl GET /v1/crawl/0972f143-...` | Confirmed `{"job":{"status":"completed",...}}` wrapper shape |
 | `curl -N POST /v1/ask/stream` | Full SSE stream received; `event: meta → delta × N → done` |
 | `curl -sv /healthz` | `server: cloudflare`, HTTP 200 |
-| `ssh squirts grep 'ask' nginx/access.log` | Revealed `174.225.198.53` getting 302→200/1125 (Authelia redirect) |
-| `ssh squirts docker exec swag nginx -t` | `syntax ok` |
-| `ssh squirts docker exec swag nginx -s reload` | Reloaded (2 design.* warnings, unrelated) |
+| `ssh edgehost grep 'ask' nginx/access.log` | Revealed `174.225.198.53` getting 302→200/1125 (Authelia redirect) |
+| `ssh edgehost docker exec swag nginx -t` | `syntax ok` |
+| `ssh edgehost docker exec swag nginx -s reload` | Reloaded (2 design.* warnings, unrelated) |
 | `rclone copy app-debug.apk gdrive:` (×2) | 20.362 MiB transferred each time |
 | `git merge-base --is-ancestor origin/feat/axon-android-app origin/main` | Exit 0 — confirmed merged |
 | `git worktree remove .worktrees/axon-android-app` | Removed |
@@ -116,7 +116,7 @@ No bead activity observed this session. The work was a direct continuation of th
 | Area | Before | After |
 |---|---|---|
 | Crawl status polling | Always showed "unknown" regardless of actual job state | Shows correct server status ("completed", "running", etc.) and pages crawled count |
-| Ask from real device (non-dookie) | HTTP 302 → Authelia login HTML → "No response received from server" | Authelia bypassed for `/v1/`; SSE stream reaches app correctly |
+| Ask from real device (non-devhost) | HTTP 302 → Authelia login HTML → "No response received from server" | Authelia bypassed for `/v1/`; SSE stream reaches app correctly |
 | Text input fields with keyboard open | Keyboard covered input fields on all screens | Content scrolls above keyboard via `consumeWindowInsets` + `imePadding()` |
 
 ## Verification Evidence
@@ -126,12 +126,12 @@ No bead activity observed this session. The work was a direct continuation of th
 | `./gradlew :app:testDebugUnitTest` | 36 pass, 0 fail | 36 pass, 0 fail | pass |
 | Emulator: tap Check Status after crawl | "completed", pages crawled: 1 | "completed", Pages crawled: 1 | pass |
 | Emulator: Ask "what is axon" | Full SSE answer received | Full SSE answer in UI | pass |
-| `nginx -t` on squirts | `syntax ok` | `syntax ok` | pass |
+| `nginx -t` on edgehost | `syntax ok` | `syntax ok` | pass |
 | User device: Ask after nginx reload | Answer streams correctly | Confirmed by user | pass |
 
 ## Risks and Rollback
 
-- **Authelia bypass on `/v1/`** — all API routes under `/v1/` now rely solely on axon's Bearer token auth. A misconfigured or missing token would allow unauthenticated access; axon already enforces this via `AXON_MCP_HTTP_TOKEN`. Rollback: restore `axon.subdomain.conf.bak.20260527*` on squirts and `nginx -s reload`.
+- **Authelia bypass on `/v1/`** — all API routes under `/v1/` now rely solely on axon's Bearer token auth. A misconfigured or missing token would allow unauthenticated access; axon already enforces this via `AXON_MCP_HTTP_TOKEN`. Rollback: restore `axon.subdomain.conf.bak.20260527*` on edgehost and `nginx -s reload`.
 - **`proxy_buffering off` on `/v1/`** — disables nginx response buffering for all API routes, not just SSE. For non-streaming endpoints this is safe (slightly higher memory usage per request, no correctness impact). No rollback needed.
 
 ## Next Steps

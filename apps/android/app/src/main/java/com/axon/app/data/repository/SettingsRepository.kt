@@ -28,7 +28,7 @@ private val KEY_AUTH_MODE = stringPreferencesKey("auth_mode")
 // idempotent migration helper can find legacy plaintext copies and clear them.
 internal val LEGACY_KEY_TOKEN: Preferences.Key<String> = stringPreferencesKey("token")
 
-const val DEFAULT_SERVER_URL = "https://axon.tootie.tv"
+const val DEFAULT_SERVER_URL = "https://axon.example.internal"
 const val DEFAULT_COLLECTION = "axon"
 
 /** Wraps a server URL string. Prevents accidental use of a bare token or collection name as a URL. */

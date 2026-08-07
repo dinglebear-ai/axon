@@ -10,7 +10,7 @@
   const { iconSvg, axonMark } = window.AxonIcons;
   const { OPS_BY_CATEGORY, OP_BY_ID, toneOf, tint, hostOf } = window.AxonData;
 
-  const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
+  const DEFAULT_AXON_URL = "http://198.51.100.4:8001";
   const COLOR_CODE = true; // color-code actions by family (design default on)
   // `SourceRequest.execution` has no per-field defaults once the key is
   // present, so a synchronous ("foreground") request must spell out the

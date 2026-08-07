@@ -44,7 +44,7 @@ docker exec axon-postgres psql -U axon -d axon -c "\d axon_ingest_jobs"
 grep "AXON_EMBED_DOC_TIMEOUT" .env
 
 # Check TEI for transport errors
-ssh steamy-wsl "docker logs tei_max --tail 30"
+ssh winhost-wsl "docker logs tei_max --tail 30"
 
 # Verify doc concurrency default
 grep -A3 "AXON_EMBED_DOC_CONCURRENCY" crates/vector/ops/tei/pipeline.rs
@@ -82,7 +82,7 @@ grep -A3 "AXON_EMBED_DOC_CONCURRENCY" crates/vector/ops/tei/pipeline.rs
 
 - New index (`idx_axon_ingest_jobs_running_updated`) takes effect on next worker restart — confirm it appears in `\d axon_ingest_jobs` after `just dev`.
 - `AXON_EMBED_DOC_TIMEOUT_SECS=300` picked up by workers on next restart — confirm no further 120s timeouts in log after restart.
-- TEI transport errors: brief blip or recurring? Monitor `ssh steamy-wsl docker logs tei_max` for pattern.
+- TEI transport errors: brief blip or recurring? Monitor `ssh winhost-wsl docker logs tei_max` for pattern.
 
 ## Next Steps
 

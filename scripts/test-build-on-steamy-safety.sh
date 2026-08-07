@@ -47,8 +47,8 @@ chmod +x "$fakebin/"*
 
 export PATH="$fakebin:$PATH"
 export RSYNC_LOG="$tmp/rsync.log"
-export STEAMY_HOST="fake-steamy"
-export STEAMY_DESKTOP="$tmp/Desktop"
+export WINHOST_HOST="fake-winhost"
+export WINHOST_DESKTOP="$tmp/Desktop"
 
 unmarked="$tmp/unmarked"
 mkdir -p "$unmarked"
@@ -61,8 +61,8 @@ grep -q "refusing destructive rsync into unmarked target" "$tmp/unmarked.err"
 
 marked="$tmp/marked"
 mkdir -p "$marked"
-touch "$marked/.build-on-steamy-disposable"
+touch "$marked/.build-on-winhost-disposable"
 "$repo_root/scripts/build-on-steamy.sh" --target axon --remote-repo "$marked" >"$tmp/marked.out" 2>"$tmp/marked.err"
 
 grep -q -- "--delete" "$RSYNC_LOG"
-[[ -f "$STEAMY_DESKTOP/axon.exe" ]] || { echo "expected built axon.exe on fake desktop" >&2; exit 1; }
+[[ -f "$WINHOST_DESKTOP/axon.exe" ]] || { echo "expected built axon.exe on fake desktop" >&2; exit 1; }

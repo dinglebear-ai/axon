@@ -25,7 +25,7 @@ Color scheme was iterated twice based on user feedback: green → pink (secondar
 | Phase 4 | Lint revealed 513-line monolith violation — split editor artifact logic into `axon-editor-artifact.tsx` |
 | Phase 5 | Added `ArtifactContent` preview section with body text (6 lines desktop / 3 lines mobile) |
 | Phase 6 | Color iteration: green → pink secondary → blue primary |
-| Verify | Chrome DevTools live testing at `https://axon.tootie.tv/reboot` |
+| Verify | Chrome DevTools live testing at `https://axon.example.internal/reboot` |
 
 ---
 

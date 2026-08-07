@@ -822,7 +822,7 @@ git add apps/palette-tauri/src/App.tsx apps/palette-tauri/src/lib/axonClient.ts
 git commit -m "feat(palette): stream ask responses into command output"
 ```
 
-## Task 6: End-to-End Verification on Dookie and Steamy
+## Task 6: End-to-End Verification on Devhost and Winhost
 
 **Files:**
 - No source changes unless defects are found.
@@ -848,7 +848,7 @@ curl -N \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d '{"query":"what is axon?","collection":"axon"}' \
-  https://axon.tootie.tv/v1/ask/stream
+  https://axon.example.internal/v1/ask/stream
 ```
 
 Expected: `event: meta`, one or more `event: delta`, then `event: done`.
@@ -864,15 +864,15 @@ pnpm build
 
 Expected: Tauri release build succeeds.
 
-- [ ] **Step 4: Copy newest exe to Steamy desktop**
+- [ ] **Step 4: Copy newest exe to Winhost desktop**
 
-Use the established agent-os/SSH copy path from the previous palette work. Copy the newly built Windows executable directly to the Steamy desktop instead of relying on shortcut updates.
+Use the established agent-os/SSH copy path from the previous palette work. Copy the newly built Windows executable directly to the Winhost desktop instead of relying on shortcut updates.
 
 Expected: `C:\Users\jmaga\Desktop\Axon Palette.exe` exists and launches without a terminal window.
 
 - [ ] **Step 5: Manual UI checks**
 
-On Steamy:
+On Winhost:
 
 1. Launch `Axon Palette.exe`.
 2. Run `ask what is axon?`.
@@ -885,7 +885,7 @@ On Steamy:
 
 - [ ] **Step 6: Check logs for regressions**
 
-Run on dookie:
+Run on devhost:
 
 ```bash
 journalctl --since "10 minutes ago" --no-pager -u axon 2>/dev/null | tail -n 100
@@ -913,7 +913,7 @@ Expected: only intentional work remains.
 
 ## Self-Review
 
-**Spec coverage:** The plan covers Streamdown completed markdown rendering, true token streaming, server route exposure, Tauri bridge, React state handling, fallback behavior, and Steamy deployment verification.
+**Spec coverage:** The plan covers Streamdown completed markdown rendering, true token streaming, server route exposure, Tauri bridge, React state handling, fallback behavior, and Winhost deployment verification.
 
 **Placeholder scan:** No implementation step uses TBD/TODO/later language. Each task includes concrete files, code shape, commands, and expected results.
 

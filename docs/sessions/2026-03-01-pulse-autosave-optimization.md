@@ -118,6 +118,6 @@ None during implementation. Session doc embedded as part of save-to-md workflow 
 
 ## Next Steps
 
-- Navigate to the editor at `https://axon.tootie.tv` and verify `/ws/shell` connects properly from the terminal page
+- Navigate to the editor at `https://axon.example.internal` and verify `/ws/shell` connects properly from the terminal page
 - Verify autosave no longer causes vector accumulation: save the same Pulse doc twice and check Qdrant chunk count doesn't double
 - Confirm editor re-loads correctly when navigating between `?doc=A` and `?doc=B` in the same session

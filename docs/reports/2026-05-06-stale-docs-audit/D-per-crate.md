@@ -394,7 +394,7 @@ This is a cross-doc inconsistency rather than a stale-vs-code problem; the code 
 **Applied:** no — flag only (cross-doc reconciliation outside this audit's scope, since the project-level CLAUDE.md is not part of the per-crate audit).
 
 ### [crates/vector/CLAUDE.md:163-174] TEI Service / Qwen3 model facts
-**Stale claim:** TEI runs on `steamy-wsl`, model is `Qwen/Qwen3-Embedding-0.6B`, last-token pooling, fp16.
+**Stale claim:** TEI runs on `winhost-wsl`, model is `Qwen/Qwen3-Embedding-0.6B`, last-token pooling, fp16.
 **Reality:** Project-level memory confirms current vector state matches. `QUERY_INSTRUCTION` is `pub(crate) const` at `crates/vector/ops/tei/tei_client.rs:20`, exposed via `pub(crate) use` at `tei.rs:11`. Doc's claim "single source of truth" is accurate.
 **Applied:** no edit needed.
 
