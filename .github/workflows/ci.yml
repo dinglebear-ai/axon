@@ -167,9 +167,23 @@ jobs:
       # the identical 13-build shape; kache just serves each rebuild in ~35s
       # instead of ~7min, which is why this stayed invisible.
       #
-      # `cargo build -p xtask` once + direct binary invocation makes that
-      # structural, not cache-dependent: one dev build, one test build, done.
-      # Same pattern lefthook.yml already uses for the commit hooks.
+      # ROOT CAUSE (bisected locally, 2026-08-06): RUSTC_WRAPPER=kache. Under
+      # kache, cargo never reaches a fresh state — it re-"compiles" the same
+      # host/build-script crates on every invocation, forever. Two identical
+      # back-to-back `cargo xtask check-no-mod-rs` runs, no source changes:
+      #
+      #   kache enabled   run 1: 179 crates   run 2: 179 crates  (40.6s)
+      #   KACHE_DISABLED=1 run 1: 179 crates   run 2:   0 crates  ( 2.8s)
+      #
+      # The crates that churn are proc-macro and build-script deps (zerocopy,
+      # cc, displaydoc, time-macros, rustix, clang-sys, ring, cmake) — host
+      # artifacts — and everything downstream of a proc-macro follows them.
+      #
+      # Keep kache: it turns the ONE genuine cold build from ~45min into ~2min.
+      # The bug only bites on repeated invocations, so the fix is to stop making
+      # them. `cargo build -p xtask` once + direct binary invocation makes the
+      # build count structural: one dev build, one test build, done. Same
+      # pattern lefthook.yml already uses for the commit hooks.
       - name: Build xtask once
         run: cargo build --locked -p xtask
       - name: Repository and transport contracts
