@@ -8,8 +8,8 @@
       "email": "hello@dinglebear.ai"
     },
     "license": {
-      "name": "MIT",
-      "identifier": "MIT"
+      "name": "AGPL-3.0-only",
+      "identifier": "AGPL-3.0-only"
     },
     "version": "7.2.10"
   },

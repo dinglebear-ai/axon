@@ -1,4 +1,4 @@
-const DEFAULT_AXON_URL = "http://100.88.16.79:8001";
+const DEFAULT_AXON_URL = "http://198.51.100.4:8001";
 
 const axonUrlInput = document.querySelector("#axon-url");
 const axonTokenInput = document.querySelector("#axon-token");

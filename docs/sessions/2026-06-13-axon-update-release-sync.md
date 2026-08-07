@@ -38,7 +38,7 @@ Implemented `axon update`, published PR #211, addressed CodeRabbit feedback, rep
 
 ## Technical Decisions
 
-- `axon update` defaults to `jmagar/axon` and Linux x86_64 release assets because the current deployment target is the dookie Linux host.
+- `axon update` defaults to `jmagar/axon` and Linux x86_64 release assets because the current deployment target is the devhost Linux host.
 - The install path defaults to `~/.local/bin/axon`, matching the user PATH goal, with `AXON_UPDATE_INSTALL_PATH` retained for controlled smoke tests.
 - The container sync path updates `AXON_DEV_TARGET_DIR` for `docker compose up -d axon --no-deps --no-build`, then restarts `axon` so the bind-mounted binary is active.
 - JSON output now uses `serde_json::to_string_pretty`; human output uses Aurora CLI UI helpers.
@@ -156,4 +156,4 @@ Primary risk is release asset naming: only Linux x86_64 is wired. Rollback is to
 
 ## Next Steps
 
-Merge PR #211 after the user is satisfied with the update behavior and review state. After merge, run `axon update --no-container` for host-only install or `axon update` on dookie to install and sync the compose container.
+Merge PR #211 after the user is satisfied with the update behavior and review state. After merge, run `axon update --no-container` for host-only install or `axon update` on devhost to install and sync the compose container.

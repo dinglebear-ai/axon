@@ -7,15 +7,15 @@ working directory: /home/jmagar/workspace/axon_rust
 worktree: /home/jmagar/workspace/axon_rust 39c93ab8 [feat/openai-compat-palette-polish]
 ---
 
-# OpenAI-compatible backend, palette polish, and Steamy Windows build
+# OpenAI-compatible backend, palette polish, and Winhost Windows build
 
 ## User Request
 
-The session started with investigation into context injected into Gemini, then shifted to restoring OpenAI-compatible endpoint support for llama.cpp/Gemma, improving ask/research behavior, polishing the Tauri palette, and building a Windows palette executable for Steamy.
+The session started with investigation into context injected into Gemini, then shifted to restoring OpenAI-compatible endpoint support for llama.cpp/Gemma, improving ask/research behavior, polishing the Tauri palette, and building a Windows palette executable for Winhost.
 
 ## Session Overview
 
-Implemented and configured the OpenAI-compatible LLM path, added ask-path diagnostics and local Gemma/llama.cpp tuning, fixed Tauri palette research output formatting, adjusted palette window behavior, aligned palette color usage with Aurora, and built/copied a Windows `.exe` to Steamy's desktop. The closeout bumped Axon to `4.8.0` and added a release changelog section.
+Implemented and configured the OpenAI-compatible LLM path, added ask-path diagnostics and local Gemma/llama.cpp tuning, fixed Tauri palette research output formatting, adjusted palette window behavior, aligned palette color usage with Aurora, and built/copied a Windows `.exe` to Winhost's desktop. The closeout bumped Axon to `4.8.0` and added a release changelog section.
 
 ## Sequence of Events
 
@@ -29,15 +29,15 @@ Implemented and configured the OpenAI-compatible LLM path, added ask-path diagno
 
 - Palette research was consuming `/v1/research` REST payloads directly and needed to unwrap `payload.summary`/result structures before formatting.
 - The Aurora token file in the palette matched the design system; the green visual drift came from using success/online tones for regular chrome and completed output headings.
-- Dookie can cross-compile the Tauri Windows executable with `x86_64-pc-windows-gnu` and `x86_64-w64-mingw32-gcc`.
-- Steamy is reachable through `steamy-wsl`; the Windows desktop path is `/mnt/c/Users/jmaga/Desktop`.
+- Devhost can cross-compile the Tauri Windows executable with `x86_64-pc-windows-gnu` and `x86_64-w64-mingw32-gcc`.
+- Winhost is reachable through `winhost-wsl`; the Windows desktop path is `/mnt/c/Users/jmaga/Desktop`.
 
 ## Technical Decisions
 
 - Kept provider configuration under `AXON_` names rather than reviving legacy `OPENAI_*` env vars.
 - Used OpenAI-compatible HTTP chat completions for llama.cpp instead of Ollama-specific code.
 - Kept success/green Aurora tokens for true status semantics and moved normal palette chrome to info, rose, violet, and neutral tones.
-- Built the Windows palette `.exe` locally on dookie, then copied it to Steamy, avoiding a dependency on a full checkout/build environment on Steamy.
+- Built the Windows palette `.exe` locally on devhost, then copied it to Winhost, avoiding a dependency on a full checkout/build environment on Winhost.
 
 ## Files Changed
 
@@ -53,7 +53,7 @@ Implemented and configured the OpenAI-compatible LLM path, added ask-path diagno
 | modified | `src/cli/**`, `src/jobs/**`, `src/services/ingest/**`, `tests/setup_check_cli.rs` | Job progress/status and ingest handling changes present in the worktree. |
 | created | `src/cli/commands/job_progress.rs` | Shared job progress presentation. |
 | modified | `apps/palette-tauri/**` | Palette settings, window behavior, output formatting, Aurora color alignment, icons, and Windows build metadata. |
-| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `docker-compose.llama.yaml` | Local deployment/testing helpers for Gemma/llama.cpp and Steamy build delivery. |
+| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `docker-compose.llama.yaml` | Local deployment/testing helpers for Gemma/llama.cpp and Winhost build delivery. |
 
 ## Beads Activity
 
@@ -72,7 +72,7 @@ No bead activity was performed during this closeout. `bd list --all --sort updat
 - Shell commands: `git`, `cargo`, `pnpm`, `ssh`, `scp`, `rsync`, `file`, `bd`, and `rg` for inspection, builds, verification, and deployment.
 - Skills: `aurora-design-system`, `shell-scripting:bash-defensive-patterns`, `nircmd`, `quick-push`, and `save-to-md`.
 - File tools: targeted file reads and `apply_patch` edits.
-- External services: Steamy was accessed via the `steamy-wsl` SSH alias.
+- External services: Winhost was accessed via the `winhost-wsl` SSH alias.
 
 ## Commands Executed
 
@@ -81,13 +81,13 @@ No bead activity was performed during this closeout. `bd list --all --sort updat
 | `pnpm --dir apps/palette-tauri typecheck` | Passed after palette formatting/layout changes. |
 | `pnpm --dir apps/palette-tauri vite:build` | Passed after Aurora color/layout changes. |
 | `cargo check --manifest-path apps/palette-tauri/src-tauri/Cargo.toml` | Passed after Tauri window behavior changes. |
-| `cargo build --release --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu` | Built the Windows palette executable locally on dookie. |
-| `scp apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe steamy-wsl:/mnt/c/Users/jmaga/Desktop/Axon\ Palette.exe` | Copied the executable to Steamy's desktop. |
+| `cargo build --release --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu` | Built the Windows palette executable locally on devhost. |
+| `scp apps/palette-tauri/src-tauri/target/x86_64-pc-windows-gnu/release/axon-palette-tauri.exe winhost-wsl:/mnt/c/Users/jmaga/Desktop/Axon\ Palette.exe` | Copied the executable to Winhost's desktop. |
 | `cargo check --locked` | Passed after version bump to `4.8.0`. |
 
 ## Errors Encountered
 
-- Direct `ssh steamy` timed out; `steamy-wsl` was the reachable SSH target.
+- Direct `ssh winhost` timed out; `winhost-wsl` was the reachable SSH target.
 - An early terminal run of `axon research what day is it` returned `missing field query`, indicating that CLI research invocation shape still needs separate follow-up if that path matters.
 - First-time Windows cross-compilation required downloading/compiling Windows-specific Rust crates and installing/using the Windows target toolchain.
 
@@ -101,7 +101,7 @@ No bead activity was performed during this closeout. `bd list --all --sort updat
 | Palette layout | Output scrolling could move the input bar. | Input bar remains fixed; output scrolls internally. |
 | Palette window | Blur handling was not the requested default behavior. | Palette hides when focus leaves the window. |
 | Palette colors | Success/online tones made normal chrome read green. | Normal chrome uses Aurora info/rose/violet/neutral tones. |
-| Windows delivery | Built on Steamy initially. | Windows `.exe` can be built on dookie and copied to Steamy's desktop. |
+| Windows delivery | Built on Winhost initially. | Windows `.exe` can be built on devhost and copied to Winhost's desktop. |
 
 ## Verification Evidence
 
@@ -110,13 +110,13 @@ No bead activity was performed during this closeout. `bd list --all --sort updat
 | `pnpm --dir apps/palette-tauri typecheck` | TypeScript passes. | Passed. | pass |
 | `pnpm --dir apps/palette-tauri vite:build` | Frontend production build passes. | Passed. | pass |
 | `cargo check --manifest-path apps/palette-tauri/src-tauri/Cargo.toml` | Tauri Rust shell compiles. | Passed. | pass |
-| `cargo build --release --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu` | Windows `.exe` builds on dookie. | Passed. | pass |
-| `file /mnt/c/Users/jmaga/Desktop/"Axon Palette.exe"` on Steamy | Windows PE executable. | Reported `PE32+ executable (GUI) x86-64`. | pass |
+| `cargo build --release --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --target x86_64-pc-windows-gnu` | Windows `.exe` builds on devhost. | Passed. | pass |
+| `file /mnt/c/Users/jmaga/Desktop/"Axon Palette.exe"` on Winhost | Windows PE executable. | Reported `PE32+ executable (GUI) x86-64`. | pass |
 | `cargo check --locked` | Workspace compiles after version bump. | Passed. | pass |
 
 ## Risks and Rollback
 
-- This push contains a broad dirty worktree, not just the final Steamy build helper. Roll back by reverting the pushed commit or selectively reverting subsystems if one area regresses.
+- This push contains a broad dirty worktree, not just the final Winhost build helper. Roll back by reverting the pushed commit or selectively reverting subsystems if one area regresses.
 - OpenAI-compatible endpoint support depends on local llama.cpp endpoint behavior; provider-specific request/response differences should be smoke-tested against the production endpoint after deployment.
 - Cross-compiled Tauri `.exe` is a runnable binary, not a full Windows installer bundle.
 
@@ -133,6 +133,6 @@ No bead activity was performed during this closeout. `bd list --all --sort updat
 
 ## Next Steps
 
-- Smoke-test `Axon Palette.exe` directly from Steamy's Windows desktop.
+- Smoke-test `Axon Palette.exe` directly from Winhost's Windows desktop.
 - Run an end-to-end ask/research request through the palette against the Gemma/llama.cpp backend.
 - If this branch becomes a PR, review the broad status/job-progress and ingest diffs separately from the palette/LLM changes.

@@ -370,7 +370,7 @@ gen-mcp-schema *ARGS:
 clean:
     cargo clean
 
-# Start local infrastructure services. Qdrant runs remotely on tootie by
+# Start local infrastructure services. Qdrant runs remotely on nashost by
 # default, so this starts only the local TEI + Chrome dependencies.
 services-up:
     docker compose --env-file "${AXON_ENV_FILE:-$HOME/.axon/.env}" -f docker-compose.yaml up -d axon-tei axon-chrome
@@ -421,7 +421,7 @@ prod-down:
     docker compose --env-file "$env_file" -f docker-compose.prod.yaml down
 
 # Production stack, external-qdrant override — this deployment's mode (qdrant
-# lives on tootie). Requires AXON_EXTERNAL_QDRANT_URL; fails loudly if unset.
+# lives on nashost). Requires AXON_EXTERNAL_QDRANT_URL; fails loudly if unset.
 prod-up-external-qdrant:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -460,7 +460,7 @@ stop:
     @echo "Stopped running servers and workers"
 
 # Start local infra (TEI, Chrome), then run axon mcp as the worker daemon.
-# Qdrant is expected at AXON_QDRANT_URL/QDRANT_URL, defaulting to tootie.
+# Qdrant is expected at AXON_QDRANT_URL/QDRANT_URL, defaulting to nashost.
 # Fire-and-forget CLI jobs require axon mcp running to be processed.
 dev:
     #!/usr/bin/env bash

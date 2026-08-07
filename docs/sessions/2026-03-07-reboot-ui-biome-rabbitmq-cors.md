@@ -9,7 +9,7 @@
 
 ## Session Overview
 
-Multi-phase session covering infrastructure repairs, CORS verification, version bump, and a full biome pre-commit cleanup pass. Starting from a broken RabbitMQ state (Mnesia corruption, workers in postgres polling fallback), the session repaired infra, confirmed origin allowlists for `axon.tootie.tv`, committed all reboot UI work, and iteratively resolved pre-commit hook failures (biome suppression errors, Cargo.lock mismatch, Redis bgsave error).
+Multi-phase session covering infrastructure repairs, CORS verification, version bump, and a full biome pre-commit cleanup pass. Starting from a broken RabbitMQ state (Mnesia corruption, workers in postgres polling fallback), the session repaired infra, confirmed origin allowlists for `axon.example.internal`, committed all reboot UI work, and iteratively resolved pre-commit hook failures (biome suppression errors, Cargo.lock mismatch, Redis bgsave error).
 
 ---
 
@@ -17,7 +17,7 @@ Multi-phase session covering infrastructure repairs, CORS verification, version 
 
 1. **RabbitMQ Mnesia repair** — cleared `/home/jmagar/appdata/axon/rabbitmq/*`, restarted container, confirmed 13 AMQP connections
 2. **Worker restart** — workers were in postgres polling mode (started while AMQP broken); SIGTERM + `just dev` restart
-3. **CORS audit** — verified `AXON_WEB_ALLOWED_ORIGINS` already contained `https://axon.tootie.tv`; added `allowedDevOrigins: ['axon.tootie.tv']` to `next.config.ts` to suppress HMR cross-origin dev warnings
+3. **CORS audit** — verified `AXON_WEB_ALLOWED_ORIGINS` already contained `https://axon.example.internal`; added `allowedDevOrigins: ['axon.example.internal']` to `next.config.ts` to suppress HMR cross-origin dev warnings
 4. **Version bump** — `Cargo.toml` and `Cargo.lock` updated: `0.8.0 → 0.9.0` (minor `feat` bump per semver)
 5. **CHANGELOG update** — new v0.9.0 entry added to `CHANGELOG.md` Highlights section
 6. **`git add .` + first commit attempt** — blocked by pre-commit hook failures: biome `suppressions/unused` errors + `cargo check --locked` Cargo.lock mismatch
@@ -75,7 +75,7 @@ Multi-phase session covering infrastructure repairs, CORS verification, version 
 ### Modified Files
 | File | Change |
 |------|--------|
-| `apps/web/next.config.ts` | Added `allowedDevOrigins: ['axon.tootie.tv']` |
+| `apps/web/next.config.ts` | Added `allowedDevOrigins: ['axon.example.internal']` |
 | `apps/web/components/logs/logs-viewer.tsx` | `headers['Authorization']` → `headers.Authorization` (biome useLiteralKeys) |
 | `apps/web/components/reboot/reboot-shell.tsx` | biome-ignore moved before useEffect; other cleanup |
 | `apps/web/components/reboot/reboot-frame.tsx` | Reboot frame updates |
@@ -142,7 +142,7 @@ git push
 | Area | Before | After |
 |------|--------|-------|
 | RabbitMQ | Mnesia corrupted, workers in postgres polling fallback | Healthy, 13 AMQP connections |
-| `axon.tootie.tv` HMR | Cross-origin dev warning in browser console | Suppressed via `allowedDevOrigins` |
+| `axon.example.internal` HMR | Cross-origin dev warning in browser console | Suppressed via `allowedDevOrigins` |
 | `headers['Authorization']` | biome `useLiteralKeys` warning | `headers.Authorization` — clean |
 | Pre-commit biome | `suppressions/unused` errors blocking commits | All staged files exit 0 |
 | Block-draggable/suggestion | Misplaced biome-ignore causing error-level `suppressions/unused` | Comments removed; `noStaticElementInteractions` remains as warn |

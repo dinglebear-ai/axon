@@ -11,7 +11,7 @@ worktree: /home/jmagar/workspace/axon_rust                                      
 
 ## User Request
 
-Continue polishing the Axon admin panel, move it toward a dashboard/configurator/jobs surface, make the command palette render human-readable results instead of raw JSON, and use the `agent-os`/winbox device for Windows verification rather than the user's steamy Windows device.
+Continue polishing the Axon admin panel, move it toward a dashboard/configurator/jobs surface, make the command palette render human-readable results instead of raw JSON, and use the `agent-os`/winbox device for Windows verification rather than the user's winhost Windows device.
 
 ## Session Overview
 
@@ -78,7 +78,7 @@ Continue polishing the Axon admin panel, move it toward a dashboard/configurator
 ## Errors Encountered
 
 - The command result React state was migrated from `string` to `CommandResultView | null`, but one old `setCommandResult('')` remained. TypeScript failed, and the fix was to clear with `setCommandResult(null)`.
-- I initially verified through the steamy Windows-MCP device after the user had explicitly asked for `agent-os`/winbox. The flow was corrected to use the `winbox` skill and `mcp__windows_mcp__`.
+- I initially verified through the winhost Windows-MCP device after the user had explicitly asked for `agent-os`/winbox. The flow was corrected to use the `winbox` skill and `mcp__windows_mcp__`.
 - `agent-os` screenshot capture failed with `No module named 'cv2'`. Installing `opencv-python` into the active Python 3.13 environment resolved it.
 
 ## Behavior Changes (Before/After)
@@ -116,7 +116,7 @@ Continue polishing the Axon admin panel, move it toward a dashboard/configurator
 
 - Did not add a full job drill-down view yet; the session focused on readable queue rows and command result cards.
 - Did not keep raw JSON as the primary palette output; readable cards are now primary, with raw output only for unknown shapes.
-- Did not continue using the steamy Windows device after correction; verification moved to agent-os/winbox.
+- Did not continue using the winhost Windows device after correction; verification moved to agent-os/winbox.
 
 ## References
 

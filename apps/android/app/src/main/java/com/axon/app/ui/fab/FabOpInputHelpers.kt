@@ -103,7 +103,7 @@ internal fun FabOp.inputPlaceholder(): String =
 
 internal fun FabOp.inputExamples(): List<String> =
     when (this) {
-        FabOp.Scrape -> listOf("https://example.com/docs", "axon.tootie.tv")
+        FabOp.Scrape -> listOf("https://example.com/docs", "axon.example.internal")
         FabOp.Research -> listOf("latest Android edge-to-edge guidance", "how to structure a RAG eval")
         FabOp.Extract -> listOf("https://example.com/product", "https://github.com/jmagar/axon")
         FabOp.Index -> listOf("https://example.com/docs", "/home/jmagar/workspace/axon/docs")

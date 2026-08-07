@@ -13,7 +13,7 @@
 | TEI (Qwen3-Embedding-0.6B) | ✓ OK | `http://127.0.0.1:52000` |
 | Qdrant | ✓ OK | `http://127.0.0.1:53333` — 7.1M vectors, 3.4M points |
 | Chrome | ✓ OK | `http://127.0.0.1:6000` (management API reachable) |
-| LLM endpoint (OpenAI-compat) | ✗ DOWN | `http://100.120.242.29:8317` — Tailscale peer unreachable |
+| LLM endpoint (OpenAI-compat) | ✗ DOWN | `http://198.51.100.5:8317` — Tailscale peer unreachable |
 | ACP adapter | ⚠ Partial | Adapter works for `ask`/`research`/`debug`; model `gemini-3-flash-preview` silently skipped |
 
 ---
@@ -322,7 +322,7 @@ Help shows correct `--from` and `--to` flags. Not run end-to-end (would modify p
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| LLM endpoint unreachable | Tailscale peer `100.120.242.29:8317` is down | Restart the remote proxy service |
+| LLM endpoint unreachable | Tailscale peer `198.51.100.5:8317` is down | Restart the remote proxy service |
 | Chrome DNS failure in `extract` | Running `axon` locally but Chrome resolves Docker-internal hostnames | Run inside container or use `--render-mode http` to bypass Chrome |
 
 ### Expected Limitations (lite mode)

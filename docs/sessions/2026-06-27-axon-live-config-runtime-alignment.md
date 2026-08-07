@@ -51,7 +51,7 @@ to `/distrobuilder/docs/`, and that target returns HTTP 403. The canonical docs 
   - `axon-chrome`
 - Confirmed current feature support through `axon doctor`, including:
   - SQLite jobs DB at `/home/jmagar/.axon/jobs.db`
-  - Qdrant at `http://100.120.242.29:53333`
+  - Qdrant at `http://198.51.100.5:53333`
   - TEI at `http://127.0.0.1:52000`
   - Chrome management endpoint at `http://127.0.0.1:6000/`
   - Gemini headless command validation

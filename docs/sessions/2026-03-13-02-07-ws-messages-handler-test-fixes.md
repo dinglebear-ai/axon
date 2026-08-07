@@ -145,7 +145,7 @@ None — no Axon embed/retrieve operations were performed during this session's 
 ## Open Questions
 
 1. **Rust compiler warnings (27 total)** — In `crates/vector/ops/commands/evaluate.rs`, `evaluate/display.rs`, `evaluate/streaming.rs`, `streaming.rs`. Investigation was started in prior session but not completed. Root causes understood (see prior session doc); fixes not yet applied.
-2. **TEI GPU CUDA error** — `CUDA_ERROR_UNKNOWN` on steamy-wsl blocked Axon embedding in prior session. Unknown if still active. Not investigated this session.
+2. **TEI GPU CUDA error** — `CUDA_ERROR_UNKNOWN` on winhost-wsl blocked Axon embedding in prior session. Unknown if still active. Not investigated this session.
 3. **Pre-existing test isolation** — `refs.runtimeStateRef.current` in tests starts with `makeInitialRuntimeState()` (currentJobId: null), but `currentJobIdRef.current` is set separately. This two-ref architecture was working before the pure-reducer refactor. It's unclear exactly when the divergence was introduced.
 
 ---
@@ -153,5 +153,5 @@ None — no Axon embed/retrieve operations were performed during this session's 
 ## Next Steps
 
 1. **Fix 27 Rust compiler warnings** in evaluate subsystem — see prior session doc `2026-03-13-01-53-compiler-warnings-and-probe-timeout-fix.md` for detailed root cause analysis
-2. **Verify TEI GPU** — Check if `CUDA_ERROR_UNKNOWN` on steamy-wsl has resolved; try `axon embed` to confirm
+2. **Verify TEI GPU** — Check if `CUDA_ERROR_UNKNOWN` on winhost-wsl has resolved; try `axon embed` to confirm
 3. **Run full test suite** — `pnpm vitest run` across all test files to confirm no regressions from the handler changes

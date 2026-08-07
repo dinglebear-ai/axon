@@ -2,7 +2,7 @@
 
 **Status:** ready to file as a beads issue. (`bd create` could not run from the
 session that produced this — the remote Dolt/MariaDB backend at
-`100.75.111.118:3311` returned `Access denied for user 'root'`. File with
+`198.51.100.2:3311` returned `Access denied for user 'root'`. File with
 `bd create "$(cat docs/pipeline-unification/delivery/documentation-contract-gaps.md)"`
 or paste the body below.)
 

@@ -120,7 +120,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 
 ```text
 AXON_LLM_BACKEND=openai-compat
-AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
+AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}
 AXON_SYNTHESIS_OPENAI_MODEL=${GEMINI_FLASH_MODEL:-gemini-3.5-flash-low}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```
@@ -133,7 +133,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 
 ```text
 AXON_LLM_BACKEND=openai-compat
-AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
+AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}
 AXON_SYNTHESIS_OPENAI_MODEL=${GPT_5_4_MINI_MODEL:-gpt-5.4-mini}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```
@@ -146,7 +146,7 @@ Copies the base env file, removes existing LLM and ask-tuning keys, then applies
 
 ```text
 AXON_LLM_BACKEND=openai-compat
-AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.tootie.tv/v1}
+AXON_OPENAI_BASE_URL=${CLI_API_BASE_URL:-https://cli-api.example.internal/v1}
 AXON_SYNTHESIS_OPENAI_MODEL=${GEMINI_3_1_FLASH_LITE_MODEL:-gemini-3.1-flash-lite}
 AXON_LLM_COMPLETION_CONCURRENCY=1
 ```

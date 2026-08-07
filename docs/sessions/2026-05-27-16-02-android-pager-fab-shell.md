@@ -37,7 +37,7 @@ debug APK built and uploaded to gdrive.
   `src/web/server/routing.rs`, `src/web/CLAUDE.md`, and the handler modules — no
   new server routes required. Streaming exists only for `/v1/ask/stream`;
   research/summarize have no streaming endpoint.
-- Audited Aurora Android components (`~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/tootie/aurora/components/`); confirmed no FAB primitive — Material3 `ExtendedFloatingActionButton` is correct.
+- Audited Aurora Android components (`~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/nashost/aurora/components/`); confirmed no FAB primitive — Material3 `ExtendedFloatingActionButton` is correct.
 - Built the Operations shell: `OperationMode` enum (9 modes with distinct
   Material icons), `OperationsViewModel` (active mode state), `ModePickerSheet`
   (Aurora-based grid), `OperationsScreen` (FAB + active-mode renderer),
@@ -170,7 +170,7 @@ debug APK built and uploaded to gdrive.
 - `src/web/CLAUDE.md` — auth scope rules + services-first contract.
 - `src/services/types/service.rs:441-466` — `RetrieveResult` wire shape.
 - `src/services/client_contract.rs:117-148` — `RestRetrieveRequest`/`RestMapRequest`/`RestSuggestRequest`.
-- `~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/tootie/aurora/components/` — Aurora Android component inventory.
+- `~/workspace/aurora-design-system/android/aurora/src/main/kotlin/tv/nashost/aurora/components/` — Aurora Android component inventory.
 - Beads: `axon_rust-ivjr` (shell skeleton), `axon_rust-ywis` (document view, closed).
 
 ## Open Questions

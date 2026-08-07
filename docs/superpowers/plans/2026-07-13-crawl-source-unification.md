@@ -1291,7 +1291,7 @@ async fn ssrf_denies_tailscale_and_private_targets() {
     let harness = WebSourceHarness::with_fixture_site().await;
     for url in [
         "http://100.64.0.1/",
-        "http://100.120.242.29/",
+        "http://198.51.100.5/",
         "http://127.0.0.1/",
         "http://169.254.169.254/",
     ] {
@@ -1641,7 +1641,7 @@ async fn search_auto_index_uses_bounded_source_jobs() {
 #[tokio::test]
 async fn auto_index_strips_untrusted_headers_and_denies_tailscale() {
     let harness = SearchAutoIndexHarness::with_search_results(1).await;
-    harness.set_result_url("http://100.120.242.29/internal");
+    harness.set_result_url("http://198.51.100.5/internal");
     let result = harness.search("private target").await;
     assert!(result.expect_err("ssrf").to_string().contains("non-global"));
 }

@@ -19,7 +19,7 @@ beads: lab-yinnu, lab-nh4wf, lab-wr7fm (lab repo tracker, not axon)
 
 ## Session Overview
 
-Lumen doctor found TEI down (restart-loop, exit 137). Root cause: the host (dookie, 48 GiB) was OOM — ~1,450 orphaned MCP server processes (40.3 GiB RSS) leaked by `labby gateway code exec`, driven by an orphaned YouTube-download batch script plus a second live agent session. Fixed three bugs in the lab repo across two commits on `main`: (1) drain the upstream pool on normal CLI exit, (2) drain on SIGINT/SIGTERM too, (3) stop connecting the full upstream fleet per one-shot invocation via lazy seeding + a fingerprinted on-disk codemode catalog cache. All verified empirically, deployed to `~/.local/bin/labby` (0.22.2). TEI/Lumen healthy.
+Lumen doctor found TEI down (restart-loop, exit 137). Root cause: the host (devhost, 48 GiB) was OOM — ~1,450 orphaned MCP server processes (40.3 GiB RSS) leaked by `labby gateway code exec`, driven by an orphaned YouTube-download batch script plus a second live agent session. Fixed three bugs in the lab repo across two commits on `main`: (1) drain the upstream pool on normal CLI exit, (2) drain on SIGINT/SIGTERM too, (3) stop connecting the full upstream fleet per one-shot invocation via lazy seeding + a fingerprinted on-disk codemode catalog cache. All verified empirically, deployed to `~/.local/bin/labby` (0.22.2). TEI/Lumen healthy.
 
 ## Sequence of Events
 
@@ -79,7 +79,7 @@ All in the **lab** repo tracker (`~/workspace/lab`), not axon's.
 
 | bead | title | actions | final status | why it mattered |
 |---|---|---|---|---|
-| lab-yinnu | gateway CLI leaks stdio upstream child processes on exit | created, claimed, closed | closed | the incident bug — 1,450 leaked processes OOM'd dookie and killed axon-tei |
+| lab-yinnu | gateway CLI leaks stdio upstream child processes on exit | created, claimed, closed | closed | the incident bug — 1,450 leaked processes OOM'd devhost and killed axon-tei |
 | lab-nh4wf | gateway CLI: drain pool on SIGTERM/SIGINT | created (as follow-up), claimed, LEARNED comment, closed | closed | `timeout`-killed invocations still leaked after fix 1 |
 | lab-wr7fm | gateway CLI: lazy stdio upstream spawn for one-shot exec | created (as follow-up), claimed, DECISION + LEARNED + DEVIATION comments, closed | closed | per-invocation full-fleet spawn was the cost amplifier |
 
@@ -138,7 +138,7 @@ No axon beads were touched this session.
 | `labby gateway <cmd>` killed by SIGTERM/SIGINT | process died with no cleanup; children orphaned | drain runs; exits 128+signum |
 | `labby gateway list/get/add/...` | spawned the entire upstream fleet eagerly | lazy seed; no upstream processes spawned |
 | `labby gateway code exec` proxy generation | connected every enabled upstream per invocation | warm cache: 0 stdio connects; only stale/missing upstreams connect; failures retried next run |
-| host stability (dookie) | 40 GiB of leaked MCP processes → OOM → axon-tei crashloop | 0 orphans; TEI + Lumen healthy |
+| host stability (devhost) | 40 GiB of leaked MCP processes → OOM → axon-tei crashloop | 0 orphans; TEI + Lumen healthy |
 | new artifact | — | `~/.lab/cache/codemode-catalog.json` (auto-managed, safe to delete) |
 
 ## Verification Evidence
@@ -185,6 +185,6 @@ No axon beads were touched this session.
 ## Next Steps
 
 - **Done & shipped**: all three leak fixes merged to lab main and deployed locally; beads closed; no unfinished work from this session.
-- **Recommended**: rebuild/redeploy the labby serve container so the serve path warms the catalog cache (`docker compose` in whatever deploys `lab.tootie.tv` — currently returning 502 per session-start hook, worth investigating separately).
+- **Recommended**: rebuild/redeploy the labby serve container so the serve path warms the catalog cache (`docker compose` in whatever deploys `lab.example.internal` — currently returning 502 per session-start hook, worth investigating separately).
 - **Recommended**: file a lumen bead for 413-split batching when indexing large repos.
 - **Watch for**: any reappearance of PPID-1 `npm`/`uv` orphans (`ps -eo pid,ppid,comm | awk '$2==1 && ($3=="npm" || $3=="uv")'`) — would indicate a leak path not covered (e.g. SIGKILL, which cannot be handled).

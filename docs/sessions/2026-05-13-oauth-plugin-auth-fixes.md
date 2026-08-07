@@ -9,7 +9,7 @@ working directory: /home/jmagar/workspace/axon_rust
 
 ## User Request
 
-Fix OAuth so Claude Code can connect to `https://axon.tootie.tv/mcp` using OAuth credentials, same as claude.ai. Investigate plugin config errors, 401 failures, and ensure everything is properly working.
+Fix OAuth so Claude Code can connect to `https://axon.example.internal/mcp` using OAuth credentials, same as claude.ai. Investigate plugin config errors, 401 failures, and ensure everything is properly working.
 
 ## Session Overview
 

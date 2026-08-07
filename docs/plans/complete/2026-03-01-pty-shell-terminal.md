@@ -673,7 +673,7 @@ git commit -m "style: cargo fmt on shell.rs"
 docker compose build axon-workers && docker compose up -d axon-workers
 ```
 
-**Step 2: Open browser at `https://axon.tootie.tv/terminal`**
+**Step 2: Open browser at `https://axon.example.internal/terminal`**
 
 Expected:
 - Toolbar shows `TERMINAL • CONNECTED`

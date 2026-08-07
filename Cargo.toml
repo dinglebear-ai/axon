@@ -43,7 +43,7 @@ homepage = "https://axon.dinglebear.ai"
 authors = ["dinglebear.ai <hello@dinglebear.ai>"]
 description = "Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST."
 readme = "README.md"
-license = "MIT"
+license = "AGPL-3.0-only"
 
 # ── workspace lints ──────────────────────────────────────────────────────────
 # Single source of truth for the lint policy every crate previously repeated
