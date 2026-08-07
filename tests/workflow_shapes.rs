@@ -128,7 +128,7 @@ fn ci_runs_release_version_gate_before_merge() {
     let contracts = workflow_job_block(workflow, "rust-contracts");
     assert!(
         contracts.contains(
-            "cargo xtask check-release-versions --base origin/main --head HEAD --mode pr"
+            "./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr"
         ),
         "CI must run the multi-component release version gate on pull requests"
     );
@@ -190,13 +190,15 @@ fn windows_xtask_check_avoids_duplicate_repository_scans() {
         "windows-check must have a bounded timeout because Windows runners can hang on repo scans"
     );
     assert!(
-        job.contains("cargo check -p xtask --locked")
+        job.contains("cargo build -p xtask --locked")
             && job.contains("cargo test -p xtask --locked")
-            && job.contains("cargo xtask check-mcp-http"),
+            && job.contains("./target/debug/xtask.exe check-mcp-http"),
         "windows-check should keep the Windows-specific xtask compile/test coverage"
     );
     assert!(
-        !job.contains("cargo xtask check-no-mod-rs"),
+        // Form-agnostic: catches both `cargo xtask check-no-mod-rs` and a direct
+        // `./target/debug/xtask.exe check-no-mod-rs`.
+        !job.contains("check-no-mod-rs"),
         "check-no-mod-rs already runs in rust-contracts and has hung on Windows"
     );
 }
@@ -207,7 +209,7 @@ fn rest_api_parity_checkout_covers_openapi_drift_inputs() {
     let job = workflow_job_block(workflow, "rust-contracts");
 
     assert!(
-        job.contains("cargo xtask check-openapi-drift"),
+        job.contains("./target/debug/xtask check-openapi-drift"),
         "rust-contracts must run the generated OpenAPI drift guard"
     );
 
