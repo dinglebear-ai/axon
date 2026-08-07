@@ -465,8 +465,11 @@ jobs:
         run: cargo fmt --manifest-path apps/palette-tauri/src-tauri/Cargo.toml -- --check
       - name: Tauri cargo clippy
         run: cargo clippy --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-      - name: Tauri cargo check
-        run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+      # `Tauri cargo check` removed: the clippy step above runs --all-targets on
+      # the same manifest, and clippy is a strict superset of check — it runs the
+      # same type-check pass and then adds lints. The separate check step could
+      # not fail unless clippy already had, while costing another build of the
+      # palette crate graph.
       - name: Tauri cargo test
         # --test-threads=1: terminal_tests mutate the process-global SHELL env
         # (set_var("SHELL","/bin/zsh")); run in parallel that leaks into the
