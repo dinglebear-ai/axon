@@ -38,6 +38,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

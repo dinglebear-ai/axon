@@ -27,6 +27,7 @@ OUTPUT_KEYS = [
     "palette",
     "chrome",
     "docker",
+    "docker_build",
     "compose",
     "mcp",
     "security",
@@ -120,11 +121,33 @@ VERSION_FILES = {
 }
 
 
+# Keys enabled for the weekly cron. The ci.yml cron exists for the live-qdrant
+# suite (whose job gates on `github.event_name == 'schedule'` directly, not on
+# a changes output) plus the security audit; the codeql.yml cron exists for the
+# full weekly CodeQL sweep. `workflow` stays on because `security` needs
+# rust-contracts, which is gated on `workflow` among others. Everything else
+# (full Rust fanout, Android, palette, web, docker, releases) is skipped on
+# schedule — a cron run cannot have changed any of those paths.
+SCHEDULE_KEYS = {
+    "security",
+    "workflow",
+    "codeql_all",
+    "codeql_actions",
+    "codeql_javascript_typescript",
+    "codeql_python",
+    "codeql_rust",
+    "codeql_java_kotlin",
+}
+
+
 def classify(event: str, paths: list[str]) -> dict[str, bool]:
-    if event in {"schedule", "workflow_dispatch"}:
+    if event == "workflow_dispatch":
         result = {key: True for key in OUTPUT_KEYS}
         result["routing_fallback"] = False
         return result
+
+    if event == "schedule":
+        return {key: key in SCHEDULE_KEYS for key in OUTPUT_KEYS}
 
     if not paths:
         result = {key: True for key in OUTPUT_KEYS}
@@ -133,10 +156,19 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
 
     workflow = any_match(
         paths,
-        lambda p: starts(p, ".github/workflows/") or p in FULL_CI_ROUTER_PATHS,
+        lambda p: starts(p, ".github/workflows/", ".github/actions/")
+        or p in FULL_CI_ROUTER_PATHS,
     )
     full_ci = any_match(paths, lambda p: p in FULL_CI_ROUTER_PATHS)
-    ci_all = any_match(paths, lambda p: p == ".github/workflows/ci.yml")
+    # ci.yml orchestrates everything, and composite actions under
+    # .github/actions/ are consumed across the Rust/web/release jobs, so both
+    # keep the conservative all-true routing (every ci.yml category output ORs
+    # in ci_all). Other workflow files route only the CI surface they own via
+    # WORKFLOW_CATEGORY_PATHS below, or just `workflow`.
+    ci_all = any_match(
+        paths,
+        lambda p: p == ".github/workflows/ci.yml" or starts(p, ".github/actions/"),
+    )
     codeql_all = any_match(paths, lambda p: p == ".github/workflows/codeql.yml")
     docs = any_match(
         paths,
@@ -226,6 +258,21 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         or starts(p, "config/Dockerfile")
         or p in WORKFLOW_CATEGORY_PATHS["docker"],
     )
+    # Narrow image-input category for the PR-time in-container image build
+    # smoke: only files that define the image itself (Dockerfile, build
+    # context excludes) or the workflows that run the build. Unlike `docker`
+    # (which docker-image.yml keeps consuming on main), plain src/** or
+    # manifest churn does not flip this on, so an ordinary Rust PR no longer
+    # triggers a full in-container cargo build. Compose yamls stay out: the
+    # compose-config job validates them without building, and they are not
+    # inputs to the Dockerfile build.
+    docker_build = any_match(
+        paths,
+        lambda p: p == ".dockerignore"
+        or starts(p, "config/Dockerfile")
+        or p in WORKFLOW_CATEGORY_PATHS["docker"]
+        or p in WORKFLOW_CATEGORY_PATHS["compose"],
+    )
     security = any_match(
         paths,
         lambda p: p in {"Cargo.lock", "deny.toml"}
@@ -267,6 +314,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "palette": palette,
         "chrome": chrome,
         "docker": docker,
+        "docker_build": docker_build,
         "compose": compose,
         "mcp": mcp,
         "security": security,

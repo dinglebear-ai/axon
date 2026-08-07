@@ -300,8 +300,8 @@ fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
 }
 
 #[test]
-fn workflow_dispatch_and_schedule_enable_everything() {
-    for event in ["workflow_dispatch", "schedule"] {
+fn workflow_dispatch_enables_everything() {
+    for event in ["workflow_dispatch"] {
         let out = classify(event, &[]);
         for key in [
             "all",
@@ -327,6 +327,42 @@ fn workflow_dispatch_and_schedule_enable_everything() {
         }
         assert_eq!(out["routing_fallback"], "false");
     }
+}
+
+/// The weekly cron exists for the security sweep and the CodeQL languages, not
+/// to rebuild every product. It used to share `workflow_dispatch`'s all-true
+/// branch, so Monday rebuilt Android APKs, the Tauri desktop binary, the
+/// container image and the full Rust matrix from an unchanged tree.
+#[test]
+fn schedule_enables_only_the_security_and_codeql_lanes() {
+    let out = classify("schedule", &[]);
+    for key in [
+        "security",
+        "codeql_actions",
+        "codeql_javascript_typescript",
+        "codeql_python",
+        "codeql_rust",
+        "codeql_java_kotlin",
+    ] {
+        assert_eq!(out[key], "true", "schedule should enable {key}");
+    }
+    for key in [
+        "all",
+        "rust",
+        "web",
+        "android",
+        "palette",
+        "chrome",
+        "docker",
+        "docker_build",
+        "compose",
+        "release",
+        "version_files",
+        "openapi",
+    ] {
+        assert_eq!(out[key], "false", "schedule should not enable {key}");
+    }
+    assert_eq!(out["routing_fallback"], "false");
 }
 
 #[test]

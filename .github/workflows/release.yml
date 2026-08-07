@@ -20,6 +20,10 @@ on:
         type: boolean
         default: false
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
