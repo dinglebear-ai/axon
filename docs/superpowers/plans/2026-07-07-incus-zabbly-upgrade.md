@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Switch dookie's Incus install from Ubuntu-distro-packaged 6.0.5-8 (LTS, no OCI support) to Zabbly's `stable` (monthly feature) channel and upgrade to 6.3+, unlocking native OCI application-container support, without breaking the live production `labby` container or any other existing container/profile on the host.
+**Goal:** Switch devhost's Incus install from Ubuntu-distro-packaged 6.0.5-8 (LTS, no OCI support) to Zabbly's `stable` (monthly feature) channel and upgrade to 6.3+, unlocking native OCI application-container support, without breaking the live production `labby` container or any other existing container/profile on the host.
 
 **Architecture:** This is a host operations task, not application code — there are no source files to create. Each task is a sequenced, verified shell operation: capture a baseline, verify the trust root, rehearse rollback, add the repo, upgrade, re-verify every pre-existing container/profile against the baseline, prove OCI actually works, then pin the repo against silent future drift. "Tests" in this plan are verification commands run against real host state, not unit tests against source code.
 
@@ -48,7 +48,7 @@ dpkg -l | grep -i incus > /tmp/incus-upgrade-baseline/dpkg-incus.txt
 incus version > /tmp/incus-upgrade-baseline/incus-version.txt
 cat /tmp/incus-upgrade-baseline/*.txt
 ```
-Expected: `incus-list.txt` shows `labby` as RUNNING with its two IPs (`100.80.57.104` tailscale0, `10.47.200.10` eth0), plus the stopped containers (`labby-golden`, `incus-web`, `incus-web-agent-golden`, `agent-run-*`, `axon-bootstrap-temp`); `incus-version.txt` shows `Client version: 6.0.5` / `Server version: 6.0.5`; `dpkg-incus.txt` shows all `incus*` packages at `6.0.5-8`.
+Expected: `incus-list.txt` shows `labby` as RUNNING with its two IPs (`198.51.100.3` tailscale0, `10.47.200.10` eth0), plus the stopped containers (`labby-golden`, `incus-web`, `incus-web-agent-golden`, `agent-run-*`, `axon-bootstrap-temp`); `incus-version.txt` shows `Client version: 6.0.5` / `Server version: 6.0.5`; `dpkg-incus.txt` shows all `incus*` packages at `6.0.5-8`.
 
 - [ ] **Step 3: Confirm `labby`'s MCP gateway currently responds (pre-upgrade health baseline)**
 
@@ -378,7 +378,7 @@ Run:
 ```bash
 cd /home/jmagar/workspace/axon
 bd comments add axon_rust-4m749.8 "$(cat <<'EOF'
-FACT: Zabbly stable-channel upgrade completed and verified on dookie (2026-07-07). Evidence (full transcripts in /tmp/incus-upgrade-baseline/, host-local scratch — pasted key excerpts below per the epic's close-gate requiring a citable, independently-verifiable transcript, not just prose):
+FACT: Zabbly stable-channel upgrade completed and verified on devhost (2026-07-07). Evidence (full transcripts in /tmp/incus-upgrade-baseline/, host-local scratch — pasted key excerpts below per the epic's close-gate requiring a citable, independently-verifiable transcript, not just prose):
 
 $(cat /tmp/incus-upgrade-baseline/incus-version.txt)
 --- upgraded to ---
@@ -394,7 +394,7 @@ Packages held at new version: $(apt-mark showhold | tr '\n' ' ')
 
 OCI smoke test: incus launch docker:hello-world succeeded, cleaned up, no orphaned instances/profiles remain (incus list -a / incus profile list checked against baseline).
 
-Rollback procedure verified via dry-run BEFORE the live upgrade (not needed, upgrade succeeded): see /tmp/incus-upgrade-baseline/rollback-procedure.txt on dookie.
+Rollback procedure verified via dry-run BEFORE the live upgrade (not needed, upgrade succeeded): see /tmp/incus-upgrade-baseline/rollback-procedure.txt on devhost.
 EOF
 )"
 bd update axon_rust-4m749.8 -s closed --notes "Closed per plan docs/superpowers/plans/2026-07-07-incus-zabbly-upgrade.md, all 8 tasks completed and verified."

@@ -74,7 +74,7 @@ class SettingsViewModelTest {
 
     @Test fun `testConnection with http URL shows cleartext warning`() = runTest(dispatcher) {
         val vm = TestSettingsViewModel(pingResult = Result.success(Unit))
-        vm.testConnection("http://dookie.manatee-triceratops.ts.net:8001", "tok")
+        vm.testConnection("http://devhost.example.ts.net:8001", "tok")
         val ok = vm.connection.value as TestConnectionState.Ok
         assertNotNull("cleartext http must produce a warning", ok.warning)
     }
@@ -148,8 +148,8 @@ class SettingsSecurityHelpersTest {
     }
 
     @Test fun `validateServerUrl accepts cleartext for configured tailscale domains`() {
-        validateAxonServerUrl("http://dookie.manatee-triceratops.ts.net:8001")
-        validateAxonServerUrl("http://dookie.manatee-triceratops.tailvpn.net:8001")
+        validateAxonServerUrl("http://devhost.example.ts.net:8001")
+        validateAxonServerUrl("http://devhost.example-tailnet.tailvpn.net:8001")
     }
 
     @Test fun `redacts explicit env secrets from values loaded into UI`() {

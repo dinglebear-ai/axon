@@ -22,13 +22,13 @@ diagnosing why even Chrome mode returns 100% thin pages there.
 | Session 1 (prior) | Found `readability: true` was stripping VitePress docs to title-only |
 | Session 1 (prior) | Fixed: `readability: false` in `build_transform_config()` |
 | Session 1 (prior) | Wired Chrome CDP: `with_chrome_connection()` in engine.rs for both branches |
-| Session 1 (prior) | Added `AXON_CHROME_REMOTE_URL`/`CHROME_URL` env vars → `100.120.242.29:9222` |
+| Session 1 (prior) | Added `AXON_CHROME_REMOTE_URL`/`CHROME_URL` env vars → `198.51.100.5:9222` |
 | Session 1 result | vitest.dev: 6 pages → 157 pages, 97% thin → 13% thin |
 | Session 2 start | User asked: "why does it work for vitest but not shadcn?" |
 | Session 2 | Diagnosed SSR vs CSR fundamental difference |
 | Session 2 | Added `with_wait_for_idle_network(15s)` to Chrome/webdriver branches |
 | Session 2 | Tested Chrome crawl of shadcn: pages_seen=10, markdown_files=0, thin_pages=10 |
-| Session 2 | Confirmed `100.120.242.29:9222` is Browserless (not regular Chrome) |
+| Session 2 | Confirmed `198.51.100.5:9222` is Browserless (not regular Chrome) |
 | Session 2 | Found `scrape` command ignores `--render-mode chrome` (always plain HTTP) |
 | Session 2 | Found shadcn `<main>` element contains only sidebar nav items in SSR HTML |
 | Session 2 | Open: `main_content: true` treating sidebar-nav-only `<main>` as non-content |
@@ -55,8 +55,8 @@ diagnosing why even Chrome mode returns 100% thin pages there.
 - No sitemap at `ui.shadcn.com/sitemap.xml` (returns 404)
 
 ### Browserless Endpoint
-- `100.120.242.29:9222` is a **Browserless** service (Puppeteer-compatible headless Chrome)
-- `/json/version` returns `webSocketDebuggerUrl: ws://100.120.242.29:9222`
+- `198.51.100.5:9222` is a **Browserless** service (Puppeteer-compatible headless Chrome)
+- `/json/version` returns `webSocketDebuggerUrl: ws://198.51.100.5:9222`
 - `chromey::Browser::connect_with_config` fetches `/json/version` when given an HTTP URL,
   uses returned WS URL to connect
 - Browserless creates isolated sessions per CDP connection — `/json` always shows `about:blank`
@@ -77,7 +77,7 @@ diagnosing why even Chrome mode returns 100% thin pages there.
 |------|--------|---------|
 | `crates/core/content.rs:31` | `readability: true` → `readability: false` | Stop Readability from stripping doc pages to title-only |
 | `crates/crawl/engine.rs:180–216` | `with_chrome_connection()` in both branches; `with_wait_for_idle_network(15s)` | Wire CDP to Browserless; wait for CSR JS hydration |
-| `.env` | Added `AXON_CHROME_REMOTE_URL`, `CHROME_URL` | Point spider to Browserless at `100.120.242.29:9222` |
+| `.env` | Added `AXON_CHROME_REMOTE_URL`, `CHROME_URL` | Point spider to Browserless at `198.51.100.5:9222` |
 | `.env.example` | Added Chrome CDP env var documentation | Document new vars for future users |
 
 ---
@@ -109,8 +109,8 @@ RUST_LOG=info ./scripts/axon crawl https://ui.shadcn.com --render-mode chrome \
 # Result: "Installation - shadcn/ui" (title only — HTTP only, ignores --render-mode)
 
 # Inspect Browserless endpoint
-curl http://100.120.242.29:9222/json/version
-# webSocketDebuggerUrl: ws://100.120.242.29:9222
+curl http://198.51.100.5:9222/json/version
+# webSocketDebuggerUrl: ws://198.51.100.5:9222
 # Puppeteer-Version: 21.9.0  ← confirms it's Browserless
 ```
 
@@ -136,7 +136,7 @@ curl http://100.120.242.29:9222/json/version
 | shadcn Chrome crawl (10 pages) | >0 markdown files | 0 markdown files, 10 thin | ❌ FAIL |
 | `cargo build --bin axon` | Clean compile | Clean | ✅ PASS |
 | `cargo clippy` | 0 warnings | Not run this session | — |
-| Browserless `/json/version` | WS URL in response | `ws://100.120.242.29:9222` | ✅ CONFIRMED |
+| Browserless `/json/version` | WS URL in response | `ws://198.51.100.5:9222` | ✅ CONFIRMED |
 
 ---
 

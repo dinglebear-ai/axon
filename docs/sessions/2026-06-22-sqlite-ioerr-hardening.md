@@ -110,7 +110,7 @@ No transcript file was found under the probed Claude/Codex session paths; this n
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true cargo check --lib` | Passed |
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true cargo build --bin axon` | Built debug binary for dev container |
 | `docker compose --env-file /home/jmagar/.axon/.env -f docker-compose.yaml restart axon` | Restarted Axon dev container |
-| `curl -H 'Host: axon.tootie.tv' http://127.0.0.1:40090/readyz` | Returned `{"ok":true,"sqlite":"ready","qdrant":"ready","tei":"ready"}` |
+| `curl -H 'Host: axon.example.internal' http://127.0.0.1:40090/readyz` | Returned `{"ok":true,"sqlite":"ready","qdrant":"ready","tei":"ready"}` |
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true ./target/debug/axon --json doctor \| jq '.services.sqlite, .all_ok'` | Showed `quick_check: ok`, `runtime_ioerr_count: 0`, and `all_ok: true` |
 
 ## Errors Encountered
@@ -119,7 +119,7 @@ No transcript file was found under the probed Claude/Codex session paths; this n
 - A first lock implementation used unsafe `libc::flock`; the crate denies unsafe code, so it was replaced with safe `File::try_lock_shared` / `File::try_lock`.
 - Cargo test filters with multiple names failed because Cargo accepts a single test filter; reran module or single-test filters.
 - Lumen semantic search returned `HTTP 429` from its embedding backend on follow-up searches; switched to exact known string lookups.
-- `/readyz` was first checked on host port `8001`, which belonged to a separate host process. The container publishes to `40090`, and host-header validation requires `Host: axon.tootie.tv`.
+- `/readyz` was first checked on host port `8001`, which belonged to a separate host process. The container publishes to `40090`, and host-header validation requires `Host: axon.example.internal`.
 - CLI doctor emitted an unrelated Codex app-server usage-limit warning while SQLite/Qdrant/TEI readiness remained clean.
 
 ## Behavior Changes (Before/After)
@@ -142,7 +142,7 @@ No transcript file was found under the probed Claude/Codex session paths; this n
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true cargo test full_status_includes_sqlite_diagnostics_and_degrades_on_runtime_ioerr --lib` | Status IOERR test passes | 1 passed | pass |
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true cargo check --lib` | Library check succeeds | Finished dev profile | pass |
 | `AXON_ALLOW_FALLBACK_WEB_ASSETS=true cargo build --bin axon` | Debug binary builds | Finished dev profile | pass |
-| `curl -H 'Host: axon.tootie.tv' http://127.0.0.1:40090/readyz` | SQLite included and ready | `{"ok":true,"sqlite":"ready","qdrant":"ready","tei":"ready"}` | pass |
+| `curl -H 'Host: axon.example.internal' http://127.0.0.1:40090/readyz` | SQLite included and ready | `{"ok":true,"sqlite":"ready","qdrant":"ready","tei":"ready"}` | pass |
 | `./target/debug/axon --json doctor \| jq '.services.sqlite, .all_ok'` | SQLite diagnostics healthy | `quick_check: ok`, `runtime_ioerr_count: 0`, `all_ok: true` | pass |
 
 ## Risks and Rollback

@@ -11,19 +11,19 @@ worktree: /home/jmagar/workspace/axon_rust  72e546e0 [bd-1d2.3/ssh-remote-deploy
 pr: none
 ---
 
-# Dolt RemotesAPI on squirts
+# Dolt RemotesAPI on edgehost
 
 ## User Request
 
-Enable the Dolt `remotesapi` endpoint on the remote host `squirts`, where the Docker compose project lives at `/mnt/compose/dolt` and appdata lives at `/mnt/appdata/dolt`. Avoid common exposed ports.
+Enable the Dolt `remotesapi` endpoint on the remote host `edgehost`, where the Docker compose project lives at `/mnt/compose/dolt` and appdata lives at `/mnt/appdata/dolt`. Avoid common exposed ports.
 
 ## Session Overview
 
-Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `squirts`, exposed it on non-common host port `33110`, and verified it with a real `dolt clone` from the local machine.
+Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `edgehost`, exposed it on non-common host port `33110`, and verified it with a real `dolt clone` from the local machine.
 
 ## Sequence of Events
 
-1. Inspected `/mnt/compose/dolt`, `/mnt/appdata/dolt`, and the running `dolt` container on `squirts`.
+1. Inspected `/mnt/compose/dolt`, `/mnt/appdata/dolt`, and the running `dolt` container on `edgehost`.
 2. Found the existing compose service published MySQL only: host `3311` to container `3306`.
 3. Found `/mnt/appdata/dolt/config.yaml` had the `remotesapi` stanza commented out.
 4. Initially considered `8000`, then changed course after user requested avoiding common ports.
@@ -33,7 +33,7 @@ Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `s
 
 ## Key Findings
 
-- `squirts` resolves to Tailscale address `100.75.111.118`.
+- `edgehost` resolves to Tailscale address `198.51.100.2`.
 - The running container is `dolthub/dolt-sql-server:latest`.
 - The image entrypoint checks `/etc/dolt/servercfg.d` for a single YAML server config and starts `dolt sql-server --config=<file>` when present.
 - Before the config mount was added, Docker published `33110`, but the container refused `10.6.0.34:8000` because `remotesapi` was not actually running.
@@ -61,22 +61,22 @@ Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `s
     `/mnt/appdata/dolt/config.yaml:/etc/dolt/servercfg.d/config.yaml:ro`
   - Added Dockge URL entry:
     `remotesapi://localhost:33110`
-- Local: `docs/sessions/2026-05-04-dolt-remotesapi-squirts.md`
+- Local: `docs/sessions/2026-05-04-dolt-remotesapi-edgehost.md`
   - This session note.
 
 ## Commands Executed
 
-- `ssh squirts 'docker ps --format ... | grep -i dolt || true'`
+- `ssh edgehost 'docker ps --format ... | grep -i dolt || true'`
   - Confirmed container `dolt` was running and initially only published `3311->3306`.
-- `ssh squirts 'sed -n ... /mnt/compose/dolt/docker-compose.yaml'`
+- `ssh edgehost 'sed -n ... /mnt/compose/dolt/docker-compose.yaml'`
   - Confirmed compose layout and volume mount.
-- `ssh squirts 'sed -n ... /mnt/appdata/dolt/config.yaml'`
+- `ssh edgehost 'sed -n ... /mnt/appdata/dolt/config.yaml'`
   - Confirmed `remotesapi` was commented out.
-- `ssh squirts 'docker compose -f /mnt/compose/dolt/docker-compose.yaml config'`
+- `ssh edgehost 'docker compose -f /mnt/compose/dolt/docker-compose.yaml config'`
   - Verified rendered compose after edits.
-- `ssh squirts 'cd /mnt/compose/dolt && docker compose up -d dolt'`
+- `ssh edgehost 'cd /mnt/compose/dolt && docker compose up -d dolt'`
   - Recreated the service.
-- `dolt clone --user root http://100.75.111.118:33110/axon_rust ...`
+- `dolt clone --user root http://198.51.100.2:33110/axon_rust ...`
   - Verified the remotes API worked at the Dolt protocol level.
 
 ## Errors Encountered
@@ -92,24 +92,24 @@ Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `s
 ## Behavior Changes
 
 Before:
-- Dolt SQL was reachable on `100.75.111.118:3311`.
+- Dolt SQL was reachable on `198.51.100.2:3311`.
 - No Dolt remotes API endpoint was active.
-- `dolt clone http://100.75.111.118:33110/axon_rust` failed with connection refused.
+- `dolt clone http://198.51.100.2:33110/axon_rust` failed with connection refused.
 
 After:
-- Dolt SQL remains reachable on `100.75.111.118:3311`.
-- Dolt remotes API is reachable on `100.75.111.118:33110`.
-- `dolt clone --user root http://100.75.111.118:33110/axon_rust` succeeds.
+- Dolt SQL remains reachable on `198.51.100.2:3311`.
+- Dolt remotes API is reachable on `198.51.100.2:33110`.
+- `dolt clone --user root http://198.51.100.2:33110/axon_rust` succeeds.
 
 ## Verification Evidence
 
 | Command | Expected | Actual | Status |
 | --- | --- | --- | --- |
-| `docker compose config` on `squirts` | `33110:8000` and config mount present | Rendered compose showed both | Pass |
+| `docker compose config` on `edgehost` | `33110:8000` and config mount present | Rendered compose showed both | Pass |
 | `docker logs --tail 80 dolt` | Remotes API startup line | `Starting http server on :8000` | Pass |
-| `nc -vz -w2 100.75.111.118 33110` | TCP open | Connection succeeded | Pass |
-| `nc -vz -w2 100.75.111.118 3311` | Existing MySQL still open | Connection succeeded | Pass |
-| `dolt clone --user root http://100.75.111.118:33110/axon_rust ...` | Clone succeeds | `rc=0`, `remotes/origin/main` present | Pass |
+| `nc -vz -w2 198.51.100.2 33110` | TCP open | Connection succeeded | Pass |
+| `nc -vz -w2 198.51.100.2 3311` | Existing MySQL still open | Connection succeeded | Pass |
+| `dolt clone --user root http://198.51.100.2:33110/axon_rust ...` | Clone succeeds | `rc=0`, `remotes/origin/main` present | Pass |
 
 ## Risks and Rollback
 
@@ -140,5 +140,5 @@ Started but not completed:
 - None.
 
 Follow-on tasks:
-- Configure Beads/Axon to use `http://100.75.111.118:33110/axon_rust` as the Dolt remote if desired.
+- Configure Beads/Axon to use `http://198.51.100.2:33110/axon_rust` as the Dolt remote if desired.
 - Decide whether the endpoint should be push-capable or read-only.

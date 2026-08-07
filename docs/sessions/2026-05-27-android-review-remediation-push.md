@@ -19,7 +19,7 @@ Short orientation session. Inspected the `build-on-steamy.sh` script to confirm 
 
 ## Sequence of Events
 
-1. **Build inquiry.** User requested "BUILD THE LATEST .exe". Read `scripts/build-on-steamy.sh` to understand what it builds (default target: `palette-tauri`; syncs working-directory to steamy-wsl via rsync then cross-compiles for `x86_64-pc-windows-gnu`).
+1. **Build inquiry.** User requested "BUILD THE LATEST .exe". Read `scripts/build-on-steamy.sh` to understand what it builds (default target: `palette-tauri`; syncs working-directory to winhost-wsl via rsync then cross-compiles for `x86_64-pc-windows-gnu`).
 2. **Sync question.** User asked whether the script syncs `main` or the current branch. Confirmed it rsyncs the working directory as-is (including unstaged modifications), not a specific git ref.
 3. **Worktree audit.** User asked to list all open worktrees. `git worktree list` showed one worktree: `~/workspace/axon_rust` on `feat/android-pager-fab-shell`. No stale worktrees.
 4. **Build declined.** User declined the `build-on-steamy.sh` run after understanding it would bundle uncommitted Android changes.

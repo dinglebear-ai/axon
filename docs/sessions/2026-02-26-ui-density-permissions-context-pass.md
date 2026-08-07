@@ -8,7 +8,7 @@
 - Added robust chat UX upgrades: inline error actions, jump-to-latest, thread-scoped removable source chips.
 
 ## 2. Timeline of major activities
-- Audited current diffs and validated active app instance at `http://dookie:3000` using Chrome DevTools.
+- Audited current diffs and validated active app instance at `http://devhost:3000` using Chrome DevTools.
 - Implemented workspace/layout/toolbar/omnibox/chat refinements across `apps/web/components/*` and `apps/web/lib/pulse/*`.
 - Extended API contract to include `threadSources` input and response `metadata` for context budgeting.
 - Updated tests for permission/model/schema/prompt-intent changes and ran full `apps/web` test suite.
@@ -39,7 +39,7 @@
 - `pnpm --dir /home/jmagar/workspace/axon_rust/apps/web exec tsc --noEmit` -> success (no type errors).
 - `pnpm --dir /home/jmagar/workspace/axon_rust/apps/web exec vitest run` -> success, 15 files passed, 78 tests passed.
 - `pnpm --dir /home/jmagar/workspace/axon_rust/apps/web exec vitest run __tests__/pulse-types.test.ts __tests__/pulse-permissions.test.ts __tests__/omnibox.test.ts` -> success, 3 files passed, 21 tests passed.
-- Chrome DevTools checks on `http://dookie:3000` (`reload`, `snapshot`, `console`) -> UI present on desktop/mobile and no active runtime console errors beyond expected dev logs.
+- Chrome DevTools checks on `http://devhost:3000` (`reload`, `snapshot`, `console`) -> UI present on desktop/mobile and no active runtime console errors beyond expected dev logs.
 - Git and grep/read commands were used to confirm modified scope and line-level references.
 
 ## 7. Behavior changes (before/after)

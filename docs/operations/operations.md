@@ -53,7 +53,7 @@ Required values in `~/.axon/.env`:
 | Var | Purpose |
 |-----|---------|
 | `AXON_DATA_DIR` | Host root for SQLite, Qdrant volume, TEI cache, output; default `~/.axon` |
-| `QDRANT_URL` | Default: `http://100.120.242.29:53333` (tootie) |
+| `QDRANT_URL` | Default: `http://198.51.100.5:53333` (nashost) |
 | `TEI_URL` | Default: `http://127.0.0.1:52000` |
 | `AXON_HEADLESS_GEMINI_CMD` | Gemini CLI command — required for `ask`/`evaluate`/`research`/`debug`/`suggest`/extract fallback |
 | `AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL` | Optional Gemini synthesis model override; `AXON_HEADLESS_GEMINI_MODEL` remains a legacy alias |
@@ -64,7 +64,7 @@ Required values in `~/.axon/.env`:
 
 ## Start services
 
-Infrastructure (TEI + Chrome locally; Qdrant remote on tootie by default):
+Infrastructure (TEI + Chrome locally; Qdrant remote on nashost by default):
 
 ```bash
 just services-up
@@ -98,7 +98,7 @@ processed by that running `axon mcp` (or `axon serve`).
 ```bash
 ./scripts/axon doctor
 ./scripts/axon status
-curl -H "Host: axon.tootie.tv" http://127.0.0.1:40090/readyz
+curl -H "Host: axon.example.internal" http://127.0.0.1:40090/readyz
 ```
 
 `axon doctor` (SQLite-runtime probe at `src/core/health/doctor/sqlite.rs`) reports:
@@ -291,7 +291,7 @@ restart from `pending`.
 ## Backup and restore — Qdrant
 
 Qdrant data is persisted at the host bind mount declared in `docker-compose.prod.yaml`
-on the host running Qdrant, normally tootie:
+on the host running Qdrant, normally nashost:
 
 ```bash
 ${AXON_HOME:-$HOME/.axon}/qdrant
@@ -309,9 +309,9 @@ curl -s -X POST "${QDRANT_URL}/collections/${AXON_COLLECTION:-axon}/snapshots"
 curl -s "${QDRANT_URL}/collections/${AXON_COLLECTION:-axon}/snapshots"
 
 # Download (path returned by the create call lives under /qdrant/snapshots)
-ssh tootie 'docker exec axon-qdrant ls /qdrant/snapshots'
-ssh tootie 'docker cp axon-qdrant:/qdrant/snapshots/<file> /tmp/<file>'
-scp tootie:/tmp/<file> ./backup/
+ssh nashost 'docker exec axon-qdrant ls /qdrant/snapshots'
+ssh nashost 'docker cp axon-qdrant:/qdrant/snapshots/<file> /tmp/<file>'
+scp nashost:/tmp/<file> ./backup/
 ```
 
 Restore: copy the snapshot back into the container and POST to
@@ -323,10 +323,10 @@ Restore: copy the snapshot back into the container and POST to
 Stop Qdrant, then archive the bind mount:
 
 ```bash
-ssh tootie 'docker stop axon-qdrant'
-ssh tootie 'tar -czf /tmp/qdrant-backup.tgz -C "${AXON_HOME:-$HOME/.axon}" qdrant/'
-scp tootie:/tmp/qdrant-backup.tgz ./backup/
-ssh tootie 'docker start axon-qdrant'
+ssh nashost 'docker stop axon-qdrant'
+ssh nashost 'tar -czf /tmp/qdrant-backup.tgz -C "${AXON_HOME:-$HOME/.axon}" qdrant/'
+scp nashost:/tmp/qdrant-backup.tgz ./backup/
+ssh nashost 'docker start axon-qdrant'
 ```
 
 This is faster for one-shot full backups and includes index state.
@@ -361,8 +361,8 @@ RUST_LOG=info,axon::jobs=debug just dev
 
 ```bash
 docker compose --env-file ~/.axon/.env -f docker-compose.prod.yaml logs -f axon-tei axon-chrome
-# Qdrant logs live on tootie:
-ssh tootie 'docker logs -f axon-qdrant'
+# Qdrant logs live on nashost:
+ssh nashost 'docker logs -f axon-qdrant'
 ```
 
 Container logs are JSON-formatted, capped at 10 MB × 3 files (see
@@ -488,7 +488,7 @@ The `to` collection is created if missing; re-running is idempotent.
 | `tei` returns `429`/`503` mid-run | Model overload / CUDA pressure, or `TEI_MAX_BATCH_REQUESTS` lower than the active client fanout | For RTX 4070 + Qwen3-Embedding-0.6B, keep `TEI_MAX_BATCH_TOKENS=196608`, `TEI_MAX_BATCH_REQUESTS=512`, `TEI_MAX_CLIENT_BATCH_SIZE=128`, `AXON_EMBED_POOL_MAX_INPUTS=512`, and `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320`. If TEI OOMs during warmup, reduce `TEI_MAX_BATCH_TOKENS`. TEI client auto-retries on 429/5xx. |
 | Qdrant upserts are slow | Oversized requests, too many tiny requests, or active indexing/optimizer work competing with writes | Default to `AXON_QDRANT_UPSERT_BATCH_SIZE=1024` and `AXON_QDRANT_UPSERT_PARALLELISM=1` for local docs workloads. For larger or remote imports, test `AXON_QDRANT_UPSERT_BATCH_SIZE=256` with `AXON_QDRANT_UPSERT_PARALLELISM=2-4`. For fresh large imports, run with `AXON_QDRANT_BULK_LOAD=true` so HNSW indexing is delayed until after upload, then restored automatically. Check `bench-embed` Qdrant request deltas, `optimizer_status`, and `segments_count`. |
 | Fresh docs collection setup is slow | Full payload-index set or high-cost HNSW build settings | For docs-only collections, benchmark `AXON_QDRANT_PAYLOAD_INDEX_PROFILE=core`; for ingest-speed experiments, benchmark lower `AXON_QDRANT_HNSW_M` / `AXON_QDRANT_HNSW_EF_CONSTRUCT`, then validate retrieval quality before keeping them. |
-| `qdrant connection refused` | Qdrant not started on tootie or `QDRANT_URL` wrong | Verify `curl ${QDRANT_URL}/readyz`; use `just qdrant-up` only for an intentional local fallback |
+| `qdrant connection refused` | Qdrant not started on nashost or `QDRANT_URL` wrong | Verify `curl ${QDRANT_URL}/readyz`; use `just qdrant-up` only for an intentional local fallback |
 | `queue cap exceeded` on submit | `AXON_MAX_PENDING_*` reached | Run `axon <kind> list` to inspect; `axon <kind> cleanup` removes terminal rows; raise the cap or set to `0` |
 | Jobs sit `pending` forever | No `axon mcp` / `axon serve` process running | Start `just dev` or pass `--wait true` |
 | Job stuck `running` past 10 min | Worker hang | Heartbeat watchdog will mark `failed` automatically; or run `axon <kind> recover` |
@@ -517,7 +517,7 @@ just stop
 just services-down
 ```
 
-Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the host that runs each service and persist across restarts. Keep `AXON_HOME` aligned with `AXON_DATA_DIR` unless relocating the whole Axon appdata tree; with remote Qdrant, the qdrant volume is on tootie.
+Volumes (`${AXON_HOME:-$HOME/.axon}/{qdrant,tei,...}`) are bind-mounted on the host that runs each service and persist across restarts. Keep `AXON_HOME` aligned with `AXON_DATA_DIR` unless relocating the whole Axon appdata tree; with remote Qdrant, the qdrant volume is on nashost.
 
 ---
 
@@ -599,7 +599,7 @@ Use `scripts/axon-backup.sh` for both in a single operation:
 ./scripts/axon-backup.sh --output-dir /mnt/nas/axon-backups
 ```
 
-The script creates timestamped archives in `~/.axon/backups/` (override with `--output-dir` or `AXON_BACKUP_DIR`), prints SHA-256 checksums, and cleans up the server-side Qdrant snapshot. On ZFS hosts that replicate to a backup box (e.g. `shart`), the backup directory is automatically replicated — no separate transfer step.
+The script creates timestamped archives in `~/.axon/backups/` (override with `--output-dir` or `AXON_BACKUP_DIR`), prints SHA-256 checksums, and cleans up the server-side Qdrant snapshot. On ZFS hosts that replicate to a backup box (e.g. `backuphost`), the backup directory is automatically replicated — no separate transfer step.
 
 **Restore:**
 

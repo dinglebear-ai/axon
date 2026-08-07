@@ -24,7 +24,7 @@ Multi-phase session that extended the prior settings/PWA work with four new web 
 ## Timeline
 
 1. **Context resume** — Picked up after quick-push completed; prior agents had delivered settings redesign, MCP page, agents page, PlateJS theming, and tests
-2. **Chrome DevTools verification** — Confirmed `https://axon.tootie.tv` reachable; `localhost:49010` refused from Chrome container; `docs/screenshots/` created
+2. **Chrome DevTools verification** — Confirmed `https://axon.example.internal` reachable; `localhost:49010` refused from Chrome container; `docs/screenshots/` created
 3. **Settings verification** — Screenshot saved; all dropdowns confirmed as `combobox`; 3 a11y warnings (missing `id`/`name` on inputs) noted
 4. **MCP + Agents verification** — Both pages confirmed operational; MCP shows 5 live servers; Agents shows empty state (expected, container context)
 5. **User questions received** — "Where can I navigate to MCP?" and "Can we show if MCP servers are online?"
@@ -39,7 +39,7 @@ Multi-phase session that extended the prior settings/PWA work with four new web 
 
 ## Key Findings
 
-- **`localhost:49010` unreachable from Chrome container** — Chrome runs in Docker and cannot reach the host's `localhost`. All verification must use the external domain `https://axon.tootie.tv`.
+- **`localhost:49010` unreachable from Chrome container** — Chrome runs in Docker and cannot reach the host's `localhost`. All verification must use the external domain `https://axon.example.internal`.
 - **A11y warning on settings inputs** — `biome` reported 3 form fields missing `id`/`name` (tools/permission inputs in settings page). Not a runtime error. Follow-up: add `id` + `htmlFor` to label pairs.
 - **Agents empty state is correct** — Container's `claude agents` returns no output in the current container build. The page correctly renders an empty state with an actionable message. Not a bug.
 - **`AbortSignal.timeout()` for HTTP probes** — Node 18+ API, no need for manual `AbortController`; available in Next.js 15 runtime.

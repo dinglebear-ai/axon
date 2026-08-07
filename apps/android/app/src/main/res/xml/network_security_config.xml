@@ -8,7 +8,7 @@
         public internet hosts or other tailnets.
     -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">manatee-triceratops.ts.net</domain>
-        <domain includeSubdomains="true">manatee-triceratops.tailvpn.net</domain>
+        <domain includeSubdomains="true">example.ts.net</domain>
+        <domain includeSubdomains="true">example-tailnet.tailvpn.net</domain>
     </domain-config>
 </network-security-config>

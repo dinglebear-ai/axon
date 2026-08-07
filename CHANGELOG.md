@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
+- Relicense Dinglebear-owned original work under AGPL-3.0-only and document separate commercial licensing; third-party material retains its original terms.
+- Run Axon's long contract and Palette Tauri compilation directly through rustc after Kache setup, avoiding ephemeral wrapper loss while preserving cache self-tests and degradation gates.
 - Pin the shared Rust cache action to upstream Kache 0.13.0 so hosted and self-hosted jobs use the same daemon protocol and S3 cache epoch.
 - Let release-only smoke builds use the existing fallback web panel without rebuilding frontend assets, while web changes still reuse the single uploaded web artifact.
 
@@ -1804,7 +1807,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 ### Added
 
 - **build-windows.sh** — new cross-compile script that builds the Palette Tauri
-  or `axon.exe` Windows executable on dookie and ships it to Steamy's Desktop
+  or `axon.exe` Windows executable on devhost and ships it to Winhost's Desktop
   via `scp`, replacing the old `build-on-steamy.sh` repo-sync approach.
 
 ### Fixed
@@ -2036,7 +2039,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
 ### Changed
 
 - Palette CI now runs Tauri crate tests in addition to cargo check, and compose
-  smoke validates the Steamy build safety helper.
+  smoke validates the Winhost build safety helper.
 
 ### Fixed
 
@@ -2070,7 +2073,7 @@ Remediation of the 10 surviving findings from the four-PR code review of
   `AXON_LLM_BACKEND=openai-compat`, `AXON_OPENAI_BASE_URL`,
   `AXON_OPENAI_API_KEY`, and `AXON_OPENAI_MODEL`.
 - Tauri palette deployment helper `scripts/build-on-steamy.sh` for building a
-  Windows executable and placing it on Steamy's desktop.
+  Windows executable and placing it on Winhost's desktop.
 - Job progress presentation helpers and additional ask/query logging around
   retrieval, context assembly, and LLM synthesis.
 
@@ -3983,7 +3986,7 @@ This section documents commits on `fix/pr-review-fixes-crawl-refactor` relative 
 
 - **AxonShell real ACP/session wiring + UI polish (v0.11.0)** — `useAxonSession` hook added for JSONL session history fetch; `useAxonAcp` hook added for real ACP WebSocket prompt submission with `randomUUID` message IDs; `useAxonSession` behavioral tests added; `AxonShell` wired to real session data and ACP WebSocket; `AxonSidebar` wired to real `SessionSummary` list with repo/branch filter; git enrichment hoisted to outer project loop in sessions ingest; `SessionFallback` event emitted on failed session resume and handled in Pulse stream pipeline; `Reboot*` components renamed to `Axon*`, `REBOOT_` constants renamed to `AXON_`; `onTurnComplete` wrapped in `useCallback`; history sync guarded during streaming; timestamp display fixed; loading/error states added to `AxonMessageList`; `AxonPromptComposer` submit disabled during streaming with spinner; sessions fix: `apiFetch` injects `x-api-key` on session load; biome dep warning suppressed in shell-server.mjs; Rust: services `events.rs`, MCP `config.rs`/`server.rs`, crawl engine, ingest, jobs, vector ops, web crate all hardened/refactored; new `align-kit.tsx` editor plugin; `mcp-config.tsx` component added
 
-- **Reboot UI shell + logs SSE fix + infra repairs (v0.9.0)** — reboot section fully redesigned: deleted legacy `data.ts`, `lobe-shell.tsx`, `reboot-home.tsx`, `reboot-scene.tsx`, `workflow-shell.tsx`; added `reboot-message-list.tsx`, `reboot-prompt-composer.tsx`, `reboot-sidebar.tsx`, `reboot-terminal-pane.tsx`, `reboot-pane-handle.tsx`, `reboot-logs-dialog.tsx`, AI element components (`chain-of-thought.tsx`, `confirmation.tsx`, `prompt-input.tsx`, `tool.tsx`); hooks `use-copy-feedback.ts`, `use-mcp-servers.ts`, `use-workspace-files.ts` added; logs SSE viewer fixed: three bugs eliminated (premature stream close when stopped containers finished, wrong default service `axon-web`→`all`, `EventSource` replaced with `fetch()` + `Authorization: Bearer` to satisfy proxy auth gate); `next.config.ts` gains `allowedDevOrigins: ['axon.tootie.tv']` silencing cross-origin dev warning; `AXON_WEB_ALLOWED_ORIGINS` already included `https://axon.tootie.tv` covering API routes and shell WebSocket; reboot page routes and reboot-frame/reboot-shell/reboot-pane-handle layout wired; Justfile `dev` target updated; Dockerfile updated
+- **Reboot UI shell + logs SSE fix + infra repairs (v0.9.0)** — reboot section fully redesigned: deleted legacy `data.ts`, `lobe-shell.tsx`, `reboot-home.tsx`, `reboot-scene.tsx`, `workflow-shell.tsx`; added `reboot-message-list.tsx`, `reboot-prompt-composer.tsx`, `reboot-sidebar.tsx`, `reboot-terminal-pane.tsx`, `reboot-pane-handle.tsx`, `reboot-logs-dialog.tsx`, AI element components (`chain-of-thought.tsx`, `confirmation.tsx`, `prompt-input.tsx`, `tool.tsx`); hooks `use-copy-feedback.ts`, `use-mcp-servers.ts`, `use-workspace-files.ts` added; logs SSE viewer fixed: three bugs eliminated (premature stream close when stopped containers finished, wrong default service `axon-web`→`all`, `EventSource` replaced with `fetch()` + `Authorization: Bearer` to satisfy proxy auth gate); `next.config.ts` gains `allowedDevOrigins: ['axon.example.internal']` silencing cross-origin dev warning; `AXON_WEB_ALLOWED_ORIGINS` already included `https://axon.example.internal` covering API routes and shell WebSocket; reboot page routes and reboot-frame/reboot-shell/reboot-pane-handle layout wired; Justfile `dev` target updated; Dockerfile updated
 
 - **Zed alignment + ACP permission plumbing (v0.8.0)** — 5 parallel agents implemented Zed-aligned patterns: session list/resume (`use-pulse-sessions.ts`, `session-store.ts`), tool call terminal rendering (`tool-call-terminal.tsx`), permission modal UI (`permission-modal.tsx`), process exit monitoring, targeted entry updates; `PermissionResponderMap` type wired through WS handler → execute bridge → ACP bridge client using `std::sync::Mutex` + `tokio::sync::oneshot` for cross-runtime communication; `permission_response` WS message type added with `tool_call_id`/`option_id` fields; 60s auto-approve timeout fallback prevents session hangs; `AXON_ACP_AUTO_APPROVE` env var controls behavior (default `true`); 3 pre-existing TS build errors fixed (`route.ts` model type, `claude-stream-types.ts` model lookup, `pulse-chat-helpers.ts` agent type); reboot page scaffolding added; shadcn accordion/collapsible/hover-card/button-group components added
 

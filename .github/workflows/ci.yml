@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: '0 3 * * 1'  # Weekly Monday 3am UTC
   workflow_dispatch:
@@ -48,6 +48,7 @@ jobs:
   changes:
     name: changes
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     outputs:
       all: ${{ steps.classify.outputs.all }}
       routing_fallback: ${{ steps.classify.outputs.routing_fallback }}
@@ -84,7 +85,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -117,6 +118,18 @@ jobs:
   rust-contracts:
     name: rust-contracts
     runs-on: ci-pool-rust
+    # 240, not 60. Measured across the last 40 ci.yml runs, this job's SUCCESSFUL
+    # durations are: 14 15 16 16 22 29 32 34 36 40 42 43 58 59 62 70 75 88 93 96
+    # 109 114 186 (minutes). 9 of 23 green runs (39%) exceed 60 minutes, and the
+    # 60-minute cap already killed a passing run on this branch — job 92500921363
+    # concluded `cancelled` at exactly 60m19s with steps 1-13 green and step 14
+    # ("REST and workflow contracts") cut off mid-flight.
+    #
+    # The 34-minute figure this comment used to cite was one sample, not the
+    # distribution. The real problem is the 14->186 min spread (kache cache hit
+    # rate); until that is narrowed, the bound has to clear the observed worst
+    # case rather than the typical one.
+    timeout-minutes: 240
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -131,6 +144,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      # NOT dead: the "Palette OpenAPI type drift" contract step below shells
+      # out to pnpm and hard-fails without it. It was removed earlier in this
+      # branch as unused because the job's visible install command is `npm ci`.
       - uses: pnpm/action-setup@v4
         with:
           version: 11.3.0
@@ -140,6 +156,36 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Rust formatting
         run: cargo fmt --all -- --check
+      # Build xtask ONCE, then invoke ./target/debug/xtask directly for every
+      # check below.
+      #
+      # Measured on job 92475858863 (a 186-minute green run): this job produced
+      # THIRTEEN cargo builds, and builds 2-13 each recompiled exactly 470
+      # crates starting from proc-macro2 — a leaf build-dependency nothing in
+      # this repo can invalidate. Every `cargo xtask ...` invocation rebuilt the
+      # world instead of reusing the previous one. The fast (14-minute) runs have
+      # the identical 13-build shape; kache just serves each rebuild in ~35s
+      # instead of ~7min, which is why this stayed invisible.
+      #
+      # ROOT CAUSE (bisected locally, 2026-08-06): RUSTC_WRAPPER=kache. Under
+      # kache, cargo never reaches a fresh state — it re-"compiles" the same
+      # host/build-script crates on every invocation, forever. Two identical
+      # back-to-back `cargo xtask check-no-mod-rs` runs, no source changes:
+      #
+      #   kache enabled   run 1: 179 crates   run 2: 179 crates  (40.6s)
+      #   KACHE_DISABLED=1 run 1: 179 crates   run 2:   0 crates  ( 2.8s)
+      #
+      # The crates that churn are proc-macro and build-script deps (zerocopy,
+      # cc, displaydoc, time-macros, rustix, clang-sys, ring, cmake) — host
+      # artifacts — and everything downstream of a proc-macro follows them.
+      #
+      # Keep kache: it turns the ONE genuine cold build from ~45min into ~2min.
+      # The bug only bites on repeated invocations, so the fix is to stop making
+      # them. `cargo build -p xtask` once + direct binary invocation makes the
+      # build count structural: one dev build, one test build, done. Same
+      # pattern lefthook.yml already uses for the commit hooks.
+      - name: Build xtask once
+        run: cargo build --locked -p xtask
       - name: Repository and transport contracts
         run: |
           ./scripts/test-incus-bootstrap.sh
@@ -151,22 +197,32 @@ jobs:
             echo "Retired compiler cache reference found in an active surface."
             exit 1
           fi
-          cargo xtask check-no-mod-rs
-          cargo xtask check-mcp-http
-          cargo xtask check-doc-links
-          cargo xtask check-doc-contracts
-          cargo xtask check-dep-graph
-          cargo xtask check-redaction-logs
-          cargo xtask check-sqlite-migrations
+          ./target/debug/xtask check-no-mod-rs
+          ./target/debug/xtask check-mcp-http
+          ./target/debug/xtask check-doc-links
+          ./target/debug/xtask check-doc-contracts
+          ./target/debug/xtask check-dep-graph
+          ./target/debug/xtask check-redaction-logs
+          ./target/debug/xtask check-sqlite-migrations
           python3 scripts/refresh_generated_contracts_staged.py --self-test
       - name: Kache degradation gate self-test
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh
+      - name: Use direct rustc for long contract compilation
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+      # Was `cargo run --manifest-path xtask/Cargo.toml --no-default-features`.
+      # The `openapi-drift` feature only gates the openapi_drift module itself
+      # (xtask/src/checks/openapi_drift.rs), which `generated-contracts` never
+      # calls — so the flag changed no behaviour while forcing a whole extra
+      # build configuration that cargo cannot share with the default-feature
+      # build. That cost 8m30s on the slow run measured above.
       - name: Generated schema and documentation contracts
-        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- generated-contracts check
+        run: ./target/debug/xtask generated-contracts check
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
-        run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
+        run: ./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr
       - name: MCP schema documentation
         if: ${{ needs.changes.outputs.mcp == 'true' }}
         run: python3 scripts/generate_mcp_schema_doc.py --check
@@ -176,10 +232,11 @@ jobs:
       - name: REST and workflow contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: |
-          cargo test --locked --test http_api_parity_inventory
+          # One cargo invocation builds both test binaries; splitting them cost
+          # an extra full 470-crate rebuild.
+          cargo test --locked --test http_api_parity_inventory --test workflow_shapes
           python3 scripts/cargo_test_filter_guard.py -- cargo test --locked --test http_api_parity_inventory rest_route_contracts_match_openapi_request_schemas -- --nocapture
-          cargo test --locked --test workflow_shapes
-          cargo xtask check-openapi-drift
+          ./target/debug/xtask check-openapi-drift
       - name: Changed-file monolith policy
         if: ${{ needs.changes.outputs.rust == 'true' }}
         env:
@@ -227,6 +284,7 @@ jobs:
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}
     steps:
@@ -237,6 +295,11 @@ jobs:
   android:
     name: android
     runs-on: ci-pool-system
+    # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
+    # main runs, but both timed out at exactly 30m once the per-runner cargo
+    # registries were isolated and had to repopulate from cold. GitHub reports a
+    # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -324,19 +387,28 @@ jobs:
   toml-fmt:
     name: toml-fmt
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
-        with:
-          toolchain: 1.97.1
-      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
-        with:
-          install_args: cargo:taplo-cli
+      - name: Install taplo (pinned prebuilt binary)
+        # Prebuilt static binary instead of `mise install cargo:taplo-cli`,
+        # which compiled taplo from source on every run. Pinned by version and
+        # sha256 so a moved release cannot silently change the tool.
+        run: |
+          set -euo pipefail
+          version="0.10.0"
+          sha256="8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
+          curl -fsSL -o /tmp/taplo.gz \
+            "https://github.com/tamasfe/taplo/releases/download/${version}/taplo-linux-x86_64.gz"
+          echo "${sha256}  /tmp/taplo.gz" | sha256sum -c -
+          gunzip -f /tmp/taplo.gz
+          chmod +x /tmp/taplo
+          /tmp/taplo --version
       - name: taplo fmt --check
         run: |
-          mise exec cargo:taplo-cli -- taplo fmt --check \
+          /tmp/taplo fmt --check \
             .cargo/config.toml \
             .config/nextest.toml \
             .taplo.toml \
@@ -349,6 +421,7 @@ jobs:
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
@@ -359,6 +432,11 @@ jobs:
   palette-tauri:
     name: palette-tauri
     runs-on: ci-pool-rust
+    # 60, not 30: measured 14-17m (android) / 5m (palette-tauri) on warm green
+    # main runs, but both timed out at exactly 30m once the per-runner cargo
+    # registries were isolated and had to repopulate from cold. GitHub reports a
+    # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
@@ -376,6 +454,10 @@ jobs:
           toolchain: 1.97.1
           components: clippy, rustfmt
           install-tauri-deps: "true"
+      - name: Use direct rustc for palette compilation
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
       # CI-L1: these steps deliberately mirror `pnpm verify`
@@ -398,6 +480,10 @@ jobs:
           git diff --exit-code apps/palette-tauri/src/lib/axon-api.d.ts
       - name: Palette Vite build
         run: pnpm --dir apps/palette-tauri vite:build
+      - name: Use direct rustc for Tauri gates
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
       # CI-H3: lint the security-relevant Tauri IPC/network bridge. src-tauri
       # declares its own [workspace], so the repo-root clippy/fmt jobs never
       # touch it — these scope explicitly via --manifest-path.
@@ -405,8 +491,11 @@ jobs:
         run: cargo fmt --manifest-path apps/palette-tauri/src-tauri/Cargo.toml -- --check
       - name: Tauri cargo clippy
         run: cargo clippy --manifest-path apps/palette-tauri/src-tauri/Cargo.toml --all-targets --locked -- -D warnings
-      - name: Tauri cargo check
-        run: cargo check --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
+      # `Tauri cargo check` removed: the clippy step above runs --all-targets on
+      # the same manifest, and clippy is a strict superset of check — it runs the
+      # same type-check pass and then adds lints. The separate check step could
+      # not fail unless clippy already had, while costing another build of the
+      # palette crate graph.
       - name: Tauri cargo test
         # --test-threads=1: terminal_tests mutate the process-global SHELL env
         # (set_var("SHELL","/bin/zsh")); run in parallel that leaks into the
@@ -433,7 +522,12 @@ jobs:
     # 25m08s — a timeout despite all real steps passing). Give it headroom.
     timeout-minutes: 40
     needs: [changes, rust-contracts]
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' }}
+    # A hosted windows-latest cargo check that transitively compiles axon is
+    # too expensive for every Rust PR; opt in with the `ci:full` label.
+    # Opt-in only: this compiles axon transitively on a windows-latest runner
+    # and duplicates coverage from the mingw cross build, which already runs on
+    # main and on ci:full PRs.
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -447,14 +541,20 @@ jobs:
         run: |
           mkdir -p apps/web/out
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: cargo check -p xtask
-        run: cargo check -p xtask --locked
+      # `cargo build` rather than `cargo check`: build is strictly stronger (it
+      # type-checks and then produces the binary), and producing the binary lets
+      # the two checks below run it directly instead of re-entering cargo twice.
+      # Four cargo invocations become two.
+      - name: cargo build -p xtask
+        run: cargo build -p xtask --locked
       - name: cargo test -p xtask
         run: cargo test -p xtask --locked
-      - name: cargo xtask check-repo-structure
-        run: cargo xtask check-repo-structure
-      - name: cargo xtask check-mcp-http
-        run: cargo xtask check-mcp-http
+      - name: xtask check-repo-structure
+        shell: bash
+        run: ./target/debug/xtask.exe check-repo-structure
+      - name: xtask check-mcp-http
+        shell: bash
+        run: ./target/debug/xtask.exe check-mcp-http
 
   windows-build:
     name: windows-build (axon.exe)
@@ -478,6 +578,7 @@ jobs:
     # execute (os error 2) with missing target .d files — a runner env/workspace
     # issue. This cross-compile is proven on ubuntu-latest, so pin it here.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     env:
@@ -512,9 +613,15 @@ jobs:
           path: target/x86_64-pc-windows-gnu/debug/axon.exe
           if-no-files-found: error
 
+  # Consumes the single debug binary built by binary-smoke-build (which embeds
+  # real web assets when available) instead of running a second
+  # `cargo build --bin axon` of its own — see the binary-smoke job for the same
+  # artifact-consumption pattern.
   smoke-binary:
     name: smoke-binary
     runs-on: ci-pool-rust
+    # Slowest observed green run: 12.6 min.
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
     env:
@@ -545,6 +652,7 @@ jobs:
   web-panel:
     name: web-panel
     runs-on: ci-pool-typescript
+    timeout-minutes: 30
     needs: [changes]
     if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
@@ -572,6 +680,7 @@ jobs:
   chrome-extension:
     name: chrome-extension
     runs-on: ci-pool-typescript
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.chrome == 'true' }}
     steps:
@@ -587,6 +696,9 @@ jobs:
   clippy:
     name: clippy
     runs-on: ci-pool-rust
+    # 60, not 30: slowest green run measured at 34.9 min, so a 30-minute cap
+    # would hard-fail a build that passes.
+    timeout-minutes: 60
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -604,6 +716,9 @@ jobs:
   test:
     name: test
     runs-on: ci-pool-rust
+    # 90, not 30: slowest green run measured at 53.3 min, and 4 of 15 green runs
+    # exceed 30 min. A 30-minute cap would hard-fail builds that pass.
+    timeout-minutes: 90
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -638,6 +753,7 @@ jobs:
     name: live-qdrant
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_qdrant_tests) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       qdrant:
         image: qdrant/qdrant:v1.13.1
@@ -661,6 +777,7 @@ jobs:
   rag-changes:
     name: rag-changes
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     if: ${{ github.event_name == 'pull_request' }}
     outputs:
       rag: ${{ steps.filter.outputs.rag }}
@@ -734,7 +851,7 @@ jobs:
             -v "$PWD/.cache/huggingface:/hf-cache" \
             -e HF_HOME=/hf-cache \
             -e HF_HUB_CACHE=/hf-cache/hub \
-            ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
+            ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 \
             --model-id BAAI/bge-small-en-v1.5
           tei_port="$(docker port axon-tei 80/tcp | awk -F: 'END { print $NF }')"
           case "$tei_port" in
@@ -783,6 +900,7 @@ jobs:
   security:
     name: security
     runs-on: ci-pool-rust
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
@@ -847,12 +965,16 @@ jobs:
           path: .cache/huggingface
           key: hf-tei-${{ runner.os }}-BAAI-bge-small-en-v1.5-v1
 
+      # TEI is pinned to a release tag (not cpu-latest): the cache key is
+      # immutable, so a floating tag would keep serving whatever image was
+      # first cached — a permanently stale multi-GB cache entry. Bump the tag
+      # here AND in the cache key (and in live-rag-pr) together.
       - name: Cache Docker images (TEI + Qdrant)
         id: docker-cache
         uses: actions/cache@v5
         with:
           path: /tmp/docker-images
-          key: docker-${{ runner.os }}-tei-cpu-v1-qdrant-1.13.1
+          key: docker-${{ runner.os }}-tei-cpu-1.9.3-qdrant-1.13.1
 
       - name: Load Docker images from cache
         if: steps.docker-cache.outputs.cache-hit == 'true'
@@ -863,10 +985,10 @@ jobs:
       - name: Pull and save Docker images
         if: steps.docker-cache.outputs.cache-hit != 'true'
         run: |
-          docker pull ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+          docker pull ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3
           docker pull qdrant/qdrant:v1.13.1
           mkdir -p /tmp/docker-images
-          docker save ghcr.io/huggingface/text-embeddings-inference:cpu-latest -o /tmp/docker-images/tei.tar
+          docker save ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 -o /tmp/docker-images/tei.tar
           docker save qdrant/qdrant:v1.13.1 -o /tmp/docker-images/qdrant.tar
 
       - name: create web assets placeholder
@@ -924,7 +1046,7 @@ jobs:
             -v "$PWD/.cache/huggingface:/hf-cache" \
             -e HF_HOME=/hf-cache \
             -e HF_HUB_CACHE=/hf-cache/hub \
-            ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
+            ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 \
             --model-id BAAI/bge-small-en-v1.5
 
       - name: Wait for Qdrant and TEI
@@ -993,6 +1115,8 @@ jobs:
   binary-smoke-build:
     name: binary-smoke-build
     runs-on: ubuntu-24.04
+    # Slowest observed green run: 9.6 min.
+    timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')) && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
@@ -1026,6 +1150,7 @@ jobs:
   binary-smoke:
     name: binary-smoke
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes, binary-smoke-build]
     if: ${{ needs.binary-smoke-build.result == 'success' }}
     steps:
@@ -1041,6 +1166,7 @@ jobs:
   ci-gate:
     name: ci-gate
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     if: always()
     needs:
       - changes
@@ -1093,9 +1219,9 @@ jobs:
           require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
           require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
-          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' }}"
+          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
+          require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ needs.binary-smoke-build.result == 'success' && github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
           require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
@@ -1104,5 +1230,5 @@ jobs:
           require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
           require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
           require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
+          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
           require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"

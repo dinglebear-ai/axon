@@ -24,7 +24,7 @@ Debugged why both Claude and Codex model selectors showed only "Default" in the 
 - **Two `acpConfigOptions` states exist**: one in `use-ws-messages.ts:124` (probe results) and one in `use-pulse-chat.ts:80` (chat session results). The workspace hook synced chat→WS unconditionally.
 - **Claude ACP adapter v0.19.2** requires `protocolVersion: 1` (numeric, not string) and `mcpServers: []` in `session/new` — both correctly handled by SDK v0.9.5
 - **Stuck adapter processes block probes** — Old `claude-agent-acp` processes from failed probes consumed resources; killing them restored functionality
-- **Chrome DevTools origin check** — Remote Chrome at Tailscale IP was blocked by `AXON_WEB_ALLOWED_ORIGINS`; added `http://100.88.16.79:49010` and `https://axon.tootie.tv` to `.env.local`
+- **Chrome DevTools origin check** — Remote Chrome at Tailscale IP was blocked by `AXON_WEB_ALLOWED_ORIGINS`; added `http://198.51.100.4:49010` and `https://axon.example.internal` to `.env.local`
 
 ## Technical Decisions
 
@@ -37,7 +37,7 @@ Debugged why both Claude and Codex model selectors showed only "Default" in the 
 | File | Purpose |
 |------|---------|
 | `apps/web/hooks/use-pulse-workspace.ts:133` | Added `length > 0` guard to prevent empty chat options from overwriting probe results |
-| `apps/web/.env.local:6` | Added Tailscale IP and `axon.tootie.tv` to `AXON_WEB_ALLOWED_ORIGINS` |
+| `apps/web/.env.local:6` | Added Tailscale IP and `axon.example.internal` to `AXON_WEB_ALLOWED_ORIGINS` |
 
 ## Commands Executed
 

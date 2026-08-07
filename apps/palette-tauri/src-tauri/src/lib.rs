@@ -83,7 +83,7 @@ enum PaletteTheme {
     Light,
 }
 
-const DEFAULT_SERVER_URL: &str = "https://axon.tootie.tv";
+const DEFAULT_SERVER_URL: &str = "https://axon.example.internal";
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
 

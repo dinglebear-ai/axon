@@ -177,7 +177,7 @@ None during this session (no Axon crawl/embed operations were performed — this
 
 ## Next Steps
 
-- [ ] Verify `/settings` page renders correctly at axon.tootie.tv/settings
+- [ ] Verify `/settings` page renders correctly at axon.example.internal/settings
 - [ ] Test session card previews with real JSONL files
 - [ ] Test all 5 new CLI flags flow through to Claude subprocess
 - [ ] Consider splitting `apps/web/app/settings/page.tsx` into sub-components (follow-up, not urgent)

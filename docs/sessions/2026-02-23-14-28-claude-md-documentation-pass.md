@@ -3,7 +3,7 @@
 
 ## Session Overview
 
-Full documentation audit and expansion pass for the axon_rust project. Created 5 nested `CLAUDE.md` files covering subsystems with dense non-obvious patterns (jobs, vector, crawl, ingest, docker), updated the root `CLAUDE.md` with missing context, added TEI remote service configuration details from live inspection of `steamy-wsl`, and created `AGENTS.md`/`GEMINI.md` symlinks at every level. All 6 files pushed from B-range scores to 90+ (A grade).
+Full documentation audit and expansion pass for the axon_rust project. Created 5 nested `CLAUDE.md` files covering subsystems with dense non-obvious patterns (jobs, vector, crawl, ingest, docker), updated the root `CLAUDE.md` with missing context, added TEI remote service configuration details from live inspection of `winhost-wsl`, and created `AGENTS.md`/`GEMINI.md` symlinks at every level. All 6 files pushed from B-range scores to 90+ (A grade).
 
 Also diagnosed and fixed a Serena MCP tool failure: no active project was set, requiring `activate_project("axon_rust")` to be called at session start.
 
@@ -16,7 +16,7 @@ Also diagnosed and fixed a Serena MCP tool failure: no active project was set, r
 | 14:13 | Created root `AGENTS.md` → `CLAUDE.md` and `GEMINI.md` → `CLAUDE.md` symlinks |
 | 14:14 | Ran `/claude-md-management:claude-md-improver` with "suggest and create nested CLAUDE.md files" — explored codebase, assessed gaps, created 5 nested files |
 | 14:16 | Diagnosed Serena MCP failure: `activate_project("axon_rust")` was missing |
-| 14:18 | SSH'd into `steamy-wsl` to read `~/compose/tei/docker-compose.yaml` and `.env` |
+| 14:18 | SSH'd into `winhost-wsl` to read `~/compose/tei/docker-compose.yaml` and `.env` |
 | 14:19 | Added TEI section to `crates/vector/CLAUDE.md` (model, pooling, default prompt, auto-truncate, remote host) |
 | 14:22 | Ran second `/claude-md-management:claude-md-improver` — full quality audit of all 6 files |
 | 14:24 | Applied proposed updates: worker count fix, `just` section, `spider_agent` gotcha, Config literal gotcha, docker introspection |
@@ -28,7 +28,7 @@ Also diagnosed and fixed a Serena MCP tool failure: no active project was set, r
 ## Key Findings
 
 - **Serena requires explicit project activation**: `mcp__plugin_serena_serena__activate_project("axon_rust")` must be called at session start or Serena tools return "No active project" errors.
-- **TEI is on steamy-wsl (RTX 4070)**: Model is `Qwen/Qwen3-Embedding-0.6B`, `last-token` pooling, with a default query instruction prompt auto-prepended to all requests. Never on localhost.
+- **TEI is on winhost-wsl (RTX 4070)**: Model is `Qwen/Qwen3-Embedding-0.6B`, `last-token` pooling, with a default query instruction prompt auto-prepended to all requests. Never on localhost.
 - **`--default-prompt` in TEI is asymmetric**: The instruction prefix `"Instruct: ...\nQuery: "` is prepended to all embed requests — both query and document text. Code does not need to handle this manually.
 - **Root CLAUDE.md had stale worker count**: Said "4 workers" but ingest-worker is now the 5th.
 - **`just` commands were entirely absent** from CLAUDE.md despite a full Justfile with `just verify`, `just fix`, `just precommit`, `just watch-check`, `just rebuild`.
@@ -87,9 +87,9 @@ Also diagnosed and fixed a Serena MCP tool failure: no active project was set, r
 ln -sf CLAUDE.md AGENTS.md && ln -sf CLAUDE.md GEMINI.md
 # → lrwxrwxrwx ... AGENTS.md -> CLAUDE.md / GEMINI.md -> CLAUDE.md
 
-# TEI config inspection (steamy-wsl)
-ssh steamy-wsl cat ~/compose/tei/docker-compose.yaml
-ssh steamy-wsl cat ~/compose/tei/.env
+# TEI config inspection (winhost-wsl)
+ssh winhost-wsl cat ~/compose/tei/docker-compose.yaml
+ssh winhost-wsl cat ~/compose/tei/.env
 # → Model: Qwen/Qwen3-Embedding-0.6B, port 52000, last-token pooling, default-prompt set
 
 # Nested symlinks (all 5 dirs)
@@ -112,7 +112,7 @@ done
 | AI context for docker | Root only — no s6-overlay specifics | `docker/CLAUDE.md` with worker management, introspection, port table |
 | Codex/Gemini compatibility | Root only had AGENTS.md/GEMINI.md | All 6 directories now have AGENTS.md/GEMINI.md symlinks |
 | just workflow visibility | Completely absent from docs | `just verify/fix/precommit/watch-check/rebuild/up/down` all documented |
-| TEI location awareness | "external service, set TEI_URL" | `steamy-wsl:52000`, Qwen3, last-token, default-prompt, auto-truncate all documented |
+| TEI location awareness | "external service, set TEI_URL" | `winhost-wsl:52000`, Qwen3, last-token, default-prompt, auto-truncate all documented |
 | Worker count | "4 workers" (stale) | "5 workers (crawl/batch/extract/embed/ingest)" |
 
 ---
@@ -123,8 +123,8 @@ done
 |---------|----------|--------|--------|
 | `ls -la AGENTS.md GEMINI.md` | symlinks → CLAUDE.md | `lrwxrwxrwx ... -> CLAUDE.md` (both) | ✅ |
 | `ls -la crates/*/AGENTS.md docker/AGENTS.md` | 5 symlinks → CLAUDE.md | All 5 confirmed `-> CLAUDE.md` | ✅ |
-| `ssh steamy-wsl cat ~/compose/tei/docker-compose.yaml` | TEI compose config | Full config returned: model, ports, pooling | ✅ |
-| `ssh steamy-wsl cat ~/compose/tei/.env` | TEI env vars | `TEI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B`, port 52000 | ✅ |
+| `ssh winhost-wsl cat ~/compose/tei/docker-compose.yaml` | TEI compose config | Full config returned: model, ports, pooling | ✅ |
+| `ssh winhost-wsl cat ~/compose/tei/.env` | TEI env vars | `TEI_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B`, port 52000 | ✅ |
 | `wc -l crates/*/CLAUDE.md docker/CLAUDE.md` | Non-zero files | 57/81/54/62/90 lines (pre-update); all grown after updates | ✅ |
 | Justfile content | `just verify`, `just fix`, etc. | 16 recipes confirmed including `just up/down/rebuild` | ✅ |
 
@@ -132,7 +132,7 @@ done
 
 ## Source IDs + Collections Touched
 
-No Axon embed/retrieve operations were performed during this session (documentation-only session). TEI service was read from `steamy-wsl` for informational purposes only — no embedding occurred.
+No Axon embed/retrieve operations were performed during this session (documentation-only session). TEI service was read from `winhost-wsl` for informational purposes only — no embedding occurred.
 
 ---
 

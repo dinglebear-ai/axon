@@ -32,7 +32,7 @@ Environment overrides:
   GPT_5_4_MINI_MODEL    Default: gpt-5.4-mini
   GEMINI_3_1_FLASH_LITE_MODEL
                          Default: gemini-3.1-flash-lite
-  CLI_API_BASE_URL      Default: https://cli-api.tootie.tv/v1
+  CLI_API_BASE_URL      Default: https://cli-api.example.internal/v1
   GEMMA_OPENAI_BASE_URL Default: http://127.0.0.1:8080/v1
   GEMMA_MODEL           Default: ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M
   GEMMA_CONTEXT_CHARS   Default: 128000
