@@ -156,6 +156,22 @@ jobs:
           echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
       - name: Rust formatting
         run: cargo fmt --all -- --check
+      # Build xtask ONCE, then invoke ./target/debug/xtask directly for every
+      # check below.
+      #
+      # Measured on job 92475858863 (a 186-minute green run): this job produced
+      # THIRTEEN cargo builds, and builds 2-13 each recompiled exactly 470
+      # crates starting from proc-macro2 — a leaf build-dependency nothing in
+      # this repo can invalidate. Every `cargo xtask ...` invocation rebuilt the
+      # world instead of reusing the previous one. The fast (14-minute) runs have
+      # the identical 13-build shape; kache just serves each rebuild in ~35s
+      # instead of ~7min, which is why this stayed invisible.
+      #
+      # `cargo build -p xtask` once + direct binary invocation makes that
+      # structural, not cache-dependent: one dev build, one test build, done.
+      # Same pattern lefthook.yml already uses for the commit hooks.
+      - name: Build xtask once
+        run: cargo build --locked -p xtask
       - name: Repository and transport contracts
         run: |
           ./scripts/test-incus-bootstrap.sh
@@ -167,22 +183,28 @@ jobs:
             echo "Retired compiler cache reference found in an active surface."
             exit 1
           fi
-          cargo xtask check-no-mod-rs
-          cargo xtask check-mcp-http
-          cargo xtask check-doc-links
-          cargo xtask check-doc-contracts
-          cargo xtask check-dep-graph
-          cargo xtask check-redaction-logs
-          cargo xtask check-sqlite-migrations
+          ./target/debug/xtask check-no-mod-rs
+          ./target/debug/xtask check-mcp-http
+          ./target/debug/xtask check-doc-links
+          ./target/debug/xtask check-doc-contracts
+          ./target/debug/xtask check-dep-graph
+          ./target/debug/xtask check-redaction-logs
+          ./target/debug/xtask check-sqlite-migrations
           python3 scripts/refresh_generated_contracts_staged.py --self-test
       - name: Kache degradation gate self-test
         if: ${{ needs.changes.outputs.workflow == 'true' }}
         run: ./scripts/kache-gate-selftest.sh
+      # Was `cargo run --manifest-path xtask/Cargo.toml --no-default-features`.
+      # The `openapi-drift` feature only gates the openapi_drift module itself
+      # (xtask/src/checks/openapi_drift.rs), which `generated-contracts` never
+      # calls — so the flag changed no behaviour while forcing a whole extra
+      # build configuration that cargo cannot share with the default-feature
+      # build. That cost 8m30s on the slow run measured above.
       - name: Generated schema and documentation contracts
-        run: cargo run --manifest-path xtask/Cargo.toml --no-default-features -- generated-contracts check
+        run: ./target/debug/xtask generated-contracts check
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
-        run: cargo xtask check-release-versions --base origin/main --head HEAD --mode pr
+        run: ./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr
       - name: MCP schema documentation
         if: ${{ needs.changes.outputs.mcp == 'true' }}
         run: python3 scripts/generate_mcp_schema_doc.py --check
@@ -192,10 +214,11 @@ jobs:
       - name: REST and workflow contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: |
-          cargo test --locked --test http_api_parity_inventory
+          # One cargo invocation builds both test binaries; splitting them cost
+          # an extra full 470-crate rebuild.
+          cargo test --locked --test http_api_parity_inventory --test workflow_shapes
           python3 scripts/cargo_test_filter_guard.py -- cargo test --locked --test http_api_parity_inventory rest_route_contracts_match_openapi_request_schemas -- --nocapture
-          cargo test --locked --test workflow_shapes
-          cargo xtask check-openapi-drift
+          ./target/debug/xtask check-openapi-drift
       - name: Changed-file monolith policy
         if: ${{ needs.changes.outputs.rust == 'true' }}
         env:
