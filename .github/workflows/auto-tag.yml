@@ -59,6 +59,9 @@ jobs:
     permissions:
       contents: read
     runs-on: [self-hosted, unraid]
+    # Slowest observed green run: 16.6 min (cargo xtask release-version detection
+    # on the self-hosted runner). Bound generously for a cold kache cache.
+    timeout-minutes: 40
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -143,6 +146,9 @@ jobs:
     if: ${{ needs.plan.outputs.matrix != '{"include":[]}' }}
     name: ${{ matrix.id }}
     runs-on: ubuntu-24.04
+    # Tag/release API work only — the CI wait lives in ci-gate above. Green runs
+    # finish in seconds; the bound covers slow tag pushes and workflow dispatch.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
