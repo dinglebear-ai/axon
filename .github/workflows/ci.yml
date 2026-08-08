@@ -293,7 +293,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Lint GitHub Actions workflows
-        run: mise x actionlint@1.7.12 -- actionlint .github/workflows/*.yml
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
+        with:
+          version: 1.7.12
+          files: .github/workflows/*.yml
       - name: Test changed-path routing
         run: |
           rustc --edition=2024 --test tests/ci_changed_paths.rs -o "$RUNNER_TEMP/ci_changed_paths"

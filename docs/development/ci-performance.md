@@ -1,3 +1,9 @@
+---
+title: "CI Performance and Timing"
+created: 2026-08-08
+updated: 2026-08-08
+---
+
 # CI performance and timing
 
 Axon routes each changed path through `scripts/ci/changed_paths.py`. Required
