@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: docker-image-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 permissions:
   contents: read
   packages: write
@@ -14,6 +18,7 @@ jobs:
   changes:
     name: changes
     runs-on: [self-hosted, unraid]
+    timeout-minutes: 10
     outputs:
       docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.full_ci == 'true' }}
     steps:
@@ -39,6 +44,7 @@ jobs:
   build:
     name: build-and-push
     runs-on: [self-hosted, unraid]
+    timeout-minutes: 30
     needs: [changes]
     if: ${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true' }}
     steps:

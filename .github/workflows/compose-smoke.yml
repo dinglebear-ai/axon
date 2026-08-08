@@ -18,7 +18,11 @@ jobs:
     runs-on: ci-pool-ops
     outputs:
       compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.full_ci == 'true' }}
-      docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      # Narrow image-input category: only Dockerfile/.dockerignore/workflow
+      # changes should trigger the in-container cargo build below. The broad
+      # `docker` output (which src/** and manifest churn flips on) is consumed
+      # by docker-image.yml on main, not here.
+      docker_build: ${{ steps.classify.outputs.docker_build == 'true' || steps.classify.outputs.full_ci == 'true' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -34,7 +38,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -101,7 +105,7 @@ jobs:
     name: image-build-smoke
     runs-on: ci-pool-system
     needs: [changes]
-    if: ${{ needs.changes.outputs.docker == 'true' }}
+    if: ${{ needs.changes.outputs.docker_build == 'true' }}
     steps:
       # Full checkout: Dockerfile runs cargo build inside the container,
       # so the entire source tree must be in the Docker build context.
@@ -151,4 +155,4 @@ jobs:
           }
           require_success changes "${{ needs.changes.result }}"
           require_success_or_intentional_skip compose-config "${{ needs.compose-config.result }}" "${{ needs.changes.outputs.compose }}"
-          require_success_or_intentional_skip image-build-smoke "${{ needs.image-build-smoke.result }}" "${{ needs.changes.outputs.docker }}"
+          require_success_or_intentional_skip image-build-smoke "${{ needs.image-build-smoke.result }}" "${{ needs.changes.outputs.docker_build }}"

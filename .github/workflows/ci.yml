@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: '0 3 * * 1'  # Weekly Monday 3am UTC
   workflow_dispatch:
@@ -48,6 +48,7 @@ jobs:
   changes:
     name: changes
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     outputs:
       all: ${{ steps.classify.outputs.all }}
       routing_fallback: ${{ steps.classify.outputs.routing_fallback }}
@@ -84,7 +85,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -117,6 +118,12 @@ jobs:
   rust-contracts:
     name: rust-contracts
     runs-on: ci-pool-rust
+    # Not the 30-minute default of the other Rust jobs: this one compiles xtask
+    # and the full contract test set, and it has legitimately run 25 min and
+    # 34 min on green main pushes (runs 30882327332 and 30817832097). A 30-cap
+    # would have hard-failed the latter, so the bound is set above the observed
+    # worst case rather than at the class default.
+    timeout-minutes: 60
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
@@ -131,9 +138,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.3.0
       - name: create web assets placeholder
         run: |
           mkdir -p apps/web/out
@@ -227,6 +231,7 @@ jobs:
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}
     steps:
@@ -237,6 +242,7 @@ jobs:
   android:
     name: android
     runs-on: ci-pool-system
+    timeout-minutes: 30
     needs: [changes]
     if: ${{ needs.changes.outputs.android == 'true' }}
     steps:
@@ -324,19 +330,28 @@ jobs:
   toml-fmt:
     name: toml-fmt
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
-        with:
-          toolchain: 1.97.1
-      - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d
-        with:
-          install_args: cargo:taplo-cli
+      - name: Install taplo (pinned prebuilt binary)
+        # Prebuilt static binary instead of `mise install cargo:taplo-cli`,
+        # which compiled taplo from source on every run. Pinned by version and
+        # sha256 so a moved release cannot silently change the tool.
+        run: |
+          set -euo pipefail
+          version="0.10.0"
+          sha256="8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156"
+          curl -fsSL -o /tmp/taplo.gz \
+            "https://github.com/tamasfe/taplo/releases/download/${version}/taplo-linux-x86_64.gz"
+          echo "${sha256}  /tmp/taplo.gz" | sha256sum -c -
+          gunzip -f /tmp/taplo.gz
+          chmod +x /tmp/taplo
+          /tmp/taplo --version
       - name: taplo fmt --check
         run: |
-          mise exec cargo:taplo-cli -- taplo fmt --check \
+          /tmp/taplo fmt --check \
             .cargo/config.toml \
             .config/nextest.toml \
             .taplo.toml \
@@ -349,6 +364,7 @@ jobs:
   lefthook-pre-commit-speed:
     name: lefthook pre-commit speed guard
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
     steps:
@@ -359,6 +375,7 @@ jobs:
   palette-tauri:
     name: palette-tauri
     runs-on: ci-pool-rust
+    timeout-minutes: 30
     needs: [changes]
     if: ${{ needs.changes.outputs.palette == 'true' }}
     steps:
@@ -433,7 +450,12 @@ jobs:
     # 25m08s — a timeout despite all real steps passing). Give it headroom.
     timeout-minutes: 40
     needs: [changes, rust-contracts]
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' }}
+    # A hosted windows-latest cargo check that transitively compiles axon is
+    # too expensive for every Rust PR; opt in with the `ci:full` label.
+    # Opt-in only: this compiles axon transitively on a windows-latest runner
+    # and duplicates coverage from the mingw cross build, which already runs on
+    # main and on ci:full PRs.
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -478,6 +500,7 @@ jobs:
     # execute (os error 2) with missing target .d files — a runner env/workspace
     # issue. This cross-compile is proven on ubuntu-latest, so pin it here.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     env:
@@ -512,9 +535,14 @@ jobs:
           path: target/x86_64-pc-windows-gnu/debug/axon.exe
           if-no-files-found: error
 
+  # Consumes the single debug binary built by binary-smoke-build (which embeds
+  # real web assets when available) instead of running a second
+  # `cargo build --bin axon` of its own — see the binary-smoke job for the same
+  # artifact-consumption pattern.
   smoke-binary:
     name: smoke-binary
     runs-on: ci-pool-rust
+    timeout-minutes: 45
     needs: [changes, rust-contracts]
     if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
     env:
@@ -545,6 +573,7 @@ jobs:
   web-panel:
     name: web-panel
     runs-on: ci-pool-typescript
+    timeout-minutes: 30
     needs: [changes]
     if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
@@ -572,6 +601,7 @@ jobs:
   chrome-extension:
     name: chrome-extension
     runs-on: ci-pool-typescript
+    timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.chrome == 'true' }}
     steps:
@@ -587,6 +617,7 @@ jobs:
   clippy:
     name: clippy
     runs-on: ci-pool-rust
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     steps:
@@ -604,6 +635,7 @@ jobs:
   test:
     name: test
     runs-on: ci-pool-rust
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.rust == 'true' }}
     env:
@@ -638,6 +670,7 @@ jobs:
     name: live-qdrant
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_live_qdrant_tests) }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       qdrant:
         image: qdrant/qdrant:v1.13.1
@@ -661,6 +694,7 @@ jobs:
   rag-changes:
     name: rag-changes
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     if: ${{ github.event_name == 'pull_request' }}
     outputs:
       rag: ${{ steps.filter.outputs.rag }}
@@ -734,7 +768,7 @@ jobs:
             -v "$PWD/.cache/huggingface:/hf-cache" \
             -e HF_HOME=/hf-cache \
             -e HF_HUB_CACHE=/hf-cache/hub \
-            ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
+            ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 \
             --model-id BAAI/bge-small-en-v1.5
           tei_port="$(docker port axon-tei 80/tcp | awk -F: 'END { print $NF }')"
           case "$tei_port" in
@@ -783,6 +817,7 @@ jobs:
   security:
     name: security
     runs-on: ci-pool-rust
+    timeout-minutes: 30
     needs: [changes, rust-contracts]
     if: ${{ needs.changes.outputs.security == 'true' }}
     steps:
@@ -847,12 +882,16 @@ jobs:
           path: .cache/huggingface
           key: hf-tei-${{ runner.os }}-BAAI-bge-small-en-v1.5-v1
 
+      # TEI is pinned to a release tag (not cpu-latest): the cache key is
+      # immutable, so a floating tag would keep serving whatever image was
+      # first cached — a permanently stale multi-GB cache entry. Bump the tag
+      # here AND in the cache key (and in live-rag-pr) together.
       - name: Cache Docker images (TEI + Qdrant)
         id: docker-cache
         uses: actions/cache@v5
         with:
           path: /tmp/docker-images
-          key: docker-${{ runner.os }}-tei-cpu-v1-qdrant-1.13.1
+          key: docker-${{ runner.os }}-tei-cpu-1.9.3-qdrant-1.13.1
 
       - name: Load Docker images from cache
         if: steps.docker-cache.outputs.cache-hit == 'true'
@@ -863,10 +902,10 @@ jobs:
       - name: Pull and save Docker images
         if: steps.docker-cache.outputs.cache-hit != 'true'
         run: |
-          docker pull ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+          docker pull ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3
           docker pull qdrant/qdrant:v1.13.1
           mkdir -p /tmp/docker-images
-          docker save ghcr.io/huggingface/text-embeddings-inference:cpu-latest -o /tmp/docker-images/tei.tar
+          docker save ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 -o /tmp/docker-images/tei.tar
           docker save qdrant/qdrant:v1.13.1 -o /tmp/docker-images/qdrant.tar
 
       - name: create web assets placeholder
@@ -924,7 +963,7 @@ jobs:
             -v "$PWD/.cache/huggingface:/hf-cache" \
             -e HF_HOME=/hf-cache \
             -e HF_HUB_CACHE=/hf-cache/hub \
-            ghcr.io/huggingface/text-embeddings-inference:cpu-latest \
+            ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3 \
             --model-id BAAI/bge-small-en-v1.5
 
       - name: Wait for Qdrant and TEI
@@ -993,6 +1032,7 @@ jobs:
   binary-smoke-build:
     name: binary-smoke-build
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')) && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
     steps:
@@ -1020,6 +1060,7 @@ jobs:
   binary-smoke:
     name: binary-smoke
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     needs: [changes, binary-smoke-build]
     if: ${{ needs.binary-smoke-build.result == 'success' }}
     steps:
@@ -1035,6 +1076,7 @@ jobs:
   ci-gate:
     name: ci-gate
     runs-on: ci-pool-ops
+    timeout-minutes: 10
     if: always()
     needs:
       - changes
@@ -1087,9 +1129,9 @@ jobs:
           require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
           require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
-          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' }}"
+          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
+          require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ needs.binary-smoke-build.result == 'success' && github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
           require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
@@ -1098,5 +1140,5 @@ jobs:
           require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
           require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
           require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
+          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
           require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"
