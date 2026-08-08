@@ -673,6 +673,23 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
         plan_args.contains("--base \"origin/$base_branch\"") && plan_args.contains("--head HEAD"),
         "the fixup planner itself must compare the release branch with its reported base branch"
     );
+
+    let fixup = fixups
+        .find("cargo xtask release-please-fixups")
+        .expect("release PR fixup invocation exists");
+    let commit = fixups
+        .find("git commit -m \"chore: apply release-please fixups\"")
+        .expect("release PR fixup commit exists");
+    let check = fixups
+        .find("cargo xtask check-release-versions")
+        .expect("release version check exists");
+    let push = fixups
+        .find("git push origin HEAD:\"$branch\"")
+        .expect("release PR fixup push exists");
+    assert!(
+        fixup < commit && commit < check && check < push,
+        "release PR fixups must be applied, committed, checked at HEAD, then pushed"
+    );
 }
 
 #[test]
