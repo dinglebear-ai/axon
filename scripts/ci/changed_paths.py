@@ -78,10 +78,6 @@ DOC_CI_HELPER_SCRIPTS = {
     "scripts/check_aurora_primitive_inventory.py",
 }
 
-FULL_CI_ROUTER_PATHS = {
-    "scripts/ci/changed_paths.py",
-}
-
 CI_CONTRACT_PATHS = {
     "scripts/ci/changed_paths.py",
     "tests/ci_changed_paths.rs",
@@ -169,21 +165,21 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
 
     workflow = any_match(
         paths,
-        lambda p: starts(p, ".github/workflows/", ".github/actions/")
-        or p in FULL_CI_ROUTER_PATHS,
+        lambda p: starts(p, ".github/workflows/", ".github/actions/"),
     )
-    full_ci = any_match(paths, lambda p: p in FULL_CI_ROUTER_PATHS)
+    # Empty-path resolution and workflow_dispatch remain conservative all-lane
+    # fallbacks above. A classifier source edit itself has direct contract tests
+    # and Python CodeQL coverage, so it must not rebuild every product.
+    full_ci = False
     ci_contracts = workflow or any_match(paths, lambda p: p in CI_CONTRACT_PATHS)
     hooks = any_match(paths, lambda p: p in HOOK_PATHS)
     toml = any_match(paths, lambda p: p.endswith(".toml"))
-    # ci.yml orchestrates everything, and composite actions under
-    # .github/actions/ are consumed across the Rust/web/release jobs, so both
-    # keep the conservative all-true routing (every ci.yml category output ORs
-    # in ci_all). Other workflow files route only the CI surface they own via
-    # WORKFLOW_CATEGORY_PATHS below, or just `workflow`.
+    # ci.yml orchestrates every CI job, so changing it intentionally exercises
+    # every lane. Composite actions are routed to only their actual consumers.
+    # Other workflow files route only the CI surface they own.
     ci_all = any_match(
         paths,
-        lambda p: p == ".github/workflows/ci.yml" or starts(p, ".github/actions/"),
+        lambda p: p == ".github/workflows/ci.yml",
     )
     codeql_all = any_match(paths, lambda p: p == ".github/workflows/codeql.yml")
     docs = any_match(
@@ -216,7 +212,8 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     ) or openapi
     palette = any_match(
         paths,
-        lambda p: starts(p, "apps/palette-tauri/") or p in WORKFLOW_CATEGORY_PATHS["palette"],
+        lambda p: starts(p, "apps/palette-tauri/", ".github/actions/setup-rust-kache/")
+        or p in WORKFLOW_CATEGORY_PATHS["palette"],
     ) or openapi
     chrome = any_match(
         paths,
@@ -262,6 +259,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
                 "vendor/",
                 ".cargo/",
                 ".config/",
+                ".github/actions/setup-rust-kache/",
             )
             or p
             in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"}
@@ -333,7 +331,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         lambda p: p in {"Cargo.lock", "deny.toml"}
         or p == "Cargo.toml"
         or p.endswith("/Cargo.toml")
-        or starts(p, ".cargo/", "vendor/"),
+        or starts(p, ".cargo/", "vendor/", ".github/actions/setup-rust-kache/"),
     )
 
     codeql_actions = workflow

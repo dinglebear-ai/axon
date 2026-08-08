@@ -506,9 +506,32 @@ fn workflow_files_route_only_the_ci_surface_they_own() {
 #[test]
 fn changed_path_router_edits_use_the_narrowest_safe_contract_lane() {
     let router = classify("pull_request", &["scripts/ci/changed_paths.py"]);
-    assert_eq!(router["full_ci"], "true");
-    assert_eq!(router["workflow"], "true");
+    assert_eq!(router["full_ci"], "false");
+    assert_eq!(router["workflow"], "false");
     assert_eq!(router["ci_contracts"], "true");
+    assert_eq!(router["codeql_python"], "true");
+    for key in [
+        "rust",
+        "web",
+        "android",
+        "palette",
+        "chrome",
+        "docker",
+        "compose",
+        "mcp",
+        "rag",
+        "security",
+        "release",
+        "codeql_actions",
+        "codeql_javascript_typescript",
+        "codeql_rust",
+        "codeql_java_kotlin",
+    ] {
+        assert_eq!(
+            router[key], "false",
+            "classifier source must not enable {key}"
+        );
+    }
 
     for file in ["tests/ci_changed_paths.rs", "tests/workflow_shapes.rs"] {
         let out = classify("pull_request", &[file]);
@@ -525,6 +548,22 @@ fn changed_path_router_edits_use_the_narrowest_safe_contract_lane() {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["full_ci"], "false", "{file} has a targeted hook lane");
         assert_eq!(out["hooks"], "true", "{file} changes hook behavior");
+    }
+}
+
+#[test]
+fn shared_rust_setup_action_routes_only_to_its_ci_consumers() {
+    let out = classify(
+        "pull_request",
+        &[".github/actions/setup-rust-kache/action.yml"],
+    );
+    for key in ["workflow", "ci_contracts", "rust", "palette", "security"] {
+        assert_eq!(out[key], "true", "Rust setup action must enable {key}");
+    }
+    for key in [
+        "ci_all", "web", "android", "chrome", "docker", "compose", "mcp", "rag",
+    ] {
+        assert_eq!(out[key], "false", "Rust setup action must not enable {key}");
     }
 }
 
