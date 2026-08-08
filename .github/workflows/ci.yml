@@ -69,6 +69,7 @@ jobs:
       docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       mcp: ${{ steps.classify.outputs.mcp == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      rag: ${{ steps.classify.outputs.rag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       security: ${{ steps.classify.outputs.security == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       release: ${{ steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       version_files: ${{ steps.classify.outputs.version_files == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -88,7 +89,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -293,10 +294,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Lint GitHub Actions workflows
-        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
-        with:
-          version: 1.7.12
-          files: .github/workflows/*.yml
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSLo "$archive" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" \
+            | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" .github/workflows/*.yml
       - name: Test changed-path routing
         run: |
           rustc --edition=2024 --test tests/ci_changed_paths.rs -o "$RUNNER_TEMP/ci_changed_paths"
@@ -762,54 +767,14 @@ jobs:
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
 
-  # OPS-H1: detect whether a PR touches the RAG-critical paths so the live
-  # embed→retrieve test only runs when retrieval/embedding/LLM code changes.
-  # Self-contained git diff (no third-party paths-filter action) — sets a
-  # `rag` boolean output consumed by `live-rag-pr`.
-  rag-changes:
-    name: rag-changes
-    runs-on: ci-pool-ops
-    timeout-minutes: 10
-    if: ${{ github.event_name == 'pull_request' }}
-    outputs:
-      rag: ${{ steps.filter.outputs.rag }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Detect RAG-path changes
-        id: filter
-        run: |
-          set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          # Fall back to merge-base if the base SHA is not directly reachable.
-          if ! git cat-file -e "$base" 2>/dev/null; then
-            base=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" "$head" || echo "")
-          fi
-          if [ -z "$base" ]; then
-            echo "Could not resolve base — defaulting rag=true (fail safe)." >&2
-            echo "rag=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed=$(git diff --name-only "$base" "$head" || true)
-          echo "Changed files:"; echo "$changed"
-          if echo "$changed" | grep -qE '^(crates/axon-(embedding|llm|retrieval|vectors)/|crates/axon-services/src/source/|tests/rag_live_integration\.rs)'; then
-            echo "RAG-critical paths changed — will run live RAG test."
-            echo "rag=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No RAG-critical paths changed — skipping live RAG test."
-            echo "rag=false" >> "$GITHUB_OUTPUT"
-          fi
-
   # OPS-H1: stand up Qdrant + TEI (modeled on mcp-smoke) and run a real
   # embed→retrieve assertion on PRs that touch RAG code. Closes the gap where a
   # retrieval/RRF/rerank regression could merge and auto-release unverified.
   live-rag-pr:
     name: live-rag-pr
     runs-on: ubuntu-latest
-    needs: [rag-changes]
-    if: ${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
+    needs: [changes]
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}
     timeout-minutes: 30
     services:
       qdrant:
@@ -1191,7 +1156,6 @@ jobs:
       - test
       - security
       - mcp-smoke
-      - rag-changes
       - live-rag-pr
       - binary-smoke-build
       - binary-smoke
@@ -1234,7 +1198,6 @@ jobs:
           require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
           require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
-          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
+          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}"
           require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"
