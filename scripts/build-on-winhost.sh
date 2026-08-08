@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/build-on-steamy.sh [--target palette-tauri|axon] [--no-sync] [--dry-run] [--destructive-sync]
+Usage: scripts/build-on-winhost.sh [--target palette-tauri|axon] [--no-sync] [--dry-run] [--destructive-sync]
 
 Build the latest local Axon checkout on winhost-wsl and place the Windows .exe
 on Winhost's desktop.
@@ -168,7 +168,7 @@ fi
 mkdir -p "$remote_repo"
 
 if [[ "$remote_repo" == "$default_remote_repo" ]]; then
-  printf 'disposable mirror for scripts/build-on-steamy.sh\n' > "$remote_repo/$sentinel"
+  printf 'disposable mirror for scripts/build-on-winhost.sh\n' > "$remote_repo/$sentinel"
 fi
 
 if [[ "$destructive_sync" != 1 && ! -f "$remote_repo/$sentinel" ]]; then

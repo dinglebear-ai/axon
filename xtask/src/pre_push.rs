@@ -505,6 +505,7 @@ fn contains_path(paths: &[&str], needle: &str) -> bool {
 fn workflow_router_paths() -> &'static [&'static str] {
     &[
         "lefthook.yml",
+        "scripts/clear-git-local-env.sh",
         "scripts/ci/changed_paths.py",
         "tests/ci_changed_paths.rs",
         "tests/workflow_shapes.rs",

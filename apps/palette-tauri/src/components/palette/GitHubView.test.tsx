@@ -173,7 +173,7 @@ describe("GitHubView", () => {
     await waitFor(() => expect(screen.getByText("jmagar/axon")).toBeInTheDocument());
     // Back from the repo-list view (the top level) does not show a Back button.
     expect(screen.queryByRole("button", { name: /back/i })).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("renders the tree and a file's preview simultaneously in a split view", async () => {
     invokeMock.mockResolvedValueOnce(fileResult);

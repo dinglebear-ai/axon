@@ -2,7 +2,8 @@
 //! `tokens.schema.json` (JSON Schema validating `source.json`'s shape).
 
 use super::header::markdown_header;
-use super::model::TokenSource;
+use super::model::{SOURCE_JSON, TokenSource};
+use sha2::{Digest, Sha256};
 
 pub fn render_markdown(src: &TokenSource) -> String {
     let mut out = markdown_header(src);
@@ -97,11 +98,46 @@ pub fn render_markdown(src: &TokenSource) -> String {
     out
 }
 
-pub fn render_schema(_src: &TokenSource) -> String {
+pub fn render_schema(src: &TokenSource) -> String {
     // Static hand-maintained JSON Schema for source.json's shape (not derived
     // via schemars — the presentation source is data, not a Rust type used
     // elsewhere in the wire contract).
-    serde_json::to_string_pretty(&schema_value()).expect("schema literal is valid json")
+    let mut schema = schema_value();
+    schema["x-axon"] = serde_json::json!({
+        "contract_version": src.contract_version,
+        "generated_by": "cargo xtask presentation generate",
+        "source_inputs": [
+            source_input(
+                "docs/pipeline-unification/surfaces/presentation-contract.md",
+                "markdown_contract",
+                include_str!("../../../docs/pipeline-unification/surfaces/presentation-contract.md"),
+            ),
+            source_input(
+                "xtask/src/presentation/emit_docs.rs",
+                "rust_module",
+                include_str!("emit_docs.rs"),
+            ),
+            source_input(
+                "xtask/src/presentation/model.rs",
+                "rust_module",
+                include_str!("model.rs"),
+            ),
+            source_input(
+                "xtask/src/presentation/source.json",
+                "json_source",
+                SOURCE_JSON,
+            ),
+        ],
+    });
+    serde_json::to_string_pretty(&schema).expect("schema literal is valid json")
+}
+
+fn source_input(path: &str, kind: &str, content: &str) -> serde_json::Value {
+    serde_json::json!({
+        "path": path,
+        "kind": kind,
+        "checksum": format!("sha256:{:x}", Sha256::digest(content.as_bytes())),
+    })
 }
 
 fn schema_value() -> serde_json::Value {

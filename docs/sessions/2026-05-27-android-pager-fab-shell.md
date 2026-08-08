@@ -19,7 +19,7 @@ Continue implementing all 22 Android code-review beads from PR #142, then build 
 
 ## Session Overview
 
-Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) across three commits (v4.12.0 → v4.12.2). Key work: FormKeys dependency-inversion (moved 9 `*FormKeys` objects from UI to data layer), bug fixes for CRLF injection in HeadersField, Job cancellation in DocumentViewModel, answer-text cap in AskViewModel, plus two new test suites (DocumentViewModelTest, SettingsViewModelTest). Also replaced the build-on-steamy.sh rsync-the-world pipeline with a lean build-windows.sh that cross-compiles locally on devhost and ships only the .exe via scp.
+Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) across three commits (v4.12.0 → v4.12.2). Key work: FormKeys dependency-inversion (moved 9 `*FormKeys` objects from UI to data layer), bug fixes for CRLF injection in HeadersField, Job cancellation in DocumentViewModel, answer-text cap in AskViewModel, plus two new test suites (DocumentViewModelTest, SettingsViewModelTest). Also replaced the build-on-winhost.sh rsync-the-world pipeline with a lean build-windows.sh that cross-compiles locally on devhost and ships only the .exe via scp.
 
 ## Sequence of Events
 
@@ -47,13 +47,13 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 
 12. **Code-review cleanup pass (v4.12.2)** — AxonClient, StringChunking, IngestScreen, SettingsScreen, SummarizeScreen, libs.versions.toml all received reviewer-requested cleanup (unused imports, null-safety, accessibility content descriptions, library version pins).
 
-13. **build-windows.sh rewrite** — Replaced build-on-steamy.sh (rsync entire repo → build → ship exe) with build-windows.sh (cross-compile locally on devhost via MinGW, scp only the .exe). Fixed operator-precedence bug in `repo_root()` function.
+13. **build-windows.sh rewrite** — Replaced build-on-winhost.sh (rsync entire repo → build → ship exe) with build-windows.sh (cross-compile locally on devhost via MinGW, scp only the .exe). Fixed operator-precedence bug in `repo_root()` function.
 
 14. **tauri.conf.json version sync** — Synced stuck-at-4.8.1 tauri.conf.json version to 4.12.2 along with Cargo.toml, package.json files.
 
 ## Key Findings
 
-- `build-on-steamy.sh` was rsyncing hundreds of MB of repo files to winhost just to build a ~28 MB .exe — devhost already had `x86_64-w64-mingw32-gcc` and the `x86_64-pc-windows-gnu` rustup target installed, making a full rsync completely unnecessary.
+- `build-on-winhost.sh` was rsyncing hundreds of MB of repo files to winhost just to build a ~28 MB .exe — devhost already had `x86_64-w64-mingw32-gcc` and the `x86_64-pc-windows-gnu` rustup target installed, making a full rsync completely unnecessary.
 - Bash operator precedence `A || B && C` parses as `(A || B) && C`, not `A || (B && C)`. The `repo_root()` fallback path in build-windows.sh had this bug causing `pwd` to always run and embed a newline in the path, which broke pnpm (`ENOENT: no such file or directory, lstat '...path\n'`). Fixed by grouping: `{ cd ... && pwd; }`.
 - `HeadersField.kt` — Edit tool string-matching failures when old_string contained Kotlin regex escape sequences (`\r`, `\n`). Fixed by using Write tool to rewrite the entire file.
 - `SummarizeOptionsForm.kt` — First edit attempt failed because old_string missed the `AuroraTextField` import line. Fixed after re-reading the file.
@@ -84,7 +84,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 | created | `apps/android/app/src/test/java/com/axon/app/ui/document/DocumentViewModelTest.kt` | 6 stand-in tests for DocumentViewModel |
 | created | `apps/android/app/src/test/java/com/axon/app/ui/settings/SettingsViewModelTest.kt` | 5 stand-in tests for SettingsViewModel |
 | created | `scripts/build-windows.sh` | Cross-compile .exe on devhost, scp to winhost Desktop |
-| deleted | `scripts/build-on-steamy.sh` | Superseded by build-windows.sh (was rsyncing entire repo) |
+| deleted | `scripts/build-on-winhost.sh` | Superseded by build-windows.sh (was rsyncing entire repo) |
 | modified | `apps/palette-tauri/src-tauri/tauri.conf.json` | Version sync 4.8.1 → 4.12.2 |
 | modified | `Cargo.toml` | Version 4.12.1 → 4.12.2 |
 | modified | `apps/palette-tauri/package.json` | Version sync to 4.12.2 |
@@ -117,7 +117,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 | axon_rust-ivjr.20 | DocumentViewModelTest | Closed | Closed |
 | axon_rust-ivjr.21 | SettingsViewModelTest | Closed | Closed |
 | axon_rust-ivjr.22 | Code-review cleanup pass | Closed | Closed |
-| axon_rust-bhxf | build-windows.sh (replace build-on-steamy.sh) | Closed | Closed |
+| axon_rust-bhxf | build-windows.sh (replace build-on-winhost.sh) | Closed | Closed |
 | axon_rust-mott | tauri.conf.json version sync | Closed | Closed |
 
 ## Repository Maintenance
@@ -130,7 +130,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 
 **Branches**: `feat/android-pager-fab-shell` is the current active branch with PR #142 open. No other feature branches were created this session.
 
-**Stale docs**: `scripts/build-on-steamy.sh` was deleted and replaced by `scripts/build-windows.sh`. No other documentation contradicted by session changes was identified.
+**Stale docs**: `scripts/build-on-winhost.sh` was deleted and replaced by `scripts/build-windows.sh`. No other documentation contradicted by session changes was identified.
 
 ## Tools and Skills Used
 
@@ -170,7 +170,7 @@ Completed all 22 code-review beads for the Android pager/FAB shell PR (#142) acr
 ## Risks and Rollback
 
 - **FormKeys move**: Pure package rename with no logic change. If the Android build fails, revert by moving key definitions back to the form files. Compiler enforces all import paths.
-- **build-windows.sh**: build-on-steamy.sh is committed history; `git show HEAD~:scripts/build-on-steamy.sh` recovers it if needed.
+- **build-windows.sh**: build-on-winhost.sh is committed history; `git show HEAD~:scripts/build-on-winhost.sh` recovers it if needed.
 
 ## Next Steps
 

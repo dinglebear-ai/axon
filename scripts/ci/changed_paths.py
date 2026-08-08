@@ -74,6 +74,8 @@ DOC_CI_HELPER_SCRIPTS = {
 }
 
 FULL_CI_ROUTER_PATHS = {
+    "lefthook.yml",
+    "scripts/clear-git-local-env.sh",
     "scripts/ci/changed_paths.py",
     "tests/ci_changed_paths.rs",
     "tests/workflow_shapes.rs",
@@ -95,9 +97,9 @@ COMPOSE_INPUTS = {
     "docker-compose.external-providers.yaml",
     "docker-compose.external-qdrant.yaml",
     "docker-compose.llama.yaml",
-    "scripts/build-on-steamy.sh",
+    "scripts/build-on-winhost.sh",
     "scripts/test-ask-gemma4.sh",
-    "scripts/test-build-on-steamy-safety.sh",
+    "scripts/test-build-on-winhost-safety.sh",
 }
 
 VERSION_FILES = {

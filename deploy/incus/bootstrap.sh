@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Idempotent bootstrap for axon's Incus deployment.
 #
-# Split model (confirmed in production 2026-07-08, bead axon_rust-4m749.3):
-#   - tei/chrome run as NESTED DOCKER containers
-#     inside the Incus container — they need the GPU-passthrough Docker
-#     Engine setup this script builds.
+# Split model:
+#   - TEI runs on the Incus HOST by default and is consumed through
+#     AXON_EXTERNAL_TEI_URL. Nested GPU TEI is an explicit opt-in only.
+#   - Chrome and optional bundled qdrant run as nested Docker containers.
 #   - axon's binary is deployed into Incus, but its native service is disabled
 #     by default because the host CLI and an Incus process cannot safely share
 #     a bind-mounted SQLite WAL. Set AXON_INCUS_RUN_SERVER=true only when the
 #     host never opens that database. A containerized axon
-#     talking to nested-Docker qdrant/tei/chrome over the "jakenet" bridge
-#     needs no NAT hairpin of its own, but publishing axon's port back out to
+#     talking to nested-Docker qdrant/chrome and host TEI needs no NAT hairpin
+#     of its own, but publishing axon's port back out to
 #     the host (for SWAG/Cloudflare) requires an extra NAT hop through
 #     Docker's own port-proxy for every single request; that hop was found to
 #     silently reset connections in this environment (TCP handshake
@@ -18,8 +18,8 @@
 #     on the same bridge/docker-proxy mechanism worked fine — i.e. axon
 #     specifically, not nested Docker networking in general. Native + systemd
 #     sidesteps that hop entirely: axon binds directly to the Incus
-#     container's own network namespace, and only reads from
-#     qdrant/tei/chrome over their already-published localhost ports.
+#     container's own network namespace and reaches the selected providers
+#     through their explicit URLs.
 #
 # Usage:
 #   deploy/incus/bootstrap.sh [external-qdrant|bundled-qdrant]
@@ -39,9 +39,8 @@
 # Safe to re-run at any time (idempotent) — including to redeploy a new axon
 # binary build after a code change. Also the intended entry point for the
 # companion systemd unit (axon-incus-bootstrap.service) that re-runs this on
-# every host boot, since boot.autostart=true alone does not re-apply the
-# known-fragile nvidia-procfs device, re-verify GPU access, or restart the
-# native axon service.
+# every host boot, since boot.autostart=true alone does not reconcile provider
+# topology, verify health, or refresh the optional native axon service.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -53,6 +52,7 @@ GPU_PCI_ADDRESS="${AXON_GPU_PCI_ADDRESS:-0000:03:00.0}"
 DEPLOY_PATH="/opt/axon-deploy"
 HOST_AXON_BINARY="${AXON_INCUS_BINARY:-$REPO_ROOT/target/release-fast/axon}"
 MODE="${1:-external-qdrant}"
+TEI_MODE="${AXON_INCUS_TEI_MODE:-external}"
 RUN_INCUS_SERVER="${AXON_INCUS_RUN_SERVER:-false}"
 
 log() { echo "[bootstrap] $*"; }
@@ -62,12 +62,28 @@ case "$MODE" in
   external-qdrant|bundled-qdrant) ;;
   *) fatal "unknown mode '$MODE' (expected 'external-qdrant' or 'bundled-qdrant')" ;;
 esac
+case "$TEI_MODE" in
+  external|bundled) ;;
+  *) fatal "AXON_INCUS_TEI_MODE must be external or bundled" ;;
+esac
 case "$RUN_INCUS_SERVER" in
   true|false) ;;
   *) fatal "AXON_INCUS_RUN_SERVER must be true or false" ;;
 esac
 if [ "$MODE" = "external-qdrant" ] && [ -z "${AXON_EXTERNAL_QDRANT_URL:-}" ]; then
   fatal "AXON_EXTERNAL_QDRANT_URL must be set for external-qdrant mode"
+fi
+tei_unit_environment=""
+if [ "$TEI_MODE" = "external" ]; then
+  [ -n "${AXON_EXTERNAL_TEI_URL:-}" ] || fatal "AXON_EXTERNAL_TEI_URL must be set when AXON_INCUS_TEI_MODE=external"
+  case "$AXON_EXTERNAL_TEI_URL" in
+    http://*|https://*) ;;
+    *) fatal "AXON_EXTERNAL_TEI_URL must be an http:// or https:// URL" ;;
+  esac
+  case "$AXON_EXTERNAL_TEI_URL" in
+    *[[:space:]]*) fatal "AXON_EXTERNAL_TEI_URL contains whitespace" ;;
+  esac
+  tei_unit_environment="Environment=TEI_URL=${AXON_EXTERNAL_TEI_URL}"
 fi
 
 ### 1. Profile: create from the committed definition if missing. Never
@@ -123,7 +139,7 @@ guest_os="$(incus exec "$CONTAINER_NAME" -- sh -c '. /etc/os-release; printf "%s
 [ "$guest_os" = "ubuntu:26.04" ] || fatal "${CONTAINER_NAME} is ${guest_os}, not ubuntu:26.04; recreate it with the documented Incus migration before deploying a host-built binary"
 
 ### 5. Install Docker inside the container if missing (idempotent). Needed
-### for the nested qdrant/tei/chrome services. Axon's native binary is pushed
+### for nested Chrome, optional qdrant, and opt-in bundled TEI. Axon's native binary is pushed
 ### from the host in step 15 and is not built inside this guest.
 if ! incus exec "$CONTAINER_NAME" -- sh -c 'command -v docker' >/dev/null 2>&1; then
   log "Docker not found inside container, installing..."
@@ -145,8 +161,10 @@ else
   log "Docker already present inside container"
 fi
 
+if [ "$TEI_MODE" = "bundled" ]; then
 ### 6. Install nvidia-container-toolkit inside the container (idempotent).
-### REQUIRED for the nested Docker Engine to expose the GPU to containers via
+### REQUIRED only when nested TEI is explicitly enabled, so the nested Docker
+### Engine can expose the GPU to containers via
 ### `docker run --gpus all` — confirmed missing from a from-scratch container
 ### build 2026-07-08: without it, `docker run --gpus all ...` fails with
 ### "failed to discover GPU vendor from CDI: no known GPU vendor found" even
@@ -212,6 +230,9 @@ for _ in 1 2 3; do
   sleep 3
 done
 [ "$gpu_ok" = "1" ] || fatal "GPU verification failed after 3 attempts — refusing to start TEI in a broken state. Check the nvidia-procfs device and host NVIDIA driver."
+else
+  log "using host-owned TEI at ${AXON_EXTERNAL_TEI_URL}; skipping nested NVIDIA setup"
+fi
 
 ### Resolve the env file now — needed by the network-name lookup (10), the
 ### axon-native systemd unit (16), and the actual push (13).
@@ -232,7 +253,7 @@ case "$container_data_path" in
 esac
 
 ### 9. Sync deploy artifacts (compose files + config/) into the container.
-### Only used for the nested qdrant/tei/chrome services now — axon itself is
+### Used for nested Chrome, optional qdrant, and opt-in bundled TEI. Axon itself is
 ### built from the full repo tree separately in step 15.
 log "syncing compose files + config into ${DEPLOY_PATH}"
 incus exec "$CONTAINER_NAME" -- mkdir -p "$DEPLOY_PATH"
@@ -299,30 +320,30 @@ else
   incus file push --mode 0600 "$env_file_on_host" "$CONTAINER_NAME$container_data_path/.env"
 fi
 
-### 13. Bring up ONLY the nested-Docker services — qdrant (explicit bundled mode)/tei/
-### chrome, never axon itself (see split-model rationale at the top of this
-### file). Explicit service names, not a bare `up -d`, so this stays correct
-### even if docker-compose.prod.yaml's `axon` service definition changes
-### later.
+### 13. Bring up only the selected nested-Docker services. Chrome is always
+### nested, qdrant is optional, and TEI is nested only when explicitly opted in.
+docker_services="axon-chrome"
 if [ "$MODE" = "bundled-qdrant" ]; then
   log "=== bundled qdrant IS starting locally (explicit bundled-qdrant mode) ==="
-  incus exec "$CONTAINER_NAME" \
-    --cwd "$DEPLOY_PATH" \
-    -- docker compose --env-file .env -f docker-compose.prod.yaml up -d axon-qdrant axon-tei axon-chrome
+  docker_services="axon-qdrant $docker_services"
 else
   log "=== bundled qdrant is NOT starting, using external QDRANT_URL=${AXON_EXTERNAL_QDRANT_URL} ==="
-  incus exec "$CONTAINER_NAME" \
-    --cwd "$DEPLOY_PATH" \
-    -- docker compose --env-file .env -f docker-compose.prod.yaml up -d axon-tei axon-chrome
 fi
+if [ "$TEI_MODE" = "bundled" ]; then
+  log "=== bundled TEI IS starting locally (explicit AXON_INCUS_TEI_MODE=bundled) ==="
+  docker_services="axon-tei $docker_services"
+else
+  log "=== bundled TEI is NOT starting, using external TEI_URL=${AXON_EXTERNAL_TEI_URL} ==="
+  incus exec "$CONTAINER_NAME" --cwd "$DEPLOY_PATH" -- \
+    docker compose --env-file .env -f docker-compose.prod.yaml stop axon-tei >/dev/null 2>&1 || true
+  incus exec "$CONTAINER_NAME" --cwd "$DEPLOY_PATH" -- \
+    docker compose --env-file .env -f docker-compose.prod.yaml rm -f axon-tei >/dev/null 2>&1 || true
+fi
+incus exec "$CONTAINER_NAME" -- sh -c \
+  "cd $DEPLOY_PATH && docker compose --env-file .env -f docker-compose.prod.yaml up -d $docker_services"
 
-### 14. Health-check polling for the nested-Docker services — EXPLICIT
-### bounded timeout/retry (36 * 10s = 360s max). No open-ended "wait until
-### ready" loop. Assumes axon-tei/axon-chrome(/axon-qdrant) define
-### healthchecks (true today).
+### 14. Health-check polling for nested services and the selected TEI provider.
 log "polling for nested-Docker services healthy (bounded: up to 360s)"
-docker_services="axon-tei axon-chrome"
-[ "$MODE" = "bundled-qdrant" ] && docker_services="axon-qdrant $docker_services"
 healthy=0
 for _ in $(seq 1 36); do
   statuses="$(incus exec "$CONTAINER_NAME" -- sh -c \
@@ -335,6 +356,19 @@ for _ in $(seq 1 36); do
 done
 if [ "$healthy" != "1" ]; then
   fatal "not all nested-Docker services reported healthy within the bounded window (360s) — inspect 'docker compose ps' inside $CONTAINER_NAME"
+fi
+if [ "$TEI_MODE" = "external" ]; then
+  log "polling for external TEI healthy at ${AXON_EXTERNAL_TEI_URL}"
+  tei_healthy=0
+  for _ in $(seq 1 36); do
+    if incus exec "$CONTAINER_NAME" -- curl -fsS --max-time 4 \
+      "${AXON_EXTERNAL_TEI_URL%/}/health" >/dev/null 2>&1; then
+      tei_healthy=1
+      break
+    fi
+    sleep 10
+  done
+  [ "$tei_healthy" = "1" ] || fatal "external TEI did not become healthy within 360s: ${AXON_EXTERNAL_TEI_URL}"
 fi
 
 ### 15. Deploy the already-validated host binary. The Ubuntu guest shares
@@ -388,6 +422,7 @@ EnvironmentFile=$container_data_path/.env
 Environment=AXON_HOME=$container_data_path
 Environment=AXON_DATA_DIR=$container_data_path
 Environment=AXON_HTTP_HOST=0.0.0.0
+$tei_unit_environment
 WorkingDirectory=$container_data_path
 ExecStart=/usr/local/bin/axon serve
 Restart=always

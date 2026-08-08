@@ -15,11 +15,24 @@ const GENERATED_CONTRACT_INPUT_PATHS: &[&str] = &[
     "docs/pipeline-unification/sources/new-source-contract.md",
 ];
 
+const PRESENTATION_CONTRACT_PATHS: &[&str] = &[
+    "xtask/src/presentation/source.json",
+    "docs/reference/presentation/tokens.md",
+    "docs/reference/presentation/tokens.schema.json",
+    "docs/reference/presentation/README.md",
+    "apps/web/src/styles/axon-tokens.css",
+    "apps/palette-tauri/src/styles/axon-tokens.css",
+    "apps/chrome-extension/src/styles/axon-tokens.css",
+    "apps/android/app/src/main/java/com/axon/app/ui/theme/generated/AxonTokens.kt",
+    "crates/axon-cli/src/ui/tokens.rs",
+];
+
 pub(super) fn is_generated_contract_path(path: &str) -> bool {
     GENERATED_CONTRACT_PATH_PREFIXES
         .iter()
         .any(|prefix| path.starts_with(prefix))
         || GENERATED_CONTRACT_INPUT_PATHS.contains(&path)
+        || PRESENTATION_CONTRACT_PATHS.contains(&path)
 }
 
 pub(super) fn is_repo_structure_path(path: &str) -> bool {

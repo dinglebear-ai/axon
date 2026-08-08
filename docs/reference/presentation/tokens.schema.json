@@ -100,5 +100,31 @@
     "icons"
   ],
   "title": "Axon Presentation Token Source",
-  "type": "object"
+  "type": "object",
+  "x-axon": {
+    "contract_version": "1.0.0",
+    "generated_by": "cargo xtask presentation generate",
+    "source_inputs": [
+      {
+        "checksum": "sha256:68c180468c6193ea181dbdaf32c99c37bf2b9ad810fd91dd31c50c4fa3d3736d",
+        "kind": "markdown_contract",
+        "path": "docs/pipeline-unification/surfaces/presentation-contract.md"
+      },
+      {
+        "checksum": "sha256:e6a7d0fdb1aba770a5d8b03ea2e10da7db69cdbdf9b25055d19b9c987a4f5c2c",
+        "kind": "rust_module",
+        "path": "xtask/src/presentation/emit_docs.rs"
+      },
+      {
+        "checksum": "sha256:0af89f961a8aff938b87e6702682a00358162058e2f5c7250228e832bde4f650",
+        "kind": "rust_module",
+        "path": "xtask/src/presentation/model.rs"
+      },
+      {
+        "checksum": "sha256:b0d52d4c5b22247fd682473e30891719191d4c1e8f25d74614a828133488374c",
+        "kind": "json_source",
+        "path": "xtask/src/presentation/source.json"
+      }
+    ]
+  }
 }

@@ -2,9 +2,14 @@ use super::*;
 use crate::checks::release_versions::{Component, ReleaseDriver, VersionFile, VersionKind};
 
 fn component(id: &str, path: &str, release_driver: ReleaseDriver) -> Component {
+    let version_path = if path == "." {
+        format!("{id}.json")
+    } else {
+        format!("{path}/{id}.json")
+    };
     let version_file = VersionFile {
         kind: VersionKind::JsonVersion,
-        path: format!("{id}.json"),
+        path: version_path,
         package: None,
         json_pointer: Some("/version".to_owned()),
     };
@@ -26,7 +31,7 @@ fn ownership_requires_config_and_manifest_to_match_managed_paths() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(
         root.path().join("release-please-config.json"),
-        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-"}}}"#,
+        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-","extra-files":[{"type":"json","path":"palette.json","jsonpath":"$.version"}]}}}"#,
     )
     .unwrap();
     std::fs::write(
@@ -43,6 +48,97 @@ fn ownership_requires_config_and_manifest_to_match_managed_paths() {
         ],
     )
     .expect("declared ownership matches both release-please files");
+}
+
+#[test]
+fn ownership_rejects_repo_prefixed_extra_file_paths() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("release-please-config.json"),
+        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-","extra-files":[{"type":"json","path":"apps/palette/palette.json","jsonpath":"$.version"}]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join(".release-please-manifest.json"),
+        r#"{"apps/palette":"1.0.0"}"#,
+    )
+    .unwrap();
+
+    let error = validate_release_please_ownership(
+        root.path(),
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
+    )
+    .expect_err("extra-file paths are resolved relative to their package");
+    let message = error.to_string();
+    assert!(message.contains("missing [apps/palette/palette.json]"));
+    assert!(
+        message.contains("unexpected [apps/palette/apps/palette/palette.json]"),
+        "unexpected error: {message}"
+    );
+}
+
+#[test]
+fn ownership_rejects_missing_direct_version_source_extra_file() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("release-please-config.json"),
+        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-","extra-files":[]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join(".release-please-manifest.json"),
+        r#"{"apps/palette":"1.0.0"}"#,
+    )
+    .unwrap();
+
+    let error = validate_release_please_ownership(
+        root.path(),
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
+    )
+    .expect_err("every directly-updatable version source needs an extra-file");
+    assert!(
+        error
+            .to_string()
+            .contains("missing [apps/palette/palette.json]")
+    );
+}
+
+#[test]
+fn ownership_rejects_unexpected_extra_file() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("release-please-config.json"),
+        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-","extra-files":[{"type":"json","path":"palette.json","jsonpath":"$.version"},{"type":"json","path":"other.json","jsonpath":"$.version"}]}}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.path().join(".release-please-manifest.json"),
+        r#"{"apps/palette":"1.0.0"}"#,
+    )
+    .unwrap();
+
+    let error = validate_release_please_ownership(
+        root.path(),
+        &[component(
+            "palette",
+            "apps/palette",
+            ReleaseDriver::ReleasePlease,
+        )],
+    )
+    .expect_err("extra-files must not claim non-version files");
+    assert!(
+        error
+            .to_string()
+            .contains("unexpected [apps/palette/other.json]")
+    );
 }
 
 #[test]
@@ -76,7 +172,7 @@ fn ownership_rejects_missing_managed_manifest_path() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(
         root.path().join("release-please-config.json"),
-        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-"}}}"#,
+        r#"{"packages":{"apps/palette":{"component":"palette","release-type":"simple","include-v-in-tag":true,"tag-separator":"-","extra-files":[{"type":"json","path":"palette.json","jsonpath":"$.version"}]}}}"#,
     )
     .unwrap();
     std::fs::write(root.path().join(".release-please-manifest.json"), "{}").unwrap();

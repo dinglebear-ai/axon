@@ -68,17 +68,17 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "apps/palette-tauri/src-tauri/tauri.conf.json",
+          "path": "src-tauri/tauri.conf.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "apps/palette-tauri/package.json",
+          "path": "package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "toml",
-          "path": "apps/palette-tauri/src-tauri/Cargo.toml",
+          "path": "src-tauri/Cargo.toml",
           "jsonpath": "$.package.version"
         }
       ]
@@ -92,7 +92,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "apps/android/app/build.gradle.kts"
+          "path": "app/build.gradle.kts"
         }
       ]
     },
@@ -105,12 +105,12 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "apps/chrome-extension/manifest.json",
+          "path": "manifest.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "apps/chrome-extension/package.json",
+          "path": "package.json",
           "jsonpath": "$.version"
         }
       ]

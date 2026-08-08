@@ -8,8 +8,9 @@ Requires=incus.service
 Type=oneshot
 # Mode is fixed at install time — this deployment (devhost) always uses the
 # external-qdrant override, since qdrant lives on nashost for RAM reasons.
-# AXON_EXTERNAL_QDRANT_URL and AXON_ENV_FILE are read from the environment
-# file below rather than hardcoded here.
+# AXON_EXTERNAL_QDRANT_URL, AXON_EXTERNAL_TEI_URL, AXON_INCUS_TEI_MODE,
+# and AXON_ENV_FILE are read from the environment file below rather than
+# hardcoded here.
 # No leading "-": this file is required, not optional. external-qdrant mode
 # hard-requires AXON_EXTERNAL_QDRANT_URL, which only comes from here — a
 # missing file should fail loudly and distinctly at the systemd level

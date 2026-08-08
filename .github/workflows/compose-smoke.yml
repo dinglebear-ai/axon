@@ -97,13 +97,13 @@ jobs:
 
       - name: Validate helper shell scripts
         run: |
-          bash -n scripts/build-on-steamy.sh scripts/test-ask-gemma4.sh scripts/test-build-on-steamy-safety.sh
+          bash -n scripts/build-on-winhost.sh scripts/test-ask-gemma4.sh scripts/test-build-on-winhost-safety.sh
           if command -v shellcheck >/dev/null 2>&1; then
-            shellcheck scripts/build-on-steamy.sh scripts/test-ask-gemma4.sh scripts/test-build-on-steamy-safety.sh
+            shellcheck scripts/build-on-winhost.sh scripts/test-ask-gemma4.sh scripts/test-build-on-winhost-safety.sh
           else
             echo "shellcheck not found; skipped optional shell lint" >&2
           fi
-          scripts/test-build-on-steamy-safety.sh
+          scripts/test-build-on-winhost-safety.sh
 
   image-build-smoke:
     name: image-build-smoke

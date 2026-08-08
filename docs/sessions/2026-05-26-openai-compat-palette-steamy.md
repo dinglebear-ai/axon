@@ -53,7 +53,7 @@ Implemented and configured the OpenAI-compatible LLM path, added ask-path diagno
 | modified | `src/cli/**`, `src/jobs/**`, `src/services/ingest/**`, `tests/setup_check_cli.rs` | Job progress/status and ingest handling changes present in the worktree. |
 | created | `src/cli/commands/job_progress.rs` | Shared job progress presentation. |
 | modified | `apps/palette-tauri/**` | Palette settings, window behavior, output formatting, Aurora color alignment, icons, and Windows build metadata. |
-| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `docker-compose.llama.yaml` | Local deployment/testing helpers for Gemma/llama.cpp and Winhost build delivery. |
+| created | `scripts/build-on-winhost.sh`, `scripts/test-ask-gemma4.sh`, `docker-compose.llama.yaml` | Local deployment/testing helpers for Gemma/llama.cpp and Winhost build delivery. |
 
 ## Beads Activity
 

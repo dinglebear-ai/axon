@@ -53,6 +53,7 @@ IGNORED_TOKENS = {
     "AXON_BIND",  # live-harness local bind address, not runtime config
     "AXON_COMMAND_REGISTRY",  # live-harness fixture override, not runtime config
     "AXON_INCUS_RUN_SERVER",  # Incus bootstrap test control, not runtime config
+    "AXON_INCUS_TEI_MODE",  # Incus bootstrap selector, not Axon runtime config
     "AXON_LIVE_COLLECTION",  # live-harness isolated fixture state
     "AXON_LIVE_COMMAND_TIMEOUT_SECS",  # live-harness timeout
     "AXON_LIVE_DATA_DIR",  # live-harness isolated fixture state
@@ -97,6 +98,7 @@ IGNORED_TOKENS = {
     "GITHUB_ENV",  # GitHub Actions command file, not axon runtime config
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
+    "TEI_MODE",  # local Incus bootstrap shell variable, not runtime configuration
 }
 
 VALID_CLASSIFICATIONS = {
