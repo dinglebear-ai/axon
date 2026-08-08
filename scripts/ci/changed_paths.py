@@ -34,6 +34,7 @@ OUTPUT_KEYS = [
     "compose",
     "mcp",
     "rag",
+    "auto_tag",
     "security",
     "release",
     "release_please",
@@ -244,6 +245,23 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         )
         or p == "tests/rag_live_integration.rs",
     )
+    auto_tag = any_match(
+        paths,
+        lambda p: starts(
+            p,
+            "src/",
+            "crates/",
+            "apps/web/",
+            "vendor/",
+        )
+        or p
+        in {
+            "Cargo.toml",
+            "Cargo.lock",
+            "build.rs",
+            "rust-toolchain.toml",
+        },
+    )
     rust = any_match(
         paths,
         lambda p: p not in CI_CONTRACT_PATHS
@@ -388,6 +406,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "compose": compose,
         "mcp": mcp,
         "rag": rag,
+        "auto_tag": auto_tag,
         "security": security,
         "release": release,
         "release_please": release_please,

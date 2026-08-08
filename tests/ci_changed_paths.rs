@@ -568,6 +568,38 @@ fn shared_rust_setup_action_routes_only_to_its_ci_consumers() {
 }
 
 #[test]
+fn auto_tag_inputs_match_native_shipping_and_release_planner_paths() {
+    for file in [
+        "src/main.rs",
+        "crates/axon-core/src/lib.rs",
+        "apps/web/src/main.tsx",
+        "Cargo.lock",
+        "vendor/example/src/lib.rs",
+    ] {
+        let out = classify("push", &[file]);
+        assert_eq!(
+            out["auto_tag"], "true",
+            "{file} must enable auto-tag planning"
+        );
+    }
+    for file in [
+        "apps/android/app/src/main/MainActivity.kt",
+        "apps/palette-tauri/src/main.tsx",
+        ".github/workflows/auto-tag.yml",
+        ".github/actions/setup-rust-kache/action.yml",
+        "release/components.toml",
+        "xtask/src/checks/release_versions/gate.rs",
+        "xtask/src/main.rs",
+    ] {
+        let out = classify("push", &[file]);
+        assert_eq!(
+            out["auto_tag"], "false",
+            "{file} must not enable auto-tag planning"
+        );
+    }
+}
+
+#[test]
 fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
     for file in [
         "scripts/cargo_test_filter_guard.py",

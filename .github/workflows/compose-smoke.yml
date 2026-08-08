@@ -40,7 +40,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag auto_tag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)

@@ -46,7 +46,7 @@ permissions:
   contents: read
 
 env:
-  AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
+  AURORA_REPO: ${{ vars.AURORA_REPO || 'dinglebear-ai/aurora' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:

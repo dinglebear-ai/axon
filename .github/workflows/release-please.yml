@@ -84,6 +84,8 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - uses: ./.github/actions/setup-rust-kache
+      - name: Build xtask once
+        run: cargo build --locked -p xtask
       - name: Apply release PR fixups
         env:
           PRS: ${{ needs.release-please.outputs.prs }}
@@ -99,14 +101,14 @@ jobs:
               "+refs/heads/$base_branch:refs/remotes/origin/$base_branch" \
               "+refs/heads/$branch:refs/remotes/origin/$branch"
             git checkout "$branch"
-            cargo xtask release-please-fixup-plan \
+            ./target/debug/xtask release-please-fixup-plan \
               --base "origin/$base_branch" \
               --head HEAD \
               --json > fixup-plan.json
             while read -r fixup; do
               component="$(jq -r '.id' <<<"$fixup")"
               version="$(jq -r '.version' <<<"$fixup")"
-              cargo xtask release-please-fixups --component "$component" --version "$version"
+              ./target/debug/xtask release-please-fixups --component "$component" --version "$version"
             done < <(jq -c '.[]' fixup-plan.json)
             fixup_commit_created=false
             if ! git diff --quiet; then
@@ -114,7 +116,7 @@ jobs:
               git commit -m "chore: apply release-please fixups"
               fixup_commit_created=true
             fi
-            cargo xtask check-release-versions \
+            ./target/debug/xtask check-release-versions \
               --base "origin/$base_branch" \
               --head HEAD \
               --mode pr

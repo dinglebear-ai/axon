@@ -41,7 +41,7 @@ env:
   # Self-hosted runners persist $HOME/.axon between jobs. Isolate every job's
   # SQLite state so a different branch or migration epoch cannot poison startup.
   AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
-  AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
+  AURORA_REPO: ${{ vars.AURORA_REPO || 'dinglebear-ai/aurora' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
@@ -70,6 +70,7 @@ jobs:
       compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       mcp: ${{ steps.classify.outputs.mcp == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       rag: ${{ steps.classify.outputs.rag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      auto_tag: ${{ steps.classify.outputs.auto_tag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       security: ${{ steps.classify.outputs.security == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       release: ${{ steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       version_files: ${{ steps.classify.outputs.version_files == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -89,7 +90,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag auto_tag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -135,7 +136,7 @@ jobs:
     # case rather than the typical one.
     timeout-minutes: 240
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -226,6 +227,17 @@ jobs:
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
         run: ./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr
+      - name: Build auto-tag release plan from the existing xtask binary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        run: ./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json
+      - name: Upload auto-tag release plan
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-auto-tag-release-plan-${{ github.sha }}
+          path: auto-tag-release-plan.json
+          retention-days: 1
+          if-no-files-found: error
       - name: MCP schema documentation
         if: ${{ needs.changes.outputs.mcp == 'true' }}
         run: python3 scripts/generate_mcp_schema_doc.py --check
@@ -293,6 +305,9 @@ jobs:
     if: ${{ needs.changes.outputs.ci_contracts == 'true' }}
     steps:
       - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: "1.97.1"
       - name: Lint GitHub Actions workflows
         run: |
           archive="$RUNNER_TEMP/actionlint.tar.gz"
@@ -510,10 +525,6 @@ jobs:
           git diff --exit-code apps/palette-tauri/src/lib/axon-api.d.ts
       - name: Palette Vite build
         run: pnpm --dir apps/palette-tauri vite:build
-      - name: Use direct rustc for Tauri gates
-        run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
       # CI-H3: lint the security-relevant Tauri IPC/network bridge. src-tauri
       # declares its own [workspace], so the repo-root clippy/fmt jobs never
       # touch it — these scope explicitly via --manifest-path.
@@ -1183,7 +1194,7 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
+          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}"
           require_success_or_intentional_skip ci-contracts "${{ needs.ci-contracts.result }}" "${{ needs.changes.outputs.ci_contracts }}"
           require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}"
           require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
