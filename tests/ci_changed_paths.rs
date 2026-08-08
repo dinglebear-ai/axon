@@ -65,6 +65,14 @@ fn docs_only_changes_skip_expensive_runtime_categories() {
 }
 
 #[test]
+fn ci_contract_tests_do_not_trigger_application_rust_or_codeql() {
+    let out = classify("pull_request", &["tests/workflow_shapes.rs"]);
+    assert_eq!(out["ci_contracts"], "true");
+    assert_eq!(out["rust"], "false");
+    assert_eq!(out["codeql_rust"], "false");
+}
+
+#[test]
 fn agent_skill_changes_skip_expensive_runtime_categories() {
     let out = classify(
         "pull_request",

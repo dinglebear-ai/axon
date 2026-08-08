@@ -332,13 +332,16 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     codeql_python = any_match(paths, lambda p: p.endswith(".py"))
     codeql_rust = any_match(
         paths,
-        lambda p: p.endswith(".rs")
-        or p == "Cargo.toml"
-        or p.endswith("/Cargo.toml")
-        or p == "build.rs"
-        or p.endswith("/build.rs")
-        or p == "rust-toolchain.toml"
-        or starts(p, ".cargo/"),
+        lambda p: p not in CI_CONTRACT_PATHS
+        and (
+            p.endswith(".rs")
+            or p == "Cargo.toml"
+            or p.endswith("/Cargo.toml")
+            or p == "build.rs"
+            or p.endswith("/build.rs")
+            or p == "rust-toolchain.toml"
+            or starts(p, ".cargo/")
+        ),
     )
     codeql_java_kotlin = any_match(
         paths, lambda p: p.endswith((".java", ".kt", ".kts"))
