@@ -693,7 +693,9 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     assert!(!binary_smoke_build.contains("cargo build --release"));
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
+    assert!(windows_build.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
+    assert!(!windows_build.contains("github.event_name != 'pull_request'"));
     assert!(
         windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
             && windows_build.contains("nasm -v"),
@@ -737,53 +739,29 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
 }
 
 #[test]
-fn ci_isolates_npm_cache_for_exactly_rust_contracts_and_web_panel() {
+fn ci_disables_setup_node_archive_cache_on_self_hosted_node_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let cache_path =
-        r#"npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB""#;
-    let cache_export = r#"echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV""#;
 
-    assert_eq!(
-        workflow.matches("- name: Isolate npm cache").count(),
-        2,
-        "exactly rust-contracts and web-panel should isolate npm caches"
-    );
-    assert_eq!(
-        workflow.matches(cache_path).count(),
-        2,
-        "each isolated cache must be unique to the workflow run, attempt, and job"
-    );
     assert_eq!(
         workflow.matches("package-manager-cache: false").count(),
         2,
-        "setup-node caching must be disabled in exactly the isolated jobs"
+        "rust-contracts and web-panel should disable setup-node archive caching"
+    );
+    assert!(
+        !workflow.contains("Isolate npm cache") && !workflow.contains("Clean up npm cache"),
+        "persistent self-hosted runners should keep npm's local cache warm across jobs"
     );
 
     for job_name in ["rust-contracts", "web-panel"] {
         let job = workflow_job_block(workflow, job_name);
-        let isolation = job
-            .find("- name: Isolate npm cache")
-            .unwrap_or_else(|| panic!("{job_name} must isolate npm before setup-node"));
-        let setup = job
-            .find("uses: actions/setup-node@v5")
-            .unwrap_or_else(|| panic!("{job_name} must set up Node"));
         assert!(
-            isolation < setup,
-            "{job_name} must isolate npm before setup-node can inspect its cache"
-        );
-        assert!(job.contains(cache_path));
-        assert!(job.contains("mkdir -p \"$npm_cache\""));
-        assert!(job.contains(cache_export));
-
-        let setup_node = workflow_step_block(job, "uses: actions/setup-node@v5");
-        assert!(
-            setup_node.contains("package-manager-cache: false"),
-            "{job_name} must opt out of setup-node's package-manager cache"
+            job.contains("package-manager-cache: false"),
+            "{job_name} must opt out of setup-node's expensive cache archive step"
         );
         assert!(
-            !setup_node.lines().any(|line| {
+            !job.lines().any(|line| {
                 let line = line.trim();
-                line.starts_with("cache:") || line.starts_with("cache-dependency-path:")
+                line == "cache: npm" || line.starts_with("cache-dependency-path:")
             }),
             "{job_name} must not ask setup-node to archive npm cache contents"
         );
@@ -1182,15 +1160,6 @@ fn command_without_git_local_env(program: &str) -> std::process::Command {
         command.env_remove(variable);
     }
     command
-}
-
-fn workflow_step_block<'a>(job: &'a str, marker: &str) -> &'a str {
-    let start = job
-        .find(marker)
-        .unwrap_or_else(|| panic!("missing workflow step containing {marker}"));
-    let rest = &job[start..];
-    let end = rest.find("\n      - ").unwrap_or(rest.len());
-    &rest[..end]
 }
 
 fn sparse_checkout_covers(block: &str, path: &str) -> bool {

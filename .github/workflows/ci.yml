@@ -139,12 +139,6 @@ jobs:
       - uses: ./.github/actions/setup-rust-kache
         with:
           components: rustfmt
-      - name: Isolate npm cache
-        shell: bash
-        run: |
-          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
-          mkdir -p "$npm_cache"
-          echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -285,10 +279,6 @@ jobs:
         env:
           KACHE_GATE_REQUIRE_DAEMON: "1"
         run: ./scripts/kache-gate.sh
-      - name: Clean up npm cache
-        if: always()
-        shell: bash
-        run: rm -rf "${NPM_CONFIG_CACHE:-}"
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
@@ -590,7 +580,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
-    if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    # Opt-in like windows-check. Native Windows is still built and exercised by
+    # release.yml, so ordinary main pushes should not pay for a second full
+    # Windows cross-build. Add the ci:full label when PR-level Windows coverage
+    # is explicitly wanted.
+    if: ${{ always() && github.event_name == 'pull_request' && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
@@ -668,12 +662,6 @@ jobs:
     if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
-      - name: Isolate npm cache
-        shell: bash
-        run: |
-          npm_cache="$RUNNER_TEMP/axon-npm-cache-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$GITHUB_JOB"
-          mkdir -p "$npm_cache"
-          echo "NPM_CONFIG_CACHE=$npm_cache" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -692,10 +680,6 @@ jobs:
           name: axon-web-assets
           path: apps/web/out
           if-no-files-found: error
-      - name: Clean up npm cache
-        if: always()
-        shell: bash
-        run: rm -rf "${NPM_CONFIG_CACHE:-}"
 
   chrome-extension:
     name: chrome-extension
@@ -1246,7 +1230,7 @@ jobs:
           require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
           require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
           require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
-          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
+          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ needs.binary-smoke-build.result == 'success' && github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
           require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
