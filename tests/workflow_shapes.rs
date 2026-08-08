@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-#[cfg(unix)]
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-#[cfg(unix)]
 use std::path::Path;
 use std::process::Command;
 #[cfg(unix)]
@@ -860,12 +858,12 @@ fn kache_migration_inputs_have_cargo_rerun_triggers() {
         "axon-memory",
         "axon-observe",
     ] {
-        let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("crates")
             .join(crate_name);
-        let kache = std::fs::read_to_string(crate_dir.join("kache.toml"))
+        let kache = fs::read_to_string(crate_dir.join("kache.toml"))
             .unwrap_or_else(|error| panic!("failed to read {crate_name}/kache.toml: {error}"));
-        let build = std::fs::read_to_string(crate_dir.join("build.rs"))
+        let build = fs::read_to_string(crate_dir.join("build.rs"))
             .unwrap_or_else(|error| panic!("failed to read {crate_name}/build.rs: {error}"));
 
         assert!(kache.contains("src/migrations/**/*.sql"));
