@@ -41,7 +41,7 @@ pub(super) fn validate(root: &Path, components: &[Component]) -> ReleaseResult<(
         .collect::<BTreeSet<_>>();
     let managed_paths = components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
         .map(|component| component.release_please_path.clone())
         .collect::<BTreeSet<_>>();
 
@@ -61,7 +61,7 @@ fn validate_release_please_extra_files(
 ) -> ReleaseResult<()> {
     for component in components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
     {
         let package = config_packages
             .get(&component.release_please_path)
@@ -170,7 +170,7 @@ fn validate_release_please_tag_prefixes(
 ) -> ReleaseResult<()> {
     for component in components
         .iter()
-        .filter(|component| component.release_please_managed)
+        .filter(|component| component.release_driver.is_release_please())
     {
         let package = config_packages
             .get(&component.release_please_path)

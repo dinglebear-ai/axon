@@ -121,6 +121,9 @@ pub(super) fn check(root: &Path) -> Result<()> {
 
 fn generated_by_family(value: &Value) -> Option<String> {
     let generated_by = value.get("x-axon")?.get("generated_by")?.as_str()?;
+    if generated_by == "cargo xtask presentation generate" {
+        return Some("presentation".to_owned());
+    }
     generated_by
         .strip_prefix("cargo xtask schemas ")
         .map(str::to_string)
