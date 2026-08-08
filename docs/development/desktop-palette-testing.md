@@ -24,7 +24,7 @@ drive agent-os directly via the Windows-MCP tool available through Labby.
 
 The portable Windows `.exe` is produced by `tauri build --no-bundle` and shipped
 by the `palette-windows` job in `.github/workflows/release.yml`. To build one
-locally for testing, use `scripts/build-on-steamy.sh` / `scripts/build-windows.sh`
+locally for testing, use `scripts/build-on-winhost.sh` / `scripts/build-windows.sh`
 (both default to `--target palette-tauri`), or build directly:
 
 ```bash

@@ -15,8 +15,8 @@ Defaults:
   --desktop   /mnt/c/Users/jmaga/OneDrive/Desktop
 
 Environment overrides:
-  STEAMY_HOST     SSH alias for the Windows machine's WSL
-  STEAMY_DESKTOP  Destination path on the Windows filesystem
+  WINHOST_HOST     SSH alias for the Windows machine's WSL
+  WINHOST_DESKTOP  Destination path on the Windows filesystem
 EOF
 }
 
@@ -33,8 +33,8 @@ repo_root() {
 target="palette-tauri"
 ship=1
 dry_run=0
-host="${STEAMY_HOST:-winhost-wsl}"
-desktop="${STEAMY_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
+host="${WINHOST_HOST:-winhost-wsl}"
+desktop="${WINHOST_DESKTOP:-/mnt/c/Users/jmaga/OneDrive/Desktop}"
 
 while (($#)); do
   case "$1" in

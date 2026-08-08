@@ -54,7 +54,7 @@ The PR branch currently differs from `origin/main` by 165 paths according to `gi
 | modified | `.env.example`, `config.example.toml`, `docs/CONFIG.md`, `docs/env-migration-matrix.md`, `docs/mcp/ENV.md`, `README.md`, `CHANGELOG.md` | - | Document and expose `AXON_LLM_BACKEND=openai-compat` and `AXON_OPENAI_*` config. | `git diff --name-status origin/main...HEAD` |
 | modified | `.github/workflows/ci.yml`, `.github/workflows/compose-smoke.yml`, `lefthook.yml` | - | Add palette CI, Tauri crate tests, llama compose validation, and helper script linting. | `git log origin/main..HEAD` |
 | created | `docker-compose.llama.yaml` | - | Provide llama.cpp OpenAI-compatible runtime path. | `git diff --stat origin/main...HEAD` |
-| created | `scripts/build-on-steamy.sh`, `scripts/test-ask-gemma4.sh`, `scripts/test-build-on-steamy-safety.sh` | - | Add Winhost Windows build workflow, Gemma smoke test helper, and destructive-sync safety test. | `bash -n`, `shellcheck`, safety test verification from session |
+| created | `scripts/build-on-winhost.sh`, `scripts/test-ask-gemma4.sh`, `scripts/test-build-on-winhost-safety.sh` | - | Add Winhost Windows build workflow, Gemma smoke test helper, and destructive-sync safety test. | `bash -n`, `shellcheck`, safety test verification from session |
 | modified/created | `apps/palette-tauri/**` | - | Palette UI, Aurora styling, Tauri bridge hardening, tests, icons, settings fallback, async job display, request formatting, and dependency cleanup. | `pnpm --dir apps/palette-tauri test/typecheck/vite:build`; Tauri cargo tests |
 | modified | `src/core/config/**`, `src/services/llm_backend/**`, `src/services/debug.rs`, `src/services/search/synthesis.rs`, `src/vector/ops/commands/suggest.rs` | - | Add and route OpenAI-compatible LLM backend support. | `cargo test config_snapshot --lib`; backend tests in diff |
 | modified/created | `src/jobs/config_snapshot.rs`, `src/jobs/config_snapshot/ingest.rs`, `src/jobs/workers/runners_tests.rs` | - | Snapshot non-secret LLM backend config and reject invalid snapshot values. | `cargo test config_snapshot --lib` |
@@ -155,7 +155,7 @@ Before writing this note, `git status --branch --short` showed an unrelated loca
 | `pnpm --dir apps/palette-tauri typecheck` | Palette TypeScript typecheck passes. | Passed earlier in session. | pass |
 | `pnpm --dir apps/palette-tauri vite:build` | Palette frontend build passes. | Passed earlier in session. | pass |
 | `cargo test --locked --manifest-path apps/palette-tauri/src-tauri/Cargo.toml` | Tauri crate tests pass. | Passed earlier in session. | pass |
-| `scripts/test-build-on-steamy-safety.sh` | Winhost destructive-sync safety test passes. | Passed earlier in session. | pass |
+| `scripts/test-build-on-winhost-safety.sh` | Winhost destructive-sync safety test passes. | Passed earlier in session. | pass |
 | `go run github.com/rhysd/actionlint/cmd/actionlint@latest .github/workflows/ci.yml .github/workflows/compose-smoke.yml` | Workflow lint passes. | Passed earlier in session. | pass |
 
 ## Risks and Rollback
