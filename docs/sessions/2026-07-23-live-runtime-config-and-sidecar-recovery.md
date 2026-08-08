@@ -92,7 +92,7 @@ Neither bead was claimed, implemented, or closed in this session.
 
 | command | result |
 |---|---|
-| `incus list axon --format csv -c ns4` | Axon container running at `10.47.200.55` |
+| `incus list axon --format csv -c ns4` | Axon container running at `192.0.2.15` |
 | `incus exec axon -- systemctl show axon-native.service ...` | Active native service; `/mnt/axon-data/.env` confirmed |
 | `incus exec axon -- docker ps -a --filter name=axon-tei --filter name=axon-chrome ...` | Both sidecars healthy |
 | `incus exec axon -- ... /usr/local/bin/axon doctor --json` | `all_ok: true`; Qdrant, TEI, Chrome, and SQLite healthy; advisories remain |

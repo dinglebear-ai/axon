@@ -142,8 +142,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          package-manager-cache: false
       # NOT dead: the "Palette OpenAPI type drift" contract step below shells
       # out to pnpm and hard-fails without it. It was removed earlier in this
       # branch as unused because the job's visible install command is `npm ci`.
@@ -559,10 +558,11 @@ jobs:
   windows-build:
     name: windows-build (axon.exe)
     # Cross-compiled from Linux with the mingw-w64 (x86_64-pc-windows-gnu)
-    # toolchain. A previous cargo-zigbuild attempt failed because zig does not
-    # bundle the Windows platform headers (sched.h / windows.h) that
-    # aws-lc-sys's jitterentropy code needs; mingw-w64 ships those headers, so
-    # aws-lc-sys and ring both cross-build cleanly (the resulting axon.exe was
+    # toolchain plus NASM for BoringSSL's x86_64 assembly. A previous
+    # cargo-zigbuild attempt failed because zig does not bundle the Windows
+    # platform headers (sched.h / windows.h) that aws-lc-sys's jitterentropy
+    # code needs; mingw-w64 ships those headers, so aws-lc-sys and ring both
+    # cross-build cleanly (the resulting axon.exe was
     # smoke-tested on Windows 11: it runs, loads the full CLI, and resolves
     # native C:\ paths). Running on the Linux runner avoids the slow
     # GitHub-hosted Windows VM and its 2x minute billing.
@@ -580,6 +580,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
+    # Main keeps the pre-release Windows compatibility gate. Pull requests opt
+    # in with ci:full so ordinary PRs avoid the duplicate cross-build cost.
     if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
@@ -593,10 +595,11 @@ jobs:
           # the same toolchain cargo uses under the repo override.
           toolchain: 1.97.1
           targets: x86_64-pc-windows-gnu
-      - name: Install mingw-w64
+      - name: Install mingw-w64 and NASM
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mingw-w64
+          sudo apt-get install -y --no-install-recommends mingw-w64 nasm
+          nasm -v
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: axon-windows-gnu
@@ -660,8 +663,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
+          package-manager-cache: false
       - name: Install web panel dependencies
         run: npm ci --prefix apps/web
       - name: Test web panel
@@ -1152,7 +1154,13 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes, binary-smoke-build]
-    if: ${{ needs.binary-smoke-build.result == 'success' }}
+    # always() is required, not decorative: a skipped ancestor (web-panel, on any
+    # PR that touches no web files) propagates through the needs graph and skips
+    # this job even though binary-smoke-build succeeded and the condition below
+    # is true. ci-gate then correctly fails with "binary-smoke was skipped even
+    # though its required condition is true". The explicit result check still
+    # gates execution.
+    if: ${{ always() && needs.binary-smoke-build.result == 'success' }}
     steps:
       - uses: actions/download-artifact@v5
         with:
