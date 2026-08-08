@@ -694,6 +694,46 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
+    assert!(windows_build.contains("github.event_name != 'pull_request'"));
+    assert!(
+        windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
+            && windows_build.contains("nasm -v"),
+        "the Windows GNU cross-build must install and verify NASM for BoringSSL assembly"
+    );
+}
+
+#[test]
+fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let binary_smoke = workflow_job_block(workflow, "binary-smoke");
+
+    assert!(binary_smoke.contains("always()"));
+    assert!(binary_smoke.contains("needs.binary-smoke-build.result == 'success'"));
+}
+
+#[test]
+fn kache_migration_inputs_have_cargo_rerun_triggers() {
+    for crate_name in [
+        "axon-graph",
+        "axon-jobs",
+        "axon-ledger",
+        "axon-memory",
+        "axon-observe",
+    ] {
+        let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("crates")
+            .join(crate_name);
+        let kache = std::fs::read_to_string(crate_dir.join("kache.toml"))
+            .unwrap_or_else(|error| panic!("failed to read {crate_name}/kache.toml: {error}"));
+        let build = std::fs::read_to_string(crate_dir.join("build.rs"))
+            .unwrap_or_else(|error| panic!("failed to read {crate_name}/build.rs: {error}"));
+
+        assert!(kache.contains("src/migrations/**/*.sql"));
+        assert!(
+            build.contains("cargo:rerun-if-changed=src/migrations"),
+            "{crate_name} must make Cargo revisit migration inputs before Kache re-keys them"
+        );
+    }
 }
 
 #[test]
@@ -729,6 +769,36 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
             && binary_smoke_build.contains("AXON_ALLOW_FALLBACK_WEB_ASSETS=1"),
         "release-only smoke builds must use fallback web assets without rebuilding the panel"
     );
+}
+
+#[test]
+fn ci_disables_setup_node_archive_cache_on_self_hosted_node_jobs() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+
+    assert_eq!(
+        workflow.matches("package-manager-cache: false").count(),
+        2,
+        "rust-contracts and web-panel should disable setup-node archive caching"
+    );
+    assert!(
+        !workflow.contains("Isolate npm cache") && !workflow.contains("Clean up npm cache"),
+        "persistent self-hosted runners should keep npm's local cache warm across jobs"
+    );
+
+    for job_name in ["rust-contracts", "web-panel"] {
+        let job = workflow_job_block(workflow, job_name);
+        assert!(
+            job.contains("package-manager-cache: false"),
+            "{job_name} must opt out of setup-node's expensive cache archive step"
+        );
+        assert!(
+            !job.lines().any(|line| {
+                let line = line.trim();
+                line == "cache: npm" || line.starts_with("cache-dependency-path:")
+            }),
+            "{job_name} must not ask setup-node to archive npm cache contents"
+        );
+    }
 }
 
 #[test]

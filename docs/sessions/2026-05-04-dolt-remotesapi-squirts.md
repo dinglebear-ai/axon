@@ -36,7 +36,7 @@ Enabled Dolt's HTTP remotes API for the existing Dolt SQL server container on `e
 - `edgehost` resolves to Tailscale address `198.51.100.2`.
 - The running container is `dolthub/dolt-sql-server:latest`.
 - The image entrypoint checks `/etc/dolt/servercfg.d` for a single YAML server config and starts `dolt sql-server --config=<file>` when present.
-- Before the config mount was added, Docker published `33110`, but the container refused `10.6.0.34:8000` because `remotesapi` was not actually running.
+- Before the config mount was added, Docker published `33110`, but the container refused `192.0.2.11:8000` because `remotesapi` was not actually running.
 - After mounting the config in the expected path, logs showed `Starting http server on :8000`.
 
 ## Technical Decisions
