@@ -51,7 +51,18 @@ async fn wait_for_terminal(
     store: &SqliteUnifiedJobStore,
     job_id: axon_api::source::JobId,
 ) -> axon_api::source::JobSummary {
-    tokio::time::timeout(Duration::from_secs(20), async {
+    // 60s, not 20s. This is a liveness ceiling, not a performance assertion: the
+    // loop below returns the instant the job goes terminal, so raising the cap
+    // costs nothing on the happy path and only changes how long a genuine hang
+    // takes to report.
+    //
+    // 20s was too tight for a loaded CI runner. It failed on job 92808988437
+    // (`Elapsed(())` at 35.6s wall clock, 4972 of 4973 tests passing) and then
+    // passed unchanged on rerun. The margin got thinner when rust-contracts was
+    // sped up from ~44min to ~22min: the five jobs gated behind it — clippy,
+    // test, security, smoke-binary, binary-smoke-build — now all unblock at once
+    // onto the same ci-pool-rust runners instead of arriving staggered.
+    tokio::time::timeout(Duration::from_secs(60), async {
         loop {
             if let Some(summary) = store.get(job_id).await.expect("get job")
                 && matches!(

@@ -9,7 +9,21 @@ fn main() {
     println!("cargo:rerun-if-changed=apps/web/out");
     println!("cargo:rerun-if-env-changed=AXON_ALLOW_FALLBACK_WEB_ASSETS");
     println!("cargo:rerun-if-env-changed=AXON_CONFIG_PATH");
-    if let Some(path) = build_config_path() {
+    // Only declare the config file when it actually exists. Cargo treats a
+    // `rerun-if-changed` path it cannot stat as perpetually dirty, so declaring
+    // a missing file re-runs this build script on EVERY cargo invocation.
+    //
+    // That is the normal state on CI: `build_config_path()` falls back to
+    // `$HOME/.axon/config.toml`, which developers have and runners do not.
+    // Measured with AXON_CONFIG_PATH pointed at a missing file — two identical
+    // back-to-back `cargo check -p axon` runs, no source changes, and the build
+    // script re-ran both times.
+    //
+    // Trade-off: if the file is created later, cargo will not notice until
+    // something else dirties this crate. Acceptable — an explicit path is still
+    // covered by the AXON_CONFIG_PATH rerun-if-env-changed above, and a one-time
+    // missed pickup of a build-time fallback toggle beats re-running forever.
+    if let Some(path) = build_config_path().filter(|path| path.is_file()) {
         println!("cargo:rerun-if-changed={}", path.display());
     }
 
