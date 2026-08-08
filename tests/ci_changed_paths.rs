@@ -123,14 +123,14 @@ fn version_bearing_root_docs_trigger_release_contracts() {
 }
 
 #[test]
-fn rust_core_changes_skip_pr_release_but_enable_runtime_and_codeql() {
+fn rust_core_changes_enable_runtime_image_and_codeql_without_dependency_audit() {
     let out = classify("pull_request", &["src/vector/ops/query.rs"]);
     assert_eq!(out["rust"], "true");
     assert_eq!(out["release"], "false");
     assert_eq!(out["mcp"], "false");
-    assert_eq!(out["security"], "true");
+    assert_eq!(out["security"], "false");
     assert_eq!(out["codeql_rust"], "true");
-    assert_eq!(out["docker"], "false");
+    assert_eq!(out["docker"], "true");
 }
 
 #[test]
@@ -147,8 +147,8 @@ fn workspace_crate_changes_enable_rust_runtime_gates() {
     let out = classify("pull_request", &["crates/axon-core/src/config.rs"]);
     assert_eq!(out["rust"], "true");
     assert_eq!(out["release"], "false");
-    assert_eq!(out["security"], "true");
-    assert_eq!(out["docker"], "false");
+    assert_eq!(out["security"], "false");
+    assert_eq!(out["docker"], "true");
     assert_eq!(out["codeql_rust"], "true");
 }
 
@@ -173,7 +173,7 @@ fn axon_api_mcp_schema_changes_enable_mcp_contract_checks() {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true");
         assert_eq!(out["mcp"], "true", "{file} must enable MCP checks");
-        assert_eq!(out["security"], "true");
+        assert_eq!(out["security"], "false");
     }
 }
 
@@ -196,6 +196,31 @@ fn android_changes_enable_kotlin_codeql_only_for_app_language() {
     assert_eq!(out["android"], "true");
     assert_eq!(out["codeql_java_kotlin"], "true");
     assert_eq!(out["codeql_rust"], "false");
+    assert_eq!(out["release_please"], "true");
+}
+
+#[test]
+fn release_please_runs_only_for_components_it_owns() {
+    for file in [
+        "apps/android/app/build.gradle.kts",
+        "apps/palette-tauri/package.json",
+        "apps/chrome-extension/manifest.json",
+        "release-please-config.json",
+        ".release-please-manifest.json",
+        ".github/workflows/release-please.yml",
+    ] {
+        let out = classify("push", &[file]);
+        assert_eq!(out["release_please"], "true", "{file}");
+    }
+
+    for file in [
+        "src/main.rs",
+        "crates/axon-core/src/lib.rs",
+        "apps/web/src/app.tsx",
+    ] {
+        let out = classify("push", &[file]);
+        assert_eq!(out["release_please"], "false", "{file}");
+    }
 }
 
 #[test]
@@ -220,11 +245,11 @@ fn compose_inputs_do_not_force_an_application_image_build() {
 }
 
 #[test]
-fn shared_assets_route_to_web_and_chrome_without_rebuilding_the_image() {
+fn shared_assets_route_to_web_chrome_and_the_main_image_build() {
     let out = classify("pull_request", &["assets/logo.png"]);
     assert_eq!(out["web"], "true");
     assert_eq!(out["chrome"], "true");
-    assert_eq!(out["docker"], "false");
+    assert_eq!(out["docker"], "true");
     assert_eq!(out["android"], "false");
     assert_eq!(out["palette"], "false");
 }
@@ -237,6 +262,26 @@ fn chrome_extension_changes_enable_the_chrome_gate() {
     );
     assert_eq!(out["chrome"], "true");
     assert_eq!(out["codeql_javascript_typescript"], "true");
+}
+
+#[test]
+fn non_language_app_assets_skip_codeql_language_builds() {
+    for file in [
+        "apps/web/src/styles/app.css",
+        "apps/palette-tauri/src/styles/app.css",
+        "apps/android/app/src/main/res/drawable/logo.xml",
+        "apps/chrome-extension/manifest.json",
+    ] {
+        let out = classify("pull_request", &[file]);
+        for key in [
+            "codeql_javascript_typescript",
+            "codeql_python",
+            "codeql_rust",
+            "codeql_java_kotlin",
+        ] {
+            assert_eq!(out[key], "false", "{file} must not enable {key}");
+        }
+    }
 }
 
 #[test]
@@ -284,7 +329,10 @@ fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
     ] {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true", "{file} should enable Rust CI jobs");
-        assert_eq!(out["security"], "true", "{file} should enable security");
+        assert_eq!(
+            out["security"], "false",
+            "{file} does not change dependency inputs"
+        );
         assert_eq!(out["docker"], "false", "{file} is not an image build input");
     }
 
@@ -295,7 +343,10 @@ fn ci_executed_helper_scripts_enable_their_consuming_jobs() {
         let out = classify("pull_request", &[file]);
         assert_eq!(out["rust"], "true", "{file} should enable Rust CI jobs");
         assert_eq!(out["mcp"], "true", "{file} should enable MCP jobs");
-        assert_eq!(out["security"], "true", "{file} should enable security");
+        assert_eq!(
+            out["security"], "false",
+            "{file} does not change dependency inputs"
+        );
     }
 }
 
@@ -428,18 +479,27 @@ fn workflow_files_route_only_the_ci_surface_they_own() {
 }
 
 #[test]
-fn changed_path_router_edits_force_full_ci() {
+fn changed_path_router_edits_use_the_narrowest_safe_contract_lane() {
+    let router = classify("pull_request", &["scripts/ci/changed_paths.py"]);
+    assert_eq!(router["full_ci"], "true");
+    assert_eq!(router["workflow"], "true");
+    assert_eq!(router["ci_contracts"], "true");
+
+    for file in ["tests/ci_changed_paths.rs", "tests/workflow_shapes.rs"] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["full_ci"], "false", "{file} has targeted coverage");
+        assert_eq!(out["ci_contracts"], "true", "{file} is a CI contract");
+        assert_eq!(out["rust"], "false", "{file} avoids the full Rust fanout");
+    }
+
     for file in [
         "lefthook.yml",
         "scripts/clear-git-local-env.sh",
-        "scripts/ci/changed_paths.py",
-        "tests/ci_changed_paths.rs",
-        "tests/workflow_shapes.rs",
         "xtask/src/pre_push.rs",
     ] {
         let out = classify("pull_request", &[file]);
-        assert_eq!(out["full_ci"], "true", "{file} should force full CI");
-        assert_eq!(out["workflow"], "true", "{file} changes CI routing");
+        assert_eq!(out["full_ci"], "false", "{file} has a targeted hook lane");
+        assert_eq!(out["hooks"], "true", "{file} changes hook behavior");
     }
 }
 
@@ -457,8 +517,8 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
             "{file} should use the debug smoke lane rather than a release build"
         );
         assert_eq!(
-            out["security"], "true",
-            "{file} should enable security checks"
+            out["security"], "false",
+            "{file} does not change dependency inputs"
         );
         assert_eq!(
             out["codeql_python"],
@@ -469,9 +529,6 @@ fn rust_ci_helper_scripts_enable_the_jobs_that_execute_them() {
             },
             "{file} codeql_python should track the .py extension"
         );
-        assert_eq!(
-            out["codeql_rust"], "true",
-            "{file} should enable Rust CodeQL"
-        );
+        assert_eq!(out["codeql_rust"], "false", "{file} is not Rust source");
     }
 }

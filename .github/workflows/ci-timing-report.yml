@@ -1,0 +1,52 @@
+name: CI timing report
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_sha:
+        description: Optional baseline commit SHA
+        required: false
+        type: string
+      candidate_sha:
+        description: Optional candidate commit SHA
+        required: false
+        type: string
+      samples:
+        description: Recent runs per workflow when no SHAs are supplied
+        required: false
+        default: "5"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  report:
+    name: workflow timing report
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build timing report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASELINE_SHA: ${{ inputs.baseline_sha }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          SAMPLES: ${{ inputs.samples }}
+        run: |
+          set -euo pipefail
+          args=(--repo "${{ github.repository }}" --output ci-timing.md --json-output ci-timing.json)
+          if [[ -n "$BASELINE_SHA" ]]; then args+=(--sha "before=$BASELINE_SHA"); fi
+          if [[ -n "$CANDIDATE_SHA" ]]; then args+=(--sha "after=$CANDIDATE_SHA"); fi
+          if [[ -z "$BASELINE_SHA" && -z "$CANDIDATE_SHA" ]]; then args+=(--recent "$SAMPLES"); fi
+          python3 scripts/ci/report_workflow_timings.py "${args[@]}"
+          cat ci-timing.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ci-timing-report
+          path: |
+            ci-timing.md
+            ci-timing.json
+          retention-days: 90
+          if-no-files-found: error

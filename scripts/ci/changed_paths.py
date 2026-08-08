@@ -19,6 +19,9 @@ OUTPUT_KEYS = [
     "codeql_all",
     "docs",
     "docs_contracts",
+    "ci_contracts",
+    "hooks",
+    "toml",
     "aurora_inventory",
     "workflow",
     "rust",
@@ -32,6 +35,7 @@ OUTPUT_KEYS = [
     "mcp",
     "security",
     "release",
+    "release_please",
     "version_files",
     "openapi",
     "codeql_actions",
@@ -74,11 +78,19 @@ DOC_CI_HELPER_SCRIPTS = {
 }
 
 FULL_CI_ROUTER_PATHS = {
-    "lefthook.yml",
-    "scripts/clear-git-local-env.sh",
+    "scripts/ci/changed_paths.py",
+}
+
+CI_CONTRACT_PATHS = {
     "scripts/ci/changed_paths.py",
     "tests/ci_changed_paths.rs",
     "tests/workflow_shapes.rs",
+}
+
+HOOK_PATHS = {
+    "lefthook.yml",
+    "scripts/check_lefthook_pre_commit_speed.py",
+    "scripts/clear-git-local-env.sh",
     "xtask/src/pre_push.rs",
 }
 
@@ -126,13 +138,11 @@ VERSION_FILES = {
 # Keys enabled for the weekly cron. The ci.yml cron exists for the live-qdrant
 # suite (whose job gates on `github.event_name == 'schedule'` directly, not on
 # a changes output) plus the security audit; the codeql.yml cron exists for the
-# full weekly CodeQL sweep. `workflow` stays on because `security` needs
-# rust-contracts, which is gated on `workflow` among others. Everything else
+# full weekly CodeQL sweep. Everything else
 # (full Rust fanout, Android, palette, web, docker, releases) is skipped on
 # schedule — a cron run cannot have changed any of those paths.
 SCHEDULE_KEYS = {
     "security",
-    "workflow",
     "codeql_all",
     "codeql_actions",
     "codeql_javascript_typescript",
@@ -162,6 +172,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         or p in FULL_CI_ROUTER_PATHS,
     )
     full_ci = any_match(paths, lambda p: p in FULL_CI_ROUTER_PATHS)
+    ci_contracts = workflow or any_match(paths, lambda p: p in CI_CONTRACT_PATHS)
+    hooks = any_match(paths, lambda p: p in HOOK_PATHS)
+    toml = any_match(paths, lambda p: p.endswith(".toml"))
     # ci.yml orchestrates everything, and composite actions under
     # .github/actions/ are consumed across the Rust/web/release jobs, so both
     # keep the conservative all-true routing (every ci.yml category output ORs
@@ -220,29 +233,47 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         )
         or p == "crates/axon-api/src/mcp_schema.rs"
         or p in MCP_CI_HELPER_SCRIPTS
-        or p == "tests/workflow_shapes.rs",
     )
     rust = any_match(
         paths,
-        lambda p: starts(
-            p,
-            "src/",
-            "crates/",
-            "xtask/",
-            "benches/",
-            "tests/",
-            "migrations/",
-            "vendor/",
-            ".cargo/",
-            ".config/",
-        )
-        or p in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"}
-        or p in RUST_CI_HELPER_SCRIPTS,
+        lambda p: p not in CI_CONTRACT_PATHS
+        and (
+            starts(
+                p,
+                "src/",
+                "crates/",
+                "xtask/",
+                "benches/",
+                "tests/",
+                "migrations/",
+                "vendor/",
+                ".cargo/",
+                ".config/",
+            )
+            or p
+            in {"Cargo.toml", "Cargo.lock", "build.rs", "rust-toolchain.toml", "Justfile"}
+            or p in RUST_CI_HELPER_SCRIPTS
+        ),
     )
     release = version_files or any_match(
         paths,
         lambda p: starts(p, "release/")
         or p in {"release-please-config.json", ".release-please-manifest.json"},
+    )
+    release_please = any_match(
+        paths,
+        lambda p: starts(
+            p,
+            "apps/android/",
+            "apps/palette-tauri/",
+            "apps/chrome-extension/",
+        )
+        or p
+        in {
+            "release-please-config.json",
+            ".release-please-manifest.json",
+            ".github/workflows/release-please.yml",
+        },
     )
     compose = any_match(
         paths,
@@ -252,7 +283,16 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     )
     docker = any_match(
         paths,
-        lambda p: p
+        lambda p: starts(
+            p,
+            "src/",
+            "crates/",
+            "apps/web/",
+            "assets/",
+            "vendor/",
+            ".cargo/",
+        )
+        or p
         in {".dockerignore", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
         or p.endswith("/Cargo.toml")
         or p.endswith("/build.rs")
@@ -278,18 +318,29 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
     security = any_match(
         paths,
         lambda p: p in {"Cargo.lock", "deny.toml"}
+        or p == "Cargo.toml"
+        or p.endswith("/Cargo.toml")
         or starts(p, ".cargo/", "vendor/"),
-    ) or rust
+    )
 
     codeql_actions = workflow
-    codeql_javascript_typescript = web or palette or any_match(
+    codeql_javascript_typescript = any_match(
         paths, lambda p: p.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"))
     )
     # Python CodeQL only analyzes .py sources; `scripts/` is mostly shell, so
     # gating on the prefix triggered a full Python analyze on unrelated changes.
     codeql_python = any_match(paths, lambda p: p.endswith(".py"))
-    codeql_rust = rust or palette
-    codeql_java_kotlin = android or any_match(
+    codeql_rust = any_match(
+        paths,
+        lambda p: p.endswith(".rs")
+        or p == "Cargo.toml"
+        or p.endswith("/Cargo.toml")
+        or p == "build.rs"
+        or p.endswith("/build.rs")
+        or p == "rust-toolchain.toml"
+        or starts(p, ".cargo/"),
+    )
+    codeql_java_kotlin = any_match(
         paths, lambda p: p.endswith((".java", ".kt", ".kts"))
     )
 
@@ -308,6 +359,9 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "codeql_all": codeql_all,
         "docs": docs,
         "docs_contracts": docs_contracts,
+        "ci_contracts": ci_contracts,
+        "hooks": hooks,
+        "toml": toml,
         "aurora_inventory": aurora_inventory,
         "workflow": workflow,
         "rust": rust,
@@ -321,6 +375,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "mcp": mcp,
         "security": security,
         "release": release,
+        "release_please": release_please,
         "version_files": version_files,
         "openapi": openapi,
         "codeql_actions": codeql_actions,

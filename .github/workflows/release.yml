@@ -35,8 +35,33 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  web-assets:
+    name: build web assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            apps/web
+            assets
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Build web panel once
+        working-directory: apps/web
+        run: npm ci && npm run build
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-release-web-assets
+          path: apps/web/out
+          if-no-files-found: error
+
   axon-linux:
     name: build axon (linux)
+    needs: web-assets
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     # The `secrets` context is NOT allowed in step-level `if:` conditionals, so
@@ -67,14 +92,10 @@ jobs:
           clang --version
           perl --version
           go version
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/download-artifact@v5
         with:
-          node-version: lts/*
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: build web panel
-        working-directory: apps/web
-        run: npm ci && npm run build
+          name: axon-release-web-assets
+          path: apps/web/out
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
       - name: Verify release acquisition capabilities
@@ -130,6 +151,7 @@ jobs:
 
   axon-windows:
     name: build axon (windows)
+    needs: web-assets
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -156,15 +178,10 @@ jobs:
           clang --version
           perl --version
           go version
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/download-artifact@v5
         with:
-          node-version: lts/*
-          cache: npm
-          cache-dependency-path: apps/web/package-lock.json
-      - name: build web panel
-        working-directory: apps/web
-        shell: bash
-        run: npm ci && npm run build
+          name: axon-release-web-assets
+          path: apps/web/out
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
         env:

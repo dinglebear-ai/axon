@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      has_work: ${{ steps.matrix.outputs.has_work }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -45,7 +46,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -98,7 +99,9 @@ jobs:
                 + (if $kotlin == "true" then [{language:"java-kotlin", build_mode:"manual"}] else [] end))
             }' > matrix.json
           if [[ "$(jq '.include | length' matrix.json)" == "0" ]]; then
-            jq -nc '{include: [{language:"actions", build_mode:"none"}]}' > matrix.json
+            echo "has_work=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_work=true" >> "$GITHUB_OUTPUT"
           fi
           echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
           cat matrix.json
@@ -107,6 +110,7 @@ jobs:
     name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     needs: [changes]
+    if: ${{ needs.changes.outputs.has_work == 'true' }}
     # Slowest observed green run: 6.6 min (java-kotlin, which builds the Android
     # app under Gradle); rust is 3.5 min. Both compiled languages can balloon on
     # a cold Gradle/CodeQL cache, so this matches the heaviest bound in ci.yml
@@ -208,4 +212,11 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success analyze "${{ needs.analyze.result }}"
+          if [[ "${{ needs.changes.outputs.has_work }}" == "true" ]]; then
+            require_success analyze "${{ needs.analyze.result }}"
+          elif [[ "${{ needs.analyze.result }}" != "skipped" ]]; then
+            echo "::error::analyze concluded ${{ needs.analyze.result }} with an empty matrix" >&2
+            exit 1
+          else
+            echo "analyze=skipped (no changed CodeQL language)"
+          fi

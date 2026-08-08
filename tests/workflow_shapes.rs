@@ -2,46 +2,62 @@ use std::collections::HashMap;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(unix)]
 use std::process::Output;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+struct TestTempDir(PathBuf);
+
+impl TestTempDir {
+    fn new(label: &str) -> Self {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock follows the Unix epoch")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("axon-{label}-{}-{nonce}", std::process::id()));
+        fs::create_dir(&path).expect("create temporary test directory");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestTempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn repo_root() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().expect("resolve repository root"))
+}
 
 #[test]
 fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_checkout() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let blocks = checkout_sparse_blocks(workflow);
-    // The release workflow now uses a full checkout. The non-cone sparse list
-    // previously omitted root Cargo.toml/Cargo.lock, which broke every build, so
-    // full checkout is the chosen shape and there are no sparse blocks to
-    // validate. This guard still has
-    // teeth if sparse-checkout is ever reintroduced: each block below must carry
-    // the required paths and disable cone mode.
-    for (index, block) in blocks.iter().enumerate() {
-        let paths = parse_sparse_checkout_paths(block);
-        for required in ["tests", "scripts", "config", "vendor", ".cargo"] {
-            assert!(
-                paths.iter().any(|path| path == required),
-                "checkout block #{index} is missing {required} from sparse-checkout paths; \
-                 paths following sparse-checkout-cone-mode are ignored by actions/checkout"
-            );
-        }
+    assert_eq!(
+        blocks.len(),
+        1,
+        "only the web-assets job may use sparse checkout"
+    );
+    let paths = parse_sparse_checkout_paths(&blocks[0]);
+    for required in ["apps/web", "assets"] {
+        assert!(paths.iter().any(|path| path == required));
+    }
+    for job_name in ["axon-linux", "axon-windows"] {
+        let job = workflow_job_block(workflow, job_name);
+        assert!(job.contains("uses: actions/checkout@v5"));
         assert!(
-            block
-                .iter()
-                .any(|line| line.trim() == "sparse-checkout-cone-mode: false"),
-            "checkout block #{index} must explicitly disable cone mode"
-        );
-        let cone_index = block
-            .iter()
-            .position(|line| line.trim().starts_with("sparse-checkout-cone-mode:"))
-            .expect("cone mode line is present");
-        assert!(
-            block[(cone_index + 1)..]
-                .iter()
-                .all(|line| !line.trim().starts_with(['.', '/'])
-                    && !["tests", "scripts", "config", "vendor"].contains(&line.trim())),
-            "checkout block #{index} has path-looking entries indented under sparse-checkout-cone-mode"
+            !job.contains("sparse-checkout:"),
+            "{job_name} compiles the full workspace and must use a full checkout"
         );
     }
 }
@@ -381,7 +397,7 @@ fn lefthook_cargo_descendants_clear_repository_local_git_environment() {
 #[cfg(unix)]
 #[test]
 fn git_environment_sanitizer_protects_linked_worktree_common_config() {
-    let temp = tempfile::tempdir().expect("create temporary Git fixture");
+    let temp = TestTempDir::new("git-environment-sanitizer");
     let primary = temp.path().join("primary");
     let linked = temp.path().join("linked");
     let foreign = temp.path().join("foreign");
@@ -416,7 +432,7 @@ fn git_environment_sanitizer_protects_linked_worktree_common_config() {
     let common_config = Path::new(git_common_dir.trim()).join("config");
     let before = fs::read(&common_config).expect("read common config before foreign git init");
 
-    let sanitizer = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/clear-git-local-env.sh");
+    let sanitizer = repo_root().join("scripts/clear-git-local-env.sh");
     let mode = fs::metadata(&sanitizer)
         .expect("Git environment sanitizer exists")
         .permissions()
@@ -816,23 +832,18 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
 #[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let smoke = workflow_job_block(workflow, "smoke-binary");
-    assert!(smoke.contains("github.event_name == 'pull_request'"));
-    assert!(smoke.contains("cargo build --locked --bin axon"));
-    assert!(!smoke.contains("cargo build --release"));
-
     let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(binary_smoke_build.contains("github.event_name != 'pull_request'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.rust == 'true'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.mcp == 'true'"));
     assert!(binary_smoke_build.contains("needs.changes.outputs.release == 'true'"));
-    assert!(binary_smoke_build.contains("'ci:full'"));
     assert!(!binary_smoke_build.contains("cargo build --release"));
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
-    assert!(windows_build.contains("github.event_name != 'pull_request'"));
+    assert!(windows_build.contains("github.event_name == 'pull_request'"));
     assert!(
         windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
             && windows_build.contains("nasm -v"),
@@ -858,9 +869,7 @@ fn kache_migration_inputs_have_cargo_rerun_triggers() {
         "axon-memory",
         "axon-observe",
     ] {
-        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("crates")
-            .join(crate_name);
+        let crate_dir = repo_root().join("crates").join(crate_name);
         let kache = fs::read_to_string(crate_dir.join("kache.toml"))
             .unwrap_or_else(|error| panic!("failed to read {crate_name}/kache.toml: {error}"));
         let build = fs::read_to_string(crate_dir.join("build.rs"))
@@ -916,14 +925,15 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
         );
     }
     assert!(
-        binary_smoke_build.contains("needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')"),
-        "release-only smoke builds must accept the intentionally skipped web job"
+        binary_smoke_build
+            .contains("needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped'"),
+        "smoke builds must accept an intentionally skipped unchanged web app"
     );
     assert!(
         binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'success' }}")
             && binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'skipped' }}")
             && binary_smoke_build.contains("AXON_ALLOW_FALLBACK_WEB_ASSETS=1"),
-        "release-only smoke builds must use fallback web assets without rebuilding the panel"
+        "smoke builds must use fallback web assets without rebuilding the unchanged panel"
     );
 }
 
@@ -1107,6 +1117,7 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
     let gate = workflow_job_block(workflow, "ci-gate");
     for job in [
         "rust-contracts",
+        "ci-contracts",
         "aurora-primitive-inventory",
         "android",
         "toml-fmt",
@@ -1114,7 +1125,6 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "palette-tauri",
         "windows-check",
         "windows-build",
-        "smoke-binary",
         "web-panel",
         "chrome-extension",
         "clippy",
@@ -1173,12 +1183,11 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
-    for block in [contracts, gate] {
-        assert!(
-            block.contains("needs.changes.outputs.chrome == 'true'"),
-            "Chrome-only changes must require the unified generated-contract job"
-        );
-    }
+    assert!(
+        !contracts.contains("needs.changes.outputs.chrome == 'true'"),
+        "Chrome-only source changes must not compile the Rust contract workspace"
+    );
+    assert!(gate.contains("require_success_or_intentional_skip chrome-extension"));
 
     assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
 }
@@ -1294,8 +1303,67 @@ fn codeql_workflow_routes_language_matrix_by_changed_paths() {
     assert!(workflow.contains("codeql_rust"));
     assert!(workflow.contains("codeql_java_kotlin"));
     assert!(workflow.contains("fromJson(needs.changes.outputs.matrix)"));
+    assert!(workflow.contains("has_work: ${{ steps.matrix.outputs.has_work }}"));
+    assert!(workflow.contains("if: ${{ needs.changes.outputs.has_work == 'true' }}"));
     assert!(workflow.contains("codeql-gate:"));
-    assert!(workflow.contains("require_success analyze"));
+    assert!(workflow.contains("analyze=skipped (no changed CodeQL language)"));
+}
+
+#[test]
+fn timing_report_supports_before_after_sha_comparison() {
+    let workflow = include_str!("../.github/workflows/ci-timing-report.yml");
+    let script = include_str!("../scripts/ci/report_workflow_timings.py");
+    assert!(workflow.contains("baseline_sha:"));
+    assert!(workflow.contains("candidate_sha:"));
+    assert!(workflow.contains("$GITHUB_STEP_SUMMARY"));
+    assert!(workflow.contains("retention-days: 90"));
+    assert!(script.contains("Runner time is the sum of non-skipped job durations"));
+    assert!(script.contains("--sha"));
+    assert!(script.contains("--recent"));
+}
+
+#[test]
+fn release_builds_web_assets_once_for_both_native_targets() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let web = workflow_job_block(workflow, "web-assets");
+    assert_eq!(workflow.matches("npm ci && npm run build").count(), 1);
+    assert!(web.contains("name: axon-release-web-assets"));
+    for job_name in ["axon-linux", "axon-windows"] {
+        let job = workflow_job_block(workflow, job_name);
+        assert!(job.contains("needs: web-assets"));
+        assert!(job.contains("name: axon-release-web-assets"));
+        assert!(!job.contains("npm ci"));
+    }
+}
+
+#[test]
+fn palette_builds_frontend_once_per_ci_or_release_run() {
+    let ci = workflow_job_block(include_str!("../.github/workflows/ci.yml"), "palette-tauri");
+    assert_eq!(
+        ci.matches("run: pnpm --dir apps/palette-tauri vite:build")
+            .count(),
+        1
+    );
+    assert!(ci.contains("--config src-tauri/tauri.ci.conf.json"));
+
+    let release = include_str!("../.github/workflows/palette-release.yml");
+    let frontend = workflow_job_block(release, "frontend");
+    assert_eq!(
+        release
+            .matches("run: pnpm --dir apps/palette-tauri vite:build")
+            .count(),
+        1
+    );
+    assert!(frontend.contains("name: axon-palette-frontend"));
+    for job_name in ["palette-linux", "palette-windows"] {
+        let job = workflow_job_block(release, job_name);
+        assert!(job.contains("needs: [version, frontend]"));
+        assert!(job.contains("name: axon-palette-frontend"));
+        assert!(job.contains("--config src-tauri/tauri.ci.conf.json"));
+    }
+
+    let overlay = include_str!("../apps/palette-tauri/src-tauri/tauri.ci.conf.json");
+    assert!(overlay.contains(r#""beforeBuildCommand": null"#));
 }
 
 #[test]

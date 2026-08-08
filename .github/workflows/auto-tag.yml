@@ -36,6 +36,21 @@ name: auto-tag
 on:
   push:
     branches: [main]
+    paths:
+      - src/**
+      - crates/**
+      - apps/web/**
+      - Cargo.toml
+      - Cargo.lock
+      - build.rs
+      - rust-toolchain.toml
+      - vendor/**
+      - release/components.toml
+      - xtask/src/checks/release_versions.rs
+      - xtask/src/checks/release_versions/**
+      - xtask/src/main.rs
+      - .github/actions/setup-rust-kache/**
+      - .github/workflows/auto-tag.yml
 
 permissions:
   contents: write   # required to create and push component release tags
