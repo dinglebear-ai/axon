@@ -287,7 +287,7 @@ jobs:
   # workspace for a YAML-only change.
   ci-contracts:
     name: ci-contracts
-    runs-on: ci-pool-ops
+    runs-on: ci-pool-rust
     timeout-minutes: 10
     needs: [changes]
     if: ${{ needs.changes.outputs.ci_contracts == 'true' }}
