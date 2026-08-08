@@ -136,10 +136,25 @@ fn every_aggregate_generated_contract_output_runs_the_unified_gate() {
 
 #[test]
 fn router_changes_run_workflow_guards() {
-    let plan = plan_for(&["xtask/src/pre_push.rs"]);
-    let names = plan_names(&plan);
-    assert!(names.contains(&"workflow-lint"));
-    assert!(names.contains(&"ci-path-tests"));
-    assert!(names.contains(&"workflow-shape-tests"));
-    assert!(!names.contains(&"clippy"));
+    for file in [
+        "lefthook.yml",
+        "scripts/clear-git-local-env.sh",
+        "xtask/src/pre_push.rs",
+    ] {
+        let plan = plan_for(&[file]);
+        let names = plan_names(&plan);
+        assert!(
+            names.contains(&"workflow-lint"),
+            "{file} must run workflow lint"
+        );
+        assert!(
+            names.contains(&"ci-path-tests"),
+            "{file} must run CI path tests"
+        );
+        assert!(
+            names.contains(&"workflow-shape-tests"),
+            "{file} must run workflow shape tests"
+        );
+        assert!(!names.contains(&"clippy"));
+    }
 }

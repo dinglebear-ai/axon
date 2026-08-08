@@ -35,6 +35,7 @@ pre-commit:
       glob: "**/*"
       run: >
         scripts/with_timeout.sh 60 --
+        scripts/clear-git-local-env.sh
         bash -c '
           if [ -x "./target/debug/xtask" ]; then
             ./target/debug/xtask check-no-mod-rs;
@@ -87,7 +88,7 @@ pre-commit:
       run: scripts/with_timeout.sh 30 -- taplo fmt --check {staged_files}
     rustfmt:
       glob: "**/*.rs"
-      run: scripts/with_timeout.sh 30 -- cargo fmt -- --check {staged_files}
+      run: scripts/with_timeout.sh 30 -- scripts/clear-git-local-env.sh cargo fmt -- --check {staged_files}
     lefthook-speed:
       glob: "lefthook.yml"
       run: scripts/with_timeout.sh 10 -- python3 scripts/check_lefthook_pre_commit_speed.py
@@ -98,6 +99,7 @@ pre-push:
     structural-checks:
       run: >
         scripts/with_timeout.sh 60 --
+        scripts/clear-git-local-env.sh
         bash -c '
           if [ -x "./target/debug/xtask" ]; then
             ./target/debug/xtask check-no-mod-rs;
@@ -114,6 +116,7 @@ pre-push:
     path-aware-checks:
       run: >
         scripts/with_timeout.sh 600 --
+        scripts/clear-git-local-env.sh
         bash -c '
           if [ -x "./target/debug/xtask" ]; then
             ./target/debug/xtask pre-push;

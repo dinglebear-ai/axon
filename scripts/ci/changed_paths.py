@@ -78,6 +78,8 @@ FULL_CI_ROUTER_PATHS = {
     "tests/ci_changed_paths.rs",
     "tests/workflow_shapes.rs",
     "xtask/src/pre_push.rs",
+    "lefthook.yml",
+    "scripts/clear-git-local-env.sh",
 }
 
 WORKFLOW_CATEGORY_PATHS = {
