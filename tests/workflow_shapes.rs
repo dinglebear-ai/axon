@@ -1131,7 +1131,6 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "test",
         "security",
         "mcp-smoke",
-        "rag-changes",
         "live-rag-pr",
         "binary-smoke-build",
         "binary-smoke",
@@ -1156,6 +1155,9 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 fn live_rag_uses_a_dynamic_tei_host_port() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let live_rag = workflow_job_block(workflow, "live-rag-pr");
+    assert!(live_rag.contains("needs: [changes]"));
+    assert!(live_rag.contains("needs.changes.outputs.rag == 'true'"));
+    assert!(!workflow.contains("  rag-changes:"));
     assert!(live_rag.contains("-p 127.0.0.1::80"));
     assert!(live_rag.contains("docker port axon-tei 80/tcp"));
     assert!(live_rag.contains("echo \"TEI_URL=http://127.0.0.1:$tei_port\""));
@@ -1320,6 +1322,10 @@ fn timing_report_supports_before_after_sha_comparison() {
     assert!(script.contains("Runner time is the sum of non-skipped job durations"));
     assert!(script.contains("--sha"));
     assert!(script.contains("--recent"));
+    assert!(script.contains(".github/workflows/"));
+    assert!(script.contains("workflow.get(\"state\") == \"active\""));
+    assert!(script.contains("not run"));
+    assert!(script.contains("| 0 | — | — | — |"));
 }
 
 #[test]

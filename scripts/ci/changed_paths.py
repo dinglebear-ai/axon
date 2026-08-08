@@ -33,6 +33,7 @@ OUTPUT_KEYS = [
     "docker_build",
     "compose",
     "mcp",
+    "rag",
     "security",
     "release",
     "release_please",
@@ -234,6 +235,18 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         or p == "crates/axon-api/src/mcp_schema.rs"
         or p in MCP_CI_HELPER_SCRIPTS
     )
+    rag = any_match(
+        paths,
+        lambda p: starts(
+            p,
+            "crates/axon-embedding/",
+            "crates/axon-llm/",
+            "crates/axon-retrieval/",
+            "crates/axon-vectors/",
+            "crates/axon-services/src/source/",
+        )
+        or p == "tests/rag_live_integration.rs",
+    )
     rust = any_match(
         paths,
         lambda p: p not in CI_CONTRACT_PATHS
@@ -376,6 +389,7 @@ def classify(event: str, paths: list[str]) -> dict[str, bool]:
         "docker_build": docker_build,
         "compose": compose,
         "mcp": mcp,
+        "rag": rag,
         "security": security,
         "release": release,
         "release_please": release_please,

@@ -173,6 +173,23 @@ fn axon_mcp_crate_changes_enable_mcp_schema_and_runtime_checks() {
 }
 
 #[test]
+fn rag_paths_use_the_shared_classifier() {
+    for file in [
+        "crates/axon-embedding/src/lib.rs",
+        "crates/axon-llm/src/lib.rs",
+        "crates/axon-retrieval/src/lib.rs",
+        "crates/axon-vectors/src/lib.rs",
+        "crates/axon-services/src/source/runner.rs",
+        "tests/rag_live_integration.rs",
+    ] {
+        let out = classify("pull_request", &[file]);
+        assert_eq!(out["rag"], "true", "{file} should enable live RAG CI");
+    }
+    let out = classify("pull_request", &["crates/axon-api/src/lib.rs"]);
+    assert_eq!(out["rag"], "false");
+}
+
+#[test]
 fn axon_api_mcp_schema_changes_enable_mcp_contract_checks() {
     for file in [
         "crates/axon-api/src/mcp_schema.rs",
