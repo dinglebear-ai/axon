@@ -20,8 +20,28 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  changes:
+    name: release-please changes
+    runs-on: ci-pool-ops
+    timeout-minutes: 10
+    outputs:
+      release_please: ${{ steps.classify.outputs.release_please }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify release-please paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name == 'workflow_dispatch' && 'workflow_dispatch' || 'push' }}
+          HEAD_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+        run: python3 scripts/ci/changed_paths.py --event "$EVENT_NAME" --output "$GITHUB_OUTPUT"
+
   release-please:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    needs: changes
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && needs.changes.outputs.release_please == 'true') }}
     runs-on: ci-pool-ops
     timeout-minutes: 15
     permissions:
@@ -64,6 +84,8 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
       - uses: ./.github/actions/setup-rust-kache
+      - name: Build xtask once
+        run: cargo build --locked -p xtask
       - name: Apply release PR fixups
         env:
           PRS: ${{ needs.release-please.outputs.prs }}
@@ -79,14 +101,14 @@ jobs:
               "+refs/heads/$base_branch:refs/remotes/origin/$base_branch" \
               "+refs/heads/$branch:refs/remotes/origin/$branch"
             git checkout "$branch"
-            cargo xtask release-please-fixup-plan \
+            ./target/debug/xtask release-please-fixup-plan \
               --base "origin/$base_branch" \
               --head HEAD \
               --json > fixup-plan.json
             while read -r fixup; do
               component="$(jq -r '.id' <<<"$fixup")"
               version="$(jq -r '.version' <<<"$fixup")"
-              cargo xtask release-please-fixups --component "$component" --version "$version"
+              ./target/debug/xtask release-please-fixups --component "$component" --version "$version"
             done < <(jq -c '.[]' fixup-plan.json)
             fixup_commit_created=false
             if ! git diff --quiet; then
@@ -94,7 +116,7 @@ jobs:
               git commit -m "chore: apply release-please fixups"
               fixup_commit_created=true
             fi
-            cargo xtask check-release-versions \
+            ./target/debug/xtask check-release-versions \
               --base "origin/$base_branch" \
               --head HEAD \
               --mode pr

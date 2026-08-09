@@ -96,6 +96,7 @@ IGNORED_TOKENS = {
     "GEMINI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
     "OPENAI_DEFAULT_COMPLETION_CONCURRENCY",  # Rust const (default concurrency) in core/llm/types.rs, not an env var
     "GITHUB_ENV",  # GitHub Actions command file, not axon runtime config
+    "GITHUB_STEP_SUMMARY",  # GitHub Actions job summary file, not axon runtime config
     "GITHUB_REF",  # GitHub Actions runtime variable, not axon runtime config
     "GITHUB_SHA",  # GitHub Actions runtime variable, not axon runtime config
     "TEI_MODE",  # local Incus bootstrap shell variable, not runtime configuration

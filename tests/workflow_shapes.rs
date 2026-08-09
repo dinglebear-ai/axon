@@ -2,46 +2,62 @@ use std::collections::HashMap;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(unix)]
 use std::process::Output;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+struct TestTempDir(PathBuf);
+
+impl TestTempDir {
+    fn new(label: &str) -> Self {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock follows the Unix epoch")
+            .as_nanos();
+        let path =
+            std::env::temp_dir().join(format!("axon-{label}-{}-{nonce}", std::process::id()));
+        fs::create_dir(&path).expect("create temporary test directory");
+        Self(path)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestTempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn repo_root() -> PathBuf {
+    std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir().expect("resolve repository root"))
+}
 
 #[test]
 fn release_checkout_sparse_paths_are_valid_when_checkout_blocks_define_sparse_checkout() {
     let workflow = include_str!("../.github/workflows/release.yml");
     let blocks = checkout_sparse_blocks(workflow);
-    // The release workflow now uses a full checkout. The non-cone sparse list
-    // previously omitted root Cargo.toml/Cargo.lock, which broke every build, so
-    // full checkout is the chosen shape and there are no sparse blocks to
-    // validate. This guard still has
-    // teeth if sparse-checkout is ever reintroduced: each block below must carry
-    // the required paths and disable cone mode.
-    for (index, block) in blocks.iter().enumerate() {
-        let paths = parse_sparse_checkout_paths(block);
-        for required in ["tests", "scripts", "config", "vendor", ".cargo"] {
-            assert!(
-                paths.iter().any(|path| path == required),
-                "checkout block #{index} is missing {required} from sparse-checkout paths; \
-                 paths following sparse-checkout-cone-mode are ignored by actions/checkout"
-            );
-        }
+    assert_eq!(
+        blocks.len(),
+        1,
+        "only the web-assets job may use sparse checkout"
+    );
+    let paths = parse_sparse_checkout_paths(&blocks[0]);
+    for required in ["apps/web", "assets"] {
+        assert!(paths.iter().any(|path| path == required));
+    }
+    for job_name in ["axon-linux", "axon-windows"] {
+        let job = workflow_job_block(workflow, job_name);
+        assert!(job.contains("uses: actions/checkout@v5"));
         assert!(
-            block
-                .iter()
-                .any(|line| line.trim() == "sparse-checkout-cone-mode: false"),
-            "checkout block #{index} must explicitly disable cone mode"
-        );
-        let cone_index = block
-            .iter()
-            .position(|line| line.trim().starts_with("sparse-checkout-cone-mode:"))
-            .expect("cone mode line is present");
-        assert!(
-            block[(cone_index + 1)..]
-                .iter()
-                .all(|line| !line.trim().starts_with(['.', '/'])
-                    && !["tests", "scripts", "config", "vendor"].contains(&line.trim())),
-            "checkout block #{index} has path-looking entries indented under sparse-checkout-cone-mode"
+            !job.contains("sparse-checkout:"),
+            "{job_name} compiles the full workspace and must use a full checkout"
         );
     }
 }
@@ -381,7 +397,7 @@ fn lefthook_cargo_descendants_clear_repository_local_git_environment() {
 #[cfg(unix)]
 #[test]
 fn git_environment_sanitizer_protects_linked_worktree_common_config() {
-    let temp = tempfile::tempdir().expect("create temporary Git fixture");
+    let temp = TestTempDir::new("git-environment-sanitizer");
     let primary = temp.path().join("primary");
     let linked = temp.path().join("linked");
     let foreign = temp.path().join("foreign");
@@ -416,7 +432,7 @@ fn git_environment_sanitizer_protects_linked_worktree_common_config() {
     let common_config = Path::new(git_common_dir.trim()).join("config");
     let before = fs::read(&common_config).expect("read common config before foreign git init");
 
-    let sanitizer = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/clear-git-local-env.sh");
+    let sanitizer = repo_root().join("scripts/clear-git-local-env.sh");
     let mode = fs::metadata(&sanitizer)
         .expect("Git environment sanitizer exists")
         .permissions()
@@ -455,16 +471,24 @@ fn git_environment_sanitizer_protects_linked_worktree_common_config() {
 #[test]
 fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
+    let ci = include_str!("../.github/workflows/ci.yml");
     let plan = workflow_job_block(workflow, "plan");
     let ci_gate = workflow_job_block(workflow, "ci-gate");
     let release = workflow_job_block(workflow, "release");
     assert!(
-        plan.contains("cargo xtask check-release-versions --head HEAD --mode main --json"),
-        "auto-tag must use the validated shared xtask release-version detector"
+        ci.contains("./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json"),
+        "CI must generate the auto-tag plan with its already-built xtask binary"
     );
     assert!(
-        plan.contains("fetch-depth: 0"),
-        "auto-tag release planning needs tag history"
+        ci.contains("name: axon-auto-tag-release-plan-${{ github.sha }}")
+            && ci.contains("retention-days: 1")
+            && plan.contains("run-id: ${{ needs.ci-gate.outputs.ci_run_id }}"),
+        "auto-tag must consume the short-lived release-plan artifact from the exact CI run"
+    );
+    assert!(
+        !workflow.contains("cargo xtask check-release-versions --head HEAD --mode main --json")
+            && !workflow.contains("uses: ./.github/actions/setup-rust-kache"),
+        "auto-tag must not rebuild xtask after CI already built it"
     );
     assert!(
         plan.contains(
@@ -488,15 +512,15 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "the former changed-only selector would reintroduce release-please-owned components"
     );
     assert!(
-        ci_gate.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#)
-            && release.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#),
-        "auto-tag must skip CI gating and releases for an empty matrix"
+        release.contains(r#"needs.plan.outputs.matrix != '{"include":[]}'"#),
+        "auto-tag must skip releases for an empty matrix"
     );
     assert!(
         ci_gate.contains("runs-on: ubuntu-24.04")
             && ci_gate.contains("timeout-minutes: 65")
+            && plan.contains("runs-on: ubuntu-24.04")
             && release.contains("runs-on: ubuntu-24.04"),
-        "auto-tag polling and tagging must not consume self-hosted runners"
+        "auto-tag polling, planning, and tagging must not consume self-hosted runners"
     );
     assert!(
         release.contains("needs: [plan, ci-gate]"),
@@ -766,6 +790,8 @@ fi
 fn release_please_fixups_validate_and_forward_pr_branch_refs() {
     let workflow = include_str!("../.github/workflows/release-please.yml");
     let fixups = workflow_job_block(workflow, "release-pr-fixups");
+    assert_eq!(fixups.matches("cargo build --locked -p xtask").count(), 1);
+    assert!(!fixups.contains("cargo xtask"));
 
     for (variable, field) in [
         ("branch", "headBranchName"),
@@ -784,23 +810,23 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
         "fixup planning must run from the reported release PR branch"
     );
     let (_, after_plan_start) = fixups
-        .split_once("cargo xtask release-please-fixup-plan")
+        .split_once("./target/debug/xtask release-please-fixup-plan")
         .expect("release PR fixup planner invocation exists");
     let (plan_args, _) = after_plan_start
-        .split_once("cargo xtask check-release-versions")
+        .split_once("./target/debug/xtask check-release-versions")
         .expect("release version check follows fixup planning");
     assert!(
         plan_args.contains("--base \"origin/$base_branch\"") && plan_args.contains("--head HEAD"),
         "the fixup planner itself must compare the release branch with its reported base branch"
     );
     let fixup_position = fixups
-        .find("cargo xtask release-please-fixups")
+        .find("./target/debug/xtask release-please-fixups")
         .expect("release PR fixup invocation exists");
     let commit_position = fixups
         .find("git commit -m \"chore: apply release-please fixups\"")
         .expect("generated fixups are committed");
     let check_position = fixups
-        .find("cargo xtask check-release-versions")
+        .find("./target/debug/xtask check-release-versions")
         .expect("release version check exists");
     let push_position = fixups
         .find("git push origin HEAD:\"$branch\"")
@@ -816,23 +842,18 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
 #[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
-    let smoke = workflow_job_block(workflow, "smoke-binary");
-    assert!(smoke.contains("github.event_name == 'pull_request'"));
-    assert!(smoke.contains("cargo build --locked --bin axon"));
-    assert!(!smoke.contains("cargo build --release"));
-
     let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(binary_smoke_build.contains("github.event_name != 'pull_request'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.rust == 'true'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.mcp == 'true'"));
     assert!(binary_smoke_build.contains("needs.changes.outputs.release == 'true'"));
-    assert!(binary_smoke_build.contains("'ci:full'"));
     assert!(!binary_smoke_build.contains("cargo build --release"));
     assert!(mcp_smoke.contains("'ci:full'"));
     assert!(windows_check.contains("github.event_name == 'pull_request'"));
     assert!(windows_build.contains("'ci:full'"));
-    assert!(windows_build.contains("github.event_name != 'pull_request'"));
+    assert!(windows_build.contains("github.event_name == 'pull_request'"));
     assert!(
         windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
             && windows_build.contains("nasm -v"),
@@ -847,6 +868,9 @@ fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
 
     assert!(binary_smoke.contains("always()"));
     assert!(binary_smoke.contains("needs.binary-smoke-build.result == 'success'"));
+    assert!(binary_smoke.contains("USE_PREBUILT_AXON: \"1\""));
+    assert!(binary_smoke.contains("AXON_BIN: ${{ github.workspace }}/target/debug/axon"));
+    assert!(!binary_smoke.contains("setup-rust-kache"));
 }
 
 #[test]
@@ -858,9 +882,7 @@ fn kache_migration_inputs_have_cargo_rerun_triggers() {
         "axon-memory",
         "axon-observe",
     ] {
-        let crate_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("crates")
-            .join(crate_name);
+        let crate_dir = repo_root().join("crates").join(crate_name);
         let kache = fs::read_to_string(crate_dir.join("kache.toml"))
             .unwrap_or_else(|error| panic!("failed to read {crate_name}/kache.toml: {error}"));
         let build = fs::read_to_string(crate_dir.join("build.rs"))
@@ -889,6 +911,8 @@ fn mcp_oauth_smoke_builds_before_server_readiness_polling() {
 
     assert!(build < launch && launch < readiness);
     assert!(script.contains("CARGO_TARGET_DIR"));
+    assert!(script.contains("USE_PREBUILT_AXON"));
+    assert!(script.contains("Prebuilt Axon binary is missing or not executable"));
     assert!(!script.contains("cargo run --quiet --bin axon"));
 }
 
@@ -916,14 +940,15 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
         );
     }
     assert!(
-        binary_smoke_build.contains("needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')"),
-        "release-only smoke builds must accept the intentionally skipped web job"
+        binary_smoke_build
+            .contains("needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped'"),
+        "smoke builds must accept an intentionally skipped unchanged web app"
     );
     assert!(
         binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'success' }}")
             && binary_smoke_build.contains("if: ${{ needs.web-panel.result == 'skipped' }}")
             && binary_smoke_build.contains("AXON_ALLOW_FALLBACK_WEB_ASSETS=1"),
-        "release-only smoke builds must use fallback web assets without rebuilding the panel"
+        "smoke builds must use fallback web assets without rebuilding the unchanged panel"
     );
 }
 
@@ -1102,11 +1127,59 @@ fn ci_has_changed_path_classifier_and_stable_gate() {
 }
 
 #[test]
+fn non_required_automation_does_not_repeat_on_unrelated_events() {
+    let sessions = include_str!("../.github/workflows/session-log-automerge.yml");
+    assert!(sessions.contains("paths:\n      - docs/sessions/**"));
+
+    let contract = include_str!("../.github/workflows/repository-contract.yml");
+    let triggers = contract
+        .split_once("on:\n")
+        .expect("repository contract triggers")
+        .1
+        .split_once("\n\nconcurrency:")
+        .expect("repository contract concurrency boundary")
+        .0;
+    assert!(triggers.contains("pull_request:"));
+    assert!(triggers.contains("workflow_dispatch:"));
+    assert!(!triggers.contains("push:"));
+}
+
+#[test]
+fn main_push_triggers_skip_non_code_changes_before_allocating_runners() {
+    let ci = include_str!("../.github/workflows/ci.yml");
+    assert!(ci.contains("- \"!**/*.md\""));
+    assert!(ci.contains("- \"README.md\""));
+    assert!(ci.contains("- \"CHANGELOG.md\""));
+    assert!(ci.contains("- \"!docs/**\""));
+    assert!(ci.contains("- \"docs/reference/**\""));
+    assert!(ci.contains("- \"!docs/sessions/**\""));
+    assert!(ci.contains("- \"!.agents/**\""));
+    assert!(ci.contains("- \"!plugins/**\""));
+
+    let codeql = include_str!("../.github/workflows/codeql.yml");
+    for pattern in [
+        "**/*.js",
+        "**/*.ts",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.kt",
+        ".github/workflows/**",
+    ] {
+        assert!(
+            codeql.contains(&format!("- \"{pattern}\"")),
+            "CodeQL push paths must include {pattern}"
+        );
+    }
+    assert!(!codeql.contains("- \"docs/**\""));
+}
+
+#[test]
 fn ci_gate_covers_expensive_and_contract_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let gate = workflow_job_block(workflow, "ci-gate");
     for job in [
         "rust-contracts",
+        "ci-contracts",
         "aurora-primitive-inventory",
         "android",
         "toml-fmt",
@@ -1114,14 +1187,12 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "palette-tauri",
         "windows-check",
         "windows-build",
-        "smoke-binary",
         "web-panel",
         "chrome-extension",
         "clippy",
         "test",
         "security",
         "mcp-smoke",
-        "rag-changes",
         "live-rag-pr",
         "binary-smoke-build",
         "binary-smoke",
@@ -1146,6 +1217,9 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 fn live_rag_uses_a_dynamic_tei_host_port() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let live_rag = workflow_job_block(workflow, "live-rag-pr");
+    assert!(live_rag.contains("needs: [changes]"));
+    assert!(live_rag.contains("needs.changes.outputs.rag == 'true'"));
+    assert!(!workflow.contains("  rag-changes:"));
     assert!(live_rag.contains("-p 127.0.0.1::80"));
     assert!(live_rag.contains("docker port axon-tei 80/tcp"));
     assert!(live_rag.contains("echo \"TEI_URL=http://127.0.0.1:$tei_port\""));
@@ -1173,12 +1247,11 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
-    for block in [contracts, gate] {
-        assert!(
-            block.contains("needs.changes.outputs.chrome == 'true'"),
-            "Chrome-only changes must require the unified generated-contract job"
-        );
-    }
+    assert!(
+        !contracts.contains("needs.changes.outputs.chrome == 'true'"),
+        "Chrome-only source changes must not compile the Rust contract workspace"
+    );
+    assert!(gate.contains("require_success_or_intentional_skip chrome-extension"));
 
     assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
 }
@@ -1294,8 +1367,71 @@ fn codeql_workflow_routes_language_matrix_by_changed_paths() {
     assert!(workflow.contains("codeql_rust"));
     assert!(workflow.contains("codeql_java_kotlin"));
     assert!(workflow.contains("fromJson(needs.changes.outputs.matrix)"));
+    assert!(workflow.contains("has_work: ${{ steps.matrix.outputs.has_work }}"));
+    assert!(workflow.contains("if: ${{ needs.changes.outputs.has_work == 'true' }}"));
     assert!(workflow.contains("codeql-gate:"));
-    assert!(workflow.contains("require_success analyze"));
+    assert!(workflow.contains("analyze=skipped (no changed CodeQL language)"));
+}
+
+#[test]
+fn timing_report_supports_before_after_sha_comparison() {
+    let workflow = include_str!("../.github/workflows/ci-timing-report.yml");
+    let script = include_str!("../scripts/ci/report_workflow_timings.py");
+    assert!(workflow.contains("baseline_sha:"));
+    assert!(workflow.contains("candidate_sha:"));
+    assert!(workflow.contains("$GITHUB_STEP_SUMMARY"));
+    assert!(workflow.contains("retention-days: 90"));
+    assert!(script.contains("Runner time is the sum of non-skipped job durations"));
+    assert!(script.contains("--sha"));
+    assert!(script.contains("--recent"));
+    assert!(script.contains(".github/workflows/"));
+    assert!(script.contains("workflow.get(\"state\") == \"active\""));
+    assert!(script.contains("not run"));
+    assert!(script.contains("| 0 | — | — | — |"));
+}
+
+#[test]
+fn release_builds_web_assets_once_for_both_native_targets() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    let web = workflow_job_block(workflow, "web-assets");
+    assert_eq!(workflow.matches("npm ci && npm run build").count(), 1);
+    assert!(web.contains("name: axon-release-web-assets"));
+    for job_name in ["axon-linux", "axon-windows"] {
+        let job = workflow_job_block(workflow, job_name);
+        assert!(job.contains("needs: web-assets"));
+        assert!(job.contains("name: axon-release-web-assets"));
+        assert!(!job.contains("npm ci"));
+    }
+}
+
+#[test]
+fn palette_builds_frontend_once_per_ci_or_release_run() {
+    let ci = workflow_job_block(include_str!("../.github/workflows/ci.yml"), "palette-tauri");
+    assert_eq!(
+        ci.matches("run: pnpm --dir apps/palette-tauri vite:build")
+            .count(),
+        1
+    );
+    assert!(ci.contains("--config src-tauri/tauri.ci.conf.json"));
+
+    let release = include_str!("../.github/workflows/palette-release.yml");
+    let frontend = workflow_job_block(release, "frontend");
+    assert_eq!(
+        release
+            .matches("run: pnpm --dir apps/palette-tauri vite:build")
+            .count(),
+        1
+    );
+    assert!(frontend.contains("name: axon-palette-frontend"));
+    for job_name in ["palette-linux", "palette-windows"] {
+        let job = workflow_job_block(release, job_name);
+        assert!(job.contains("needs: [version, frontend]"));
+        assert!(job.contains("name: axon-palette-frontend"));
+        assert!(job.contains("--config src-tauri/tauri.ci.conf.json"));
+    }
+
+    let overlay = include_str!("../apps/palette-tauri/src-tauri/tauri.ci.conf.json");
+    assert!(overlay.contains(r#""beforeBuildCommand": null"#));
 }
 
 #[test]

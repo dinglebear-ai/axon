@@ -3,6 +3,18 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!**/*.md"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "!docs/**"
+      - "docs/reference/**"
+      - "!docs/sessions/**"
+      - "!openwiki/**"
+      - "!.agents/**"
+      - "!plugins/**"
+      - "!LICENSE*"
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, labeled]
@@ -41,7 +53,7 @@ env:
   # Self-hosted runners persist $HOME/.axon between jobs. Isolate every job's
   # SQLite state so a different branch or migration epoch cannot poison startup.
   AXON_DATA_DIR: ${{ github.workspace }}/.ci-axon-data-${{ github.run_id }}-${{ github.job }}
-  AURORA_REPO: ${{ vars.AURORA_REPO || 'jmagar/aurora-design-system' }}
+  AURORA_REPO: ${{ vars.AURORA_REPO || 'dinglebear-ai/aurora' }}
   AURORA_REF: ${{ vars.AURORA_REF || '8748eb6434b3bbe4c75f25bfff71950b7efc051b' }}
 
 jobs:
@@ -56,6 +68,9 @@ jobs:
       ci_all: ${{ steps.classify.outputs.ci_all }}
       docs: ${{ steps.classify.outputs.docs }}
       docs_contracts: ${{ steps.classify.outputs.docs_contracts }}
+      ci_contracts: ${{ steps.classify.outputs.ci_contracts == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      hooks: ${{ steps.classify.outputs.hooks == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      toml: ${{ steps.classify.outputs.toml == 'true' || steps.classify.outputs.full_ci == 'true' }}
       aurora_inventory: ${{ steps.classify.outputs.aurora_inventory }}
       workflow: ${{ steps.classify.outputs.workflow }}
       rust: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -66,6 +81,8 @@ jobs:
       docker: ${{ steps.classify.outputs.docker == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       compose: ${{ steps.classify.outputs.compose == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       mcp: ${{ steps.classify.outputs.mcp == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      rag: ${{ steps.classify.outputs.rag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      auto_tag: ${{ steps.classify.outputs.auto_tag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       security: ${{ steps.classify.outputs.security == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       release: ${{ steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       version_files: ${{ steps.classify.outputs.version_files == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -85,7 +102,7 @@ jobs:
           #!/usr/bin/env python3
           import argparse
           from pathlib import Path
-          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp security release version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
+          keys = "all routing_fallback full_ci ci_all codeql_all docs docs_contracts ci_contracts hooks toml aurora_inventory workflow rust web android palette chrome docker docker_build compose mcp rag auto_tag security release release_please version_files openapi codeql_actions codeql_javascript_typescript codeql_python codeql_rust codeql_java_kotlin".split()
           parser = argparse.ArgumentParser()
           parser.add_argument("--event", required=True)
           parser.add_argument("--output", type=Path, required=True)
@@ -131,7 +148,7 @@ jobs:
     # case rather than the typical one.
     timeout-minutes: 240
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -222,18 +239,27 @@ jobs:
       - name: Release version contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.version_files == 'true' }}
         run: ./target/debug/xtask check-release-versions --base origin/main --head HEAD --mode pr
+      - name: Build auto-tag release plan from the existing xtask binary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        run: ./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json
+      - name: Upload auto-tag release plan
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: axon-auto-tag-release-plan-${{ github.sha }}
+          path: auto-tag-release-plan.json
+          retention-days: 1
+          if-no-files-found: error
       - name: MCP schema documentation
         if: ${{ needs.changes.outputs.mcp == 'true' }}
         run: python3 scripts/generate_mcp_schema_doc.py --check
       - name: Install web dependencies for API parity
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: npm ci --prefix apps/web
-      - name: REST and workflow contracts
+      - name: REST API contracts
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: |
-          # One cargo invocation builds both test binaries; splitting them cost
-          # an extra full 470-crate rebuild.
-          cargo test --locked --test http_api_parity_inventory --test workflow_shapes
+          cargo test --locked --test http_api_parity_inventory
           python3 scripts/cargo_test_filter_guard.py -- cargo test --locked --test http_api_parity_inventory rest_route_contracts_match_openapi_request_schemas -- --nocapture
           ./target/debug/xtask check-openapi-drift
       - name: Changed-file monolith policy
@@ -279,6 +305,38 @@ jobs:
         env:
           KACHE_GATE_REQUIRE_DAEMON: "1"
         run: ./scripts/kache-gate.sh
+
+  # These structural tests use only std and invoke the Python classifier as a
+  # subprocess. Compiling them directly avoids building the application
+  # workspace for a YAML-only change.
+  ci-contracts:
+    name: ci-contracts
+    runs-on: ci-pool-rust
+    timeout-minutes: 10
+    needs: [changes]
+    if: ${{ needs.changes.outputs.ci_contracts == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: "1.97.1"
+      - name: Lint GitHub Actions workflows
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSLo "$archive" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $archive" \
+            | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" .github/workflows/*.yml
+      - name: Test changed-path routing
+        run: |
+          rustc --edition=2024 --test tests/ci_changed_paths.rs -o "$RUNNER_TEMP/ci_changed_paths"
+          "$RUNNER_TEMP/ci_changed_paths"
+      - name: Test workflow shapes
+        run: |
+          rustc --edition=2024 --test tests/workflow_shapes.rs -o "$RUNNER_TEMP/workflow_shapes"
+          "$RUNNER_TEMP/workflow_shapes"
 
   aurora-primitive-inventory:
     name: aurora-primitive-inventory
@@ -388,7 +446,7 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}
+    if: ${{ needs.changes.outputs.toml == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Install taplo (pinned prebuilt binary)
@@ -422,7 +480,7 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.hooks == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: enforce pre-commit stays fast
@@ -479,10 +537,6 @@ jobs:
           git diff --exit-code apps/palette-tauri/src/lib/axon-api.d.ts
       - name: Palette Vite build
         run: pnpm --dir apps/palette-tauri vite:build
-      - name: Use direct rustc for Tauri gates
-        run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_RUSTC_WRAPPER=" >> "$GITHUB_ENV"
       # CI-H3: lint the security-relevant Tauri IPC/network bridge. src-tauri
       # declares its own [workspace], so the repo-root clippy/fmt jobs never
       # touch it — these scope explicitly via --manifest-path.
@@ -507,7 +561,7 @@ jobs:
       # Without this the first real desktop build happens only in
       # palette-release.yml *after* the palette-v* tag is published.
       - name: Tauri build (no bundle)
-        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --config src-tauri/tauri.ci.conf.json
       - name: Copy Tauri artifact to bin
         run: |
           node apps/palette-tauri/scripts/copy-artifacts.mjs
@@ -580,9 +634,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
-    # Main keeps the pre-release Windows compatibility gate. Pull requests opt
-    # in with ci:full so ordinary PRs avoid the duplicate cross-build cost.
-    if: ${{ always() && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    # Native Windows is built by release.yml. Pull requests can opt into this
+    # cross-build with ci:full without rebuilding it on every main push.
+    if: ${{ always() && github.event_name == 'pull_request' && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
@@ -616,48 +670,12 @@ jobs:
           path: target/x86_64-pc-windows-gnu/debug/axon.exe
           if-no-files-found: error
 
-  # Consumes the single debug binary built by binary-smoke-build (which embeds
-  # real web assets when available) instead of running a second
-  # `cargo build --bin axon` of its own — see the binary-smoke job for the same
-  # artifact-consumption pattern.
-  smoke-binary:
-    name: smoke-binary
-    runs-on: ci-pool-rust
-    # Slowest observed green run: 12.6 min.
-    timeout-minutes: 30
-    needs: [changes, rust-contracts]
-    if: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}
-    env:
-      TEI_URL: http://127.0.0.1:52000
-      QDRANT_URL: http://127.0.0.1:53333
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-kache
-      - name: create web assets placeholder
-        run: |
-          mkdir -p apps/web/out
-          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
-      - name: Build debug smoke binary
-        run: cargo build --locked --bin axon
-      - name: Smoke test CLI help
-        run: ./target/debug/axon --help
-      - name: Smoke test generated shell completions
-        run: ./scripts/check_shell_completions.sh ./target/debug/axon
-      - name: Smoke test MCP OAuth protection
-        run: ./scripts/test-mcp-oauth-protection.sh
-      - name: Upload debug smoke binary
-        uses: actions/upload-artifact@v5
-        with:
-          name: axon-debug-linux-smoke
-          path: target/debug/axon
-          if-no-files-found: error
-
   web-panel:
     name: web-panel
     runs-on: ci-pool-typescript
     timeout-minutes: 30
     needs: [changes]
-    if: ${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ needs.changes.outputs.web == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -772,54 +790,14 @@ jobs:
       - name: live Qdrant vector tests
         run: cargo test --locked --features live-qdrant qdrant -- --ignored
 
-  # OPS-H1: detect whether a PR touches the RAG-critical paths so the live
-  # embed→retrieve test only runs when retrieval/embedding/LLM code changes.
-  # Self-contained git diff (no third-party paths-filter action) — sets a
-  # `rag` boolean output consumed by `live-rag-pr`.
-  rag-changes:
-    name: rag-changes
-    runs-on: ci-pool-ops
-    timeout-minutes: 10
-    if: ${{ github.event_name == 'pull_request' }}
-    outputs:
-      rag: ${{ steps.filter.outputs.rag }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-      - name: Detect RAG-path changes
-        id: filter
-        run: |
-          set -euo pipefail
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          # Fall back to merge-base if the base SHA is not directly reachable.
-          if ! git cat-file -e "$base" 2>/dev/null; then
-            base=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" "$head" || echo "")
-          fi
-          if [ -z "$base" ]; then
-            echo "Could not resolve base — defaulting rag=true (fail safe)." >&2
-            echo "rag=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed=$(git diff --name-only "$base" "$head" || true)
-          echo "Changed files:"; echo "$changed"
-          if echo "$changed" | grep -qE '^(crates/axon-(embedding|llm|retrieval|vectors)/|crates/axon-services/src/source/|tests/rag_live_integration\.rs)'; then
-            echo "RAG-critical paths changed — will run live RAG test."
-            echo "rag=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No RAG-critical paths changed — skipping live RAG test."
-            echo "rag=false" >> "$GITHUB_OUTPUT"
-          fi
-
   # OPS-H1: stand up Qdrant + TEI (modeled on mcp-smoke) and run a real
   # embed→retrieve assertion on PRs that touch RAG code. Closes the gap where a
   # retrieval/RRF/rerank regression could merge and auto-release unverified.
   live-rag-pr:
     name: live-rag-pr
     runs-on: ubuntu-latest
-    needs: [rag-changes]
-    if: ${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}
+    needs: [changes]
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}
     timeout-minutes: 30
     services:
       qdrant:
@@ -1120,7 +1098,7 @@ jobs:
     # Slowest observed green run: 9.6 min.
     timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
-    if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || (needs.changes.outputs.release == 'true' && needs.web-panel.result == 'skipped')) && ((github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full')))) }}
+    if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache
@@ -1135,7 +1113,7 @@ jobs:
         with:
           name: axon-web-assets
           path: apps/web/out
-      - name: Use fallback web assets for release-only smoke
+      - name: Use fallback web assets when the web app is unchanged
         if: ${{ needs.web-panel.result == 'skipped' }}
         run: |
           mkdir -p apps/web/out
@@ -1161,7 +1139,11 @@ jobs:
     # though its required condition is true". The explicit result check still
     # gates execution.
     if: ${{ always() && needs.binary-smoke-build.result == 'success' }}
+    env:
+      TEI_URL: http://127.0.0.1:52000
+      QDRANT_URL: http://127.0.0.1:53333
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v5
         with:
           name: axon-linux-smoke
@@ -1170,6 +1152,13 @@ jobs:
         run: |
           chmod +x ./target/debug/axon
           ./target/debug/axon --help
+      - name: Smoke test generated shell completions
+        run: ./scripts/check_shell_completions.sh ./target/debug/axon
+      - name: Smoke test MCP OAuth protection
+        env:
+          USE_PREBUILT_AXON: "1"
+          AXON_BIN: ${{ github.workspace }}/target/debug/axon
+        run: ./scripts/test-mcp-oauth-protection.sh
 
   ci-gate:
     name: ci-gate
@@ -1179,6 +1168,7 @@ jobs:
     needs:
       - changes
       - rust-contracts
+      - ci-contracts
       - aurora-primitive-inventory
       - android
       - toml-fmt
@@ -1186,14 +1176,12 @@ jobs:
       - palette-tauri
       - windows-check
       - windows-build
-      - smoke-binary
       - web-panel
       - chrome-extension
       - clippy
       - test
       - security
       - mcp-smoke
-      - rag-changes
       - live-rag-pr
       - binary-smoke-build
       - binary-smoke
@@ -1221,22 +1209,21 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.chrome == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' }}"
+          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}"
+          require_success_or_intentional_skip ci-contracts "${{ needs.ci-contracts.result }}" "${{ needs.changes.outputs.ci_contracts }}"
           require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}"
           require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
-          require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflow == 'true' || needs.changes.outputs.release == 'true' }}"
-          require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.workflow == 'true' || needs.changes.outputs.rust == 'true' }}"
+          require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.toml }}"
+          require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.hooks }}"
           require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
           require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
-          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip smoke-binary "${{ needs.smoke-binary.result }}" "${{ needs.binary-smoke-build.result == 'success' && github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') }}"
-          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || (github.event_name != 'pull_request' && needs.changes.outputs.rust == 'true') || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
+          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
+          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
           require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
           require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
           require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
           require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip rag-changes "${{ needs.rag-changes.result }}" "${{ github.event_name == 'pull_request' }}"
-          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.rag-changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ (github.event_name != 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true')) || (github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.release == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full'))) }}"
+          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}"
+          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' }}"
           require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"

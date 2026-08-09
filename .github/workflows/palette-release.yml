@@ -80,9 +80,36 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  frontend:
+    name: build palette frontend
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: apps/palette-tauri
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      - name: Build palette frontend once
+        run: pnpm --dir apps/palette-tauri vite:build
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-frontend
+          path: apps/palette-tauri/dist
+          if-no-files-found: error
+
   palette-linux:
     name: build axon-palette (linux)
-    needs: version
+    needs: [version, frontend]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -108,12 +135,12 @@ jobs:
           s3-prefix: ${{ vars.KACHE_S3_PREFIX }}
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
-      # (pnpm vite:build) and compiles the portable binary without packaging
-      # installers — matching the single-binary artifact shape the
-      # `axon palette install` flow expects.
+      - uses: actions/download-artifact@v5
+        with:
+          name: axon-palette-frontend
+          path: apps/palette-tauri/dist
       - name: Build Tauri palette (portable binary)
-        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci --config src-tauri/tauri.ci.conf.json
       - name: Package
         run: |
           set -euo pipefail
@@ -130,7 +157,7 @@ jobs:
 
   palette-windows:
     name: build axon-palette (windows)
-    needs: version
+    needs: [version, frontend]
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -154,13 +181,15 @@ jobs:
           shared-key: release-palette-windows
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      # `tauri build --no-bundle` runs the frontend `beforeBuildCommand`
-      # (pnpm vite:build) and compiles the portable .exe without packaging
-      # installers. The avx512-disabling RUSTFLAGS keep the binary portable
-      # across CPUs; the rustc-wrapper is a bash script that cannot run as a
-      # Windows rustc wrapper, so it is disabled here.
+      - uses: actions/download-artifact@v5
+        with:
+          name: axon-palette-frontend
+          path: apps/palette-tauri/dist
+      # The avx512-disabling RUSTFLAGS keep the binary portable across CPUs;
+      # the rustc-wrapper is a bash script that cannot run as a Windows rustc
+      # wrapper, so it is disabled here.
       - name: Build Tauri palette (portable binary)
-        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci
+        run: pnpm --dir apps/palette-tauri exec tauri build --no-bundle --ci --config src-tauri/tauri.ci.conf.json
         env:
           RUSTFLAGS: ${{ env.WINDOWS_PORTABLE_RUSTFLAGS }}
           CARGO_BUILD_RUSTC_WRAPPER: ""

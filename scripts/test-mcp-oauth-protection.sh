@@ -20,7 +20,7 @@ TARGET_DIR="${CARGO_TARGET_DIR:-${ROOT_DIR}/target}"
 if [[ "${TARGET_DIR}" != /* ]]; then
   TARGET_DIR="${ROOT_DIR}/${TARGET_DIR}"
 fi
-AXON_BIN="${TARGET_DIR}/debug/axon"
+AXON_BIN="${AXON_BIN:-${TARGET_DIR}/debug/axon}"
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "${SERVER_PID}" 2>/dev/null; then
@@ -77,10 +77,17 @@ assert_not_status_code() {
   fi
 }
 
-(
-  cd "${ROOT_DIR}"
-  cargo build --quiet --bin axon
-)
+if [[ "${USE_PREBUILT_AXON:-0}" == "1" ]]; then
+  if [[ ! -x "${AXON_BIN}" ]]; then
+    echo "Prebuilt Axon binary is missing or not executable: ${AXON_BIN}" >&2
+    exit 1
+  fi
+else
+  (
+    cd "${ROOT_DIR}"
+    cargo build --quiet --bin axon
+  )
+fi
 
 (
   cd "${ROOT_DIR}"
