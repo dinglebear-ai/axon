@@ -116,7 +116,7 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     runs-on: ci-pool-ops
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: write  # required to dispatch artifact workflows
