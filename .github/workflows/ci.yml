@@ -930,7 +930,9 @@ jobs:
     name: mcp-smoke
     runs-on: ubuntu-24.04
     needs: [changes, binary-smoke-build]
-    if: ${{ needs.binary-smoke-build.result == 'success' && needs.changes.outputs.run_mcp_smoke == 'true' }}
+    # A skipped web-panel ancestor propagates through binary-smoke-build unless
+    # this downstream consumer explicitly evaluates its own result contract.
+    if: ${{ always() && needs.binary-smoke-build.result == 'success' && needs.changes.outputs.run_mcp_smoke == 'true' }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
