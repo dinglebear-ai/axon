@@ -216,9 +216,14 @@ pub fn print_plans(plans: &[ComponentPlan], json: bool) -> ReleaseResult<()> {
     Ok(())
 }
 
-pub fn release_please_fixups(root: &Path, component_id: &str, version: &str) -> ReleaseResult<()> {
+pub fn release_please_fixups(
+    root: &Path,
+    component_id: &str,
+    version: &str,
+    base: Option<&str>,
+) -> ReleaseResult<()> {
     let manifest = load_manifest(root)?;
-    release_please::fixups(root, &manifest.components, component_id, version)
+    release_please::fixups(root, &manifest.components, component_id, version, base)
 }
 
 pub fn release_please_fixup_plan(

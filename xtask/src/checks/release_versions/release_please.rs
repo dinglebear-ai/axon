@@ -7,8 +7,10 @@ use super::{
     Component, ReleaseContext, ReleaseResult, VersionKind, read_version, write_version_file,
 };
 use crate::checks::release_versions::files::{
-    increment_gradle_version_code, read_gradle_version_name, replace_gradle_version_name,
+    increment_gradle_version_code_above, read_gradle_version_code, read_gradle_version_name,
+    replace_gradle_version_name,
 };
+use crate::checks::release_versions::git::git_show;
 
 mod ownership;
 
@@ -107,6 +109,7 @@ pub(super) fn fixups(
     components: &[Component],
     component_id: &str,
     version: &str,
+    base: Option<&str>,
 ) -> ReleaseResult<()> {
     let component = components
         .iter()
@@ -130,7 +133,7 @@ pub(super) fn fixups(
                 version,
             )
         }
-        "android" => android_fixup(root, component, version),
+        "android" => android_fixup(root, component, version, base),
         "chrome" => write_release_version_files(root, component, version),
         other => release_bail!("unsupported release-please fixup component {other}"),
     }
@@ -263,6 +266,7 @@ pub(super) fn android_fixup(
     root: &Path,
     component: &Component,
     version: &str,
+    base: Option<&str>,
 ) -> ReleaseResult<()> {
     let version_file = component
         .version_files
@@ -279,14 +283,33 @@ pub(super) fn android_fixup(
         );
     }
 
+    let current_code = read_gradle_version_code(&content)?;
+    let base_code = base
+        .map(|base| {
+            git_show(root, base, &version_file.path)
+                .with_release_context(|| {
+                    format!(
+                        "failed to read base Android version file {} at {base}",
+                        version_file.path
+                    )
+                })
+                .and_then(|base_content| read_gradle_version_code(&base_content))
+        })
+        .transpose()?
+        .unwrap_or(0);
+
     if read_gradle_version_name(&content)? == version
         && version_code_marker_matches(&content, version)
+        && current_code > base_code
     {
         return Ok(());
     }
 
     let renamed = replace_gradle_version_name(&content, version)?;
-    let updated = stamp_version_code_marker(&increment_gradle_version_code(&renamed)?, version)?;
+    let updated = stamp_version_code_marker(
+        &increment_gradle_version_code_above(&renamed, base_code)?,
+        version,
+    )?;
     std::fs::write(&path, updated)
         .with_release_context(|| format!("failed to write {}", version_file.path))?;
     Ok(())

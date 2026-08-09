@@ -351,7 +351,10 @@ pub(super) fn replace_gradle_version_name(content: &str, next: &str) -> ReleaseR
     Ok(regex.replace(content, format!(r#"$1"{next}""#)).to_string())
 }
 
-pub(super) fn increment_gradle_version_code(content: &str) -> ReleaseResult<String> {
+pub(super) fn increment_gradle_version_code_above(
+    content: &str,
+    minimum: u64,
+) -> ReleaseResult<String> {
     let regex = Regex::new(r#"(?m)^(\s*versionCode\s*=\s*)(\d+)"#)
         .release_context("invalid versionCode replacement regex")?;
     let captures = regex
@@ -361,11 +364,21 @@ pub(super) fn increment_gradle_version_code(content: &str) -> ReleaseResult<Stri
         .parse()
         .release_context("versionCode is not an integer")?;
     validate_gradle_version_code(current)?;
-    let next = current
+    let incremented = current
         .checked_add(1)
         .release_context("versionCode overflowed while bumping")?;
+    let next = incremented.max(
+        minimum
+            .checked_add(1)
+            .release_context("base versionCode overflowed while bumping")?,
+    );
     validate_gradle_version_code(next)?;
     Ok(regex.replace(content, format!("${{1}}{next}")).to_string())
+}
+
+#[cfg(test)]
+pub(super) fn increment_gradle_version_code(content: &str) -> ReleaseResult<String> {
+    increment_gradle_version_code_above(content, 0)
 }
 
 fn validate_gradle_version_code(code: u64) -> ReleaseResult<u64> {
