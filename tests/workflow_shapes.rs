@@ -1498,6 +1498,25 @@ fn release_builds_web_assets_once_for_both_native_targets() {
 }
 
 #[test]
+fn release_capability_smokes_provide_the_required_tei_endpoint() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    for job_name in ["axon-linux", "axon-windows"] {
+        let job = workflow_job_block(workflow, job_name);
+        let smoke = job
+            .split("- name: Verify release acquisition capabilities")
+            .nth(1)
+            .expect("release job has a capability smoke")
+            .split("- name: Package")
+            .next()
+            .expect("capability smoke precedes packaging");
+        assert!(
+            smoke.contains("TEI_URL: http://127.0.0.1:1"),
+            "{job_name} capability smoke must satisfy Config without a live TEI service"
+        );
+    }
+}
+
+#[test]
 fn release_artifact_actions_are_immutable_and_renovate_managed() {
     let workflows = [
         include_str!("../.github/workflows/release.yml"),
