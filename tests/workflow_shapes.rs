@@ -920,6 +920,19 @@ fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
 }
 
 #[test]
+fn mcp_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
+
+    assert!(mcp_smoke.lines().any(|line| {
+        line.trim()
+            == "if: ${{ always() && needs.binary-smoke-build.result == 'success' && needs.changes.outputs.run_mcp_smoke == 'true' }}"
+    }));
+    assert!(mcp_smoke.contains("needs.binary-smoke-build.result == 'success'"));
+    assert!(mcp_smoke.contains("needs.changes.outputs.run_mcp_smoke == 'true'"));
+}
+
+#[test]
 fn kache_migration_inputs_have_cargo_rerun_triggers() {
     for crate_name in [
         "axon-graph",
