@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Axon",
-  "version": "0.3.2",
+  "version": "1.0.0",
   "description": "Scrape, crawl, extract, search and ask Axon over the page you're on.",
   "options_page": "src/options/options.html",
   "icons": {
@@ -25,7 +25,16 @@
   "side_panel": {
     "default_path": "src/sidepanel/sidepanel.html"
   },
-  "permissions": ["activeTab", "clipboardWrite", "contextMenus", "notifications", "offscreen", "sidePanel", "storage", "tabs"],
+  "permissions": [
+    "activeTab",
+    "clipboardWrite",
+    "contextMenus",
+    "notifications",
+    "offscreen",
+    "sidePanel",
+    "storage",
+    "tabs"
+  ],
   "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
