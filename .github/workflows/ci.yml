@@ -1155,6 +1155,9 @@ jobs:
       - name: Smoke test generated shell completions
         run: ./scripts/check_shell_completions.sh ./target/debug/axon
       - name: Smoke test MCP OAuth protection
+        env:
+          USE_PREBUILT_AXON: "1"
+          AXON_BIN: ${{ github.workspace }}/target/debug/axon
         run: ./scripts/test-mcp-oauth-protection.sh
 
   ci-gate:

@@ -868,6 +868,9 @@ fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
 
     assert!(binary_smoke.contains("always()"));
     assert!(binary_smoke.contains("needs.binary-smoke-build.result == 'success'"));
+    assert!(binary_smoke.contains("USE_PREBUILT_AXON: \"1\""));
+    assert!(binary_smoke.contains("AXON_BIN: ${{ github.workspace }}/target/debug/axon"));
+    assert!(!binary_smoke.contains("setup-rust-kache"));
 }
 
 #[test]
@@ -908,6 +911,8 @@ fn mcp_oauth_smoke_builds_before_server_readiness_polling() {
 
     assert!(build < launch && launch < readiness);
     assert!(script.contains("CARGO_TARGET_DIR"));
+    assert!(script.contains("USE_PREBUILT_AXON"));
+    assert!(script.contains("Prebuilt Axon binary is missing or not executable"));
     assert!(!script.contains("cargo run --quiet --bin axon"));
 }
 
