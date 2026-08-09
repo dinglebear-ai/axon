@@ -473,7 +473,6 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let ci = include_str!("../.github/workflows/ci.yml");
     let plan = workflow_job_block(workflow, "plan");
-    let ci_gate = workflow_job_block(workflow, "ci-gate");
     let release = workflow_job_block(workflow, "release");
     assert!(
         ci.contains("./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json"),
@@ -482,8 +481,20 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     assert!(
         ci.contains("name: axon-auto-tag-release-plan-${{ github.sha }}")
             && ci.contains("retention-days: 1")
-            && plan.contains("run-id: ${{ needs.ci-gate.outputs.ci_run_id }}"),
+            && plan.contains("run-id: ${{ github.event.workflow_run.id }}")
+            && plan.contains(
+                "name: axon-auto-tag-release-plan-${{ github.event.workflow_run.head_sha }}"
+            ),
         "auto-tag must consume the short-lived release-plan artifact from the exact CI run"
+    );
+    assert!(
+        workflow.contains("workflow_run:")
+            && workflow.contains("workflows: [CI]")
+            && workflow.contains("types: [completed]")
+            && plan.contains("github.event.workflow_run.conclusion == 'success'")
+            && plan.contains("github.event.workflow_run.event == 'push'")
+            && plan.contains("github.event.workflow_run.head_branch == 'main'"),
+        "auto-tag must be driven by successful main-push CI completion"
     );
     assert!(
         !workflow.contains("cargo xtask check-release-versions --head HEAD --mode main --json")
@@ -516,15 +527,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must skip releases for an empty matrix"
     );
     assert!(
-        ci_gate.contains("runs-on: ubuntu-24.04")
-            && ci_gate.contains("timeout-minutes: 65")
-            && plan.contains("runs-on: ubuntu-24.04")
-            && release.contains("runs-on: ubuntu-24.04"),
-        "auto-tag polling, planning, and tagging must not consume self-hosted runners"
+        plan.contains("runs-on: ubuntu-24.04") && release.contains("runs-on: ubuntu-24.04"),
+        "auto-tag planning and tagging must not consume self-hosted runners"
     );
     assert!(
-        release.contains("needs: [plan, ci-gate]"),
-        "the release matrix must wait for the shared CI gate"
+        release.contains("needs: plan"),
+        "the release matrix must wait for the completed-CI plan"
     );
     assert!(
         release.contains("fromJson(needs.plan.outputs.matrix)"),
@@ -535,10 +543,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must consume tags and workflows from the xtask release plan"
     );
     assert!(
-        ci_gate.contains("Wait for CI to pass on this commit")
-            && release.contains("Create and push tag")
-            && !release.contains("Wait for CI to pass on this commit"),
-        "one shared CI gate must run before the release matrix creates tags"
+        release.contains("Create and push tag")
+            && release.contains("ref: ${{ github.event.workflow_run.head_sha }}")
+            && release.contains("expected_sha=\"${{ github.event.workflow_run.head_sha }}\"")
+            && !workflow.contains("gh run list")
+            && !workflow.contains("sleep 20"),
+        "auto-tag must bind the release to completed CI without polling"
     );
     let tag_step = release.find("Create and push tag").expect("tag step");
     let github_release_step = release
@@ -562,21 +572,6 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         assert!(
             release.contains(required),
             "auto-tag release flow must include {required}"
-        );
-    }
-    for required in [
-        "if ! runs_json=$(gh run list",
-        "--repo \"${{ github.repository }}\"",
-        "gh run list failed while polling ci.yml",
-        "--branch main",
-        "--event push",
-        ".headSha == $sha",
-        ".event == \"push\"",
-        ".headBranch == \"main\"",
-    ] {
-        assert!(
-            ci_gate.contains(required),
-            "auto-tag CI polling must constrain {required}"
         );
     }
 }
@@ -633,9 +628,10 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_at_the_same_commit() 
     );
 
     let tag = "v99.99.99-test";
-    let script = script
-        .replace("${{ matrix.candidate_tag }}", tag)
-        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ github.event.workflow_run.head_sha }}",
+        "$(git rev-parse HEAD)",
+    );
     let harness = format!(
         r#"
 root="$(mktemp -d)"
@@ -682,9 +678,10 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_after_main_advances()
     );
 
     let tag = "v99.99.97-recovery";
-    let script = script
-        .replace("${{ matrix.candidate_tag }}", tag)
-        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ github.event.workflow_run.head_sha }}",
+        "$(git rev-parse HEAD)",
+    );
     let harness = format!(
         r#"
 root="$(mktemp -d)"
