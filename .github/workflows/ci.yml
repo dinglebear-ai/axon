@@ -158,7 +158,7 @@ jobs:
           RUN_LEFTHOOK_SPEED: ${{ steps.classify.outputs.hooks == 'true' || steps.classify.outputs.full_ci == 'true' }}
           RUN_PALETTE: ${{ steps.classify.outputs.palette == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
           RUN_WINDOWS_CHECK: ${{ github.event_name == 'pull_request' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
-          RUN_WINDOWS_BUILD: ${{ github.event_name == 'pull_request' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          RUN_WINDOWS_BUILD: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.release == 'true' || steps.classify.outputs.auto_tag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true')) || (github.event_name == 'pull_request' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
           RUN_WEB: ${{ steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
           RUN_CHROME: ${{ steps.classify.outputs.chrome == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
           RUN_CLIPPY: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
@@ -291,7 +291,7 @@ jobs:
         run: ./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json
       - name: Upload auto-tag release plan
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-auto-tag-release-plan-${{ github.sha }}
           path: auto-tag-release-plan.json
@@ -363,7 +363,7 @@ jobs:
     needs: [changes]
     if: ${{ needs.changes.outputs.run_ci_contracts == 'true' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           toolchain: "1.97.1"
@@ -633,7 +633,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: xtask-windows
       - name: create web assets placeholder
@@ -658,63 +658,39 @@ jobs:
 
   windows-build:
     name: windows-build (axon.exe)
-    # Cross-compiled from Linux with the mingw-w64 (x86_64-pc-windows-gnu)
-    # toolchain plus NASM for BoringSSL's x86_64 assembly. A previous
-    # cargo-zigbuild attempt failed because zig does not bundle the Windows
-    # platform headers (sched.h / windows.h) that aws-lc-sys's jitterentropy
-    # code needs; mingw-w64 ships those headers, so aws-lc-sys and ring both
-    # cross-build cleanly (the resulting axon.exe was
-    # smoke-tested on Windows 11: it runs, loads the full CLI, and resolves
-    # native C:\ paths). Running on the Linux runner avoids the slow
-    # GitHub-hosted Windows VM and its 2x minute billing.
-    #
-    # The cfg(windows) AXON_DATA_DIR path-regression test is NOT run here: it
-    # would require executing the windows-gnu test binary under wine (the
-    # Ubuntu wine64 package ships no /usr/bin/wine* wrapper, and a full
-    # lib-test recompile roughly doubles the job time). The test still lives in
-    # src/core/paths_tests.rs and was confirmed passing on Windows 11 against
-    # this cross-compiled binary.
-    #
-    # Kept on ubuntu-latest: on the self-hosted unraid runner rustc failed to
-    # execute (os error 2) with missing target .d files — a runner env/workspace
-    # issue. This cross-compile is proven on ubuntu-latest, so pin it here.
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Tags are created only after CI succeeds on main. Build the same release
+    # binary on native Windows here so auto-tag cannot publish an immutable
+    # release whose Windows artifact fails later in release.yml.
+    runs-on: windows-latest
+    timeout-minutes: 45
     needs: [changes, rust-contracts, web-panel]
-    # Native Windows is built by release.yml. Pull requests can opt into this
-    # cross-build with ci:full without rebuilding it on every main push.
-    if: ${{ always() && needs.changes.outputs.run_windows_build == 'true' && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' }}
-    env:
-      CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
-      CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
-      AR_x86_64_pc_windows_gnu: x86_64-w64-mingw32-ar
+    if: ${{ always() && needs.changes.outputs.run_windows_build == 'true' && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
-          # Match rust-toolchain.toml so the Windows target is installed on
-          # the same toolchain cargo uses under the repo override.
           toolchain: 1.97.1
-          targets: x86_64-pc-windows-gnu
-      - name: Install mingw-w64 and NASM
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends mingw-w64 nasm
-          nasm -v
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
-          shared-key: axon-windows-gnu
-      - uses: actions/download-artifact@v5
+          shared-key: axon-windows-release
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        if: ${{ needs.web-panel.result == 'success' }}
         with:
           name: axon-web-assets
           path: apps/web/out
-      - name: cargo build -p axon (windows-gnu cross)
-        run: cargo build --locked -p axon --target x86_64-pc-windows-gnu
+      - name: Use fallback web assets when the web app is unchanged
+        if: ${{ needs.web-panel.result == 'skipped' }}
+        shell: bash
+        run: |
+          mkdir -p apps/web/out
+          echo "AXON_ALLOW_FALLBACK_WEB_ASSETS=1" >> "$GITHUB_ENV"
+      - name: cargo build axon release binary
+        run: cargo build --release --locked --bin axon
       - name: Upload axon.exe artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-windows-x86_64
-          path: target/x86_64-pc-windows-gnu/debug/axon.exe
+          path: target/release/axon.exe
           if-no-files-found: error
 
   web-panel:
@@ -1147,15 +1123,20 @@ jobs:
     needs: [changes, rust-contracts, web-panel]
     if: ${{ always() && needs.changes.outputs.run_binary_smoke_build == 'true' && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-rust-kache
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Set up Rust with local-only Kache for pull requests
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/setup-rust-kache
+      - name: Set up Rust with shared Kache for trusted pushes
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: ./.github/actions/setup-rust-kache
         with:
           s3-access-key: ${{ secrets.KACHE_S3_ACCESS_KEY }}
           s3-secret-key: ${{ secrets.KACHE_S3_SECRET_KEY }}
           s3-endpoint: ${{ vars.KACHE_S3_ENDPOINT }}
           s3-bucket: ${{ vars.KACHE_S3_BUCKET }}
           s3-prefix: ${{ vars.KACHE_S3_PREFIX }}
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         if: ${{ needs.web-panel.result == 'success' }}
         with:
           name: axon-web-assets
@@ -1168,7 +1149,7 @@ jobs:
       - name: cargo build axon
         run: cargo build --locked --bin axon
       - name: Upload smoke binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-linux-smoke
           path: target/debug/axon
@@ -1192,7 +1173,7 @@ jobs:
       TEI_URL: http://127.0.0.1:52000
       QDRANT_URL: http://127.0.0.1:53333
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
       - uses: actions/download-artifact@v5
         with:
           name: axon-linux-smoke

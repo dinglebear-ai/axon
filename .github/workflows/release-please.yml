@@ -20,28 +20,11 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  changes:
-    name: release-please changes
-    runs-on: ci-pool-ops
-    timeout-minutes: 10
-    outputs:
-      release_please: ${{ steps.classify.outputs.release_please }}
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 2
-          persist-credentials: false
-      - name: Classify release-please paths
-        id: classify
-        env:
-          EVENT_NAME: ${{ github.event_name == 'workflow_dispatch' && 'workflow_dispatch' || 'push' }}
-          HEAD_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-        run: python3 scripts/ci/changed_paths.py --event "$EVENT_NAME" --output "$GITHUB_OUTPUT"
-
   release-please:
-    needs: changes
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && needs.changes.outputs.release_please == 'true') }}
+    # A workflow_run payload has no push "before" SHA. Reconstructing the
+    # change range as HEAD^..HEAD loses earlier commits from a multi-commit
+    # push, so run release-please after every successful main CI completion.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ci-pool-ops
     timeout-minutes: 15
     permissions:

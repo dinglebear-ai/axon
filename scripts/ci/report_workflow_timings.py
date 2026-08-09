@@ -23,17 +23,21 @@ def gh_api_collection(
     path: str,
     collection: str,
     fields: dict[str, str] | None = None,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Return every page from a GitHub API collection response."""
+    """Return every page, or the requested prefix, from an API collection."""
     page = 1
     per_page = 100
     records: list[dict[str, Any]] = []
     while True:
         page_fields = dict(fields or {})
-        page_fields.update({"per_page": str(per_page), "page": str(page)})
+        page_size = per_page if limit is None else min(per_page, limit - len(records))
+        if page_size <= 0:
+            return records
+        page_fields.update({"per_page": str(page_size), "page": str(page)})
         batch = gh_api(path, page_fields)[collection]
         records.extend(batch)
-        if len(batch) < per_page:
+        if len(batch) < page_size or (limit is not None and len(records) >= limit):
             return records
         page += 1
 
@@ -64,17 +68,30 @@ def duration(seconds: float) -> str:
 
 
 def run_record(repo: str, label: str, run: dict[str, Any]) -> dict[str, Any]:
+    attempt = int(run.get("run_attempt") or 1)
+    attempt_run = run
+    jobs_path = f"repos/{repo}/actions/runs/{run['id']}/jobs"
+    if attempt > 1:
+        attempt_run = gh_api(
+            f"repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}"
+        )
+        jobs_path = f"repos/{repo}/actions/runs/{run['id']}/attempts/{attempt}/jobs"
     jobs = gh_api_collection(
-        f"repos/{repo}/actions/runs/{run['id']}/jobs",
+        jobs_path,
         "jobs",
-        {"filter": "latest", "per_page": "100"},
+        {"filter": "latest"},
     )
     executed = [job for job in jobs if job.get("conclusion") != "skipped"]
-    job_seconds = {
-        job["name"]: seconds_between(job.get("started_at"), job.get("completed_at"))
+    job_seconds = [
+        (
+            job["name"],
+            seconds_between(job.get("started_at"), job.get("completed_at")),
+        )
         for job in executed
-    }
-    longest_name, longest_seconds = max(job_seconds.items(), key=lambda item: item[1], default=("-", 0.0))
+    ]
+    longest_name, longest_seconds = max(
+        job_seconds, key=lambda item: item[1], default=("-", 0.0)
+    )
     return {
         "label": label,
         "workflow_id": run["workflow_id"],
@@ -85,8 +102,11 @@ def run_record(repo: str, label: str, run: dict[str, Any]) -> dict[str, Any]:
         "conclusion": run.get("conclusion") or run.get("status"),
         "head_sha": run["head_sha"],
         "url": run["html_url"],
-        "wall_seconds": seconds_between(run.get("created_at"), run.get("updated_at")),
-        "runner_seconds": sum(job_seconds.values()),
+        "run_attempt": attempt,
+        "wall_seconds": seconds_between(
+            attempt_run.get("created_at"), attempt_run.get("updated_at")
+        ),
+        "runner_seconds": sum(seconds for _, seconds in job_seconds),
         "executed_jobs": len(executed),
         "skipped_jobs": len(jobs) - len(executed),
         "longest_job": longest_name,
@@ -95,7 +115,9 @@ def run_record(repo: str, label: str, run: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": job["name"],
                 "conclusion": job.get("conclusion"),
-                "seconds": seconds_between(job.get("started_at"), job.get("completed_at")),
+                "seconds": seconds_between(
+                    job.get("started_at"), job.get("completed_at")
+                ),
                 "runner": job.get("runner_name") or "",
             }
             for job in jobs
@@ -138,14 +160,16 @@ def recent_runs(
 ) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     for workflow in workflows:
-        fields = {"status": "completed", "per_page": str(limit)}
+        fields = {"status": "completed"}
         if branch:
             fields["branch"] = branch
-        payload = gh_api(
+        workflow_runs = gh_api_collection(
             f"repos/{repo}/actions/workflows/{workflow['id']}/runs",
+            "workflow_runs",
             fields,
+            limit=limit,
         )
-        selected.extend(payload["workflow_runs"][:limit])
+        selected.extend(workflow_runs)
     return selected
 
 
@@ -171,7 +195,9 @@ def render(
                 "|---|---|---:|---:|---:|---:|---|",
             ]
         )
-        by_snapshot = {(record["label"], record["workflow_id"]): record for record in records}
+        by_snapshot = {
+            (record["label"], record["workflow_id"]): record for record in records
+        }
         for label in labels:
             for workflow in workflows:
                 record = by_snapshot.get((label, workflow["id"]))
@@ -209,7 +235,13 @@ def render(
                 f"{duration(percentile(walls, 0.95))} | {duration(statistics.median(runners))} |"
             )
 
-    lines.extend(["", "Runner time is the sum of non-skipped job durations; wall time is end-to-end run duration.", ""])
+    lines.extend(
+        [
+            "",
+            "Runner time is the sum of non-skipped job durations; wall time is end-to-end run duration.",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
