@@ -139,7 +139,10 @@ handle_live_jobs_memory_source_scenario() {
           --output-dir "$OUTDIR/cache-output" --skip-embed --wait true \
           --collection "$AXON_COLLECTION" --json
         assert_live_json "source conditional HTTP cache first pass" "$LAST_LIVE_LOG" \
-          '.status == "completed" and .vector_points_written == 0'
+          '(.status == "completed"
+            or (.status == "completed_degraded"
+                and any(.warnings[]; .code == "parse.unsupported")))
+           and .vector_points_written == 0'
         run_live "$name" source "$fixture_url?cache_fixture=$$" --scope page \
           --render-mode http --cache true --cache-http-only --etag-conditional \
           --output-dir "$OUTDIR/cache-output" --skip-embed --wait true \

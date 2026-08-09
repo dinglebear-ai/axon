@@ -196,7 +196,15 @@ fn web_payload_accepts_normalized_metadata() {
     metadata.insert("web_status".to_string(), serde_json::json!("ok"));
     metadata.insert("web_render_mode".to_string(), serde_json::json!("chrome"));
     metadata.insert("web_etag".to_string(), serde_json::json!("etag-new"));
+    metadata.insert(
+        "web_last_modified".to_string(),
+        serde_json::json!("Sat, 08 Aug 2026 20:05:49 GMT"),
+    );
     metadata.insert("web_prior_etag".to_string(), serde_json::json!("etag-old"));
+    metadata.insert(
+        "web_prior_last_modified".to_string(),
+        serde_json::json!("Fri, 07 Aug 2026 20:05:49 GMT"),
+    );
     metadata.insert("web_reuse_required".to_string(), serde_json::json!(true));
 
     VectorPayload::try_from_metadata(metadata).expect("normalized web metadata should validate");
@@ -222,7 +230,9 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("web", "web_fetch_method"));
     assert!(source_family_allows_field("web", "web_render_mode"));
     assert!(source_family_allows_field("web", "web_etag"));
+    assert!(source_family_allows_field("web", "web_last_modified"));
     assert!(source_family_allows_field("web", "web_prior_etag"));
+    assert!(source_family_allows_field("web", "web_prior_last_modified"));
     assert!(source_family_allows_field("web", "web_reuse_required"));
     assert!(source_family_allows_field(
         "web",

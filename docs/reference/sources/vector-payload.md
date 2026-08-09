@@ -16,7 +16,7 @@ See the family contract for declared output paths.
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:f94bde7fcf24357c13f823f39d19ba44edfb5520f47a808d76b9196ab99f4c52` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:dcc6d5ec5d07892f0c20d777f75e050d67e825101ce1111866784b2bc2cc94fc` |
 | `crates/axon-vectors/src/point.rs` | `sha256:f10723828d703802ad6f592d2093f92f87a6e5017ff35b15b0a4b1f722998939` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
@@ -112,7 +112,7 @@ Payload validation rejects secret field fragments and secret value fragments bef
 | `feed` | `feed_title`, `feed_link`, `feed_entry_id`, `feed_entry_link`, `feed_entry_published`, `feed_entry_author`, `structured_parse_error` |
 | `social` | `reddit_author`, `reddit_created_utc`, `reddit_score`, `reddit_num_comments`, `reddit_upvote_ratio`, `reddit_subreddit`, `reddit_domain`, `reddit_is_video`, `reddit_distinguished`, `reddit_gilded`, `reddit_flair`, `reddit_permalink`, `reddit_kind` |
 | `media` | `video_id`, `title`, `media_url`, `channel`, `channel_url`, `yt_uploader_id`, `yt_upload_date`, `yt_duration`, `yt_view_count`, `yt_like_count`, `yt_tags`, `yt_categories`, `yt_thumbnail`, `segment_kind` |
-| `web` | `web_title`, `web_domain`, `web_status_code`, `web_status`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `web_render_mode`, `web_etag`, `web_prior_etag`, `web_reuse_required`, `extractor_name`, `extractor_version`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
+| `web` | `web_title`, `web_domain`, `web_status_code`, `web_status`, `web_depth`, `normalization_version`, `web_url`, `web_seed_url`, `web_origin`, `web_path`, `web_normalized_url`, `web_fetch_method`, `web_render_mode`, `web_etag`, `web_last_modified`, `web_prior_etag`, `web_prior_last_modified`, `web_reuse_required`, `extractor_name`, `extractor_version`, `structured_payload_omitted`, `web_structured_kind`, `web_structured_blob` |
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
 | `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |

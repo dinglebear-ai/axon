@@ -914,7 +914,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -1447,7 +1457,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -1960,7 +1980,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -2468,7 +2498,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -3509,7 +3549,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -4072,7 +4122,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -4625,7 +4685,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -5188,7 +5258,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -5696,7 +5776,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -6254,7 +6344,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -6812,7 +6912,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -7370,7 +7480,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -7938,7 +8058,17 @@
             },
             {
               "required": [
+                "web_last_modified"
+              ]
+            },
+            {
+              "required": [
                 "web_prior_etag"
+              ]
+            },
+            {
+              "required": [
+                "web_prior_last_modified"
               ]
             },
             {
@@ -8757,6 +8887,9 @@
     "web_fetch_method": {
       "type": "string"
     },
+    "web_last_modified": {
+      "type": "string"
+    },
     "web_normalized_url": {
       "type": "string"
     },
@@ -8767,6 +8900,9 @@
       "type": "string"
     },
     "web_prior_etag": {
+      "type": "string"
+    },
+    "web_prior_last_modified": {
       "type": "string"
     },
     "web_render_mode": {
@@ -9380,10 +9516,12 @@
         "web_domain": "example.com",
         "web_etag": "web_etag",
         "web_fetch_method": "web_fetch_method",
+        "web_last_modified": "web_last_modified",
         "web_normalized_url": "web_normalized_url",
         "web_origin": "web_origin",
         "web_path": "web_path",
         "web_prior_etag": "web_prior_etag",
+        "web_prior_last_modified": "web_prior_last_modified",
         "web_render_mode": "web_render_mode",
         "web_reuse_required": "web_reuse_required",
         "web_seed_url": "web_seed_url",
@@ -10410,7 +10548,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:2c012adb7f4d07f449ffb7399a41ebfea44a4fb15e9895e995740a41edc0ae7e",
+        "checksum": "sha256:dcc6d5ec5d07892f0c20d777f75e050d67e825101ce1111866784b2bc2cc94fc",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -10533,7 +10671,9 @@
           "web_fetch_method",
           "web_render_mode",
           "web_etag",
+          "web_last_modified",
           "web_prior_etag",
+          "web_prior_last_modified",
           "web_reuse_required",
           "extractor_name",
           "extractor_version",
