@@ -99,6 +99,11 @@ jobs:
       - name: cargo build --release --bin axon
         run: cargo build --release --locked --bin axon
       - name: Verify release acquisition capabilities
+        env:
+          # `capabilities` initializes Config before reporting compile-time
+          # features. A live TEI service is not contacted by this command, but
+          # the required endpoint must still be syntactically present.
+          TEI_URL: http://127.0.0.1:1
         run: |
           set -euo pipefail
           target/release/axon capabilities > capabilities.json
@@ -191,6 +196,10 @@ jobs:
           CARGO_BUILD_RUSTC_WRAPPER: ""
       - name: Verify release acquisition capabilities
         shell: pwsh
+        env:
+          # Keep this smoke self-contained; `capabilities` validates the
+          # required endpoint but does not connect to TEI.
+          TEI_URL: http://127.0.0.1:1
         run: |
           $ErrorActionPreference = 'Stop'
           $capabilities = (& target/release/axon.exe capabilities | ConvertFrom-Json)
