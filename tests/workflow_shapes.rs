@@ -497,6 +497,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must be driven by successful main-push CI completion"
     );
     assert!(
+        plan.contains("Check whether CI produced a release plan")
+            && plan.contains("steps.probe.outputs.has_plan == 'true'")
+            && plan.contains(r#"matrix: ${{ steps.plan.outputs.matrix || '{"include":[]}' }}"#),
+        "successful CI runs without native shipping changes must yield an empty matrix instead of downloading a missing artifact"
+    );
+    assert!(
         !workflow.contains("cargo xtask check-release-versions --head HEAD --mode main --json")
             && !workflow.contains("uses: ./.github/actions/setup-rust-kache"),
         "auto-tag must not rebuild xtask after CI already built it"

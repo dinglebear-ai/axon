@@ -60,9 +60,27 @@ jobs:
       actions: read
       contents: read
     outputs:
-      matrix: ${{ steps.plan.outputs.matrix }}
+      matrix: ${{ steps.plan.outputs.matrix || '{"include":[]}' }}
     steps:
+      - name: Check whether CI produced a release plan
+        id: probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLAN_NAME: axon-auto-tag-release-plan-${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          artifact_id=$(gh api --paginate \
+            "repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.name == env.PLAN_NAME) | .id')
+          if [ -n "$artifact_id" ]; then
+            echo "has_plan=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_plan=false" >> "$GITHUB_OUTPUT"
+            echo "CI produced no native release plan; release matrix is empty."
+          fi
       - name: Download release plan produced by CI
+        if: ${{ steps.probe.outputs.has_plan == 'true' }}
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: axon-auto-tag-release-plan-${{ github.event.workflow_run.head_sha }}
@@ -71,6 +89,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
       - name: Validate release plan
         id: plan
+        if: ${{ steps.probe.outputs.has_plan == 'true' }}
         run: |
           set -euo pipefail
           mv auto-tag-release-plan.json release-plan.json

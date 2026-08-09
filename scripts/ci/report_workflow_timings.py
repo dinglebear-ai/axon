@@ -117,13 +117,14 @@ def repository_workflows(repo: str) -> list[dict[str, Any]]:
 
 
 def runs_for_sha(repo: str, sha: str, workflow_ids: set[int]) -> list[dict[str, Any]]:
-    payload = gh_api(
+    workflow_runs = gh_api_collection(
         f"repos/{repo}/actions/runs",
+        "workflow_runs",
         {"head_sha": sha, "status": "completed", "per_page": "100"},
     )
     selected: list[dict[str, Any]] = []
     seen: set[int] = set()
-    for run in payload["workflow_runs"]:
+    for run in workflow_runs:
         workflow_id = run["workflow_id"]
         if workflow_id not in workflow_ids or workflow_id in seen:
             continue

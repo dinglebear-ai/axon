@@ -35,7 +35,11 @@ class PaginationTests(unittest.TestCase):
                 "state": "active",
             }
         ]
-        with patch.object(timings, "gh_api", side_effect=[{"workflows": first}, {"workflows": final}]) as api:
+        with patch.object(
+            timings,
+            "gh_api",
+            side_effect=[{"workflows": first}, {"workflows": final}],
+        ) as api:
             workflows = timings.repository_workflows("dinglebear-ai/axon")
 
         self.assertEqual(len(workflows), 101)
@@ -67,13 +71,29 @@ class PaginationTests(unittest.TestCase):
             "created_at": "2026-08-08T00:00:00Z",
             "updated_at": "2026-08-08T00:00:02Z",
         }
-        with patch.object(timings, "gh_api", side_effect=[{"jobs": first}, {"jobs": final}]):
+        with patch.object(
+            timings,
+            "gh_api",
+            side_effect=[{"jobs": first}, {"jobs": final}],
+        ):
             record = timings.run_record("dinglebear-ai/axon", "candidate", run)
 
         self.assertEqual(len(record["jobs"]), 102)
         self.assertEqual(record["executed_jobs"], 101)
         self.assertEqual(record["skipped_jobs"], 1)
         self.assertEqual(record["runner_seconds"], 101.0)
+
+    def test_sha_inventory_reads_workflow_runs_after_first_page(self) -> None:
+        first = [{"id": index, "workflow_id": index} for index in range(100)]
+        final = [{"id": 100, "workflow_id": 100}]
+        with patch.object(
+            timings,
+            "gh_api",
+            side_effect=[{"workflow_runs": first}, {"workflow_runs": final}],
+        ):
+            runs = timings.runs_for_sha("dinglebear-ai/axon", "abc", {100})
+
+        self.assertEqual(runs, final)
 
 
 if __name__ == "__main__":
