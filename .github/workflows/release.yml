@@ -109,9 +109,10 @@ jobs:
       - name: Verify release acquisition capabilities
         env:
           # `capabilities` initializes Config before reporting compile-time
-          # features. A live TEI service is not contacted by this command, but
-          # the required endpoint must still be syntactically present.
+          # features. Live providers are not contacted by this command, but
+          # both required endpoints must still be syntactically present.
           TEI_URL: http://127.0.0.1:1
+          QDRANT_URL: http://127.0.0.1:1
         run: |
           set -euo pipefail
           target/release/axon capabilities > capabilities.json
@@ -208,8 +209,9 @@ jobs:
         shell: pwsh
         env:
           # Keep this smoke self-contained; `capabilities` validates the
-          # required endpoint but does not connect to TEI.
+          # required endpoints but does not connect to either provider.
           TEI_URL: http://127.0.0.1:1
+          QDRANT_URL: http://127.0.0.1:1
         run: |
           $ErrorActionPreference = 'Stop'
           $capabilities = (& target/release/axon.exe capabilities | ConvertFrom-Json)

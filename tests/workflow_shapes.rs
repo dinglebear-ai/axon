@@ -1498,7 +1498,7 @@ fn release_builds_web_assets_once_for_both_native_targets() {
 }
 
 #[test]
-fn release_capability_smokes_provide_the_required_tei_endpoint() {
+fn release_capability_smokes_provide_required_provider_endpoints() {
     let workflow = include_str!("../.github/workflows/release.yml");
     for job_name in ["axon-linux", "axon-windows"] {
         let job = workflow_job_block(workflow, job_name);
@@ -1512,6 +1512,10 @@ fn release_capability_smokes_provide_the_required_tei_endpoint() {
         assert!(
             smoke.contains("TEI_URL: http://127.0.0.1:1"),
             "{job_name} capability smoke must satisfy Config without a live TEI service"
+        );
+        assert!(
+            smoke.contains("QDRANT_URL: http://127.0.0.1:1"),
+            "{job_name} capability smoke must satisfy Config without a live Qdrant service"
         );
     }
 }
