@@ -1129,7 +1129,9 @@ jobs:
 
   binary-smoke:
     name: binary-smoke
-    runs-on: ci-pool-ops
+    # This job executes a PR-built binary and PR-editable smoke scripts. Keep it
+    # on GitHub-hosted ephemeral infrastructure, outside the ops trust domain.
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: [changes, binary-smoke-build]
     # always() is required, not decorative: a skipped ancestor (web-panel, on any

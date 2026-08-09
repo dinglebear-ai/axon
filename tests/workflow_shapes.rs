@@ -868,6 +868,11 @@ fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
     assert!(binary_smoke.contains("USE_PREBUILT_AXON: \"1\""));
     assert!(binary_smoke.contains("AXON_BIN: ${{ github.workspace }}/target/debug/axon"));
     assert!(!binary_smoke.contains("setup-rust-kache"));
+    assert!(
+        binary_smoke.contains("runs-on: ubuntu-24.04")
+            && !binary_smoke.contains("runs-on: ci-pool-ops"),
+        "PR-controlled binaries and scripts must execute on an ephemeral hosted runner"
+    );
 }
 
 #[test]
