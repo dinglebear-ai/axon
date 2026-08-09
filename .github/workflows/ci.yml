@@ -87,6 +87,24 @@ jobs:
       release: ${{ steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       version_files: ${{ steps.classify.outputs.version_files == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
       openapi: ${{ steps.classify.outputs.openapi == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+      run_rust_contracts: ${{ steps.routes.outputs.run_rust_contracts }}
+      run_ci_contracts: ${{ steps.routes.outputs.run_ci_contracts }}
+      run_aurora_inventory: ${{ steps.routes.outputs.run_aurora_inventory }}
+      run_android: ${{ steps.routes.outputs.run_android }}
+      run_toml_fmt: ${{ steps.routes.outputs.run_toml_fmt }}
+      run_lefthook_speed: ${{ steps.routes.outputs.run_lefthook_speed }}
+      run_palette: ${{ steps.routes.outputs.run_palette }}
+      run_windows_check: ${{ steps.routes.outputs.run_windows_check }}
+      run_windows_build: ${{ steps.routes.outputs.run_windows_build }}
+      run_web: ${{ steps.routes.outputs.run_web }}
+      run_chrome: ${{ steps.routes.outputs.run_chrome }}
+      run_clippy: ${{ steps.routes.outputs.run_clippy }}
+      run_test: ${{ steps.routes.outputs.run_test }}
+      run_security: ${{ steps.routes.outputs.run_security }}
+      run_mcp_smoke: ${{ steps.routes.outputs.run_mcp_smoke }}
+      run_live_rag: ${{ steps.routes.outputs.run_live_rag }}
+      run_binary_smoke_build: ${{ steps.routes.outputs.run_binary_smoke_build }}
+      run_binary_smoke: ${{ steps.routes.outputs.run_binary_smoke }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -129,6 +147,35 @@ jobs:
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: python3 "$AXON_CHANGED_PATHS" --event "$EVENT_NAME" --output "$GITHUB_OUTPUT" --write-changed-files changed-files.txt
+      - name: Compute shared job routes
+        id: routes
+        env:
+          RUN_RUST_CONTRACTS: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' || steps.classify.outputs.docs_contracts == 'true' || steps.classify.outputs.mcp == 'true' || steps.classify.outputs.openapi == 'true' || steps.classify.outputs.version_files == 'true' || steps.classify.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.classify.outputs.auto_tag == 'true') }}
+          RUN_CI_CONTRACTS: ${{ steps.classify.outputs.ci_contracts == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_AURORA_INVENTORY: ${{ steps.classify.outputs.android == 'true' || steps.classify.outputs.palette == 'true' || steps.classify.outputs.aurora_inventory == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_ANDROID: ${{ steps.classify.outputs.android == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_TOML_FMT: ${{ steps.classify.outputs.toml == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_LEFTHOOK_SPEED: ${{ steps.classify.outputs.hooks == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_PALETTE: ${{ steps.classify.outputs.palette == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_WINDOWS_CHECK: ${{ github.event_name == 'pull_request' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          RUN_WINDOWS_BUILD: ${{ github.event_name == 'pull_request' && (steps.classify.outputs.rust == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          RUN_WEB: ${{ steps.classify.outputs.web == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+          RUN_CHROME: ${{ steps.classify.outputs.chrome == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_CLIPPY: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_TEST: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_SECURITY: ${{ steps.classify.outputs.security == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_MCP_SMOKE: ${{ (steps.classify.outputs.mcp == 'true' || steps.classify.outputs.rust == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+          RUN_LIVE_RAG: ${{ github.event_name == 'pull_request' && (steps.classify.outputs.rag == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true') }}
+          RUN_BINARY_SMOKE_BUILD: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.mcp == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+          RUN_BINARY_SMOKE: ${{ steps.classify.outputs.rust == 'true' || steps.classify.outputs.mcp == 'true' || steps.classify.outputs.web == 'true' || steps.classify.outputs.release == 'true' || steps.classify.outputs.ci_all == 'true' || steps.classify.outputs.full_ci == 'true' }}
+        run: |
+          for route in \
+            RUN_RUST_CONTRACTS RUN_CI_CONTRACTS RUN_AURORA_INVENTORY RUN_ANDROID \
+            RUN_TOML_FMT RUN_LEFTHOOK_SPEED RUN_PALETTE RUN_WINDOWS_CHECK \
+            RUN_WINDOWS_BUILD RUN_WEB RUN_CHROME RUN_CLIPPY RUN_TEST RUN_SECURITY \
+            RUN_MCP_SMOKE RUN_LIVE_RAG RUN_BINARY_SMOKE_BUILD RUN_BINARY_SMOKE; do
+            printf '%s=%s\n' "${route,,}" "${!route}" >> "$GITHUB_OUTPUT"
+          done
 
   # Compile xtask once and fail fast on repository, schema, version, formatting,
   # and transport contracts before starting the expensive clippy/test fanout.
@@ -148,7 +195,7 @@ jobs:
     # case rather than the typical one.
     timeout-minutes: 240
     needs: [changes]
-    if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}
+    if: ${{ needs.changes.outputs.run_rust_contracts == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -314,7 +361,7 @@ jobs:
     runs-on: ci-pool-rust
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.ci_contracts == 'true' }}
+    if: ${{ needs.changes.outputs.run_ci_contracts == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
@@ -343,7 +390,7 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}
+    if: ${{ needs.changes.outputs.run_aurora_inventory == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Check Aurora primitive inventory guard
@@ -358,7 +405,7 @@ jobs:
     # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
     timeout-minutes: 60
     needs: [changes]
-    if: ${{ needs.changes.outputs.android == 'true' }}
+    if: ${{ needs.changes.outputs.run_android == 'true' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -446,7 +493,7 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.toml == 'true' }}
+    if: ${{ needs.changes.outputs.run_toml_fmt == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: Install taplo (pinned prebuilt binary)
@@ -480,7 +527,7 @@ jobs:
     runs-on: ci-pool-ops
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.hooks == 'true' }}
+    if: ${{ needs.changes.outputs.run_lefthook_speed == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - name: enforce pre-commit stays fast
@@ -495,7 +542,7 @@ jobs:
     # timeout as `cancelled`, not `failed`, which makes it read like runner churn.
     timeout-minutes: 60
     needs: [changes]
-    if: ${{ needs.changes.outputs.palette == 'true' }}
+    if: ${{ needs.changes.outputs.run_palette == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -580,7 +627,7 @@ jobs:
     # Opt-in only: this compiles axon transitively on a windows-latest runner
     # and duplicates coverage from the mingw cross build, which already runs on
     # main and on ci:full PRs.
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ needs.changes.outputs.run_windows_check == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -636,7 +683,7 @@ jobs:
     needs: [changes, rust-contracts, web-panel]
     # Native Windows is built by release.yml. Pull requests can opt into this
     # cross-build with ci:full without rebuilding it on every main push.
-    if: ${{ always() && github.event_name == 'pull_request' && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ always() && needs.changes.outputs.run_windows_build == 'true' && needs.rust-contracts.result == 'success' && needs.web-panel.result == 'success' }}
     env:
       CC_x86_64_pc_windows_gnu: x86_64-w64-mingw32-gcc
       CXX_x86_64_pc_windows_gnu: x86_64-w64-mingw32-g++
@@ -675,7 +722,7 @@ jobs:
     runs-on: ci-pool-typescript
     timeout-minutes: 30
     needs: [changes]
-    if: ${{ needs.changes.outputs.web == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+    if: ${{ needs.changes.outputs.run_web == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -702,7 +749,7 @@ jobs:
     runs-on: ci-pool-typescript
     timeout-minutes: 10
     needs: [changes]
-    if: ${{ needs.changes.outputs.chrome == 'true' }}
+    if: ${{ needs.changes.outputs.run_chrome == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -720,7 +767,7 @@ jobs:
     # would hard-fail a build that passes.
     timeout-minutes: 60
     needs: [changes, rust-contracts]
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.run_clippy == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache
@@ -740,7 +787,7 @@ jobs:
     # exceed 30 min. A 30-minute cap would hard-fail builds that pass.
     timeout-minutes: 90
     needs: [changes, rust-contracts]
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.run_test == 'true' }}
     env:
       # Match the 8 MiB runtime thread stack from main.rs — deep scrape/extract
       # async chains overflow the 2 MiB rustc-test-harness default
@@ -797,7 +844,7 @@ jobs:
     name: live-rag-pr
     runs-on: ubuntu-latest
     needs: [changes]
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}
+    if: ${{ needs.changes.outputs.run_live_rag == 'true' }}
     timeout-minutes: 30
     services:
       qdrant:
@@ -882,7 +929,7 @@ jobs:
     runs-on: ci-pool-rust
     timeout-minutes: 30
     needs: [changes, rust-contracts]
-    if: ${{ needs.changes.outputs.security == 'true' }}
+    if: ${{ needs.changes.outputs.run_security == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache
@@ -907,7 +954,7 @@ jobs:
     name: mcp-smoke
     runs-on: ubuntu-24.04
     needs: [changes, binary-smoke-build]
-    if: ${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.mcp == 'true' || needs.changes.outputs.rust == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}
+    if: ${{ needs.binary-smoke-build.result == 'success' && needs.changes.outputs.run_mcp_smoke == 'true' }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
@@ -1098,7 +1145,7 @@ jobs:
     # Slowest observed green run: 9.6 min.
     timeout-minutes: 30
     needs: [changes, rust-contracts, web-panel]
-    if: ${{ always() && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true') }}
+    if: ${{ always() && needs.changes.outputs.run_binary_smoke_build == 'true' && needs.rust-contracts.result == 'success' && (needs.web-panel.result == 'success' || needs.web-panel.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache
@@ -1140,7 +1187,7 @@ jobs:
     # is true. ci-gate then correctly fails with "binary-smoke was skipped even
     # though its required condition is true". The explicit result check still
     # gates execution.
-    if: ${{ always() && needs.binary-smoke-build.result == 'success' }}
+    if: ${{ always() && needs.changes.outputs.run_binary_smoke == 'true' && needs.binary-smoke-build.result == 'success' }}
     env:
       TEI_URL: http://127.0.0.1:52000
       QDRANT_URL: http://127.0.0.1:53333
@@ -1211,21 +1258,21 @@ jobs:
             esac
           }
           require_success changes "${{ needs.changes.result }}"
-          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.docs_contracts == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.version_files == 'true' || needs.changes.outputs.release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.auto_tag == 'true') }}"
-          require_success_or_intentional_skip ci-contracts "${{ needs.ci-contracts.result }}" "${{ needs.changes.outputs.ci_contracts }}"
-          require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' || needs.changes.outputs.aurora_inventory == 'true' }}"
-          require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.android }}"
-          require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.toml }}"
-          require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.hooks }}"
-          require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.palette }}"
-          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true' && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
-          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ github.event_name == 'pull_request' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.web == 'true') && contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
-          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.web == 'true' || contains(github.event.pull_request.labels.*.name, 'ci:full') }}"
-          require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.chrome }}"
-          require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.rust }}"
-          require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.rust }}"
-          require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.security }}"
-          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true') && (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')) }}"
-          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ github.event_name == 'pull_request' && needs.changes.outputs.rag == 'true' }}"
-          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.mcp == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.release == 'true' }}"
-          require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.binary-smoke-build.result == 'success' }}"
+          require_success_or_intentional_skip rust-contracts "${{ needs.rust-contracts.result }}" "${{ needs.changes.outputs.run_rust_contracts }}"
+          require_success_or_intentional_skip ci-contracts "${{ needs.ci-contracts.result }}" "${{ needs.changes.outputs.run_ci_contracts }}"
+          require_success_or_intentional_skip aurora-primitive-inventory "${{ needs.aurora-primitive-inventory.result }}" "${{ needs.changes.outputs.run_aurora_inventory }}"
+          require_success_or_intentional_skip android "${{ needs.android.result }}" "${{ needs.changes.outputs.run_android }}"
+          require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.run_toml_fmt }}"
+          require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.run_lefthook_speed }}"
+          require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.run_palette }}"
+          require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ needs.changes.outputs.run_windows_check }}"
+          require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ needs.changes.outputs.run_windows_build }}"
+          require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.run_web }}"
+          require_success_or_intentional_skip chrome-extension "${{ needs.chrome-extension.result }}" "${{ needs.changes.outputs.run_chrome }}"
+          require_success_or_intentional_skip clippy "${{ needs.clippy.result }}" "${{ needs.changes.outputs.run_clippy }}"
+          require_success_or_intentional_skip test "${{ needs.test.result }}" "${{ needs.changes.outputs.run_test }}"
+          require_success_or_intentional_skip security "${{ needs.security.result }}" "${{ needs.changes.outputs.run_security }}"
+          require_success_or_intentional_skip mcp-smoke "${{ needs.mcp-smoke.result }}" "${{ needs.changes.outputs.run_mcp_smoke }}"
+          require_success_or_intentional_skip live-rag-pr "${{ needs.live-rag-pr.result }}" "${{ needs.changes.outputs.run_live_rag }}"
+          require_success_or_intentional_skip binary-smoke-build "${{ needs.binary-smoke-build.result }}" "${{ needs.changes.outputs.run_binary_smoke_build }}"
+          require_success_or_intentional_skip binary-smoke "${{ needs.binary-smoke.result }}" "${{ needs.changes.outputs.run_binary_smoke }}"

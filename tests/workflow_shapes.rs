@@ -839,18 +839,20 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
 #[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
+    let changes = workflow_job_block(workflow, "changes");
     let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(binary_smoke_build.contains("needs.changes.outputs.rust == 'true'"));
-    assert!(binary_smoke_build.contains("needs.changes.outputs.mcp == 'true'"));
-    assert!(binary_smoke_build.contains("needs.changes.outputs.release == 'true'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.run_binary_smoke_build"));
+    assert!(changes.contains("RUN_BINARY_SMOKE_BUILD:"));
+    assert!(changes.contains("steps.classify.outputs.mcp == 'true'"));
+    assert!(changes.contains("steps.classify.outputs.release == 'true'"));
     assert!(!binary_smoke_build.contains("cargo build --release"));
-    assert!(mcp_smoke.contains("'ci:full'"));
-    assert!(windows_check.contains("github.event_name == 'pull_request'"));
-    assert!(windows_build.contains("'ci:full'"));
-    assert!(windows_build.contains("github.event_name == 'pull_request'"));
+    assert!(mcp_smoke.contains("needs.changes.outputs.run_mcp_smoke"));
+    assert!(windows_check.contains("needs.changes.outputs.run_windows_check"));
+    assert!(windows_build.contains("needs.changes.outputs.run_windows_build"));
+    assert!(changes.contains("RUN_MCP_SMOKE:") && changes.contains("'ci:full'"));
     assert!(
         windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
             && windows_build.contains("nasm -v"),
@@ -1216,11 +1218,57 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 }
 
 #[test]
+fn ci_jobs_and_gate_consume_the_same_route_outputs() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let changes = workflow_job_block(workflow, "changes");
+    let gate = workflow_job_block(workflow, "ci-gate");
+    let routes = [
+        ("rust-contracts", "run_rust_contracts"),
+        ("ci-contracts", "run_ci_contracts"),
+        ("aurora-primitive-inventory", "run_aurora_inventory"),
+        ("android", "run_android"),
+        ("toml-fmt", "run_toml_fmt"),
+        ("lefthook-pre-commit-speed", "run_lefthook_speed"),
+        ("palette-tauri", "run_palette"),
+        ("windows-check", "run_windows_check"),
+        ("windows-build", "run_windows_build"),
+        ("web-panel", "run_web"),
+        ("chrome-extension", "run_chrome"),
+        ("clippy", "run_clippy"),
+        ("test", "run_test"),
+        ("security", "run_security"),
+        ("mcp-smoke", "run_mcp_smoke"),
+        ("live-rag-pr", "run_live_rag"),
+        ("binary-smoke-build", "run_binary_smoke_build"),
+        ("binary-smoke", "run_binary_smoke"),
+    ];
+
+    for (job_name, route) in routes {
+        let job = workflow_job_block(workflow, job_name);
+        let route_reference = format!("needs.changes.outputs.{route}");
+        assert!(
+            job.contains(&route_reference),
+            "{job_name} must consume {route}"
+        );
+        assert!(
+            gate.contains(&format!(
+                "require_success_or_intentional_skip {job_name} \"${{{{ needs.{job_name}.result }}}}\" \"${{{{ needs.changes.outputs.{route} }}}}\""
+            )),
+            "ci-gate must consume the same {route} decision as {job_name}"
+        );
+        assert!(
+            changes.contains(&format!("{route}: ${{{{ steps.routes.outputs.{route} }}}}")),
+            "changes must export {route} from the shared route step"
+        );
+    }
+}
+
+#[test]
 fn live_rag_uses_a_dynamic_tei_host_port() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let live_rag = workflow_job_block(workflow, "live-rag-pr");
     assert!(live_rag.contains("needs: [changes]"));
-    assert!(live_rag.contains("needs.changes.outputs.rag == 'true'"));
+    assert!(live_rag.contains("needs.changes.outputs.run_live_rag == 'true'"));
     assert!(!workflow.contains("  rag-changes:"));
     assert!(live_rag.contains("-p 127.0.0.1::80"));
     assert!(live_rag.contains("docker port axon-tei 80/tcp"));
@@ -1239,14 +1287,14 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(contracts.contains("generated-contracts check"));
     assert!(!contracts.contains("schemas generate --check"));
     assert!(!contracts.contains("docs generate --check"));
-    assert!(contracts.contains("needs.changes.outputs.docs_contracts == 'true'"));
+    assert!(contracts.contains("needs.changes.outputs.run_rust_contracts == 'true'"));
     assert!(
         !contracts.contains("needs.changes.outputs.docs == 'true'"),
         "prose-only docs must not compile rust-contracts"
     );
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
-    assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
+    assert!(chrome.contains("needs.changes.outputs.run_chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
     assert!(
@@ -1255,7 +1303,8 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     );
     assert!(gate.contains("require_success_or_intentional_skip chrome-extension"));
 
-    assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
+    let changes = workflow_job_block(workflow, "changes");
+    assert!(changes.contains("steps.classify.outputs.version_files == 'true'"));
 }
 
 #[test]
@@ -1298,11 +1347,11 @@ fn generated_contracts_refresh_before_commit_and_ci_stays_read_only() {
 fn ci_app_and_web_jobs_use_narrow_impact_categories() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let aurora = workflow_job_block(workflow, "aurora-primitive-inventory");
-    assert!(aurora.contains("needs.changes.outputs.aurora_inventory == 'true'"));
+    assert!(aurora.contains("needs.changes.outputs.run_aurora_inventory == 'true'"));
     assert!(!aurora.contains("needs.changes.outputs.docs == 'true'"));
 
     let web = workflow_job_block(workflow, "web-panel");
-    assert!(web.contains("needs.changes.outputs.web == 'true'"));
+    assert!(web.contains("needs.changes.outputs.run_web == 'true'"));
     assert!(
         !web.contains("needs.changes.outputs.release == 'true'"),
         "a manifest/release-contract change must not rebuild the web panel"
