@@ -22,7 +22,7 @@ command_contract_filter() {
     "extract recover") echo '(.reclaimed | type) == "number"' ;;
     "search") echo '(.results | type) == "array" and (.query | type) == "string"' ;;
     "research") echo '(.summary | type) == "string" and (.search_results | type) == "array"' ;;
-    "scrape"|"source") echo '.status == "completed" and (.job_id | type) == "string"' ;;
+    "scrape"|"source") echo '(.status == "completed" or .status == "completed_degraded") and (.job_id | type) == "string"' ;;
     "brand") echo '(.url | type) == "string" and (.colors | type) == "array"' ;;
     "debug") echo '(.doctor_report | type) == "object"' ;;
     "diff") echo '(.status | type) == "string" and (.text_diff | type) == "string"' ;;
