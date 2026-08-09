@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/dinglebear-ai/axon/compare/android-v1.6.4...android-v2.0.0) (2026-08-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* artifact-bearing responses return opaque artifact IDs instead of server filesystem paths, and web source options use the canonical `headers` object shape.
+
+### Added
+
+* **#298:** post-smoke followups — scope=page, watch create, mutates_if, presentation tokens ([d05eab3](https://github.com/dinglebear-ai/axon/commit/d05eab3302a0427d931fe7a96170f07bf9d7ea02))
+* **android:** memories client methods + route-contract fixture fix ([#298](https://github.com/dinglebear-ai/axon/issues/298) WS-I) ([d05addf](https://github.com/dinglebear-ai/axon/commit/d05addf08d0d28f9ed19bfc63e907dcf71a2bf9f))
+* **apps:** web token hardening, palette unified job polling, android memory/session client ([238ead7](https://github.com/dinglebear-ai/axon/commit/238ead7d924e79d49cf2f46e946b2fe1fa1934a8))
+* complete [#298](https://github.com/dinglebear-ai/axon/issues/298) closeout wave with structured source progress ([5bb4395](https://github.com/dinglebear-ai/axon/commit/5bb4395ede88b0f9ae6ae186d835bb3fd6787daa))
+* complete pipeline unification closeout ([b987c1b](https://github.com/dinglebear-ai/axon/commit/b987c1b41319a8f0ed06e778ab5f1f27c0053d40))
+* **mobile:** MobileSession status/source_refs/draft/sync_version + Android entity ([#298](https://github.com/dinglebear-ai/axon/issues/298) WS-I, bead .13) ([c08068a](https://github.com/dinglebear-ai/axon/commit/c08068aeb8241c56a121afe0343b638d48b2b04c))
+
+
+### Fixed
+
+* address phase 1 review feedback ([1b65f4a](https://github.com/dinglebear-ai/axon/commit/1b65f4a8453188bca553e1a8999f20c43ac10f81))
+* **android:** migrate legacy verb routes onto POST /v1/sources ([a204e3e](https://github.com/dinglebear-ai/axon/commit/a204e3e34347d6c8ff017fcacca868ecf953fe36))
+* **ci:** prevent Android packaging heap exhaustion ([#509](https://github.com/dinglebear-ai/axon/issues/509)) ([ae34209](https://github.com/dinglebear-ai/axon/commit/ae34209ace3e93c1686c7b1ba71fd5cc2e4d6868))
+* harden live CLI and source pipeline workflows ([#491](https://github.com/dinglebear-ai/axon/issues/491)) ([d1bca00](https://github.com/dinglebear-ai/axon/commit/d1bca00dd6f6b20ecae670c2a0222d77ae2c670f))
+* **release:** sync component versions after release PRs ([f7d0cfc](https://github.com/dinglebear-ai/axon/commit/f7d0cfc79572e4bd8ec1ce5d3a3e9501005c2133))
+* **review:** close source watch review gaps ([dec600e](https://github.com/dinglebear-ai/axon/commit/dec600e3a94d00c0fa6a5e341f654300ca30c26c))
+* **web:** distinct operation_id for POST /v1/graph/query ([#298](https://github.com/dinglebear-ai/axon/issues/298)) ([ef56dc9](https://github.com/dinglebear-ai/axon/commit/ef56dc9e3b493fda31115f4694c008d495cde788))
+
+
+### Changed
+
+* **android:** core/feature module package split + monolith fixes ([#298](https://github.com/dinglebear-ai/axon/issues/298) WS-I, U3-06) ([fa5f4e7](https://github.com/dinglebear-ai/axon/commit/fa5f4e7f3459dcebe678640408f58131c95493fb))
+* split closeout monoliths ([1f50180](https://github.com/dinglebear-ai/axon/commit/1f501801cb93cc6a15e3415e1d7b83678ade8499))
+
 ## [1.6.4] - 2026-08-03
 
 ### Changed

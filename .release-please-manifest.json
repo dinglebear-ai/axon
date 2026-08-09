@@ -1,5 +1,5 @@
 {
   "apps/palette-tauri": "6.0.0",
-  "apps/android": "1.6.4",
+  "apps/android": "2.0.0",
   "apps/chrome-extension": "0.3.2"
 }
