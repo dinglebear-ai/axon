@@ -30,6 +30,29 @@ builds and every CodeQL language.
 The six workflows consumed about 2h 02m of runner time for that one workflow
 contract change.
 
+## Workflow routing inventory
+
+| Workflow | Trigger policy | Expensive-work policy |
+|---|---|---|
+| `CI` | Required on every PR; path-filtered on `main`; weekly/manual | One trusted classifier gates Rust, web, Android, Palette, Chrome, Compose-adjacent, security, MCP, RAG, and release work independently. |
+| `CodeQL` | Required on every PR; language-input paths on `main`; weekly/manual | The matrix contains only languages present in the change. Kotlin keeps a manual build because CodeQL cannot analyze Kotlin in `none` mode. |
+| `Compose smoke` | Required on every PR; manual | Classifier and stable gate always report; Compose validation and image build are independent. |
+| `Repository contract` | Required on PRs; manual | The merge-to-main duplicate was removed. |
+| `Docker image` | Relevant image inputs on `main`, `v*` tags, or manual | Builds once and pushes only for a relevant source change or explicit release invocation. |
+| `auto-tag` | Native CLI shipping paths on `main` | Reuses the validated release-plan artifact produced by CI instead of compiling `xtask` again. |
+| `release-please` | Successful main CI or manual | A fast component classifier skips release automation for unrelated successful CI runs; fixups build `xtask` once. |
+| `release` | Manual/release dispatch | Web assets build once and are shared by Linux and Windows packaging. |
+| `palette-release` | Manual/release dispatch | The frontend builds once; Linux and Windows consume the same artifact without rerunning Vite. |
+| `android-release` | Manual/release dispatch | Only the Android artifact is built. |
+| `chrome-extension-release` | Manual/release dispatch | Only the extension artifact is packaged. |
+| `Session-log auto-merge` | PRs touching `docs/sessions/**` | The job still rejects mixed-path PRs before enabling auto-merge. |
+| `CI timing report` | Manual | Read-only reporting; concurrent reports cancel the older run. |
+
+GitHub-generated dynamic workflows such as Dependabot and Copilot are excluded
+from timing aggregation. The report inventories active repository workflow
+files by workflow ID, shows workflows with zero samples, and does not merge
+different workflows that happen to share a display name.
+
 ## Generate a report
 
 The `CI timing report` workflow is manual and has no effect on normal CI. With

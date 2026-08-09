@@ -1122,6 +1122,53 @@ fn ci_has_changed_path_classifier_and_stable_gate() {
 }
 
 #[test]
+fn non_required_automation_does_not_repeat_on_unrelated_events() {
+    let sessions = include_str!("../.github/workflows/session-log-automerge.yml");
+    assert!(sessions.contains("paths:\n      - docs/sessions/**"));
+
+    let contract = include_str!("../.github/workflows/repository-contract.yml");
+    let triggers = contract
+        .split_once("on:\n")
+        .expect("repository contract triggers")
+        .1
+        .split_once("\n\nconcurrency:")
+        .expect("repository contract concurrency boundary")
+        .0;
+    assert!(triggers.contains("pull_request:"));
+    assert!(triggers.contains("workflow_dispatch:"));
+    assert!(!triggers.contains("push:"));
+}
+
+#[test]
+fn main_push_triggers_skip_non_code_changes_before_allocating_runners() {
+    let ci = include_str!("../.github/workflows/ci.yml");
+    assert!(ci.contains("- \"!**/*.md\""));
+    assert!(ci.contains("- \"README.md\""));
+    assert!(ci.contains("- \"CHANGELOG.md\""));
+    assert!(ci.contains("- \"!docs/**\""));
+    assert!(ci.contains("- \"docs/reference/**\""));
+    assert!(ci.contains("- \"!docs/sessions/**\""));
+    assert!(ci.contains("- \"!.agents/**\""));
+    assert!(ci.contains("- \"!plugins/**\""));
+
+    let codeql = include_str!("../.github/workflows/codeql.yml");
+    for pattern in [
+        "**/*.js",
+        "**/*.ts",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.kt",
+        ".github/workflows/**",
+    ] {
+        assert!(
+            codeql.contains(&format!("- \"{pattern}\"")),
+            "CodeQL push paths must include {pattern}"
+        );
+    }
+    assert!(!codeql.contains("- \"docs/**\""));
+}
+
+#[test]
 fn ci_gate_covers_expensive_and_contract_jobs() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let gate = workflow_job_block(workflow, "ci-gate");

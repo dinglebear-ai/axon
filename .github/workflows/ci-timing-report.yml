@@ -21,6 +21,10 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: ci-timing-report
+  cancel-in-progress: true
+
 jobs:
   report:
     name: workflow timing report

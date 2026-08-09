@@ -3,6 +3,26 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "**/*.js"
+      - "**/*.jsx"
+      - "**/*.ts"
+      - "**/*.tsx"
+      - "**/*.mjs"
+      - "**/*.cjs"
+      - "**/*.py"
+      - "**/*.rs"
+      - "**/*.java"
+      - "**/*.kt"
+      - "**/*.kts"
+      - "Cargo.toml"
+      - "**/Cargo.toml"
+      - "build.rs"
+      - "**/build.rs"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
   pull_request:
     branches: [main]
   schedule:

@@ -166,9 +166,9 @@ def render(
                         f"{record['longest_job']} ({duration(record['longest_job_seconds'])}) |"
                     )
     else:
-        grouped: dict[str, list[dict[str, Any]]] = {}
+        grouped: dict[int, list[dict[str, Any]]] = {}
         for record in records:
-            grouped.setdefault(record["workflow"], []).append(record)
+            grouped.setdefault(record["workflow_id"], []).append(record)
         lines.extend(
             [
                 "| Workflow | Samples | Median wall | P95 wall | Median runner time |",
@@ -177,7 +177,7 @@ def render(
         )
         for workflow_definition in workflows:
             workflow = workflow_definition["name"]
-            samples = grouped.get(workflow, [])
+            samples = grouped.get(workflow_definition["id"], [])
             if not samples:
                 lines.append(f"| {workflow} | 0 | — | — | — |")
                 continue
