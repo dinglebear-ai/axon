@@ -1407,6 +1407,40 @@ fn release_builds_web_assets_once_for_both_native_targets() {
 }
 
 #[test]
+fn release_artifact_actions_are_immutable_and_renovate_managed() {
+    let workflows = [
+        include_str!("../.github/workflows/release.yml"),
+        include_str!("../.github/workflows/palette-release.yml"),
+        include_str!("../.github/workflows/auto-tag.yml"),
+    ];
+    for workflow in workflows {
+        assert!(!workflow.contains("actions/upload-artifact@v5"));
+        assert!(!workflow.contains("actions/download-artifact@v5"));
+        for line in workflow.lines().filter(|line| {
+            line.contains("actions/upload-artifact@") || line.contains("actions/download-artifact@")
+        }) {
+            let revision = line
+                .split_once('@')
+                .expect("artifact action revision")
+                .1
+                .split_whitespace()
+                .next()
+                .expect("artifact action SHA");
+            assert_eq!(
+                revision.len(),
+                40,
+                "artifact action must use a full commit SHA: {line}"
+            );
+            assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        }
+    }
+
+    let renovate = include_str!("../renovate.json");
+    assert!(renovate.contains(r#""matchManagers": ["github-actions"]"#));
+    assert!(renovate.contains(r#""pinDigests": true"#));
+}
+
+#[test]
 fn palette_builds_frontend_once_per_ci_or_release_run() {
     let ci = workflow_job_block(include_str!("../.github/workflows/ci.yml"), "palette-tauri");
     assert_eq!(
