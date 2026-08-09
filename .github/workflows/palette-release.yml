@@ -101,7 +101,7 @@ jobs:
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
       - name: Build palette frontend once
         run: pnpm --dir apps/palette-tauri vite:build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-palette-frontend
           path: apps/palette-tauri/dist
@@ -135,7 +135,7 @@ jobs:
           s3-prefix: ${{ vars.KACHE_S3_PREFIX }}
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: axon-palette-frontend
           path: apps/palette-tauri/dist
@@ -147,7 +147,7 @@ jobs:
           cd apps/palette-tauri/src-tauri/target/release
           tar -czf axon-palette-linux-x86_64.tar.gz axon-palette-tauri
           sha256sum axon-palette-linux-x86_64.tar.gz > axon-palette-linux-x86_64.tar.gz.sha256
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-palette-linux-x86_64
           path: |
@@ -181,7 +181,7 @@ jobs:
           shared-key: release-palette-windows
       - name: Install palette dependencies
         run: pnpm --dir apps/palette-tauri install --frozen-lockfile
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: axon-palette-frontend
           path: apps/palette-tauri/dist
@@ -202,7 +202,7 @@ jobs:
           $hash = (Get-FileHash axon-palette-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  axon-palette-windows-x86_64.zip" | Out-File -Encoding ascii axon-palette-windows-x86_64.zip.sha256
           Pop-Location
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: axon-palette-windows-x86_64
           path: |
@@ -224,7 +224,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           path: dist
           merge-multiple: true

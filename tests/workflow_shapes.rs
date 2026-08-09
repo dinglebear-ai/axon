@@ -473,7 +473,6 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     let workflow = include_str!("../.github/workflows/auto-tag.yml");
     let ci = include_str!("../.github/workflows/ci.yml");
     let plan = workflow_job_block(workflow, "plan");
-    let ci_gate = workflow_job_block(workflow, "ci-gate");
     let release = workflow_job_block(workflow, "release");
     assert!(
         ci.contains("./target/debug/xtask check-release-versions --head HEAD --mode main --json > auto-tag-release-plan.json"),
@@ -482,8 +481,26 @@ fn auto_tag_uses_validated_xtask_release_plan() {
     assert!(
         ci.contains("name: axon-auto-tag-release-plan-${{ github.sha }}")
             && ci.contains("retention-days: 1")
-            && plan.contains("run-id: ${{ needs.ci-gate.outputs.ci_run_id }}"),
+            && plan.contains("run-id: ${{ github.event.workflow_run.id }}")
+            && plan.contains(
+                "name: axon-auto-tag-release-plan-${{ github.event.workflow_run.head_sha }}"
+            ),
         "auto-tag must consume the short-lived release-plan artifact from the exact CI run"
+    );
+    assert!(
+        workflow.contains("workflow_run:")
+            && workflow.contains("workflows: [CI]")
+            && workflow.contains("types: [completed]")
+            && plan.contains("github.event.workflow_run.conclusion == 'success'")
+            && plan.contains("github.event.workflow_run.event == 'push'")
+            && plan.contains("github.event.workflow_run.head_branch == 'main'"),
+        "auto-tag must be driven by successful main-push CI completion"
+    );
+    assert!(
+        plan.contains("Check whether CI produced a release plan")
+            && plan.contains("steps.probe.outputs.has_plan == 'true'")
+            && plan.contains(r#"matrix: ${{ steps.plan.outputs.matrix || '{"include":[]}' }}"#),
+        "successful CI runs without native shipping changes must yield an empty matrix instead of downloading a missing artifact"
     );
     assert!(
         !workflow.contains("cargo xtask check-release-versions --head HEAD --mode main --json")
@@ -516,15 +533,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must skip releases for an empty matrix"
     );
     assert!(
-        ci_gate.contains("runs-on: ubuntu-24.04")
-            && ci_gate.contains("timeout-minutes: 65")
-            && plan.contains("runs-on: ubuntu-24.04")
-            && release.contains("runs-on: ubuntu-24.04"),
-        "auto-tag polling, planning, and tagging must not consume self-hosted runners"
+        plan.contains("runs-on: ubuntu-24.04") && release.contains("runs-on: ubuntu-24.04"),
+        "auto-tag planning and tagging must not consume self-hosted runners"
     );
     assert!(
-        release.contains("needs: [plan, ci-gate]"),
-        "the release matrix must wait for the shared CI gate"
+        release.contains("needs: plan"),
+        "the release matrix must wait for the completed-CI plan"
     );
     assert!(
         release.contains("fromJson(needs.plan.outputs.matrix)"),
@@ -535,10 +549,12 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         "auto-tag must consume tags and workflows from the xtask release plan"
     );
     assert!(
-        ci_gate.contains("Wait for CI to pass on this commit")
-            && release.contains("Create and push tag")
-            && !release.contains("Wait for CI to pass on this commit"),
-        "one shared CI gate must run before the release matrix creates tags"
+        release.contains("Create and push tag")
+            && release.contains("ref: ${{ github.event.workflow_run.head_sha }}")
+            && release.contains("expected_sha=\"${{ github.event.workflow_run.head_sha }}\"")
+            && !workflow.contains("gh run list")
+            && !workflow.contains("sleep 20"),
+        "auto-tag must bind the release to completed CI without polling"
     );
     let tag_step = release.find("Create and push tag").expect("tag step");
     let github_release_step = release
@@ -562,21 +578,6 @@ fn auto_tag_uses_validated_xtask_release_plan() {
         assert!(
             release.contains(required),
             "auto-tag release flow must include {required}"
-        );
-    }
-    for required in [
-        "if ! runs_json=$(gh run list",
-        "--repo \"${{ github.repository }}\"",
-        "gh run list failed while polling ci.yml",
-        "--branch main",
-        "--event push",
-        ".headSha == $sha",
-        ".event == \"push\"",
-        ".headBranch == \"main\"",
-    ] {
-        assert!(
-            ci_gate.contains(required),
-            "auto-tag CI polling must constrain {required}"
         );
     }
 }
@@ -633,9 +634,10 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_at_the_same_commit() 
     );
 
     let tag = "v99.99.99-test";
-    let script = script
-        .replace("${{ matrix.candidate_tag }}", tag)
-        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ github.event.workflow_run.head_sha }}",
+        "$(git rev-parse HEAD)",
+    );
     let harness = format!(
         r#"
 root="$(mktemp -d)"
@@ -682,9 +684,10 @@ fn auto_tag_partial_success_rerun_accepts_the_existing_tag_after_main_advances()
     );
 
     let tag = "v99.99.97-recovery";
-    let script = script
-        .replace("${{ matrix.candidate_tag }}", tag)
-        .replace("${{ github.sha }}", "$(git rev-parse HEAD)");
+    let script = script.replace("${{ matrix.candidate_tag }}", tag).replace(
+        "${{ github.event.workflow_run.head_sha }}",
+        "$(git rev-parse HEAD)",
+    );
     let harness = format!(
         r#"
 root="$(mktemp -d)"
@@ -842,18 +845,20 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
 #[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
+    let changes = workflow_job_block(workflow, "changes");
     let binary_smoke_build = workflow_job_block(workflow, "binary-smoke-build");
     let mcp_smoke = workflow_job_block(workflow, "mcp-smoke");
     let windows_check = workflow_job_block(workflow, "windows-check");
     let windows_build = workflow_job_block(workflow, "windows-build");
-    assert!(binary_smoke_build.contains("needs.changes.outputs.rust == 'true'"));
-    assert!(binary_smoke_build.contains("needs.changes.outputs.mcp == 'true'"));
-    assert!(binary_smoke_build.contains("needs.changes.outputs.release == 'true'"));
+    assert!(binary_smoke_build.contains("needs.changes.outputs.run_binary_smoke_build"));
+    assert!(changes.contains("RUN_BINARY_SMOKE_BUILD:"));
+    assert!(changes.contains("steps.classify.outputs.mcp == 'true'"));
+    assert!(changes.contains("steps.classify.outputs.release == 'true'"));
     assert!(!binary_smoke_build.contains("cargo build --release"));
-    assert!(mcp_smoke.contains("'ci:full'"));
-    assert!(windows_check.contains("github.event_name == 'pull_request'"));
-    assert!(windows_build.contains("'ci:full'"));
-    assert!(windows_build.contains("github.event_name == 'pull_request'"));
+    assert!(mcp_smoke.contains("needs.changes.outputs.run_mcp_smoke"));
+    assert!(windows_check.contains("needs.changes.outputs.run_windows_check"));
+    assert!(windows_build.contains("needs.changes.outputs.run_windows_build"));
+    assert!(changes.contains("RUN_MCP_SMOKE:") && changes.contains("'ci:full'"));
     assert!(
         windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
             && windows_build.contains("nasm -v"),
@@ -871,6 +876,11 @@ fn binary_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
     assert!(binary_smoke.contains("USE_PREBUILT_AXON: \"1\""));
     assert!(binary_smoke.contains("AXON_BIN: ${{ github.workspace }}/target/debug/axon"));
     assert!(!binary_smoke.contains("setup-rust-kache"));
+    assert!(
+        binary_smoke.contains("runs-on: ubuntu-24.04")
+            && !binary_smoke.contains("runs-on: ci-pool-ops"),
+        "PR-controlled binaries and scripts must execute on an ephemeral hosted runner"
+    );
 }
 
 #[test]
@@ -1214,11 +1224,57 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
 }
 
 #[test]
+fn ci_jobs_and_gate_consume_the_same_route_outputs() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let changes = workflow_job_block(workflow, "changes");
+    let gate = workflow_job_block(workflow, "ci-gate");
+    let routes = [
+        ("rust-contracts", "run_rust_contracts"),
+        ("ci-contracts", "run_ci_contracts"),
+        ("aurora-primitive-inventory", "run_aurora_inventory"),
+        ("android", "run_android"),
+        ("toml-fmt", "run_toml_fmt"),
+        ("lefthook-pre-commit-speed", "run_lefthook_speed"),
+        ("palette-tauri", "run_palette"),
+        ("windows-check", "run_windows_check"),
+        ("windows-build", "run_windows_build"),
+        ("web-panel", "run_web"),
+        ("chrome-extension", "run_chrome"),
+        ("clippy", "run_clippy"),
+        ("test", "run_test"),
+        ("security", "run_security"),
+        ("mcp-smoke", "run_mcp_smoke"),
+        ("live-rag-pr", "run_live_rag"),
+        ("binary-smoke-build", "run_binary_smoke_build"),
+        ("binary-smoke", "run_binary_smoke"),
+    ];
+
+    for (job_name, route) in routes {
+        let job = workflow_job_block(workflow, job_name);
+        let route_reference = format!("needs.changes.outputs.{route}");
+        assert!(
+            job.contains(&route_reference),
+            "{job_name} must consume {route}"
+        );
+        assert!(
+            gate.contains(&format!(
+                "require_success_or_intentional_skip {job_name} \"${{{{ needs.{job_name}.result }}}}\" \"${{{{ needs.changes.outputs.{route} }}}}\""
+            )),
+            "ci-gate must consume the same {route} decision as {job_name}"
+        );
+        assert!(
+            changes.contains(&format!("{route}: ${{{{ steps.routes.outputs.{route} }}}}")),
+            "changes must export {route} from the shared route step"
+        );
+    }
+}
+
+#[test]
 fn live_rag_uses_a_dynamic_tei_host_port() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let live_rag = workflow_job_block(workflow, "live-rag-pr");
     assert!(live_rag.contains("needs: [changes]"));
-    assert!(live_rag.contains("needs.changes.outputs.rag == 'true'"));
+    assert!(live_rag.contains("needs.changes.outputs.run_live_rag == 'true'"));
     assert!(!workflow.contains("  rag-changes:"));
     assert!(live_rag.contains("-p 127.0.0.1::80"));
     assert!(live_rag.contains("docker port axon-tei 80/tcp"));
@@ -1237,14 +1293,14 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     assert!(contracts.contains("generated-contracts check"));
     assert!(!contracts.contains("schemas generate --check"));
     assert!(!contracts.contains("docs generate --check"));
-    assert!(contracts.contains("needs.changes.outputs.docs_contracts == 'true'"));
+    assert!(contracts.contains("needs.changes.outputs.run_rust_contracts == 'true'"));
     assert!(
         !contracts.contains("needs.changes.outputs.docs == 'true'"),
         "prose-only docs must not compile rust-contracts"
     );
 
     let chrome = workflow_job_block(workflow, "chrome-extension");
-    assert!(chrome.contains("needs.changes.outputs.chrome == 'true'"));
+    assert!(chrome.contains("needs.changes.outputs.run_chrome == 'true'"));
     assert!(chrome.contains("npm test --prefix apps/chrome-extension"));
 
     assert!(
@@ -1253,7 +1309,8 @@ fn ci_runs_docs_and_chrome_contract_checks() {
     );
     assert!(gate.contains("require_success_or_intentional_skip chrome-extension"));
 
-    assert!(contracts.contains("needs.changes.outputs.version_files == 'true'"));
+    let changes = workflow_job_block(workflow, "changes");
+    assert!(changes.contains("steps.classify.outputs.version_files == 'true'"));
 }
 
 #[test]
@@ -1296,11 +1353,11 @@ fn generated_contracts_refresh_before_commit_and_ci_stays_read_only() {
 fn ci_app_and_web_jobs_use_narrow_impact_categories() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let aurora = workflow_job_block(workflow, "aurora-primitive-inventory");
-    assert!(aurora.contains("needs.changes.outputs.aurora_inventory == 'true'"));
+    assert!(aurora.contains("needs.changes.outputs.run_aurora_inventory == 'true'"));
     assert!(!aurora.contains("needs.changes.outputs.docs == 'true'"));
 
     let web = workflow_job_block(workflow, "web-panel");
-    assert!(web.contains("needs.changes.outputs.web == 'true'"));
+    assert!(web.contains("needs.changes.outputs.run_web == 'true'"));
     assert!(
         !web.contains("needs.changes.outputs.release == 'true'"),
         "a manifest/release-contract change must not rebuild the web panel"
@@ -1402,6 +1459,40 @@ fn release_builds_web_assets_once_for_both_native_targets() {
         assert!(job.contains("name: axon-release-web-assets"));
         assert!(!job.contains("npm ci"));
     }
+}
+
+#[test]
+fn release_artifact_actions_are_immutable_and_renovate_managed() {
+    let workflows = [
+        include_str!("../.github/workflows/release.yml"),
+        include_str!("../.github/workflows/palette-release.yml"),
+        include_str!("../.github/workflows/auto-tag.yml"),
+    ];
+    for workflow in workflows {
+        assert!(!workflow.contains("actions/upload-artifact@v5"));
+        assert!(!workflow.contains("actions/download-artifact@v5"));
+        for line in workflow.lines().filter(|line| {
+            line.contains("actions/upload-artifact@") || line.contains("actions/download-artifact@")
+        }) {
+            let revision = line
+                .split_once('@')
+                .expect("artifact action revision")
+                .1
+                .split_whitespace()
+                .next()
+                .expect("artifact action SHA");
+            assert_eq!(
+                revision.len(),
+                40,
+                "artifact action must use a full commit SHA: {line}"
+            );
+            assert!(revision.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        }
+    }
+
+    let renovate = include_str!("../renovate.json");
+    assert!(renovate.contains(r#""matchManagers": ["github-actions"]"#));
+    assert!(renovate.contains(r#""pinDigests": true"#));
 }
 
 #[test]

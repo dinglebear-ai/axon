@@ -16,6 +16,12 @@
 
   "packageRules": [
     {
+      "description": "Keep immutable GitHub Actions pins current",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true
+    },
+
+    {
       "description": "Auto-merge all patch updates that pass CI",
       "matchUpdateTypes": ["patch"],
       "automerge": true,

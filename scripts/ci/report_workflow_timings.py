@@ -19,6 +19,25 @@ def gh_api(path: str, fields: dict[str, str] | None = None) -> Any:
     return json.loads(subprocess.check_output(command, text=True))
 
 
+def gh_api_collection(
+    path: str,
+    collection: str,
+    fields: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return every page from a GitHub API collection response."""
+    page = 1
+    per_page = 100
+    records: list[dict[str, Any]] = []
+    while True:
+        page_fields = dict(fields or {})
+        page_fields.update({"per_page": str(per_page), "page": str(page)})
+        batch = gh_api(path, page_fields)[collection]
+        records.extend(batch)
+        if len(batch) < per_page:
+            return records
+        page += 1
+
+
 def instant(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -45,10 +64,11 @@ def duration(seconds: float) -> str:
 
 
 def run_record(repo: str, label: str, run: dict[str, Any]) -> dict[str, Any]:
-    jobs = gh_api(
+    jobs = gh_api_collection(
         f"repos/{repo}/actions/runs/{run['id']}/jobs",
+        "jobs",
         {"filter": "latest", "per_page": "100"},
-    )["jobs"]
+    )
     executed = [job for job in jobs if job.get("conclusion") != "skipped"]
     job_seconds = {
         job["name"]: seconds_between(job.get("started_at"), job.get("completed_at"))
@@ -84,11 +104,11 @@ def run_record(repo: str, label: str, run: dict[str, Any]) -> dict[str, Any]:
 
 
 def repository_workflows(repo: str) -> list[dict[str, Any]]:
-    payload = gh_api(f"repos/{repo}/actions/workflows", {"per_page": "100"})
+    workflows = gh_api_collection(f"repos/{repo}/actions/workflows", "workflows")
     return sorted(
         (
             workflow
-            for workflow in payload["workflows"]
+            for workflow in workflows
             if workflow.get("state") == "active"
             and workflow.get("path", "").startswith(".github/workflows/")
         ),
@@ -97,13 +117,14 @@ def repository_workflows(repo: str) -> list[dict[str, Any]]:
 
 
 def runs_for_sha(repo: str, sha: str, workflow_ids: set[int]) -> list[dict[str, Any]]:
-    payload = gh_api(
+    workflow_runs = gh_api_collection(
         f"repos/{repo}/actions/runs",
+        "workflow_runs",
         {"head_sha": sha, "status": "completed", "per_page": "100"},
     )
     selected: list[dict[str, Any]] = []
     seen: set[int] = set()
-    for run in payload["workflow_runs"]:
+    for run in workflow_runs:
         workflow_id = run["workflow_id"]
         if workflow_id not in workflow_ids or workflow_id in seen:
             continue
