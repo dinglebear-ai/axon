@@ -91,7 +91,10 @@ jobs:
             while read -r fixup; do
               component="$(jq -r '.id' <<<"$fixup")"
               version="$(jq -r '.version' <<<"$fixup")"
-              ./target/debug/xtask release-please-fixups --component "$component" --version "$version"
+              ./target/debug/xtask release-please-fixups \
+                --component "$component" \
+                --version "$version" \
+                --base "origin/$base_branch"
             done < <(jq -c '.[]' fixup-plan.json)
             fixup_commit_created=false
             if ! git diff --quiet; then

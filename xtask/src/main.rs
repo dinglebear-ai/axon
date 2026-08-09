@@ -127,6 +127,8 @@ enum Command {
         component: String,
         #[arg(long)]
         version: String,
+        #[arg(long, default_value = "origin/main")]
+        base: String,
     },
     /// Print release-please postprocessing needed for a release PR branch diff.
     ReleasePleaseFixupPlan {
@@ -230,9 +232,16 @@ fn main() -> Result<()> {
         Command::BumpVersion { component, level } => Ok(
             checks::release_versions::bump_component_version(&root, &component, level)?,
         ),
-        Command::ReleasePleaseFixups { component, version } => Ok(
-            checks::release_versions::release_please_fixups(&root, &component, &version)?,
-        ),
+        Command::ReleasePleaseFixups {
+            component,
+            version,
+            base,
+        } => Ok(checks::release_versions::release_please_fixups(
+            &root,
+            &component,
+            &version,
+            Some(&base),
+        )?),
         Command::ReleasePleaseFixupPlan { base, head, json } => {
             let items = checks::release_versions::release_please_fixup_plan(&root, &base, &head)?;
             checks::release_versions::print_release_please_fixup_plan(&items, json)?;

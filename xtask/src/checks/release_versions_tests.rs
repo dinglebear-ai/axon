@@ -1196,7 +1196,7 @@ fn pr_mode_allows_release_please_source_fixup_after_tag_exists() {
     fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
     fixture.git(&["tag", "chrome-ext-v0.2.1"]);
 
-    release_please_fixups(fixture.root(), "chrome", "0.2.1").unwrap();
+    release_please_fixups(fixture.root(), "chrome", "0.2.1", None).unwrap();
     fixture.git(&[
         "add",
         "apps/chrome-extension/manifest.json",
@@ -1235,7 +1235,7 @@ fn release_please_fixups_must_be_committed_before_pr_validation() {
     ]);
     fixture.git(&["commit", "-m", "chore(main): release chrome-ext 0.2.1"]);
 
-    release_please_fixups(fixture.root(), "chrome", "0.2.1").unwrap();
+    release_please_fixups(fixture.root(), "chrome", "0.2.1", None).unwrap();
     let error = check(fixture.root(), Some("HEAD~1"), "HEAD", GateMode::Pr, false)
         .expect_err("dirty source fixups must not make a changelog-only HEAD valid");
     assert!(
@@ -1652,7 +1652,7 @@ fn release_please_fixup_plan_rejects_an_invalid_base_ref() {
 #[test]
 fn chrome_fixup_updates_manifest_and_package_versions() {
     let fixture = Fixture::new();
-    release_please_fixups(fixture.root(), "chrome", "0.3.0").unwrap();
+    release_please_fixups(fixture.root(), "chrome", "0.3.0", None).unwrap();
 
     let manifest = fs::read_to_string(fixture.path("apps/chrome-extension/manifest.json")).unwrap();
     let package = fs::read_to_string(fixture.path("apps/chrome-extension/package.json")).unwrap();
@@ -1684,13 +1684,91 @@ fn android_fixup_increments_version_code() {
     )
     .unwrap();
 
-    release_please_fixups(fixture.root(), "android", "1.5.1").unwrap();
-    release_please_fixups(fixture.root(), "android", "1.5.1").unwrap();
+    release_please_fixups(fixture.root(), "android", "1.5.1", None).unwrap();
+    release_please_fixups(fixture.root(), "android", "1.5.1", None).unwrap();
 
     let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
     assert_eq!(read_gradle_version_name(&content).unwrap(), "1.5.1");
     assert_eq!(read_gradle_version_code(&content).unwrap(), 15);
     assert!(content.contains("x-release-please-version-code 1.5.1"));
+}
+
+#[test]
+fn android_fixup_repairs_force_refreshed_stale_version_code() {
+    let fixture = Fixture::new();
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "1.6.4",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [1.6.4]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 20 // x-release-please-version-code 1.6.4
+        // x-release-please-start-version
+        versionName = "1.6.4"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.init_repo();
+    fixture.git(&["checkout", "-b", "release-android"]);
+
+    fs::write(
+        fixture.path(".release-please-manifest.json"),
+        r#"{
+  "apps/palette-tauri": "5.10.2",
+  "apps/android": "2.0.0",
+  "apps/chrome-extension": "0.2.0"
+}
+"#,
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/CHANGELOG.md"),
+        "# Changelog\n\n## [2.0.0]\n\n## [1.6.4]\n",
+    )
+    .unwrap();
+    fs::write(
+        fixture.path("apps/android/app/build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        versionCode = 20 // x-release-please-version-code 2.0.0
+        // x-release-please-start-version
+        versionName = "2.0.0"
+        // x-release-please-end
+    }
+}
+"#,
+    )
+    .unwrap();
+    fixture.git(&["add", "."]);
+    fixture.git(&["commit", "-m", "chore(main): release android 2.0.0"]);
+
+    release_please_fixups(fixture.root(), "android", "2.0.0", Some("main")).unwrap();
+
+    let content = fs::read_to_string(fixture.path("apps/android/app/build.gradle.kts")).unwrap();
+    assert_eq!(read_gradle_version_name(&content).unwrap(), "2.0.0");
+    assert_eq!(read_gradle_version_code(&content).unwrap(), 21);
+    assert!(content.contains("x-release-please-version-code 2.0.0"));
+
+    fixture.git(&["add", "apps/android/app/build.gradle.kts"]);
+    fixture.git(&["commit", "-m", "chore: apply release-please fixups"]);
+    check(fixture.root(), Some("main"), "HEAD", GateMode::Pr, false)
+        .expect("repaired force-refreshed release branch passes version checks");
 }
 
 #[test]

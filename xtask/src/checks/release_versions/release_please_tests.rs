@@ -313,7 +313,7 @@ fn fixups_reject_axon_native_component() {
     let root = tempfile::tempdir().unwrap();
     let components = [component("cli", ".", ReleaseDriver::AxonNative)];
 
-    let error = fixups(root.path(), &components, "cli", "1.0.1")
+    let error = fixups(root.path(), &components, "cli", "1.0.1", None)
         .expect_err("release-please fixups must not write axon-native components");
     assert!(
         error
