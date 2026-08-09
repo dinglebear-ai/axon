@@ -95,6 +95,86 @@ class PaginationTests(unittest.TestCase):
 
         self.assertEqual(runs, final)
 
+    def test_recent_inventory_honors_limits_above_one_page(self) -> None:
+        first = [{"id": index} for index in range(100)]
+        final = [{"id": 100}]
+        workflows = [{"id": 7}]
+        with patch.object(
+            timings,
+            "gh_api",
+            side_effect=[{"workflow_runs": first}, {"workflow_runs": final}],
+        ) as api:
+            runs = timings.recent_runs("dinglebear-ai/axon", "main", 101, workflows)
+
+        self.assertEqual(len(runs), 101)
+        self.assertEqual(api.call_args_list[0].args[1]["per_page"], "100")
+        self.assertEqual(api.call_args_list[1].args[1]["per_page"], "1")
+
+
+class TimingAccuracyTests(unittest.TestCase):
+    @staticmethod
+    def sample_run(**overrides: object) -> dict[str, object]:
+        run: dict[str, object] = {
+            "id": 42,
+            "workflow_id": 7,
+            "path": ".github/workflows/ci.yml",
+            "name": "CI",
+            "event": "push",
+            "conclusion": "success",
+            "head_sha": "abc",
+            "html_url": "https://example.invalid/run/42",
+            "created_at": "2026-08-08T00:00:00Z",
+            "updated_at": "2026-08-08T00:10:00Z",
+        }
+        run.update(overrides)
+        return run
+
+    def test_rerun_wall_time_uses_attempt_specific_metadata(self) -> None:
+        attempt = {
+            "created_at": "2026-08-08T00:09:00Z",
+            "updated_at": "2026-08-08T00:10:00Z",
+        }
+        with patch.object(
+            timings,
+            "gh_api",
+            side_effect=[attempt, {"jobs": []}],
+        ) as api:
+            record = timings.run_record(
+                "dinglebear-ai/axon",
+                "candidate",
+                self.sample_run(run_attempt=2),
+            )
+
+        self.assertEqual(record["run_attempt"], 2)
+        self.assertEqual(record["wall_seconds"], 60.0)
+        self.assertIn("/attempts/2", api.call_args_list[0].args[0])
+        self.assertIn("/attempts/2/jobs", api.call_args_list[1].args[0])
+
+    def test_duplicate_job_names_are_counted_independently(self) -> None:
+        jobs = [
+            {
+                "name": "build",
+                "conclusion": "success",
+                "started_at": "2026-08-08T00:00:00Z",
+                "completed_at": "2026-08-08T00:00:05Z",
+            },
+            {
+                "name": "build",
+                "conclusion": "success",
+                "started_at": "2026-08-08T00:00:00Z",
+                "completed_at": "2026-08-08T00:00:07Z",
+            },
+        ]
+        with patch.object(timings, "gh_api", return_value={"jobs": jobs}):
+            record = timings.run_record(
+                "dinglebear-ai/axon", "candidate", self.sample_run()
+            )
+
+        self.assertEqual(record["runner_seconds"], 12.0)
+        self.assertEqual(record["executed_jobs"], 2)
+        self.assertEqual(record["longest_job"], "build")
+        self.assertEqual(record["longest_job_seconds"], 7.0)
+
 
 if __name__ == "__main__":
     unittest.main()

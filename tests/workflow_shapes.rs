@@ -843,6 +843,18 @@ fn release_please_fixups_validate_and_forward_pr_branch_refs() {
 }
 
 #[test]
+fn release_please_runs_after_every_successful_main_ci_completion() {
+    let workflow = include_str!("../.github/workflows/release-please.yml");
+    let release = workflow_job_block(workflow, "release-please");
+
+    assert!(!workflow.contains("release-please changes"));
+    assert!(!workflow.contains("scripts/ci/changed_paths.py"));
+    assert!(!workflow.contains("git rev-parse HEAD^"));
+    assert!(!release.contains("needs: changes"));
+    assert!(release.contains("github.event.workflow_run.conclusion == 'success'"));
+}
+
+#[test]
 fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     let workflow = include_str!("../.github/workflows/ci.yml");
     let changes = workflow_job_block(workflow, "changes");
@@ -859,11 +871,35 @@ fn ci_keeps_expensive_artifacts_off_ordinary_pull_requests() {
     assert!(windows_check.contains("needs.changes.outputs.run_windows_check"));
     assert!(windows_build.contains("needs.changes.outputs.run_windows_build"));
     assert!(changes.contains("RUN_MCP_SMOKE:") && changes.contains("'ci:full'"));
-    assert!(
-        windows_build.contains("sudo apt-get install -y --no-install-recommends mingw-w64 nasm")
-            && windows_build.contains("nasm -v"),
-        "the Windows GNU cross-build must install and verify NASM for BoringSSL assembly"
-    );
+    assert!(changes.contains("github.event_name == 'push'"));
+    assert!(changes.contains("github.ref == 'refs/heads/main'"));
+    assert!(changes.contains("steps.classify.outputs.auto_tag == 'true'"));
+    assert!(windows_build.contains("runs-on: windows-latest"));
+    assert!(windows_build.contains("cargo build --release --locked --bin axon"));
+    assert!(windows_build.contains("path: target/release/axon.exe"));
+}
+
+#[test]
+fn pull_request_binary_build_never_receives_shared_cache_secrets() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let build = workflow_job_block(workflow, "binary-smoke-build");
+    let (_, pr_and_after) = build
+        .split_once("name: Set up Rust with local-only Kache for pull requests")
+        .expect("pull requests have a local-only Kache setup step");
+    let (pr_step, trusted_and_after) = pr_and_after
+        .split_once("name: Set up Rust with shared Kache for trusted pushes")
+        .expect("trusted pushes have a separate shared-cache setup step");
+    let trusted_step = trusted_and_after
+        .split_once("- uses: actions/download-artifact@")
+        .expect("cache setup precedes artifact download")
+        .0;
+
+    assert!(pr_step.contains("github.event_name == 'pull_request'"));
+    assert!(!pr_step.contains("KACHE_S3_ACCESS_KEY"));
+    assert!(!pr_step.contains("KACHE_S3_SECRET_KEY"));
+    assert!(trusted_step.contains("github.event_name != 'pull_request'"));
+    assert!(trusted_step.contains("KACHE_S3_ACCESS_KEY"));
+    assert!(trusted_step.contains("KACHE_S3_SECRET_KEY"));
 }
 
 #[test]
@@ -940,7 +976,7 @@ fn ci_builds_web_assets_once_for_binary_artifact_jobs() {
         ("windows-build", windows),
     ] {
         assert!(
-            job.contains("uses: actions/download-artifact@v5")
+            job.contains("uses: actions/download-artifact@")
                 && job.contains("name: axon-web-assets"),
             "{name} must reuse the web-panel artifact"
         );
