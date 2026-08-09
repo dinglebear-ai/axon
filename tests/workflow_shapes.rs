@@ -1517,6 +1517,27 @@ fn release_capability_smokes_provide_the_required_tei_endpoint() {
 }
 
 #[test]
+fn release_manual_backfill_builds_and_publishes_the_exact_existing_tag() {
+    let workflow = include_str!("../.github/workflows/release.yml");
+    assert!(workflow.contains("release_tag:"));
+    assert_eq!(
+        workflow
+            .matches("ref: ${{ inputs.release_tag || github.ref }}")
+            .count(),
+        3,
+        "every source checkout must use the requested immutable release tag"
+    );
+    assert!(workflow.contains("startsWith(inputs.release_tag, 'v')"));
+    assert_eq!(
+        workflow
+            .matches("tag=\"${{ inputs.release_tag || github.ref_name }}\"")
+            .count(),
+        2,
+        "both release upload steps must target the requested release"
+    );
+}
+
+#[test]
 fn release_artifact_actions_are_immutable_and_renovate_managed() {
     let workflows = [
         include_str!("../.github/workflows/release.yml"),
