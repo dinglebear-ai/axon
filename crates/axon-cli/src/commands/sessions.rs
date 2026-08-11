@@ -1,5 +1,7 @@
 use crate::commands::source::detach::ensure_worker_process;
-use crate::commands::source::{render_source_result, source_result_json};
+use crate::commands::source::{
+    execute_waited_source_request, render_source_result, source_result_json,
+};
 use axon_api::source::{
     AuthSnapshot, LifecycleStatus, ResponseMode, SourceIntent, SourceRequest, SourceScope,
 };
@@ -39,12 +41,17 @@ async fn run_session_sources(
 
     let mut results = Vec::new();
     let mut enqueued_detached = false;
-    for (provider, root) in selectors {
+    let selector_count = selectors.len();
+    for (index, (provider, root)) in selectors.into_iter().enumerate() {
         let request = session_source_request(cfg, provider, root);
         let result = if cfg.wait {
-            axon_services::index_source(request, service_context)
-                .await
-                .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?
+            execute_waited_source_request(
+                cfg,
+                service_context,
+                request,
+                Some(session_progress_label(index, selector_count, provider)),
+            )
+            .await?
         } else {
             let store = service_context
                 .job_store()
@@ -93,6 +100,10 @@ async fn run_session_sources(
     Ok(())
 }
 
+fn session_progress_label(index: usize, total: usize, provider: SessionProvider) -> String {
+    format!("session {}/{} · {}", index + 1, total, provider.as_str())
+}
+
 fn selected_session_selectors(
     cfg: &Config,
 ) -> Result<Vec<(SessionProvider, PathBuf)>, Box<dyn Error>> {
@@ -131,3 +142,7 @@ fn session_source_request(cfg: &Config, provider: SessionProvider, root: PathBuf
     }
     request
 }
+
+#[cfg(test)]
+#[path = "sessions_tests.rs"]
+mod tests;

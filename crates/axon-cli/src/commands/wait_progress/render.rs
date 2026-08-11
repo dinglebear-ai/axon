@@ -10,7 +10,7 @@ use super::format::FormattedWaitView;
 mod batch;
 mod session;
 
-pub(crate) use batch::{BatchProgressForwarder, BatchProgressUpdate, batch_progress_channel};
+pub(crate) use batch::{BatchProgressForwarder, BatchProgressSession, batch_progress_channel};
 pub(crate) use session::WaitProgressSession;
 
 const RENDER_INTERVAL: Duration = Duration::from_millis(250);

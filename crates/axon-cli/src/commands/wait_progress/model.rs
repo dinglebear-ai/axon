@@ -93,10 +93,6 @@ impl WaitViewModel {
         }
     }
 
-    pub(crate) fn set_source_kind(&mut self, source_kind: Option<SourceKind>) {
-        self.source_kind = source_kind;
-    }
-
     pub(crate) fn apply_snapshot(&mut self, update: JobStatusUpdate) -> bool {
         let previous_job_id = self.job_id.replace(update.job_id);
         let progress = active_progress(
