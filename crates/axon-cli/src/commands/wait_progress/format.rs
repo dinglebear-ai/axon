@@ -63,6 +63,8 @@ pub(crate) fn format_wait_view(
             let symbol = if terminal.degraded { "⚠" } else { "✓" };
             let label = if terminal.degraded {
                 "finished"
+            } else if terminal.phase == super::model::OperatorPhase::Extract {
+                "extracted"
             } else {
                 "indexed"
             };

@@ -5,6 +5,7 @@ use axon_api::source::{
     JobEvent, JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, SourceKind,
     SourceProgressEvent, SourceScope, StageCounts,
 };
+use axon_services::extract::ExtractProgress;
 
 use crate::commands::job_progress::source_unit;
 
@@ -17,6 +18,7 @@ pub(crate) enum OperatorPhase {
     Resolve,
     Discover,
     Acquire,
+    Extract,
     Prepare,
     Embed,
     Publish,
@@ -108,6 +110,34 @@ impl WaitViewModel {
             previous_job_id != self.job_id || self.active != next || self.terminal != terminal;
         self.active = next;
         self.terminal = terminal;
+        changed
+    }
+
+    pub(crate) fn apply_extract_progress(&mut self, progress: &ExtractProgress) -> bool {
+        let current = progress.last_completed_url.as_ref().map(|url| {
+            format!(
+                "last completed: {url} · {} {}",
+                progress.items_done,
+                if progress.items_done == 1 {
+                    "item"
+                } else {
+                    "items"
+                }
+            )
+        });
+        let next = ActiveProgress {
+            phase: OperatorPhase::Extract,
+            done: progress.urls_done,
+            total: Some(progress.urls_total),
+            unit: if progress.urls_total == 1 {
+                "URL"
+            } else {
+                "URLs"
+            },
+            current,
+        };
+        let changed = self.active.as_ref() != Some(&next);
+        self.active = Some(next);
         changed
     }
 
@@ -227,6 +257,7 @@ impl OperatorPhase {
             Self::Resolve => "resolve",
             Self::Discover => "discover",
             Self::Acquire => "acquire",
+            Self::Extract => "extract",
             Self::Prepare => "prepare",
             Self::Embed => "embed",
             Self::Publish => "publish",
@@ -296,6 +327,7 @@ fn progress_counts(
             let (_, plural) = source_unit(source_kind);
             (counts.items_done, counts.items_total, plural)
         }
+        OperatorPhase::Extract => (counts.items_done, counts.items_total, "URLs"),
         OperatorPhase::Prepare => (counts.documents_done, counts.documents_total, "documents"),
         OperatorPhase::Embed => (counts.chunks_done, counts.chunks_total, "chunks"),
         OperatorPhase::Publish => (counts.chunks_done, counts.chunks_total, "vectors"),
@@ -308,9 +340,12 @@ fn progress_counts(
 impl OperatorPhase {
     const fn default_unit(self) -> &'static str {
         match self {
-            Self::Discover | Self::Acquire | Self::Resolve | Self::Clean | Self::Complete => {
-                "items"
-            }
+            Self::Discover
+            | Self::Acquire
+            | Self::Extract
+            | Self::Resolve
+            | Self::Clean
+            | Self::Complete => "items",
             Self::Prepare => "documents",
             Self::Embed => "chunks",
             Self::Publish => "vectors",

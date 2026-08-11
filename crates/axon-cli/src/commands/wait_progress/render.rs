@@ -8,9 +8,11 @@ use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use super::format::FormattedWaitView;
 
 mod batch;
+mod extract;
 mod session;
 
 pub(crate) use batch::{BatchProgressForwarder, BatchProgressSession, batch_progress_channel};
+pub(crate) use extract::ExtractProgressSession;
 pub(crate) use session::WaitProgressSession;
 
 const RENDER_INTERVAL: Duration = Duration::from_millis(250);

@@ -1,4 +1,16 @@
-use super::extract_provenance_message;
+use super::{extract_progress_mode, extract_provenance_message};
+use crate::commands::wait_progress::ProgressMode;
+use axon_core::config::{CommandKind, Config};
+
+#[test]
+fn extract_wait_reuses_shared_renderer_and_json_stays_silent() {
+    let mut cfg = Config::default();
+    cfg.command = CommandKind::Extract;
+    cfg.wait = true;
+    assert_eq!(extract_progress_mode(&cfg, true), ProgressMode::Interactive);
+    cfg.json_output = true;
+    assert_eq!(extract_progress_mode(&cfg, true), ProgressMode::Silent);
+}
 
 #[test]
 fn provenance_message_reports_deterministic_only_without_fallback() {

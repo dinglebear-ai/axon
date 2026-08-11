@@ -8,15 +8,16 @@ use crate::commands::job_progress::extract_progress_summary;
 use axon_api::source::JobKind;
 use axon_core::config::Config;
 use axon_core::logging::log_info;
-use axon_core::ui::{
-    accent, confirm_destructive, muted, primary, status_text, symbol_for_status, wait_spinner_for,
-};
+use axon_core::ui::{accent, confirm_destructive, muted, primary, status_text, symbol_for_status};
 use axon_services::context::ServiceContext;
 use axon_services::extract as extract_service;
 use axon_services::jobs as job_service;
 use axon_services::types::{JobListResult, StartDisposition};
 use std::error::Error;
+use std::io::IsTerminal;
 use uuid::Uuid;
+
+use super::wait_progress::{ExtractProgressSession, ProgressMode};
 
 pub(crate) fn render_extract_enqueue_result(
     cfg: &Config,
@@ -77,18 +78,7 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
             return result;
         }
 
-        let sp = wait_spinner_for(
-            cfg,
-            &format!(
-                "Extracting {} URL{}…",
-                urls.len(),
-                if urls.len() == 1 { "" } else { "s" }
-            ),
-        );
-        let result = extract_service::extract_sync(cfg, &urls, &prompt).await?;
-        if let Some(sp) = sp {
-            sp.clear();
-        }
+        let result = execute_waited_extract(cfg, &urls, &prompt).await?;
         emit_extract_output(cfg, &result)?;
         if result.total_items == 0 {
             return Err(anyhow::anyhow!(
@@ -100,6 +90,25 @@ pub fn run_extract<'a>(cfg: &'a Config, service_context: &'a ServiceContext) -> 
         }
         Ok(())
     })
+}
+
+fn extract_progress_mode(cfg: &Config, stderr_is_tty: bool) -> ProgressMode {
+    ProgressMode::for_config(cfg, stderr_is_tty)
+}
+
+async fn execute_waited_extract(
+    cfg: &Config,
+    urls: &[String],
+    prompt: &str,
+) -> Result<axon_api::job_dto::ExtractSyncResult, Box<dyn Error>> {
+    if extract_progress_mode(cfg, std::io::stderr().is_terminal()) == ProgressMode::Silent {
+        return extract_service::extract_sync(cfg, urls, prompt).await;
+    }
+    let (progress_tx, progress_rx) =
+        tokio::sync::watch::channel(extract_service::ExtractProgress::new(urls.len()));
+    let mut session = ExtractProgressSession::new(cfg, progress_rx, urls.len());
+    let work = extract_service::extract_sync_with_progress(cfg, urls, prompt, Some(progress_tx));
+    session.run_until(work).await
 }
 
 async fn maybe_handle_extract_subcommand(

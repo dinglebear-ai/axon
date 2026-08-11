@@ -131,3 +131,20 @@ fn batch_uses_one_most_recent_active_target() {
         Some("b")
     );
 }
+
+#[test]
+fn extract_progress_reports_completed_urls_and_cumulative_items() {
+    let mut model = WaitViewModel::source("2 URLs", None);
+    let progress = ExtractProgress::new(2).completed_url("https://example.com/a", 4);
+    assert!(model.apply_extract_progress(&progress));
+    let active = model.active.expect("active extract progress");
+    assert_eq!(active.phase, OperatorPhase::Extract);
+    assert_eq!(
+        (active.done, active.total, active.unit),
+        (1, Some(2), "URLs")
+    );
+    assert_eq!(
+        active.current.as_deref(),
+        Some("last completed: https://example.com/a · 4 items")
+    );
+}

@@ -5,6 +5,30 @@ use super::{
 use axon_core::config::Config;
 use axon_extract::ScrapedDoc;
 
+use super::ExtractProgress;
+
+#[test]
+fn completed_extract_run_advances_urls_and_items() {
+    let prior = ExtractProgress::new(3);
+    let next = prior.completed_url("https://example.com/a", 7);
+    assert_eq!(next.urls_total, 3);
+    assert_eq!(next.urls_done, 1);
+    assert_eq!(next.items_done, 7);
+    assert_eq!(
+        next.last_completed_url.as_deref(),
+        Some("https://example.com/a")
+    );
+}
+
+#[test]
+fn extract_progress_is_monotonic_across_out_of_order_completion() {
+    let progress = ExtractProgress::new(2)
+        .completed_url("https://example.com/b", 3)
+        .completed_url("https://example.com/a", 1);
+    assert_eq!(progress.urls_done, 2);
+    assert_eq!(progress.items_done, 4);
+}
+
 #[tokio::test]
 async fn extract_summary_redacts_secrets_before_writing() {
     let output_root = tempfile::tempdir().expect("output root");
