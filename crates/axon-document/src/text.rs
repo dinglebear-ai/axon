@@ -48,6 +48,34 @@ pub(crate) fn source_range(text: &str, start: usize, end: usize) -> SourceRange 
     }
 }
 
+pub(crate) fn source_range_from_positions(
+    start: usize,
+    end: usize,
+    line_start: u32,
+    line_end: u32,
+    char_start: u64,
+    char_end: u64,
+) -> SourceRange {
+    SourceRange {
+        line_start: Some(line_start),
+        line_end: Some(line_end),
+        byte_start: Some(start as u64),
+        byte_end: Some(end as u64),
+        char_start: Some(char_start),
+        char_end: Some(char_end),
+        time_start_ms: None,
+        time_end_ms: None,
+        dom_selector: None,
+        json_pointer: None,
+        yaml_path: None,
+        xml_xpath: None,
+        csv_row: None,
+        session_turn_id: None,
+        turn_start: None,
+        turn_end: None,
+    }
+}
+
 fn paragraphs(text: &str) -> Vec<(usize, usize)> {
     let mut spans = Vec::new();
     let mut start = None;

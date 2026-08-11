@@ -57,6 +57,7 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     // Closed port → derivation fails fast → fallback identity.
     cfg.tei_url = "http://127.0.0.1:1".to_string();
     cfg.tei_request_timeout_ms = 250;
+    cfg.embed_prep_concurrency = 3;
 
     let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
     // The ledger binds to this shared pool (no separate ledger.db, no eager I/O).
@@ -77,6 +78,7 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     // Fallback identity when the live provider cannot be reached.
     assert_eq!(runtime.embedding_model, "Qwen3-Embedding-0.6B");
     assert_eq!(runtime.embedding_dimensions, 1024);
+    assert_eq!(runtime.document_prepare_concurrency, 3);
 }
 
 #[tokio::test]

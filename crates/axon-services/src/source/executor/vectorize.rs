@@ -1,9 +1,9 @@
 use axon_api::source::*;
-use axon_document::{DocumentPreparer, PrepareSourceDocumentRequest};
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_ledger::store::LedgerStore;
 use uuid::Uuid;
 
+use super::preparation::prepare_documents;
 use super::progress::{PipelineProgress, ProgressCoordinator};
 use super::vector_points::{VectorPointBuild, point_batch};
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, timestamp};
@@ -49,7 +49,13 @@ pub(super) async fn prepare_embed_publish(
                 "preparing source documents",
             )
             .await;
-        let prepared = prepare_documents(source_batch, generation, enrichment_graph)?;
+        let prepared = prepare_documents(
+            source_batch,
+            generation,
+            enrichment_graph,
+            runtime.document_prepare_concurrency,
+        )
+        .await?;
         let chunk_count = prepared
             .iter()
             .map(|document| document.chunks.len() as u64)
@@ -101,38 +107,6 @@ pub(super) async fn prepare_embed_publish(
     }
     write_document_statuses(runtime.ledger.as_ref(), &output.document_statuses).await?;
     Ok(output)
-}
-
-fn prepare_documents(
-    documents: &[SourceDocument],
-    generation: &SourceGenerationId,
-    enrichment_graph: &std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
-) -> anyhow::Result<Vec<PreparedDocument>> {
-    let preparer = DocumentPreparer::default();
-    documents
-        .iter()
-        .cloned()
-        .map(|document| {
-            let item_key = document.source_item_key.0.clone();
-            let graph_candidates = enrichment_graph
-                .get(&document.source_item_key)
-                .cloned()
-                .unwrap_or_default();
-            let prepared = preparer
-                .prepare(PrepareSourceDocumentRequest {
-                    document,
-                    generation: generation.clone(),
-                    profile: None,
-                    parse_facts: Vec::new(),
-                    graph_candidates,
-                    warnings: Vec::new(),
-                    errors: Vec::new(),
-                })
-                .map_err(|error| anyhow::anyhow!("failed to prepare {item_key}: {error}"))?
-                .document;
-            Ok(prepared)
-        })
-        .collect()
 }
 
 fn chunk_batches(documents: Vec<PreparedDocument>) -> Vec<Vec<PreparedDocument>> {

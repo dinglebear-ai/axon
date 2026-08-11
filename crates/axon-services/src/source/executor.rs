@@ -4,6 +4,7 @@ mod created_generation;
 mod generation_state;
 mod helpers;
 mod metadata;
+mod preparation;
 mod progress;
 mod publish;
 mod reuse;
