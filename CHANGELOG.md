@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.17] - 2026-08-11
+
+### Fixed
+
+- Make Ask citation repair distinguish multiple chunks of one document from genuinely distinct source documents, preserving the existing multi-source grounding threshold without adding unsupported citations.
+
 ## [7.2.16] - 2026-08-11
 
 ### Fixed

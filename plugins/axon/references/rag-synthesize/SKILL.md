@@ -33,6 +33,8 @@ The retrieved context uses this exact structure:
 Where <Type> is "Top Chunk", "Source Document", or "Supplemental Chunk". The [S<n>]
 identifier is the citation key. All three types carry equal evidentiary weight. Use
 [S1], [S2], etc. exactly as shown — do not renumber, reformat, or omit the brackets.
+Multiple [S#] identifiers with the same <source> belong to one document; they are separate
+chunks, not distinct sources.
 
 ## STEP 1 — RELEVANCE CHECK
 
@@ -77,9 +79,12 @@ IF RELEVANT CONTEXT EXISTS:
    If multiple facts in a sentence come from the same source, one citation at the end is enough.
    Use inline citations like [S1] or [S2][S4]. Restatements, transitions, and meta-commentary
    do not require citations.
-   For non-trivial answers, cite at least two distinct source identifiers when two or more
-   relevant source identifiers are present in the retrieved context. Do not satisfy this by
-   citing duplicate URL variants of the same page; use genuinely different relevant sources.
+   For non-trivial answers, cite evidence from at least two different <source> values when
+   two or more relevant source documents are present in the retrieved context. Do not satisfy
+   this by citing multiple chunks or duplicate URL variants of the same document; use
+   genuinely different relevant sources. Never attach an unsupported citation merely to
+   satisfy the count; if fewer than two source documents support the answer, use the
+   insufficient-evidence branch.
 3. If the context is partially complete, insert a "Gaps:" paragraph immediately before
    the "## Sources" section:
 

@@ -31,6 +31,7 @@ use axon_api::AskResult;
 use axon_core::config::Config;
 use axon_core::logging::{log_info, log_warn};
 use axon_llm as llm;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::AskContext;
 use super::assemble::assemble_ask_result;
@@ -235,16 +236,7 @@ async fn retry_answer_for_citation_validation(
     let mut repair_cfg = cfg.clone();
     repair_cfg.ask_stream = false;
     repair_cfg.json_output = true;
-    let repair_query = format!(
-        "{query}\n\nYour previous answer failed Axon citation validation:\n{}\n\nRewrite the answer from scratch using the retrieved context. Cite at least two distinct source documents when the context provides them, and keep every factual claim grounded in [S#] citations.\n\nPrevious invalid answer:\n{}",
-        validation
-            .issues
-            .iter()
-            .map(|issue| format!("- {issue}"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        invalid_answer.trim()
-    );
+    let repair_query = build_citation_repair_query(query, context, invalid_answer, validation);
     let repaired = ask_llm_answer(&repair_cfg, &repair_query, context)
         .await
         .map_err(|e| anyhow::anyhow!("citation repair retry failed: {e}"))?;
@@ -268,6 +260,78 @@ async fn retry_answer_for_citation_validation(
         ));
         Ok(None)
     }
+}
+
+fn build_citation_repair_query(
+    query: &str,
+    context: &str,
+    invalid_answer: &str,
+    validation: &normalize::CitationValidationSummary,
+) -> String {
+    let source_map = normalize::parse_context_source_map(context);
+    let mut group_index_by_identity: BTreeMap<String, usize> = BTreeMap::new();
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    let mut group_by_source_id: BTreeMap<usize, usize> = BTreeMap::new();
+    for (source_id, source) in &source_map {
+        let identity = normalize::canonical_source_identity(source);
+        let group_index = match group_index_by_identity.get(&identity).copied() {
+            Some(index) => index,
+            None => {
+                let index = groups.len();
+                groups.push(Vec::new());
+                group_index_by_identity.insert(identity, index);
+                index
+            }
+        };
+        groups[group_index].push(*source_id);
+        group_by_source_id.insert(*source_id, group_index);
+    }
+
+    let group_lines = groups
+        .iter()
+        .enumerate()
+        .map(|(index, source_ids)| {
+            let citations = source_ids
+                .iter()
+                .map(|id| format!("[S{id}]"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("- Document group D{}: {citations}", index + 1)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let cited_groups = normalize::extract_cited_source_ids(invalid_answer)
+        .into_iter()
+        .filter_map(|source_id| group_by_source_id.get(&source_id).copied())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|index| format!("D{}", index + 1))
+        .collect::<Vec<_>>();
+    let cited_group_summary = if cited_groups.is_empty() {
+        "none".to_string()
+    } else {
+        cited_groups.join(", ")
+    };
+
+    format!(
+        "{query}\n\nYour previous answer failed Axon citation validation:\n{}\n\n\
+Retrieved source-document groups (derived from the same canonical identities used by validation):\n{}\n\
+The previous answer cited document groups: {cited_group_summary}.\n\n\
+Rewrite the answer from scratch using the retrieved context. Citations within one document group do not count as distinct sources. For a non-trivial answer, cite evidence from at least two different document groups when two or more relevant groups are available. Every factual claim must remain grounded in its supporting [S#] citation. Never attach a citation merely to satisfy the count; if fewer than two groups contain relevant support, state that the indexed evidence is insufficient.\n\n\
+Previous invalid answer:\n{}",
+        validation
+            .issues
+            .iter()
+            .map(|issue| format!("- {issue}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        if group_lines.is_empty() {
+            "- No mapped source documents.".to_string()
+        } else {
+            group_lines
+        },
+        invalid_answer.trim()
+    )
 }
 
 fn print_normalized_stream_correction(answer: &str) {
