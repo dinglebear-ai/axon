@@ -22,6 +22,34 @@ fn value_contains_secret_matches_bearer_and_bare_tokens() {
 }
 
 #[test]
+fn secret_value_detection_preserves_authentication_documentation() {
+    for prose in [
+        "Bearer authentication is supported for remote clients.",
+        "Set the Authorization header before making a request.",
+        "Authorization providers can enforce scopes.",
+        "curl -H 'Authorization: Bearer <token>' https://example.com",
+        "curl -H 'Authorization: Bearer ${ACCESS_TOKEN}' https://example.com",
+    ] {
+        assert!(
+            !value_contains_secret(prose),
+            "public documentation was classified as a secret: {prose}"
+        );
+    }
+}
+
+#[test]
+fn url_credential_detection_preserves_documented_placeholders() {
+    for example in [
+        "https://<username>:<password>@example.com",
+        "https://${USER}:${PASSWORD}@example.com",
+        "https://{{ username }}:{{ password }}@example.com",
+        r#"https://component.com","label":{"@example.com"#,
+    ] {
+        assert_eq!(secret_value_detector(example), None, "rejected {example}");
+    }
+}
+
+#[test]
 fn value_is_absolute_local_path_matches_home_and_windows_paths() {
     assert!(value_is_absolute_local_path("/home/jacob/workspace"));
     assert!(value_is_absolute_local_path(r"C:\Users\jacob"));
@@ -32,6 +60,30 @@ fn value_is_absolute_local_path_matches_home_and_windows_paths() {
 fn raw_dotenv_assignment_matches_upper_snake_case_keys() {
     assert!(raw_dotenv_assignment("API_KEY=abc123"));
     assert!(!raw_dotenv_assignment("just a sentence = not env"));
+}
+
+#[test]
+fn dotenv_detection_requires_a_secret_like_key() {
+    for assignment in [
+        "PORT=3000",
+        "DEBUG=true",
+        "HOST=127.0.0.1",
+        "FASTMCP_TRANSPORT=http",
+        "FEATURE_AUTH=true",
+    ] {
+        assert!(
+            !raw_dotenv_assignment(assignment),
+            "benign configuration was classified as a secret: {assignment}"
+        );
+        assert!(!value_contains_secret(assignment));
+    }
+}
+
+#[test]
+fn assignment_detection_preserves_uri_schemes_and_variable_references() {
+    for example in ["secret://provider/path", "token=jwt_access_token"] {
+        assert_eq!(secret_value_detector(example), None, "rejected {example}");
+    }
 }
 
 #[test]

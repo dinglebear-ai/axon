@@ -2,35 +2,44 @@ use std::sync::Arc;
 
 #[cfg(test)]
 mod snapshot_test_hook {
+    use axon_api::source::JobId;
     use std::sync::{Arc, Mutex, OnceLock};
     use tokio::sync::Notify;
 
     pub(super) struct Hook {
+        pub job_id: JobId,
         pub entered: Arc<Notify>,
         pub resume: Arc<Notify>,
     }
 
     static HOOK: OnceLock<Mutex<Option<Hook>>> = OnceLock::new();
 
-    pub(super) fn install() -> (Arc<Notify>, Arc<Notify>) {
+    pub(super) fn install(job_id: JobId) -> (Arc<Notify>, Arc<Notify>) {
         let entered = Arc::new(Notify::new());
         let resume = Arc::new(Notify::new());
         *HOOK
             .get_or_init(|| Mutex::new(None))
             .lock()
             .expect("hook lock") = Some(Hook {
+            job_id,
             entered: Arc::clone(&entered),
             resume: Arc::clone(&resume),
         });
         (entered, resume)
     }
 
-    pub(super) async fn pause_once_after_read() {
-        let hook = HOOK
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .expect("hook lock")
-            .take();
+    pub(super) async fn pause_once_after_read(job_id: JobId) {
+        let hook = {
+            let mut guard = HOOK
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .expect("hook lock");
+            if guard.as_ref().is_some_and(|hook| hook.job_id == job_id) {
+                guard.take()
+            } else {
+                None
+            }
+        };
         if let Some(hook) = hook {
             hook.entered.notify_one();
             hook.resume.notified().await;
@@ -59,6 +68,8 @@ mod heartbeat;
 mod observe;
 #[path = "unified/ops.rs"]
 mod ops;
+#[path = "unified/ops_helpers.rs"]
+mod ops_helpers;
 #[path = "unified/pagination.rs"]
 pub(crate) mod pagination;
 #[path = "unified/recovery.rs"]
@@ -69,6 +80,8 @@ mod request_read;
 pub(crate) mod retention;
 #[path = "unified/schema.rs"]
 mod schema;
+#[path = "unified/terminal_warnings.rs"]
+mod terminal_warnings;
 
 #[derive(Clone)]
 pub struct SqliteUnifiedJobStore {

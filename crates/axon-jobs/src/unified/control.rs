@@ -64,7 +64,7 @@ impl SqliteUnifiedJobStore {
             .ok_or_else(|| missing_job(job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
         #[cfg(test)]
-        super::snapshot_test_hook::pause_once_after_read().await;
+        super::snapshot_test_hook::pause_once_after_read(job_id).await;
         if current != LifecycleStatus::Waiting {
             return Err(ApiError::new(
                 "job_cooling.not_waiting",

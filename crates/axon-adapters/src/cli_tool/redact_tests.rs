@@ -19,6 +19,14 @@ fn leaves_clean_output_untouched() {
 #[test]
 fn redacts_password_shaped_lines() {
     let (out, redacted) = redact_text("db_password=hunter2");
-    assert_eq!(out, "[redacted-secret]");
+    assert_eq!(out, "db_password=[REDACTED]");
     assert!(redacted);
+}
+
+#[test]
+fn preserves_authentication_documentation_and_benign_configuration() {
+    let input = "Bearer authentication uses an Authorization header.\nPORT=3000";
+    let (out, redacted) = redact_text(input);
+    assert_eq!(out, input);
+    assert!(!redacted);
 }

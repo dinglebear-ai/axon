@@ -26,7 +26,7 @@ fn secret_value_is_scrubbed_and_reported_redacted() {
         "note": "authorization: bearer abcdef0123456789abcdef",
     });
     let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
-    assert_eq!(out["note"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(out["note"], json!("authorization: bearer [REDACTED]"));
     assert_eq!(report.status(), RedactionStatus::Redacted);
     assert!(report.redacted_fields.contains(&"note".to_string()));
     assert!(
@@ -95,7 +95,7 @@ fn nested_secret_value_is_scrubbed_with_path() {
         "meta": { "detail": "api_key=abcdef0123456789abcdef" },
     });
     let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
-    assert_eq!(out["meta"]["detail"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(out["meta"]["detail"], json!("api_key=[REDACTED]"));
     assert!(report.redacted_fields.contains(&"meta.detail".to_string()));
 }
 
@@ -136,7 +136,7 @@ fn redact_text_scrubs_secrets_and_local_paths() {
     let c = ctx();
     assert_eq!(
         r.redact_text("authorization: bearer abcdef0123456789abcd", &c),
-        REDACTION_PLACEHOLDER
+        "authorization: bearer [REDACTED]"
     );
     assert_eq!(
         r.redact_text("see /home/jmagar/secret.rs for details", &c),
@@ -154,6 +154,36 @@ fn redact_text_scrubs_secrets_and_local_paths() {
         r.redact_text("see /home/jmagar/notes.md", &allow),
         "see /home/jmagar/notes.md"
     );
+}
+
+#[test]
+fn redact_text_preserves_public_authentication_prose() {
+    let redactor = DefaultRedactor::new();
+    let prose = "Bearer authentication uses the Authorization header.";
+    assert_eq!(redactor.redact_text(prose, &ctx()), prose);
+}
+
+#[test]
+fn redact_text_replaces_only_the_secret_span() {
+    let redactor = DefaultRedactor::new();
+    let input = "request failed Authorization: Bearer abc123; retrying safely";
+    assert_eq!(
+        redactor.redact_text(input, &ctx()),
+        "request failed Authorization: Bearer [REDACTED]; retrying safely"
+    );
+}
+
+#[test]
+fn redact_json_replaces_only_the_secret_span() {
+    let input = json!({
+        "message": "request failed Authorization: Bearer abc123; retrying safely"
+    });
+    let (output, report) = DefaultRedactor::new().redact_json(input, &ctx());
+    assert_eq!(
+        output["message"],
+        "request failed Authorization: Bearer [REDACTED]; retrying safely"
+    );
+    assert_eq!(report.status(), RedactionStatus::Redacted);
 }
 
 #[test]
@@ -187,7 +217,7 @@ fn cli_json_output_secret_fixture_fails_before_render() {
     let context = RedactionContext::cli_json();
     assert_eq!(context.surface, RedactionSurface::CliJson);
     let (out, report) = DefaultRedactor::new().redact_json(payload, &context);
-    assert_eq!(out["detail"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(out["detail"], json!("authorization: bearer [REDACTED]"));
     assert_eq!(report.status(), RedactionStatus::Redacted);
 }
 
@@ -205,7 +235,10 @@ fn artifact_metadata_secret_fixture_fails_before_write() {
     let context = RedactionContext::artifact_metadata();
     assert_eq!(context.surface, RedactionSurface::Artifacts);
     let (out, report) = DefaultRedactor::new().redact_json(metadata, &context);
-    assert_eq!(out["summary"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(
+        out["summary"],
+        json!("rotated authorization: bearer [REDACTED]")
+    );
     assert_eq!(report.status(), RedactionStatus::Redacted);
 }
 
@@ -370,7 +403,10 @@ fn public_write_returns_bounded_contract_report() {
     )
     .expect("ordinary secret text is scrubbed");
 
-    assert_eq!(write.payload["message"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(
+        write.payload["message"],
+        json!("authorization: bearer [REDACTED]")
+    );
     assert_eq!(write.redaction.redaction_status, RedactionStatus::Redacted);
     assert_eq!(write.redaction.redaction_version, REDACTION_VERSION);
     assert_eq!(write.redaction.redacted_field_count, 1);

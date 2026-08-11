@@ -438,6 +438,27 @@ fn document_body_examples_do_not_trigger_metadata_redaction_guardrails() {
 }
 
 #[test]
+fn public_authentication_documentation_is_indexed() {
+    let mut document = test_prepared_document();
+    document.chunks[0].content =
+        "Bearer authentication uses the Authorization header.\nPORT=3000".to_string();
+    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
+
+    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
+        .build_with_skipped_count()
+        .unwrap();
+
+    assert_eq!(skipped_redaction, 0);
+    assert_eq!(batch.points.len(), 2);
+    assert!(
+        batch.points[0].payload["chunk_text"]
+            .as_str()
+            .unwrap()
+            .contains("Bearer authentication")
+    );
+}
+
+#[test]
 fn clean_document_stamps_redaction_status_clean() {
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
@@ -467,7 +488,10 @@ fn secret_metadata_value_is_redacted_and_status_reflects_it() {
         .build()
         .unwrap();
 
-    assert_eq!(batch.points[0].payload["web_title"], "[REDACTED]");
+    assert_eq!(
+        batch.points[0].payload["web_title"],
+        "authorization: bearer [REDACTED]"
+    );
     assert_eq!(batch.points[0].payload["redaction_status"], "redacted");
     // The other chunk carried no secret and stays clean.
     assert_eq!(batch.points[1].payload["redaction_status"], "clean");

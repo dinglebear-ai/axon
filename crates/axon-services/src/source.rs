@@ -30,6 +30,7 @@ pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
 mod executor;
+pub mod foreground_progress;
 pub mod graph;
 pub mod job_tracking;
 pub(crate) mod local_identity;

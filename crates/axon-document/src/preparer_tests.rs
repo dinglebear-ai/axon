@@ -579,6 +579,36 @@ fn small_code_document_from_fragment_prone_adapter_also_uses_windowed_fallback()
 }
 
 #[test]
+fn large_html_document_still_removes_non_content_payloads() {
+    let hydration = "window.__next_f.push(['hydration-payload']);".repeat(20_000);
+    let html = format!(
+        "<html><body><main>Authorization documentation</main><script>{hydration}</script></body></html>"
+    );
+    let request = request(
+        ContentKind::Html,
+        &html,
+        "gen-large-html",
+        ChunkingProfile::HtmlArticle,
+    );
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request)
+        .unwrap()
+        .document;
+    let content = prepared
+        .chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(content.contains("Authorization documentation"));
+    assert!(!content.contains("window.__next_f"));
+    assert!(!content.contains("hydration-payload"));
+    assert!(prepared.chunks.len() <= 3);
+}
+
+#[test]
 fn markdown_web_document_projects_structured_payload_into_chunk_metadata() {
     // Dead-code recovery (#298): a `"web"`-family document routed to
     // `MarkdownSections` (the common web/crawl case) never passes

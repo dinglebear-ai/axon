@@ -8,11 +8,12 @@ use std::sync::LazyLock;
 /// Field names that are secret-shaped but not hard-forbidden. Non-fatal:
 /// callers typically drop the field rather than reject the whole write.
 pub fn secret_like_field_name(field: &str) -> bool {
-    let normalized = field.to_ascii_lowercase();
+    let normalized = field.to_ascii_lowercase().replace('-', "_");
     SECRET_LIKE_FIELD_FRAGMENTS
         .iter()
         .any(|fragment| normalized.contains(fragment))
         || normalized.ends_with("_token")
+        || normalized == "token"
         || normalized == "authorization"
         || normalized == "proxy-authorization"
 }
@@ -28,16 +29,61 @@ pub fn forbidden_field_name(field: &str) -> bool {
 
 /// Whether a free-text string carries a secret-shaped value.
 pub fn value_contains_secret(value: &str) -> bool {
-    let normalized = value.to_ascii_lowercase();
-    FORBIDDEN_VALUE_FRAGMENTS
-        .iter()
-        .any(|fragment| normalized.contains(fragment))
-        || raw_dotenv_assignment(value)
-        || contains_bare_secret_token(value)
-        || contains_pem_private_key_block(value)
-        || contains_url_embedded_credentials(value)
-        || looks_like_bare_cookie_string(value)
-        || normalized.contains("adapter_response")
+    secret_value_detector(value).is_some()
+}
+
+/// Return a stable, value-free detector identifier for a secret-bearing
+/// string. Callers may log this identifier, but must never log the matched
+/// value.
+pub fn secret_value_detector(value: &str) -> Option<&'static str> {
+    if contains_contextual_authorization_value(value) {
+        Some("authorization_value")
+    } else if contains_contextual_cookie_value(value) || looks_like_bare_cookie_string(value) {
+        Some("cookie_value")
+    } else if contains_secret_assignment(value) {
+        Some("secret_assignment")
+    } else if contains_bare_secret_token(value) {
+        Some("bare_secret_token")
+    } else if contains_pem_private_key_block(value) {
+        Some("pem_private_key")
+    } else if contains_url_embedded_credentials(value) {
+        Some("url_credentials")
+    } else {
+        None
+    }
+}
+
+fn contains_contextual_cookie_value(value: &str) -> bool {
+    COOKIE_VALUE_RE.captures_iter(value).any(|captures| {
+        captures
+            .name("value")
+            .is_some_and(|matched| !is_documented_secret_placeholder(matched.as_str()))
+    })
+}
+
+/// Whether free text contains an Authorization/Proxy-Authorization field with
+/// a concrete value. Merely discussing Bearer authentication or the
+/// Authorization header is not secret evidence, and explicit documentation
+/// placeholders are preserved.
+pub fn contains_contextual_authorization_value(value: &str) -> bool {
+    AUTHORIZATION_VALUE_RE.captures_iter(value).any(|captures| {
+        authorization_capture_value(&captures)
+            .is_some_and(|matched| !is_documented_secret_placeholder(matched))
+    })
+}
+
+fn contains_secret_assignment(value: &str) -> bool {
+    SECRET_ASSIGNMENT_RE.captures_iter(value).any(|captures| {
+        let Some(key) = captures.name("key").map(|matched| matched.as_str()) else {
+            return false;
+        };
+        let Some(raw_value) = captures.name("value").map(|matched| matched.as_str()) else {
+            return false;
+        };
+        !is_authorization_field(key)
+            && secret_like_field_name(key)
+            && !is_documented_assignment_placeholder(key, raw_value)
+    })
 }
 
 /// Whether `value` contains a PEM-encoded private-key block
@@ -58,10 +104,22 @@ pub fn contains_pem_private_key_block(value: &str) -> bool {
 /// username and password authority parts" wording excludes.
 pub fn contains_url_embedded_credentials(value: &str) -> bool {
     static URL_CREDENTIALS_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s/:@]+:[^\s/@]+@[^\s/]+")
-            .expect("url credentials regex is valid")
+        Regex::new(
+            r"[A-Za-z][A-Za-z0-9+.\-]*://(?P<username>[A-Za-z0-9._~!$&'()*+,;=%-]+):(?P<password>[A-Za-z0-9._~!$&'()*+,;=:%-]+)@(?P<host>[A-Za-z0-9.-]+)",
+        )
+        .expect("url credentials regex is valid")
     });
-    URL_CREDENTIALS_RE.is_match(value)
+    URL_CREDENTIALS_RE.captures_iter(value).any(|captures| {
+        let username = captures
+            .name("username")
+            .map(|matched| matched.as_str())
+            .unwrap_or_default();
+        let password = captures
+            .name("password")
+            .map(|matched| matched.as_str())
+            .unwrap_or_default();
+        !is_documented_secret_placeholder(username) && !is_documented_secret_placeholder(password)
+    })
 }
 
 /// Whether `value` looks like a bare (unlabeled) `Cookie`/`Set-Cookie`
@@ -195,8 +253,161 @@ pub fn raw_dotenv_assignment(value: &str) -> bool {
                 .chars()
                 .next()
                 .is_some_and(|ch| ch.is_ascii_uppercase() || ch == '_')
+            && secret_like_field_name(key)
+            && !is_documented_assignment_placeholder(key, raw_value)
     })
 }
+
+fn is_documented_secret_placeholder(value: &str) -> bool {
+    let trimmed = value
+        .trim()
+        .trim_matches(|ch: char| matches!(ch, '\'' | '"' | '`' | ',' | ';'));
+    if trimmed.is_empty() || trimmed == "..." {
+        return true;
+    }
+    if (trimmed.starts_with('<') && trimmed.ends_with('>'))
+        || (trimmed.starts_with("${") && trimmed.ends_with('}'))
+        || (trimmed.starts_with("{{") && trimmed.ends_with("}}"))
+    {
+        return true;
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    normalized == "[redacted]"
+        || normalized.starts_with("your-")
+        || normalized.starts_with("your_")
+        || normalized.starts_with("replace-")
+        || normalized.starts_with("replace_")
+        || normalized == "placeholder"
+}
+
+fn is_documented_assignment_placeholder(key: &str, value: &str) -> bool {
+    if is_documented_secret_placeholder(value) || value.trim_start().starts_with("//") {
+        return true;
+    }
+    if !secret_like_field_name(key) {
+        return false;
+    }
+    let normalized = value
+        .trim()
+        .trim_matches(|ch: char| matches!(ch, '\'' | '"' | '`' | ',' | ';'))
+        .to_ascii_lowercase();
+    [
+        "access_token",
+        "refresh_token",
+        "id_token",
+        "api_key",
+        "secret_key",
+        "client_secret",
+        "password",
+    ]
+    .iter()
+    .any(|name| normalized == *name || normalized.ends_with(&format!("_{name}")))
+}
+
+pub(super) fn redact_secret_spans(value: &str) -> String {
+    let authorization_redacted =
+        AUTHORIZATION_VALUE_RE.replace_all(value, |captures: &regex::Captures| {
+            let raw_value = authorization_capture_value(captures).unwrap_or_default();
+            if is_documented_secret_placeholder(raw_value) {
+                captures[0].to_string()
+            } else {
+                format!(
+                    "{}{}",
+                    captures
+                        .name("prefix")
+                        .map_or("", |matched| matched.as_str()),
+                    super::REDACTION_PLACEHOLDER
+                )
+            }
+        });
+    let cookie_redacted =
+        COOKIE_VALUE_RE.replace_all(&authorization_redacted, |captures: &regex::Captures| {
+            let raw_value = captures
+                .name("value")
+                .map(|matched| matched.as_str())
+                .unwrap_or_default();
+            if is_documented_secret_placeholder(raw_value) {
+                captures[0].to_string()
+            } else {
+                format!(
+                    "{}{}",
+                    captures
+                        .name("prefix")
+                        .map_or("", |matched| matched.as_str()),
+                    super::REDACTION_PLACEHOLDER
+                )
+            }
+        });
+    let assignments_redacted =
+        SECRET_ASSIGNMENT_RE.replace_all(&cookie_redacted, |captures: &regex::Captures| {
+            let key = captures
+                .name("key")
+                .map(|matched| matched.as_str())
+                .unwrap_or_default();
+            let raw_value = captures
+                .name("value")
+                .map(|matched| matched.as_str())
+                .unwrap_or_default();
+            if !is_authorization_field(key)
+                && secret_like_field_name(key)
+                && !is_documented_assignment_placeholder(key, raw_value)
+            {
+                format!(
+                    "{}{}",
+                    captures
+                        .name("prefix")
+                        .map_or("", |matched| matched.as_str()),
+                    super::REDACTION_PLACEHOLDER
+                )
+            } else {
+                captures[0].to_string()
+            }
+        });
+    KNOWN_SECRET_TOKEN_RE
+        .replace_all(&assignments_redacted, super::REDACTION_PLACEHOLDER)
+        .into_owned()
+}
+
+static KNOWN_SECRET_TOKEN_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?x)
+          AIza[0-9A-Za-z_\-]{35}
+        | ya29\.[\w\-]+
+        | \bsk-[A-Za-z0-9][A-Za-z0-9_\-]*
+        | \bgh[pousr]_[A-Za-z0-9]+
+        | \batk_[A-Za-z0-9_\-]+
+        ",
+    )
+    .expect("known secret token regex is valid")
+});
+
+static AUTHORIZATION_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\b(?P<prefix>(?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|token)\s+)?)(?P<value>[^\s'\";,]+)"#,
+    )
+    .expect("authorization value regex is valid")
+});
+
+static COOKIE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\b(?P<prefix>(?:set-cookie|cookie)\s*:\s*)(?P<value>[^\s'\";,]+)"#)
+        .expect("cookie value regex is valid")
+});
+
+fn authorization_capture_value<'a>(captures: &'a regex::Captures<'a>) -> Option<&'a str> {
+    captures.name("value").map(|matched| matched.as_str())
+}
+
+fn is_authorization_field(field: &str) -> bool {
+    matches!(
+        field.to_ascii_lowercase().replace('-', "_").as_str(),
+        "authorization" | "proxy_authorization"
+    )
+}
+
+static SECRET_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)\b(?P<prefix>(?P<key>[a-z_][a-z0-9_-]*)\s*[:=]\s*)(?P<value>[^\s;,]+)")
+        .expect("secret assignment regex is valid")
+});
 
 /// Whether `value` contains a bare secret token (`sk-...`, `ghp_...`, …) with
 /// no surrounding marker (`KEY=`/`Authorization:`).
@@ -267,6 +478,10 @@ pub const SECRET_LIKE_FIELD_FRAGMENTS: &[&str] = &[
     "client_secret",
 ];
 
+/// Vocabulary used by generated contracts and compatibility consumers.
+/// Runtime validation does not reject these as context-free substrings; it
+/// routes values through [`secret_value_detector`] so the header or assignment
+/// must contain concrete secret material.
 pub const FORBIDDEN_VALUE_FRAGMENTS: &[&str] = &[
     "authorization:",
     "proxy-authorization:",

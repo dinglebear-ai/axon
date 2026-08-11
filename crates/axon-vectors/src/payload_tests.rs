@@ -341,54 +341,63 @@ fn invalid_payload_fixtures_report_the_expected_validation_error() {
             "forbidden_auth_header_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "web_title".to_string(),
+                detector: "authorization_value".to_string(),
             },
         ),
         (
             "forbidden_cookie_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "source_range.headers[0]".to_string(),
+                detector: "cookie_value".to_string(),
             },
         ),
         (
             "forbidden_dotenv_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "source_range.env[0]".to_string(),
+                detector: "secret_assignment".to_string(),
             },
         ),
         (
             "forbidden_home_credential_path_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "chunk_locator.canonical_uri".to_string(),
+                detector: "absolute_local_path".to_string(),
             },
         ),
         (
             "forbidden_raw_html_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "web_title".to_string(),
+                detector: "raw_html_blob".to_string(),
             },
         ),
         (
             "forbidden_adapter_response_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "source_range.adapter_response".to_string(),
+                detector: "forbidden_field_name".to_string(),
             },
         ),
         (
             "forbidden_bare_api_key_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "web_title".to_string(),
+                detector: "bare_secret_token".to_string(),
             },
         ),
         (
             "forbidden_embedded_bare_api_key_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "web_title".to_string(),
+                detector: "bare_secret_token".to_string(),
             },
         ),
         (
             "forbidden_absolute_home_path_value.invalid.json",
             VectorPayloadValidationError::ForbiddenValue {
                 field: "chunk_locator.canonical_uri".to_string(),
+                detector: "absolute_local_path".to_string(),
             },
         ),
     ];
@@ -461,8 +470,13 @@ fn chunk_text_rejects_secret_like_body_values() {
     assert_eq!(
         err,
         VectorPayloadValidationError::ForbiddenValue {
-            field: "chunk_text".to_string()
+            field: "chunk_text".to_string(),
+            detector: "authorization_value".to_string(),
         }
+    );
+    assert!(
+        err.to_string().contains("authorization_value"),
+        "the safe detector ID must survive validation: {err}"
     );
 }
 
@@ -503,7 +517,8 @@ fn typed_chunk_locator_values_reject_local_paths() {
     assert_eq!(
         err,
         VectorPayloadValidationError::ForbiddenValue {
-            field: "chunk_locator.canonical_uri".to_string()
+            field: "chunk_locator.canonical_uri".to_string(),
+            detector: "absolute_local_path".to_string(),
         }
     );
 }

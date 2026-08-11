@@ -31,3 +31,14 @@ fn leaves_clean_payload_untouched() {
     assert_eq!(out, r#"{"body":"ok"}"#);
     assert!(!changed);
 }
+
+#[test]
+fn preserves_authentication_documentation_and_benign_configuration() {
+    let input = r#"{"body":"Bearer authentication uses an Authorization header.\nPORT=3000"}"#;
+    let (out, changed) = redact_mcp_output(input);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["body"],
+        serde_json::json!("Bearer authentication uses an Authorization header.\nPORT=3000")
+    );
+    assert!(!changed);
+}

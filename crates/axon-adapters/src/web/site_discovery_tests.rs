@@ -48,6 +48,7 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
             item("https://example.com/docs/m"),
         ],
         2,
+        false,
     );
 
     assert_eq!(items.len(), 2);
@@ -58,6 +59,37 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
     assert_eq!(
         items[1].canonical_uri.as_str(),
         "https://example.com/docs/m"
+    );
+}
+
+#[test]
+fn docs_discovery_prefers_explicit_markdown_over_the_matching_html_route() {
+    let plan = crate::web_tests::web_plan("https://example.com/docs", SourceScope::Docs);
+    let item = |url: &str| {
+        let web = WebUrlParts::parse(url).unwrap();
+        web_manifest_item(&plan, &web, None, None, None)
+    };
+
+    let items = finalize_items(
+        vec![
+            item("https://example.com/docs/authorization"),
+            item("https://example.com/docs/authorization.md"),
+            item("https://example.com/docs/other"),
+        ],
+        10,
+        true,
+    );
+
+    assert_eq!(items.len(), 2);
+    assert!(
+        items
+            .iter()
+            .any(|item| item.canonical_uri.ends_with("/authorization.md"))
+    );
+    assert!(
+        !items
+            .iter()
+            .any(|item| item.canonical_uri.ends_with("/authorization"))
     );
 }
 

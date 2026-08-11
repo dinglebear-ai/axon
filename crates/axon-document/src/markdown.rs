@@ -82,19 +82,65 @@ pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
 
 pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
     let mut plain = String::with_capacity(text.len());
-    let mut in_tag = false;
-    for ch in text.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => {
-                in_tag = false;
-                plain.push('\n');
-            }
-            _ if !in_tag => plain.push(ch),
-            _ => {}
+    let normalized = text.to_ascii_lowercase();
+    let mut cursor = 0usize;
+
+    while let Some(relative_open) = normalized[cursor..].find('<') {
+        let open = cursor + relative_open;
+        plain.push_str(&text[cursor..open]);
+        let Some(relative_close) = normalized[open + 1..].find('>') else {
+            break;
+        };
+        let close = open + 1 + relative_close;
+        let tag = normalized[open + 1..close].trim_start();
+        let closing = tag.starts_with('/');
+        let name = tag
+            .trim_start_matches('/')
+            .split(|ch: char| ch.is_ascii_whitespace() || ch == '/')
+            .next()
+            .unwrap_or_default();
+
+        if !closing && is_non_content_html_tag(name) && !tag.ends_with('/') {
+            let closing_tag = format!("</{name}");
+            let search_from = close + 1;
+            let Some(relative_end_open) = normalized[search_from..].find(&closing_tag) else {
+                cursor = text.len();
+                break;
+            };
+            let end_open = search_from + relative_end_open;
+            let Some(relative_end_close) = normalized[end_open + closing_tag.len()..].find('>')
+            else {
+                cursor = text.len();
+                break;
+            };
+            cursor = end_open + closing_tag.len() + relative_end_close + 1;
+        } else {
+            cursor = close + 1;
         }
+        plain.push('\n');
     }
-    plain_text_windows(&plain)
+    if cursor < text.len() {
+        plain.push_str(&text[cursor..]);
+    }
+    let visible = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    plain_text_windows(&visible)
+        .into_iter()
+        .map(|mut chunk| {
+            // The visible-text buffer is a lossy DOM projection, so its byte
+            // offsets do not map back to raw HTML. Anchor each derived chunk
+            // to the full source document instead of publishing false or
+            // out-of-bounds offsets from the transformed buffer.
+            chunk.range = source_range(text, 0, text.len());
+            chunk
+        })
+        .collect()
+}
+
+fn is_non_content_html_tag(name: &str) -> bool {
+    matches!(
+        name,
+        "script" | "style" | "template" | "noscript" | "svg" | "canvas"
+    )
 }
 
 /// Extracts a leading `---`-delimited YAML frontmatter block, if present.

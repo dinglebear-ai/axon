@@ -91,13 +91,16 @@ fn redacts_short_prefixed_tokens() {
 #[test]
 fn redacts_authorization_header_value() {
     let out = redact_secrets("request failed Authorization:Bearer sk-secret-value normal");
-    assert!(out.contains("[REDACTED]"), "no redaction: {out}");
-    assert!(out.contains("normal"));
-    assert!(
-        !out.contains("Authorization:Bearer"),
-        "leaked header: {out}"
-    );
+    assert_eq!(out, "request failed Authorization:Bearer [REDACTED] normal");
     assert!(!out.contains("sk-secret-value"), "leaked token: {out}");
+}
+
+#[test]
+fn redacts_assignment_value_without_erasing_the_key() {
+    assert_eq!(
+        redact_secrets("request failed API_KEY=concrete-secret; retrying"),
+        "request failed API_KEY=[REDACTED]; retrying"
+    );
 }
 
 #[test]
@@ -117,14 +120,32 @@ fn redacts_atk_token() {
 }
 
 #[test]
-fn redacts_high_entropy_run() {
-    // 39-char high-entropy run that matches no named prefix (assembled from
-    // halves so no contiguous high-entropy literal sits in source).
+fn preserves_high_entropy_run_without_secret_context() {
+    // Entropy is a secondary signal and cannot classify a value without
+    // secret-like key/path context.
     let blob = format!("{}{}", "Zm9vYmFyMTIzNDU2Nzg", "5MGFiY2RlZmdoaWprbA9");
     assert!(blob.len() >= 32);
     let out = redact_secrets(&format!("opaque {blob} value"));
-    assert!(!out.contains(&blob), "leaked: {out}");
-    assert!(out.contains(REDACTION_PLACEHOLDER));
+    assert_eq!(out, format!("opaque {blob} value"));
+}
+
+#[test]
+fn preserves_context_free_high_entropy_identifiers() {
+    let identifier = format!("{}{}", "Zm9vYmFyMTIzNDU2Nzg", "5MGFiY2RlZmdoaWprbA9");
+    let input = format!("artifact checksum {identifier}");
+    assert_eq!(redact_secrets(&input), input);
+}
+
+#[test]
+fn preserves_documented_secret_placeholders() {
+    for example in [
+        "Authorization: Bearer <token>",
+        "Authorization: Bearer ${ACCESS_TOKEN}",
+        "TOKEN=<your-token>",
+        "API_KEY=${API_KEY}",
+    ] {
+        assert_eq!(redact_secrets(example), example);
+    }
 }
 
 #[test]
@@ -138,32 +159,30 @@ fn redacts_low_entropy_structured_secret() {
 }
 
 #[test]
-fn high_entropy_fallback_respects_32_char_length_floor() {
-    // 31 distinct-ish chars: high entropy but below the `{32,}` floor → kept.
+fn context_free_entropy_never_redacts_identifiers() {
     let short = "abcdefghijklmnopqrstuvwxyz01234"; // 31 chars
     assert_eq!(short.len(), 31);
-    assert_eq!(redact_secrets(short), short, "31-char run should be kept");
+    assert_eq!(redact_secrets(short), short);
 
-    // 32 chars: now over the floor → redacted.
     let long = "abcdefghijklmnopqrstuvwxyz012345"; // 32 chars
     assert_eq!(long.len(), 32);
-    assert_eq!(redact_secrets(long), REDACTION_PLACEHOLDER);
+    assert_eq!(redact_secrets(long), long);
 }
 
 #[test]
 fn redacts_key_value_assignment_rules() {
-    for raw in [
-        "OPENAI_API_KEY=sk-secret", // gitleaks:allow — synthetic test fixture
-        "TOKEN=atk_token",          // gitleaks:allow — synthetic test fixture
-        "MY_SECRET=hunter2",        // gitleaks:allow — synthetic test fixture
-        "token=abc123",             // gitleaks:allow — synthetic test fixture
+    for (raw, expected) in [
+        ("OPENAI_API_KEY=sk-secret", "OPENAI_API_KEY=[REDACTED]"), // gitleaks:allow
+        ("TOKEN=atk_token", "TOKEN=[REDACTED]"),                   // gitleaks:allow
+        ("MY_SECRET=hunter2", "MY_SECRET=[REDACTED]"),             // gitleaks:allow
+        ("token=abc123", "token=[REDACTED]"),                      // gitleaks:allow
     ] {
         let out = redact_secrets(raw);
-        assert_eq!(out, REDACTION_PLACEHOLDER, "unexpected for {raw}: {out}");
+        assert_eq!(out, expected, "unexpected for {raw}: {out}");
     }
     // Case-insensitive marker matching.
     let mixed = redact_secrets("Api_Key=deadbeef"); // gitleaks:allow — synthetic test fixture
-    assert_eq!(mixed, REDACTION_PLACEHOLDER);
+    assert_eq!(mixed, "Api_Key=[REDACTED]");
 }
 
 #[test]

@@ -321,7 +321,7 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
     match stored.content {
         Some(axon_api::source::ContentRef::InlineText { text }) => {
             assert!(text.contains("[REDACTED]") || text.contains("[redacted-secret]"));
-            assert!(!text.contains("Authorization"));
+            assert!(text.contains("Authorization:Bearer"));
             assert!(!text.contains("sk-lane4"));
         }
         other => panic!("expected inline text artifact, got {other:?}"),

@@ -189,6 +189,7 @@ async fn vectorize_batch(
     let VectorPointBuild {
         batch: point_batch,
         skipped_redaction,
+        redaction_skips_by_source_item,
         points_by_document,
     } = point_batch(collection, &documents, &embeddings)?;
     let eligible_chunks = point_batch
@@ -213,6 +214,7 @@ async fn vectorize_batch(
         &eligible_chunks,
         write,
         skipped_redaction,
+        &redaction_skips_by_source_item,
     ))
 }
 
@@ -313,6 +315,7 @@ fn vectorize_result(
     eligible_chunks: &std::collections::BTreeSet<ChunkId>,
     write: VectorStoreWriteResult,
     skipped_redaction: u64,
+    redaction_skips_by_source_item: &std::collections::BTreeMap<SourceItemKey, u64>,
 ) -> VectorizeResult {
     let point_counts = documents
         .iter()
@@ -331,14 +334,31 @@ fn vectorize_result(
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embedding_warnings);
-    if skipped_redaction > 0 {
+    for (source_item_key, count) in redaction_skips_by_source_item {
         result.warnings.push(SourceWarning {
             code: "source.vectorize.redaction_skipped_chunks".to_string(),
             severity: Severity::Warning,
             message: format!(
                 "skipped {} chunk(s) with secret-redaction-forbidden payload values \
                  (not indexed; reduced vector point count accordingly)",
-                skipped_redaction
+                count
+            ),
+            source_item_key: Some(source_item_key.clone()),
+            retryable: false,
+        });
+    }
+    let attributed_skips = redaction_skips_by_source_item
+        .values()
+        .copied()
+        .sum::<u64>();
+    if skipped_redaction > attributed_skips {
+        result.warnings.push(SourceWarning {
+            code: "source.vectorize.redaction_skipped_chunks".to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "skipped {} unattributed chunk(s) with secret-redaction-forbidden payload values \
+                 (not indexed; reduced vector point count accordingly)",
+                skipped_redaction - attributed_skips
             ),
             source_item_key: None,
             retryable: false,
