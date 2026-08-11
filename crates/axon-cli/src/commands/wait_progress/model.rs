@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::time::Duration;
 
 use axon_api::source::{
@@ -7,6 +7,10 @@ use axon_api::source::{
 };
 
 use crate::commands::job_progress::source_unit;
+
+mod batch;
+
+pub(crate) use batch::BatchWaitViewModel;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum OperatorPhase {
@@ -67,6 +71,7 @@ pub(crate) struct WaitViewModel {
     pub milestones: Vec<RenderedMilestone>,
     pub active: Option<ActiveProgress>,
     pub notices: Vec<OperatorNotice>,
+    pub terminal: Option<RenderedMilestone>,
     source_kind: Option<SourceKind>,
     seen_event_ids: HashSet<String>,
     phase_started_at: Option<(OperatorPhase, Duration)>,
@@ -81,6 +86,7 @@ impl WaitViewModel {
             milestones: Vec::new(),
             active: None,
             notices: Vec::new(),
+            terminal: None,
             source_kind: None,
             seen_event_ids: HashSet::new(),
             phase_started_at: None,
@@ -93,16 +99,19 @@ impl WaitViewModel {
 
     pub(crate) fn apply_snapshot(&mut self, update: JobStatusUpdate) -> bool {
         let previous_job_id = self.job_id.replace(update.job_id);
-        let next = (!is_terminal(update.status)).then(|| {
-            active_progress(
-                update.phase,
-                update.counts.as_ref(),
-                update.current.as_ref(),
-                self.source_kind,
-            )
-        });
-        let changed = previous_job_id != self.job_id || self.active != next;
+        let progress = active_progress(
+            update.phase,
+            update.counts.as_ref(),
+            update.current.as_ref(),
+            self.source_kind,
+        );
+        let terminal = is_terminal(update.status)
+            .then(|| terminal_milestone(update.status, update.counts.as_ref(), progress.clone()));
+        let next = terminal.is_none().then_some(progress);
+        let changed =
+            previous_job_id != self.job_id || self.active != next || self.terminal != terminal;
         self.active = next;
+        self.terminal = terminal;
         changed
     }
 
@@ -172,7 +181,19 @@ impl WaitViewModel {
     }
 
     pub(crate) fn finish(&mut self) -> bool {
-        self.active.take().is_some()
+        if self.terminal.is_some() {
+            return self.active.take().is_some();
+        }
+        let Some(active) = self.active.take() else {
+            return false;
+        };
+        self.terminal = Some(RenderedMilestone {
+            phase: OperatorPhase::Complete,
+            summary: progress_summary(&active),
+            elapsed: Duration::ZERO,
+            degraded: false,
+        });
+        true
     }
 
     fn phase_is_degraded(&self, phase: OperatorPhase) -> bool {
@@ -384,107 +405,33 @@ fn is_terminal(status: LifecycleStatus) -> bool {
     )
 }
 
-pub(crate) struct BatchTarget {
-    pub target: String,
-    pub progress: Option<ActiveProgress>,
-    updated_at: u64,
-}
-
-pub(crate) struct BatchWaitViewModel {
-    total: usize,
-    completed: usize,
-    failed: usize,
-    active_targets: HashMap<usize, BatchTarget>,
-    finished_targets: HashSet<usize>,
-    update_sequence: u64,
-}
-
-impl BatchWaitViewModel {
-    pub(crate) fn new(total: usize) -> Self {
-        Self {
-            total,
-            completed: 0,
-            failed: 0,
-            active_targets: HashMap::new(),
-            finished_targets: HashSet::new(),
-            update_sequence: 0,
-        }
-    }
-
-    pub(crate) fn running(&mut self, index: usize, target: impl Into<String>) {
-        self.touch();
-        self.active_targets.insert(
-            index,
-            BatchTarget {
-                target: target.into(),
-                progress: None,
-                updated_at: self.update_sequence,
-            },
-        );
-    }
-
-    pub(crate) fn apply_snapshot(&mut self, index: usize, update: JobStatusUpdate) {
-        self.touch();
-        if let Some(target) = self.active_targets.get_mut(&index) {
-            target.progress = Some(active_progress(
-                update.phase,
-                update.counts.as_ref(),
-                update.current.as_ref(),
-                None,
-            ));
-            target.updated_at = self.update_sequence;
-        }
-    }
-
-    pub(crate) fn apply_event(&mut self, index: usize, event: SourceProgressEvent) {
-        self.touch();
-        if let Some(target) = self.active_targets.get_mut(&index) {
-            target.progress = Some(active_progress(
-                event.phase,
-                Some(&event.counts),
-                event.current.as_ref(),
-                None,
-            ));
-            target.updated_at = self.update_sequence;
-        }
-    }
-
-    pub(crate) fn completed(&mut self, index: usize) {
-        if self.finished_targets.insert(index) {
-            self.completed += 1;
-            self.active_targets.remove(&index);
-        }
-    }
-
-    pub(crate) fn failed(&mut self, index: usize) {
-        if self.finished_targets.insert(index) {
-            self.failed += 1;
-            self.active_targets.remove(&index);
-        }
-    }
-
-    pub(crate) fn summary(&self) -> String {
-        let finished = self.completed + self.failed;
-        let active = self.active_targets.len();
-        let queued = self.total.saturating_sub(finished + active);
-        let mut summary = format!(
-            "{finished}/{} complete · {active} active · {queued} queued",
-            self.total
-        );
-        if self.failed > 0 {
-            summary.push_str(&format!(" · {} failed", self.failed));
-        }
-        summary
-    }
-
-    pub(crate) fn active_detail(&self) -> Option<&BatchTarget> {
-        self.active_targets
-            .values()
-            .max_by_key(|target| target.updated_at)
-    }
-
-    fn touch(&mut self) {
-        self.update_sequence = self.update_sequence.saturating_add(1);
+fn terminal_milestone(
+    status: LifecycleStatus,
+    counts: Option<&StageCounts>,
+    fallback: ActiveProgress,
+) -> RenderedMilestone {
+    let summary = counts.map_or_else(
+        || progress_summary(&fallback),
+        |counts| {
+            let mut parts = Vec::new();
+            if counts.documents_done > 0 {
+                parts.push(format!("{} documents", counts.documents_done));
+            }
+            if counts.chunks_done > 0 {
+                parts.push(format!("{} vectors", counts.chunks_done));
+            }
+            if parts.is_empty() {
+                progress_summary(&fallback)
+            } else {
+                parts.join(" · ")
+            }
+        },
+    );
+    RenderedMilestone {
+        phase: OperatorPhase::Complete,
+        summary,
+        elapsed: Duration::ZERO,
+        degraded: status != LifecycleStatus::Completed,
     }
 }
 

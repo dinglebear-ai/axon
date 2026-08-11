@@ -59,7 +59,20 @@ pub(crate) fn format_wait_view(
             .as_ref()
             .map(|active| format_active(active, width, timing, color))
             .unwrap_or_default(),
-        terminal: None,
+        terminal: model.terminal.as_ref().map(|terminal| {
+            let symbol = if terminal.degraded { "⚠" } else { "✓" };
+            let label = if terminal.degraded {
+                "finished"
+            } else {
+                "indexed"
+            };
+            style_status_line(
+                &format!("{symbol} {label:<10} {}", terminal.summary),
+                symbol,
+                terminal.degraded,
+                color,
+            )
+        }),
     }
 }
 
