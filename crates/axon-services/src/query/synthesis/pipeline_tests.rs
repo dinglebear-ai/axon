@@ -103,3 +103,34 @@ fn normalized_stream_correction_labels_stored_normalized_answer() {
     assert!(rendered.contains("Answer with normalized citations [S1]."));
     assert!(rendered.starts_with("\n\n---\n\n"));
 }
+
+#[test]
+fn citation_repair_query_exposes_distinct_document_groups_after_one_source_answer() {
+    let mut cfg = Config::test_default();
+    cfg.ask_min_citations_nontrivial = 2;
+    let query = "Explain semantic decoding, retrieval redaction, source ranges, and preparation concurrency";
+    let context = "Sources:\n\
+## Top Chunk [S1]: session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa\n\nfirst chunk from document A\n\n---\n\n\
+## Top Chunk [S2]: session://codex/doc_session_bbbbbbbbbbbbbbbbbbbbbbbb\n\nchunk from document B\n\n---\n\n\
+## Top Chunk [S3]: session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa\n\nsecond chunk from document A";
+    let invalid_answer = normalize_ask_answer(
+        &cfg,
+        query,
+        "The repair decoded semantic content [S1] and made source ranges linear [S3].",
+        context,
+    );
+    let validation = summarize_citation_validation(&invalid_answer);
+
+    assert!(!validation.valid);
+    assert_eq!(validation.canonical_citation_count, 1);
+
+    let repair_query = build_citation_repair_query(query, context, &invalid_answer, &validation);
+
+    assert!(repair_query.contains("Document group D1: [S1], [S3]"));
+    assert!(repair_query.contains("Document group D2: [S2]"));
+    assert!(
+        repair_query
+            .contains("Citations within one document group do not count as distinct sources")
+    );
+    assert!(repair_query.contains("cite evidence from at least two different document groups"));
+}

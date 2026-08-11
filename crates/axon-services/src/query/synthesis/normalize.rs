@@ -207,7 +207,7 @@ fn indicates_insufficient_evidence(body: &str) -> bool {
         || lower.contains("no relevant information")
 }
 
-fn canonical_source_identity(source: &str) -> String {
+pub(crate) fn canonical_source_identity(source: &str) -> String {
     let Ok(parsed) = Url::parse(source) else {
         return strip_route_variant_suffix(source.trim_end_matches('/')).to_ascii_lowercase();
     };

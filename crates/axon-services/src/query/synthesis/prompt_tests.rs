@@ -135,8 +135,18 @@ fn synthesis_prompt_contains_tightened_grounding_contract() {
         "prompt should explicitly handle conflicting sources"
     );
     assert!(
-        prompt.contains("For non-trivial answers, cite at least two distinct source identifiers"),
+        prompt.contains(
+            "For non-trivial answers, cite evidence from at least two different <source> values"
+        ),
         "prompt should align with ask citation validation"
+    );
+    assert!(
+        prompt.contains("Multiple [S#] identifiers with the same <source> belong to one document"),
+        "prompt must distinguish multiple chunks from genuinely distinct documents"
+    );
+    assert!(
+        prompt.contains("at least two different <source> values"),
+        "prompt must require document diversity when the retrieved evidence supports it"
     );
     assert!(
         prompt.contains("Do not request tools, browsing, web search, or additional retrieval."),
