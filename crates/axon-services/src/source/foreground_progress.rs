@@ -30,7 +30,7 @@ impl ForegroundSnapshot {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ForegroundProgressSender {
     snapshots: watch::Sender<Option<ForegroundSnapshot>>,
     events: mpsc::Sender<SourceProgressEvent>,

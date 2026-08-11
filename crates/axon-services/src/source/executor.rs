@@ -72,6 +72,9 @@ where
         }
     };
     input.plan.job_id = job_id;
+    if let Some(foreground) = &input.execution.foreground {
+        foreground.job_started(job_id);
+    }
     let emitter = SourceEventEmitter::new(Some(runtime.jobs.clone()), Some(job_id))
         .with_route(
             input.plan.route.source.source_kind,
@@ -82,7 +85,8 @@ where
             input.plan.route.source.source_id.clone(),
             input.plan.route.source.canonical_uri.clone(),
         )
-        .with_attempt(input.execution.attempt);
+        .with_attempt(input.execution.attempt)
+        .with_optional_foreground(input.execution.foreground.clone());
 
     let result = run_with_lease(runtime, &mut input, &emitter, materialize).await;
     let status_result = if owns_status {

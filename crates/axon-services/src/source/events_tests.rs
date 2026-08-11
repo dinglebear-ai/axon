@@ -141,6 +141,34 @@ async fn concurrent_emitters_use_store_allocated_sequences() {
     assert_eq!(events[1].sequence, 2);
 }
 
+#[tokio::test]
+async fn emitter_forwards_the_same_safe_event_to_foreground_consumers() {
+    let (store, job_id) = store_with_job().await;
+    let (tx, mut rx) = crate::source::foreground_progress::foreground_progress_channel();
+    emitter(store, job_id)
+        .with_optional_foreground(Some(tx))
+        .warning(
+            PipelinePhase::Preparing,
+            SourceWarning {
+                code: "secret_redaction_forbidden".into(),
+                severity: Severity::Degraded,
+                message: "secret policy held a chunk".into(),
+                source_item_key: None,
+                retryable: false,
+            },
+            None,
+        )
+        .await;
+
+    let event = rx.events.recv().await.unwrap();
+    assert_eq!(event.phase, PipelinePhase::Preparing);
+    assert_eq!(
+        event.warning.as_ref().map(|warning| warning.code.as_str()),
+        Some("secret_redaction_forbidden")
+    );
+    assert!(!event.message.contains("payload"));
+}
+
 fn emitter(store: Arc<FakeJobWatchStore>, job_id: JobId) -> SourceEventEmitter {
     SourceEventEmitter::new(Some(store), Some(job_id))
         .with_route(
