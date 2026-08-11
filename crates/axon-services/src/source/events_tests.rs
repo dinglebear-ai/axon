@@ -169,6 +169,49 @@ async fn emitter_forwards_the_same_safe_event_to_foreground_consumers() {
     assert!(!event.message.contains("payload"));
 }
 
+#[tokio::test]
+async fn foreground_events_cross_the_same_redaction_boundary_as_persistence() {
+    let (store, job_id) = store_with_job().await;
+    let (tx, mut rx) = crate::source::foreground_progress::foreground_progress_channel();
+    let emitter = SourceEventEmitter::new(Some(store.clone()), Some(job_id))
+        .with_route(
+            SourceKind::Web,
+            SourceScope::Site,
+            AdapterRef {
+                name: "web".to_string(),
+                version: "test".to_string(),
+            },
+        )
+        .with_source(
+            SourceId::new("src_test"),
+            "https://user:password@example.com/private",
+        )
+        .with_optional_foreground(Some(tx));
+    emitter
+        .warning(
+            PipelinePhase::Preparing,
+            SourceWarning {
+                code: "provider.warning".into(),
+                severity: Severity::Degraded,
+                message: "password=\"correct horse battery staple\"".into(),
+                source_item_key: None,
+                retryable: false,
+            },
+            None,
+        )
+        .await;
+
+    let foreground = rx.events.recv().await.expect("foreground event");
+    let persisted = recorded_progress(store.as_ref(), job_id, 0).await;
+    for event in [&foreground, &persisted] {
+        let encoded = serde_json::to_string(event).expect("serialize event");
+        assert!(!encoded.contains("correct horse"));
+        assert!(!encoded.contains("user:password"));
+    }
+    assert_eq!(foreground.message, persisted.message);
+    assert_eq!(foreground.warning, persisted.warning);
+}
+
 fn emitter(store: Arc<FakeJobWatchStore>, job_id: JobId) -> SourceEventEmitter {
     SourceEventEmitter::new(Some(store), Some(job_id))
         .with_route(

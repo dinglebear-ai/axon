@@ -2,10 +2,9 @@
 //! persistence or embedding. Value classification is owned by `axon-core`;
 //! JSON key classification remains structural to this adapter.
 
-/// Returns `(redacted_payload, was_redacted)`. `was_redacted` is tracked
-/// explicitly rather than derived from `redacted != raw` so the flag stays
-/// accurate regardless of future normalization changes to the redacted
-/// text.
+/// Returns `(redacted_payload, was_redacted)`. Parsed JSON tracks recursive
+/// field/value replacements explicitly; free text derives the flag by
+/// comparing shared redaction output with the original string.
 pub(super) fn redact_mcp_output(output: &str) -> (String, bool) {
     if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(output) {
         let mut changed = false;

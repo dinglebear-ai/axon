@@ -2,16 +2,12 @@
 //! persistence. Secret classification is owned by `axon-core`; this adapter
 //! must not maintain a broader substring policy of its own.
 
-/// Redacts lines that look like they carry a secret. Conservative by
-/// design: a whole matching line is replaced rather than attempting to
-/// splice out just the secret substring, since token boundaries in
-/// untrusted tool output cannot be trusted.
+/// Replaces detector-confirmed secret spans while preserving surrounding tool
+/// output. Downstream persistence boundaries remain responsible for rejecting
+/// any residual secret shape that cannot be safely isolated here.
 ///
-/// Returns `(redacted_text, any_line_redacted)`. The bool is tracked
-/// explicitly rather than derived by comparing the output to the input,
-/// because line-splitting/rejoining alone (independent of any redaction)
-/// changes trailing-newline byte content and would otherwise read as a
-/// false-positive redaction.
+/// Returns `(redacted_text, was_redacted)`; the flag records whether shared
+/// redaction changed the text.
 pub(super) fn redact_text(text: &str) -> (String, bool) {
     let redacted = axon_core::redact::redact_secrets(text);
     let changed = redacted != text;

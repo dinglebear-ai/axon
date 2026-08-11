@@ -93,3 +93,32 @@ fn color_disabled_snapshot_is_plain_and_keeps_operator_hierarchy() {
     assert!(formatted.active[0].contains("embed"));
     assert!(formatted.active.join("\n").contains("74.5%"));
 }
+
+#[test]
+fn terminal_statuses_render_truthful_distinct_outcomes() {
+    for (status, expected) in [
+        (LifecycleStatus::Completed, "✓ indexed"),
+        (LifecycleStatus::CompletedDegraded, "⚠ degraded"),
+        (LifecycleStatus::Failed, "✗ failed"),
+        (LifecycleStatus::Canceled, "⚠ canceled"),
+        (LifecycleStatus::Expired, "⚠ expired"),
+        (LifecycleStatus::Skipped, "↷ skipped"),
+    ] {
+        let mut view = WaitViewModel::source("https://example.com", Some(SourceScope::Page));
+        view.apply_snapshot(JobStatusUpdate {
+            job_id: JobId::new(uuid::Uuid::from_u128(9)),
+            source_id: None,
+            status,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: Some(empty_counts()),
+            current: None,
+            message: None,
+            error: None,
+        });
+        let terminal = format_wait_view(&view, 80, None, false)
+            .terminal
+            .expect("terminal line");
+        assert!(terminal.contains(expected), "{status:?}: {terminal}");
+    }
+}

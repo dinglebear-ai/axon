@@ -22,6 +22,26 @@ fn value_contains_secret_matches_bearer_and_bare_tokens() {
 }
 
 #[test]
+fn every_known_token_family_is_classified_for_payload_guards() {
+    for token in [
+        "AIzaabcdefghijklmnopqrstuvwxyz123456789",
+        "ya29.abcdefghijklmnopqrstuvwxyz123456789",
+        "atk_abcdefghijklmnopqrstuvwxyz123456789",
+        "sk-proj-abcdefghijklmnopqrstuvwxyz123456789",
+        "github_pat_abcdefghijklmnopqrstuvwxyz123456789",
+        "ghp_abcdefghijklmnopqrstuvwxyz123456789",
+        "xoxb-abcdefghijklmnopqrstuvwxyz123456789",
+        "glpat-abcdefghijklmnopqrstuvwxyz123456789",
+    ] {
+        assert_eq!(
+            secret_value_detector(token),
+            Some("bare_secret_token"),
+            "missed {token}"
+        );
+    }
+}
+
+#[test]
 fn secret_value_detection_preserves_authentication_documentation() {
     for prose in [
         "Bearer authentication is supported for remote clients.",

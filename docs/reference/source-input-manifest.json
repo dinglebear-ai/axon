@@ -761,10 +761,10 @@
         {
           "path": "xtask/src/schemas/vector_payload_markdown.rs",
           "kind": "rust_module",
-          "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54"
+          "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c"
         }
       ],
-      "manifest_checksum": "ca2bd9d51d98ed24a803d917c14e721d7fe4986974e1b01fc0c0bd689cf6789e"
+      "manifest_checksum": "f5f94bdcf0856d4b2a0de23993ab414b0a0fbc0f402fc64051fa961b2d1e7c06"
     }
   ]
 }

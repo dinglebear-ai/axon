@@ -1,3 +1,9 @@
+---
+title: "Secret-redaction false-positive investigation"
+created: 2026-08-09
+updated: 2026-08-11
+---
+
 # Secret-redaction false-positive investigation
 
 Date: 2026-08-09

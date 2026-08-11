@@ -270,22 +270,18 @@ struct PreparedContentText {
     force_profile: Option<ChunkingProfile>,
 }
 
-/// Redaction pass 1 of 2: scrubs sensitive values out of the normalized
-/// content *before* chunking, so chunk boundaries/hashes/derived parse facts
-/// never see raw secrets. Pass 2 (authoritative, fail-closed) runs at
-/// vector-payload build time in `axon-vectors`.
+/// Redaction pass 1 of 2: scrubs detector-confirmed secret spans out of the
+/// normalized content before chunking. Residual shapes that cannot be safely
+/// isolated may still reach parsing; pass 2 at vector-payload build time is
+/// the authoritative fail-closed boundary that prevents them from indexing.
 fn redact_pre_chunk(
     content: PreparedContentText,
     source_item_key: &SourceItemKey,
 ) -> PreparedContentText {
     // Span-level scrub: replace each secret-shaped run with the redaction
     // placeholder while keeping the rest of the document intact. The
-    // tombstone-style `Redactor::redact_text` is for short free-text
-    // surfaces (log lines, transport messages) and replaces the ENTIRE
-    // input when any secret is present — applied to a whole document it
-    // turned one fenced `Authorization: Bearer …` example into a
-    // single-line "[REDACTED]" body, destroying the document and every
-    // parse fact derived from it.
+    // dedicated document pass intentionally applies only span replacement;
+    // the final vector boundary rejects any residual classified value.
     let redacted = axon_core::redact::redact_secrets(&content.text);
     if redacted == content.text {
         return content;

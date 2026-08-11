@@ -104,10 +104,15 @@ pub(crate) async fn execute_waited_source_request(
     let scope = request.scope;
     let (sender, receiver) =
         axon_services::source::foreground_progress::foreground_progress_channel();
-    let mut session =
-        WaitProgressSession::source(cfg, target, scope, receiver, service_context.job_store());
+    let mut session = WaitProgressSession::source(
+        cfg,
+        target,
+        scope,
+        receiver,
+        service_context.foreground_event_store(),
+    );
     let work = index_source_with_progress(request, service_context, sender);
-    session.run_until(work).await.map_err(|error| error.into())
+    session.run_until(work).await
 }
 
 async fn execute_batch_source_request(

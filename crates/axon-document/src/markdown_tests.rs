@@ -108,3 +108,15 @@ fn html_article_does_not_emit_one_chunk_per_dom_node() {
             .any(|chunk| chunk.content.contains("word-499"))
     );
 }
+
+#[test]
+fn html_article_preserves_content_after_unclosed_non_content_tag() {
+    let chunks = html_article("<p>before</p><script>broken markup then visible fallback");
+    let text = chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(text.contains("before"));
+    assert!(text.contains("visible fallback"));
+}

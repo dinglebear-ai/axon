@@ -1,7 +1,7 @@
 use super::*;
 use axon_api::source::{
-    JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, Severity, SourceProgressEvent,
-    StageCounts,
+    JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, Severity, SourceKind,
+    SourceProgressEvent, StageCounts,
 };
 use uuid::Uuid;
 
@@ -60,6 +60,21 @@ async fn snapshot_lane_keeps_only_the_latest_value() {
             .chunks_done,
         7,
     );
+}
+
+#[tokio::test]
+async fn routed_source_kind_survives_a_newer_status_snapshot() {
+    let (tx, mut rx) = foreground_progress_channel_with_capacity(2);
+    let job_id = JobId::new(Uuid::from_u128(1));
+    tx.routed(job_id, SourceKind::Web);
+    tx.snapshot(update(7));
+    rx.snapshots.changed().await.unwrap();
+
+    assert_eq!(rx.source_kind(), Some(SourceKind::Web));
+    assert!(matches!(
+        rx.snapshots.borrow().as_ref(),
+        Some(ForegroundSnapshot::Status(_))
+    ));
 }
 
 #[tokio::test]

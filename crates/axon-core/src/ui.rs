@@ -233,6 +233,22 @@ pub fn warning_when(enabled: bool, text: &str) -> String {
     ansi_bold_when(enabled, &ansi_colorize_when(enabled, WARN_ANSI, text))
 }
 
+pub fn error_when(enabled: bool, text: &str) -> String {
+    if enabled {
+        error(text)
+    } else {
+        text.to_string()
+    }
+}
+
+pub fn muted_when(enabled: bool, text: &str) -> String {
+    if enabled {
+        muted(text)
+    } else {
+        text.to_string()
+    }
+}
+
 pub fn muted(text: &str) -> String {
     ansi_colorize(MUTED_ANSI, text)
 }

@@ -22,7 +22,7 @@ See the family contract for declared output paths.
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
 | `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
 | `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33` |
-| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54` |
+| `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c` |
 
 ## Root Shape
 
@@ -83,13 +83,13 @@ Generation fields are deliberately split: `source_generation` is the staged sour
 
 ## Redaction Guardrails
 
-Payload validation applies metadata and locator guardrails before vector writes. `chunk_text` is treated as document body text and is not rejected merely for containing examples such as local paths or HTML snippets, but auth headers, cookies, dotenv-style assignments, bare secret tokens, and adapter response markers still fail closed.
+Payload validation applies metadata and locator guardrails before vector writes. `chunk_text` is treated as document body text and is not rejected merely for containing examples such as local paths, HTML snippets, or secret-related vocabulary. Concrete auth headers, cookies, secret assignments, known token formats, PEM private keys, and credential-bearing URLs still fail closed. Metadata and locator fields additionally reject local paths, raw HTML, and adapter-response blobs.
 
 | Category | Values |
 |---|---|
 | Forbidden field fragments | `raw_auth`, `auth_header`, `authorization`, `cookie`, `api_key`, `apikey`, `secret`, `raw_env`, `env_value`, `absolute_home`, `home_path`, `raw_html`, `html_blob`, `adapter_response`, `response_blob` |
-| Forbidden value fragments | `authorization:`, `proxy-authorization:`, `bearer `, `cookie:`, `set-cookie:`, `api_key=`, `apikey=`, `api-key:`, `x-api-key:`, `access_token=`, `refresh_token=`, `secret_key=`, `token=` |
-| Bare token prefixes | `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `xoxb-`, `xoxp-`, `glpat-` |
+| Contextual value markers (not substring rules) | `authorization:`, `proxy-authorization:`, `bearer `, `cookie:`, `set-cookie:`, `api_key=`, `apikey=`, `api-key:`, `x-api-key:`, `access_token=`, `refresh_token=`, `secret_key=`, `token=` |
+| Bare token prefixes | `AIza`, `ya29.`, `atk_`, `sk-proj-`, `github_pat_`, `sk-`, `sk_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `xoxb-`, `xoxp-`, `glpat-` |
 
 ## Enum Tables
 
@@ -101,7 +101,7 @@ Source-specific metadata families are declared by the vector payload registry.
 
 ## Forbidden Fields
 
-Payload validation rejects secret field fragments and secret value fragments before public writes.
+Payload validation rejects forbidden field names and concrete secret values before public writes. Contextual marker vocabulary is published for compatibility and documentation; a marker alone is not sufficient to reject ordinary prose.
 
 
 ## Source-Specific Families

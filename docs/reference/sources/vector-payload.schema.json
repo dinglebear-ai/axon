@@ -10469,12 +10469,15 @@
     ],
     "redaction_guardrails": {
       "also_rejects": [
-        "dotenv-style assignments",
-        "absolute local paths",
-        "raw HTML blobs in metadata",
-        "adapter response blobs"
+        "secret assignments in all strings",
+        "absolute local paths in metadata and locator fields",
+        "raw HTML blobs in metadata and locator fields",
+        "adapter response blobs in metadata and locator fields"
       ],
       "bare_secret_token_prefixes": [
+        "AIza",
+        "ya29.",
+        "atk_",
         "sk-proj-",
         "github_pat_",
         "sk-",
@@ -10497,9 +10500,10 @@
         "still_rejected": [
           "auth headers",
           "cookies",
-          "dotenv-style assignments",
+          "secret assignments",
           "bare secret tokens",
-          "adapter response markers"
+          "PEM private keys",
+          "credential-bearing URLs"
         ]
       },
       "forbidden_field_fragments": [
@@ -10534,7 +10538,8 @@
         "secret_key=",
         "token="
       ],
-      "scope": "metadata_and_locator_fields"
+      "scope": "metadata_and_locator_fields",
+      "value_fragment_matching": "contextual_not_substring"
     },
     "source_inputs": [
       {
@@ -10578,7 +10583,7 @@
         "path": "docs/pipeline-unification/sources/metadata-payload.md"
       },
       {
-        "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54",
+        "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c",
         "kind": "rust_module",
         "path": "xtask/src/schemas/vector_payload_markdown.rs"
       }

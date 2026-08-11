@@ -112,6 +112,16 @@ fn identical_snapshot_does_not_mark_the_model_dirty_twice() {
 }
 
 #[test]
+fn early_failure_without_progress_still_has_a_terminal() {
+    let mut model = WaitViewModel::source("bad source", None);
+
+    assert!(model.finish(LifecycleStatus::Failed));
+    let terminal = model.terminal.expect("failed terminal");
+    assert_eq!(terminal.status, TerminalStatus::Failed);
+    assert_eq!(terminal.summary, "source did not start");
+}
+
+#[test]
 fn subsecond_unremarkable_phase_does_not_leave_a_milestone() {
     let mut model = WaitViewModel::source("https://example.com", Some(SourceScope::Page));
     model.start_phase_at(PipelinePhase::Resolving, Duration::ZERO);
@@ -124,12 +134,48 @@ fn batch_uses_one_most_recent_active_target() {
     let mut batch = BatchWaitViewModel::new(3);
     batch.running(0, "a");
     batch.running(1, "b");
-    batch.completed(0);
+    batch.finish(0, BatchTerminalOutcome::Completed);
     assert_eq!(batch.summary(), "1/3 complete · 1 active · 1 queued");
     assert_eq!(
         batch.active_detail().map(|target| target.target.as_str()),
         Some("b")
     );
+}
+
+#[test]
+fn phase_completion_event_does_not_finish_the_job() {
+    let mut model = WaitViewModel::source("https://example.com", Some(SourceScope::Site));
+    let event = SourceProgressEvent::minimal(
+        JobId::new(uuid::Uuid::from_u128(7)),
+        0,
+        PipelinePhase::Fetching,
+        LifecycleStatus::Completed,
+        Severity::Info,
+        "fetch complete",
+    );
+    model.apply_event(event);
+    assert!(model.terminal.is_none());
+}
+
+#[test]
+fn routed_source_kind_controls_acquisition_units() {
+    let mut model = WaitViewModel::source("https://example.com", Some(SourceScope::Site));
+    model.set_source_kind(SourceKind::Web);
+    let mut counts = empty_counts();
+    counts.items_total = Some(4);
+    counts.items_done = 2;
+    model.apply_snapshot(JobStatusUpdate {
+        job_id: JobId::new(uuid::Uuid::from_u128(7)),
+        source_id: None,
+        status: LifecycleStatus::Running,
+        phase: PipelinePhase::Fetching,
+        stage_id: None,
+        counts: Some(counts),
+        current: None,
+        message: None,
+        error: None,
+    });
+    assert_eq!(model.active.expect("active").unit, "pages");
 }
 
 #[test]

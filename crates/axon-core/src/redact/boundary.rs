@@ -269,11 +269,12 @@ impl Redactor for DefaultRedactor {
         // chunk instead of being laundered into the index.
         let span_redacted = redact_secrets(input);
         if span_redacted != input {
+            if requires_full_redaction(&span_redacted, context) {
+                return REDACTION_PLACEHOLDER.to_string();
+            }
             return span_redacted;
         }
-        if value_contains_secret(input)
-            || (!context.allow_internal_paths && value_is_absolute_local_path(input))
-        {
+        if requires_full_redaction(input, context) {
             REDACTION_PLACEHOLDER.to_string()
         } else {
             input.to_string()
@@ -336,6 +337,9 @@ impl DefaultRedactor {
                 let span_redacted = redact_secrets(&text);
                 if span_redacted != text {
                     report.record_redacted(path, "secret_value");
+                    if requires_full_redaction(&span_redacted, context) {
+                        return Value::String(REDACTION_PLACEHOLDER.to_string());
+                    }
                     return Value::String(span_redacted);
                 }
                 if value_contains_secret(&text) {
@@ -398,6 +402,11 @@ impl DefaultRedactor {
             other => other,
         }
     }
+}
+
+fn requires_full_redaction(text: &str, context: &RedactionContext) -> bool {
+    value_contains_secret(text)
+        || (!context.allow_internal_paths && value_is_absolute_local_path(text))
 }
 
 /// Upper bound on free text the redaction boundary will scan. Unbounded regex

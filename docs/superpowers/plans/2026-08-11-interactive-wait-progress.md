@@ -4,7 +4,7 @@
 
 **Goal:** Give every foreground Axon source/extract operation a quiet, Aurora-themed hybrid progress display with one live region, useful phase/count/timing context, grouped actionable warnings, and unchanged machine-output contracts.
 
-**Architecture:** Add a transport-neutral two-lane foreground feed to `axon-services`: a Tokio `watch` lane coalesces the latest `JobStatusUpdate`, while a bounded Tokio `mpsc` lane carries ordered `SourceProgressEvent` facts and reports overflow for durable reconciliation. `axon-cli` reduces those facts into a pure `WaitViewModel`, formats it responsively with Aurora product CLI tokens, and renders it through one `indicatif::MultiProgress` region on stderr; final command results remain on stdout.
+**Architecture:** Add a transport-neutral two-lane foreground feed to `axon-services`: a Tokio `watch` lane coalesces the latest `JobStatusUpdate`, while a bounded Tokio `mpsc` lane carries ordered `SourceProgressEvent` facts and reports overflow. Single-source waits reconcile through an `axon-services` durable-event facade; compact concurrent batches use final `SourceResult` status as their authoritative outcome. `axon-cli` reduces those facts into a pure `WaitViewModel`, formats it responsively with Aurora product CLI tokens, and renders it through one `indicatif::MultiProgress` region on stderr; final command results remain on stdout.
 
 **Tech Stack:** Rust 1.97.1 / edition 2024, Tokio `watch` + bounded `mpsc`, `indicatif` 0.18, existing `axon-api` progress DTOs, unified SQLite `JobStore`, Aurora product CLI token helpers in `axon-core::ui`, sidecar Rust tests.
 
@@ -19,9 +19,11 @@
 - Visible redraw cadence is at most one update per 250 ms, except immediate phase/warning/retry/failure/terminal transitions.
 - Redaction copy is neutral: `secret policy held N chunks`; never claim held chunks prove secrets and never print payload values.
 - No invented overall pipeline percentage. Show a bar only when the active phase has `total > 0`.
-- A full event lane never blocks pipeline work: set overflow, reconcile durable events, deduplicate by stable `event_id`, then resume by durable sequence.
+- A full event lane never blocks pipeline work. Single-source waits set overflow, reconcile durable events through `axon-services`, and deduplicate by stable `event_id`; compact batch detail remains best effort while final per-target outcomes come from `SourceResult`.
 - `status --watch` remains behaviorally unchanged in this plan; reuse of the new formatter there is a follow-up.
-- Do not promise `job continues` for inline execution. Show `job retained · axon jobs get <id>` after interruption unless worker-backed continuation is proven.
+- Do not promise `job continues` for inline execution. Dedicated interruption
+  copy and signal handling are follow-up scope unless worker-backed
+  continuation is proven.
 - Never add `mod.rs`. New tests use sibling `_tests.rs` files with source-side `#[cfg(test)] #[path = "..."] mod tests;` declarations.
 - Changed Rust source files must stay at or below 500 lines and functions below the 120-line hard limit.
 - Follow strict TDD: failing focused test, observed failure, minimal implementation, passing focused test, then commit.
@@ -847,7 +849,8 @@ git commit -m "feat(cli): format Aurora wait progress"
 - Modify: `crates/axon-cli/Cargo.toml`
 
 **Interfaces:**
-- Consumes: `ForegroundProgressReceiver`, `FormattedWaitView`, `JobStore`, and `WaitViewModel`.
+- Consumes: `ForegroundProgressReceiver`, `FormattedWaitView`,
+  `ForegroundEventStore`, and `WaitViewModel`.
 - Produces: `WaitProgressSession::source`, `WaitProgressSession::run_until`, `WaitProgressSession::finish`, `BatchProgressUpdate`, `BatchProgressForwarder::run_until`, `ProgressMode::{Interactive, Plain, Silent}`, and overflow reconciliation used by source/session commands.
 
 - [x] **Step 1: Enable the in-memory terminal only for tests and write failing renderer tests**
@@ -925,22 +928,19 @@ Use one `MultiProgress` with a header bar, zero-or-more permanent `println` call
 
 - [x] **Step 4: Implement durable event reconciliation**
 
-`WaitProgressSession` owns `seen_event_ids: HashSet<String>`, `last_durable_sequence: Option<u64>`, and `next_cursor: Option<String>`. When `receiver.take_overflowed()` is true:
+`WaitProgressSession` owns event-id deduplication. When the receiver reports
+overflow, it asks the `axon-services` `ForegroundEventStore` facade for the
+public source-event history. The service projection owns paging and transport
+conversion; the CLI applies only unseen stable `event_id` values.
 
 ```rust
-let request = JobEventListRequest {
-    job_id,
-    after_sequence: last_durable_sequence,
-    limit: Some(200),
-    severity: None,
-    visibility: Some(Visibility::Public),
-    phase: None,
-    since_sequence: None,
-    cursor: next_cursor.take(),
-};
+let events = event_store.public_source_events(job_id).await?;
 ```
 
-Page until `next_cursor` is `None`, apply only unseen `event_id` values, and set `last_durable_sequence = Some(page.last_sequence)`. On the first catch-up `after_sequence` is `None`, so stable event-id dedup prevents duplicate notices. If reconciliation fails, call `receiver.mark_overflowed()`, emit one muted diagnostic, and retry on the next cadence tick; do not fail the source operation.
+The facade pages from the start of durable public history on each reconciliation;
+stable event-id dedup prevents duplicate notices. If reconciliation fails, mark
+the receiver overflowed again, emit one muted diagnostic, and retry on the next
+cadence tick without failing the source operation.
 
 - [x] **Step 5: Drive snapshot/event channels concurrently**
 

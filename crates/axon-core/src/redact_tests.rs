@@ -221,3 +221,15 @@ fn preserves_low_entropy_repeated_run() {
 fn empty_string_is_noop() {
     assert_eq!(redact_secrets(""), "");
 }
+
+#[test]
+fn quoted_assignments_and_complete_cookie_headers_are_redacted() {
+    assert_eq!(
+        redact_secrets("password=\"correct horse battery staple\" next"),
+        "password=[REDACTED] next"
+    );
+    assert_eq!(
+        redact_secrets("Cookie: session=abcdefghijklmnop; refresh=qrstuvwxyzabcdef"),
+        "Cookie: [REDACTED]"
+    );
+}

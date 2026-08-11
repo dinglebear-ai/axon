@@ -104,14 +104,19 @@ pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
             let closing_tag = format!("</{name}");
             let search_from = close + 1;
             let Some(relative_end_open) = normalized[search_from..].find(&closing_tag) else {
-                cursor = text.len();
-                break;
+                // Malformed HTML must not silently truncate the document.
+                // Treat the unmatched container as ordinary content and keep
+                // projecting the remaining text.
+                cursor = search_from;
+                plain.push('\n');
+                continue;
             };
             let end_open = search_from + relative_end_open;
             let Some(relative_end_close) = normalized[end_open + closing_tag.len()..].find('>')
             else {
-                cursor = text.len();
-                break;
+                cursor = search_from;
+                plain.push('\n');
+                continue;
             };
             cursor = end_open + closing_tag.len() + relative_end_close + 1;
         } else {

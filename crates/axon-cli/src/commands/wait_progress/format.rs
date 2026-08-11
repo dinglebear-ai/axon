@@ -59,22 +59,33 @@ pub(crate) fn format_wait_view(
             .as_ref()
             .map(|active| format_active(active, width, timing, color))
             .unwrap_or_default(),
-        terminal: model.terminal.as_ref().map(|terminal| {
-            let symbol = if terminal.degraded { "⚠" } else { "✓" };
-            let label = if terminal.degraded {
-                "finished"
-            } else if terminal.phase == super::model::OperatorPhase::Extract {
-                "extracted"
-            } else {
-                "indexed"
-            };
-            style_status_line(
-                &format!("{symbol} {label:<10} {}", terminal.summary),
-                symbol,
-                terminal.degraded,
-                color,
-            )
-        }),
+        terminal: model
+            .terminal
+            .as_ref()
+            .map(|terminal| format_terminal(terminal, color)),
+    }
+}
+
+fn format_terminal(terminal: &super::model::RenderedTerminal, color: bool) -> String {
+    use super::model::TerminalStatus;
+
+    let (symbol, label) = match terminal.status {
+        TerminalStatus::Completed if terminal.phase == super::model::OperatorPhase::Extract => {
+            ("✓", "extracted")
+        }
+        TerminalStatus::Completed => ("✓", "indexed"),
+        TerminalStatus::CompletedDegraded => ("⚠", "degraded"),
+        TerminalStatus::Failed => ("✗", "failed"),
+        TerminalStatus::Canceled => ("⚠", "canceled"),
+        TerminalStatus::Expired => ("⚠", "expired"),
+        TerminalStatus::Skipped => ("↷", "skipped"),
+    };
+    let plain = format!("{symbol} {label:<10} {}", terminal.summary);
+    match terminal.status {
+        TerminalStatus::Completed => ui::success_when(color, &plain),
+        TerminalStatus::Failed => ui::error_when(color, &plain),
+        TerminalStatus::Skipped => ui::muted_when(color, &plain),
+        _ => ui::warning_when(color, &plain),
     }
 }
 

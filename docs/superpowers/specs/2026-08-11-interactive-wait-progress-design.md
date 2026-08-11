@@ -1,7 +1,7 @@
 # Interactive Wait Progress — Design Spec
 
 Date: 2026-08-11
-Status: Approved; implementation plan pending
+Status: Implemented 2026-08-11
 Branch: `codex/secret-redaction-investigation`
 Bead: `axon_rust-kobuh`
 
@@ -30,10 +30,10 @@ Existing specialized views such as `status --watch` keep their command-specific
 orchestration, but should reuse the same Aurora formatting primitives and
 progress-model helpers where practical.
 
-## Problem
+## Baseline Problem (before implementation)
 
-`source --wait` currently executes the unified pipeline inline and renders only
-the final `SourceResult`. The pipeline already persists phase-aware
+Before this work, `source --wait` executed the unified pipeline inline and rendered only
+the final `SourceResult`. The pipeline already persisted phase-aware
 `SourceProgressEvent` values and monotonic `JobStatusUpdate` snapshots, while
 the CLI already contains phase-aware source/extract progress summaries and an
 `indicatif` live status view. The missing piece is a foreground bridge and one
@@ -254,13 +254,17 @@ and owns the renderer:
   a queue.
 - A bounded Tokio `mpsc` lane (initial capacity 256) carries ordered lifecycle,
   warning, retry, degraded, failure, and terminal events.
-- Producers use non-blocking sends. A full event lane sets a shared overflow
+- Producers use non-blocking sends. For a single waited source, a full event lane sets a shared overflow
   flag rather than slowing the pipeline. Because durable append remains the
   source of truth, the renderer responds to that flag by reconciling persisted
-  events. Foreground clones retain the stable `event_id` but do not receive the
-  SQLite-assigned sequence number, so the first reconciliation pages from the
-  start and deduplicates by `event_id`; later reconciliations resume after the
-  last durable sequence. The overflow flag clears only after catch-up succeeds.
+  events through an `axon-services` projection. Foreground clones retain the
+  stable `event_id` but do not receive the SQLite-assigned sequence number, so
+  reconciliation reads the public event history from the start and the CLI
+  deduplicates by `event_id`. The overflow flag clears only after catch-up
+  succeeds.
+- Concurrent batch rows remain a deliberately compact best-effort projection;
+  their authoritative failures are derived from each final `SourceResult`, and
+  detailed warning history remains available through durable job events.
 - If durable append itself failed, the existing service warning remains visible
   in diagnostics; the progress feed still attempts its best-effort send.
 
@@ -332,26 +336,27 @@ The active phase, status symbol, best available count, and elapsed time have
 highest priority. Paths/URLs are middle-truncated so their distinctive tail is
 retained. ANSI escape sequences are excluded from visible-width calculations.
 
-## Interrupt and Cleanup Behavior
+## Cleanup Behavior
 
-- The renderer always clears its live region on success, error, panic boundary,
-  channel close, or Ctrl-C handling path.
+- The renderer clears its live region on normal success/error completion and
+  through its drop cleanup path.
 - It never leaves a half-filled progress bar or cursor-control sequence in the
   terminal transcript.
 - The heading exposes the canonical job id as soon as it exists so the operator
-  can inspect recovery state after interruption.
-- Inline execution must not print "job continues" because process exit can stop
-  the active work. It may say `job retained · inspect with axon jobs get <id>`.
-- Worker-backed execution may say `Ctrl-C detaches; job continues` only when
-  the worker ownership/liveness check makes that statement true.
+  can inspect recovery state after an external interruption.
+- Dedicated Ctrl-C copy and simulated-signal handling remain follow-up work.
+  Until worker-backed continuation is proven, no output may promise that a job
+  continues after process exit.
 - Changing all `--wait` paths to enqueue-and-follow is a separate execution
   semantics decision and is not required by this rendering feature.
 
 ## Error Handling
 
 - Progress-sink failure is best-effort and cannot fail indexing/extraction.
-- Renderer failure clears the live region, logs a concise diagnostic to
-  stderr, disables animation, and allows the operation to finish.
+- Renderer failure is retained while the underlying operation finishes. If the
+  operation itself succeeds, the CLI returns the renderer I/O error instead of
+  silently claiming that a terminal result was displayed; operation failures
+  retain precedence.
 - A malformed or incomplete progress event falls back to phase text rather than
   panicking.
 - Counts are clamped for display (`done > total` renders `total/total`) while
@@ -408,8 +413,8 @@ required sibling `_tests.rs` convention.
 - redirected stderr emits no cursor-control sequences;
 - `--json` and `--quiet` construct no renderer;
 - warnings print above the live block without corrupting it;
-- success, degraded completion, failure, channel close, and simulated Ctrl-C
-  all clear the active region exactly once;
+- success, degraded completion, failure, and channel close clear the active
+  region exactly once;
 - progress writes to stderr while final human/JSON result remains stdout;
 - Aurora product token helpers color only the intended spans.
 
@@ -461,12 +466,9 @@ required sibling `_tests.rs` convention.
 - Source, scrape, sessions, and extract foreground paths use the common
   rendering model at the granularity each service genuinely provides.
 
-## Open Items for the Implementation Plan
+## Follow-up Items
 
-- Confirm the existing valid CLI drill-down syntax before printing it.
 - Decide whether `status --watch` should adopt the new live-row formatter in
   the same PR or a small follow-up.
-- Define the precise slow-phase threshold using deterministic test clocks;
-  one second is the approved default.
-- Determine whether extract can expose per-URL callbacks without broad service
-  surgery; if not, ship shared styling with coarse stage transitions first.
+- Consider durable batch-warning reconciliation if operators need detailed
+  per-target warning transcripts in the compact batch view.

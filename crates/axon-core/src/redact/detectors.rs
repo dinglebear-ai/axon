@@ -389,7 +389,7 @@ static AUTHORIZATION_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 static COOKIE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(?P<prefix>(?:set-cookie|cookie)\s*:\s*)(?P<value>[^\s'\";,]+)"#)
+    Regex::new(r#"(?im)\b(?P<prefix>(?:set-cookie|cookie)\s*:\s*)(?P<value>[^\r\n'\"]+)"#)
         .expect("cookie value regex is valid")
 });
 
@@ -405,8 +405,10 @@ fn is_authorization_field(field: &str) -> bool {
 }
 
 static SECRET_ASSIGNMENT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)\b(?P<prefix>(?P<key>[a-z_][a-z0-9_-]*)\s*[:=]\s*)(?P<value>[^\s;,]+)")
-        .expect("secret assignment regex is valid")
+    Regex::new(
+        r#"(?i)\b(?P<prefix>(?P<key>[a-z_][a-z0-9_-]*)\s*[:=]\s*)(?P<value>"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s;,]+)"#,
+    )
+    .expect("secret assignment regex is valid")
 });
 
 /// Whether `value` contains a bare secret token (`sk-...`, `ghp_...`, …) with
@@ -499,6 +501,9 @@ pub const FORBIDDEN_VALUE_FRAGMENTS: &[&str] = &[
 ];
 
 pub const BARE_SECRET_TOKEN_PREFIXES: &[&str] = &[
+    "AIza",
+    "ya29.",
+    "atk_",
     "sk-proj-",
     "github_pat_",
     "sk-",

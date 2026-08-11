@@ -71,10 +71,10 @@ pub async fn extract_sync_with_progress(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtractProgress {
-    pub urls_total: u64,
-    pub urls_done: u64,
-    pub items_done: u64,
-    pub last_completed_url: Option<String>,
+    urls_total: u64,
+    urls_done: u64,
+    items_done: u64,
+    last_completed_url: Option<String>,
 }
 
 impl ExtractProgress {
@@ -88,10 +88,29 @@ impl ExtractProgress {
     }
 
     pub fn completed_url(mut self, url: impl Into<String>, items: usize) -> Self {
+        if self.urls_done >= self.urls_total {
+            return self;
+        }
         self.urls_done = self.urls_done.saturating_add(1).min(self.urls_total);
         self.items_done = self.items_done.saturating_add(items as u64);
         self.last_completed_url = Some(url.into());
         self
+    }
+
+    pub fn urls_total(&self) -> u64 {
+        self.urls_total
+    }
+
+    pub fn urls_done(&self) -> u64 {
+        self.urls_done
+    }
+
+    pub fn items_done(&self) -> u64 {
+        self.items_done
+    }
+
+    pub fn last_completed_url(&self) -> Option<&str> {
+        self.last_completed_url.as_deref()
     }
 }
 

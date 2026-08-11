@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::io;
 use std::io::IsTerminal;
 
 use axon_core::{config::Config, ui};
@@ -7,7 +8,9 @@ use tokio::sync::watch;
 
 use super::{ProgressMode, WaitRenderer};
 use crate::commands::wait_progress::format::{FormattedWaitView, format_wait_view};
-use crate::commands::wait_progress::model::{OperatorPhase, RenderedMilestone, WaitViewModel};
+use crate::commands::wait_progress::model::{
+    OperatorPhase, RenderedTerminal, TerminalStatus, WaitViewModel,
+};
 
 pub(crate) struct ExtractProgressSession {
     receiver: watch::Receiver<ExtractProgress>,
@@ -15,6 +18,7 @@ pub(crate) struct ExtractProgressSession {
     renderer: WaitRenderer,
     latest: ExtractProgress,
     dirty: bool,
+    render_error: Option<io::Error>,
 }
 
 impl ExtractProgressSession {
@@ -23,7 +27,7 @@ impl ExtractProgressSession {
         receiver: watch::Receiver<ExtractProgress>,
         urls_total: usize,
     ) -> Self {
-        let mode = ProgressMode::for_config(cfg, std::io::stderr().is_terminal());
+        let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
         let latest = receiver.borrow().clone();
         let noun = if urls_total == 1 { "URL" } else { "URLs" };
         let mut model = WaitViewModel::source(format!("{urls_total} {noun}"), None);
@@ -34,13 +38,14 @@ impl ExtractProgressSession {
             renderer: WaitRenderer::new(mode),
             latest,
             dirty: true,
+            render_error: None,
         }
     }
 
-    pub(crate) async fn run_until<T, E>(
+    pub(crate) async fn run_until<T>(
         &mut self,
-        work: impl Future<Output = Result<T, E>>,
-    ) -> Result<T, E> {
+        work: impl Future<Output = Result<T, Box<dyn std::error::Error>>>,
+    ) -> Result<T, Box<dyn std::error::Error>> {
         tokio::pin!(work);
         let mut cadence = tokio::time::interval(std::time::Duration::from_millis(250));
         let mut updates_open = true;
@@ -49,6 +54,11 @@ impl ExtractProgressSession {
                 result = &mut work => {
                     self.apply_latest();
                     self.finish(result.is_err());
+                    if result.is_ok()
+                        && let Some(error) = self.render_error.take()
+                    {
+                        return Err(Box::new(error));
+                    }
                     return result;
                 }
                 changed = self.receiver.changed(), if updates_open => {
@@ -73,23 +83,38 @@ impl ExtractProgressSession {
             return;
         }
         let view = self.formatted();
-        let _ = self.renderer.render(&view);
+        let result = self.renderer.render(&view);
+        self.record_render_result(result);
         self.dirty = false;
     }
 
     fn finish(&mut self, failed: bool) {
         self.model.active = None;
-        self.model.terminal = Some(RenderedMilestone {
+        self.model.terminal = Some(RenderedTerminal {
             phase: OperatorPhase::Extract,
             summary: format!(
                 "{}/{} URLs · {} items",
-                self.latest.urls_done, self.latest.urls_total, self.latest.items_done
+                self.latest.urls_done(),
+                self.latest.urls_total(),
+                self.latest.items_done()
             ),
-            elapsed: std::time::Duration::ZERO,
-            degraded: failed,
+            status: if failed {
+                TerminalStatus::Failed
+            } else {
+                TerminalStatus::Completed
+            },
         });
         let view = self.formatted();
-        let _ = self.renderer.finish(&view);
+        let result = self.renderer.finish(&view);
+        self.record_render_result(result);
+    }
+
+    fn record_render_result(&mut self, result: io::Result<()>) {
+        if let Err(error) = result
+            && self.render_error.is_none()
+        {
+            self.render_error = Some(error);
+        }
     }
 
     fn formatted(&self) -> FormattedWaitView {

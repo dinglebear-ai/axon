@@ -2,16 +2,19 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use axon_api::source::{
-    JobEvent, JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, SourceKind,
-    SourceProgressEvent, SourceScope, StageCounts,
+    JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, SourceKind, SourceProgressEvent,
+    SourceScope, StageCounts,
 };
 use axon_services::extract::ExtractProgress;
 
 use crate::commands::job_progress::source_unit;
 
 mod batch;
+mod terminal;
 
-pub(crate) use batch::BatchWaitViewModel;
+pub(crate) use batch::{BatchTerminalOutcome, BatchWaitViewModel};
+pub(crate) use terminal::{RenderedTerminal, TerminalStatus};
+use terminal::{status_priority, terminal_milestone};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum OperatorPhase {
@@ -73,7 +76,7 @@ pub(crate) struct WaitViewModel {
     pub milestones: Vec<RenderedMilestone>,
     pub active: Option<ActiveProgress>,
     pub notices: Vec<OperatorNotice>,
-    pub terminal: Option<RenderedMilestone>,
+    pub terminal: Option<RenderedTerminal>,
     source_kind: Option<SourceKind>,
     seen_event_ids: HashSet<String>,
     phase_started_at: Option<(OperatorPhase, Duration)>,
@@ -95,6 +98,14 @@ impl WaitViewModel {
         }
     }
 
+    pub(crate) fn set_source_kind(&mut self, source_kind: SourceKind) -> bool {
+        if self.source_kind == Some(source_kind) {
+            return false;
+        }
+        self.source_kind = Some(source_kind);
+        true
+    }
+
     pub(crate) fn apply_snapshot(&mut self, update: JobStatusUpdate) -> bool {
         let previous_job_id = self.job_id.replace(update.job_id);
         let progress = active_progress(
@@ -103,8 +114,8 @@ impl WaitViewModel {
             update.current.as_ref(),
             self.source_kind,
         );
-        let terminal = is_terminal(update.status)
-            .then(|| terminal_milestone(update.status, update.counts.as_ref(), progress.clone()));
+        let terminal = TerminalStatus::from_lifecycle(update.status)
+            .map(|status| terminal_milestone(status, update.counts.as_ref(), progress.clone()));
         let next = terminal.is_none().then_some(progress);
         let changed =
             previous_job_id != self.job_id || self.active != next || self.terminal != terminal;
@@ -114,11 +125,11 @@ impl WaitViewModel {
     }
 
     pub(crate) fn apply_extract_progress(&mut self, progress: &ExtractProgress) -> bool {
-        let current = progress.last_completed_url.as_ref().map(|url| {
+        let current = progress.last_completed_url().map(|url| {
             format!(
                 "last completed: {url} · {} {}",
-                progress.items_done,
-                if progress.items_done == 1 {
+                progress.items_done(),
+                if progress.items_done() == 1 {
                     "item"
                 } else {
                     "items"
@@ -127,9 +138,9 @@ impl WaitViewModel {
         });
         let next = ActiveProgress {
             phase: OperatorPhase::Extract,
-            done: progress.urls_done,
-            total: Some(progress.urls_total),
-            unit: if progress.urls_total == 1 {
+            done: progress.urls_done(),
+            total: Some(progress.urls_total()),
+            unit: if progress.urls_total() == 1 {
                 "URL"
             } else {
                 "URLs"
@@ -147,7 +158,23 @@ impl WaitViewModel {
         }
         self.job_id = Some(event.job_id);
         let mut changed = self.apply_notice(&event);
-        if !is_terminal(event.status) {
+        let terminal_status = TerminalStatus::from_lifecycle(event.status);
+        if event.phase == PipelinePhase::Complete
+            && let Some(terminal_status) = terminal_status
+        {
+            let progress = active_progress(
+                event.phase,
+                Some(&event.counts),
+                event.current.as_ref(),
+                self.source_kind,
+            );
+            let terminal = terminal_milestone(terminal_status, Some(&event.counts), progress);
+            if self.terminal.as_ref() != Some(&terminal) || self.active.is_some() {
+                self.terminal = Some(terminal);
+                self.active = None;
+                changed = true;
+            }
+        } else if terminal_status.is_none() {
             let active = active_progress(
                 event.phase,
                 Some(&event.counts),
@@ -160,15 +187,6 @@ impl WaitViewModel {
             }
         }
         changed
-    }
-
-    pub(crate) fn apply_persisted_event(&mut self, event: JobEvent) -> bool {
-        event
-            .details
-            .get("source_progress_event")
-            .cloned()
-            .and_then(|value| serde_json::from_value(value).ok())
-            .is_some_and(|progress| self.apply_event(progress))
     }
 
     pub(crate) fn start_phase_at(&mut self, phase: PipelinePhase, now: Duration) {
@@ -206,18 +224,32 @@ impl WaitViewModel {
         true
     }
 
-    pub(crate) fn finish(&mut self) -> bool {
-        if self.terminal.is_some() {
-            return self.active.take().is_some();
-        }
-        let Some(active) = self.active.take() else {
+    pub(crate) fn finish(&mut self, status: LifecycleStatus) -> bool {
+        let Some(status) = TerminalStatus::from_lifecycle(status) else {
             return false;
         };
-        self.terminal = Some(RenderedMilestone {
+        if self.terminal.is_some() {
+            let active_changed = self.active.take().is_some();
+            let status_changed = self.terminal.as_mut().is_some_and(|terminal| {
+                if status_priority(status) > status_priority(terminal.status) {
+                    terminal.status = status;
+                    true
+                } else {
+                    false
+                }
+            });
+            return active_changed || status_changed;
+        }
+        let summary = self
+            .active
+            .take()
+            .as_ref()
+            .map(progress_summary)
+            .unwrap_or_else(|| "source did not start".to_string());
+        self.terminal = Some(RenderedTerminal {
             phase: OperatorPhase::Complete,
-            summary: progress_summary(&active),
-            elapsed: Duration::ZERO,
-            degraded: false,
+            summary,
+            status,
         });
         true
     }
@@ -421,48 +453,6 @@ fn notice_message(category: NoticeCategory, count: u64, safe_message: &str) -> S
         safe_message.to_string()
     } else {
         format!("{safe_message} · {count} occurrences")
-    }
-}
-
-fn is_terminal(status: LifecycleStatus) -> bool {
-    matches!(
-        status,
-        LifecycleStatus::Completed
-            | LifecycleStatus::CompletedDegraded
-            | LifecycleStatus::Failed
-            | LifecycleStatus::Canceled
-            | LifecycleStatus::Expired
-            | LifecycleStatus::Skipped
-    )
-}
-
-fn terminal_milestone(
-    status: LifecycleStatus,
-    counts: Option<&StageCounts>,
-    fallback: ActiveProgress,
-) -> RenderedMilestone {
-    let summary = counts.map_or_else(
-        || progress_summary(&fallback),
-        |counts| {
-            let mut parts = Vec::new();
-            if counts.documents_done > 0 {
-                parts.push(format!("{} documents", counts.documents_done));
-            }
-            if counts.chunks_done > 0 {
-                parts.push(format!("{} vectors", counts.chunks_done));
-            }
-            if parts.is_empty() {
-                progress_summary(&fallback)
-            } else {
-                parts.join(" · ")
-            }
-        },
-    );
-    RenderedMilestone {
-        phase: OperatorPhase::Complete,
-        summary,
-        elapsed: Duration::ZERO,
-        degraded: status != LifecycleStatus::Completed,
     }
 }
 

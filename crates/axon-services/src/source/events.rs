@@ -5,6 +5,7 @@ use axon_api::source::{
     Severity, SourceError, SourceGenerationId, SourceId, SourceKind, SourceProgressEvent,
     SourceScope, SourceWarning, StageCounts, Timestamp, Visibility,
 };
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_jobs::boundary::JobStore;
 
 use super::foreground_progress::ForegroundProgressSender;
@@ -69,6 +70,11 @@ impl SourceEventEmitter {
         foreground: Option<ForegroundProgressSender>,
     ) -> Self {
         self.foreground = foreground;
+        if let (Some(foreground), Some(job_id), Some(source_kind)) =
+            (&self.foreground, self.job_id, self.source_kind)
+        {
+            foreground.routed(job_id, source_kind);
+        }
         self
     }
 
@@ -241,7 +247,7 @@ impl SourceEventEmitter {
         let Some(job_id) = self.job_id else {
             return;
         };
-        let event = build_source_event(
+        let event = public_source_event(build_source_event(
             job_id,
             phase,
             status,
@@ -253,7 +259,7 @@ impl SourceEventEmitter {
             self.attempt,
             message,
             details,
-        );
+        ));
         let persisted = if let Some(jobs) = self.jobs.as_ref() {
             jobs.append_event(event.clone()).await
         } else {
@@ -271,6 +277,33 @@ impl SourceEventEmitter {
             );
         }
     }
+}
+
+fn public_source_event(event: SourceProgressEvent) -> SourceProgressEvent {
+    if event.validate_bounds().is_err() {
+        return suppressed_source_event(&event);
+    }
+    let Ok(value) = serde_json::to_value(&event) else {
+        return suppressed_source_event(&event);
+    };
+    let (redacted, _) = DefaultRedactor::new().redact_json(value, &RedactionContext::job_event());
+    serde_json::from_value(redacted).unwrap_or_else(|_| suppressed_source_event(&event))
+}
+
+fn suppressed_source_event(event: &SourceProgressEvent) -> SourceProgressEvent {
+    let mut safe = SourceProgressEvent::minimal(
+        event.job_id,
+        event.sequence,
+        event.phase,
+        event.status,
+        event.severity,
+        "progress detail suppressed by redaction boundary",
+    );
+    safe.event_id.clone_from(&event.event_id);
+    safe.attempt = event.attempt;
+    safe.counts = event.counts.clone();
+    safe.timestamp = event.timestamp.clone();
+    safe
 }
 
 #[derive(Debug, Clone, Default)]

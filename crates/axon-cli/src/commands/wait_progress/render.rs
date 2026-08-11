@@ -57,7 +57,7 @@ impl WaitRenderer {
 
     #[cfg(test)]
     pub(crate) fn for_test(term: indicatif::InMemoryTerm, mode: ProgressMode) -> Self {
-        let target = (mode == ProgressMode::Interactive)
+        let target = (mode != ProgressMode::Silent)
             .then(|| ProgressDrawTarget::term_like_with_hz(Box::new(term), 30));
         Self::with_target(mode, target)
     }
@@ -65,6 +65,9 @@ impl WaitRenderer {
     fn with_target(mode: ProgressMode, target: Option<ProgressDrawTarget>) -> Self {
         let (multi, header, active) = target.map_or((None, None, None), |target| {
             let multi = MultiProgress::with_draw_target(target);
+            if mode != ProgressMode::Interactive {
+                return (Some(multi), None, None);
+            }
             multi.set_move_cursor(true);
             let style = ProgressStyle::with_template("{msg}")
                 .unwrap_or_else(|_| ProgressStyle::default_spinner());
@@ -115,7 +118,7 @@ impl WaitRenderer {
         }
         match self.mode {
             ProgressMode::Interactive => self.render_interactive(view)?,
-            ProgressMode::Plain => self.render_plain(view),
+            ProgressMode::Plain => self.render_plain(view)?,
             ProgressMode::Silent => {}
         }
         self.last_render = Some(Instant::now());
@@ -123,57 +126,69 @@ impl WaitRenderer {
         Ok(())
     }
 
-    pub(crate) fn diagnostic(&self, message: &str) {
+    pub(crate) fn diagnostic(&self, message: &str) -> io::Result<()> {
         match self.mode {
             ProgressMode::Interactive => {
                 if let Some(multi) = &self.multi {
-                    let _ = multi.println(message);
+                    multi.println(message)?;
                 }
             }
             ProgressMode::Plain => eprintln!("{message}"),
             ProgressMode::Silent => {}
         }
+        Ok(())
     }
 
     pub(crate) fn finish(&mut self, view: &FormattedWaitView) -> io::Result<()> {
         if self.finished {
             return Ok(());
         }
-        self.finished = true;
-        self.clear_live();
+        self.clear_live()?;
         match self.mode {
             ProgressMode::Interactive => {
                 if let Some(multi) = &self.multi {
                     for notice in &view.notices {
-                        if self.printed_milestones.insert(notice.clone()) {
+                        if !self.printed_milestones.contains(notice) {
                             multi.println(notice)?;
+                            self.printed_milestones.insert(notice.clone());
                         }
                     }
                     if let Some(terminal) = &view.terminal
-                        && self.printed_milestones.insert(terminal.clone())
+                        && !self.printed_milestones.contains(terminal)
                     {
                         multi.println(terminal)?;
+                        self.printed_milestones.insert(terminal.clone());
                     }
                 }
             }
             ProgressMode::Plain => {
                 for notice in view.notices.iter().skip(self.printed_plain_notices) {
-                    eprintln!("{notice}");
+                    if let Some(multi) = &self.multi {
+                        multi.println(notice)?;
+                    } else {
+                        eprintln!("{notice}");
+                    }
                 }
                 if let Some(terminal) = &view.terminal {
-                    eprintln!("{terminal}");
+                    if let Some(multi) = &self.multi {
+                        multi.println(terminal)?;
+                    } else {
+                        eprintln!("{terminal}");
+                    }
                 }
             }
             ProgressMode::Silent => {}
         }
+        self.finished = true;
         Ok(())
     }
 
     fn render_interactive(&mut self, view: &FormattedWaitView) -> io::Result<()> {
         if let Some(multi) = &self.multi {
             for milestone in &view.milestones {
-                if self.printed_milestones.insert(milestone.clone()) {
+                if !self.printed_milestones.contains(milestone) {
                     multi.println(milestone)?;
+                    self.printed_milestones.insert(milestone.clone());
                 }
             }
         }
@@ -190,19 +205,19 @@ impl WaitRenderer {
         Ok(())
     }
 
-    fn render_plain(&mut self, view: &FormattedWaitView) {
-        for milestone in &view.milestones {
-            if self.printed_milestones.insert(milestone.clone()) {
-                eprintln!("{milestone}");
+    fn render_plain(&mut self, view: &FormattedWaitView) -> io::Result<()> {
+        for notice in view.notices.iter().skip(self.printed_plain_notices) {
+            if let Some(multi) = &self.multi {
+                multi.println(notice)?;
+            } else {
+                eprintln!("{notice}");
             }
         }
-        for notice in view.notices.iter().skip(self.printed_plain_notices) {
-            eprintln!("{notice}");
-        }
         self.printed_plain_notices = self.printed_plain_notices.max(view.notices.len());
+        Ok(())
     }
 
-    fn clear_live(&self) {
+    fn clear_live(&self) -> io::Result<()> {
         if let Some(multi) = &self.multi {
             if let Some(active) = &self.active {
                 multi.remove(active);
@@ -210,14 +225,15 @@ impl WaitRenderer {
             if let Some(header) = &self.header {
                 multi.remove(header);
             }
-            let _ = multi.clear();
+            multi.clear()?;
         }
+        Ok(())
     }
 }
 
 impl Drop for WaitRenderer {
     fn drop(&mut self) {
-        self.clear_live();
+        let _ = self.clear_live();
     }
 }
 

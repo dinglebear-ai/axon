@@ -1,15 +1,15 @@
 use std::collections::HashSet;
+use std::error::Error;
 use std::future::Future;
+use std::io;
 use std::io::IsTerminal;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use axon_api::source::{
-    JobEventListRequest, JobId, LifecycleStatus, SourceProgressEvent, SourceScope, Visibility,
-};
+use axon_api::source::{JobId, LifecycleStatus, SourceProgressEvent, SourceResult, SourceScope};
 use axon_core::{config::Config, ui};
-use axon_jobs::boundary::JobStore;
-use axon_services::source::foreground_progress::{ForegroundProgressReceiver, ForegroundSnapshot};
+use axon_services::source::foreground_progress::{
+    ForegroundEventStore, ForegroundProgressReceiver, ForegroundSnapshot,
+};
 
 use super::{ProgressMode, WaitRenderer};
 use crate::commands::wait_progress::format::format_wait_view;
@@ -18,7 +18,7 @@ use crate::commands::wait_progress::timing::{RateEstimate, TimingEstimator};
 
 pub(crate) struct WaitProgressSession {
     receiver: ForegroundProgressReceiver,
-    store: Option<Arc<dyn JobStore>>,
+    store: Option<ForegroundEventStore>,
     model: WaitViewModel,
     renderer: WaitRenderer,
     timing: TimingEstimator,
@@ -26,10 +26,9 @@ pub(crate) struct WaitProgressSession {
     started_at: Instant,
     active_phase: Option<OperatorPhase>,
     seen_event_ids: HashSet<String>,
-    last_durable_sequence: Option<u64>,
-    next_cursor: Option<String>,
     dirty: bool,
     reconciliation_warning_emitted: bool,
+    render_error: Option<io::Error>,
 }
 
 impl WaitProgressSession {
@@ -38,9 +37,9 @@ impl WaitProgressSession {
         target: impl Into<String>,
         scope: Option<SourceScope>,
         receiver: ForegroundProgressReceiver,
-        store: Option<Arc<dyn JobStore>>,
+        store: Option<ForegroundEventStore>,
     ) -> Self {
-        let mode = ProgressMode::for_config(cfg, std::io::stderr().is_terminal());
+        let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
         Self {
             receiver,
             store,
@@ -51,14 +50,19 @@ impl WaitProgressSession {
             started_at: Instant::now(),
             active_phase: None,
             seen_event_ids: HashSet::new(),
-            last_durable_sequence: None,
-            next_cursor: None,
             dirty: true,
             reconciliation_warning_emitted: false,
+            render_error: None,
         }
     }
 
-    pub(crate) async fn run_until<T>(&mut self, work: impl Future<Output = T>) -> T {
+    pub(crate) async fn run_until<E>(
+        &mut self,
+        work: impl Future<Output = Result<SourceResult, E>>,
+    ) -> Result<SourceResult, Box<dyn Error>>
+    where
+        E: Into<Box<dyn Error>>,
+    {
         tokio::pin!(work);
         let mut cadence = tokio::time::interval(Duration::from_millis(250));
         let mut snapshots_open = true;
@@ -67,7 +71,17 @@ impl WaitProgressSession {
             tokio::select! {
                 result = &mut work => {
                     self.drain_ready_updates();
-                    self.finish();
+                    self.reconcile_if_overflowed().await;
+                    let result = result.map_err(Into::into);
+                    let status = result
+                        .as_ref()
+                        .map_or(LifecycleStatus::Failed, |source| source.status);
+                    self.finish(status);
+                    if result.is_ok()
+                        && let Some(error) = self.render_error.take()
+                    {
+                        return Err(Box::new(error));
+                    }
                     return result;
                 }
                 changed = self.receiver.snapshots.changed(), if snapshots_open => {
@@ -92,14 +106,18 @@ impl WaitProgressSession {
         }
     }
 
-    pub(crate) fn finish(&mut self) {
-        self.model.finish();
+    pub(crate) fn finish(&mut self, status: LifecycleStatus) {
+        self.model.finish(status);
         let formatted = self.formatted();
-        let _ = self.renderer.finish(&formatted);
+        let render_result = self.renderer.finish(&formatted);
+        self.record_render_result(render_result);
         self.dirty = false;
     }
 
     fn apply_latest_snapshot(&mut self) {
+        if let Some(source_kind) = self.receiver.source_kind() {
+            self.dirty |= self.model.set_source_kind(source_kind);
+        }
         let snapshot = self.receiver.snapshots.borrow_and_update().clone();
         let Some(snapshot) = snapshot else {
             return;
@@ -110,6 +128,13 @@ impl WaitProgressSession {
                     self.model.job_id = Some(job_id);
                     self.dirty = true;
                 }
+            }
+            ForegroundSnapshot::Routed {
+                job_id,
+                source_kind,
+            } => {
+                self.model.job_id = Some(job_id);
+                self.dirty |= self.model.set_source_kind(source_kind);
             }
             ForegroundSnapshot::Status(update) => {
                 let phase = operator_phase(update.phase);
@@ -173,8 +198,10 @@ impl WaitProgressSession {
         if let Err(error) = self.reconcile_events(store, job_id).await {
             self.receiver.mark_overflowed();
             if !self.reconciliation_warning_emitted {
-                self.renderer
+                let diagnostic = self
+                    .renderer
                     .diagnostic(&ui::muted(&format!("progress catch-up deferred: {error}")));
+                self.record_render_result(diagnostic);
                 self.reconciliation_warning_emitted = true;
             }
         } else {
@@ -184,34 +211,13 @@ impl WaitProgressSession {
 
     async fn reconcile_events(
         &mut self,
-        store: Arc<dyn JobStore>,
+        store: ForegroundEventStore,
         job_id: JobId,
     ) -> Result<(), axon_api::source::ApiError> {
-        loop {
-            let request = JobEventListRequest {
-                job_id,
-                after_sequence: self.last_durable_sequence,
-                limit: Some(200),
-                severity: None,
-                visibility: Some(Visibility::Public),
-                phase: None,
-                since_sequence: None,
-                cursor: self.next_cursor.take(),
-            };
-            let page = store.events(request).await?;
-            for event in page.events {
-                if self.seen_event_ids.insert(event.event_id.clone())
-                    && self.model.apply_persisted_event(event)
-                {
-                    self.dirty = true;
-                }
-            }
-            self.last_durable_sequence = Some(page.last_sequence);
-            self.next_cursor = page.next_cursor;
-            if self.next_cursor.is_none() {
-                return Ok(());
-            }
+        for event in store.public_source_events(job_id).await? {
+            self.apply_event(event);
         }
+        Ok(())
     }
 
     fn render_if_dirty(&mut self) {
@@ -219,8 +225,17 @@ impl WaitProgressSession {
             return;
         }
         let formatted = self.formatted();
-        let _ = self.renderer.render(&formatted);
+        let render_result = self.renderer.render(&formatted);
+        self.record_render_result(render_result);
         self.dirty = false;
+    }
+
+    fn record_render_result(&mut self, result: io::Result<()>) {
+        if let Err(error) = result
+            && self.render_error.is_none()
+        {
+            self.render_error = Some(error);
+        }
     }
 
     fn formatted(&self) -> crate::commands::wait_progress::format::FormattedWaitView {

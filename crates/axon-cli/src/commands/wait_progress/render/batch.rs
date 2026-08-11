@@ -1,14 +1,15 @@
 use std::future::Future;
+use std::io;
 use std::io::IsTerminal;
 
-use axon_api::source::{JobStatusUpdate, SourceProgressEvent};
+use axon_api::source::{JobStatusUpdate, SourceKind, SourceProgressEvent, SourceResult};
 use axon_core::{config::Config, ui};
 use axon_services::source::foreground_progress::{ForegroundProgressReceiver, ForegroundSnapshot};
 use tokio::sync::mpsc;
 
 use super::{ProgressMode, WaitRenderer};
 use crate::commands::wait_progress::format::FormattedWaitView;
-use crate::commands::wait_progress::model::BatchWaitViewModel;
+use crate::commands::wait_progress::model::{BatchTerminalOutcome, BatchWaitViewModel};
 
 pub(crate) enum BatchProgressUpdate {
     Started {
@@ -19,13 +20,17 @@ pub(crate) enum BatchProgressUpdate {
         index: usize,
         update: Box<JobStatusUpdate>,
     },
+    Routed {
+        index: usize,
+        source_kind: SourceKind,
+    },
     Event {
         index: usize,
         event: Box<SourceProgressEvent>,
     },
     Finished {
         index: usize,
-        failed: bool,
+        outcome: BatchTerminalOutcome,
     },
 }
 
@@ -39,6 +44,7 @@ pub(crate) struct BatchProgressSession {
     model: BatchWaitViewModel,
     renderer: WaitRenderer,
     color: bool,
+    render_error: Option<io::Error>,
 }
 
 pub(crate) fn batch_progress_channel() -> (
@@ -56,17 +62,17 @@ impl BatchProgressForwarder {
             .send(BatchProgressUpdate::Started { index, target });
         let _ = self.updates.send(BatchProgressUpdate::Finished {
             index,
-            failed: true,
+            outcome: BatchTerminalOutcome::Failed,
         });
     }
 
-    pub(crate) async fn run_until<T, E>(
+    pub(crate) async fn run_until<E>(
         &self,
         index: usize,
         target: impl Into<String>,
         mut receiver: ForegroundProgressReceiver,
-        work: impl Future<Output = Result<T, E>>,
-    ) -> Result<T, E> {
+        work: impl Future<Output = Result<SourceResult, E>>,
+    ) -> Result<SourceResult, E> {
         let _ = self.updates.send(BatchProgressUpdate::Started {
             index,
             target: target.into(),
@@ -80,7 +86,10 @@ impl BatchProgressForwarder {
                     drain_ready(index, &mut receiver, &self.updates);
                     let _ = self.updates.send(BatchProgressUpdate::Finished {
                         index,
-                        failed: result.is_err(),
+                        outcome: result.as_ref().map_or(
+                            BatchTerminalOutcome::Failed,
+                            |source| BatchTerminalOutcome::from_status(source.status),
+                        ),
                     });
                     return result;
                 }
@@ -112,16 +121,17 @@ impl BatchProgressSession {
         total: usize,
         updates: mpsc::UnboundedReceiver<BatchProgressUpdate>,
     ) -> Self {
-        let mode = ProgressMode::for_config(cfg, std::io::stderr().is_terminal());
+        let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
         Self {
             updates,
             model: BatchWaitViewModel::new(total),
             renderer: WaitRenderer::new(mode),
             color: ui::stderr_color_enabled(),
+            render_error: None,
         }
     }
 
-    pub(crate) async fn run_until<T>(&mut self, work: impl Future<Output = T>) -> T {
+    pub(crate) async fn run_until<T>(&mut self, work: impl Future<Output = T>) -> io::Result<T> {
         tokio::pin!(work);
         let mut cadence = tokio::time::interval(std::time::Duration::from_millis(250));
         loop {
@@ -129,8 +139,9 @@ impl BatchProgressSession {
                 result = &mut work => {
                     self.drain_ready();
                     let view = self.formatted(true);
-                    let _ = self.renderer.finish(&view);
-                    return result;
+                    let render_result = self.renderer.finish(&view);
+                    self.record_render_result(render_result);
+                    return self.render_error.take().map_or(Ok(result), Err);
                 }
                 update = self.updates.recv() => {
                     if let Some(update) = update {
@@ -139,7 +150,8 @@ impl BatchProgressSession {
                 }
                 _ = cadence.tick() => {
                     let view = self.formatted(false);
-                    let _ = self.renderer.render(&view);
+                    let render_result = self.renderer.render(&view);
+                    self.record_render_result(render_result);
                 }
             }
         }
@@ -157,14 +169,11 @@ impl BatchProgressSession {
             BatchProgressUpdate::Snapshot { index, update } => {
                 self.model.apply_snapshot(index, *update);
             }
-            BatchProgressUpdate::Event { index, event } => self.model.apply_event(index, *event),
-            BatchProgressUpdate::Finished { index, failed } => {
-                if failed {
-                    self.model.failed(index);
-                } else {
-                    self.model.completed(index);
-                }
+            BatchProgressUpdate::Routed { index, source_kind } => {
+                self.model.routed(index, source_kind);
             }
+            BatchProgressUpdate::Event { index, event } => self.model.apply_event(index, *event),
+            BatchProgressUpdate::Finished { index, outcome } => self.model.finish(index, outcome),
         }
     }
 
@@ -187,13 +196,43 @@ impl BatchProgressSession {
             );
             active.push(ui::info_when(self.color, &format!("   {detail}")));
         }
+        let terminal = terminal.then(|| {
+            let succeeded = self.model.successful_count();
+            let failed = self.model.hard_failure_count();
+            let degraded = self.model.degraded_count();
+            let plain = if failed == 0 && degraded == 0 {
+                format!("✓ source     {summary}")
+            } else if failed > 0 && succeeded == 0 {
+                format!("✗ source     {summary}")
+            } else {
+                format!("⚠ source     {summary}")
+            };
+            if failed == 0 && degraded == 0 {
+                ui::success_when(self.color, &plain)
+            } else if failed > 0 && succeeded == 0 {
+                ui::error_when(self.color, &plain)
+            } else {
+                ui::warning_when(self.color, &plain)
+            }
+        });
         FormattedWaitView {
             heading: format!("  {} source batch", ui::primary_when(self.color, "axon")),
             milestones: Vec::new(),
             notices: Vec::new(),
-            active: if terminal { Vec::new() } else { active },
-            terminal: terminal
-                .then(|| ui::success_when(self.color, &format!("✓ source     {summary}"))),
+            active: if terminal.is_some() {
+                Vec::new()
+            } else {
+                active
+            },
+            terminal,
+        }
+    }
+
+    fn record_render_result(&mut self, result: io::Result<()>) {
+        if let Err(error) = result
+            && self.render_error.is_none()
+        {
+            self.render_error = Some(error);
         }
     }
 }
@@ -219,8 +258,18 @@ fn forward_snapshot(
     receiver: &mut ForegroundProgressReceiver,
     updates: &mpsc::UnboundedSender<BatchProgressUpdate>,
 ) {
-    if let Some(ForegroundSnapshot::Status(update)) = receiver.snapshots.borrow_and_update().clone()
-    {
-        let _ = updates.send(BatchProgressUpdate::Snapshot { index, update });
+    if let Some(source_kind) = receiver.source_kind() {
+        let _ = updates.send(BatchProgressUpdate::Routed { index, source_kind });
+    }
+    match receiver.snapshots.borrow_and_update().clone() {
+        Some(ForegroundSnapshot::Status(update)) => {
+            let _ = updates.send(BatchProgressUpdate::Snapshot { index, update });
+        }
+        Some(ForegroundSnapshot::Routed { .. }) => {}
+        Some(ForegroundSnapshot::JobStarted(_)) | None => {}
     }
 }
+
+#[cfg(test)]
+#[path = "batch_tests.rs"]
+mod tests;

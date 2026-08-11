@@ -174,6 +174,22 @@ fn redact_text_replaces_only_the_secret_span() {
 }
 
 #[test]
+fn redact_text_fails_closed_when_a_second_secret_shape_remains() {
+    let redactor = DefaultRedactor::new();
+    let context = RedactionContext::job_event();
+    for input in [
+        "password=hunter2 postgres://user:pass@db.internal/data",
+        "token=abc123 -----BEGIN PRIVATE KEY-----",
+    ] {
+        assert_eq!(
+            redactor.redact_text(input, &context),
+            REDACTION_PLACEHOLDER,
+            "leaked {input}"
+        );
+    }
+}
+
+#[test]
 fn redact_json_replaces_only_the_secret_span() {
     let input = json!({
         "message": "request failed Authorization: Bearer abc123; retrying safely"

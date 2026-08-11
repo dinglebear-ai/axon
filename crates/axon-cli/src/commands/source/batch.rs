@@ -56,7 +56,7 @@ pub(super) async fn run(
         .buffer_unordered(concurrency)
         .collect::<Vec<BatchOutcome>>();
     let outcomes = if let Some(mut session) = batch_session {
-        session.run_until(outcomes_work).await
+        session.run_until(outcomes_work).await?
     } else {
         outcomes_work.await
     };
@@ -85,7 +85,12 @@ fn render_outcomes(cfg: &Config, outcomes: Vec<BatchOutcome>) -> Result<(), Box<
     batch_errors.sort_by_key(|(index, _, _)| *index);
     let semantic_failures = indexed_results
         .iter()
-        .filter(|(_, result)| result.status == LifecycleStatus::Failed)
+        .filter(|(_, result)| {
+            matches!(
+                result.status,
+                LifecycleStatus::Failed | LifecycleStatus::Canceled | LifecycleStatus::Expired
+            )
+        })
         .count();
     let failed = batch_errors.len() + semantic_failures;
     let succeeded = indexed_results.len() - semantic_failures;
