@@ -29,6 +29,7 @@ const ERROR_ANSI: &str = "\x1b[38;2;199;132;144m"; // --aurora-error            
 const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info               #72C8F5
 const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
 const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
+const NEUTRAL_ANSI: &str = "\x1b[38;2;145;168;182m"; // --aurora-neutral            #91A8B6
 
 const COLOR_AUTO: u8 = 0;
 const COLOR_ALWAYS: u8 = 1;
@@ -72,6 +73,12 @@ pub fn install_color_choice(choice: crate::config::ColorChoice) {
 pub fn color_enabled_public() -> bool {
     use std::io::IsTerminal;
     color_enabled_for_auto_tty(std::io::stdout().is_terminal())
+}
+
+/// Canonical color accessor for progress and diagnostics rendered on stderr.
+pub fn stderr_color_enabled() -> bool {
+    use std::io::IsTerminal;
+    color_enabled_for_auto_tty(std::io::stderr().is_terminal())
 }
 
 /// True iff the installed `--color` override is `Always`. Used by the tracing
@@ -118,7 +125,11 @@ fn color_enabled_for_auto_tty(is_terminal: bool) -> bool {
 }
 
 pub fn ansi_colorize(code: &str, text: &str) -> String {
-    if color_enabled_public() {
+    ansi_colorize_when(color_enabled_public(), code, text)
+}
+
+fn ansi_colorize_when(enabled: bool, code: &str, text: &str) -> String {
+    if enabled {
         format!("{code}{text}\x1b[0m")
     } else {
         text.to_string()
@@ -126,7 +137,11 @@ pub fn ansi_colorize(code: &str, text: &str) -> String {
 }
 
 pub fn ansi_bold(text: &str) -> String {
-    ansi_colorize("\x1b[1m", text)
+    ansi_bold_when(color_enabled_public(), text)
+}
+
+fn ansi_bold_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, "\x1b[1m", text)
 }
 
 pub fn ansi_dim(text: &str) -> String {
@@ -187,23 +202,57 @@ pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn E
 }
 
 pub fn primary(text: &str) -> String {
-    ansi_bold(&ansi_colorize(PRIMARY_ANSI, text))
+    primary_when(color_enabled_public(), text)
+}
+
+pub fn primary_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, PRIMARY_ANSI, text))
 }
 
 pub fn accent(text: &str) -> String {
-    ansi_colorize(ACCENT_ANSI, text)
+    accent_when(color_enabled_public(), text)
+}
+
+pub fn accent_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, ACCENT_ANSI, text)
 }
 
 pub fn success(text: &str) -> String {
-    ansi_bold(&ansi_colorize(SUCCESS_ANSI, text))
+    success_when(color_enabled_public(), text)
+}
+
+pub fn success_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, SUCCESS_ANSI, text))
 }
 
 pub fn warning(text: &str) -> String {
-    ansi_bold(&ansi_colorize(WARN_ANSI, text))
+    warning_when(color_enabled_public(), text)
+}
+
+pub fn warning_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, WARN_ANSI, text))
 }
 
 pub fn muted(text: &str) -> String {
     ansi_colorize(MUTED_ANSI, text)
+}
+
+/// Aurora informational blue for supporting active metadata.
+pub fn info(text: &str) -> String {
+    info_when(color_enabled_public(), text)
+}
+
+pub fn info_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, INFO_ANSI, text)
+}
+
+/// Aurora neutral blue-gray for low-emphasis operator metadata.
+pub fn neutral(text: &str) -> String {
+    neutral_when(color_enabled_public(), text)
+}
+
+pub fn neutral_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, NEUTRAL_ANSI, text)
 }
 
 /// Aurora rose-deep — secondary info (UUIDs, ages, separators).
