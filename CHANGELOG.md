@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.15] - 2026-08-11
+
+### Fixed
+
+- Project local AI-session citation identities to opaque stable URIs so path metadata stays private while safely redacted transcript chunks remain eligible for retrieval.
+
 ## [7.2.14] - 2026-08-11
 
 ### Fixed

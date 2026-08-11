@@ -16,6 +16,12 @@ pub(super) fn session_source_document(
     acquisition: &SourceAcquisition,
     item: &AcquiredSourceItem,
 ) -> SourceDocument {
+    let document_id =
+        session_document_id(&acquisition.source_id, &item.manifest_item.source_item_key);
+    let provider = target.provider.as_str();
+    let safe_session_id = opaque_session_id(provider, &target.session_id);
+    let canonical_uri = format!("session://{provider}/{}", document_id.0);
+
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("session"));
     metadata.insert("source_kind".to_string(), json!("session"));
@@ -23,7 +29,12 @@ pub(super) fn session_source_document(
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
     metadata.insert("session_provider".to_string(), json!(target.provider));
     metadata.insert("session_agent".to_string(), json!(target.provider));
-    metadata.insert("session_id".to_string(), json!(target.session_id));
+    // Vector payloads pass through the public redaction boundary. Raw local
+    // session paths/IDs there would be scrubbed and correctly stamped
+    // `redacted`, which normal retrieval excludes. Keep raw transport identity
+    // in the manifest/artifact boundary and project only stable opaque IDs into
+    // the retrievable document.
+    metadata.insert("session_id".to_string(), json!(safe_session_id));
     metadata.insert("session_turn_count".to_string(), json!(decoded.turn_count));
     metadata.insert(
         "session_has_tool_use".to_string(),
@@ -91,13 +102,10 @@ pub(super) fn session_source_document(
     };
 
     SourceDocument {
-        document_id: session_document_id(
-            &acquisition.source_id,
-            &item.manifest_item.source_item_key,
-        ),
+        document_id,
         source_id: acquisition.source_id.clone(),
         source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        canonical_uri,
         // The acquired artifact is JSONL/JSON transcript transport, but the
         // normalized body below is semantic plain text. Keeping the raw
         // Transcript kind/path here re-selected the JSONL parser and emitted
@@ -107,7 +115,7 @@ pub(super) fn session_source_document(
             text: decoded.text.clone(),
         },
         metadata,
-        title: item.manifest_item.display_path.clone(),
+        title: Some(format!("{provider} AI session")),
         language: None,
         path: None,
         mime_type: None,
@@ -116,6 +124,12 @@ pub(super) fn session_source_document(
         chunk_hints,
         parser_hints: Vec::new(),
     }
+}
+
+fn opaque_session_id(provider: &str, session_id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(format!("session-id\0{provider}\0{session_id}").as_bytes());
+    format!("session_{}", hex_prefix(&hasher.finalize(), 24))
 }
 
 fn session_document_id(source_id: &SourceId, item_key: &SourceItemKey) -> DocumentId {

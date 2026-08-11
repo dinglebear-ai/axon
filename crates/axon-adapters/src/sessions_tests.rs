@@ -353,13 +353,22 @@ async fn acquire_then_normalize_claude_session_stamps_metadata() {
             .and_then(|v| v.as_str()),
         Some("claude")
     );
-    assert_eq!(
-        doc.metadata.get("session_id").and_then(|v| v.as_str()),
-        Some("abc123")
-    );
+    let projected_session_id = doc
+        .metadata
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .expect("opaque session id");
+    assert!(projected_session_id.starts_with("session_"));
+    assert_ne!(projected_session_id, "abc123");
     assert!(!doc.metadata.contains_key("session_turn_count"));
     assert!(!doc.metadata.contains_key("session_model"));
     assert_eq!(doc.content_kind, ContentKind::PlainText);
+    assert!(
+        doc.canonical_uri
+            .starts_with("session://claude/doc_session_")
+    );
+    assert!(!doc.canonical_uri.contains(root.to_string_lossy().as_ref()));
+    assert_eq!(doc.title.as_deref(), Some("claude AI session"));
     fs::remove_dir_all(&root).ok();
 }
 
