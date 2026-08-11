@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.16] - 2026-08-11
+
+### Fixed
+
+- Preserve distinct opaque AI-session document identities through Ask synthesis so non-trivial answers can satisfy citation grounding without exposing local transcript identifiers.
+
 ## [7.2.15] - 2026-08-11
 
 ### Fixed
