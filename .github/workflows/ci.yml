@@ -905,7 +905,10 @@ jobs:
     runs-on: ci-pool-rust
     timeout-minutes: 30
     needs: [changes, rust-contracts]
-    if: ${{ needs.changes.outputs.run_security == 'true' }}
+    # The weekly cron routes the security audit while intentionally skipping
+    # rust-contracts, so this job must evaluate its own route decision through
+    # the skipped ancestor instead of inheriting the cascade (see mcp-smoke).
+    if: ${{ always() && needs.changes.outputs.run_security == 'true' && (needs.rust-contracts.result == 'success' || needs.rust-contracts.result == 'skipped') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup-rust-kache

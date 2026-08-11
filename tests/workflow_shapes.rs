@@ -933,6 +933,21 @@ fn mcp_smoke_survives_skipped_ancestors_after_its_build_succeeds() {
 }
 
 #[test]
+fn security_survives_the_scheduled_skip_of_rust_contracts() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let security = workflow_job_block(workflow, "security");
+
+    // The weekly cron routes run_security=true while rust-contracts is
+    // intentionally skipped; without always() the skipped ancestor cascades,
+    // security never runs, and ci-gate fails every scheduled run.
+    assert!(security.contains("needs: [changes, rust-contracts]"));
+    assert!(security.lines().any(|line| {
+        line.trim()
+            == "if: ${{ always() && needs.changes.outputs.run_security == 'true' && (needs.rust-contracts.result == 'success' || needs.rust-contracts.result == 'skipped') }}"
+    }));
+}
+
+#[test]
 fn kache_migration_inputs_have_cargo_rerun_triggers() {
     for crate_name in [
         "axon-graph",
