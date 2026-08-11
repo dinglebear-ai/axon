@@ -182,3 +182,37 @@ fn distinct_session_documents_survive_citation_normalization() {
     assert!(normalized.contains("- [S1] session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa"));
     assert!(normalized.contains("- [S2] session://codex/doc_session_bbbbbbbbbbbbbbbbbbbbbbbb"));
 }
+
+#[test]
+fn ask_context_prioritizes_distinct_documents_before_duplicate_chunks() {
+    let mut cfg = Config::test_default();
+    cfg.ask_max_context_chars = usize::MAX;
+    let doc_a = "session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa";
+    let doc_b = "session://codex/doc_session_bbbbbbbbbbbbbbbbbbbbbbbb";
+    let doc_c = "session://codex/doc_session_cccccccccccccccccccccccc";
+    let hits = vec![
+        hit(doc_a, "doc-a highest-ranked chunk"),
+        hit(doc_a, "doc-a second chunk"),
+        hit(doc_b, "doc-b highest-ranked chunk"),
+        hit(doc_c, "doc-c highest-ranked chunk"),
+    ];
+
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 0);
+
+    let a_first = ctx.context.find("doc-a highest-ranked chunk").unwrap();
+    let b_first = ctx.context.find("doc-b highest-ranked chunk").unwrap();
+    let c_first = ctx.context.find("doc-c highest-ranked chunk").unwrap();
+    let a_second = ctx.context.find("doc-a second chunk").unwrap();
+    assert!(
+        a_first < b_first && b_first < c_first && c_first < a_second,
+        "the first relevant chunk from each distinct document must precede repeated chunks"
+    );
+    assert_eq!(
+        ctx.citations
+            .iter()
+            .map(|citation| citation.canonical_uri.as_str())
+            .collect::<Vec<_>>(),
+        vec![doc_a, doc_b, doc_c, doc_a],
+        "citation metadata must remain aligned with the reordered context"
+    );
+}

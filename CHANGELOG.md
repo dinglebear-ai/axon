@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.18] - 2026-08-11
+
+### Fixed
+
+- Prioritize the highest-ranked chunk from each distinct document in Ask synthesis context before repeated chunks, keeping multi-document evidence visible without weakening citation validation.
+
 ## [7.2.17] - 2026-08-11
 
 ### Fixed

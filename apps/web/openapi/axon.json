@@ -11,7 +11,7 @@
       "name": "AGPL-3.0-only",
       "identifier": "AGPL-3.0-only"
     },
-    "version": "7.2.17"
+    "version": "7.2.18"
   },
   "paths": {
     "/healthz": {

@@ -30,6 +30,7 @@ use axon_retrieval::{QueryServiceHit, QueryServiceRequest, run_query};
 use axon_vectors::store::VectorStore;
 
 use super::synthesis::assemble::assemble_explain_result;
+use super::synthesis::normalize;
 use super::synthesis::{AskContext, ask_result_from_context, ask_result_from_context_with_deltas};
 use crate::context::{ServiceContext, build_read_stores_from_config};
 use crate::types::AskResult;
@@ -71,7 +72,8 @@ where
     // trace-building logic and its module doc for what narrowed relative to
     // the retired legacy reranker's trace.
     if cfg.ask_explain {
-        let (ask_ctx, hits) = retrieval_ask_context_with_hits(ctx, cfg, question, "ask").await?;
+        let (ask_ctx, hits) =
+            retrieval_ask_context_with_hits(ctx, cfg, question, "ask", false).await?;
         let trace = explain::build_explain_trace(
             cfg,
             question,
@@ -121,7 +123,7 @@ pub(crate) async fn retrieval_ask_context(
     question: &str,
     label: &str,
 ) -> Result<AskContext, Box<dyn Error>> {
-    let (ask_ctx, _hits) = retrieval_ask_context_with_hits(ctx, cfg, question, label).await?;
+    let (ask_ctx, _hits) = retrieval_ask_context_with_hits(ctx, cfg, question, label, true).await?;
     Ok(ask_ctx)
 }
 
@@ -135,6 +137,7 @@ async fn retrieval_ask_context_with_hits(
     cfg: &Config,
     question: &str,
     label: &str,
+    diversify_documents: bool,
 ) -> Result<(AskContext, Vec<QueryServiceHit>), Box<dyn Error>> {
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(format!(
@@ -182,7 +185,11 @@ async fn retrieval_ask_context_with_hits(
     })?;
 
     let retrieval_elapsed_ms = retrieval_started.elapsed().as_millis();
-    let ask_ctx = build_ask_context_from_hits(cfg, &result.hits, retrieval_elapsed_ms);
+    let ask_ctx = if diversify_documents {
+        build_ask_context_from_hits(cfg, &result.hits, retrieval_elapsed_ms)
+    } else {
+        build_ask_context_from_hits_in_retrieval_order(cfg, &result.hits, retrieval_elapsed_ms)
+    };
     Ok((ask_ctx, result.hits))
 }
 
@@ -193,6 +200,46 @@ fn build_ask_context_from_hits(
     hits: &[QueryServiceHit],
     retrieval_elapsed_ms: u128,
 ) -> AskContext {
+    let ordered_hits = document_diverse_hit_order(hits);
+    build_ask_context_from_ordered_hits(cfg, &ordered_hits, retrieval_elapsed_ms)
+}
+
+/// Keep the highest-ranked chunk from every canonical document ahead of
+/// repeated chunks from documents already represented. This preserves
+/// retrieval rank within both passes while ensuring the synthesis context does
+/// not spend most of its bounded window on a single high-volume document.
+fn document_diverse_hit_order(hits: &[QueryServiceHit]) -> Vec<&QueryServiceHit> {
+    let mut seen_documents = BTreeSet::new();
+    let mut first_chunks = Vec::with_capacity(hits.len());
+    let mut repeated_chunks = Vec::new();
+    for hit in hits {
+        let identity = normalize::canonical_source_identity(&display_source(&hit.canonical_uri));
+        if seen_documents.insert(identity) {
+            first_chunks.push(hit);
+        } else {
+            repeated_chunks.push(hit);
+        }
+    }
+    first_chunks.extend(repeated_chunks);
+    first_chunks
+}
+
+/// Explain traces retain the retrieval-order prefix contract documented in
+/// `ask_retrieval::explain`; normal Ask/Evaluate synthesis uses the
+/// document-diverse ordering above.
+fn build_ask_context_from_hits_in_retrieval_order(
+    cfg: &Config,
+    hits: &[QueryServiceHit],
+    retrieval_elapsed_ms: u128,
+) -> AskContext {
+    build_ask_context_from_ordered_hits(cfg, &hits.iter().collect::<Vec<_>>(), retrieval_elapsed_ms)
+}
+
+fn build_ask_context_from_ordered_hits(
+    cfg: &Config,
+    ordered_hits: &[&QueryServiceHit],
+    retrieval_elapsed_ms: u128,
+) -> AskContext {
     let chunk_limit = cfg
         .ask_chunk_limit
         .clamp(1, axon_api::MAX_CANONICAL_CITATIONS);
@@ -200,9 +247,10 @@ fn build_ask_context_from_hits(
 
     let mut context = String::from(CONTEXT_PREFIX);
     let mut selected_urls: Vec<String> = Vec::new();
+    let mut selected_citations = Vec::new();
     let mut domains: BTreeSet<String> = BTreeSet::new();
 
-    for (zero_based_source_idx, hit) in hits.iter().take(chunk_limit).enumerate() {
+    for (zero_based_source_idx, hit) in ordered_hits.iter().take(chunk_limit).enumerate() {
         let source_idx = zero_based_source_idx + 1;
         let source = display_source(&hit.canonical_uri);
         let header = format!("## Top Chunk [S{}]: {}\n\n", source_idx, source);
@@ -227,6 +275,7 @@ fn build_ask_context_from_hits(
             domains.insert(host);
         }
         selected_urls.push(hit.canonical_uri.clone());
+        selected_citations.push(hit.citation.clone());
     }
 
     let chunks_selected = selected_urls.len();
@@ -239,11 +288,7 @@ fn build_ask_context_from_hits(
         &selected_urls,
         Vec::new(),
     );
-    ask_ctx.citations = hits
-        .iter()
-        .take(chunks_selected)
-        .map(|hit| hit.citation.clone())
-        .collect();
+    ask_ctx.citations = selected_citations;
     ask_ctx
 }
 
