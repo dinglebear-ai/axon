@@ -44,6 +44,10 @@ pub use self::target::{SessionTarget, parse_session_target};
 pub const MODULE_NAME: &str = "sessions";
 
 const ADAPTER_NAME: &str = "sessions";
+// Manifest freshness for the normalized semantic document projection. Bump
+// when decoding, redaction, or document construction changes so an unchanged
+// raw transcript is re-prepared instead of silently reusing stale vectors.
+const SESSION_DOCUMENT_VERSION: &str = "semantic-v2";
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionSourceAdapter;
@@ -216,7 +220,7 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
             size_bytes: Some(meta.len()),
             content_hash: Some(content_hash),
             mtime: modified_at(meta.modified().ok()),
-            version: None,
+            version: Some(SESSION_DOCUMENT_VERSION.to_string()),
             fetch_plan: None,
             metadata: item_metadata,
             graph_hints: Vec::new(),

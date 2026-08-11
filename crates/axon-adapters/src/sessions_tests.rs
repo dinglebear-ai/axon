@@ -205,6 +205,12 @@ async fn discover_lists_claude_jsonl_files() {
             .and_then(|v| v.as_str()),
         Some("claude")
     );
+    assert!(
+        manifest
+            .items
+            .iter()
+            .all(|item| item.version.as_deref() == Some(SESSION_DOCUMENT_VERSION))
+    );
     fs::remove_dir_all(&root).ok();
 }
 
@@ -335,11 +341,7 @@ async fn acquire_then_normalize_claude_session_stamps_metadata() {
     assert_eq!(acquisition.fetched_items.len(), manifest.items.len());
 
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
-    let doc = normalized
-        .data
-        .iter()
-        .find(|d| d.path.as_deref() == Some("session.jsonl"))
-        .expect("session document present");
+    let doc = normalized.data.first().expect("session document present");
     assert_eq!(
         doc.metadata.get("source_family").and_then(|v| v.as_str()),
         Some("session")
@@ -357,7 +359,59 @@ async fn acquire_then_normalize_claude_session_stamps_metadata() {
     );
     assert!(!doc.metadata.contains_key("session_turn_count"));
     assert!(!doc.metadata.contains_key("session_model"));
-    assert_eq!(doc.content_kind, ContentKind::Transcript);
+    assert_eq!(doc.content_kind, ContentKind::PlainText);
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn normalize_embeds_decoded_session_text_not_raw_transport_jsonl() {
+    let root = fixture_claude_dir();
+    let plan = session_plan(CLAUDE_TARGET, &root, SourceScope::Thread, true);
+    let adapter = SessionSourceAdapter::new();
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let acquisition = adapter
+        .acquire(&plan, &diff_from(&plan, manifest.items))
+        .await
+        .unwrap();
+
+    let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+    let document = &normalized.data[0];
+    let ContentRef::InlineText { text } = &document.content else {
+        panic!("normalized session content must be inline text");
+    };
+
+    assert_eq!(text, "\n\n### USER:\nhello\n\n### ASSISTANT:\nhi there");
+    assert!(!text.contains(r#"{"type":"user""#));
+    assert_eq!(document.content_kind, ContentKind::PlainText);
+    assert_eq!(document.path, None);
+    assert_eq!(
+        document.chunk_hints.first().map(|hint| &hint.profile),
+        Some(&ChunkProfile::SessionTurns)
+    );
+    assert!(document.parser_hints.is_empty());
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
+async fn normalize_marks_already_redacted_session_text_clean_for_retrieval() {
+    let root = fixture_claude_dir();
+    let plan = session_plan(CLAUDE_TARGET, &root, SourceScope::Thread, true);
+    let adapter = SessionSourceAdapter::new();
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let acquisition = adapter
+        .acquire(&plan, &diff_from(&plan, manifest.items))
+        .await
+        .unwrap();
+
+    let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
+
+    assert_eq!(
+        normalized.data[0]
+            .metadata
+            .get("redaction_status")
+            .and_then(Value::as_str),
+        Some("clean")
+    );
     fs::remove_dir_all(&root).ok();
 }
 
@@ -370,11 +424,7 @@ async fn acquire_then_normalize_codex_session_stamps_metadata() {
     let diff = diff_from(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
-    let doc = normalized
-        .data
-        .iter()
-        .find(|d| d.path.as_deref() == Some("rollout.jsonl"))
-        .expect("session document present");
+    let doc = normalized.data.first().expect("session document present");
     assert_eq!(
         doc.metadata
             .get("session_provider")
@@ -383,6 +433,8 @@ async fn acquire_then_normalize_codex_session_stamps_metadata() {
     );
     assert!(!doc.metadata.contains_key("session_model"));
     assert!(!doc.metadata.contains_key("session_workspace_path"));
+    assert_eq!(doc.content_kind, ContentKind::PlainText);
+    assert_eq!(doc.path, None);
     fs::remove_dir_all(&root).ok();
 }
 
@@ -395,11 +447,7 @@ async fn acquire_then_normalize_gemini_session_stamps_metadata() {
     let diff = diff_from(&plan, manifest.items.clone());
     let acquisition = adapter.acquire(&plan, &diff).await.unwrap();
     let normalized = adapter.normalize(&plan, acquisition).await.unwrap();
-    let doc = normalized
-        .data
-        .iter()
-        .find(|d| d.path.as_deref() == Some("chat.json"))
-        .expect("session document present");
+    let doc = normalized.data.first().expect("session document present");
     assert_eq!(
         doc.metadata
             .get("session_provider")
@@ -410,6 +458,8 @@ async fn acquire_then_normalize_gemini_session_stamps_metadata() {
         &doc.content,
         ContentRef::InlineText { text } if text.contains("Paris")
     ));
+    assert_eq!(doc.content_kind, ContentKind::PlainText);
+    assert_eq!(doc.path, None);
     fs::remove_dir_all(&root).ok();
 }
 

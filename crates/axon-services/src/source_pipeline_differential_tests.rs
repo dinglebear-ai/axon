@@ -113,7 +113,12 @@ fn expected_shared_phase_spine() -> Vec<PipelinePhase> {
 }
 
 fn assert_one_job(observation: &PipelineObservation) {
-    assert_eq!(observation.result.status, LifecycleStatus::Completed);
+    assert_eq!(
+        observation.result.status,
+        LifecycleStatus::Completed,
+        "unexpected source warnings: {:?}",
+        observation.result.warnings
+    );
     assert!(!observation.result.canonical_uri.is_empty());
     assert!(!observation.request.source.is_empty());
 }

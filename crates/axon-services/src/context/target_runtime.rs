@@ -391,6 +391,7 @@ impl TargetLocalSourceRuntime {
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
+            document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
             fetch_provider,
             render_provider,
             web_source_adapter,

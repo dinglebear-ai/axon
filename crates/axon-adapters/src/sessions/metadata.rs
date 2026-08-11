@@ -51,7 +51,14 @@ pub(super) fn session_source_document(
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
-    metadata.insert("redaction_status".to_string(), json!("redacted"));
+    // Provider decoders project only semantic turn text and run every turn
+    // through `redact_session_text` before this document reaches the shared
+    // preparation/vector boundary. `redaction_status = redacted` means the
+    // payload is still unsafe for normal retrieval; the retrieval engine
+    // intentionally filters to `clean`. This normalized representation is
+    // safe to retrieve, while the acquired raw transport remains provenance
+    // at the source/artifact boundary.
+    metadata.insert("redaction_status".to_string(), json!("clean"));
     // The session adapter owns its payload projection. Keep only the
     // canonical source fields and the explicitly supported session metadata;
     // the shared runner must not need a family-specific cleanup branch.
@@ -73,6 +80,16 @@ pub(super) fn session_source_document(
         )
     });
 
+    let chunk_hints = if plan.route.chunking_hints.is_empty() {
+        vec![ChunkHint {
+            profile: ChunkProfile::SessionTurns,
+            reason: "decoded session semantic turns".to_string(),
+            options: MetadataMap::new(),
+        }]
+    } else {
+        plan.route.chunking_hints.clone()
+    };
+
     SourceDocument {
         document_id: session_document_id(
             &acquisition.source_id,
@@ -81,20 +98,23 @@ pub(super) fn session_source_document(
         source_id: acquisition.source_id.clone(),
         source_item_key: item.manifest_item.source_item_key.clone(),
         canonical_uri: item.manifest_item.canonical_uri.clone(),
-        content_kind: item
-            .manifest_item
-            .content_kind
-            .unwrap_or(ContentKind::Transcript),
-        content: item.content_ref.clone(),
+        // The acquired artifact is JSONL/JSON transcript transport, but the
+        // normalized body below is semantic plain text. Keeping the raw
+        // Transcript kind/path here re-selected the JSONL parser and emitted
+        // an invalid-line warning for every decoded turn.
+        content_kind: ContentKind::PlainText,
+        content: ContentRef::InlineText {
+            text: decoded.text.clone(),
+        },
         metadata,
         title: item.manifest_item.display_path.clone(),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: None,
         mime_type: None,
         structured_payload: None,
         artifact_id: item.raw_artifact_id.clone(),
-        chunk_hints: plan.route.chunking_hints.clone(),
-        parser_hints: plan.route.parser_hints.clone(),
+        chunk_hints,
+        parser_hints: Vec::new(),
     }
 }
 

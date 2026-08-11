@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.14] - 2026-08-11
+
+### Fixed
+
+- Index decoded, redacted AI-session text as retrievable semantic chunks, refresh stale session projections safely, and bound concurrent document preparation while preserving exact source ranges.
+
 ## [7.2.13] - 2026-08-09
 
 ## [7.2.12] - 2026-08-08
