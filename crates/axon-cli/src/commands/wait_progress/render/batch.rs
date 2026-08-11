@@ -17,11 +17,11 @@ pub(crate) enum BatchProgressUpdate {
     },
     Snapshot {
         index: usize,
-        update: JobStatusUpdate,
+        update: Box<JobStatusUpdate>,
     },
     Event {
         index: usize,
-        event: SourceProgressEvent,
+        event: Box<SourceProgressEvent>,
     },
     Finished {
         index: usize,
@@ -93,7 +93,10 @@ impl BatchProgressForwarder {
                 }
                 event = receiver.events.recv(), if events_open => {
                     if let Some(event) = event {
-                        let _ = self.updates.send(BatchProgressUpdate::Event { index, event });
+                        let _ = self.updates.send(BatchProgressUpdate::Event {
+                            index,
+                            event: Box::new(event),
+                        });
                     } else {
                         events_open = false;
                     }
@@ -152,9 +155,9 @@ impl BatchProgressSession {
         match update {
             BatchProgressUpdate::Started { index, target } => self.model.running(index, target),
             BatchProgressUpdate::Snapshot { index, update } => {
-                self.model.apply_snapshot(index, update);
+                self.model.apply_snapshot(index, *update);
             }
-            BatchProgressUpdate::Event { index, event } => self.model.apply_event(index, event),
+            BatchProgressUpdate::Event { index, event } => self.model.apply_event(index, *event),
             BatchProgressUpdate::Finished { index, failed } => {
                 if failed {
                     self.model.failed(index);
@@ -204,7 +207,10 @@ fn drain_ready(
         forward_snapshot(index, receiver, updates);
     }
     while let Ok(event) = receiver.events.try_recv() {
-        let _ = updates.send(BatchProgressUpdate::Event { index, event });
+        let _ = updates.send(BatchProgressUpdate::Event {
+            index,
+            event: Box::new(event),
+        });
     }
 }
 

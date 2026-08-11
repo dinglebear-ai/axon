@@ -117,7 +117,7 @@ impl WaitProgressSession {
                     self.timing.reset();
                     self.active_phase = Some(phase);
                 }
-                if self.model.apply_snapshot(update) {
+                if self.model.apply_snapshot(*update) {
                     self.sample_timing();
                     self.dirty = true;
                 }

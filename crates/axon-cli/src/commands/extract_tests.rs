@@ -4,9 +4,11 @@ use axon_core::config::{CommandKind, Config};
 
 #[test]
 fn extract_wait_reuses_shared_renderer_and_json_stays_silent() {
-    let mut cfg = Config::default();
-    cfg.command = CommandKind::Extract;
-    cfg.wait = true;
+    let mut cfg = Config {
+        command: CommandKind::Extract,
+        wait: true,
+        ..Config::default()
+    };
     assert_eq!(extract_progress_mode(&cfg, true), ProgressMode::Interactive);
     cfg.json_output = true;
     assert_eq!(extract_progress_mode(&cfg, true), ProgressMode::Silent);

@@ -5,6 +5,10 @@ use futures_util::stream::{self, StreamExt};
 use super::*;
 use crate::commands::wait_progress::{BatchProgressSession, ProgressMode, batch_progress_channel};
 
+type IndexedResult = (usize, SourceResult);
+type BatchError = (usize, String, String);
+type BatchOutcome = Result<IndexedResult, BatchError>;
+
 pub(super) async fn run(
     cfg: &Config,
     service_context: &ServiceContext,
@@ -50,7 +54,7 @@ pub(super) async fn run(
             }
         })
         .buffer_unordered(concurrency)
-        .collect::<Vec<Result<(usize, SourceResult), (usize, String, String)>>>();
+        .collect::<Vec<BatchOutcome>>();
     let outcomes = if let Some(mut session) = batch_session {
         session.run_until(outcomes_work).await
     } else {
@@ -60,10 +64,7 @@ pub(super) async fn run(
     render_outcomes(cfg, outcomes)
 }
 
-async fn ensure_detached_worker(
-    cfg: &Config,
-    outcomes: &[Result<(usize, SourceResult), (usize, String, String)>],
-) {
+async fn ensure_detached_worker(cfg: &Config, outcomes: &[BatchOutcome]) {
     if should_detach(cfg)
         && outcomes.iter().any(|outcome| {
             outcome
@@ -78,10 +79,7 @@ async fn ensure_detached_worker(
     }
 }
 
-fn render_outcomes(
-    cfg: &Config,
-    outcomes: Vec<Result<(usize, SourceResult), (usize, String, String)>>,
-) -> Result<(), Box<dyn Error>> {
+fn render_outcomes(cfg: &Config, outcomes: Vec<BatchOutcome>) -> Result<(), Box<dyn Error>> {
     let (mut indexed_results, mut batch_errors) = partition_outcomes(outcomes);
     indexed_results.sort_by_key(|(index, _)| *index);
     batch_errors.sort_by_key(|(index, _, _)| *index);
@@ -113,12 +111,7 @@ fn render_outcomes(
     Ok(())
 }
 
-type IndexedResult = (usize, SourceResult);
-type BatchError = (usize, String, String);
-
-fn partition_outcomes(
-    outcomes: Vec<Result<IndexedResult, BatchError>>,
-) -> (Vec<IndexedResult>, Vec<BatchError>) {
+fn partition_outcomes(outcomes: Vec<BatchOutcome>) -> (Vec<IndexedResult>, Vec<BatchError>) {
     let mut indexed_results = Vec::new();
     let mut batch_errors = Vec::new();
     for outcome in outcomes {

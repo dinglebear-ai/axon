@@ -11,7 +11,7 @@ pub const FOREGROUND_EVENT_CAPACITY: usize = 256;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ForegroundSnapshot {
     JobStarted(JobId),
-    Status(JobStatusUpdate),
+    Status(Box<JobStatusUpdate>),
 }
 
 impl ForegroundSnapshot {
@@ -75,7 +75,7 @@ impl ForegroundProgressSender {
 
     pub fn snapshot(&self, update: JobStatusUpdate) {
         self.snapshots
-            .send_replace(Some(ForegroundSnapshot::Status(update)));
+            .send_replace(Some(ForegroundSnapshot::Status(Box::new(update))));
     }
 
     pub fn event(&self, event: SourceProgressEvent) -> bool {

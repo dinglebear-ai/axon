@@ -26,8 +26,10 @@ fn completed_formatted_view() -> FormattedWaitView {
 
 #[test]
 fn json_and_quiet_modes_are_silent() {
-    let mut cfg = Config::default();
-    cfg.json_output = true;
+    let mut cfg = Config {
+        json_output: true,
+        ..Config::default()
+    };
     assert_eq!(ProgressMode::for_config(&cfg, true), ProgressMode::Silent);
     cfg.json_output = false;
     cfg.quiet = true;

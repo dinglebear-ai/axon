@@ -15,9 +15,11 @@ fn warning(message: &str, severity: Severity) -> SourceWarning {
 
 #[test]
 fn waited_source_uses_progress_but_json_and_quiet_do_not() {
-    let mut cfg = Config::default();
-    cfg.command = CommandKind::Source;
-    cfg.wait = true;
+    let mut cfg = Config {
+        command: CommandKind::Source,
+        wait: true,
+        ..Config::default()
+    };
     assert_eq!(
         ProgressMode::for_config(&cfg, true),
         ProgressMode::Interactive
@@ -31,8 +33,10 @@ fn waited_source_uses_progress_but_json_and_quiet_do_not() {
 
 #[test]
 fn scrape_projection_is_foreground_progress_capable() {
-    let mut cfg = Config::default();
-    cfg.command = CommandKind::Scrape;
+    let cfg = Config {
+        command: CommandKind::Scrape,
+        ..Config::default()
+    };
     assert!(!should_detach(&cfg));
 }
 

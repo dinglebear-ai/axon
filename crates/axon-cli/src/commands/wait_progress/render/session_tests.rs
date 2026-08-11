@@ -22,8 +22,10 @@ async fn overflow_reconciles_public_events_once_by_event_id() {
     let (sender, receiver) = foreground_progress_channel();
     sender.job_started(job.job_id);
     receiver.mark_overflowed();
-    let mut cfg = Config::default();
-    cfg.quiet = true;
+    let cfg = Config {
+        quiet: true,
+        ..Config::default()
+    };
     let mut session = WaitProgressSession::source(
         &cfg,
         "https://example.com",
