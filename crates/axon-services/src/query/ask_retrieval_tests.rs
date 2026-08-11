@@ -1,4 +1,5 @@
 use super::*;
+use crate::query::synthesis::normalize;
 use axon_core::config::Config;
 
 pub(super) fn citation(uri: &str) -> axon_api::CanonicalCitation {
@@ -144,5 +145,40 @@ fn context_citations_are_bounded_by_public_wire_limit() {
 #[test]
 fn display_source_extracts_host() {
     assert_eq!(display_source("https://docs.rs/foo/bar"), "docs.rs");
+    assert_eq!(display_source("session://codex/raw-local-id"), "codex");
     assert_eq!(display_source("not-a-url"), "not-a-url");
+}
+
+#[test]
+fn distinct_session_documents_survive_citation_normalization() {
+    let mut cfg = Config::test_default();
+    cfg.ask_min_citations_nontrivial = 2;
+    let hits = vec![
+        hit(
+            "session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa",
+            "The ingestion path decodes semantic session turns.",
+        ),
+        hit(
+            "session://codex/doc_session_bbbbbbbbbbbbbbbbbbbbbbbb",
+            "The retrieval path admits only clean vector payloads.",
+        ),
+    ];
+    let ctx = build_ask_context_from_hits(&cfg, &hits, 0);
+    let raw_answer = "Session ingestion now embeds decoded semantic turns [S1]. Session metadata now passes the clean retrieval boundary without exposing local transcript identity [S2].";
+
+    let normalized = normalize::normalize_ask_answer(
+        &cfg,
+        "Which changes restored reliable Phoenix session retrieval and grounded answers?",
+        raw_answer,
+        &ctx.context,
+    );
+    let validation = normalize::summarize_citation_validation(&normalized);
+
+    assert!(
+        validation.valid,
+        "distinct retrieved session documents must satisfy the existing two-source citation threshold: {normalized}"
+    );
+    assert_eq!(validation.canonical_citation_count, 2);
+    assert!(normalized.contains("- [S1] session://codex/doc_session_aaaaaaaaaaaaaaaaaaaaaaaa"));
+    assert!(normalized.contains("- [S2] session://codex/doc_session_bbbbbbbbbbbbbbbbbbbbbbbb"));
 }

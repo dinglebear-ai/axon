@@ -318,11 +318,30 @@ async fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
     )
 }
 
-/// Derive a short display source (host, or the raw value) from a canonical URI.
+/// Derive the source identity rendered into synthesis context.
+///
+/// Web sources retain the compact host label. Session documents must retain
+/// their opaque canonical document URI: reducing every
+/// `session://<provider>/doc_session_<hash>` URI to `<provider>` makes
+/// distinct documents indistinguishable to citation normalization. Legacy or
+/// malformed session URIs still fall back to host-only rendering so local
+/// transcript identity cannot cross the synthesis boundary.
 fn display_source(uri: &str) -> String {
-    reqwest::Url::parse(uri)
-        .ok()
-        .and_then(|url| url.host_str().map(ToString::to_string))
+    let Ok(url) = reqwest::Url::parse(uri) else {
+        return uri.to_string();
+    };
+    if url.scheme() == "session"
+        && url
+            .path()
+            .strip_prefix("/doc_session_")
+            .is_some_and(|id| id.len() == 24 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        && url.query().is_none()
+        && url.fragment().is_none()
+    {
+        return uri.to_string();
+    }
+    url.host_str()
+        .map(ToString::to_string)
         .unwrap_or_else(|| uri.to_string())
 }
 
