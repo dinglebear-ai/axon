@@ -87,7 +87,7 @@ Verified live interfaces:
 - Consumes: `JobId`, `JobStatusUpdate`, and `SourceProgressEvent` from `axon_api::source`.
 - Produces: `foreground_progress_channel() -> (ForegroundProgressSender, ForegroundProgressReceiver)`, `ForegroundSnapshot::{JobStarted, Status}`, and receiver overflow/cursor state used by Tasks 2, 5, and 6.
 
-- [ ] **Step 1: Declare the module and write failing feed tests**
+- [x] **Step 1: Declare the module and write failing feed tests**
 
 Add `pub mod foreground_progress;` beside the other source modules in `source.rs`. Create the test sidecar with these behavioral assertions:
 
@@ -163,13 +163,13 @@ fn taking_overflow_flag_is_edge_triggered() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe the missing module/types**
+- [x] **Step 2: Run the focused test and observe the missing module/types**
 
 Run: `cargo test -p axon-services source::foreground_progress -- --nocapture`
 
 Expected: FAIL because `foreground_progress.rs` and its types do not exist.
 
-- [ ] **Step 3: Implement the two-lane feed**
+- [x] **Step 3: Implement the two-lane feed**
 
 Create these concrete types and methods:
 
@@ -268,13 +268,13 @@ mod tests;
 Keep `foreground_progress_channel_with_capacity` private. Its sidecar is a
 child module and reaches the private helper through `use super::*;`.
 
-- [ ] **Step 4: Run the focused tests**
+- [x] **Step 4: Run the focused tests**
 
 Run: `cargo test -p axon-services source::foreground_progress -- --nocapture`
 
 Expected: PASS for snapshot coalescing, bounded overflow, and edge-triggered overflow clearing.
 
-- [ ] **Step 5: Commit only Task 1 files**
+- [x] **Step 5: Commit only Task 1 files**
 
 ```bash
 git add crates/axon-services/src/source.rs \
@@ -300,7 +300,7 @@ git commit -m "feat(progress): add bounded foreground source feed"
 - Consumes: `ForegroundProgressSender` from Task 1.
 - Produces: `index_source_with_progress(request, ctx, sender)`, event fan-out, canonical `job_started`, and normalized snapshot fan-out consumed by Task 6.
 
-- [ ] **Step 1: Add failing event and snapshot fan-out tests**
+- [x] **Step 1: Add failing event and snapshot fan-out tests**
 
 Extend `events_tests.rs`:
 
@@ -358,7 +358,7 @@ async fn normalized_snapshot_reaches_foreground_feed_when_store_write_fails() {
 }
 ```
 
-- [ ] **Step 2: Run both focused suites and observe missing wiring**
+- [x] **Step 2: Run both focused suites and observe missing wiring**
 
 Run:
 
@@ -369,7 +369,7 @@ cargo test -p axon-services source::executor::progress::tests -- --nocapture
 
 Expected: FAIL because `with_foreground`, `with_writer_and_foreground`, and source execution progress plumbing do not exist.
 
-- [ ] **Step 3: Carry the optional sender through execution and expose the CLI entrypoint**
+- [x] **Step 3: Carry the optional sender through execution and expose the CLI entrypoint**
 
 Add `foreground: Option<ForegroundProgressSender>` to `SourceExecutionContext`; existing `inline` and `existing_job` constructors set it to `None`. Add:
 
@@ -402,7 +402,7 @@ pub async fn index_source_with_progress(
 }
 ```
 
-- [ ] **Step 4: Fan out event facts without changing persistence authority**
+- [x] **Step 4: Fan out event facts without changing persistence authority**
 
 Add `foreground: Option<ForegroundProgressSender>` to `SourceEventEmitter`, preserve it through all builder methods, and implement `.with_foreground(sender)`. Refactor `emit_source_event` into a pure `build_source_event(...) -> SourceProgressEvent` plus append/send orchestration. Construct `context` from the same fields currently assembled inline, then use this exact persistence/fanout ordering:
 
@@ -420,7 +420,7 @@ if let Err(err) = persisted {
 
 Do not gate foreground delivery on successful persistence. Keep the existing redaction/public visibility fields unchanged.
 
-- [ ] **Step 5: Announce the canonical job and fan out normalized snapshots**
+- [x] **Step 5: Announce the canonical job and fan out normalized snapshots**
 
 In `index_materialized_source`, immediately after the create/existing-id branch:
 
@@ -432,7 +432,7 @@ if let Some(foreground) = &input.execution.foreground {
 
 Attach the sender to the executor's `SourceEventEmitter`. Add `foreground: Option<ForegroundProgressSender>` to `ProgressCoordinator`; after normalizing `counts`, build one `JobStatusUpdate`, clone it for `writer.update(update.clone())`, then call `foreground.snapshot(update)` regardless of the persistence result.
 
-- [ ] **Step 6: Run focused and source compilation tests**
+- [x] **Step 6: Run focused and source compilation tests**
 
 Run:
 
@@ -444,7 +444,7 @@ cargo test -p axon-services --no-run --lib
 
 Expected: all PASS; the final command proves every touched sidecar path compiles.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add crates/axon-services/src/source.rs \
@@ -471,7 +471,7 @@ git commit -m "feat(progress): stream source lifecycle snapshots"
 - Consumes: `ForegroundSnapshot`, `JobStatusUpdate`, `SourceProgressEvent`, `PipelinePhase`, and `SourceKind`.
 - Produces: `WaitViewModel::apply_snapshot`, `apply_event`, `finish`, `BatchWaitViewModel`, `ActiveProgress`, `RenderedMilestone`, and grouped `OperatorNotice` values for Tasks 4-7.
 
-- [ ] **Step 1: Declare the module and write failing reducer tests**
+- [x] **Step 1: Declare the module and write failing reducer tests**
 
 Add `mod wait_progress;` to `commands.rs`. Create tests covering phase aliases, neutral redaction copy, aggregation, and fast-phase suppression:
 
@@ -562,13 +562,13 @@ fn subsecond_unremarkable_phase_does_not_leave_a_milestone() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe missing model types**
+- [x] **Step 2: Run the focused test and observe missing model types**
 
 Run: `cargo test -p axon-cli commands::wait_progress::model -- --nocapture`
 
 Expected: FAIL because the wait progress model does not exist.
 
-- [ ] **Step 3: Implement the focused presentation model**
+- [x] **Step 3: Implement the focused presentation model**
 
 Create these model types; keep terminal strings out of service DTOs:
 
@@ -654,7 +654,7 @@ Its active summary is `N/M complete · A active · Q queued`, and
 `active_detail` chooses the most recently updated target. It must never create
 one progress bar per input.
 
-- [ ] **Step 4: Run reducer and existing job-progress tests**
+- [x] **Step 4: Run reducer and existing job-progress tests**
 
 Run:
 
@@ -665,7 +665,7 @@ cargo test -p axon-cli commands::job_progress -- --nocapture
 
 Expected: PASS; existing source/extract unit wording remains unchanged.
 
-- [ ] **Step 5: Commit Task 3**
+- [x] **Step 5: Commit Task 3**
 
 ```bash
 git add crates/axon-cli/src/commands.rs \
@@ -693,7 +693,7 @@ git commit -m "feat(cli): model quiet foreground progress"
 - Consumes: `WaitViewModel`, `ActiveProgress`, and Aurora color state.
 - Produces: `RateEstimate`, `TimingEstimator::sample`, `format_wait_view(model, width, timing, color) -> FormattedWaitView`, terminal sanitization/truncation, and shared `ui::info` / `ui::neutral` helpers.
 
-- [ ] **Step 1: Write failing timing and formatting tests**
+- [x] **Step 1: Write failing timing and formatting tests**
 
 ```rust
 fn representative_embedding_view() -> WaitViewModel {
@@ -774,13 +774,13 @@ fn terminal_text_removes_controls_and_middle_truncates_paths() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and observe missing functions**
+- [x] **Step 2: Run focused tests and observe missing functions**
 
 Run: `cargo test -p axon-cli commands::wait_progress -- --nocapture`
 
 Expected: FAIL because timing/format modules do not exist.
 
-- [ ] **Step 3: Implement timing with a bounded rolling window**
+- [x] **Step 3: Implement timing with a bounded rolling window**
 
 Define `RateEstimate { per_second: f64, remaining: Duration }` and use
 `VecDeque<(Duration, u64)>` capped at eight samples. Return `None` until two
@@ -789,7 +789,7 @@ absent/zero, count regresses, rate is non-positive, or remaining time is below
 250 ms. Reset when phase or total changes. Format rates with at most one
 decimal below 10/s and whole units otherwise.
 
-- [ ] **Step 4: Add missing Aurora product-token helpers**
+- [x] **Step 4: Add missing Aurora product-token helpers**
 
 In `axon-core::ui`, add:
 
@@ -807,13 +807,13 @@ pub fn stderr_color_enabled() -> bool {
 
 Test `--color=never`, forced color, and auto/no-TTY using the existing color test guard and internal `color_enabled_for_auto_tty` helper.
 
-- [ ] **Step 5: Implement plain-first responsive formatting**
+- [x] **Step 5: Implement plain-first responsive formatting**
 
 `FormattedWaitView` contains `heading: String`, `milestones: Vec<String>`, `notices: Vec<String>`, `active: Vec<String>`, and optional `terminal: String`. Build plain visible text first, measure it without ANSI, then apply `primary/accent/info/success/warning/error/muted/subtle/neutral` spans. Use compact labels `discover`, `acquire`, `prepare`, `embed`, `publish`, `clean`, and `indexed`.
 
 At widths below 60 remove current item; below 50 remove rate/ETA; below 46 remove the graphical bar. Always retain symbol, phase, best count, percentage when a real total exists, and elapsed time when it fits.
 
-- [ ] **Step 6: Run focused and UI tests**
+- [x] **Step 6: Run focused and UI tests**
 
 Run:
 
@@ -825,7 +825,7 @@ cargo test -p axon-core ui -- --nocapture
 
 Expected: PASS with no ANSI in color-disabled snapshots.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```bash
 git add crates/axon-core/src/ui.rs crates/axon-core/src/ui_color_tests.rs \
@@ -850,7 +850,7 @@ git commit -m "feat(cli): format Aurora wait progress"
 - Consumes: `ForegroundProgressReceiver`, `FormattedWaitView`, `JobStore`, and `WaitViewModel`.
 - Produces: `WaitProgressSession::source`, `WaitProgressSession::run_until`, `WaitProgressSession::finish`, `BatchProgressUpdate`, `BatchProgressForwarder::run_until`, `ProgressMode::{Interactive, Plain, Silent}`, and overflow reconciliation used by source/session commands.
 
-- [ ] **Step 1: Enable the in-memory terminal only for tests and write failing renderer tests**
+- [x] **Step 1: Enable the in-memory terminal only for tests and write failing renderer tests**
 
 Add this line to the existing `[dev-dependencies]` section (features merge only
 for test builds):
@@ -911,19 +911,19 @@ async fn interactive_finish_clears_the_live_region_once() {
 }
 ```
 
-- [ ] **Step 2: Run the focused test and observe missing renderer/session types**
+- [x] **Step 2: Run the focused test and observe missing renderer/session types**
 
 Run: `cargo test -p axon-cli commands::wait_progress::render -- --nocapture`
 
 Expected: FAIL because renderer types do not exist.
 
-- [ ] **Step 3: Implement mode selection and one `MultiProgress` region**
+- [x] **Step 3: Implement mode selection and one `MultiProgress` region**
 
 `ProgressMode::for_config(cfg, stderr_is_tty)` returns `Silent` for JSON/quiet, `Interactive` only for TTY stderr, and `Plain` otherwise. `--color=always` changes colors but never upgrades redirected output to animation.
 
 Use one `MultiProgress` with a header bar, zero-or-more permanent `println` calls, and one active `ProgressBar`. Maintain the last formatted model and last render `Instant`; skip identical frames and throttle ordinary frames to 250 ms. Warning/retry/failure/terminal updates call `render_now` immediately. Make `finish` idempotent and implement `Drop` to `finish_and_clear` the active bar.
 
-- [ ] **Step 4: Implement durable event reconciliation**
+- [x] **Step 4: Implement durable event reconciliation**
 
 `WaitProgressSession` owns `seen_event_ids: HashSet<String>`, `last_durable_sequence: Option<u64>`, and `next_cursor: Option<String>`. When `receiver.take_overflowed()` is true:
 
@@ -942,7 +942,7 @@ let request = JobEventListRequest {
 
 Page until `next_cursor` is `None`, apply only unseen `event_id` values, and set `last_durable_sequence = Some(page.last_sequence)`. On the first catch-up `after_sequence` is `None`, so stable event-id dedup prevents duplicate notices. If reconciliation fails, call `receiver.mark_overflowed()`, emit one muted diagnostic, and retry on the next cadence tick; do not fail the source operation.
 
-- [ ] **Step 5: Drive snapshot/event channels concurrently**
+- [x] **Step 5: Drive snapshot/event channels concurrently**
 
 Implement the source driver as a generic method that preserves the command
 future's exact output:
@@ -1002,13 +1002,13 @@ pub enum BatchProgressUpdate {
 same select loop without drawing and sends tagged updates to the one
 command-owned batch session. Only the batch session owns `MultiProgress`.
 
-- [ ] **Step 6: Run renderer tests**
+- [x] **Step 6: Run renderer tests**
 
 Run: `cargo test -p axon-cli commands::wait_progress::render -- --nocapture`
 
 Expected: PASS for mode selection, no control animation in plain mode, overflow reconciliation, warning-above-live behavior, and idempotent cleanup.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```bash
 git add crates/axon-cli/Cargo.toml \
@@ -1033,7 +1033,7 @@ git commit -m "feat(cli): render interactive wait progress"
 - Consumes: `index_source_with_progress`, `foreground_progress_channel`, and `WaitProgressSession`.
 - Produces: `execute_waited_source_request`, one renderer per single/session source, and one aggregate renderer for multi-input waited source runs.
 
-- [ ] **Step 1: Write failing command policy tests**
+- [x] **Step 1: Write failing command policy tests**
 
 ```rust
 #[test]
@@ -1067,7 +1067,7 @@ fn waited_batch_uses_one_aggregate_view() {
 }
 ```
 
-- [ ] **Step 2: Run source/session command tests and observe missing wait path**
+- [x] **Step 2: Run source/session command tests and observe missing wait path**
 
 Run:
 
@@ -1078,7 +1078,7 @@ cargo test -p axon-cli sessions -- --nocapture
 
 Expected: FAIL because foreground execution still calls `index_source` directly.
 
-- [ ] **Step 3: Implement one source wait helper**
+- [x] **Step 3: Implement one source wait helper**
 
 Add:
 
@@ -1105,11 +1105,11 @@ async fn execute_waited_source_request(
 Keep `execute_source_request`'s detached branch unchanged and route only
 foreground work through this helper.
 
-- [ ] **Step 4: Preserve stdout and scrape behavior**
+- [x] **Step 4: Preserve stdout and scrape behavior**
 
 Keep `render_source_result` and `write_scrape_output_if_requested` after the wait session has cleared stderr. When `ProgressMode::Silent`, call the existing `index_source` path without creating a foreground channel. Interactive and plain modes call `index_source_with_progress` and drain the receiver through `WaitProgressSession`.
 
-- [ ] **Step 5: Integrate sessions sequentially**
+- [x] **Step 5: Integrate sessions sequentially**
 
 Declare `#[cfg(test)] #[path = "sessions_tests.rs"] mod tests;` at the end of
 `sessions.rs`. Replace the `cfg.wait` direct `index_source` branch with
@@ -1117,7 +1117,7 @@ Declare `#[cfg(test)] #[path = "sessions_tests.rs"] mod tests;` at the end of
 provider name. Preserve the existing detached enqueue/auto-worker behavior and
 the aggregate JSON envelope exactly.
 
-- [ ] **Step 6: Integrate concurrent waited source batches without multiple bars**
+- [x] **Step 6: Integrate concurrent waited source batches without multiple bars**
 
 Create one `BatchWaitViewModel` and one renderer before `buffer_unordered`. Each input forwards its progress facts tagged by the existing input index into the shared batch model. Display one overall active block:
 
@@ -1128,7 +1128,7 @@ Create one `BatchWaitViewModel` and one renderer before `buffer_unordered`. Each
 
 Do not create an `indicatif::ProgressBar` per input. Preserve `batch_concurrency`, result ordering, semantic failure counting, and final stdout rendering.
 
-- [ ] **Step 7: Run command and compile tests**
+- [x] **Step 7: Run command and compile tests**
 
 Run:
 
@@ -1141,7 +1141,7 @@ cargo test -p axon-cli --no-run --lib
 
 Expected: PASS; sidecars compile and JSON/quiet tests show no progress output path.
 
-- [ ] **Step 8: Commit Task 6**
+- [x] **Step 8: Commit Task 6**
 
 ```bash
 git add crates/axon-cli/src/commands/source.rs \
@@ -1168,7 +1168,7 @@ git commit -m "feat(cli): show source wait progress"
 - Consumes: shared wait model/renderer from Tasks 3-5.
 - Produces: `ExtractProgress`, `extract_sync_with_progress`, and `WaitViewModel::apply_extract_progress`.
 
-- [ ] **Step 1: Write failing extract snapshot tests**
+- [x] **Step 1: Write failing extract snapshot tests**
 
 Add a pure aggregation helper and test it without network access:
 
@@ -1207,7 +1207,7 @@ fn extract_wait_reuses_shared_renderer_and_json_stays_silent() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and observe missing extract progress API**
+- [x] **Step 2: Run focused tests and observe missing extract progress API**
 
 Run:
 
@@ -1218,7 +1218,7 @@ cargo test -p axon-cli extract_wait -- --nocapture
 
 Expected: FAIL because `ExtractProgress` and `extract_sync_with_progress` do not exist.
 
-- [ ] **Step 3: Implement coarse progress without fake current-work claims**
+- [x] **Step 3: Implement coarse progress without fake current-work claims**
 
 Add:
 
@@ -1257,11 +1257,11 @@ In `crates/axon-services/src/extract.rs`, export the new surface explicitly:
 pub use sync::{ExtractProgress, extract_sync, extract_sync_with_progress};
 ```
 
-- [ ] **Step 4: Replace the generic spinner in the CLI**
+- [x] **Step 4: Replace the generic spinner in the CLI**
 
 Delete the `wait_spinner_for` use from `extract.rs`. Start one shared wait session, map `ExtractProgress` into active unit `URL/URLs` plus cumulative items, run `extract_sync_with_progress`, clear the live region, then call the existing `emit_extract_output`. Keep the zero-item error and JSON output unchanged.
 
-- [ ] **Step 5: Run focused and sidecar compile tests**
+- [x] **Step 5: Run focused and sidecar compile tests**
 
 Run:
 
@@ -1274,7 +1274,7 @@ cargo test -p axon-cli --no-run --lib
 
 Expected: PASS; no network is required by the new pure progress tests.
 
-- [ ] **Step 6: Commit Task 7**
+- [x] **Step 6: Commit Task 7**
 
 ```bash
 git add crates/axon-services/src/extract.rs \
@@ -1297,7 +1297,7 @@ git commit -m "feat(cli): show extract wait progress"
 - Consumes: complete implementation from Tasks 1-7.
 - Produces: verified interactive/plain/JSON/quiet behavior and an evidence-backed closeout for bead `axon_rust-kobuh`.
 
-- [ ] **Step 1: Run formatting and structural checks**
+- [x] **Step 1: Run formatting and structural checks**
 
 Run:
 
@@ -1311,7 +1311,7 @@ If `./target/debug/xtask` is not built, run `cargo build -p xtask` once and repe
 
 Expected: all PASS; no transport/domain layering or whitespace drift.
 
-- [ ] **Step 2: Run targeted crate gates**
+- [x] **Step 2: Run targeted crate gates**
 
 Run:
 
@@ -1329,7 +1329,7 @@ cargo test -p axon-cli --no-run --lib
 
 Expected: all PASS. The two `--no-run` commands prove sidecar paths compile.
 
-- [ ] **Step 3: Run targeted clippy**
+- [x] **Step 3: Run targeted clippy**
 
 Run:
 
@@ -1339,13 +1339,13 @@ cargo clippy -p axon-services -p axon-cli -p axon-core --all-targets --locked --
 
 Expected: PASS with no warnings.
 
-- [ ] **Step 4: Build the local debug binary**
+- [x] **Step 4: Build the local debug binary**
 
 Run: `cargo build --bin axon`
 
 Expected: PASS and update `target/debug/axon`. Do not stage any tracked plugin binary or unrelated file if the build changes one.
 
-- [ ] **Step 5: Verify non-TTY and JSON contracts without live providers**
+- [x] **Step 5: Verify non-TTY and JSON contracts without live providers**
 
 Use a source that fails during validation before contacting Qdrant/TEI:
 
@@ -1360,7 +1360,7 @@ jq -e . /tmp/axon-wait-json.stdout
 
 Expected: redirected stderr contains no cursor-control animation; JSON stdout parses as one JSON value. If empty input is rejected by clap before JSON rendering, use an unsupported but non-network source and record the exact boundary instead of weakening the assertion.
 
-- [ ] **Step 6: Verify one live TTY source run against configured providers**
+- [x] **Step 6: Verify one live TTY source run against configured providers**
 
 Run from a real terminal:
 
@@ -1380,7 +1380,7 @@ Expected evidence:
 
 If Qdrant, TEI, or Chrome is unavailable, record the exact provider boundary and run the renderer's in-memory integration test as the safe end-to-end verification. Do not claim live success without the provider-backed run.
 
-- [ ] **Step 7: Verify color and quiet modes**
+- [x] **Step 7: Verify color and quiet modes**
 
 Run:
 
@@ -1391,7 +1391,7 @@ NO_COLOR=1 ./target/debug/axon https://example.com --scope page --wait true --lo
 
 Expected: first run keeps layout without ANSI; second prints no progress renderer.
 
-- [ ] **Step 8: Inspect changed-file and commit isolation**
+- [x] **Step 8: Inspect changed-file and commit isolation**
 
 Run:
 
@@ -1403,7 +1403,7 @@ git diff --check HEAD~7..HEAD
 
 Expected: implementation commits contain only progress-owned files. Pre-existing redaction changes remain unstaged/uncommitted unless the user explicitly authorizes an integration commit.
 
-- [ ] **Step 9: Record verification and close the bead only after all required gates pass**
+- [x] **Step 9: Record verification and close the bead only after all required gates pass**
 
 ```bash
 bd update axon_rust-kobuh --notes="Implemented interactive wait progress. Verified formatting, layering, targeted axon-services/axon-cli tests, targeted clippy, stdout/stderr mode contracts, and the local https://example.com page smoke; remaining provider warnings are recorded in the implementation closeout."
