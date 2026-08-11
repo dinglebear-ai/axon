@@ -47,7 +47,7 @@ const ADAPTER_NAME: &str = "sessions";
 // Manifest freshness for the normalized semantic document projection. Bump
 // when decoding, redaction, or document construction changes so an unchanged
 // raw transcript is re-prepared instead of silently reusing stale vectors.
-const SESSION_DOCUMENT_VERSION: &str = "semantic-v2";
+const SESSION_DOCUMENT_VERSION: &str = "semantic-v3";
 
 #[derive(Debug, Clone, Default)]
 pub struct SessionSourceAdapter;

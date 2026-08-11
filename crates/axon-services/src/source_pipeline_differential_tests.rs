@@ -294,6 +294,25 @@ async fn session_source_joins_the_same_observable_source_contract() {
     assert_one_job(&observation);
     assert_eq!(phase_spine(&observation), expected_shared_phase_spine());
     assert_eq!(observation.result.counts.documents_total, 1);
+    let points = harness
+        .vectors()
+        .points(&harness.ctx().cfg().collection)
+        .await;
+    assert!(!points.is_empty());
+    assert!(points.iter().all(|point| {
+        point
+            .payload
+            .get("redaction_status")
+            .and_then(serde_json::Value::as_str)
+            == Some("clean")
+    }));
+    assert!(points.iter().all(|point| {
+        point
+            .payload
+            .get("item_canonical_uri")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|uri| uri.starts_with("session://"))
+    }));
     assert!(observation.progress.iter().all(|event| {
         !event.message.contains("session fixture") && !event.message.contains("response")
     }));
