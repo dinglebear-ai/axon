@@ -1,5 +1,15 @@
 use axon_api::source::*;
 
+pub(crate) fn carried_point_id(
+    original_point_id: &str,
+    committed_generation: &SourceGenerationId,
+) -> VectorPointId {
+    let identity = format!("{original_point_id}::{}", committed_generation.0);
+    VectorPointId::new(
+        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, identity.as_bytes()).to_string(),
+    )
+}
+
 pub(crate) fn delete_result(collection: String, points_deleted: u64) -> VectorStoreDeleteResult {
     VectorStoreDeleteResult {
         collection,

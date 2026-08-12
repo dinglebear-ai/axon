@@ -4,7 +4,7 @@ use axon_api::source::*;
 use serde_json::json;
 
 use crate::payload::generation_payload_i64;
-use crate::store_helpers::{payload_string, stage_header};
+use crate::store_helpers::{carried_point_id, payload_string, stage_header};
 
 use super::{FakeVectorMode, FakeVectorStore, Result};
 
@@ -89,8 +89,10 @@ impl FakeVectorStore {
                     .is_some_and(|item| live_keys.contains(item))
             {
                 let mut carried = point.clone();
-                carried.point_id =
-                    VectorPointId::new(format!("{}::{}", point.point_id.0, committed_generation.0));
+                carried.point_id = carried_point_id(&point.point_id.0, &committed_generation);
+                carried
+                    .payload
+                    .insert("vector_point_id".to_string(), json!(carried.point_id.0));
                 carried.payload.insert(
                     "source_generation".to_string(),
                     json!(generation_payload_i64(

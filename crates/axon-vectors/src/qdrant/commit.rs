@@ -15,7 +15,7 @@ use super::http::QdrantHttp;
 use super::store_impl::request_usage;
 use crate::payload::generation_payload_i64;
 use crate::store::Result;
-use crate::store_helpers::stage_header;
+use crate::store_helpers::{carried_point_id, stage_header};
 
 const SCROLL_PAGE_LIMIT: u64 = 256;
 
@@ -163,9 +163,13 @@ pub async fn mark_unchanged_items_committed_rest(
             "document_status".to_string(),
             serde_json::Value::from("published"),
         );
-        let new_id = format!("{}::{}", point_id_string(&point.id), committed_generation.0);
+        let new_id = carried_point_id(&point_id_string(&point.id), &committed_generation);
+        payload.insert(
+            "vector_point_id".to_string(),
+            serde_json::Value::from(new_id.0.clone()),
+        );
         carried.push(serde_json::json!({
-            "id": new_id,
+            "id": new_id.0,
             "vector": point.vector,
             "payload": payload,
         }));

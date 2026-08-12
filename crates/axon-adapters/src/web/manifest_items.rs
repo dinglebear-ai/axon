@@ -93,7 +93,7 @@ fn build_discover_fetch_request(web: &WebUrlParts, headers: Vec<RedactedHeader>)
 /// convention the `Site`/`Docs` crawl engine uses for its manifest entries
 /// (`web_engine::engine::collector::page::process_page`), so `content_hash`
 /// values are comparable in format across every web discover path.
-fn content_ref_hash(content: &ContentRef) -> String {
+pub(super) fn content_ref_hash(content: &ContentRef) -> String {
     let mut hasher = Sha256::new();
     match content {
         ContentRef::InlineText { text } => hasher.update(text.as_bytes()),

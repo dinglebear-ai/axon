@@ -25,6 +25,7 @@ pub(super) struct ProcessedBatch {
     pub(super) archive_items: Vec<AcquiredSourceItem>,
     pub(super) warnings: Vec<SourceWarning>,
     pub(super) reused_item_keys: Vec<SourceItemKey>,
+    pub(super) refreshed_manifest_items: Vec<ManifestItem>,
 }
 
 #[derive(Default)]
@@ -35,6 +36,7 @@ pub(super) struct GenerationAccumulator {
     archive_items: Vec<AcquiredSourceItem>,
     warnings: Vec<SourceWarning>,
     reused_item_keys: Vec<SourceItemKey>,
+    refreshed_manifest_items: Vec<ManifestItem>,
 }
 
 pub(super) struct FinalizedGeneration {
@@ -54,6 +56,8 @@ impl GenerationAccumulator {
         self.archive_items.extend(batch.archive_items);
         self.warnings.extend(batch.warnings);
         self.reused_item_keys.extend(batch.reused_item_keys);
+        self.refreshed_manifest_items
+            .extend(batch.refreshed_manifest_items);
         self.output.merge(batch.clean_output);
         vectorize::merge_vectorize_result(&mut self.vectorized, batch.vectorized);
     }
@@ -74,6 +78,16 @@ impl GenerationAccumulator {
         self.output.merge(archive);
         self.artifacts.extend(self.output.artifacts.clone());
         let diff = reuse::apply_reused_items(diff, &self.reused_item_keys);
+        let refreshed = self
+            .refreshed_manifest_items
+            .into_iter()
+            .map(|item| (item.source_item_key.clone(), item))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        for item in &mut manifest.items {
+            if let Some(replacement) = refreshed.get(&item.source_item_key) {
+                *item = replacement.clone();
+            }
+        }
         output::record_artifacts_on_manifest(
             runtime.ledger.as_ref(),
             manifest,

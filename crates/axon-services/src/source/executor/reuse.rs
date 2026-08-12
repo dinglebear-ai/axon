@@ -66,10 +66,26 @@ pub(super) async fn resolve_acquisition(
         });
     }
 
+    let previous_items = previous_manifest_items(runtime, diff).await?;
+    let mut refreshed_items = BTreeMap::new();
     let mut fetched = Vec::new();
     let mut reused_item_keys = Vec::new();
     for item in std::mem::take(&mut acquisition.fetched_items) {
+        refreshed_items.insert(
+            item.manifest_item.source_item_key.clone(),
+            item.manifest_item.clone(),
+        );
         if !reuse_required(&item) {
+            if previous_items
+                .get(&item.manifest_item.source_item_key)
+                .is_some_and(|previous| {
+                    previous.content_hash.is_some()
+                        && previous.content_hash == item.manifest_item.content_hash
+                })
+            {
+                reused_item_keys.push(item.manifest_item.source_item_key.clone());
+                continue;
+            }
             fetched.push(item);
             continue;
         }
@@ -97,11 +113,37 @@ pub(super) async fn resolve_acquisition(
         }
     }
 
+    for manifest_item in &mut acquisition.manifest.items {
+        if let Some(refreshed) = refreshed_items.remove(&manifest_item.source_item_key) {
+            *manifest_item = refreshed;
+        }
+    }
     acquisition.fetched_items = fetched;
     Ok(ResolvedAcquisition {
         acquisition,
         reused_item_keys,
     })
+}
+
+async fn previous_manifest_items(
+    runtime: &TargetLocalSourceRuntime,
+    diff: &SourceManifestDiff,
+) -> anyhow::Result<BTreeMap<SourceItemKey, ManifestItem>> {
+    let Some(generation) = diff.previous_generation.clone() else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(runtime
+        .ledger
+        .get_manifest(diff.source_id.clone(), generation)
+        .await?
+        .map(|manifest| {
+            manifest
+                .items
+                .into_iter()
+                .map(|item| (item.source_item_key.clone(), item))
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 pub(super) async fn normalize_acquisition(

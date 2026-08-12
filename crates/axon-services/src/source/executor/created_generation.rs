@@ -185,6 +185,7 @@ async fn process_changed_batch(
     source_progress::acquired(emitter, &acquisition).await;
 
     let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
+    let refreshed_manifest_items = resolved.acquisition.manifest.items.clone();
     let acquisition_artifacts = resolved.acquisition.artifacts.clone();
     let archive_items = if archive_requested {
         resolved.acquisition.fetched_items.clone()
@@ -276,6 +277,7 @@ async fn process_changed_batch(
         archive_items,
         warnings,
         reused_item_keys: resolved.reused_item_keys,
+        refreshed_manifest_items,
     })
 }
 

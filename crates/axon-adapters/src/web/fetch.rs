@@ -137,6 +137,8 @@ fn acquired_from_fetched(
 ) -> AcquiredSourceItem {
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(content_kind_for_fetch(&fetched));
+    manifest_item.content_hash = Some(super::manifest_items::content_ref_hash(&fetched.content));
+    manifest_item.version = None;
     let mut metadata = MetadataMap::new();
     metadata.insert(
         "web_fetch_method".to_string(),
@@ -146,12 +148,19 @@ fn acquired_from_fetched(
     metadata.insert("web_status".to_string(), serde_json::json!(fetched.status));
     if let Some(etag) = fetched.etag.as_deref().or(prior_etag) {
         metadata.insert("web_etag".to_string(), serde_json::json!(etag));
+        manifest_item
+            .metadata
+            .insert("web_etag".to_string(), serde_json::json!(etag));
     }
     if let Some(last_modified) = header_value(&fetched.headers, "Last-Modified")
         .as_deref()
         .or(prior_last_modified)
     {
         metadata.insert(
+            "web_last_modified".to_string(),
+            serde_json::json!(last_modified),
+        );
+        manifest_item.metadata.insert(
             "web_last_modified".to_string(),
             serde_json::json!(last_modified),
         );
