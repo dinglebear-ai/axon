@@ -138,13 +138,6 @@ prepare_live_invocation() {
           local_args+=("$arg")
         fi
         ;;
-      -[A-Za-z])
-        if grep -Fqx -- "$arg" "$BEHAVIOR_GLOBAL_OPTIONS"; then
-          global_args+=("$arg")
-        else
-          local_args+=("$arg")
-        fi
-        ;;
       *) local_args+=("$arg") ;;
     esac
     index=$((index + 1))
@@ -158,7 +151,6 @@ run_live() {
   shift
   local logfile stderr_log exit_code result json_expected=0 arg contract_filter started_ms
   prepare_live_invocation "$@"
-  LAST_CONTRACT_EVIDENCE=""
   for arg in "${PREPARED_ARGS[@]}"; do
     [ "$arg" = "--json" ] && json_expected=1
   done
@@ -244,7 +236,7 @@ run_live_monitor_jsonl() {
     >"$logfile" 2>"$stderr_log" &
   monitor_pid=$!
   sleep 1
-  "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
     --collection "$AXON_COLLECTION" --json \
     >"$OUTDIR/logs/fixture-monitor-transition.json" \
     2>"$OUTDIR/logs/fixture-monitor-transition.stderr.log" || true
@@ -260,7 +252,6 @@ run_live_monitor_jsonl() {
   fi
   if [ "$result" = "PASS" ]; then
     record_behavior_args "monitor jobs" "${PREPARED_ARGS[@]}"
-    LAST_CONTRACT_EVIDENCE="monitor jobs watch JSONL"
     prove_option_behavior "@global" "--watch" "bounded stream emitted lifecycle events"
     prove_option_behavior "@global" "--json" "every streamed stdout line parsed as JSON"
     prove_option_behavior "monitor jobs" "--jsonl" "stdout parsed as a non-empty JSONL stream"
@@ -279,12 +270,10 @@ assert_live_json() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
-    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
-    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "jq $*" "$logfile"
 }
@@ -296,12 +285,10 @@ assert_live_text() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
-    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
-    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "$expected" "$logfile"
 }
@@ -313,12 +300,10 @@ assert_live_nonempty() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
-    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
-    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "non-empty output" "$logfile"
 }
@@ -391,7 +376,6 @@ run_live_server() {
     result="PASS"
     exit_code=0
     record_behavior_args "$name" "${PREPARED_ARGS[@]}"
-    LAST_CONTRACT_EVIDENCE="$name MCP protocol"
     prove_option_behavior "$name" "--transport" \
       "HTTP transport completed initialize, tools/list, tool call, and auth rejection"
     record "$name MCP protocol" "contract" "PASS" "0" \
@@ -424,10 +408,8 @@ run_live_setup_home() {
     -u TEI_HTTP_PORT -u AXON_CHROME_MANAGEMENT_PORT \
     -u AXON_CHROME_CDP_PORT -u AXON_CHROME_DEVTOOLS_PORT \
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
-    TEI_HTTP_PORT="$((RUN_PORT_BASE + 20))" \
-    AXON_CHROME_MANAGEMENT_PORT="$((RUN_PORT_BASE + 21))" \
-    AXON_CHROME_CDP_PORT="$((RUN_PORT_BASE + 22))" \
-    AXON_CHROME_DEVTOOLS_PORT="$((RUN_PORT_BASE + 23))" \
+    TEI_HTTP_PORT="$LIVE_TEI_PORT" AXON_CHROME_MANAGEMENT_PORT="$LIVE_CHROME_MANAGEMENT_PORT" \
+    AXON_CHROME_CDP_PORT="$LIVE_CHROME_CDP_PORT" AXON_CHROME_DEVTOOLS_PORT="$LIVE_CHROME_DEVTOOLS_PORT" \
     PATH="$SETUP_HELPER_BIN:$PATH" \
     "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
@@ -449,13 +431,12 @@ run_live_setup_home() {
 
 run_live_setup_check() {
   local pid ready=0 _attempt
-  local setup_check_port="$((RUN_PORT_BASE + 12))"
-  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT="$setup_check_port" AXON_BIND=127.0.0.1 \
+  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT="$LIVE_SETUP_PORT" AXON_BIND=127.0.0.1 \
     "$AXON_BIN" serve >"$OUTDIR/logs/setup-check-server.log" \
     2>"$OUTDIR/logs/setup-check-server.stderr.log" &
   pid=$!
   for _attempt in $(seq 1 60); do
-    if curl -fsS --max-time 1 "http://127.0.0.1:${setup_check_port}/readyz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 1 "http://127.0.0.1:$LIVE_SETUP_PORT/readyz" >/dev/null 2>&1; then
       ready=1
       break
     fi
@@ -471,4 +452,10 @@ run_live_setup_check() {
   sleep 0.25
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+}
+
+missing_live() {
+  local name="$1" reason="$2"
+  failures=$((failures + 1))
+  record "$name" "live" "FAIL" "-" "$reason" "-"
 }

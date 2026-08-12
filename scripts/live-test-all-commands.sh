@@ -11,19 +11,14 @@ set -uo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MODE="live"
-SCENARIO_GROUP="all"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode)
       MODE="${2:-}"
       shift 2
       ;;
-    --scenario-group)
-      SCENARIO_GROUP="${2:-}"
-      shift 2
-      ;;
     -h|--help)
-      echo "usage: $0 [--mode registry|scenarios|live] [--scenario-group all|web-rag|jobs-source|admin|resources]"
+      echo "usage: $0 [--mode registry|scenarios|live]"
       exit 0
       ;;
     *)
@@ -39,17 +34,6 @@ case "$MODE" in
     exit 2
     ;;
 esac
-case "$SCENARIO_GROUP" in
-  all|web-rag|jobs-source|admin|resources) ;;
-  *)
-    echo "invalid scenario group '$SCENARIO_GROUP'" >&2
-    exit 2
-    ;;
-esac
-if [ "$SCENARIO_GROUP" != "all" ] && [ "$MODE" != "scenarios" ]; then
-  echo "--scenario-group requires --mode scenarios" >&2
-  exit 2
-fi
 
 AXON_BIN="${AXON_BIN:-$ROOT_DIR/target/debug/axon}"
 REGISTRY="${AXON_COMMAND_REGISTRY:-$ROOT_DIR/docs/reference/cli/commands.json}"
@@ -66,14 +50,46 @@ if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
 else
   live_test_root="${AXON_LIVE_TEST_ROOT:-$ROOT_DIR/.cache/live-test}"
   mkdir -p "$live_test_root"
-  OUTDIR="$(mktemp -d "$live_test_root/${SCENARIO_GROUP}-${TS}.XXXXXX")" || {
+  OUTDIR="$(mktemp -d "$live_test_root/$TS.XXXXXX")" || {
     echo "failed to allocate a unique live-test output directory" >&2
     exit 2
   }
 fi
 LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
-RUN_PORT_BASE="${AXON_LIVE_PORT_BASE:-$((40000 + (RANDOM % 15000)))}"
-export AXON_LIVE_PORT_BASE="$RUN_PORT_BASE"
+PORT_LEASE_ROOT="${TMPDIR:-/tmp}/axon-live-port-leases"
+mkdir -p "$PORT_LEASE_ROOT"
+port_seed="$(printf '%s' "$LIVE_RUN_ID" | cksum | awk '{print $1}')"
+for port_attempt in $(seq 0 1999); do
+  LIVE_PORT_BASE=$((40000 + ((port_seed + port_attempt) % 2000) * 10))
+  PORT_LEASE_DIR="$PORT_LEASE_ROOT/$LIVE_PORT_BASE"
+  if mkdir "$PORT_LEASE_DIR" 2>/dev/null; then
+    busy=0
+    for port_offset in $(seq 0 9); do
+      if ss -H -ltn "sport = :$((LIVE_PORT_BASE + port_offset))" 2>/dev/null | grep -q .; then
+        busy=1
+        break
+      fi
+    done
+    if [ "$busy" -eq 0 ]; then
+      break
+    fi
+    rmdir "$PORT_LEASE_DIR"
+    PORT_LEASE_DIR=""
+  fi
+done
+[ -n "${PORT_LEASE_DIR:-}" ] || {
+  echo "failed to reserve an isolated live-test port block" >&2
+  exit 2
+}
+LIVE_SERVE_PORT=$LIVE_PORT_BASE
+LIVE_MCP_SERVE_PORT=$((LIVE_PORT_BASE + 1))
+LIVE_SETUP_PORT=$((LIVE_PORT_BASE + 2))
+LIVE_MCP_PORT=$((LIVE_PORT_BASE + 3))
+LIVE_COMPOSE_PORT=$((LIVE_PORT_BASE + 4))
+LIVE_TEI_PORT=$((LIVE_PORT_BASE + 5))
+LIVE_CHROME_MANAGEMENT_PORT=$((LIVE_PORT_BASE + 6))
+LIVE_CHROME_CDP_PORT=$((LIVE_PORT_BASE + 7))
+LIVE_CHROME_DEVTOOLS_PORT=$((LIVE_PORT_BASE + 8))
 mkdir -p "$OUTDIR/logs"
 AXON_BIN="$(realpath -- "$AXON_BIN")"
 REGISTRY="$(realpath -- "$REGISTRY")"
@@ -111,7 +127,6 @@ BEHAVIOR_GLOBAL_VALUE_OPTIONS="$OUTDIR/behavioral-global-value-options.txt"
 : >"$BEHAVIOR_SEMANTIC"
 LAST_BEHAVIOR_NAME=""
 LAST_BEHAVIOR_ARGS=()
-LAST_CONTRACT_EVIDENCE=""
 declare -A LIVE_LOG_COUNTS=()
 failures=0
 isolated_collection=""
@@ -127,7 +142,6 @@ live_chrome_session_token=""
 source "$ROOT_DIR/scripts/lib/live-cli-reporting.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-parser.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-runtime.sh"
-source "$ROOT_DIR/scripts/lib/live-cli-fixtures.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-web-rag.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-jobs-source.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-admin.sh"

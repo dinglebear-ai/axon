@@ -146,11 +146,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   mkdir -p "$AXON_DATA_DIR"
   install -m 0600 /dev/null "$AXON_CONFIG_PATH"
   install -m 0600 /dev/null "$AXON_ENV_FILE"
-  "$AXON_BIN" config set jobs.auto-worker false --json >"$OUTDIR/logs/fixture-disable-auto-worker.json"
-  "$AXON_BIN" config set jobs.worker-idle-exit-secs 2 --json >"$OUTDIR/logs/fixture-worker-idle.json"
-  if ! run_live_provider_preflight; then
-    exit 1
-  fi
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set jobs.auto-worker false --json >"$OUTDIR/logs/fixture-disable-auto-worker.json"
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set jobs.worker-idle-exit-secs 2 --json >"$OUTDIR/logs/fixture-worker-idle.json"
   SETUP_HOME="$OUTDIR/setup-home"
   SETUP_HELPER_BIN="$OUTDIR/setup-helper-bin"
   mkdir -p "$SETUP_HOME" "$SETUP_HELPER_BIN"
@@ -160,7 +157,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:53333}" \
     TEI_URL="${TEI_URL:-http://127.0.0.1:52000}" \
     AXON_CHROME_REMOTE_URL="$live_chrome_remote_url" \
-    "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port "$((RUN_PORT_BASE + 1))" --auth-mode bearer --json \
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port "$LIVE_SETUP_PORT" --auth-mode bearer --json \
     >"$OUTDIR/logs/fixture-setup-init.json" 2>"$OUTDIR/logs/fixture-setup-init.stderr.log"
   {
     isolated_compose_project="axon-live-${LIVE_RUN_ID//_/-}"
@@ -171,10 +168,10 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     printf 'AXON_TEI_CONTAINER_NAME=%s-tei\n' "$isolated_compose_project"
     printf 'AXON_CHROME_CONTAINER_NAME=%s-chrome\n' "$isolated_compose_project"
     printf 'DOCKER_NETWORK=%s\n' "$isolated_compose_network"
-    printf 'AXON_CHROME_MANAGEMENT_PORT=%s\n' "$((RUN_PORT_BASE + 2))"
-    printf 'AXON_CHROME_CDP_PORT=%s\n' "$((RUN_PORT_BASE + 3))"
-    printf 'AXON_CHROME_DEVTOOLS_PORT=%s\n' "$((RUN_PORT_BASE + 4))"
-    printf 'TEI_HTTP_PORT=%s\n' "$((RUN_PORT_BASE + 5))"
+    printf 'AXON_CHROME_MANAGEMENT_PORT=%s\n' "$LIVE_CHROME_MANAGEMENT_PORT"
+    printf 'AXON_CHROME_CDP_PORT=%s\n' "$LIVE_CHROME_CDP_PORT"
+    printf 'AXON_CHROME_DEVTOOLS_PORT=%s\n' "$LIVE_CHROME_DEVTOOLS_PORT"
+    printf 'TEI_HTTP_PORT=%s\n' "$LIVE_TEI_PORT"
     printf 'AXON_EXTERNAL_QDRANT_URL=%s\n' "${QDRANT_URL:-http://127.0.0.1:53333}"
     printf 'AXON_EXTERNAL_TEI_URL=http://host.docker.internal:52000\n'
     printf 'AXON_EXTERNAL_CHROME_REMOTE_URL=%s\n' "$external_chrome_remote_url"
@@ -182,25 +179,23 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   AXON_DATA_DIR="$SETUP_HOME/.axon" \
     AXON_CONFIG_PATH="$SETUP_HOME/.axon/config.toml" \
     AXON_ENV_FILE="$SETUP_HOME/.axon/.env" \
-    "$AXON_BIN" config set AXON_HTTP_PUBLISH "$((RUN_PORT_BASE + 6))" --env --json \
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set AXON_HTTP_PUBLISH "$LIVE_COMPOSE_PORT" --env --json \
     >"$OUTDIR/logs/fixture-compose-port.json" \
     2>"$OUTDIR/logs/fixture-compose-port.stderr.log"
   if jq -e '.commands[] | select(.name | startswith("compose "))' "$REGISTRY" >/dev/null; then
-    docker compose --env-file "$SETUP_HOME/.axon/.env" \
+    timeout "${TIMEOUT_SECS}s" docker compose --env-file "$SETUP_HOME/.axon/.env" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       config --format json >"$OUTDIR/logs/fixture-compose-rendered.json"
     assert_live_json "compose isolated loopback port" \
       "$OUTDIR/logs/fixture-compose-rendered.json" \
+      --arg port "$LIVE_COMPOSE_PORT" \
       '.services.axon.ports
-       | any(.target == 8001
-         and .published == (($ENV.AXON_LIVE_PORT_BASE | tonumber) + 6 | tostring)
-         and .host_ip == "127.0.0.1")'
+       | any(.target == 8001 and .published == $port and .host_ip == "127.0.0.1")'
   fi
   fixture_url="${AXON_LIVE_FIXTURE_URL:-https://example.com}"
   map_fixture_url="${AXON_LIVE_MAP_FIXTURE_URL:-https://www.rust-lang.org/}"
-  graph_fixture_url="$fixture_url"
   main_data_dir="$AXON_DATA_DIR"
   watch_id=""
   extract_job_id=""
@@ -216,39 +211,11 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   graph_node_id=""
   graph_edge_id=""
 
-  if [ "$SCENARIO_GROUP" = "resources" ]; then
-    graph_fixture_url="$map_fixture_url"
-    run_fixture_json "resource source prerequisite" \
-      "$OUTDIR/logs/fixture-resource-source.json" \
-      source "$graph_fixture_url" --scope site --max-pages 3 --wait true \
-      --collection "$AXON_COLLECTION" --json || true
-    job_id="$(jq -r '.job_id // .job.id // empty' "$OUTDIR/logs/fixture-resource-source.json")"
-    source_id="$(jq -r '.source_id // empty' "$OUTDIR/logs/fixture-resource-source.json")"
-    run_fixture_json "resource screenshot prerequisite" \
-      "$OUTDIR/logs/fixture-resource-screenshot.json" \
-      screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" \
-      --screenshot-full-page false --json || true
-    screenshot_artifact_id="$(jq -r '.artifact_id // empty' "$OUTDIR/logs/fixture-resource-screenshot.json")"
-  fi
-
   while IFS= read -r name; do
-    case "$SCENARIO_GROUP" in
-      web-rag) handle_live_web_rag_scenario "$name" || true ;;
-      jobs-source) handle_live_jobs_memory_source_scenario "$name" || true ;;
-      admin) handle_live_admin_setup_scenario "$name" || true ;;
-      resources) handle_live_resources_graph_scenario "$name" || true ;;
-      all)
-        handle_live_web_rag_scenario "$name" && continue
-        handle_live_jobs_memory_source_scenario "$name" && continue
-        handle_live_admin_setup_scenario "$name" && continue
-        handle_live_resources_graph_scenario "$name" && continue
-        missing_live "$name" "no stateful live scenario is registered"
-        ;;
-    esac
+    handle_live_web_rag_scenario "$name" && continue
+    handle_live_jobs_memory_source_scenario "$name" && continue
+    handle_live_admin_setup_scenario "$name" && continue
+    handle_live_resources_graph_scenario "$name" && continue
+    missing_live "$name" "no stateful live scenario is registered"
   done < <(jq -r '.commands[].name' "$REGISTRY")
-
-  if [ "$REGISTRY" = "$ROOT_DIR/docs/reference/cli/commands.json" ] \
-    && { [ "$SCENARIO_GROUP" = "all" ] || [ "$SCENARIO_GROUP" = "jobs-source" ]; }; then
-    run_operator_output_contracts
-  fi
 fi

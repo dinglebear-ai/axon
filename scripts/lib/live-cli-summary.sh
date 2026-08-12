@@ -2,18 +2,36 @@
 # Behavioral coverage reconciliation and final summary.
 
 build_behavioral_coverage_report() {
-  local root_options encoded name path_json help_log option key result evidence
-  ensure_behavior_global_options
-  root_options="$BEHAVIOR_GLOBAL_OPTIONS"
+  local root_help root_options encoded name path_json help_log option key result evidence
+  root_help="$OUTDIR/logs/behavior-root-help.log"
+  root_options="$OUTDIR/behavioral-global-options.txt"
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" --help >"$root_help" 2>&1
+  awk '
+    /^  Global Options$/ { in_options=1; next }
+    in_options && /^  Commands$/ { exit }
+    in_options && /^  (-[A-Za-z], )?--[a-z0-9]/ {
+      line=$0
+      sub(/^  (-[A-Za-z], )?/, "", line)
+      sub(/[[:space:]].*/, "", line)
+      print line
+    }
+  ' "$root_help" | sort -u >"$root_options"
 
   : >"$BEHAVIOR_EXPECTED"
   if [ "$REGISTRY" = "$ROOT_DIR/docs/reference/cli/commands.json" ]; then
     while IFS= read -r option; do
-      if [ "$option" = "--help" ] || [ "$option" = "-h" ]; then
-        continue
-      fi
+      [ "$option" = "--help" ] && continue
       printf '%s\t%s\n' "@global" "$option" >>"$BEHAVIOR_EXPECTED"
     done <"$root_options"
+    for option in \
+      --automation-script --batch-concurrency --block-assets --budget --cache \
+      --cache-http-only --chrome-screenshot --chrome-wait-for-selector --color \
+      --cron-every-seconds --cron-max-runs --etag-conditional --exclude-path \
+      --exclude-path-prefix --exclude-selector --format --normalize --output-dir \
+      --performance-profile --quiet --root-selector --screenshot-full-page \
+      --sitemap-only --url-glob --urls --viewport --warc --yes; do
+      printf '%s\t%s\n' "@global" "$option" >>"$BEHAVIOR_EXPECTED"
+    done
     {
       printf '%s\t%s\n' "ask" "--continue"
       printf '%s\t%s\n' "completion alias" "__command__"
@@ -26,7 +44,7 @@ build_behavioral_coverage_report() {
     path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
     mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
     help_log="$OUTDIR/logs/behavior-help-$(printf '%s' "$name" | tr ' /' '__').log"
-    "$AXON_BIN" "${path[@]}" --help >"$help_log" 2>&1
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${path[@]}" --help >"$help_log" 2>&1
     printf '%s\t%s\n' "$name" "__command__" >>"$BEHAVIOR_EXPECTED"
     while IFS= read -r option; do
       [ "$option" = "--help" ] && continue
@@ -55,12 +73,6 @@ build_behavioral_coverage_report() {
     )
   done < <(jq -r '.commands[] | @base64' "$REGISTRY")
 
-  if [ "$SCENARIO_GROUP" != "all" ]; then
-    {
-      awk -F '\t' '$2 == "__command__" { print $1 FS $2 }' "$BEHAVIOR_ACTUAL"
-      awk -F '\t' '{ print $1 FS $2 }' "$BEHAVIOR_SEMANTIC"
-    } >"$BEHAVIOR_EXPECTED"
-  fi
   sort -u -o "$BEHAVIOR_EXPECTED" "$BEHAVIOR_EXPECTED"
   sort -u -o "$BEHAVIOR_ACTUAL" "$BEHAVIOR_ACTUAL"
   sort -u -o "$BEHAVIOR_SEMANTIC" "$BEHAVIOR_SEMANTIC"
@@ -111,10 +123,4 @@ else
   echo "Behavioral coverage report: $BEHAVIOR_REPORT"
 fi
 echo "Report: $REPORT"
-if [ -s "$TIMINGS_REPORT" ] && command -v column >/dev/null 2>&1; then
-  echo "Slowest commands:"
-  { head -n 1 "$TIMINGS_REPORT"; tail -n +2 "$TIMINGS_REPORT" | sort -t $'\t' -k1,1nr | head -n 10; } \
-    | column -t -s $'\t'
-  echo "Timings report: $TIMINGS_REPORT"
-fi
 [ "$failures" -eq 0 ] && [ "$skipped" -eq 0 ]
