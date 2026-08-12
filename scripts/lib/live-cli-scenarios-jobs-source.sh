@@ -211,13 +211,13 @@ handle_live_jobs_memory_source_scenario() {
           '.status == "completed" and .counts.documents_done > 0'
         ;;
       "screenshot")
-        run_live "$name" screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" \
-          --screenshot-full-page false --viewport 1280x720 --json
+        run_live "$name" --screenshot-full-page false --viewport 1280x720 \
+          screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" --json
         assert_live_json "screenshot artifact contract" "$LAST_LIVE_LOG" \
           '.artifact_id != null and .artifact_id != ""
            and .width == 1280 and .height == 720'
         if [ "$(od -An -tx1 -N8 "$OUTDIR/screenshot.png" 2>/dev/null | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
-          prove_option_behavior "@global" "--output" "requested screenshot path contains a non-empty PNG"
+          prove_option_behavior "screenshot" "--output" "requested screenshot path contains a non-empty PNG"
           prove_option_behavior "@global" "--viewport" "capture returned dimensions for the requested viewport"
           prove_option_behavior "@global" "--screenshot-full-page" \
             "capture returned the requested viewport height instead of a full-page image"

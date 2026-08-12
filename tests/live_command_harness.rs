@@ -4,6 +4,13 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
+fn write_executable(path: &std::path::Path, contents: impl AsRef<[u8]>) {
+    fs::write(path, contents).unwrap();
+    let mut permissions = fs::metadata(path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions).unwrap();
+}
+
 #[test]
 fn registry_mode_exercises_every_advertised_command_and_option() {
     let temp = tempfile::tempdir().expect("tempdir");
@@ -174,7 +181,10 @@ fn scenario_mode_isolates_state_and_cleans_up_only_its_collection() {
     let registry = temp.path().join("commands.json");
     fs::write(
         &registry,
-        r#"{"commands":[{"name":"config path","path":["config","path"],"mutates":false}]}"#,
+        r#"{"commands":[
+            {"name":"config path","path":["config","path"],"mutates":false},
+            {"name":"screenshot","path":["screenshot"],"mutates":false}
+        ]}"#,
     )
     .unwrap();
 
@@ -206,6 +216,13 @@ if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
 fi
 if [ "${1:-}" = config ] && [ "${2:-}" = path ]; then
   printf '{"toml_path":"%s","env_path":"%s"}\n' "$AXON_CONFIG_PATH" "$AXON_ENV_FILE"
+elif [[ " $* " == *" screenshot "* ]]; then
+  output=""
+  while [ "$#" -gt 0 ]; do
+    if [ "$1" = --output ]; then output="$2"; shift 2; else shift; fi
+  done
+  printf '\211PNG\r\n\032\n' > "$output"
+  printf '{"artifact_id":"art_screenshot","width":1280,"height":720}\n'
 else
   printf '{}\n'
 fi
@@ -302,6 +319,20 @@ fi
         "global options must not inflate command-local evidence:
 {behavior_actual}"
     );
+    let behavior_semantic = fs::read_to_string(results.join("behavioral-semantic.tsv")).unwrap();
+    let report = fs::read_to_string(results.join("report.tsv")).unwrap();
+    for (command, option) in [
+        ("screenshot", "--output"),
+        ("@global", "--viewport"),
+        ("@global", "--screenshot-full-page"),
+    ] {
+        assert!(
+            behavior_semantic
+                .lines()
+                .any(|line| line.starts_with(&format!("{command}\t{option}\t"))),
+            "screenshot scenario did not produce semantic evidence for {option}:\n{behavior_semantic}\n{report}"
+        );
+    }
 
     let curl_calls = fs::read_to_string(curl_calls).unwrap();
     let cleanup_calls = curl_calls
@@ -356,24 +387,16 @@ fn scenario_mode_rejects_an_explicit_non_cdp_chrome_endpoint() {
     let bin_dir = temp.path().join("bin");
     fs::create_dir(&bin_dir).unwrap();
     let fake_axon = bin_dir.join("axon");
-    fs::write(
+    write_executable(
         &fake_axon,
         "#!/usr/bin/env bash\nif [ \"${1:-}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{}\\n'\n",
-    )
-    .unwrap();
-    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&fake_axon, permissions).unwrap();
+    );
 
     let fake_curl = bin_dir.join("curl");
-    fs::write(
+    write_executable(
         &fake_curl,
         "#!/usr/bin/env bash\nprintf '<html>not chrome</html>\\n'\n",
-    )
-    .unwrap();
-    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&fake_curl, permissions).unwrap();
+    );
 
     let path = format!(
         "{}:{}",
@@ -397,6 +420,58 @@ fn scenario_mode_rejects_an_explicit_non_cdp_chrome_endpoint() {
         stderr.contains("explicit Chrome endpoint is not a reachable CDP endpoint")
             && stderr.contains("http://127.0.0.1:45555"),
         "missing targeted Chrome endpoint diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn scenario_mode_preserves_non_loopback_hostnames_containing_localhost() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let setup_env = temp.path().join("setup-env");
+    let fake_axon = bin_dir.join("axon");
+    write_executable(
+        &fake_axon,
+        format!(
+            "#!/usr/bin/env bash\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nif [ \"${{1:-}}\" = config ] && [ \"${{2:-}}\" = set ]; then cp \"$AXON_ENV_FILE\" '{}'; fi\nprintf '{{}}\\n'\n",
+            setup_env.display()
+        ),
+    );
+    let fake_curl = bin_dir.join("curl");
+    write_executable(
+        &fake_curl,
+        "#!/usr/bin/env bash\nprintf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://mylocalhost.example:9222/devtools/browser/test\"}\\n'\n",
+    );
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .env(
+            "AXON_LIVE_CHROME_REMOTE_URL",
+            "http://mylocalhost.example:9222",
+        )
+        .output()
+        .expect("run scenario harness with a non-loopback hostname");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let setup_env = fs::read_to_string(setup_env).unwrap();
+    assert!(
+        setup_env.contains("AXON_EXTERNAL_CHROME_REMOTE_URL=http://mylocalhost.example:9222"),
+        "non-loopback hostname was rewritten:\n{setup_env}"
     );
 }
 
@@ -444,10 +519,7 @@ while :; do read -r -t 1 _unused || true; done
         chrome_child_pid.display(),
         devtools_port.display()
     );
-    fs::write(&fake_chrome, chrome_script).unwrap();
-    let mut permissions = fs::metadata(&fake_chrome).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&fake_chrome, permissions).unwrap();
+    write_executable(&fake_chrome, chrome_script);
 
     let fake_curl = bin_dir.join("curl");
     let curl_script = format!(
@@ -462,10 +534,7 @@ exit 7
 "#,
         devtools_port.display()
     );
-    fs::write(&fake_curl, curl_script).unwrap();
-    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&fake_curl, permissions).unwrap();
+    write_executable(&fake_curl, curl_script);
 
     let path = format!(
         "{}:{}",
@@ -1180,17 +1249,4 @@ fn hidden_cli_alias_inventory_is_behaviorally_covered() {
     let ask = fs::read_to_string("scripts/lib/live-cli-scenarios-web-rag.sh")
         .expect("read ask scenarios");
     assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
-}
-
-#[test]
-fn screenshot_scenario_proves_every_global_capture_option() {
-    let scenarios = fs::read_to_string("scripts/lib/live-cli-scenarios-jobs-source.sh")
-        .expect("read screenshot scenarios");
-
-    for option in ["--output", "--viewport", "--screenshot-full-page"] {
-        assert!(
-            scenarios.contains(&format!("prove_option_behavior \"@global\" \"{option}\"")),
-            "screenshot scenario must record behavioral evidence for {option}"
-        );
-    }
 }

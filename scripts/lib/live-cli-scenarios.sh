@@ -122,8 +122,15 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     fi
   fi
   export AXON_CHROME_REMOTE_URL="$live_chrome_remote_url"
-  external_chrome_remote_url="${live_chrome_remote_url/127.0.0.1/host.docker.internal}"
-  external_chrome_remote_url="${external_chrome_remote_url/localhost/host.docker.internal}"
+  case "$live_chrome_remote_url" in
+    http://127.0.0.1|http://127.0.0.1:*|https://127.0.0.1|https://127.0.0.1:*)
+      external_chrome_remote_url="${live_chrome_remote_url/\/\/127.0.0.1/\/\/host.docker.internal}"
+      ;;
+    http://localhost|http://localhost:*|https://localhost|https://localhost:*)
+      external_chrome_remote_url="${live_chrome_remote_url/\/\/localhost/\/\/host.docker.internal}"
+      ;;
+    *) external_chrome_remote_url="$live_chrome_remote_url" ;;
+  esac
   unset AXON_HOME AXON_SERVER_URL AXON_SQLITE_PATH AXON_OUTPUT_DIR \
     AXON_ARTIFACT_BIN_DIR AXON_ARTIFACT_ROOT AXON_CONFIG_PATH AXON_ENV_FILE
   export AXON_DATA_DIR="${AXON_LIVE_DATA_DIR:-$OUTDIR/data}"
