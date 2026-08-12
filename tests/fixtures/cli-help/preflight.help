@@ -7,6 +7,8 @@ Options
   --config                         Validate config cutover keys only; do not run service readiness probes
   --json                           Output results as machine-readable JSON
   --color <COLOR>                  Color output: auto (TTY detect, default), always, never Possible values: auto, always, never
+  --motion <MOTION>                Terminal motion: auto (interactive TTY outside CI), always, never Possible values: auto, always, never
+  -v, --verbose                    Show operator diagnostics; repeat for debug detail (-vv)
   --tei-url <TEI_URL>              Text Embeddings Inference server URL (overrides TEI_URL)
   --qdrant-url <QDRANT_URL>        Qdrant server URL (overrides QDRANT_URL)
   --quiet                          Suppress spinners and progress output (useful in scripts). JSON data is unaffected
