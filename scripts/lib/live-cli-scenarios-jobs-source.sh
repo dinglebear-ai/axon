@@ -7,7 +7,7 @@ handle_live_jobs_memory_source_scenario() {
       "status")
         export AXON_DATA_DIR="$OUTDIR/jobs-data"
         mkdir -p "$AXON_DATA_DIR"
-        "$AXON_BIN" source "$fixture_url" --scope page --wait true --collection "$AXON_COLLECTION" --json >"$OUTDIR/logs/fixture-job.json" 2>"$OUTDIR/logs/fixture-job.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$fixture_url" --scope page --wait true --collection "$AXON_COLLECTION" --json >"$OUTDIR/logs/fixture-job.json" 2>"$OUTDIR/logs/fixture-job.stderr.log"
         job_id="$(jq -r '.job_id // .job.id // empty' "$OUTDIR/logs/fixture-job.json")"
         source_id="$(jq -r '.source_id // empty' "$OUTDIR/logs/fixture-job.json")"
         run_live "$name" status --json
@@ -15,7 +15,7 @@ handle_live_jobs_memory_source_scenario() {
         assert_live_json "status completed counts" "$LAST_LIVE_LOG" \
           --arg job_id "$job_id" \
           '.jobs[] | select(.job_id == $job_id) | (.result.documents_done > 0 and .result.chunks_done > 0)'
-        "$AXON_BIN" status >"$OUTDIR/logs/live-status-human.log" 2>"$OUTDIR/logs/live-status-human.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" status >"$OUTDIR/logs/live-status-human.log" 2>"$OUTDIR/logs/live-status-human.stderr.log"
         assert_live_text "status completed details" "$OUTDIR/logs/live-status-human.log" " docs · 100% · "
         run_live "$name" status --active --color never --quiet --json
         run_live "$name" status --recent --color never --quiet --json
@@ -27,7 +27,7 @@ handle_live_jobs_memory_source_scenario() {
         assert_live_json "jobs list completed counts" "$LAST_LIVE_LOG" \
           --arg job_id "$job_id" \
           '.items[] | select(.job_id == $job_id) | (.counts.documents_done > 0 and .counts.chunks_done > 0)'
-        "$AXON_BIN" source "$fixture_url?jobs_page=2" --scope page --wait true \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$fixture_url?jobs_page=2" --scope page --wait true \
           --collection "$AXON_COLLECTION" --json \
           >"$OUTDIR/logs/fixture-job-page-2.json" \
           2>"$OUTDIR/logs/fixture-job-page-2.stderr.log"
@@ -44,7 +44,7 @@ handle_live_jobs_memory_source_scenario() {
         run_live "$name" jobs get "$job_id" --json
         assert_live_json "jobs get completed counts" "$LAST_LIVE_LOG" \
           '.counts.documents_done > 0 and .counts.chunks_done > 0'
-        "$AXON_BIN" jobs get "$job_id" >"$OUTDIR/logs/live-jobs_get-human.log" 2>"$OUTDIR/logs/live-jobs_get-human.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" jobs get "$job_id" >"$OUTDIR/logs/live-jobs_get-human.log" 2>"$OUTDIR/logs/live-jobs_get-human.stderr.log"
         assert_live_text "jobs get completed details" "$OUTDIR/logs/live-jobs_get-human.log" "Result:"
         assert_live_text "jobs get completed totals" "$OUTDIR/logs/live-jobs_get-human.log" " docs · 100% · "
         ;;
@@ -59,7 +59,7 @@ handle_live_jobs_memory_source_scenario() {
         ;;
       "jobs stream") run_live "$name" jobs stream "$job_id" --after-sequence 0 --limit 100 --json ;;
       "jobs cancel")
-        "$AXON_BIN" source "$fixture_url?axon_cancel_fixture=$$" --scope page --wait false \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$fixture_url?axon_cancel_fixture=$$" --scope page --wait false \
           --collection "$AXON_COLLECTION" --json \
           >"$OUTDIR/logs/fixture-job-cancel.json" \
           2>"$OUTDIR/logs/fixture-job-cancel.stderr.log"
@@ -80,7 +80,7 @@ handle_live_jobs_memory_source_scenario() {
           --repo "dinglebear-ai/axon" --file "scripts/live-test-all-commands.sh" \
           --confidence 0.92 --json
         memory_id="$(jq -r '.memory.id // .id // empty' "$LAST_LIVE_LOG" 2>/dev/null)"
-        "$AXON_BIN" memory remember "Axon replacement fixture memory" --title "Replacement fixture" --project "axon-live-cli" --json >"$OUTDIR/logs/fixture-memory.json" 2>"$OUTDIR/logs/fixture-memory.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" memory remember "Axon replacement fixture memory" --title "Replacement fixture" --project "axon-live-cli" --json >"$OUTDIR/logs/fixture-memory.json" 2>"$OUTDIR/logs/fixture-memory.stderr.log"
         replacement_memory_id="$(jq -r '.memory.id // .id // empty' "$OUTDIR/logs/fixture-memory.json")"
         ;;
       "memory list")
@@ -203,7 +203,7 @@ handle_live_jobs_memory_source_scenario() {
         mixed_success_job_id="$(jq -r \
           '.results[] | select(.status == "completed") | .job_id // empty' \
           "$LAST_LIVE_LOG" | head -1)"
-        "$AXON_BIN" jobs get "$mixed_success_job_id" --json \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" jobs get "$mixed_success_job_id" --json \
           >"$OUTDIR/logs/fixture-mixed-job.json" \
           2>"$OUTDIR/logs/fixture-mixed-job.stderr.log"
         assert_live_json "source mixed batch drains successful sibling" \
@@ -244,8 +244,8 @@ handle_live_jobs_memory_source_scenario() {
           record "completion alias equivalence" "contract" "FAIL" "1" \
             "completion bash == completions bash" "$LAST_LIVE_LOG"
         fi
-        "$AXON_BIN" completions zsh >"$OUTDIR/logs/completions-zsh.log" 2>&1 || failures=$((failures + 1))
-        "$AXON_BIN" completions fish >"$OUTDIR/logs/completions-fish.log" 2>&1 || failures=$((failures + 1))
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" completions zsh >"$OUTDIR/logs/completions-zsh.log" 2>&1 || failures=$((failures + 1))
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" completions fish >"$OUTDIR/logs/completions-fish.log" 2>&1 || failures=$((failures + 1))
         ;;
     *) return 1 ;;
   esac

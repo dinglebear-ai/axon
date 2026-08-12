@@ -218,7 +218,7 @@ run_live_monitor_jsonl() {
     >"$logfile" 2>"$stderr_log" &
   monitor_pid=$!
   sleep 1
-  "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
     --collection "$AXON_COLLECTION" --json \
     >"$OUTDIR/logs/fixture-monitor-transition.json" \
     2>"$OUTDIR/logs/fixture-monitor-transition.stderr.log" || true
@@ -390,8 +390,8 @@ run_live_setup_home() {
     -u TEI_HTTP_PORT -u AXON_CHROME_MANAGEMENT_PORT \
     -u AXON_CHROME_CDP_PORT -u AXON_CHROME_DEVTOOLS_PORT \
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
-    TEI_HTTP_PORT=38200 AXON_CHROME_MANAGEMENT_PORT=38600 \
-    AXON_CHROME_CDP_PORT=39222 AXON_CHROME_DEVTOOLS_PORT=39223 \
+    TEI_HTTP_PORT="$LIVE_TEI_PORT" AXON_CHROME_MANAGEMENT_PORT="$LIVE_CHROME_MANAGEMENT_PORT" \
+    AXON_CHROME_CDP_PORT="$LIVE_CHROME_CDP_PORT" AXON_CHROME_DEVTOOLS_PORT="$LIVE_CHROME_DEVTOOLS_PORT" \
     PATH="$SETUP_HELPER_BIN:$PATH" \
     "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
@@ -413,12 +413,12 @@ run_live_setup_home() {
 
 run_live_setup_check() {
   local pid ready=0 _attempt
-  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=38133 AXON_BIND=127.0.0.1 \
+  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT="$LIVE_SETUP_PORT" AXON_BIND=127.0.0.1 \
     "$AXON_BIN" serve >"$OUTDIR/logs/setup-check-server.log" \
     2>"$OUTDIR/logs/setup-check-server.stderr.log" &
   pid=$!
   for _attempt in $(seq 1 60); do
-    if curl -fsS --max-time 1 "http://127.0.0.1:38133/readyz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 1 "http://127.0.0.1:$LIVE_SETUP_PORT/readyz" >/dev/null 2>&1; then
       ready=1
       break
     fi
