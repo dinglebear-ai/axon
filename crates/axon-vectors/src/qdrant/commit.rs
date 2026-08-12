@@ -176,13 +176,17 @@ pub async fn mark_unchanged_items_committed_rest(
     }
 
     let attempted = carried.len() as u64;
+    let mut requests = 1;
     if attempted > 0 {
         let url = http
             .endpoint()
             .collection_path(&collection, "points?wait=true");
-        let body = serde_json::json!({ "points": carried });
-        http.put_json(stage, &url, &body, "qdrant_mark_unchanged_items_committed")
-            .await?;
+        for points in carried_upsert_chunks(carried, store.point_buffer()) {
+            let body = serde_json::json!({ "points": points });
+            http.put_json(stage, &url, &body, "qdrant_mark_unchanged_items_committed")
+                .await?;
+            requests += 1;
+        }
     }
 
     Ok(VectorStoreWriteResult {
@@ -191,7 +195,7 @@ pub async fn mark_unchanged_items_committed_rest(
         points_attempted: attempted,
         points_written: attempted,
         payload_indexes_created: Vec::new(),
-        usage: request_usage(2),
+        usage: request_usage(requests),
     })
 }
 
@@ -291,5 +295,36 @@ fn point_id_string(id: &serde_json::Value) -> String {
         serde_json::Value::String(value) => value.clone(),
         serde_json::Value::Number(value) => value.to_string(),
         other => other.to_string(),
+    }
+}
+
+fn carried_upsert_chunks(
+    points: Vec<serde_json::Value>,
+    point_buffer: usize,
+) -> impl Iterator<Item = Vec<serde_json::Value>> {
+    let mut points = points.into_iter();
+    let chunk_size = point_buffer.max(1);
+    std::iter::from_fn(move || {
+        let chunk = points.by_ref().take(chunk_size).collect::<Vec<_>>();
+        (!chunk.is_empty()).then_some(chunk)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carried_upserts_are_bounded_by_the_store_point_buffer() {
+        let points = (0..2_050)
+            .map(|index| serde_json::json!({ "id": index }))
+            .collect::<Vec<_>>();
+
+        let chunks = carried_upsert_chunks(points, 1_024).collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks.iter().map(Vec::len).collect::<Vec<_>>(),
+            [1_024, 1_024, 2]
+        );
     }
 }
