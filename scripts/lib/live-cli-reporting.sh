@@ -45,14 +45,14 @@ cleanup_live_fixtures() {
     && [[ "$isolated_compose_network" == axon-live-* ]] \
     && [ -f "${SETUP_HOME:-}/.axon/.env" ] \
     && [ -f "${SETUP_HOME:-}/.axon/compose/docker-compose.yaml" ]; then
-    docker compose --env-file "$SETUP_HOME/.axon/.env" \
+    timeout "${AXON_LIVE_CLEANUP_TIMEOUT_SECS:-30}s" docker compose --env-file "$SETUP_HOME/.axon/.env" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       down --remove-orphans \
       >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" \
       || cleanup_warning "compose stack" "$OUTDIR/logs/cleanup-compose.stderr.log"
-    docker network rm "$isolated_compose_network" \
+    timeout "${AXON_LIVE_CLEANUP_TIMEOUT_SECS:-30}s" docker network rm "$isolated_compose_network" \
       >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" \
       || cleanup_warning "Docker network $isolated_compose_network" "$OUTDIR/logs/cleanup-network.stderr.log"
   fi
@@ -65,6 +65,10 @@ cleanup_live_fixtures() {
         || cleanup_warning "Qdrant collection $collection" "$OUTDIR/logs/cleanup-qdrant.stderr.log"
     fi
   done
+  if [ -n "${PORT_LEASE_DIR:-}" ] && [ -d "$PORT_LEASE_DIR" ]; then
+    rmdir "$PORT_LEASE_DIR" 2>/dev/null \
+      || cleanup_warning "port lease $PORT_LEASE_DIR" "$OUTDIR/logs"
+  fi
 }
 trap cleanup_live_fixtures EXIT
 
@@ -112,7 +116,7 @@ record() {
 ensure_behavior_global_options() {
   [ -s "$BEHAVIOR_GLOBAL_OPTIONS" ] && return
   : >"$BEHAVIOR_GLOBAL_VALUE_OPTIONS"
-  "$AXON_BIN" --help >"$OUTDIR/logs/behavior-global-help.log" 2>&1 || true
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" --help >"$OUTDIR/logs/behavior-global-help.log" 2>&1 || true
   awk -v values="$BEHAVIOR_GLOBAL_VALUE_OPTIONS" '
     /^  Global Options$/ { in_options=1; next }
     in_options && /^  Commands$/ { exit }

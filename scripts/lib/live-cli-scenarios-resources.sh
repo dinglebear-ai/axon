@@ -112,9 +112,9 @@ handle_live_resources_graph_scenario() {
         fi
         ;;
       "uploads list")
-        "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-complete.json" 2>"$OUTDIR/logs/fixture-upload-complete.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-complete.json" 2>"$OUTDIR/logs/fixture-upload-complete.stderr.log"
         upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$OUTDIR/logs/fixture-upload-complete.json")"
-        "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-abort.json" 2>"$OUTDIR/logs/fixture-upload-abort.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-abort.json" 2>"$OUTDIR/logs/fixture-upload-abort.stderr.log"
         abort_upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$OUTDIR/logs/fixture-upload-abort.json")"
         run_live "$name" uploads list --status received --limit 1 --json
         uploads_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
@@ -139,7 +139,7 @@ handle_live_resources_graph_scenario() {
       "graph kinds") run_live "$name" graph kinds --json ;;
       "graph resolve")
         run_live "$name" graph resolve "$fixture_url" --kind web_origin --limit 10 --json
-        "$AXON_BIN" graph source "src_0272b3e7006f0910" --depth 2 --limit 100 --json >"$OUTDIR/logs/fixture-graph-source.json" 2>"$OUTDIR/logs/fixture-graph-source.stderr.log" || true
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" graph source "src_0272b3e7006f0910" --depth 2 --limit 100 --json >"$OUTDIR/logs/fixture-graph-source.json" 2>"$OUTDIR/logs/fixture-graph-source.stderr.log" || true
         graph_node_id="$(jq -r '.. | .node_id? // empty' "$OUTDIR/logs/fixture-graph-source.json" 2>/dev/null | head -1)"
         graph_edge_id="$(jq -r '.. | .edge_id? // empty' "$OUTDIR/logs/fixture-graph-source.json" 2>/dev/null | head -1)"
         ;;

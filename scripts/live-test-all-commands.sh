@@ -51,6 +51,40 @@ else
   }
 fi
 LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
+PORT_LEASE_ROOT="${TMPDIR:-/tmp}/axon-live-port-leases"
+mkdir -p "$PORT_LEASE_ROOT"
+port_seed="$(printf '%s' "$LIVE_RUN_ID" | cksum | awk '{print $1}')"
+for port_attempt in $(seq 0 1999); do
+  LIVE_PORT_BASE=$((40000 + ((port_seed + port_attempt) % 2000) * 10))
+  PORT_LEASE_DIR="$PORT_LEASE_ROOT/$LIVE_PORT_BASE"
+  if mkdir "$PORT_LEASE_DIR" 2>/dev/null; then
+    busy=0
+    for port_offset in $(seq 0 9); do
+      if ss -H -ltn "sport = :$((LIVE_PORT_BASE + port_offset))" 2>/dev/null | grep -q .; then
+        busy=1
+        break
+      fi
+    done
+    if [ "$busy" -eq 0 ]; then
+      break
+    fi
+    rmdir "$PORT_LEASE_DIR"
+    PORT_LEASE_DIR=""
+  fi
+done
+[ -n "${PORT_LEASE_DIR:-}" ] || {
+  echo "failed to reserve an isolated live-test port block" >&2
+  exit 2
+}
+LIVE_SERVE_PORT=$LIVE_PORT_BASE
+LIVE_MCP_SERVE_PORT=$((LIVE_PORT_BASE + 1))
+LIVE_SETUP_PORT=$((LIVE_PORT_BASE + 2))
+LIVE_MCP_PORT=$((LIVE_PORT_BASE + 3))
+LIVE_COMPOSE_PORT=$((LIVE_PORT_BASE + 4))
+LIVE_TEI_PORT=$((LIVE_PORT_BASE + 5))
+LIVE_CHROME_MANAGEMENT_PORT=$((LIVE_PORT_BASE + 6))
+LIVE_CHROME_CDP_PORT=$((LIVE_PORT_BASE + 7))
+LIVE_CHROME_DEVTOOLS_PORT=$((LIVE_PORT_BASE + 8))
 mkdir -p "$OUTDIR/logs"
 AXON_BIN="$(realpath -- "$AXON_BIN")"
 REGISTRY="$(realpath -- "$REGISTRY")"
