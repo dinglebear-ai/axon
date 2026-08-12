@@ -3,6 +3,9 @@
 
 cleanup_live_fixtures() {
   local collection attempt
+  cleanup_warning() {
+    printf 'warning: failed to clean up %s; inspect %s\n' "$1" "$2" >&2
+  }
   if [ -n "${live_chrome_pid:-}" ] \
     && [ -n "${live_chrome_start_time:-}" ] \
     && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
@@ -30,15 +33,19 @@ cleanup_live_fixtures() {
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       down --remove-orphans \
-      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" || true
+      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" \
+      || cleanup_warning "compose stack" "$OUTDIR/logs/cleanup-compose.stderr.log"
     docker network rm "$isolated_compose_network" \
-      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" || true
+      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" \
+      || cleanup_warning "Docker network $isolated_compose_network" "$OUTDIR/logs/cleanup-network.stderr.log"
   fi
   for collection in "${isolated_collections[@]}"; do
     if [[ "$collection" == axon_live_* ]] && [ -n "${QDRANT_URL:-}" ]; then
       curl -fsS -X DELETE \
+        --connect-timeout 2 --max-time 10 --retry 2 --retry-connrefused \
         "${QDRANT_URL%/}/collections/$collection" \
-        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" || true
+        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" \
+        || cleanup_warning "Qdrant collection $collection" "$OUTDIR/logs/cleanup-qdrant.stderr.log"
     fi
   done
 }

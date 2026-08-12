@@ -8,14 +8,24 @@ ensure_artifact_fixture() {
   for ordinal in 1 2; do
     upload_log="$OUTDIR/logs/fixture-artifact-upload-$ordinal.json"
     complete_log="$OUTDIR/logs/fixture-artifact-complete-$ordinal.json"
-    "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json \
-      >"$upload_log" 2>"${upload_log%.json}.stderr.log" || return 1
-    upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$upload_log")"
-    [ -n "$upload_id" ] || return 1
+    if ! "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json \
+      >"$upload_log" 2>"${upload_log%.json}.stderr.log"; then
+      artifact_fixture_error="uploads create failed; inspect ${upload_log%.json}.stderr.log"
+      return 1
+    fi
+    if ! upload_id="$(jq -er '.upload.upload_id // .status.upload_id' "$upload_log")"; then
+      artifact_fixture_error="uploads create returned malformed JSON or no upload id; inspect $upload_log"
+      return 1
+    fi
     "$AXON_BIN" uploads complete "$upload_id" --json \
-      >"$complete_log" 2>"${complete_log%.json}.stderr.log" || return 1
-    artifact_id="$(jq -r '.artifact_id // empty' "$complete_log")"
-    [ -n "$artifact_id" ] || return 1
+      >"$complete_log" 2>"${complete_log%.json}.stderr.log" || {
+        artifact_fixture_error="uploads complete failed; inspect ${complete_log%.json}.stderr.log"
+        return 1
+      }
+    if ! artifact_id="$(jq -er '.artifact_id' "$complete_log")"; then
+      artifact_fixture_error="uploads complete returned malformed JSON or no artifact id; inspect $complete_log"
+      return 1
+    fi
     if [ "$ordinal" -eq 1 ]; then
       artifact_fixture_id="$artifact_id"
     else
@@ -29,7 +39,7 @@ handle_live_resources_graph_scenario() {
   case "$name" in
       "artifacts list")
         if ! ensure_artifact_fixture; then
-          missing_live "artifacts fixture" "two public upload promotions did not produce opaque artifact ids"
+          missing_live "artifacts fixture" "$artifact_fixture_error"
           return 0
         fi
         run_live "$name" artifacts list --kind raw_content --limit 1 --json
@@ -48,7 +58,7 @@ handle_live_resources_graph_scenario() {
         ;;
       "artifacts get")
         if ! ensure_artifact_fixture; then
-          missing_live "artifacts get fixture" "public upload promotion did not produce an opaque artifact id"
+          missing_live "artifacts get fixture" "$artifact_fixture_error"
           return 0
         fi
         run_live "$name" artifacts get "$artifact_fixture_id" --include-content-url --json
@@ -58,7 +68,7 @@ handle_live_resources_graph_scenario() {
         ;;
       "artifacts content")
         if ! ensure_artifact_fixture; then
-          missing_live "artifacts content fixture" "public upload promotion did not produce an opaque artifact id"
+          missing_live "artifacts content fixture" "$artifact_fixture_error"
           return 0
         fi
         run_live "$name" artifacts content "$artifact_fixture_id" --output "$OUTDIR/artifact-content.bin" --json

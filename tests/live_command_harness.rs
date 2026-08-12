@@ -314,8 +314,7 @@ fi
         "cleanup must issue exactly one collection deletion:\n{curl_calls}"
     );
     assert!(
-        cleanup_calls[0]
-            .starts_with("-fsS -X DELETE http://qdrant.live:6333/collections/axon_live_"),
+        cleanup_calls[0].contains("http://qdrant.live:6333/collections/axon_live_"),
         "cleanup must target only the generated isolated collection:\n{curl_calls}"
     );
 }
@@ -782,6 +781,59 @@ source scripts/lib/live-cli-reporting.sh
         "foreign collection must never be deleted:
 {calls}"
     );
+}
+
+#[test]
+fn cleanup_reports_external_resource_failures_without_changing_the_exit_status() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    for command in ["curl", "docker"] {
+        let path = bin_dir.join(command);
+        fs::write(&path, "#!/usr/bin/env bash\nexit 7\n").unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+    let outdir = temp.path().join("results");
+    fs::create_dir_all(outdir.join("logs")).unwrap();
+    let setup = temp.path().join("setup/.axon/compose");
+    fs::create_dir_all(&setup).unwrap();
+    fs::write(temp.path().join("setup/.axon/.env"), "").unwrap();
+    fs::write(setup.join("docker-compose.yaml"), "").unwrap();
+    fs::write(setup.join("docker-compose.external-qdrant.yaml"), "").unwrap();
+    fs::write(setup.join("docker-compose.external-providers.yaml"), "").unwrap();
+
+    let shell = r#"
+set -uo pipefail
+failures=0
+live_chrome_pid=""
+isolated_compose_project=axon-live-test
+isolated_compose_network=axon-live-test
+isolated_collections=(axon_live_test)
+source scripts/lib/live-cli-reporting.sh
+cleanup_live_fixtures
+printf 'failures=%s\n' "$failures"
+"#;
+    let path = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+    let output = Command::new("bash")
+        .args(["-c", shell])
+        .env("PATH", path)
+        .env("OUTDIR", &outdir)
+        .env("SETUP_HOME", temp.path().join("setup"))
+        .env("QDRANT_URL", "http://qdrant.invalid")
+        .output()
+        .expect("run cleanup failure probe");
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "failures=0\n");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for resource in ["compose stack", "Docker network", "Qdrant collection"] {
+        assert!(
+            stderr.contains(resource),
+            "missing {resource} cleanup warning: {stderr}"
+        );
+    }
 }
 
 #[test]

@@ -173,6 +173,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   prune_plan_id=""
   artifact_fixture_id=""
   artifact_fixture_second_id=""
+  artifact_fixture_error="artifact fixture was not prepared"
   upload_id=""
   abort_upload_id=""
   graph_node_id=""
