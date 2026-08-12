@@ -38,14 +38,33 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   source "$ROOT_DIR/scripts/lib/axon-env.sh"
   load_axon_env_file "$ROOT_DIR"
   configured_chrome_remote_url="${AXON_CHROME_REMOTE_URL:-http://127.0.0.1:6000}"
+
+  probe_live_chrome() {
+    local endpoint="$1" diagnostic="$2"
+    if ! curl -fsS --max-time 2 "${endpoint%/}/json/version" >"$diagnostic" 2>&1; then
+      return 1
+    fi
+    jq -e '
+      (.Browser | type == "string")
+      and ((.Browser | startswith("HeadlessChrome")) or (.Browser | startswith("Chrome")))
+      and (.webSocketDebuggerUrl | type == "string")
+      and ((.webSocketDebuggerUrl | startswith("ws://"))
+        or (.webSocketDebuggerUrl | startswith("wss://")))
+    ' "$diagnostic" >/dev/null 2>&1
+  }
+
   if [ -n "${AXON_LIVE_CHROME_REMOTE_URL:-}" ]; then
     live_chrome_remote_url="$AXON_LIVE_CHROME_REMOTE_URL"
-  elif curl -fsS --max-time 2 "${configured_chrome_remote_url%/}/json/version" >/dev/null 2>&1; then
+    if ! probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-explicit-probe.log"; then
+      echo "explicit Chrome endpoint is not a reachable CDP endpoint: $live_chrome_remote_url" >&2
+      exit 2
+    fi
+  elif probe_live_chrome "$configured_chrome_remote_url" "$OUTDIR/logs/chrome-configured-probe.log"; then
     live_chrome_remote_url="$configured_chrome_remote_url"
-  elif curl -fsS --max-time 2 "http://127.0.0.1:9222/json/version" >/dev/null 2>&1; then
+  elif probe_live_chrome "http://127.0.0.1:9222" "$OUTDIR/logs/chrome-fallback-probe.log"; then
     live_chrome_remote_url="http://127.0.0.1:9222"
   else
-    live_chrome_port="${AXON_LIVE_CHROME_PORT:-39224}"
+    live_chrome_port="${AXON_LIVE_CHROME_PORT:-0}"
     live_chrome_binary="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
     if [ -z "$live_chrome_binary" ]; then
       echo "live scenarios require Chrome; set AXON_LIVE_CHROME_REMOTE_URL or install Chrome/Chromium" >&2
@@ -59,10 +78,14 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       >"$OUTDIR/logs/chrome.log" 2>"$OUTDIR/logs/chrome.stderr.log" &
     live_chrome_pid=$!
     live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
-    live_chrome_remote_url="http://127.0.0.1:$live_chrome_port"
     live_chrome_ready=0
     for _attempt in $(seq 1 60); do
-      if curl -fsS --max-time 1 "${live_chrome_remote_url}/json/version" >/dev/null 2>&1; then
+      if [ "$live_chrome_port" = "0" ] && [ -s "$OUTDIR/chrome-profile/DevToolsActivePort" ]; then
+        live_chrome_port="$(sed -n '1p' "$OUTDIR/chrome-profile/DevToolsActivePort")"
+      fi
+      live_chrome_remote_url="http://127.0.0.1:$live_chrome_port"
+      if [ "$live_chrome_port" != "0" ] \
+        && probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-owned-probe.log"; then
         live_chrome_ready=1
         break
       fi
