@@ -40,16 +40,17 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   configured_chrome_remote_url="${AXON_CHROME_REMOTE_URL:-http://127.0.0.1:6000}"
 
   probe_live_chrome() {
-    local endpoint="$1" diagnostic="$2"
+    local endpoint="$1" diagnostic="$2" expected_ws_prefix="${3:-}"
     if ! curl -fsS --max-time 2 "${endpoint%/}/json/version" >"$diagnostic" 2>&1; then
       return 1
     fi
-    jq -e '
+    jq -e --arg expected_ws_prefix "$expected_ws_prefix" '
       (.Browser | type == "string")
       and ((.Browser | startswith("HeadlessChrome")) or (.Browser | startswith("Chrome")))
       and (.webSocketDebuggerUrl | type == "string")
       and ((.webSocketDebuggerUrl | startswith("ws://"))
         or (.webSocketDebuggerUrl | startswith("wss://")))
+      and (($expected_ws_prefix == "") or (.webSocketDebuggerUrl | startswith($expected_ws_prefix)))
     ' "$diagnostic" >/dev/null 2>&1
   }
 
@@ -65,19 +66,41 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     live_chrome_remote_url="http://127.0.0.1:9222"
   else
     live_chrome_port="${AXON_LIVE_CHROME_PORT:-0}"
+    if ! [[ "$live_chrome_port" =~ ^([1-9][0-9]{0,4}|0)$ ]] \
+      || [ "$live_chrome_port" -gt 65535 ]; then
+      echo "AXON_LIVE_CHROME_PORT must be 0 or an integer from 1 through 65535" >&2
+      exit 2
+    fi
+    if [ "$live_chrome_port" != "0" ] \
+      && probe_live_chrome "http://127.0.0.1:$live_chrome_port" \
+        "$OUTDIR/logs/chrome-fixed-port-probe.log" \
+        "ws://127.0.0.1:$live_chrome_port/"; then
+      echo "refusing foreign CDP endpoint on fixed port $live_chrome_port; use AXON_LIVE_CHROME_REMOTE_URL to opt in" >&2
+      exit 2
+    fi
     live_chrome_binary="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
     if [ -z "$live_chrome_binary" ]; then
       echo "live scenarios require Chrome; set AXON_LIVE_CHROME_REMOTE_URL or install Chrome/Chromium" >&2
       exit 2
     fi
+    command -v setsid >/dev/null 2>&1 || {
+      echo "live scenarios require setsid for owned Chrome process-group cleanup" >&2
+      exit 2
+    }
     live_chrome_session_token="axon-live-chrome-${TS//[^0-9]/}-$$"
+    rm -f -- "$OUTDIR/chrome-profile/DevToolsActivePort"
     AXON_LIVE_CHROME_SESSION_TOKEN="$live_chrome_session_token" \
-      "$live_chrome_binary" --headless=new --no-sandbox --disable-gpu \
+      setsid "$live_chrome_binary" --headless=new --no-sandbox --disable-gpu \
       --remote-debugging-address=127.0.0.1 --remote-debugging-port="$live_chrome_port" \
       --user-data-dir="$OUTDIR/chrome-profile" about:blank \
       >"$OUTDIR/logs/chrome.log" 2>"$OUTDIR/logs/chrome.stderr.log" &
     live_chrome_pid=$!
+    live_chrome_pgid="$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')"
     live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+    if [ "$live_chrome_pgid" != "$live_chrome_pid" ]; then
+      echo "harness-owned Chrome did not start in its own process group" >&2
+      exit 2
+    fi
     live_chrome_ready=0
     for _attempt in $(seq 1 60); do
       if [ "$live_chrome_port" = "0" ] && [ -s "$OUTDIR/chrome-profile/DevToolsActivePort" ]; then
@@ -85,7 +108,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       fi
       live_chrome_remote_url="http://127.0.0.1:$live_chrome_port"
       if [ "$live_chrome_port" != "0" ] \
-        && probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-owned-probe.log"; then
+        && probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-owned-probe.log" \
+          "ws://127.0.0.1:$live_chrome_port/"; then
         live_chrome_ready=1
         break
       fi
@@ -104,8 +128,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     AXON_ARTIFACT_BIN_DIR AXON_ARTIFACT_ROOT AXON_CONFIG_PATH AXON_ENV_FILE
   export AXON_DATA_DIR="${AXON_LIVE_DATA_DIR:-$OUTDIR/data}"
   export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_${TS//[^0-9]/}}"
-  if [[ "$AXON_COLLECTION" != axon_live_* ]]; then
-    echo "isolated live collection must start with axon_live_: $AXON_COLLECTION" >&2
+  if ! [[ "$AXON_COLLECTION" =~ ^axon_live_[A-Za-z0-9_-]{1,120}$ ]]; then
+    echo "isolated live collection must match ^axon_live_[A-Za-z0-9_-]{1,120}$: $AXON_COLLECTION" >&2
     exit 2
   fi
   isolated_collection="$AXON_COLLECTION"

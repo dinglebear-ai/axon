@@ -2,27 +2,44 @@
 # Reporting and semantic coverage helpers.
 
 cleanup_live_fixtures() {
-  local collection attempt
+  local collection _attempt member member_pgid
   cleanup_warning() {
     printf 'warning: failed to clean up %s; inspect %s\n' "$1" "$2" >&2
   }
+  chrome_group_has_session_token() {
+    [ -n "${live_chrome_pgid:-}" ] && [ -n "${live_chrome_session_token:-}" ] || return 1
+    while read -r member member_pgid; do
+      [ "$member_pgid" = "$live_chrome_pgid" ] || continue
+      [ -r "/proc/$member/environ" ] || continue
+      if tr '\0' '\n' <"/proc/$member/environ" 2>/dev/null \
+        | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
+        return 0
+      fi
+    done < <(ps -eo pid=,pgid= 2>/dev/null)
+    return 1
+  }
   if [ -n "${live_chrome_pid:-}" ] \
+    && [ -n "${live_chrome_pgid:-}" ] \
     && [ -n "${live_chrome_start_time:-}" ] \
     && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
-    && tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
-      | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
-    kill -TERM "$live_chrome_pid" 2>/dev/null || true
-    for attempt in $(seq 1 20); do
-      kill -0 "$live_chrome_pid" 2>/dev/null || break
+    && chrome_group_has_session_token; then
+    kill -TERM -- "-$live_chrome_pgid" 2>/dev/null || true
+    for _attempt in $(seq 1 20); do
+      kill -0 -- "-$live_chrome_pgid" 2>/dev/null || break
       sleep 0.1
     done
-    if kill -0 "$live_chrome_pid" 2>/dev/null \
-      && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
-      && tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
-        | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
-      kill -KILL "$live_chrome_pid" 2>/dev/null || true
+    if kill -0 -- "-$live_chrome_pgid" 2>/dev/null; then
+      if chrome_group_has_session_token; then
+        kill -KILL -- "-$live_chrome_pgid" 2>/dev/null || true
+      else
+        cleanup_warning "Chrome process group (ownership identity changed before KILL)" \
+          "$OUTDIR/logs/chrome.stderr.log"
+      fi
     fi
     wait "$live_chrome_pid" 2>/dev/null || true
+  elif [ -n "${live_chrome_pid:-}" ]; then
+    cleanup_warning "Chrome process group (ownership identity unavailable)" \
+      "$OUTDIR/logs/chrome.stderr.log"
   fi
   if [[ "$isolated_compose_project" == axon-live-* ]] \
     && [[ "$isolated_compose_network" == axon-live-* ]] \

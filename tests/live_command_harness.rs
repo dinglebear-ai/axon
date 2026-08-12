@@ -420,12 +420,15 @@ fn scenario_mode_owns_a_collision_safe_chrome_and_bounds_cleanup() {
 
     let chrome_args = temp.path().join("chrome-args");
     let chrome_pid = temp.path().join("chrome-pid");
+    let chrome_child_pid = temp.path().join("chrome-child-pid");
     let devtools_port = temp.path().join("devtools-port");
     let fake_chrome = bin_dir.join("google-chrome");
     let chrome_script = format!(
         r#"#!/usr/bin/env bash
 printf '%s\n' "$*" > '{}'
 printf '%s\n' "$$" > '{}'
+(trap '' TERM; while :; do sleep 1; done) &
+printf '%s\n' "$!" > '{}'
 profile=""
 for arg in "$@"; do
   case "$arg" in --user-data-dir=*) profile="${{arg#*=}}" ;; esac
@@ -438,6 +441,7 @@ while :; do read -r -t 1 _unused || true; done
 "#,
         chrome_args.display(),
         chrome_pid.display(),
+        chrome_child_pid.display(),
         devtools_port.display()
     );
     fs::write(&fake_chrome, chrome_script).unwrap();
@@ -471,7 +475,7 @@ exit 7
     let output = Command::new("timeout")
         .args([
             "--kill-after=2",
-            "15",
+            "30",
             "bash",
             "scripts/live-test-all-commands.sh",
             "--mode",
@@ -504,6 +508,102 @@ exit 7
     assert!(
         !status.success(),
         "owned Chrome process survived harness cleanup"
+    );
+    let child_pid = fs::read_to_string(chrome_child_pid).expect("owned Chrome child pid");
+    let child_status = Command::new("kill")
+        .args(["-0", child_pid.trim()])
+        .status()
+        .expect("probe owned Chrome child pid");
+    assert!(
+        !child_status.success(),
+        "owned Chrome descendant survived harness cleanup"
+    );
+}
+
+#[test]
+fn scenario_mode_refuses_a_foreign_cdp_on_an_explicit_fixed_port() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let fake_axon = bin_dir.join("axon");
+    fs::write(&fake_axon, "#!/usr/bin/env bash\nprintf '{}\\n'\n").unwrap();
+    let fake_chrome = bin_dir.join("google-chrome");
+    fs::write(&fake_chrome, "#!/usr/bin/env bash\nexit 99\n").unwrap();
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nif [[ \"$*\" == *':45678/json/version'* ]]; then printf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:45678/devtools/browser/foreign\"}\\n'; exit 0; fi\nexit 7\n",
+    )
+    .unwrap();
+    for path in [&fake_axon, &fake_chrome, &fake_curl] {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+    let path = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .env("AXON_LIVE_CHROME_PORT", "45678")
+        .output()
+        .expect("run scenario harness with occupied fixed Chrome port");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("refusing foreign CDP endpoint on fixed port 45678"),
+        "missing foreign fixed-port diagnostic: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn scenario_mode_rejects_a_devtools_port_file_bound_to_another_endpoint() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let fake_axon = bin_dir.join("axon");
+    fs::write(&fake_axon, "#!/usr/bin/env bash\nprintf '{}\\n'\n").unwrap();
+    let fake_chrome = bin_dir.join("google-chrome");
+    fs::write(
+        &fake_chrome,
+        "#!/usr/bin/env bash\nprofile=\"\"\nfor arg in \"$@\"; do case \"$arg\" in --user-data-dir=*) profile=\"${arg#*=}\" ;; esac; done\nmkdir -p \"$profile\"\nprintf '45678\\n/devtools/browser/owned\\n' > \"$profile/DevToolsActivePort\"\ntrap '' TERM\nwhile :; do sleep 1; done\n",
+    )
+    .unwrap();
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nif [[ \"$*\" == *':45678/json/version'* ]]; then printf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:49999/devtools/browser/foreign\"}\\n'; exit 0; fi\nexit 7\n",
+    )
+    .unwrap();
+    for path in [&fake_axon, &fake_chrome, &fake_curl] {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+    let path = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .output()
+        .expect("run scenario harness with mismatched DevTools endpoint");
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("harness-owned Chrome did not become ready")
     );
 }
 
@@ -807,7 +907,10 @@ fn cleanup_reports_external_resource_failures_without_changing_the_exit_status()
     let shell = r#"
 set -uo pipefail
 failures=0
-live_chrome_pid=""
+live_chrome_pid="99999999"
+live_chrome_pgid="99999999"
+live_chrome_start_time="1"
+live_chrome_session_token="owned-test-token"
 isolated_compose_project=axon-live-test
 isolated_compose_network=axon-live-test
 isolated_collections=(axon_live_test)
@@ -828,10 +931,69 @@ printf 'failures=%s\n' "$failures"
     assert!(output.status.success());
     assert_eq!(String::from_utf8_lossy(&output.stdout), "failures=0\n");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    for resource in ["compose stack", "Docker network", "Qdrant collection"] {
+    for resource in [
+        "Chrome process group (ownership identity unavailable)",
+        "compose stack",
+        "Docker network",
+        "Qdrant collection",
+    ] {
         assert!(
             stderr.contains(resource),
             "missing {resource} cleanup warning: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn scenario_mode_rejects_collection_names_that_can_escape_the_qdrant_path_segment() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let fake_axon = bin_dir.join("axon");
+    fs::write(&fake_axon, "#!/usr/bin/env bash\nprintf '{}\\n'\n").unwrap();
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nif [[ \"$*\" == *':9222/json/version'* ]]; then printf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9222/devtools/browser/test\"}\\n'; else printf '{}\\n'; fi\n",
+    )
+    .unwrap();
+    for path in [&fake_axon, &fake_curl] {
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+    let path = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+
+    for collection in [
+        "axon_live_test/../../collections/production",
+        "axon_live_test?timeout=0",
+        "axon_live_test#fragment",
+        "axon_live_test%2fproduction",
+    ] {
+        let output = Command::new("bash")
+            .arg("scripts/live-test-all-commands.sh")
+            .args(["--mode", "scenarios"])
+            .env("PATH", &path)
+            .env("AXON_BIN", &fake_axon)
+            .env("AXON_COMMAND_REGISTRY", &registry)
+            .env(
+                "AXON_LIVE_TEST_OUTDIR",
+                temp.path().join(format!("results-{}", collection.len())),
+            )
+            .env("AXON_LIVE_COLLECTION", collection)
+            .output()
+            .expect("run scenario harness with unsafe collection name");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "unsafe collection accepted: {collection}"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("isolated live collection must match"),
+            "missing strict collection diagnostic for {collection}: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
 }

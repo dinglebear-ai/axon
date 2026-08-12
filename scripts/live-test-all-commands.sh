@@ -78,6 +78,7 @@ isolated_collections=()
 isolated_compose_project=""
 isolated_compose_network=""
 live_chrome_pid=""
+live_chrome_pgid=""
 live_chrome_start_time=""
 live_chrome_session_token=""
 
