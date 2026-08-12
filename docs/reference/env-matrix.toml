@@ -1751,6 +1751,42 @@ compatibility = "advanced"
 reason = "Test/dev harness variable, not a production env template key."
 
 [[env]]
+key = "AXON_LIVE_CHROME_REMOTE_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts", "docs"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Explicit Chrome DevTools endpoint override for the isolated live CLI harness."
+
+[[env]]
+key = "AXON_LIVE_CHROME_PORT"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts", "docs"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Optional fixed port for harness-owned Chrome; the default lets Chrome allocate a collision-safe port."
+
+[[env]]
+key = "AXON_LIVE_CHROME_SESSION_TOKEN"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = false
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Internal process-ownership nonce used to make live harness Chrome cleanup fail closed."
+
+[[env]]
 key = "AXON_LOCAL_MODE"
 classification = "keep-env"
 runtime_placement = "both"

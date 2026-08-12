@@ -2,7 +2,45 @@
 # Reporting and semantic coverage helpers.
 
 cleanup_live_fixtures() {
-  local collection
+  local collection _attempt member member_pgid
+  cleanup_warning() {
+    printf 'warning: failed to clean up %s; inspect %s\n' "$1" "$2" >&2
+  }
+  chrome_group_has_session_token() {
+    [ -n "${live_chrome_pgid:-}" ] && [ -n "${live_chrome_session_token:-}" ] || return 1
+    while read -r member member_pgid; do
+      [ "$member_pgid" = "$live_chrome_pgid" ] || continue
+      [ -r "/proc/$member/environ" ] || continue
+      if tr '\0' '\n' <"/proc/$member/environ" 2>/dev/null \
+        | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
+        return 0
+      fi
+    done < <(ps -eo pid=,pgid= 2>/dev/null)
+    return 1
+  }
+  if [ -n "${live_chrome_pid:-}" ] \
+    && [ -n "${live_chrome_pgid:-}" ] \
+    && [ -n "${live_chrome_start_time:-}" ] \
+    && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
+    && chrome_group_has_session_token; then
+    kill -TERM -- "-$live_chrome_pgid" 2>/dev/null || true
+    for _attempt in $(seq 1 20); do
+      kill -0 -- "-$live_chrome_pgid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 -- "-$live_chrome_pgid" 2>/dev/null; then
+      if chrome_group_has_session_token; then
+        kill -KILL -- "-$live_chrome_pgid" 2>/dev/null || true
+      else
+        cleanup_warning "Chrome process group (ownership identity changed before KILL)" \
+          "$OUTDIR/logs/chrome.stderr.log"
+      fi
+    fi
+    wait "$live_chrome_pid" 2>/dev/null || true
+  elif [ -n "${live_chrome_pid:-}" ]; then
+    cleanup_warning "Chrome process group (ownership identity unavailable)" \
+      "$OUTDIR/logs/chrome.stderr.log"
+  fi
   if [[ "$isolated_compose_project" == axon-live-* ]] \
     && [[ "$isolated_compose_network" == axon-live-* ]] \
     && [ -f "${SETUP_HOME:-}/.axon/.env" ] \
@@ -12,15 +50,19 @@ cleanup_live_fixtures() {
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       down --remove-orphans \
-      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" || true
+      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" \
+      || cleanup_warning "compose stack" "$OUTDIR/logs/cleanup-compose.stderr.log"
     docker network rm "$isolated_compose_network" \
-      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" || true
+      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" \
+      || cleanup_warning "Docker network $isolated_compose_network" "$OUTDIR/logs/cleanup-network.stderr.log"
   fi
   for collection in "${isolated_collections[@]}"; do
     if [[ "$collection" == axon_live_* ]] && [ -n "${QDRANT_URL:-}" ]; then
       curl -fsS -X DELETE \
+        --connect-timeout 2 --max-time 10 --retry 2 --retry-connrefused \
         "${QDRANT_URL%/}/collections/$collection" \
-        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" || true
+        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" \
+        || cleanup_warning "Qdrant collection $collection" "$OUTDIR/logs/cleanup-qdrant.stderr.log"
     fi
   done
 }

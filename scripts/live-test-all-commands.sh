@@ -60,16 +60,27 @@ if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 TS="$(date +%Y%m%d-%H%M%S)"
-RUN_ID="${SCENARIO_GROUP}-${TS}-$$-${RANDOM}"
-RUN_SLUG="${RUN_ID//[^a-zA-Z0-9]/}"
-RUN_PORT_BASE=$((40000 + (RANDOM % 15000)))
+if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
+  OUTDIR="$AXON_LIVE_TEST_OUTDIR"
+  mkdir -p "$OUTDIR"
+else
+  live_test_root="${AXON_LIVE_TEST_ROOT:-$ROOT_DIR/.cache/live-test}"
+  mkdir -p "$live_test_root"
+  OUTDIR="$(mktemp -d "$live_test_root/${SCENARIO_GROUP}-${TS}.XXXXXX")" || {
+    echo "failed to allocate a unique live-test output directory" >&2
+    exit 2
+  }
+fi
+LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
+RUN_PORT_BASE="${AXON_LIVE_PORT_BASE:-$((40000 + (RANDOM % 15000)))}"
 export AXON_LIVE_PORT_BASE="$RUN_PORT_BASE"
-OUTROOT="${AXON_LIVE_TEST_ROOT:-$ROOT_DIR/.cache/live-test}"
-OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$OUTROOT/$RUN_ID}"
+mkdir -p "$OUTDIR/logs"
+AXON_BIN="$(realpath -- "$AXON_BIN")"
+REGISTRY="$(realpath -- "$REGISTRY")"
+OUTDIR="$(realpath -- "$OUTDIR")"
 REPORT="$OUTDIR/report.tsv"
 BEHAVIOR_REPORT="$OUTDIR/behavioral-coverage.tsv"
 TIMINGS_REPORT="$OUTDIR/timings.tsv"
-mkdir -p "$OUTDIR/logs"
 
 command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
@@ -107,6 +118,10 @@ isolated_collection=""
 isolated_collections=()
 isolated_compose_project=""
 isolated_compose_network=""
+live_chrome_pid=""
+live_chrome_pgid=""
+live_chrome_start_time=""
+live_chrome_session_token=""
 
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/live-cli-reporting.sh"
