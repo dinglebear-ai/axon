@@ -11,7 +11,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
 #[command(name = "xtask", about = "Axon repository maintenance checks")]
@@ -169,6 +169,44 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Benchmark the complete source pipeline against a live HTTP site.
+    BenchSource {
+        /// Live site root to crawl, for example https://code.claude.com/.
+        url: String,
+        /// Axon binary to execute. Defaults to target/debug/axon, then PATH.
+        #[arg(long)]
+        axon_bin: Option<PathBuf>,
+        /// Run isolated cold crawls, conditional-cache recrawls, or both.
+        #[arg(long, value_enum, default_value = "both")]
+        scenario: bench_source::ScenarioMode,
+        /// Number of measured runs per scenario.
+        #[arg(long, default_value_t = 3)]
+        runs: usize,
+        /// Optional page cap for smoke and tuning runs.
+        #[arg(long)]
+        max_pages: Option<u64>,
+        /// Qdrant base URL. Defaults to QDRANT_URL / AXON_QDRANT_URL.
+        #[arg(long)]
+        qdrant_url: Option<String>,
+        /// TEI base URL used for embedding metrics. Defaults to TEI_URL.
+        #[arg(long)]
+        tei_url: Option<String>,
+        /// JSON artifact path. Defaults under target/bench-source/.
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Prior axon-bench-source/v1 artifact to compare against.
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+        /// Retain isolated SQLite/cache directories and Qdrant collections.
+        #[arg(long)]
+        keep_state: bool,
+        /// Required acknowledgement that the benchmark contacts a live site.
+        #[arg(long)]
+        allow_live_network: bool,
+        /// Emit the complete report to stdout as JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -276,7 +314,45 @@ fn main() -> Result<()> {
                 json,
             },
         ),
+        command @ Command::BenchSource { .. } => run_bench_source(&root, command),
     }
+}
+
+fn run_bench_source(root: &Path, command: Command) -> Result<()> {
+    let Command::BenchSource {
+        url,
+        axon_bin,
+        scenario,
+        runs,
+        max_pages,
+        qdrant_url,
+        tei_url,
+        output,
+        baseline,
+        keep_state,
+        allow_live_network,
+        json,
+    } = command
+    else {
+        unreachable!("run_bench_source requires BenchSource");
+    };
+    bench_source::run(
+        root,
+        bench_source::BenchSourceArgs {
+            url,
+            axon_bin,
+            scenario,
+            runs,
+            max_pages,
+            qdrant_url,
+            tei_url,
+            output,
+            baseline,
+            keep_state,
+            allow_live_network,
+            json,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -284,6 +360,7 @@ fn main() -> Result<()> {
 mod tests;
 
 mod bench_embed;
+mod bench_source;
 mod checks;
 mod docs;
 mod generated_contracts;

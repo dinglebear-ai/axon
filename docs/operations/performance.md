@@ -212,10 +212,10 @@ Baseline:
 ./scripts/axon stats
 ```
 
-Crawl benchmark:
+Crawl benchmark (quick manual timing):
 
 ```bash
-time ./scripts/axon crawl https://example.com --wait true --performance-profile high-stable
+time ./scripts/axon source https://example.com --scope site --wait true --performance-profile high-stable
 ```
 
 Embedding benchmark:
@@ -236,6 +236,60 @@ Track:
 - pages/chunks processed
 - error/retry frequency
 - worker saturation signals in logs
+
+### Reproducible live source benchmark
+
+Use the `xtask` harness when comparing pipeline changes. It runs against the
+real site and live TEI/Qdrant services, while isolating each cold run's SQLite,
+crawl cache, and Qdrant collection. Live network access must be acknowledged
+explicitly, so CI and ordinary developer commands cannot accidentally crawl an
+external site.
+
+Capture a three-run cold and warm baseline:
+
+```bash
+cargo xtask bench-source https://code.claude.com/ \
+  --axon-bin target/release/axon \
+  --scenario both \
+  --runs 3 \
+  --allow-live-network \
+  --output target/bench-source/code-claude-baseline.json
+```
+
+The warm scenario performs one unmeasured cache-primer crawl, then measures
+conditional recrawls using `--cache true --etag-conditional`. The cold scenario
+uses a new state directory and collection for every measured run. The harness
+removes those generated resources unless `--keep-state` is supplied.
+
+After changing the pipeline, compare the candidate directly with the baseline:
+
+```bash
+cargo xtask bench-source https://code.claude.com/ \
+  --axon-bin target/release/axon \
+  --scenario both \
+  --runs 3 \
+  --allow-live-network \
+  --baseline target/bench-source/code-claude-baseline.json \
+  --output target/bench-source/code-claude-candidate.json
+```
+
+The JSON artifact records:
+
+- Git revision, branch, Axon version, scenario, and page cap
+- Total wall time plus durable-job phase timings
+- Discovered items, prepared documents, chunks, and stored vector points
+- Completion/degradation status and warning counts by stable warning code
+- TEI inputs, requests, input tokens, embedding time, and queue time when the
+  service exposes Prometheus metrics
+- Qdrant upsert request/time deltas when the service exposes matching metrics
+- Min, median, and max distributions, plus baseline percentage changes for
+  time, pages, documents, chunks, and vector points
+
+Treat page/document/chunk/vector deltas as correctness signals, not automatic
+performance wins. Live sites can change between runs; make baseline and
+candidate runs close together, use the same binary profile and services, and
+repeat noisy comparisons. Use `--max-pages` for cheap harness smoke tests, not
+for final throughput claims.
 
 ### Isolated crawler stress run
 

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
-mod support;
+pub(crate) mod support;
 use support::*;
 
 #[derive(Debug, Clone)]
@@ -257,12 +257,12 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let qdrant_upsert_requests_delta = metric_delta(
         &qdrant_before,
         &qdrant_after,
-        r#"rest_responses_total{method="PUT",endpoint="/collections/{name}/points",status="200"}"#,
+        r#"rest_responses_total{method="PUT",endpoint="/collections/{collection_name}/points",status="200"}"#,
     );
     let qdrant_upsert_duration_seconds_delta = metric_delta(
         &qdrant_before,
         &qdrant_after,
-        r#"rest_responses_duration_seconds_sum{method="PUT",endpoint="/collections/{name}/points",status="200"}"#,
+        r#"rest_responses_duration_seconds_sum{method="PUT",endpoint="/collections/{collection_name}/points",status="200"}"#,
     );
     let qdrant_avg_upsert_seconds_per_request = match (
         qdrant_upsert_duration_seconds_delta,
@@ -274,12 +274,12 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let qdrant_index_requests_delta = metric_delta(
         &qdrant_before,
         &qdrant_after,
-        r#"rest_responses_total{method="PUT",endpoint="/collections/{name}/index",status="200"}"#,
+        r#"rest_responses_total{method="PUT",endpoint="/collections/{collection_name}/index",status="200"}"#,
     );
     let qdrant_index_duration_seconds_delta = metric_delta(
         &qdrant_before,
         &qdrant_after,
-        r#"rest_responses_duration_seconds_sum{method="PUT",endpoint="/collections/{name}/index",status="200"}"#,
+        r#"rest_responses_duration_seconds_sum{method="PUT",endpoint="/collections/{collection_name}/index",status="200"}"#,
     );
 
     let cleaned_up = if args.keep_collection {

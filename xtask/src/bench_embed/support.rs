@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-pub(super) fn load_dotenv_if_present() -> Result<()> {
+pub(crate) fn load_dotenv_if_present() -> Result<()> {
     let Some(home) = std::env::var_os("HOME") else {
         return Ok(());
     };
@@ -29,18 +29,18 @@ pub(super) fn load_dotenv_if_present() -> Result<()> {
     Ok(())
 }
 
-pub(super) fn resolve_url(env_key: &str, explicit: Option<String>) -> Option<String> {
+pub(crate) fn resolve_url(env_key: &str, explicit: Option<String>) -> Option<String> {
     explicit
         .or_else(|| std::env::var(env_key).ok())
         .filter(|value| !value.trim().is_empty())
 }
 
-pub(super) fn default_axon_bin(root: &Path) -> Option<PathBuf> {
+pub(crate) fn default_axon_bin(root: &Path) -> Option<PathBuf> {
     let candidate = root.join("target/debug/axon");
     candidate.is_file().then_some(candidate)
 }
 
-pub(super) fn unix_timestamp() -> u64 {
+pub(crate) fn unix_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -70,7 +70,7 @@ pub(super) fn first_u64_pointer(value: Option<&Value>, pointers: &[&str]) -> Opt
         .find_map(|pointer| value.pointer(pointer).and_then(Value::as_u64))
 }
 
-pub(super) fn fetch_collection_info(
+pub(crate) fn fetch_collection_info(
     client: &reqwest::blocking::Client,
     qdrant_url: &str,
     collection: &str,
@@ -83,7 +83,7 @@ pub(super) fn fetch_collection_info(
     Ok(client.get(url).send()?.error_for_status()?.json()?)
 }
 
-pub(super) fn delete_collection(
+pub(crate) fn delete_collection(
     client: &reqwest::blocking::Client,
     qdrant_url: &str,
     collection: &str,
@@ -97,7 +97,7 @@ pub(super) fn delete_collection(
     Ok(())
 }
 
-pub(super) fn fetch_tei_metrics(
+pub(crate) fn fetch_tei_metrics(
     client: &reqwest::blocking::Client,
     tei_url: &str,
 ) -> Result<BTreeMap<String, f64>> {
@@ -114,7 +114,7 @@ fn metrics_base_url(url: &str) -> String {
     trimmed.strip_suffix("/v1").unwrap_or(trimmed).to_string()
 }
 
-pub(super) fn fetch_qdrant_metrics(
+pub(crate) fn fetch_qdrant_metrics(
     client: &reqwest::blocking::Client,
     qdrant_url: &str,
 ) -> Result<BTreeMap<String, f64>> {
@@ -123,7 +123,7 @@ pub(super) fn fetch_qdrant_metrics(
     Ok(parse_prometheus_metrics(&body))
 }
 
-pub(super) fn select_tei_metrics_url(
+pub(crate) fn select_tei_metrics_url(
     client: &reqwest::blocking::Client,
     configured: Option<&str>,
     explicit: bool,
@@ -163,7 +163,7 @@ fn parse_prometheus_metrics(body: &str) -> BTreeMap<String, f64> {
     metrics
 }
 
-pub(super) fn metric_delta(
+pub(crate) fn metric_delta(
     before: &Option<BTreeMap<String, f64>>,
     after: &Option<BTreeMap<String, f64>>,
     key: &str,
@@ -173,7 +173,7 @@ pub(super) fn metric_delta(
     Some(after - before)
 }
 
-pub(super) fn metric_delta_by_prefix(
+pub(crate) fn metric_delta_by_prefix(
     before: &Option<BTreeMap<String, f64>>,
     after: &Option<BTreeMap<String, f64>>,
     prefix: &str,
@@ -346,7 +346,7 @@ te_request_failure{err="overloaded"} 12
 te_embed_count 42
 te_request_input_length_sum 8192
 te_request_input_length_count 16
-rest_responses_total{method="PUT",endpoint="/collections/{name}/points",status="200"} 3
+rest_responses_total{method="PUT",endpoint="/collections/{collection_name}/points",status="200"} 3
 "#,
         );
 
@@ -359,7 +359,7 @@ rest_responses_total{method="PUT",endpoint="/collections/{name}/points",status="
         assert_eq!(metrics.get("te_request_input_length_count"), Some(&16.0));
         assert_eq!(
             metrics.get(
-                r#"rest_responses_total{method="PUT",endpoint="/collections/{name}/points",status="200"}"#
+                r#"rest_responses_total{method="PUT",endpoint="/collections/{collection_name}/points",status="200"}"#
             ),
             Some(&3.0)
         );
