@@ -70,14 +70,16 @@ fn reduced_motion_uses_a_static_progress_marker() {
 
 #[tokio::test]
 async fn interactive_finish_clears_the_live_region_once() {
-    let term = InMemoryTerm::new(20, 100);
-    let mut renderer = WaitRenderer::for_test(term.clone(), ProgressMode::Interactive);
-    renderer.render(&active_formatted_view()).unwrap();
-    renderer.finish(&completed_formatted_view()).unwrap();
-    renderer.finish(&completed_formatted_view()).unwrap();
-    let contents = term.contents();
-    assert_eq!(contents.matches("indexed").count(), 1);
-    assert!(!contents.contains("embedding chunks"), "{contents:?}");
+    for _ in 0..64 {
+        let term = InMemoryTerm::new(20, 100);
+        let mut renderer = WaitRenderer::for_test(term.clone(), ProgressMode::Interactive);
+        renderer.render(&active_formatted_view()).unwrap();
+        renderer.finish(&completed_formatted_view()).unwrap();
+        renderer.finish(&completed_formatted_view()).unwrap();
+        let contents = term.contents();
+        assert_eq!(contents.matches("indexed").count(), 1);
+        assert!(!contents.contains("embedding chunks"), "{contents:?}");
+    }
 }
 
 #[tokio::test]

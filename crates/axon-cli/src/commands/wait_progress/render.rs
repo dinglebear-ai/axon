@@ -254,12 +254,20 @@ impl WaitRenderer {
     fn clear_live(&self) -> io::Result<()> {
         if let Some(multi) = &self.multi {
             if let Some(active) = &self.active {
+                active.disable_steady_tick();
+            }
+            if let Some(header) = &self.header {
+                header.disable_steady_tick();
+            }
+            // Clear while the bars are still registered: once removed,
+            // indicatif no longer knows how many terminal rows to erase.
+            multi.clear()?;
+            if let Some(active) = &self.active {
                 multi.remove(active);
             }
             if let Some(header) = &self.header {
                 multi.remove(header);
             }
-            multi.clear()?;
         }
         Ok(())
     }
