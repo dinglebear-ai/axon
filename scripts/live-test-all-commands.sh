@@ -39,7 +39,18 @@ AXON_BIN="${AXON_BIN:-$ROOT_DIR/target/debug/axon}"
 REGISTRY="${AXON_COMMAND_REGISTRY:-$ROOT_DIR/docs/reference/cli/commands.json}"
 TIMEOUT_SECS="${AXON_LIVE_COMMAND_TIMEOUT_SECS:-120}"
 TS="$(date +%Y%m%d-%H%M%S)"
-OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$ROOT_DIR/.cache/live-test/$TS}"
+if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
+  OUTDIR="$AXON_LIVE_TEST_OUTDIR"
+  mkdir -p "$OUTDIR"
+else
+  live_test_root="$ROOT_DIR/.cache/live-test"
+  mkdir -p "$live_test_root"
+  OUTDIR="$(mktemp -d "$live_test_root/$TS.XXXXXX")" || {
+    echo "failed to allocate a unique live-test output directory" >&2
+    exit 2
+  }
+fi
+LIVE_RUN_ID="${TS//[^0-9]/}_$(stat -c '%d_%i' "$OUTDIR")"
 mkdir -p "$OUTDIR/logs"
 AXON_BIN="$(realpath -- "$AXON_BIN")"
 REGISTRY="$(realpath -- "$REGISTRY")"
@@ -78,6 +89,7 @@ isolated_collections=()
 isolated_compose_project=""
 isolated_compose_network=""
 live_chrome_pid=""
+live_chrome_pgid=""
 live_chrome_start_time=""
 live_chrome_session_token=""
 
