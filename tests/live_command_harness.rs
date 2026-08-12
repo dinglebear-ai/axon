@@ -654,3 +654,16 @@ fn hidden_cli_alias_inventory_is_behaviorally_covered() {
         .expect("read ask scenarios");
     assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
 }
+
+#[test]
+fn screenshot_scenario_proves_every_global_capture_option() {
+    let scenarios = fs::read_to_string("scripts/lib/live-cli-scenarios-jobs-source.sh")
+        .expect("read screenshot scenarios");
+
+    for option in ["--output", "--viewport", "--screenshot-full-page"] {
+        assert!(
+            scenarios.contains(&format!("prove_option_behavior \"@global\" \"{option}\"")),
+            "screenshot scenario must record behavioral evidence for {option}"
+        );
+    }
+}

@@ -219,6 +219,8 @@ handle_live_jobs_memory_source_scenario() {
         if [ "$(od -An -tx1 -N8 "$OUTDIR/screenshot.png" 2>/dev/null | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
           prove_option_behavior "@global" "--output" "requested screenshot path contains a non-empty PNG"
           prove_option_behavior "@global" "--viewport" "capture returned dimensions for the requested viewport"
+          prove_option_behavior "@global" "--screenshot-full-page" \
+            "capture returned the requested viewport height instead of a full-page image"
           record "screenshot output file" "contract" "PASS" "0" \
             "PNG signature at $OUTDIR/screenshot.png" "$OUTDIR/screenshot.png"
         else
