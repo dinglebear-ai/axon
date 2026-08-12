@@ -1,4 +1,6 @@
-use crate::config::types::{ColorChoice, PerformanceProfile, RenderMode, ScrapeFormat};
+use crate::config::types::{
+    ColorChoice, MotionChoice, PerformanceProfile, RenderMode, ScrapeFormat,
+};
 use clap::{ArgAction, Args};
 use std::path::PathBuf;
 
@@ -124,6 +126,20 @@ pub(in crate::config) struct GlobalArgs {
     #[arg(global = true, long, value_enum, default_value_t = ColorChoice::Auto)]
     pub(in crate::config) color: ColorChoice,
 
+    /// Terminal motion: auto (interactive TTY outside CI), always, never
+    #[arg(global = true, long, value_enum, default_value_t = MotionChoice::Auto)]
+    pub(in crate::config) motion: MotionChoice,
+
+    /// Show operator diagnostics; repeat for debug detail (-vv)
+    #[arg(
+        global = true,
+        short = 'v',
+        long,
+        action = ArgAction::Count,
+        conflicts_with = "quiet"
+    )]
+    pub(in crate::config) verbose: u8,
+
     /// Live-update mode for `axon status` and `axon monitor jobs`
     #[arg(global = true, long, action = ArgAction::SetTrue)]
     pub(in crate::config) watch: bool,
@@ -247,6 +263,12 @@ pub(in crate::config) struct GlobalArgs {
     pub(in crate::config) no_hybrid_search: bool,
 
     /// Suppress spinners and progress output (useful in scripts). JSON data is unaffected.
-    #[arg(global = true, long, action = ArgAction::SetTrue, default_value_t = false)]
+    #[arg(
+        global = true,
+        long,
+        action = ArgAction::SetTrue,
+        default_value_t = false,
+        conflicts_with = "verbose"
+    )]
     pub(in crate::config) quiet: bool,
 }

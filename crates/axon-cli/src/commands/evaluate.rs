@@ -20,7 +20,7 @@ pub async fn run_evaluate(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<
         .map_err(|err| -> Box<dyn Error> { Box::new(EvaluateCliError(err)) })?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
         return Ok(());
     }
 

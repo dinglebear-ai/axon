@@ -40,11 +40,12 @@ impl WaitProgressSession {
         store: Option<ForegroundEventStore>,
     ) -> Self {
         let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
+        let console = ui::ConsolePolicy::for_config(cfg);
         Self {
             receiver,
             store,
             model: WaitViewModel::source(target, scope),
-            renderer: WaitRenderer::new(mode),
+            renderer: WaitRenderer::new(mode, console.motion_enabled(), ui::stderr_color_enabled()),
             timing: TimingEstimator::default(),
             estimate: None,
             started_at: Instant::now(),

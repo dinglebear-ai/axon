@@ -14,7 +14,7 @@ pub async fn run_debug(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = debug_service::debug_report(cfg, &user_context).await?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result.payload)?);
+        crate::json::print_json_gated(&result.payload)?;
         return Ok(());
     }
 

@@ -16,7 +16,7 @@ pub async fn run_reset(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let result = axon_services::reset::reset_with_authz(cfg, &authz).await?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
     } else {
         render_human(&result);
     }

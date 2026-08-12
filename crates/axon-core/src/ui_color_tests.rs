@@ -33,7 +33,9 @@ fn color_choice_contract() {
     assert!(info("info").contains("38;2;114;200;245"));
     assert!(neutral("neutral").contains("38;2;145;168;182"));
     assert!(!accent_when(false, "plain").contains("\x1b["));
-    assert!(accent_when(true, "color").contains("38;2;41;182;246"));
+    assert!(accent_when(true, "color").contains("38;2;54;201;255"));
+    assert!(primary_when(true, "service").contains("38;2;255;126;182"));
+    assert!(muted_when(true, "inactive").contains("38;2;207;224;236"));
     assert!(
         color_forced_always(),
         "Always must report color_forced_always"

@@ -95,7 +95,7 @@ async fn run_session_sources(
             .iter()
             .map(|result| source_result_json(cfg, result))
             .collect::<Vec<_>>();
-        println!("{}", serde_json::json!({ "sessions": sessions }));
+        crate::json::print_json_gated(&serde_json::json!({ "sessions": sessions }))?;
     }
     Ok(())
 }

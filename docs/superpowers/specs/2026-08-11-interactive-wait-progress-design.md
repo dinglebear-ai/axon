@@ -297,12 +297,13 @@ must not synthesize source-pipeline phases or fake percentages.
 
 | Mode | Behavior |
 |---|---|
-| Human + stderr TTY | Animated hybrid renderer on stderr; final command result on stdout. |
+| Human + stderr TTY | Animated hybrid renderer on stderr; final command result on stdout. Use `--motion never` for a static marker. |
 | `--json` | No progress renderer; stdout contains only the existing JSON result. Diagnostics remain stderr. |
 | `--quiet` | No progress renderer or milestone transcript. Errors retain existing command semantics. |
-| Redirected stderr | No animation, cursor control, or progress bar. Print only warnings, retries, failures, and one terminal outcome. |
+| Redirected stderr | No animation, cursor control, progress bar, or success transcript. Print only warnings, retries, and failures; the result remains stdout. |
 | `--color=never` / `NO_COLOR` | Same layout and symbols where supported, without ANSI. |
 | `--color=always` | Honor existing Axon color override even when the stream is not a TTY; still do not emit cursor-control animation to a redirected stream. |
+| `-v` / `-vv` | Opt into operational detail or full timestamped debug diagnostics. Default output remains warnings plus results. |
 | Narrow terminal | Drop optional fields and truncate safely; never wrap a live row into an unreadable redraw region. |
 
 Progress remains on stderr even for human mode. This intentionally differs

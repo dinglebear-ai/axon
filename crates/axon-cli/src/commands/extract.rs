@@ -152,7 +152,7 @@ async fn maybe_handle_extract_subcommand(
                 let removed = job_service::clear_jobs(service_context, JobKind::Extract).await?;
                 handle_job_clear(cfg, removed, "extract")?;
             } else if cfg.json_output {
-                println!("{}", serde_json::json!({ "removed": 0 }));
+                crate::json::print_json_gated(&serde_json::json!({ "removed": 0 }))?;
             } else {
                 println!("{} aborted", symbol_for_status("canceled"));
             }
@@ -242,7 +242,7 @@ pub(crate) fn emit_extract_output(
     result: &axon_services::types::ExtractSyncResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result.summary)?);
+        crate::json::print_json_gated(&result.summary)?;
         return Ok(());
     }
 

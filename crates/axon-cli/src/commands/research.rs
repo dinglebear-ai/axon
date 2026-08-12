@@ -46,7 +46,7 @@ pub async fn run_research(
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("research requires a query (positional or --query)"))?;
 
-    if !cfg.quiet && !cfg.json_output {
+    if !cfg.quiet && !cfg.json_output && cfg.verbosity > 0 {
         log_info(&format!("command=research query_len={}", query.len()));
         print_phase("\u{25d0}", "Researching", &query);
         let model = axon_core::llm::configured_model_from_config(cfg)
@@ -145,7 +145,7 @@ pub async fn run_research(
         .payload;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&payload)?);
+        crate::json::print_json_gated(&payload)?;
         return Ok(());
     }
     print_human_research_output(&payload, started.elapsed().as_millis())?;

@@ -1,13 +1,12 @@
-//! Aurora palette — ANSI 256 constants matching lab's aurora palette exactly.
+//! Aurora CLI/editor palette — brightened for dark terminal contrast.
 //!
-//! Source of truth: `lab/crates/lab/src/output/theme.rs`
-//! Cross-reference: `aurora-design-system/registry/aurora/styles/aurora.css`
+//! Source of truth: `aurora/themes/editors/claude-code/TOKENS.md`
 //!
 //! | Const          | ANSI 256 | TrueColor RGB   | CSS token               | CSS hex  |
 //! |----------------|----------|-----------------|-------------------------|----------|
-//! | SERVICE_NAME   | 211      | (255, 175, 215) | --aurora-accent-pink    | #f9a8c4  |
-//! | ACCENT_PRIMARY | 39       | (41, 182, 246)  | --aurora-accent-primary | #29b6f6  |
-//! | TEXT_MUTED     | 250      | (167, 188, 201) | --aurora-text-muted     | #a7bcc9  |
+//! | SERVICE_NAME   | 212      | (255, 126, 182) | CLI rose                | #ff7eb6  |
+//! | ACCENT_PRIMARY | 45       | (54, 201, 255)  | CLI cyan                | #36c9ff  |
+//! | TEXT_MUTED     | 252      | (207, 224, 236) | CLI inactive text       | #cfe0ec  |
 //! | SUCCESS        | 115      | (125, 211, 199) | --aurora-success        | #7dd3c7  |
 //! | WARN           | 180      | (198, 163, 107) | --aurora-warn           | #c6a36b  |
 //! | ERROR          | 174      | (199, 132, 144) | --aurora-error          | #c78490  |
@@ -15,13 +14,13 @@
 #![allow(dead_code)]
 
 /// Pink — service names and first token of log messages. RGB (255, 175, 215).
-pub const SERVICE_NAME: u8 = 211;
+pub const SERVICE_NAME: u8 = 212;
 
 /// Bright blue — primary action/route/tool identifiers. RGB (41, 182, 246).
-pub const ACCENT_PRIMARY: u8 = 39;
+pub const ACCENT_PRIMARY: u8 = 45;
 
 /// Light grey — secondary metadata and muted text. RGB (167, 188, 201).
-pub const TEXT_MUTED: u8 = 250;
+pub const TEXT_MUTED: u8 = 252;
 
 /// Teal — success states and HTTP 2xx. RGB (125, 211, 199).
 pub const SUCCESS: u8 = 115;
@@ -35,8 +34,8 @@ pub const ERROR: u8 = 174;
 /// Truecolor (24-bit) RGB triples for the same Aurora tokens. Preferred when
 /// `COLORTERM=truecolor|24bit` is set; falls back to the ANSI-256 constants.
 pub mod rgb {
-    pub const SERVICE_NAME: (u8, u8, u8) = (249, 168, 196); // #F9A8C4
-    pub const ACCENT_PRIMARY: (u8, u8, u8) = (41, 182, 246); // #29B6F6
+    pub const SERVICE_NAME: (u8, u8, u8) = (255, 126, 182); // #FF7EB6
+    pub const ACCENT_PRIMARY: (u8, u8, u8) = (54, 201, 255); // #36C9FF
     pub const SUCCESS: (u8, u8, u8) = (125, 211, 199); // #7DD3C7
     pub const WARN: (u8, u8, u8) = (198, 163, 107); // #C6A36B
     pub const ERROR: (u8, u8, u8) = (199, 132, 144); // #C78490

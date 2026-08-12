@@ -38,7 +38,7 @@ fn parse_diff_urls(cfg: &Config) -> Result<(String, String), Box<dyn Error>> {
 
 pub(crate) fn emit_diff_result(cfg: &Config, result: &DiffResult) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(result)?);
+        crate::json::print_json_gated(result)?;
         return Ok(());
     }
 

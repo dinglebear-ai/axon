@@ -28,6 +28,7 @@ impl ExtractProgressSession {
         urls_total: usize,
     ) -> Self {
         let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
+        let console = ui::ConsolePolicy::for_config(cfg);
         let latest = receiver.borrow().clone();
         let noun = if urls_total == 1 { "URL" } else { "URLs" };
         let mut model = WaitViewModel::source(format!("{urls_total} {noun}"), None);
@@ -35,7 +36,7 @@ impl ExtractProgressSession {
         Self {
             receiver,
             model,
-            renderer: WaitRenderer::new(mode),
+            renderer: WaitRenderer::new(mode, console.motion_enabled(), ui::stderr_color_enabled()),
             latest,
             dirty: true,
             render_error: None,

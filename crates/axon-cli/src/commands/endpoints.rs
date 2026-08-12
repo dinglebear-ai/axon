@@ -1,7 +1,7 @@
 use super::common::start_url_from_cfg;
 use axon_core::config::Config;
 use axon_core::logging::log_done;
-use axon_core::ui::{Spinner, accent, muted, primary, print_option, print_phase};
+use axon_core::ui::{accent, muted, primary, print_option, print_phase, wait_spinner_for};
 use axon_services::endpoints;
 use axon_services::types::{EndpointOptions, EndpointReport, McpProbeOutcome};
 use std::error::Error;
@@ -28,7 +28,7 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         axon_core::logging::log_warn("--probe-rpc-subdomains has no effect without --probe-rpc");
     }
 
-    if !cfg.json_output {
+    if !cfg.json_output && cfg.verbosity > 0 {
         print_phase("◐", "Discovering endpoints", url);
         println!("  {}", primary("Options:"));
         print_option("includeBundles", &options.include_bundles.to_string());
@@ -42,26 +42,17 @@ pub async fn run_endpoints(cfg: &Config) -> Result<(), Box<dyn Error>> {
         );
         println!();
     }
-    let spinner = if cfg.json_output {
-        None
-    } else {
-        Some(Spinner::new("endpoint discovery in progress"))
-    };
+    let spinner = wait_spinner_for(cfg, "Discovering endpoints");
 
     let report = endpoints::discover(cfg, url, options, None)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     if let Some(spinner) = spinner {
-        spinner.finish(&format!(
-            "endpoint discovery complete (endpoints={} scripts={} bundles={})",
-            report.endpoints.len(),
-            report.scripts_discovered,
-            report.bundles_scanned
-        ));
+        spinner.clear();
     }
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        crate::json::print_json_gated(&report)?;
     } else {
         print_human_report(url, &report);
     }

@@ -49,32 +49,71 @@ pub(crate) struct WaitRenderer {
 }
 
 impl WaitRenderer {
-    pub(crate) fn new(mode: ProgressMode) -> Self {
+    pub(crate) fn new(mode: ProgressMode, motion: bool, color: bool) -> Self {
         let target =
             (mode == ProgressMode::Interactive).then(|| ProgressDrawTarget::stderr_with_hz(4));
-        Self::with_target(mode, target)
+        Self::with_target(mode, target, motion, color)
     }
 
     #[cfg(test)]
     pub(crate) fn for_test(term: indicatif::InMemoryTerm, mode: ProgressMode) -> Self {
-        let target = (mode != ProgressMode::Silent)
-            .then(|| ProgressDrawTarget::term_like_with_hz(Box::new(term), 30));
-        Self::with_target(mode, target)
+        Self::for_test_with_motion(term, mode, true)
     }
 
-    fn with_target(mode: ProgressMode, target: Option<ProgressDrawTarget>) -> Self {
+    #[cfg(test)]
+    pub(crate) fn for_test_with_motion(
+        term: indicatif::InMemoryTerm,
+        mode: ProgressMode,
+        motion: bool,
+    ) -> Self {
+        let target = (mode != ProgressMode::Silent)
+            .then(|| ProgressDrawTarget::term_like_with_hz(Box::new(term), 30));
+        Self::with_target(mode, target, motion, false)
+    }
+
+    fn with_target(
+        mode: ProgressMode,
+        target: Option<ProgressDrawTarget>,
+        motion: bool,
+        color: bool,
+    ) -> Self {
         let (multi, header, active) = target.map_or((None, None, None), |target| {
             let multi = MultiProgress::with_draw_target(target);
             if mode != ProgressMode::Interactive {
                 return (Some(multi), None, None);
             }
             multi.set_move_cursor(true);
-            let style = ProgressStyle::with_template("{msg}")
+            let frames: Vec<String> = if motion {
+                ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, frame)| {
+                        if index % 3 == 1 {
+                            axon_core::ui::shimmer_when(color, frame)
+                        } else {
+                            axon_core::ui::accent_when(color, frame)
+                        }
+                    })
+                    .collect()
+            } else {
+                let marker = axon_core::ui::accent_when(color, "•");
+                vec![marker.clone(), marker]
+            };
+            let frame_refs: Vec<&str> = frames.iter().map(String::as_str).collect();
+            let header_style = ProgressStyle::with_template("{spinner} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner());
+            let header_style = header_style.tick_strings(&frame_refs);
+            let active_style = ProgressStyle::with_template("{msg}")
                 .unwrap_or_else(|_| ProgressStyle::default_spinner());
             let header = multi.add(ProgressBar::new_spinner());
-            header.set_style(style.clone());
+            header.set_style(header_style);
             let active = multi.add(ProgressBar::new_spinner());
-            active.set_style(style);
+            active.set_style(active_style);
+            if motion {
+                header.enable_steady_tick(Duration::from_millis(80));
+            } else {
+                header.tick();
+            }
             (Some(multi), Some(header), Some(active))
         });
         Self {
@@ -169,13 +208,8 @@ impl WaitRenderer {
                         eprintln!("{notice}");
                     }
                 }
-                if let Some(terminal) = &view.terminal {
-                    if let Some(multi) = &self.multi {
-                        multi.println(terminal)?;
-                    } else {
-                        eprintln!("{terminal}");
-                    }
-                }
+                // Redirected stderr is diagnostic-only: no success receipt or
+                // progress transcript. The command's result remains stdout.
             }
             ProgressMode::Silent => {}
         }

@@ -46,18 +46,8 @@ fn read_trimmed_env(var: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-// ── Console event formatter ──────────────────────────────────────────────────
-//
-// Renders log lines on stderr as:
-//   HH:MM:SS   LEVEL  event_name  key=value  key=value
-//
-// Colors (when ANSI is supported) — Aurora palette:
-//   timestamp — dim
-//   LEVEL     — aurora::ERROR bold (ERROR), aurora::WARN bold (WARN), plain (INFO), dim (DEBUG/TRACE)
-//   first token of message — aurora::SERVICE_NAME bold (pink)
-//   key=      — dim
-//   value     — plain (inherits terminal default)
-//
+// Console events use a compact operator format by default and the timestamped
+// diagnostic format under `-vv`.
 // The JSON file layer uses the custom `JsonFormat` below (not
 // tracing-subscriber's built-in JSON formatter) with `with_ansi(false)`, so it
 // never receives ANSI escape codes. `JsonFormat` exists specifically to route
@@ -235,7 +225,9 @@ fn should_use_ansi_for_writer(writer_supports_ansi: bool) -> bool {
     writer_supports_ansi
 }
 
-struct CliFormat;
+struct CliFormat {
+    detailed: bool,
+}
 
 impl<S, N> FormatEvent<S, N> for CliFormat
 where
@@ -250,7 +242,43 @@ where
     ) -> fmt::Result {
         let ansi = should_use_ansi();
 
-        // HH:MM:SS (local time)
+        let mut v = EventVisitor::default();
+        event.record(&mut v);
+        redact_event_fields(&mut v);
+
+        if !self.detailed {
+            let label = match *event.metadata().level() {
+                tracing::Level::ERROR => "error:",
+                tracing::Level::WARN => "warning:",
+                tracing::Level::INFO => "info:",
+                tracing::Level::DEBUG | tracing::Level::TRACE => "debug:",
+            };
+            if ansi {
+                let (rgb, ansi256) = match *event.metadata().level() {
+                    tracing::Level::ERROR => (aurora::rgb::ERROR, aurora::ERROR),
+                    tracing::Level::WARN => (aurora::rgb::WARN, aurora::WARN),
+                    tracing::Level::INFO | tracing::Level::DEBUG | tracing::Level::TRACE => {
+                        (aurora::rgb::ACCENT_PRIMARY, aurora::ACCENT_PRIMARY)
+                    }
+                };
+                let painted = if supports_truecolor() {
+                    truecolor_bold(rgb, label)
+                } else {
+                    ansi256_bold(ansi256, label)
+                };
+                write!(writer, "{painted} ")?;
+            } else {
+                write!(writer, "{label} ")?;
+            }
+            write!(writer, "{}", v.message)?;
+            for (key, val) in &v.extra {
+                write!(writer, "  {key}={val}")?;
+            }
+            return writeln!(writer);
+        }
+
+        // HH:MM:SS (local time) is diagnostic-only; normal operator output
+        // uses the compact branch above.
         let ts = Local::now().format("%H:%M:%S").to_string();
         if ansi {
             write!(writer, "{}  ", ansi_dim(&ts))?;
@@ -262,10 +290,6 @@ where
         write_level(&mut writer, *event.metadata().level(), ansi)?;
 
         // MESSAGE
-        let mut v = EventVisitor::default();
-        event.record(&mut v);
-        redact_event_fields(&mut v);
-
         if ansi && !v.message.is_empty() {
             // Iterate directly instead of collecting into an intermediate Vec.
             for (i, token) in v.message.split_whitespace().enumerate() {
@@ -351,7 +375,9 @@ fn build_filter_with_noise(
         })
 }
 
-pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
+pub fn init_tracing(
+    console_policy: crate::ui::ConsolePolicy,
+) -> tracing_appender::non_blocking::WorkerGuard {
     use tracing_subscriber::prelude::*;
 
     // CDP proxy sends non-standard frames that chromiumoxide logs at ERROR;
@@ -359,11 +385,19 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     const SUPPRESS_CDP_NOISE: &str = "chromiumoxide::conn::raw_ws::parse_errors=off";
     let noise_directives = [SUPPRESS_CDP_NOISE];
 
-    let console_filter = build_filter_with_noise("warn", &noise_directives);
+    let console_level = match console_policy.console_log_level() {
+        crate::ui::ConsoleLogLevel::Error => "error",
+        crate::ui::ConsoleLogLevel::Warn => "warn",
+        crate::ui::ConsoleLogLevel::Info => "info",
+        crate::ui::ConsoleLogLevel::Debug => "debug",
+    };
+    let console_filter = build_filter_with_noise(console_level, &noise_directives);
     let file_filter = build_filter_with_noise("info", &noise_directives);
 
     let console_layer = tracing_subscriber::fmt::layer()
-        .event_format(CliFormat)
+        .event_format(CliFormat {
+            detailed: console_policy.diagnostic_enabled(2),
+        })
         .with_writer(io::stderr)
         .with_filter(console_filter);
 

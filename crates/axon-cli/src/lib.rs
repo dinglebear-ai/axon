@@ -223,7 +223,8 @@ pub async fn run() -> Result<(), Box<dyn Error>> {
     axon_core::ui::install_color_choice(cfg.color_choice);
     // Hold the tracing-appender guard for the lifetime of run(): dropping it stops the
     // background flush thread and tail buffers can be lost from the rolling log file.
-    let _log_guard = init_tracing();
+    let console_policy = axon_core::ui::ConsolePolicy::for_config(&cfg);
+    let _log_guard = init_tracing(console_policy);
     if let Some(warning) = axon_core::binary_status::stale_binary_warning() {
         eprintln!("warning: {warning}");
     }

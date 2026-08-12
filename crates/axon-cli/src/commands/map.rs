@@ -1,6 +1,6 @@
 use axon_core::config::Config;
 use axon_core::logging::log_done;
-use axon_core::ui::{Spinner, primary, print_option, print_phase};
+use axon_core::ui::{primary, print_option, print_phase, wait_spinner_for};
 use axon_services::context::ServiceContext;
 use axon_services::types::MapOptions;
 use std::error::Error;
@@ -10,7 +10,7 @@ pub async fn run_map(
     start_url: &str,
     service_context: &ServiceContext,
 ) -> Result<(), Box<dyn Error>> {
-    if !cfg.json_output {
+    if !cfg.json_output && cfg.verbosity > 0 {
         print_phase("◐", "Mapping", start_url);
         println!("  {}", primary("Options:"));
         print_option("maxDepth", &cfg.max_depth.to_string());
@@ -18,11 +18,7 @@ pub async fn run_map(
         println!();
     }
 
-    let map_spinner = if cfg.json_output {
-        None
-    } else {
-        Some(Spinner::new("mapping in progress"))
-    };
+    let map_spinner = wait_spinner_for(cfg, "Mapping source");
 
     let result = axon_services::map::discover_with_context(
         service_context,
@@ -43,9 +39,7 @@ pub async fn run_map(
     let map_source = result.map_source.as_str();
 
     if let Some(s) = map_spinner {
-        s.finish(&format!(
-            "map complete (source={map_source} urls={mapped_urls} sitemap_urls={sitemap_urls})"
-        ));
+        s.clear();
     }
 
     log_done(&format!(
@@ -53,7 +47,7 @@ pub async fn run_map(
     ));
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
     } else {
         println!("{}", primary("Mapped URLs"));
         for url in &result.urls {

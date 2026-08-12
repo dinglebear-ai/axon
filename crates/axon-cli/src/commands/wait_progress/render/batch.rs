@@ -122,10 +122,11 @@ impl BatchProgressSession {
         updates: mpsc::UnboundedReceiver<BatchProgressUpdate>,
     ) -> Self {
         let mode = ProgressMode::for_config(cfg, io::stderr().is_terminal());
+        let console = ui::ConsolePolicy::for_config(cfg);
         Self {
             updates,
             model: BatchWaitViewModel::new(total),
-            renderer: WaitRenderer::new(mode),
+            renderer: WaitRenderer::new(mode, console.motion_enabled(), ui::stderr_color_enabled()),
             color: ui::stderr_color_enabled(),
             render_error: None,
         }

@@ -31,15 +31,12 @@ pub async fn run_train(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
     }
 
     if cfg.json_output && cfg.train_best_rank.is_none() {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "query": query,
-                "collection": cfg.collection,
-                "candidates": candidate_json(&candidates),
-                "message": "rerun with --best <rank> to record a vote in --json mode"
-            }))?
-        );
+        crate::json::print_json_gated(&json!({
+            "query": query,
+            "collection": cfg.collection,
+            "candidates": candidate_json(&candidates),
+            "message": "rerun with --best <rank> to record a vote in --json mode"
+        }))?;
         return Ok(());
     }
 
@@ -62,7 +59,7 @@ pub async fn run_train(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
     let path = append_preference_event(&event)?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&event)?);
+        crate::json::print_json_gated(&event)?;
     } else {
         let selected = candidates[selected_rank - 1];
         println!(

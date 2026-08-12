@@ -54,9 +54,18 @@ fn redirected_stderr_uses_plain_important_events_only() {
     renderer.finish(&view).unwrap();
     let output = term.contents();
     assert_eq!(output.matches("provider retry").count(), 1);
-    assert_eq!(output.matches("indexed").count(), 1);
+    assert_eq!(output.matches("indexed").count(), 0);
     assert!(!output.contains("prepared"));
     assert!(!output.contains("\x1b["));
+}
+
+#[test]
+fn reduced_motion_uses_a_static_progress_marker() {
+    let term = InMemoryTerm::new(20, 100);
+    let mut renderer =
+        WaitRenderer::for_test_with_motion(term.clone(), ProgressMode::Interactive, false);
+    renderer.render_now(&active_formatted_view()).unwrap();
+    assert!(term.contents().contains("• axon  source"));
 }
 
 #[tokio::test]
