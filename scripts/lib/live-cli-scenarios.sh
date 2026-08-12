@@ -51,6 +51,9 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   install -m 0600 /dev/null "$AXON_ENV_FILE"
   "$AXON_BIN" config set jobs.auto-worker false --json >"$OUTDIR/logs/fixture-disable-auto-worker.json"
   "$AXON_BIN" config set jobs.worker-idle-exit-secs 2 --json >"$OUTDIR/logs/fixture-worker-idle.json"
+  if ! run_live_provider_preflight; then
+    exit 1
+  fi
   SETUP_HOME="$OUTDIR/setup-home"
   SETUP_HELPER_BIN="$OUTDIR/setup-helper-bin"
   mkdir -p "$SETUP_HOME" "$SETUP_HELPER_BIN"
@@ -98,6 +101,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   fi
   fixture_url="${AXON_LIVE_FIXTURE_URL:-https://example.com}"
   map_fixture_url="${AXON_LIVE_MAP_FIXTURE_URL:-https://www.rust-lang.org/}"
+  graph_fixture_url="$fixture_url"
   main_data_dir="$AXON_DATA_DIR"
   watch_id=""
   extract_job_id=""
@@ -111,11 +115,38 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   graph_node_id=""
   graph_edge_id=""
 
+  if [ "$SCENARIO_GROUP" = "resources" ]; then
+    graph_fixture_url="$map_fixture_url"
+    run_fixture_json "resource source prerequisite" \
+      "$OUTDIR/logs/fixture-resource-source.json" \
+      source "$graph_fixture_url" --scope site --max-pages 3 --wait true \
+      --collection "$AXON_COLLECTION" --json || true
+    job_id="$(jq -r '.job_id // .job.id // empty' "$OUTDIR/logs/fixture-resource-source.json")"
+    source_id="$(jq -r '.source_id // empty' "$OUTDIR/logs/fixture-resource-source.json")"
+    run_fixture_json "resource screenshot prerequisite" \
+      "$OUTDIR/logs/fixture-resource-screenshot.json" \
+      screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" \
+      --screenshot-full-page false --json || true
+    screenshot_artifact_id="$(jq -r '.artifact_id // empty' "$OUTDIR/logs/fixture-resource-screenshot.json")"
+  fi
+
   while IFS= read -r name; do
-    handle_live_web_rag_scenario "$name" && continue
-    handle_live_jobs_memory_source_scenario "$name" && continue
-    handle_live_admin_setup_scenario "$name" && continue
-    handle_live_resources_graph_scenario "$name" && continue
-    missing_live "$name" "no stateful live scenario is registered"
+    case "$SCENARIO_GROUP" in
+      web-rag) handle_live_web_rag_scenario "$name" || true ;;
+      jobs-source) handle_live_jobs_memory_source_scenario "$name" || true ;;
+      admin) handle_live_admin_setup_scenario "$name" || true ;;
+      resources) handle_live_resources_graph_scenario "$name" || true ;;
+      all)
+        handle_live_web_rag_scenario "$name" && continue
+        handle_live_jobs_memory_source_scenario "$name" && continue
+        handle_live_admin_setup_scenario "$name" && continue
+        handle_live_resources_graph_scenario "$name" && continue
+        missing_live "$name" "no stateful live scenario is registered"
+        ;;
+    esac
   done < <(jq -r '.commands[].name' "$REGISTRY")
+
+  if [ "$SCENARIO_GROUP" = "all" ] || [ "$SCENARIO_GROUP" = "jobs-source" ]; then
+    run_operator_output_contracts
+  fi
 fi

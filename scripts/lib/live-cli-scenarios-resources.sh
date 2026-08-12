@@ -5,10 +5,10 @@ handle_live_resources_graph_scenario() {
   local name="$1"
   case "$name" in
       "artifacts list")
-        "$AXON_BIN" screenshot "$fixture_url?artifact_page=2" \
-          --output "$OUTDIR/screenshot-2.png" --json \
-          >"$OUTDIR/logs/fixture-screenshot-2.json" \
-          2>"$OUTDIR/logs/fixture-screenshot-2.stderr.log"
+        run_fixture_json "artifact page prerequisite" \
+          "$OUTDIR/logs/fixture-screenshot-2.json" \
+          screenshot "$fixture_url?artifact_page=2" \
+          --output "$OUTDIR/screenshot-2.png" --json || true
         run_live "$name" artifacts list --kind screenshot --limit 1 --json
         artifacts_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
         if [ -n "$artifacts_cursor" ]; then
@@ -24,6 +24,7 @@ handle_live_resources_graph_scenario() {
           '.items | length == 0'
         ;;
       "artifacts get")
+        require_fixture_value "$name" "$screenshot_artifact_id" "screenshot artifact" || return 0
         run_live "$name" artifacts get "$screenshot_artifact_id" --include-content-url --json
         assert_live_json "artifact content URL projection" "$LAST_LIVE_LOG" \
           '(.content_url | type) == "string" and (.content_url | length) > 0
@@ -32,6 +33,7 @@ handle_live_resources_graph_scenario() {
           "stored screenshot metadata reported viewport-only capture"
         ;;
       "artifacts content")
+        require_fixture_value "$name" "$screenshot_artifact_id" "screenshot artifact" || return 0
         run_live "$name" artifacts content "$screenshot_artifact_id" --output "$OUTDIR/artifact-content.png" --json
         run_live "$name" artifacts content "$screenshot_artifact_id" \
           --range bytes=0-15 --output "$OUTDIR/artifact-range.bin" --json
@@ -60,9 +62,13 @@ handle_live_resources_graph_scenario() {
         fi
         ;;
       "uploads list")
-        "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-complete.json" 2>"$OUTDIR/logs/fixture-upload-complete.stderr.log"
+        run_fixture_json "completable upload prerequisite" \
+          "$OUTDIR/logs/fixture-upload-complete.json" \
+          uploads create /etc/hosts --purpose source_artifact --json || true
         upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$OUTDIR/logs/fixture-upload-complete.json")"
-        "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json >"$OUTDIR/logs/fixture-upload-abort.json" 2>"$OUTDIR/logs/fixture-upload-abort.stderr.log"
+        run_fixture_json "abortable upload prerequisite" \
+          "$OUTDIR/logs/fixture-upload-abort.json" \
+          uploads create /etc/hosts --purpose source_artifact --json || true
         abort_upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$OUTDIR/logs/fixture-upload-abort.json")"
         run_live "$name" uploads list --status received --limit 1 --json
         uploads_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
@@ -75,42 +81,57 @@ handle_live_resources_graph_scenario() {
       "uploads create")
         run_live "$name" uploads create /etc/hosts --purpose source_artifact --source-hint live-smoke --json
         ;;
-      "uploads get") run_live "$name" uploads get "$upload_id" --json ;;
+      "uploads get")
+        require_fixture_value "$name" "$upload_id" "received upload" || return 0
+        run_live "$name" uploads get "$upload_id" --json
+        ;;
       "uploads complete")
+        require_fixture_value "$name" "$upload_id" "received upload" || return 0
         upload_sha256="$(sha256sum /etc/hosts | awk '{print $1}')"
         run_live "$name" uploads complete "$upload_id" --sha256 "$upload_sha256" \
           --source-option "scope=page" --json
         ;;
-      "uploads abort") run_live "$name" uploads abort "$abort_upload_id" --reason "live harness cleanup" --json ;;
+      "uploads abort")
+        require_fixture_value "$name" "$abort_upload_id" "abortable upload" || return 0
+        run_live "$name" uploads abort "$abort_upload_id" --reason "live harness cleanup" --json
+        ;;
       "collections list") run_live "$name" collections list --json ;;
       "collections get") run_live "$name" collections get "$AXON_COLLECTION" --include-schema --include-indexes --json ;;
       "graph kinds") run_live "$name" graph kinds --json ;;
       "graph resolve")
-        run_live "$name" graph resolve "$fixture_url" --kind web_origin --limit 10 --json
-        "$AXON_BIN" graph source "src_0272b3e7006f0910" --depth 2 --limit 100 --json >"$OUTDIR/logs/fixture-graph-source.json" 2>"$OUTDIR/logs/fixture-graph-source.stderr.log" || true
+        run_live "$name" graph resolve "$graph_fixture_url" --kind web_origin --limit 10 --json
+        require_fixture_value "$name" "$source_id" "indexed source" || return 0
+        run_fixture_json "graph traversal prerequisite" \
+          "$OUTDIR/logs/fixture-graph-source.json" \
+          graph source "$source_id" --depth 2 --limit 100 --json || true
         graph_node_id="$(jq -r '.. | .node_id? // empty' "$OUTDIR/logs/fixture-graph-source.json" 2>/dev/null | head -1)"
         graph_edge_id="$(jq -r '.. | .edge_id? // empty' "$OUTDIR/logs/fixture-graph-source.json" 2>/dev/null | head -1)"
         ;;
       "graph query")
-        run_live "$name" graph query "$fixture_url" --limit 1 --json
+        run_live "$name" graph query "$graph_fixture_url" --limit 1 --json
         graph_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
         if [ -n "$graph_cursor" ]; then
-          run_live "$name" graph query "$fixture_url" --cursor "$graph_cursor" --limit 1 --json
+          run_live "$name" graph query "$graph_fixture_url" --cursor "$graph_cursor" --limit 1 --json
         else
           missing_live "graph query cursor" "fixture traversal did not produce a second edge page"
         fi
         ;;
       "graph node")
+        require_fixture_value "$name" "$graph_node_id" "graph node" || return 0
         run_live "$name" graph node "$graph_node_id" --include-edges --include-evidence --json
         assert_live_json "graph node evidence projection" "$LAST_LIVE_LOG" \
           'any(.edges[]; (.evidence | length) > 0)'
         ;;
       "graph edge")
+        require_fixture_value "$name" "$graph_edge_id" "graph edge" || return 0
         run_live "$name" graph edge "$graph_edge_id" --include-evidence --json
         assert_live_json "graph edge evidence projection" "$LAST_LIVE_LOG" \
           '(.evidence | length) > 0'
         ;;
-      "graph source") run_live "$name" graph source "src_0272b3e7006f0910" --depth 2 --edge-kind docs_site_contains_page --limit 100 --json ;;
+      "graph source")
+        require_fixture_value "$name" "$source_id" "indexed source" || return 0
+        run_live "$name" graph source "$source_id" --depth 2 --edge-kind docs_site_contains_page --limit 100 --json
+        ;;
       "providers list")
         run_live "$name" providers list --kind qdrant --status healthy --json
         assert_live_json "providers list filtered qdrant" "$LAST_LIVE_LOG" \

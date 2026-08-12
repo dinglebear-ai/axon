@@ -156,8 +156,9 @@ prepare_live_invocation() {
 run_live() {
   local name="$1"
   shift
-  local logfile stderr_log exit_code result json_expected=0 arg contract_filter
+  local logfile stderr_log exit_code result json_expected=0 arg contract_filter started_ms
   prepare_live_invocation "$@"
+  LAST_CONTRACT_EVIDENCE=""
   for arg in "${PREPARED_ARGS[@]}"; do
     [ "$arg" = "--json" ] && json_expected=1
   done
@@ -169,6 +170,7 @@ run_live() {
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"
   LAST_LIVE_LOG="$logfile"
+  started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
   if [ "$exit_code" -eq 0 ] && { [ "$json_expected" -eq 0 ] || jq -e . "$logfile" >/dev/null 2>&1; }; then
@@ -185,6 +187,7 @@ run_live() {
     fi
   fi
   record "$name" "live" "$result" "$exit_code" "${PREPARED_ARGS[*]}" "$logfile"
+  record_timing "$started_ms" "live" "$name" "${PREPARED_ARGS[*]}"
 }
 
 run_live_expect_failure() {
@@ -241,6 +244,7 @@ run_live_monitor_jsonl() {
   fi
   if [ "$result" = "PASS" ]; then
     record_behavior_args "monitor jobs" "${PREPARED_ARGS[@]}"
+    LAST_CONTRACT_EVIDENCE="monitor jobs watch JSONL"
     prove_option_behavior "@global" "--watch" "bounded stream emitted lifecycle events"
     prove_option_behavior "@global" "--json" "every streamed stdout line parsed as JSON"
     prove_option_behavior "monitor jobs" "--jsonl" "stdout parsed as a non-empty JSONL stream"
@@ -259,10 +263,12 @@ assert_live_json() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
+    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
+    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "jq $*" "$logfile"
 }
@@ -274,10 +280,12 @@ assert_live_text() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
+    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
+    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "$expected" "$logfile"
 }
@@ -289,10 +297,12 @@ assert_live_nonempty() {
     result="PASS"
     exit_code=0
     confirm_pending_behavior
+    LAST_CONTRACT_EVIDENCE="$name"
   else
     result="FAIL"
     exit_code=1
     failures=$((failures + 1))
+    LAST_CONTRACT_EVIDENCE=""
   fi
   record "$name" "contract" "$result" "$exit_code" "non-empty output" "$logfile"
 }
@@ -365,6 +375,7 @@ run_live_server() {
     result="PASS"
     exit_code=0
     record_behavior_args "$name" "${PREPARED_ARGS[@]}"
+    LAST_CONTRACT_EVIDENCE="$name MCP protocol"
     prove_option_behavior "$name" "--transport" \
       "HTTP transport completed initialize, tools/list, tool call, and auth rejection"
     record "$name MCP protocol" "contract" "PASS" "0" \
@@ -441,10 +452,4 @@ run_live_setup_check() {
   sleep 0.25
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
-}
-
-missing_live() {
-  local name="$1" reason="$2"
-  failures=$((failures + 1))
-  record "$name" "live" "FAIL" "-" "$reason" "-"
 }

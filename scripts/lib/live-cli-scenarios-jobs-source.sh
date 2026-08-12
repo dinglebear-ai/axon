@@ -7,7 +7,9 @@ handle_live_jobs_memory_source_scenario() {
       "status")
         export AXON_DATA_DIR="$OUTDIR/jobs-data"
         mkdir -p "$AXON_DATA_DIR"
-        "$AXON_BIN" source "$fixture_url" --scope page --wait true --collection "$AXON_COLLECTION" --json >"$OUTDIR/logs/fixture-job.json" 2>"$OUTDIR/logs/fixture-job.stderr.log"
+        run_fixture_json "status source prerequisite" \
+          "$OUTDIR/logs/fixture-job.json" source "$fixture_url" --scope page \
+          --wait true --collection "$AXON_COLLECTION" --json || true
         job_id="$(jq -r '.job_id // .job.id // empty' "$OUTDIR/logs/fixture-job.json")"
         source_id="$(jq -r '.source_id // empty' "$OUTDIR/logs/fixture-job.json")"
         run_live "$name" status --json
@@ -32,10 +34,10 @@ handle_live_jobs_memory_source_scenario() {
         assert_live_json "jobs list completed counts" "$LAST_LIVE_LOG" \
           --arg job_id "$job_id" \
           '.items[] | select(.job_id == $job_id) | (.counts.documents_done > 0 and .counts.chunks_done > 0)'
-        "$AXON_BIN" source "$fixture_url?jobs_page=2" --scope page --wait true \
-          --collection "$AXON_COLLECTION" --json \
-          >"$OUTDIR/logs/fixture-job-page-2.json" \
-          2>"$OUTDIR/logs/fixture-job-page-2.stderr.log"
+        run_fixture_json "jobs list page prerequisite" \
+          "$OUTDIR/logs/fixture-job-page-2.json" \
+          source "$fixture_url?jobs_page=2" --scope page --wait true \
+          --collection "$AXON_COLLECTION" --json || true
         run_live "$name" jobs list --status completed --kind source --limit 1 --json
         jobs_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
         if [ -n "$jobs_cursor" ]; then
@@ -64,11 +66,12 @@ handle_live_jobs_memory_source_scenario() {
         ;;
       "jobs stream") run_live "$name" jobs stream "$job_id" --after-sequence 0 --limit 100 --json ;;
       "jobs cancel")
-        "$AXON_BIN" source "$fixture_url?axon_cancel_fixture=$$" --scope page --wait false \
-          --collection "$AXON_COLLECTION" --json \
-          >"$OUTDIR/logs/fixture-job-cancel.json" \
-          2>"$OUTDIR/logs/fixture-job-cancel.stderr.log"
+        run_fixture_json "cancelable job prerequisite" \
+          "$OUTDIR/logs/fixture-job-cancel.json" \
+          source "$fixture_url?axon_cancel_fixture=$$" --scope page --wait false \
+          --collection "$AXON_COLLECTION" --json || true
         job_id="$(jq -r '.job_id // .job.id // empty' "$OUTDIR/logs/fixture-job-cancel.json")"
+        require_fixture_value "$name" "$job_id" "cancelable job" || return 0
         run_live "$name" jobs cancel "$job_id" --reason "live harness cancellation" --json
         ;;
       "jobs retry") run_live "$name" jobs retry "$job_id" --mode same_config --json ;;

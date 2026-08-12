@@ -55,6 +55,12 @@ build_behavioral_coverage_report() {
     )
   done < <(jq -r '.commands[] | @base64' "$REGISTRY")
 
+  if [ "$SCENARIO_GROUP" != "all" ]; then
+    {
+      awk -F '\t' '$2 == "__command__" { print $1 FS $2 }' "$BEHAVIOR_ACTUAL"
+      awk -F '\t' '{ print $1 FS $2 }' "$BEHAVIOR_SEMANTIC"
+    } >"$BEHAVIOR_EXPECTED"
+  fi
   sort -u -o "$BEHAVIOR_EXPECTED" "$BEHAVIOR_EXPECTED"
   sort -u -o "$BEHAVIOR_ACTUAL" "$BEHAVIOR_ACTUAL"
   sort -u -o "$BEHAVIOR_SEMANTIC" "$BEHAVIOR_SEMANTIC"
@@ -105,4 +111,10 @@ else
   echo "Behavioral coverage report: $BEHAVIOR_REPORT"
 fi
 echo "Report: $REPORT"
+if [ -s "$TIMINGS_REPORT" ] && command -v column >/dev/null 2>&1; then
+  echo "Slowest commands:"
+  { head -n 1 "$TIMINGS_REPORT"; tail -n +2 "$TIMINGS_REPORT" | sort -t $'\t' -k1,1nr | head -n 10; } \
+    | column -t -s $'\t'
+  echo "Timings report: $TIMINGS_REPORT"
+fi
 [ "$failures" -eq 0 ] && [ "$skipped" -eq 0 ]

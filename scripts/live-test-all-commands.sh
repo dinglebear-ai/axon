@@ -11,14 +11,19 @@ set -uo pipefail
 
 ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MODE="live"
+SCENARIO_GROUP="all"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --mode)
       MODE="${2:-}"
       shift 2
       ;;
+    --scenario-group)
+      SCENARIO_GROUP="${2:-}"
+      shift 2
+      ;;
     -h|--help)
-      echo "usage: $0 [--mode registry|scenarios|live]"
+      echo "usage: $0 [--mode registry|scenarios|live] [--scenario-group all|web-rag|jobs-source|admin|resources]"
       exit 0
       ;;
     *)
@@ -34,18 +39,39 @@ case "$MODE" in
     exit 2
     ;;
 esac
+case "$SCENARIO_GROUP" in
+  all|web-rag|jobs-source|admin|resources) ;;
+  *)
+    echo "invalid scenario group '$SCENARIO_GROUP'" >&2
+    exit 2
+    ;;
+esac
+if [ "$SCENARIO_GROUP" != "all" ] && [ "$MODE" != "scenarios" ]; then
+  echo "--scenario-group requires --mode scenarios" >&2
+  exit 2
+fi
 
 AXON_BIN="${AXON_BIN:-$ROOT_DIR/target/debug/axon}"
 REGISTRY="${AXON_COMMAND_REGISTRY:-$ROOT_DIR/docs/reference/cli/commands.json}"
 TIMEOUT_SECS="${AXON_LIVE_COMMAND_TIMEOUT_SECS:-120}"
+PARSER_JOBS="${AXON_LIVE_PARSER_JOBS:-4}"
+if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "AXON_LIVE_PARSER_JOBS must be a positive integer" >&2
+  exit 2
+fi
 TS="$(date +%Y%m%d-%H%M%S)"
 OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$ROOT_DIR/.cache/live-test/$TS}"
 REPORT="$OUTDIR/report.tsv"
 BEHAVIOR_REPORT="$OUTDIR/behavioral-coverage.tsv"
+TIMINGS_REPORT="$OUTDIR/timings.tsv"
 mkdir -p "$OUTDIR/logs"
 
 command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
+  exit 2
+}
+command -v flock >/dev/null 2>&1 || {
+  echo "flock is required" >&2
   exit 2
 }
 [ -x "$AXON_BIN" ] || {
@@ -59,6 +85,7 @@ jq -e '.commands | type == "array"' "$REGISTRY" >/dev/null || {
 
 printf 'command\tphase\tresult\texit\tinvocation\tlog\n' > "$REPORT"
 printf 'command\toption\tresult\tevidence\n' >"$BEHAVIOR_REPORT"
+printf 'milliseconds\tphase\tcommand\tinvocation\n' >"$TIMINGS_REPORT"
 BEHAVIOR_ACTUAL="$OUTDIR/behavioral-actual.tsv"
 BEHAVIOR_SEMANTIC="$OUTDIR/behavioral-semantic.tsv"
 BEHAVIOR_EXPECTED="$OUTDIR/behavioral-expected.tsv"
@@ -68,6 +95,7 @@ BEHAVIOR_GLOBAL_VALUE_OPTIONS="$OUTDIR/behavioral-global-value-options.txt"
 : >"$BEHAVIOR_SEMANTIC"
 LAST_BEHAVIOR_NAME=""
 LAST_BEHAVIOR_ARGS=()
+LAST_CONTRACT_EVIDENCE=""
 declare -A LIVE_LOG_COUNTS=()
 failures=0
 isolated_collection=""
@@ -79,6 +107,7 @@ isolated_compose_network=""
 source "$ROOT_DIR/scripts/lib/live-cli-reporting.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-parser.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-runtime.sh"
+source "$ROOT_DIR/scripts/lib/live-cli-fixtures.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-web-rag.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-jobs-source.sh"
 source "$ROOT_DIR/scripts/lib/live-cli-scenarios-admin.sh"
