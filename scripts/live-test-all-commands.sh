@@ -77,6 +77,9 @@ isolated_collection=""
 isolated_collections=()
 isolated_compose_project=""
 isolated_compose_network=""
+live_chrome_pid=""
+live_chrome_start_time=""
+live_chrome_session_token=""
 
 # shellcheck disable=SC1091
 source "$ROOT_DIR/scripts/lib/live-cli-reporting.sh"

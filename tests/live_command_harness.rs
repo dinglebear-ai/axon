@@ -183,10 +183,10 @@ fn scenario_mode_isolates_state_and_cleans_up_only_its_collection() {
     let calls = temp.path().join("calls");
     let fake_axon = bin_dir.join("axon");
     let fake_script = r#"#!/usr/bin/env bash
-printf '%s|cwd=%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s\n' \
+printf '%s|cwd=%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s|chrome=%s\n' \
   "$*" "$PWD" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
   "${AXON_OUTPUT_DIR:-}" "${AXON_ARTIFACT_BIN_DIR:-}" "${AXON_CONFIG_PATH:-}" \
-  "${AXON_ENV_FILE:-}" >> '__CALLS__'
+  "${AXON_ENV_FILE:-}" "${AXON_CHROME_REMOTE_URL:-}" >> '__CALLS__'
 if [ "${1:-}" = --help ]; then
   printf '  AXON CLI
 
@@ -221,7 +221,7 @@ fi
     fs::write(
         &fake_curl,
         format!(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nprintf '{{}}\\n'\n",
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nif [[ \"$*\" == *'/json/version'* && \"$*\" != *':9222/json/version'* ]]; then exit 7; fi\nprintf '{{}}\\n'\n",
             curl_calls.display()
         ),
     )
@@ -282,6 +282,12 @@ fi
         }),
         "scenario did not receive the harness-owned state:\n{calls}"
     );
+    assert!(
+        calls
+            .lines()
+            .all(|line| line.contains("|chrome=http://127.0.0.1:9222")),
+        "setup and runtime commands must use the same reachable live Chrome endpoint:\n{calls}"
+    );
 
     let behavior_actual = fs::read_to_string(results.join("behavioral-actual.tsv")).unwrap();
     assert!(
@@ -298,7 +304,10 @@ fi
     );
 
     let curl_calls = fs::read_to_string(curl_calls).unwrap();
-    let cleanup_calls = curl_calls.lines().collect::<Vec<_>>();
+    let cleanup_calls = curl_calls
+        .lines()
+        .filter(|line| line.contains("-X DELETE"))
+        .collect::<Vec<_>>();
     assert_eq!(
         cleanup_calls.len(),
         1,

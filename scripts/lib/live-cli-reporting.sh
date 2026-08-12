@@ -3,6 +3,14 @@
 
 cleanup_live_fixtures() {
   local collection
+  if [ -n "${live_chrome_pid:-}" ] \
+    && [ -n "${live_chrome_start_time:-}" ] \
+    && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
+    && tr '\0' '\n' <"/proc/$live_chrome_pid/environ" 2>/dev/null \
+      | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
+    kill -TERM "$live_chrome_pid" 2>/dev/null || true
+    wait "$live_chrome_pid" 2>/dev/null || true
+  fi
   if [[ "$isolated_compose_project" == axon-live-* ]] \
     && [[ "$isolated_compose_network" == axon-live-* ]] \
     && [ -f "${SETUP_HOME:-}/.axon/.env" ] \
