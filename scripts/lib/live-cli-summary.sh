@@ -2,36 +2,18 @@
 # Behavioral coverage reconciliation and final summary.
 
 build_behavioral_coverage_report() {
-  local root_help root_options encoded name path_json help_log option key result evidence
-  root_help="$OUTDIR/logs/behavior-root-help.log"
-  root_options="$OUTDIR/behavioral-global-options.txt"
-  "$AXON_BIN" --help >"$root_help" 2>&1
-  awk '
-    /^  Global Options$/ { in_options=1; next }
-    in_options && /^  Commands$/ { exit }
-    in_options && /^  (-[A-Za-z], )?--[a-z0-9]/ {
-      line=$0
-      sub(/^  (-[A-Za-z], )?/, "", line)
-      sub(/[[:space:]].*/, "", line)
-      print line
-    }
-  ' "$root_help" | sort -u >"$root_options"
+  local root_options encoded name path_json help_log option key result evidence
+  ensure_behavior_global_options
+  root_options="$BEHAVIOR_GLOBAL_OPTIONS"
 
   : >"$BEHAVIOR_EXPECTED"
   if [ "$REGISTRY" = "$ROOT_DIR/docs/reference/cli/commands.json" ]; then
     while IFS= read -r option; do
-      [ "$option" = "--help" ] && continue
+      if [ "$option" = "--help" ] || [ "$option" = "-h" ]; then
+        continue
+      fi
       printf '%s\t%s\n' "@global" "$option" >>"$BEHAVIOR_EXPECTED"
     done <"$root_options"
-    for option in \
-      --automation-script --batch-concurrency --block-assets --budget --cache \
-      --cache-http-only --chrome-screenshot --chrome-wait-for-selector --color \
-      --cron-every-seconds --cron-max-runs --etag-conditional --exclude-path \
-      --exclude-path-prefix --exclude-selector --format --normalize --output-dir \
-      --performance-profile --quiet --root-selector --screenshot-full-page \
-      --sitemap-only --url-glob --urls --viewport --warc --yes; do
-      printf '%s\t%s\n' "@global" "$option" >>"$BEHAVIOR_EXPECTED"
-    done
     {
       printf '%s\t%s\n' "ask" "--continue"
       printf '%s\t%s\n' "completion alias" "__command__"

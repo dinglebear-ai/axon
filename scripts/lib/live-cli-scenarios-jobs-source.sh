@@ -17,8 +17,13 @@ handle_live_jobs_memory_source_scenario() {
           '.jobs[] | select(.job_id == $job_id) | (.result.documents_done > 0 and .result.chunks_done > 0)'
         "$AXON_BIN" status >"$OUTDIR/logs/live-status-human.log" 2>"$OUTDIR/logs/live-status-human.stderr.log"
         assert_live_text "status completed details" "$OUTDIR/logs/live-status-human.log" " docs · 100% · "
-        run_live "$name" status --active --color never --quiet --json
-        run_live "$name" status --recent --color never --quiet --json
+        run_live "$name" status --active --color never --motion never --verbose --json
+        prove_options "@global" \
+          "status completed with reduced motion and operator diagnostics enabled" \
+          --motion --verbose
+        run_live "$name" status --recent -v --color never --json
+        prove_option_behavior "@global" "-v" \
+          "status completed with the short operator-diagnostics flag"
         run_live "$name" status --reclaimed --color never --quiet --json
         ;;
       "jobs list")

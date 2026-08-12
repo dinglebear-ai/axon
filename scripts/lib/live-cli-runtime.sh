@@ -138,6 +138,13 @@ prepare_live_invocation() {
           local_args+=("$arg")
         fi
         ;;
+      -[A-Za-z])
+        if grep -Fqx -- "$arg" "$BEHAVIOR_GLOBAL_OPTIONS"; then
+          global_args+=("$arg")
+        else
+          local_args+=("$arg")
+        fi
+        ;;
       *) local_args+=("$arg") ;;
     esac
     index=$((index + 1))

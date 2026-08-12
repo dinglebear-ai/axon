@@ -83,6 +83,9 @@ ensure_behavior_global_options() {
       if (line ~ /<[^>]+>/) print option >> values
     }
   ' "$OUTDIR/logs/behavior-global-help.log" >"$BEHAVIOR_GLOBAL_OPTIONS"
+  awk '
+    /^  -[A-Za-z], --[a-z0-9]/ { print substr($1, 1, 2) }
+  ' "$OUTDIR/logs/behavior-global-help.log" >>"$BEHAVIOR_GLOBAL_OPTIONS"
 
   local option
   for option in     --automation-script --batch-concurrency --block-assets --budget --cache     --cache-http-only --chrome-screenshot --chrome-wait-for-selector --color     --cron-every-seconds --cron-max-runs --etag-conditional --exclude-path     --exclude-path-prefix --exclude-selector --format --normalize --output-dir     --performance-profile --quiet --root-selector --screenshot-full-page     --sitemap-only --url-glob --urls --viewport --warc --yes; do
