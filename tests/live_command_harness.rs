@@ -183,10 +183,10 @@ fn scenario_mode_isolates_state_and_cleans_up_only_its_collection() {
     let calls = temp.path().join("calls");
     let fake_axon = bin_dir.join("axon");
     let fake_script = r#"#!/usr/bin/env bash
-printf '%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s\n' \
-  "$*" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
+printf '%s|cwd=%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s|chrome=%s\n' \
+  "$*" "$PWD" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
   "${AXON_OUTPUT_DIR:-}" "${AXON_ARTIFACT_BIN_DIR:-}" "${AXON_CONFIG_PATH:-}" \
-  "${AXON_ENV_FILE:-}" >> '__CALLS__'
+  "${AXON_ENV_FILE:-}" "${AXON_CHROME_REMOTE_URL:-}" >> '__CALLS__'
 if [ "${1:-}" = --help ]; then
   printf '  AXON CLI
 
@@ -221,7 +221,7 @@ fi
     fs::write(
         &fake_curl,
         format!(
-            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nprintf '{{}}\\n'\n",
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> '{}'\nif [[ \"$*\" == *'/json/version'* && \"$*\" != *':9222/json/version'* ]]; then exit 7; fi\nif [[ \"$*\" == *':9222/json/version'* ]]; then printf '{{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9222/devtools/browser/test\"}}\\n'; else printf '{{}}\\n'; fi\n",
             curl_calls.display()
         ),
     )
@@ -267,6 +267,11 @@ fi
         !calls.contains(&poison.display().to_string()) && !calls.contains("poison.invalid"),
         "poisoned caller state leaked into isolated commands:\n{calls}"
     );
+    let command_workdir = format!("cwd={}/command-workdir", results.display());
+    assert!(
+        calls.lines().all(|line| line.contains(&command_workdir)),
+        "all live commands must run from the harness-owned working directory:\n{calls}"
+    );
     assert!(
         calls.lines().any(|line| {
             line.starts_with("--json config path|")
@@ -276,6 +281,12 @@ fi
                 && line.contains(&format!("envfile={}/.env", results.display()))
         }),
         "scenario did not receive the harness-owned state:\n{calls}"
+    );
+    assert!(
+        calls
+            .lines()
+            .all(|line| line.contains("|chrome=http://127.0.0.1:9222")),
+        "setup and runtime commands must use the same reachable live Chrome endpoint:\n{calls}"
     );
 
     let behavior_actual = fs::read_to_string(results.join("behavioral-actual.tsv")).unwrap();
@@ -293,7 +304,10 @@ fi
     );
 
     let curl_calls = fs::read_to_string(curl_calls).unwrap();
-    let cleanup_calls = curl_calls.lines().collect::<Vec<_>>();
+    let cleanup_calls = curl_calls
+        .lines()
+        .filter(|line| line.contains("-X DELETE"))
+        .collect::<Vec<_>>();
     assert_eq!(
         cleanup_calls.len(),
         1,
@@ -331,6 +345,317 @@ fn scenario_mode_rejects_explicit_data_dir_outside_harness_tree() {
             .contains("AXON_LIVE_DATA_DIR must remain inside the harness output tree"),
         "missing destructive-state refusal: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn scenario_mode_rejects_an_explicit_non_cdp_chrome_endpoint() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let fake_axon = bin_dir.join("axon");
+    fs::write(
+        &fake_axon,
+        "#!/usr/bin/env bash\nif [ \"${1:-}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{}\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nprintf '<html>not chrome</html>\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .env("AXON_LIVE_CHROME_REMOTE_URL", "http://127.0.0.1:45555")
+        .output()
+        .expect("run scenario harness with invalid explicit Chrome endpoint");
+
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("explicit Chrome endpoint is not a reachable CDP endpoint")
+            && stderr.contains("http://127.0.0.1:45555"),
+        "missing targeted Chrome endpoint diagnostic: {stderr}"
+    );
+}
+
+#[test]
+fn scenario_mode_owns_a_collision_safe_chrome_and_bounds_cleanup() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let fake_axon = bin_dir.join("axon");
+    fs::write(
+        &fake_axon,
+        "#!/usr/bin/env bash\nif [ \"${1:-}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{}\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+
+    let chrome_args = temp.path().join("chrome-args");
+    let chrome_pid = temp.path().join("chrome-pid");
+    let devtools_port = temp.path().join("devtools-port");
+    let fake_chrome = bin_dir.join("google-chrome");
+    let chrome_script = format!(
+        r#"#!/usr/bin/env bash
+printf '%s\n' "$*" > '{}'
+printf '%s\n' "$$" > '{}'
+profile=""
+for arg in "$@"; do
+  case "$arg" in --user-data-dir=*) profile="${{arg#*=}}" ;; esac
+done
+mkdir -p "$profile"
+printf '45678\n/devtools/browser/owned\n' > "$profile/DevToolsActivePort"
+printf '45678\n' > '{}'
+trap '' TERM
+while :; do read -r -t 1 _unused || true; done
+"#,
+        chrome_args.display(),
+        chrome_pid.display(),
+        devtools_port.display()
+    );
+    fs::write(&fake_chrome, chrome_script).unwrap();
+    let mut permissions = fs::metadata(&fake_chrome).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_chrome, permissions).unwrap();
+
+    let fake_curl = bin_dir.join("curl");
+    let curl_script = format!(
+        r#"#!/usr/bin/env bash
+url="${{@: -1}}"
+if [[ "$url" == *':45678/json/version' ]] && [ -s '{}' ]; then
+  printf '{{"Browser":"HeadlessChrome/1","webSocketDebuggerUrl":"ws://127.0.0.1:45678/devtools/browser/owned"}}\n'
+  exit 0
+fi
+[[ "$*" == *' -X DELETE '* ]] && {{ printf '{{}}\n'; exit 0; }}
+exit 7
+"#,
+        devtools_port.display()
+    );
+    fs::write(&fake_curl, curl_script).unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("timeout")
+        .args([
+            "--kill-after=2",
+            "15",
+            "bash",
+            "scripts/live-test-all-commands.sh",
+            "--mode",
+            "scenarios",
+        ])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", temp.path().join("results"))
+        .output()
+        .expect("run scenario harness with owned Chrome");
+
+    assert!(
+        output.status.success(),
+        "owned Chrome harness failed or cleanup timed out: status={:?}\nstdout={}\nstderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let args = fs::read_to_string(chrome_args).expect("owned Chrome arguments");
+    assert!(
+        args.contains("--remote-debugging-port=0"),
+        "default owned Chrome must ask the OS for a collision-safe port: {args}"
+    );
+    let pid = fs::read_to_string(chrome_pid).expect("owned Chrome pid");
+    let status = Command::new("kill")
+        .args(["-0", pid.trim()])
+        .status()
+        .expect("probe owned Chrome pid");
+    assert!(
+        !status.success(),
+        "owned Chrome process survived harness cleanup"
+    );
+}
+
+#[test]
+fn artifact_scenarios_seed_their_own_fixture_when_screenshot_is_unavailable() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(
+        &registry,
+        r#"{"commands":[
+            {"name":"artifacts list","path":["artifacts","list"],"mutates":false},
+            {"name":"artifacts get","path":["artifacts","get"],"mutates":false},
+            {"name":"artifacts content","path":["artifacts","content"],"mutates":false}
+        ]}"#,
+    )
+    .unwrap();
+
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let calls = temp.path().join("calls");
+    let sequence = temp.path().join("sequence");
+    let fake_axon = bin_dir.join("axon");
+    let fake_script = r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> '__CALLS__'
+args=("$@")
+filtered=()
+for arg in "${args[@]}"; do
+  case "$arg" in --json|--quiet) ;; *) filtered+=("$arg") ;; esac
+done
+set -- "${filtered[@]}"
+if [ "${1:-}" = config ]; then printf '{}\n'; exit 0; fi
+if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
+  mkdir -p "$HOME/.axon"
+  : > "$HOME/.axon/.env"
+  printf '{}\n'
+  exit 0
+fi
+if [ "${1:-}" = screenshot ]; then exit 1; fi
+if [ "${1:-}" = uploads ] && [ "${2:-}" = create ]; then
+  count=0
+  [ ! -f '__SEQUENCE__' ] || count="$(cat '__SEQUENCE__')"
+  count=$((count + 1))
+  printf '%s' "$count" > '__SEQUENCE__'
+  printf '{"upload":{"upload_id":"upl_fixture_%s"},"status":{"upload_id":"upl_fixture_%s"}}\n' "$count" "$count"
+  exit 0
+fi
+if [ "${1:-}" = uploads ] && [ "${2:-}" = complete ]; then
+  suffix="${3##*_}"
+  printf '{"upload_id":"%s","artifact_id":"art_raw_fixture_%s"}\n' "$3" "$suffix"
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = list ]; then
+  if [[ " $* " == *" --source-id "* || " $* " == *" --job-id "* ]]; then
+    printf '{"items":[],"next_cursor":null,"limit":10}\n'
+  elif [[ " $* " == *" --cursor "* ]]; then
+    printf '{"items":[{"artifact_id":"art_raw_fixture_2"}],"next_cursor":null,"limit":1}\n'
+  else
+    printf '{"items":[{"artifact_id":"art_raw_fixture_1"}],"next_cursor":"art_raw_fixture_1","limit":1}\n'
+  fi
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = get ]; then
+  [ -n "${3:-}" ]
+  printf '{"artifact_id":"%s","content_url":"/v1/artifacts/%s/content","metadata":{"filename":"hosts"}}\n' "$3" "$3"
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = content ]; then
+  [ -n "${3:-}" ]
+  output=""
+  range=""
+  download=0
+  index=4
+  while [ "$index" -le "$#" ]; do
+    value="${!index}"
+    case "$value" in
+      --output) index=$((index + 1)); output="${!index}" ;;
+      --range) index=$((index + 1)); range="${!index}" ;;
+      --download) download=1 ;;
+    esac
+    index=$((index + 1))
+  done
+  [ "$download" -eq 0 ] || output="$3.bin"
+  size=32
+  [ "$range" != bytes=0-15 ] || size=16
+  [ -z "$output" ] || head -c "$size" /dev/zero > "$output"
+  printf '{"artifact_id":"%s","content_type":"application/octet-stream","size_bytes":%s,"output":"%s"}\n' "$3" "$size" "$output"
+  exit 0
+fi
+printf '{}\n'
+"#
+    .replace("__CALLS__", &calls.display().to_string())
+    .replace("__SEQUENCE__", &sequence.display().to_string());
+    fs::write(&fake_axon, fake_script).unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nif [[ \"$*\" == *':9222/json/version'* ]]; then printf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9222/devtools/browser/test\"}\\n'; else printf '{}\\n'; fi\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+
+    let results = temp.path().join("results");
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", &results)
+        .output()
+        .expect("run artifact scenarios");
+
+    assert!(
+        output.status.success(),
+        "artifact scenarios failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = fs::read_to_string(calls).unwrap();
+    assert!(
+        calls.contains("uploads complete upl_fixture_1"),
+        "artifact lane did not promote its own fixture:\n{calls}"
+    );
+    assert!(
+        calls.lines().all(|line| !line.contains("screenshot")),
+        "artifact coverage must not invoke the unavailable screenshot producer:\n{calls}"
+    );
+    assert!(
+        calls
+            .lines()
+            .any(|line| { line.contains("artifacts get art_raw_fixture_1 --include-content-url") }),
+        "artifact detail received an empty or screenshot-owned id:\n{calls}"
+    );
+    assert!(results.join("art_raw_fixture_1.bin").is_file());
+    assert_eq!(
+        fs::metadata(results.join("artifact-range.bin"))
+            .unwrap()
+            .len(),
+        16
     );
 }
 
@@ -492,4 +817,17 @@ fn hidden_cli_alias_inventory_is_behaviorally_covered() {
     let ask = fs::read_to_string("scripts/lib/live-cli-scenarios-web-rag.sh")
         .expect("read ask scenarios");
     assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
+}
+
+#[test]
+fn screenshot_scenario_proves_every_global_capture_option() {
+    let scenarios = fs::read_to_string("scripts/lib/live-cli-scenarios-jobs-source.sh")
+        .expect("read screenshot scenarios");
+
+    for option in ["--output", "--viewport", "--screenshot-full-page"] {
+        assert!(
+            scenarios.contains(&format!("prove_option_behavior \"@global\" \"{option}\"")),
+            "screenshot scenario must record behavioral evidence for {option}"
+        );
+    }
 }

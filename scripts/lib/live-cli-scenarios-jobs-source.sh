@@ -213,19 +213,20 @@ handle_live_jobs_memory_source_scenario() {
       "screenshot")
         run_live "$name" screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" \
           --screenshot-full-page false --viewport 1280x720 --json
-        screenshot_artifact_id="$(jq -r '.artifact_id // empty' "$LAST_LIVE_LOG" 2>/dev/null)"
         assert_live_json "screenshot artifact contract" "$LAST_LIVE_LOG" \
           '.artifact_id != null and .artifact_id != ""
            and .width == 1280 and .height == 720'
-        if [ -s "$OUTDIR/screenshot.png" ]; then
+        if [ "$(od -An -tx1 -N8 "$OUTDIR/screenshot.png" 2>/dev/null | tr -d ' \n')" = "89504e470d0a1a0a" ]; then
           prove_option_behavior "@global" "--output" "requested screenshot path contains a non-empty PNG"
           prove_option_behavior "@global" "--viewport" "capture returned dimensions for the requested viewport"
+          prove_option_behavior "@global" "--screenshot-full-page" \
+            "capture returned the requested viewport height instead of a full-page image"
           record "screenshot output file" "contract" "PASS" "0" \
-            "non-empty $OUTDIR/screenshot.png" "$OUTDIR/screenshot.png"
+            "PNG signature at $OUTDIR/screenshot.png" "$OUTDIR/screenshot.png"
         else
           failures=$((failures + 1))
           record "screenshot output file" "contract" "FAIL" "1" \
-            "non-empty $OUTDIR/screenshot.png" "$OUTDIR/screenshot.png"
+            "PNG signature at $OUTDIR/screenshot.png" "$OUTDIR/screenshot.png"
         fi
         ;;
       "completions")

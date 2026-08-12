@@ -1,39 +1,68 @@
 #!/usr/bin/env bash
 # Domain scenarios sourced by live-test-all-commands.sh.
 
+ensure_artifact_fixture() {
+  [ -n "$artifact_fixture_id" ] && [ -n "$artifact_fixture_second_id" ] && return 0
+
+  local ordinal upload_log upload_id complete_log artifact_id
+  for ordinal in 1 2; do
+    upload_log="$OUTDIR/logs/fixture-artifact-upload-$ordinal.json"
+    complete_log="$OUTDIR/logs/fixture-artifact-complete-$ordinal.json"
+    "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json \
+      >"$upload_log" 2>"${upload_log%.json}.stderr.log" || return 1
+    upload_id="$(jq -r '.upload.upload_id // .status.upload_id // empty' "$upload_log")"
+    [ -n "$upload_id" ] || return 1
+    "$AXON_BIN" uploads complete "$upload_id" --json \
+      >"$complete_log" 2>"${complete_log%.json}.stderr.log" || return 1
+    artifact_id="$(jq -r '.artifact_id // empty' "$complete_log")"
+    [ -n "$artifact_id" ] || return 1
+    if [ "$ordinal" -eq 1 ]; then
+      artifact_fixture_id="$artifact_id"
+    else
+      artifact_fixture_second_id="$artifact_id"
+    fi
+  done
+}
+
 handle_live_resources_graph_scenario() {
   local name="$1"
   case "$name" in
       "artifacts list")
-        "$AXON_BIN" screenshot "$fixture_url?artifact_page=2" \
-          --output "$OUTDIR/screenshot-2.png" --json \
-          >"$OUTDIR/logs/fixture-screenshot-2.json" \
-          2>"$OUTDIR/logs/fixture-screenshot-2.stderr.log"
-        run_live "$name" artifacts list --kind screenshot --limit 1 --json
+        if ! ensure_artifact_fixture; then
+          missing_live "artifacts fixture" "two public upload promotions did not produce opaque artifact ids"
+          return 0
+        fi
+        run_live "$name" artifacts list --kind raw_content --limit 1 --json
         artifacts_cursor="$(jq -r '.next_cursor // empty' "$LAST_LIVE_LOG")"
         if [ -n "$artifacts_cursor" ]; then
-          run_live "$name" artifacts list --kind screenshot --cursor "$artifacts_cursor" --limit 1 --json
+          run_live "$name" artifacts list --kind raw_content --cursor "$artifacts_cursor" --limit 1 --json
         else
-          missing_live "artifacts list cursor" "fixture did not produce a second screenshot page"
+          missing_live "artifacts list cursor" "fixture did not produce a second raw-content page"
         fi
-        run_live "$name" artifacts list --source-id "$source_id" --json
-        assert_live_json "artifacts source filter excludes unrelated screenshots" "$LAST_LIVE_LOG" \
+        run_live "$name" artifacts list --source-id src_artifact_fixture_unrelated --json
+        assert_live_json "artifacts source filter excludes unrelated fixtures" "$LAST_LIVE_LOG" \
           '.items | length == 0'
-        run_live "$name" artifacts list --job-id "$job_id" --json
-        assert_live_json "artifacts job filter excludes unrelated screenshots" "$LAST_LIVE_LOG" \
+        run_live "$name" artifacts list --job-id 00000000-0000-0000-0000-000000000000 --json
+        assert_live_json "artifacts job filter excludes unrelated fixtures" "$LAST_LIVE_LOG" \
           '.items | length == 0'
         ;;
       "artifacts get")
-        run_live "$name" artifacts get "$screenshot_artifact_id" --include-content-url --json
+        if ! ensure_artifact_fixture; then
+          missing_live "artifacts get fixture" "public upload promotion did not produce an opaque artifact id"
+          return 0
+        fi
+        run_live "$name" artifacts get "$artifact_fixture_id" --include-content-url --json
         assert_live_json "artifact content URL projection" "$LAST_LIVE_LOG" \
           '(.content_url | type) == "string" and (.content_url | length) > 0
-           and .metadata.full_page == false'
-        prove_option_behavior "@global" "--screenshot-full-page" \
-          "stored screenshot metadata reported viewport-only capture"
+           and .metadata.filename == "hosts"'
         ;;
       "artifacts content")
-        run_live "$name" artifacts content "$screenshot_artifact_id" --output "$OUTDIR/artifact-content.png" --json
-        run_live "$name" artifacts content "$screenshot_artifact_id" \
+        if ! ensure_artifact_fixture; then
+          missing_live "artifacts content fixture" "public upload promotion did not produce an opaque artifact id"
+          return 0
+        fi
+        run_live "$name" artifacts content "$artifact_fixture_id" --output "$OUTDIR/artifact-content.bin" --json
+        run_live "$name" artifacts content "$artifact_fixture_id" \
           --range bytes=0-15 --output "$OUTDIR/artifact-range.bin" --json
         assert_live_json "artifact byte range receipt" "$LAST_LIVE_LOG" \
           '.size_bytes == 16'
@@ -44,11 +73,11 @@ handle_live_resources_graph_scenario() {
           missing_live "artifact byte range file" "range output was not exactly 16 bytes"
         fi
         pushd "$OUTDIR" >/dev/null || exit 1
-        run_live "$name" artifacts content "$screenshot_artifact_id" --download --json
+        run_live "$name" artifacts content "$artifact_fixture_id" --download --json
         popd >/dev/null || exit 1
         # shellcheck disable=SC2016
         assert_live_json "artifact default download path" "$LAST_LIVE_LOG" \
-          --arg expected "$screenshot_artifact_id.png" \
+          --arg expected "$artifact_fixture_id.bin" \
           '.output == $expected and .size_bytes > 0'
         artifact_download_name="$(jq -r '.output // empty' "$LAST_LIVE_LOG")"
         if [ -n "$artifact_download_name" ] \
