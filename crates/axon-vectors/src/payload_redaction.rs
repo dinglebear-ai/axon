@@ -22,14 +22,13 @@ pub(crate) fn validate_forbidden_value(
     value: &Value,
 ) -> Result<(), VectorPayloadValidationError> {
     match value {
-        Value::String(value) if forbidden_string_reason(path, value).is_some() => {
-            Err(VectorPayloadValidationError::ForbiddenValue {
+        Value::String(value) => match forbidden_string_reason(path, value) {
+            Some(detector) => Err(VectorPayloadValidationError::ForbiddenValue {
                 field: path.to_string(),
-                detector: forbidden_string_reason(path, value)
-                    .expect("guarded by is_some")
-                    .to_string(),
-            })
-        }
+                detector: detector.to_string(),
+            }),
+            None => Ok(()),
+        },
         Value::Array(values) => {
             for (index, value) in values.iter().enumerate() {
                 validate_forbidden_value(&format!("{path}[{index}]"), value)?;

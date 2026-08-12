@@ -43,7 +43,9 @@ pub(super) async fn run(
                     }
                     Err(error) => {
                         if let Some(forwarder) = forwarder {
-                            forwarder.failed_before_start(index, reported_input.clone());
+                            forwarder
+                                .failed_before_start(index, reported_input.clone())
+                                .await;
                         }
                         Err(error)
                     }

@@ -240,12 +240,11 @@ impl VectorPointBatchBuilder {
                 // `tracing::warn!` line that no programmatic consumer sees.
                 Err(VectorPointBatchBuildError::Payload {
                     chunk_id,
-                    source: VectorPayloadValidationError::ForbiddenValue { field, detector },
+                    source: VectorPayloadValidationError::ForbiddenValue { field: _, detector },
                 }) => {
                     skipped_redaction += 1;
                     tracing::warn!(
                         chunk_id = %chunk_id.0,
-                        field,
                         detector,
                         "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
                     );

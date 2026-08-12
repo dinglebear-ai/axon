@@ -60,7 +60,12 @@ if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 TS="$(date +%Y%m%d-%H%M%S)"
-OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$ROOT_DIR/.cache/live-test/$TS}"
+RUN_ID="${SCENARIO_GROUP}-${TS}-$$-${RANDOM}"
+RUN_SLUG="${RUN_ID//[^a-zA-Z0-9]/}"
+RUN_PORT_BASE=$((40000 + (RANDOM % 15000)))
+export AXON_LIVE_PORT_BASE="$RUN_PORT_BASE"
+OUTROOT="${AXON_LIVE_TEST_ROOT:-$ROOT_DIR/.cache/live-test}"
+OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$OUTROOT/$RUN_ID}"
 REPORT="$OUTDIR/report.tsv"
 BEHAVIOR_REPORT="$OUTDIR/behavioral-coverage.tsv"
 TIMINGS_REPORT="$OUTDIR/timings.tsv"

@@ -1,5 +1,5 @@
 use std::sync::{
-    Arc, Mutex,
+    Arc,
     atomic::{AtomicBool, Ordering},
 };
 
@@ -13,29 +13,23 @@ use tokio::sync::{mpsc, watch};
 pub const FOREGROUND_EVENT_CAPACITY: usize = 256;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ForegroundSnapshot {
-    JobStarted(JobId),
-    Routed {
-        job_id: JobId,
-        source_kind: SourceKind,
-    },
-    Status(Box<JobStatusUpdate>),
+pub struct ForegroundSnapshot {
+    job_id: JobId,
+    source_kind: Option<SourceKind>,
+    status: Option<Box<JobStatusUpdate>>,
 }
 
 impl ForegroundSnapshot {
     pub fn job_id(&self) -> JobId {
-        match self {
-            Self::JobStarted(job_id) => *job_id,
-            Self::Routed { job_id, .. } => *job_id,
-            Self::Status(update) => update.job_id,
-        }
+        self.job_id
+    }
+
+    pub fn source_kind(&self) -> Option<SourceKind> {
+        self.source_kind
     }
 
     pub fn status(&self) -> Option<&JobStatusUpdate> {
-        match self {
-            Self::Status(update) => Some(update),
-            Self::JobStarted(_) | Self::Routed { .. } => None,
-        }
+        self.status.as_deref()
     }
 }
 
@@ -102,14 +96,12 @@ pub struct ForegroundProgressSender {
     snapshots: watch::Sender<Option<ForegroundSnapshot>>,
     events: mpsc::Sender<SourceProgressEvent>,
     overflow: Arc<AtomicBool>,
-    source_kind: Arc<Mutex<Option<SourceKind>>>,
 }
 
 pub struct ForegroundProgressReceiver {
     pub snapshots: watch::Receiver<Option<ForegroundSnapshot>>,
     pub events: mpsc::Receiver<SourceProgressEvent>,
     overflow: Arc<AtomicBool>,
-    source_kind: Arc<Mutex<Option<SourceKind>>>,
 }
 
 pub fn foreground_progress_channel() -> (ForegroundProgressSender, ForegroundProgressReceiver) {
@@ -122,43 +114,59 @@ fn foreground_progress_channel_with_capacity(
     let (snapshot_tx, snapshot_rx) = watch::channel(None);
     let (event_tx, event_rx) = mpsc::channel(capacity.max(1));
     let overflow = Arc::new(AtomicBool::new(false));
-    let source_kind = Arc::new(Mutex::new(None));
     (
         ForegroundProgressSender {
             snapshots: snapshot_tx,
             events: event_tx,
             overflow: Arc::clone(&overflow),
-            source_kind: Arc::clone(&source_kind),
         },
         ForegroundProgressReceiver {
             snapshots: snapshot_rx,
             events: event_rx,
             overflow,
-            source_kind,
         },
     )
 }
 
 impl ForegroundProgressSender {
     pub fn job_started(&self, job_id: JobId) {
-        self.snapshots
-            .send_replace(Some(ForegroundSnapshot::JobStarted(job_id)));
+        self.snapshots.send_replace(Some(ForegroundSnapshot {
+            job_id,
+            source_kind: None,
+            status: None,
+        }));
     }
 
     pub fn routed(&self, job_id: JobId, source_kind: SourceKind) {
-        if let Ok(mut sticky_source_kind) = self.source_kind.lock() {
-            *sticky_source_kind = Some(source_kind);
-        }
-        self.snapshots
-            .send_replace(Some(ForegroundSnapshot::Routed {
-                job_id,
-                source_kind,
-            }));
+        self.snapshots.send_modify(|snapshot| match snapshot {
+            Some(snapshot) => {
+                snapshot.job_id = job_id;
+                snapshot.source_kind = Some(source_kind);
+            }
+            None => {
+                *snapshot = Some(ForegroundSnapshot {
+                    job_id,
+                    source_kind: Some(source_kind),
+                    status: None,
+                });
+            }
+        });
     }
 
     pub fn snapshot(&self, update: JobStatusUpdate) {
-        self.snapshots
-            .send_replace(Some(ForegroundSnapshot::Status(Box::new(update))));
+        self.snapshots.send_modify(|snapshot| match snapshot {
+            Some(snapshot) => {
+                snapshot.job_id = update.job_id;
+                snapshot.status = Some(Box::new(update));
+            }
+            None => {
+                *snapshot = Some(ForegroundSnapshot {
+                    job_id: update.job_id,
+                    source_kind: None,
+                    status: Some(Box::new(update)),
+                });
+            }
+        });
     }
 
     pub fn event(&self, event: SourceProgressEvent) -> bool {
@@ -174,10 +182,6 @@ impl ForegroundProgressSender {
 }
 
 impl ForegroundProgressReceiver {
-    pub fn source_kind(&self) -> Option<SourceKind> {
-        self.source_kind.lock().ok().and_then(|kind| *kind)
-    }
-
     pub fn overflowed(&self) -> bool {
         self.overflow.load(Ordering::Acquire)
     }

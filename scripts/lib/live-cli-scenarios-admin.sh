@@ -4,8 +4,8 @@
 handle_live_admin_setup_scenario() {
   local name="$1"
   case "$name" in
-      "serve") run_live_server "$name" 38131 serve ;;
-      "serve mcp") run_live_server "$name" 38132 serve mcp --transport http ;;
+      "serve") run_live_server "$name" "$((RUN_PORT_BASE + 10))" serve ;;
+      "serve mcp") run_live_server "$name" "$((RUN_PORT_BASE + 11))" serve mcp --transport http ;;
       "reset")
         reset_data="$OUTDIR/reset-data"
         mkdir -p "$reset_data"
@@ -141,7 +141,7 @@ handle_live_admin_setup_scenario() {
         ;;
       "setup init")
         run_live_setup_home "$name" setup init \
-          --mcp-host 127.0.0.1 --mcp-port 38133 --auth-mode oauth \
+          --mcp-host 127.0.0.1 --mcp-port "$((RUN_PORT_BASE + 12))" --auth-mode oauth \
           --mcp-token live-fixture-token \
           --oauth-public-url https://axon.invalid \
           --google-client-id live-fixture-google-client \
@@ -161,7 +161,7 @@ handle_live_admin_setup_scenario() {
       "setup targets") run_live_setup_home "$name" setup targets --json ;;
       "setup install") run_live_setup_home "$name" setup install --json ;;
       "setup config rewrite") run_live_setup_home "$name" setup config rewrite --dry-run --json ;;
-      "mcp") run_live_server "$name" 38134 mcp --transport http ;;
+      "mcp") run_live_server "$name" "$((RUN_PORT_BASE + 13))" mcp --transport http ;;
       "migrate")
         migrate_from="${AXON_COLLECTION}_unnamed"
         migrate_to="${AXON_COLLECTION}_named"

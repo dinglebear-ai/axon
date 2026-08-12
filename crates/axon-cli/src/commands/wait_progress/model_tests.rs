@@ -95,6 +95,24 @@ fn repeated_redaction_holds_become_one_neutral_notice() {
 }
 
 #[test]
+fn aggregated_redaction_warning_preserves_skipped_chunk_count() {
+    let mut model = WaitViewModel::source("https://gofastmcp.com", Some(SourceScope::Site));
+    let mut event = redaction_event("evt_1", "chunk_1");
+    event.warning = Some(SourceWarning {
+        code: "source.vectorize.redaction_skipped_chunks".into(),
+        severity: Severity::Warning,
+        message: "skipped 7 chunk(s) with secret-redaction-forbidden payload values".into(),
+        source_item_key: None,
+        retryable: false,
+    });
+
+    model.apply_event(event);
+
+    assert_eq!(model.notices[0].count, 7);
+    assert_eq!(model.notices[0].message, "secret policy held 7 chunks");
+}
+
+#[test]
 fn duplicate_event_id_is_ignored() {
     let mut model = WaitViewModel::source("https://gofastmcp.com", Some(SourceScope::Site));
     let event = redaction_event("evt_1", "chunk_1");

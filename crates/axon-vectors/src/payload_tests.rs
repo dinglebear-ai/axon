@@ -481,6 +481,29 @@ fn chunk_text_rejects_secret_like_body_values() {
 }
 
 #[test]
+fn chunk_text_rejects_standalone_bearer_and_passwd_assignment() {
+    for (value, detector) in [
+        (
+            "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature",
+            "bearer_value",
+        ),
+        ("passwd=hunter2", "secret_assignment"),
+    ] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert("chunk_text".to_string(), serde_json::json!(value));
+
+        assert_eq!(
+            VectorPayload::try_from_metadata(metadata).unwrap_err(),
+            VectorPayloadValidationError::ForbiddenValue {
+                field: "chunk_text".to_string(),
+                detector: detector.to_string(),
+            },
+            "accepted {value}"
+        );
+    }
+}
+
+#[test]
 fn chunk_text_rejects_every_known_bare_token_family() {
     for token in [
         "AIzaabcdefghijklmnopqrstuvwxyz123456789",

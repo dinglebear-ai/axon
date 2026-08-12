@@ -189,6 +189,10 @@ impl WaitViewModel {
         changed
     }
 
+    pub(crate) fn event_seen(&self, event_id: &str) -> bool {
+        self.seen_event_ids.contains(event_id)
+    }
+
     pub(crate) fn start_phase_at(&mut self, phase: PipelinePhase, now: Duration) {
         let phase = operator_phase(phase);
         if self.phase_started_at.map(|started| started.0) != Some(phase) {
@@ -262,20 +266,21 @@ impl WaitViewModel {
         let Some((code, category, retryable, safe_message)) = notice_parts(event) else {
             return false;
         };
+        let increment = notice_increment(&code, category, &safe_message);
         let key = NoticeKey {
             phase: operator_phase(event.phase),
             code,
             category,
         };
         if let Some(notice) = self.notices.iter_mut().find(|notice| notice.key == key) {
-            notice.count += 1;
+            notice.count = notice.count.saturating_add(increment);
             notice.message = notice_message(category, notice.count, &safe_message);
             notice.retryable |= retryable;
         } else {
             self.notices.push(OperatorNotice {
                 key,
-                message: notice_message(category, 1, &safe_message),
-                count: 1,
+                message: notice_message(category, increment, &safe_message),
+                count: increment,
                 retryable,
             });
         }
@@ -454,6 +459,18 @@ fn notice_message(category: NoticeCategory, count: u64, safe_message: &str) -> S
     } else {
         format!("{safe_message} · {count} occurrences")
     }
+}
+
+fn notice_increment(code: &str, category: NoticeCategory, safe_message: &str) -> u64 {
+    if category != NoticeCategory::PolicyHeld || code != "source.vectorize.redaction_skipped_chunks"
+    {
+        return 1;
+    }
+    safe_message
+        .strip_prefix("skipped ")
+        .and_then(|message| message.split_whitespace().next())
+        .and_then(|count| count.parse().ok())
+        .unwrap_or(1)
 }
 
 #[cfg(test)]

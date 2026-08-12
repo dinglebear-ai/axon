@@ -70,11 +70,10 @@ async fn routed_source_kind_survives_a_newer_status_snapshot() {
     tx.snapshot(update(7));
     rx.snapshots.changed().await.unwrap();
 
-    assert_eq!(rx.source_kind(), Some(SourceKind::Web));
-    assert!(matches!(
-        rx.snapshots.borrow().as_ref(),
-        Some(ForegroundSnapshot::Status(_))
-    ));
+    let snapshot = rx.snapshots.borrow();
+    let snapshot = snapshot.as_ref().unwrap();
+    assert_eq!(snapshot.source_kind(), Some(SourceKind::Web));
+    assert!(snapshot.status().is_some());
 }
 
 #[tokio::test]

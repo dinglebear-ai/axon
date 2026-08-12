@@ -173,6 +173,12 @@ run_live() {
   started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
+  if [ "$exit_code" -ne 0 ] && retryable_live_failure "$name" "$stderr_log"; then
+    mv "$logfile" "${logfile%.log}.attempt-1.log"
+    mv "$stderr_log" "${stderr_log%.log}.attempt-1.log"
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
+    exit_code=$?
+  fi
   if [ "$exit_code" -eq 0 ] && { [ "$json_expected" -eq 0 ] || jq -e . "$logfile" >/dev/null 2>&1; }; then
     result="PASS"
   else
@@ -188,6 +194,16 @@ run_live() {
   fi
   record "$name" "live" "$result" "$exit_code" "${PREPARED_ARGS[*]}" "$logfile"
   record_timing "$started_ms" "live" "$name" "${PREPARED_ARGS[*]}"
+}
+
+retryable_live_failure() {
+  local name="$1" stderr_log="$2"
+  case "$name" in
+    source|scrape|map|brand|search|research|extract|screenshot) ;;
+    *) return 1 ;;
+  esac
+  grep -Eq '\[(fetch\.timeout|fetch\.network|provider\.timeout|provider\.unavailable)\]' \
+    "$stderr_log"
 }
 
 run_live_expect_failure() {
@@ -408,8 +424,10 @@ run_live_setup_home() {
     -u TEI_HTTP_PORT -u AXON_CHROME_MANAGEMENT_PORT \
     -u AXON_CHROME_CDP_PORT -u AXON_CHROME_DEVTOOLS_PORT \
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
-    TEI_HTTP_PORT=38200 AXON_CHROME_MANAGEMENT_PORT=38600 \
-    AXON_CHROME_CDP_PORT=39222 AXON_CHROME_DEVTOOLS_PORT=39223 \
+    TEI_HTTP_PORT="$((RUN_PORT_BASE + 20))" \
+    AXON_CHROME_MANAGEMENT_PORT="$((RUN_PORT_BASE + 21))" \
+    AXON_CHROME_CDP_PORT="$((RUN_PORT_BASE + 22))" \
+    AXON_CHROME_DEVTOOLS_PORT="$((RUN_PORT_BASE + 23))" \
     PATH="$SETUP_HELPER_BIN:$PATH" \
     "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
@@ -431,12 +449,13 @@ run_live_setup_home() {
 
 run_live_setup_check() {
   local pid ready=0 _attempt
-  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=38133 AXON_BIND=127.0.0.1 \
+  local setup_check_port="$((RUN_PORT_BASE + 12))"
+  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT="$setup_check_port" AXON_BIND=127.0.0.1 \
     "$AXON_BIN" serve >"$OUTDIR/logs/setup-check-server.log" \
     2>"$OUTDIR/logs/setup-check-server.stderr.log" &
   pid=$!
   for _attempt in $(seq 1 60); do
-    if curl -fsS --max-time 1 "http://127.0.0.1:38133/readyz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 1 "http://127.0.0.1:${setup_check_port}/readyz" >/dev/null 2>&1; then
       ready=1
       break
     fi

@@ -15,7 +15,7 @@ pub fn secret_like_field_name(field: &str) -> bool {
         || normalized.ends_with("_token")
         || normalized == "token"
         || normalized == "authorization"
-        || normalized == "proxy-authorization"
+        || normalized == "proxy_authorization"
 }
 
 /// Field names that are hard-forbidden — a write carrying one of these must
@@ -38,6 +38,8 @@ pub fn value_contains_secret(value: &str) -> bool {
 pub fn secret_value_detector(value: &str) -> Option<&'static str> {
     if contains_contextual_authorization_value(value) {
         Some("authorization_value")
+    } else if contains_standalone_bearer_value(value) {
+        Some("bearer_value")
     } else if contains_contextual_cookie_value(value) || looks_like_bare_cookie_string(value) {
         Some("cookie_value")
     } else if contains_secret_assignment(value) {
@@ -51,6 +53,18 @@ pub fn secret_value_detector(value: &str) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+fn contains_standalone_bearer_value(value: &str) -> bool {
+    STANDALONE_BEARER_VALUE_RE
+        .captures_iter(value)
+        .filter_map(|captures| captures.name("value"))
+        .any(|matched| {
+            let candidate = matched.as_str();
+            !is_documented_secret_placeholder(candidate)
+                && (value_is_high_entropy_token(candidate)
+                    || KNOWN_SECRET_TOKEN_RE.is_match(candidate))
+        })
 }
 
 fn contains_contextual_cookie_value(value: &str) -> bool {
@@ -305,8 +319,28 @@ fn is_documented_assignment_placeholder(key: &str, value: &str) -> bool {
 }
 
 pub(super) fn redact_secret_spans(value: &str) -> String {
+    let bearer_redacted =
+        STANDALONE_BEARER_VALUE_RE.replace_all(value, |captures: &regex::Captures| {
+            let candidate = captures
+                .name("value")
+                .map_or("", |matched| matched.as_str());
+            if is_documented_secret_placeholder(candidate)
+                || (!value_is_high_entropy_token(candidate)
+                    && !KNOWN_SECRET_TOKEN_RE.is_match(candidate))
+            {
+                captures[0].to_string()
+            } else {
+                format!(
+                    "{}{}",
+                    captures
+                        .name("prefix")
+                        .map_or("", |matched| matched.as_str()),
+                    super::REDACTION_PLACEHOLDER
+                )
+            }
+        });
     let authorization_redacted =
-        AUTHORIZATION_VALUE_RE.replace_all(value, |captures: &regex::Captures| {
+        AUTHORIZATION_VALUE_RE.replace_all(&bearer_redacted, |captures: &regex::Captures| {
             let raw_value = authorization_capture_value(captures).unwrap_or_default();
             if is_documented_secret_placeholder(raw_value) {
                 captures[0].to_string()
@@ -386,6 +420,11 @@ static AUTHORIZATION_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
         r#"(?i)\b(?P<prefix>(?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|token)\s+)?)(?P<value>[^\s'\";,]+)"#,
     )
     .expect("authorization value regex is valid")
+});
+
+static STANDALONE_BEARER_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?i)\b(?P<prefix>bearer\s+)(?P<value>[^\s'\";,]+)"#)
+        .expect("standalone bearer regex is valid")
 });
 
 static COOKIE_VALUE_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -471,6 +510,7 @@ pub const SECRET_LIKE_FIELD_FRAGMENTS: &[&str] = &[
     "secret",
     "credential",
     "password",
+    "passwd",
     "api_key",
     "apikey",
     "access_token",

@@ -204,7 +204,9 @@ if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
   mkdir -p "$HOME/.axon"
   : > "$HOME/.axon/.env"
 fi
-if [ "${1:-}" = config ] && [ "${2:-}" = path ]; then
+if [ "${1:-}" = doctor ]; then
+  printf '%s\n' '{"all_ok":true,"services":{"qdrant":{"ok":true},"tei":{"ok":true},"chrome":{"ok":true},"llm":{"ok":true}}}'
+elif [ "${1:-}" = config ] && [ "${2:-}" = path ]; then
   printf '{"toml_path":"%s","env_path":"%s"}\n' "$AXON_CONFIG_PATH" "$AXON_ENV_FILE"
 else
   printf '{}\n'
@@ -256,12 +258,16 @@ fi
         .output()
         .expect("run isolated scenario harness");
 
-    assert!(
-        output.status.success(),
-        "harness failed:\nstdout={}\nstderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    if !output.status.success() {
+        let report = fs::read_to_string(results.join("report.tsv")).unwrap_or_default();
+        let behavior =
+            fs::read_to_string(results.join("behavioral-coverage.tsv")).unwrap_or_default();
+        panic!(
+            "harness failed:\nstdout={}\nstderr={}\nreport={report}\nbehavior={behavior}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let calls = fs::read_to_string(calls).unwrap();
     assert!(
         !calls.contains(&poison.display().to_string()) && !calls.contains("poison.invalid"),
@@ -332,6 +338,108 @@ fn scenario_mode_rejects_explicit_data_dir_outside_harness_tree() {
         "missing destructive-state refusal: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn concurrent_targeted_runs_get_distinct_default_state_roots() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(
+        &registry,
+        r#"{"commands":[{"name":"config path","path":["config","path"],"mutates":false}]}"#,
+    )
+    .unwrap();
+    let root = temp.path().join("runs");
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let calls = temp.path().join("calls");
+    let fake_axon = bin_dir.join("axon");
+    fs::write(
+        &fake_axon,
+        format!(
+            r#"#!/usr/bin/env bash
+if [ -n "${{AXON_COLLECTION:-}}" ]; then
+  printf '%s|%s\n' "$AXON_COLLECTION" "$AXON_DATA_DIR" >> '{}'
+fi
+if [ "${{1:-}}" = setup ] && [ "${{2:-}}" = init ]; then
+  mkdir -p "$HOME/.axon"
+  : > "$HOME/.axon/.env"
+fi
+if [ "${{1:-}}" = doctor ]; then
+  printf '%s\n' '{{"all_ok":true,"services":{{"qdrant":{{"ok":true}},"tei":{{"ok":true}},"chrome":{{"ok":true}},"llm":{{"ok":true}}}}}}'
+elif [ "${{1:-}}" = --json ]; then
+  printf '{{"toml_path":"%s","env_path":"%s"}}\n' "$AXON_CONFIG_PATH" "$AXON_ENV_FILE"
+else
+  printf '{{}}\n'
+fi
+"#,
+            calls.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+    let fake_curl = bin_dir.join("curl");
+    fs::write(&fake_curl, "#!/usr/bin/env bash\nprintf '{}\\n'\n").unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let mut resources = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios", "--scenario-group", "resources"])
+        .env("PATH", &path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_ROOT", &root)
+        .spawn()
+        .expect("start resources group");
+    let mut jobs = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios", "--scenario-group", "jobs-source"])
+        .env("PATH", &path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_ROOT", &root)
+        .spawn()
+        .expect("start jobs-source group");
+    let _ = resources.wait().unwrap();
+    let _ = jobs.wait().unwrap();
+
+    let mut run_names = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect::<Vec<_>>();
+    run_names.sort();
+    assert_eq!(run_names.len(), 2, "expected one state root per run");
+    assert!(run_names.iter().any(|name| name.starts_with("resources-")));
+    assert!(
+        run_names
+            .iter()
+            .any(|name| name.starts_with("jobs-source-"))
+    );
+    assert_ne!(run_names[0], run_names[1]);
+
+    let calls = fs::read_to_string(calls).unwrap();
+    let mut cleanup_targets = calls
+        .lines()
+        .filter_map(|line| line.split_once('|'))
+        .map(|(collection, _)| collection.to_string())
+        .collect::<Vec<_>>();
+    cleanup_targets.sort();
+    cleanup_targets.dedup();
+    assert_eq!(
+        cleanup_targets.len(),
+        2,
+        "runs shared cleanup state:\n{calls}"
+    );
+    assert_ne!(cleanup_targets[0], cleanup_targets[1]);
 }
 
 #[test]
@@ -492,4 +600,39 @@ fn hidden_cli_alias_inventory_is_behaviorally_covered() {
     let ask = fs::read_to_string("scripts/lib/live-cli-scenarios-web-rag.sh")
         .expect("read ask scenarios");
     assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
+}
+
+#[test]
+fn live_retry_policy_is_narrowly_limited_to_transient_web_failures() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let stderr_log = temp.path().join("stderr.log");
+    fs::write(&stderr_log, "Error: [fetch.timeout] request timed out\n").unwrap();
+    let probe = format!(
+        "source scripts/lib/live-cli-runtime.sh; \
+         retryable_live_failure scrape '{}' && \
+         ! retryable_live_failure 'jobs clear' '{}'",
+        stderr_log.display(),
+        stderr_log.display()
+    );
+    let output = Command::new("bash").arg("-c").arg(probe).output().unwrap();
+    assert!(
+        output.status.success(),
+        "retry policy probe failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    fs::write(&stderr_log, "Error: invalid argument\n").unwrap();
+    let probe = format!(
+        "source scripts/lib/live-cli-runtime.sh; \
+         ! retryable_live_failure scrape '{}'",
+        stderr_log.display()
+    );
+    assert!(
+        Command::new("bash")
+            .arg("-c")
+            .arg(probe)
+            .status()
+            .unwrap()
+            .success()
+    );
 }

@@ -32,7 +32,28 @@ fn mixed_batch_failure_never_renders_a_success_terminal() {
 }
 
 #[test]
-fn batch_forwarding_keeps_routed_kind_when_status_is_newer() {
+fn batch_target_terminal_controls_are_sanitized() {
+    let (_forwarder, updates) = batch_progress_channel();
+    let cfg = Config {
+        quiet: true,
+        ..Config::default()
+    };
+    let mut session = BatchProgressSession::new(&cfg, 1, updates);
+    session.apply(BatchProgressUpdate::Started {
+        index: 0,
+        target: "safe\x1b]52;c;Y2xpcGJvYXJk\x07name".to_string(),
+    });
+
+    let view = session.formatted(false);
+    assert!(
+        view.active
+            .iter()
+            .all(|line| !line.contains('\x1b') && !line.contains('\x07'))
+    );
+}
+
+#[tokio::test]
+async fn batch_forwarding_keeps_routed_kind_when_status_is_newer() {
     use axon_api::source::{
         JobId, JobStatusUpdate, LifecycleStatus, PipelinePhase, SourceKind, StageCounts,
     };
@@ -61,9 +82,9 @@ fn batch_forwarding_keeps_routed_kind_when_status_is_newer() {
         message: None,
         error: None,
     });
-    let (updates, mut received) = mpsc::unbounded_channel();
+    let (updates, mut received) = mpsc::channel(2);
 
-    forward_snapshot(0, &mut receiver, &updates);
+    forward_snapshot(0, &mut receiver, &updates).await;
 
     assert!(matches!(
         received.try_recv().unwrap(),

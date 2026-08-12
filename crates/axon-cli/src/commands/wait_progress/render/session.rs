@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::error::Error;
 use std::future::Future;
 use std::io;
@@ -8,7 +7,7 @@ use std::time::{Duration, Instant};
 use axon_api::source::{JobId, LifecycleStatus, SourceProgressEvent, SourceResult, SourceScope};
 use axon_core::{config::Config, ui};
 use axon_services::source::foreground_progress::{
-    ForegroundEventStore, ForegroundProgressReceiver, ForegroundSnapshot,
+    ForegroundEventStore, ForegroundProgressReceiver,
 };
 
 use super::{ProgressMode, WaitRenderer};
@@ -25,7 +24,6 @@ pub(crate) struct WaitProgressSession {
     estimate: Option<RateEstimate>,
     started_at: Instant,
     active_phase: Option<OperatorPhase>,
-    seen_event_ids: HashSet<String>,
     dirty: bool,
     reconciliation_warning_emitted: bool,
     render_error: Option<io::Error>,
@@ -50,7 +48,6 @@ impl WaitProgressSession {
             estimate: None,
             started_at: Instant::now(),
             active_phase: None,
-            seen_event_ids: HashSet::new(),
             dirty: true,
             reconciliation_warning_emitted: false,
             render_error: None,
@@ -116,43 +113,32 @@ impl WaitProgressSession {
     }
 
     fn apply_latest_snapshot(&mut self) {
-        if let Some(source_kind) = self.receiver.source_kind() {
-            self.dirty |= self.model.set_source_kind(source_kind);
-        }
         let snapshot = self.receiver.snapshots.borrow_and_update().clone();
         let Some(snapshot) = snapshot else {
             return;
         };
-        match snapshot {
-            ForegroundSnapshot::JobStarted(job_id) => {
-                if self.model.job_id != Some(job_id) {
-                    self.model.job_id = Some(job_id);
-                    self.dirty = true;
-                }
+        if self.model.job_id != Some(snapshot.job_id()) {
+            self.model.job_id = Some(snapshot.job_id());
+            self.dirty = true;
+        }
+        if let Some(source_kind) = snapshot.source_kind() {
+            self.dirty |= self.model.set_source_kind(source_kind);
+        }
+        if let Some(update) = snapshot.status() {
+            let phase = operator_phase(update.phase);
+            if self.active_phase != Some(phase) {
+                self.timing.reset();
+                self.active_phase = Some(phase);
             }
-            ForegroundSnapshot::Routed {
-                job_id,
-                source_kind,
-            } => {
-                self.model.job_id = Some(job_id);
-                self.dirty |= self.model.set_source_kind(source_kind);
-            }
-            ForegroundSnapshot::Status(update) => {
-                let phase = operator_phase(update.phase);
-                if self.active_phase != Some(phase) {
-                    self.timing.reset();
-                    self.active_phase = Some(phase);
-                }
-                if self.model.apply_snapshot(*update) {
-                    self.sample_timing();
-                    self.dirty = true;
-                }
+            if self.model.apply_snapshot(update.clone()) {
+                self.sample_timing();
+                self.dirty = true;
             }
         }
     }
 
     fn apply_event(&mut self, event: SourceProgressEvent) {
-        if !self.seen_event_ids.insert(event.event_id.clone()) {
+        if self.model.event_seen(&event.event_id) {
             return;
         }
         let elapsed = self.started_at.elapsed();

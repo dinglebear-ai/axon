@@ -37,7 +37,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   unset AXON_HOME AXON_SERVER_URL AXON_SQLITE_PATH AXON_OUTPUT_DIR \
     AXON_ARTIFACT_BIN_DIR AXON_ARTIFACT_ROOT AXON_CONFIG_PATH AXON_ENV_FILE
   export AXON_DATA_DIR="${AXON_LIVE_DATA_DIR:-$OUTDIR/data}"
-  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_${TS//[^0-9]/}}"
+  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_${RUN_SLUG}}"
   if [[ "$AXON_COLLECTION" != axon_live_* ]]; then
     echo "isolated live collection must start with axon_live_: $AXON_COLLECTION" >&2
     exit 2
@@ -63,10 +63,10 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:53333}" \
     TEI_URL="${TEI_URL:-http://127.0.0.1:52000}" \
     AXON_CHROME_REMOTE_URL="${AXON_CHROME_REMOTE_URL:-http://127.0.0.1:6000}" \
-    "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port 38133 --auth-mode bearer --json \
+    "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port "$((RUN_PORT_BASE + 1))" --auth-mode bearer --json \
     >"$OUTDIR/logs/fixture-setup-init.json" 2>"$OUTDIR/logs/fixture-setup-init.stderr.log"
   {
-    isolated_compose_project="axon-live-${TS//[^0-9]/}"
+    isolated_compose_project="axon-live-${RUN_ID,,}"
     isolated_compose_network="$isolated_compose_project"
     printf 'AXON_COMPOSE_PROJECT_NAME=%s\n' "$isolated_compose_project"
     printf 'AXON_CONTAINER_NAME=%s-axon\n' "$isolated_compose_project"
@@ -74,10 +74,10 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     printf 'AXON_TEI_CONTAINER_NAME=%s-tei\n' "$isolated_compose_project"
     printf 'AXON_CHROME_CONTAINER_NAME=%s-chrome\n' "$isolated_compose_project"
     printf 'DOCKER_NETWORK=%s\n' "$isolated_compose_network"
-    printf 'AXON_CHROME_MANAGEMENT_PORT=38600\n'
-    printf 'AXON_CHROME_CDP_PORT=39222\n'
-    printf 'AXON_CHROME_DEVTOOLS_PORT=39223\n'
-    printf 'TEI_HTTP_PORT=38200\n'
+    printf 'AXON_CHROME_MANAGEMENT_PORT=%s\n' "$((RUN_PORT_BASE + 2))"
+    printf 'AXON_CHROME_CDP_PORT=%s\n' "$((RUN_PORT_BASE + 3))"
+    printf 'AXON_CHROME_DEVTOOLS_PORT=%s\n' "$((RUN_PORT_BASE + 4))"
+    printf 'TEI_HTTP_PORT=%s\n' "$((RUN_PORT_BASE + 5))"
     printf 'AXON_EXTERNAL_QDRANT_URL=%s\n' "${QDRANT_URL:-http://127.0.0.1:53333}"
     printf 'AXON_EXTERNAL_TEI_URL=http://host.docker.internal:52000\n'
     printf 'AXON_EXTERNAL_CHROME_REMOTE_URL=http://host.docker.internal:6000\n'
@@ -85,7 +85,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   AXON_DATA_DIR="$SETUP_HOME/.axon" \
     AXON_CONFIG_PATH="$SETUP_HOME/.axon/config.toml" \
     AXON_ENV_FILE="$SETUP_HOME/.axon/.env" \
-    "$AXON_BIN" config set AXON_HTTP_PUBLISH 38135 --env --json \
+    "$AXON_BIN" config set AXON_HTTP_PUBLISH "$((RUN_PORT_BASE + 6))" --env --json \
     >"$OUTDIR/logs/fixture-compose-port.json" \
     2>"$OUTDIR/logs/fixture-compose-port.stderr.log"
   if jq -e '.commands[] | select(.name | startswith("compose "))' "$REGISTRY" >/dev/null; then
@@ -97,7 +97,9 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     assert_live_json "compose isolated loopback port" \
       "$OUTDIR/logs/fixture-compose-rendered.json" \
       '.services.axon.ports
-       | any(.target == 8001 and .published == "38135" and .host_ip == "127.0.0.1")'
+       | any(.target == 8001
+         and .published == (($ENV.AXON_LIVE_PORT_BASE | tonumber) + 6 | tostring)
+         and .host_ip == "127.0.0.1")'
   fi
   fixture_url="${AXON_LIVE_FIXTURE_URL:-https://example.com}"
   map_fixture_url="${AXON_LIVE_MAP_FIXTURE_URL:-https://www.rust-lang.org/}"
@@ -146,7 +148,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     esac
   done < <(jq -r '.commands[].name' "$REGISTRY")
 
-  if [ "$SCENARIO_GROUP" = "all" ] || [ "$SCENARIO_GROUP" = "jobs-source" ]; then
+  if [ "$REGISTRY" = "$ROOT_DIR/docs/reference/cli/commands.json" ] \
+    && { [ "$SCENARIO_GROUP" = "all" ] || [ "$SCENARIO_GROUP" = "jobs-source" ]; }; then
     run_operator_output_contracts
   fi
 fi
