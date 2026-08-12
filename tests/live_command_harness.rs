@@ -349,6 +349,153 @@ fn scenario_mode_rejects_explicit_data_dir_outside_harness_tree() {
 }
 
 #[test]
+fn artifact_scenarios_seed_their_own_fixture_when_screenshot_is_unavailable() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(
+        &registry,
+        r#"{"commands":[
+            {"name":"artifacts list","path":["artifacts","list"],"mutates":false},
+            {"name":"artifacts get","path":["artifacts","get"],"mutates":false},
+            {"name":"artifacts content","path":["artifacts","content"],"mutates":false}
+        ]}"#,
+    )
+    .unwrap();
+
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let calls = temp.path().join("calls");
+    let sequence = temp.path().join("sequence");
+    let fake_axon = bin_dir.join("axon");
+    let fake_script = r#"#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> '__CALLS__'
+args=("$@")
+filtered=()
+for arg in "${args[@]}"; do
+  case "$arg" in --json|--quiet) ;; *) filtered+=("$arg") ;; esac
+done
+set -- "${filtered[@]}"
+if [ "${1:-}" = config ]; then printf '{}\n'; exit 0; fi
+if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
+  mkdir -p "$HOME/.axon"
+  : > "$HOME/.axon/.env"
+  printf '{}\n'
+  exit 0
+fi
+if [ "${1:-}" = screenshot ]; then exit 1; fi
+if [ "${1:-}" = uploads ] && [ "${2:-}" = create ]; then
+  count=0
+  [ ! -f '__SEQUENCE__' ] || count="$(cat '__SEQUENCE__')"
+  count=$((count + 1))
+  printf '%s' "$count" > '__SEQUENCE__'
+  printf '{"upload":{"upload_id":"upl_fixture_%s"},"status":{"upload_id":"upl_fixture_%s"}}\n' "$count" "$count"
+  exit 0
+fi
+if [ "${1:-}" = uploads ] && [ "${2:-}" = complete ]; then
+  suffix="${3##*_}"
+  printf '{"upload_id":"%s","artifact_id":"art_raw_fixture_%s"}\n' "$3" "$suffix"
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = list ]; then
+  if [[ " $* " == *" --source-id "* || " $* " == *" --job-id "* ]]; then
+    printf '{"items":[],"next_cursor":null,"limit":10}\n'
+  elif [[ " $* " == *" --cursor "* ]]; then
+    printf '{"items":[{"artifact_id":"art_raw_fixture_2"}],"next_cursor":null,"limit":1}\n'
+  else
+    printf '{"items":[{"artifact_id":"art_raw_fixture_1"}],"next_cursor":"art_raw_fixture_1","limit":1}\n'
+  fi
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = get ]; then
+  [ -n "${3:-}" ]
+  printf '{"artifact_id":"%s","content_url":"/v1/artifacts/%s/content","metadata":{"filename":"hosts"}}\n' "$3" "$3"
+  exit 0
+fi
+if [ "${1:-}" = artifacts ] && [ "${2:-}" = content ]; then
+  [ -n "${3:-}" ]
+  output=""
+  range=""
+  download=0
+  index=4
+  while [ "$index" -le "$#" ]; do
+    value="${!index}"
+    case "$value" in
+      --output) index=$((index + 1)); output="${!index}" ;;
+      --range) index=$((index + 1)); range="${!index}" ;;
+      --download) download=1 ;;
+    esac
+    index=$((index + 1))
+  done
+  [ "$download" -eq 0 ] || output="$3.bin"
+  size=32
+  [ "$range" != bytes=0-15 ] || size=16
+  [ -z "$output" ] || head -c "$size" /dev/zero > "$output"
+  printf '{"artifact_id":"%s","content_type":"application/octet-stream","size_bytes":%s,"output":"%s"}\n' "$3" "$size" "$output"
+  exit 0
+fi
+printf '{}\n'
+"#
+    .replace("__CALLS__", &calls.display().to_string())
+    .replace("__SEQUENCE__", &sequence.display().to_string());
+    fs::write(&fake_axon, fake_script).unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+
+    let fake_curl = bin_dir.join("curl");
+    fs::write(&fake_curl, "#!/usr/bin/env bash\nprintf '{}\\n'\n").unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+
+    let results = temp.path().join("results");
+    let path = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let output = Command::new("bash")
+        .arg("scripts/live-test-all-commands.sh")
+        .args(["--mode", "scenarios"])
+        .env("PATH", path)
+        .env("AXON_BIN", &fake_axon)
+        .env("AXON_COMMAND_REGISTRY", &registry)
+        .env("AXON_LIVE_TEST_OUTDIR", &results)
+        .output()
+        .expect("run artifact scenarios");
+
+    assert!(
+        output.status.success(),
+        "artifact scenarios failed:\nstdout={}\nstderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let calls = fs::read_to_string(calls).unwrap();
+    assert!(
+        calls.contains("uploads complete upl_fixture_1"),
+        "artifact lane did not promote its own fixture:\n{calls}"
+    );
+    assert!(
+        calls.lines().all(|line| !line.contains("screenshot")),
+        "artifact coverage must not invoke the unavailable screenshot producer:\n{calls}"
+    );
+    assert!(
+        calls
+            .lines()
+            .any(|line| { line.contains("artifacts get art_raw_fixture_1 --include-content-url") }),
+        "artifact detail received an empty or screenshot-owned id:\n{calls}"
+    );
+    assert!(results.join("art_raw_fixture_1.bin").is_file());
+    assert_eq!(
+        fs::metadata(results.join("artifact-range.bin"))
+            .unwrap()
+            .len(),
+        16
+    );
+}
+
+#[test]
 fn canonical_binary_rejects_invalid_values_and_conflicts_without_help() {
     let binary = env!("CARGO_BIN_EXE_axon");
     for (args, expected) in [

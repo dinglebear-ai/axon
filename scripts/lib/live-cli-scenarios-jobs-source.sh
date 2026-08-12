@@ -213,7 +213,6 @@ handle_live_jobs_memory_source_scenario() {
       "screenshot")
         run_live "$name" screenshot "$fixture_url" --output "$OUTDIR/screenshot.png" \
           --screenshot-full-page false --viewport 1280x720 --json
-        screenshot_artifact_id="$(jq -r '.artifact_id // empty' "$LAST_LIVE_LOG" 2>/dev/null)"
         assert_live_json "screenshot artifact contract" "$LAST_LIVE_LOG" \
           '.artifact_id != null and .artifact_id != ""
            and .width == 1280 and .height == 720'
