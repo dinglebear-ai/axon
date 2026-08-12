@@ -759,6 +759,155 @@ printf '{}\n'
 }
 
 #[test]
+fn artifact_fixture_commands_obey_the_live_command_timeout() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let fake_axon = temp.path().join("axon");
+    fs::write(
+        &fake_axon,
+        "#!/usr/bin/env bash\nif [ \"${1:-}\" = uploads ]; then sleep 30; fi\nprintf '{}\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+    let outdir = temp.path().join("results");
+    fs::create_dir_all(outdir.join("logs")).unwrap();
+
+    let shell = r#"
+set -uo pipefail
+artifact_fixture_id=""
+artifact_fixture_second_id=""
+artifact_fixture_error="artifact fixture was not prepared"
+source scripts/lib/live-cli-scenarios-resources.sh
+if ensure_artifact_fixture; then exit 9; fi
+printf '%s\n' "$artifact_fixture_error"
+"#;
+    let output = Command::new("timeout")
+        .args(["5", "bash", "-c", shell])
+        .env("AXON_BIN", &fake_axon)
+        .env("OUTDIR", &outdir)
+        .env("TIMEOUT_SECS", "1")
+        .output()
+        .expect("run bounded artifact fixture");
+
+    assert!(
+        output.status.success(),
+        "artifact fixture exceeded its timeout: status={:?}",
+        output.status.code()
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("uploads create timed out"),
+        "missing timeout diagnostic: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn simultaneous_default_runs_receive_distinct_atomic_identities() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let registry = temp.path().join("commands.json");
+    fs::write(&registry, r#"{"commands":[]}"#).unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir(&bin_dir).unwrap();
+    let calls = temp.path().join("calls");
+    let fake_axon = bin_dir.join("axon");
+    fs::write(
+        &fake_axon,
+        format!(
+            "#!/usr/bin/env bash\nprintf '%s|%s\\n' \"$PWD\" \"${{AXON_COLLECTION:-}}\" >> '{}'\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{{}}\\n'\n",
+            calls.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_axon, permissions).unwrap();
+    let fake_curl = bin_dir.join("curl");
+    fs::write(
+        &fake_curl,
+        "#!/usr/bin/env bash\nif [[ \"$*\" == *'/json/version'* ]]; then printf '{\"Browser\":\"HeadlessChrome/1\",\"webSocketDebuggerUrl\":\"ws://127.0.0.1:9222/devtools/browser/test\"}\\n'; else printf '{}\\n'; fi\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_curl).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_curl, permissions).unwrap();
+    let fake_date = bin_dir.join("date");
+    fs::write(
+        &fake_date,
+        "#!/usr/bin/env bash\nprintf '20260812-120000\\n'\n",
+    )
+    .unwrap();
+    let mut permissions = fs::metadata(&fake_date).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&fake_date, permissions).unwrap();
+    let path = format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap());
+
+    let spawn = || {
+        Command::new("bash")
+            .arg("scripts/live-test-all-commands.sh")
+            .args(["--mode", "scenarios"])
+            .env("PATH", &path)
+            .env("AXON_BIN", &fake_axon)
+            .env("AXON_COMMAND_REGISTRY", &registry)
+            .env_remove("AXON_LIVE_TEST_OUTDIR")
+            .spawn()
+            .expect("spawn default harness")
+    };
+    let mut first = spawn();
+    let mut second = spawn();
+    assert!(first.wait().unwrap().success());
+    assert!(second.wait().unwrap().success());
+
+    let calls = fs::read_to_string(calls).unwrap();
+    let identities = calls
+        .lines()
+        .filter_map(|line| {
+            let (cwd, collection) = line.split_once('|')?;
+            (!collection.is_empty()).then(|| (cwd.to_owned(), collection.to_owned()))
+        })
+        .collect::<std::collections::HashSet<_>>();
+    let output_dirs = identities
+        .iter()
+        .map(|(cwd, _)| cwd)
+        .collect::<std::collections::HashSet<_>>();
+    let collections = identities
+        .iter()
+        .map(|(_, collection)| collection)
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(
+        output_dirs.len(),
+        2,
+        "simultaneous runs reused their output directory:\n{calls}"
+    );
+    assert_eq!(
+        collections.len(),
+        2,
+        "simultaneous runs reused their collection identity:\n{calls}"
+    );
+    let default_root = std::env::current_dir().unwrap().join(".cache/live-test");
+    let mut compose_projects = std::collections::HashSet::new();
+    for (cwd, _) in identities {
+        let outdir = std::path::Path::new(&cwd)
+            .parent()
+            .expect("command-workdir parent");
+        assert!(outdir.starts_with(&default_root));
+        let setup_env = fs::read_to_string(outdir.join("setup-home/.axon/.env")).unwrap();
+        let compose_project = setup_env
+            .lines()
+            .find_map(|line| line.strip_prefix("AXON_COMPOSE_PROJECT_NAME="))
+            .expect("compose project identity");
+        compose_projects.insert(compose_project.to_owned());
+        fs::remove_dir_all(outdir).unwrap();
+    }
+    assert_eq!(
+        compose_projects.len(),
+        2,
+        "simultaneous runs reused their Compose identity"
+    );
+}
+
+#[test]
 fn canonical_binary_rejects_invalid_values_and_conflicts_without_help() {
     let binary = env!("CARGO_BIN_EXE_axon");
     for (args, expected) in [

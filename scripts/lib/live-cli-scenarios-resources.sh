@@ -4,24 +4,37 @@
 ensure_artifact_fixture() {
   [ -n "$artifact_fixture_id" ] && [ -n "$artifact_fixture_second_id" ] && return 0
 
-  local ordinal upload_log upload_id complete_log artifact_id
+  local ordinal upload_log upload_id complete_log artifact_id fixture_exit
   for ordinal in 1 2; do
     upload_log="$OUTDIR/logs/fixture-artifact-upload-$ordinal.json"
     complete_log="$OUTDIR/logs/fixture-artifact-complete-$ordinal.json"
-    if ! "$AXON_BIN" uploads create /etc/hosts --purpose source_artifact --json \
-      >"$upload_log" 2>"${upload_log%.json}.stderr.log"; then
-      artifact_fixture_error="uploads create failed; inspect ${upload_log%.json}.stderr.log"
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" uploads create /etc/hosts \
+      --purpose source_artifact --json \
+      >"$upload_log" 2>"${upload_log%.json}.stderr.log"
+    fixture_exit=$?
+    if [ "$fixture_exit" -ne 0 ]; then
+      if [ "$fixture_exit" -eq 124 ]; then
+        artifact_fixture_error="uploads create timed out after ${TIMEOUT_SECS}s; inspect ${upload_log%.json}.stderr.log"
+      else
+        artifact_fixture_error="uploads create failed with exit $fixture_exit; inspect ${upload_log%.json}.stderr.log"
+      fi
       return 1
     fi
     if ! upload_id="$(jq -er '.upload.upload_id // .status.upload_id' "$upload_log")"; then
       artifact_fixture_error="uploads create returned malformed JSON or no upload id; inspect $upload_log"
       return 1
     fi
-    "$AXON_BIN" uploads complete "$upload_id" --json \
-      >"$complete_log" 2>"${complete_log%.json}.stderr.log" || {
-        artifact_fixture_error="uploads complete failed; inspect ${complete_log%.json}.stderr.log"
-        return 1
-      }
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" uploads complete "$upload_id" --json \
+      >"$complete_log" 2>"${complete_log%.json}.stderr.log"
+    fixture_exit=$?
+    if [ "$fixture_exit" -ne 0 ]; then
+      if [ "$fixture_exit" -eq 124 ]; then
+        artifact_fixture_error="uploads complete timed out after ${TIMEOUT_SECS}s; inspect ${complete_log%.json}.stderr.log"
+      else
+        artifact_fixture_error="uploads complete failed with exit $fixture_exit; inspect ${complete_log%.json}.stderr.log"
+      fi
+      return 1
+    fi
     if ! artifact_id="$(jq -er '.artifact_id' "$complete_log")"; then
       artifact_fixture_error="uploads complete returned malformed JSON or no artifact id; inspect $complete_log"
       return 1

@@ -87,7 +87,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
       echo "live scenarios require setsid for owned Chrome process-group cleanup" >&2
       exit 2
     }
-    live_chrome_session_token="axon-live-chrome-${TS//[^0-9]/}-$$"
+    live_chrome_session_token="axon-live-chrome-$LIVE_RUN_ID-$$"
     rm -f -- "$OUTDIR/chrome-profile/DevToolsActivePort"
     AXON_LIVE_CHROME_SESSION_TOKEN="$live_chrome_session_token" \
       setsid "$live_chrome_binary" --headless=new --no-sandbox --disable-gpu \
@@ -127,7 +127,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   unset AXON_HOME AXON_SERVER_URL AXON_SQLITE_PATH AXON_OUTPUT_DIR \
     AXON_ARTIFACT_BIN_DIR AXON_ARTIFACT_ROOT AXON_CONFIG_PATH AXON_ENV_FILE
   export AXON_DATA_DIR="${AXON_LIVE_DATA_DIR:-$OUTDIR/data}"
-  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_${TS//[^0-9]/}}"
+  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_$LIVE_RUN_ID}"
   if ! [[ "$AXON_COLLECTION" =~ ^axon_live_[A-Za-z0-9_-]{1,120}$ ]]; then
     echo "isolated live collection must match ^axon_live_[A-Za-z0-9_-]{1,120}$: $AXON_COLLECTION" >&2
     exit 2
@@ -153,7 +153,7 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port 38133 --auth-mode bearer --json \
     >"$OUTDIR/logs/fixture-setup-init.json" 2>"$OUTDIR/logs/fixture-setup-init.stderr.log"
   {
-    isolated_compose_project="axon-live-${TS//[^0-9]/}"
+    isolated_compose_project="axon-live-${LIVE_RUN_ID//_/-}"
     isolated_compose_network="$isolated_compose_project"
     printf 'AXON_COMPOSE_PROJECT_NAME=%s\n' "$isolated_compose_project"
     printf 'AXON_CONTAINER_NAME=%s-axon\n' "$isolated_compose_project"
