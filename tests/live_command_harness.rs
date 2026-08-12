@@ -183,8 +183,8 @@ fn scenario_mode_isolates_state_and_cleans_up_only_its_collection() {
     let calls = temp.path().join("calls");
     let fake_axon = bin_dir.join("axon");
     let fake_script = r#"#!/usr/bin/env bash
-printf '%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s\n' \
-  "$*" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
+printf '%s|cwd=%s|data=%s|sqlite=%s|server=%s|output=%s|artifact=%s|config=%s|envfile=%s\n' \
+  "$*" "$PWD" "${AXON_DATA_DIR:-}" "${AXON_SQLITE_PATH:-}" "${AXON_SERVER_URL:-}" \
   "${AXON_OUTPUT_DIR:-}" "${AXON_ARTIFACT_BIN_DIR:-}" "${AXON_CONFIG_PATH:-}" \
   "${AXON_ENV_FILE:-}" >> '__CALLS__'
 if [ "${1:-}" = --help ]; then
@@ -266,6 +266,11 @@ fi
     assert!(
         !calls.contains(&poison.display().to_string()) && !calls.contains("poison.invalid"),
         "poisoned caller state leaked into isolated commands:\n{calls}"
+    );
+    let command_workdir = format!("cwd={}/command-workdir", results.display());
+    assert!(
+        calls.lines().all(|line| line.contains(&command_workdir)),
+        "all live commands must run from the harness-owned working directory:\n{calls}"
     );
     assert!(
         calls.lines().any(|line| {

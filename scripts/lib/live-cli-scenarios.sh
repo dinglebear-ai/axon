@@ -30,6 +30,9 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   install -m 0755 "$AXON_BIN" "$isolated_bin_dir/axon"
   AXON_BIN="$isolated_bin_dir/axon"
   export AXON_UPDATE_INSTALL_PATH="$isolated_bin_dir/axon"
+  HARNESS_COMMAND_CWD="$OUTDIR/command-workdir"
+  mkdir -p "$HARNESS_COMMAND_CWD"
+  cd "$HARNESS_COMMAND_CWD" || exit 2
 
   # shellcheck disable=SC1091
   source "$ROOT_DIR/scripts/lib/axon-env.sh"

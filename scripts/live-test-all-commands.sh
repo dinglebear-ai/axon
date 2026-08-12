@@ -40,9 +40,12 @@ REGISTRY="${AXON_COMMAND_REGISTRY:-$ROOT_DIR/docs/reference/cli/commands.json}"
 TIMEOUT_SECS="${AXON_LIVE_COMMAND_TIMEOUT_SECS:-120}"
 TS="$(date +%Y%m%d-%H%M%S)"
 OUTDIR="${AXON_LIVE_TEST_OUTDIR:-$ROOT_DIR/.cache/live-test/$TS}"
+mkdir -p "$OUTDIR/logs"
+AXON_BIN="$(realpath -- "$AXON_BIN")"
+REGISTRY="$(realpath -- "$REGISTRY")"
+OUTDIR="$(realpath -- "$OUTDIR")"
 REPORT="$OUTDIR/report.tsv"
 BEHAVIOR_REPORT="$OUTDIR/behavioral-coverage.tsv"
-mkdir -p "$OUTDIR/logs"
 
 command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
