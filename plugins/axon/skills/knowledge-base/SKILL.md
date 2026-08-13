@@ -17,22 +17,31 @@ Ask at most 1-3 concise questions only if blocked, such as the source URL/topic,
 
 Choose the Axon surface by source shape:
 
+All indexing goes through the one unified source command — `axon <source>`
+(equivalently `axon source <source>`), narrowed with `--scope` when the family
+default is wrong. There is no `axon crawl`, `axon ingest`, `axon embed`, or
+`axon refresh`.
+
 | Need | Axon surface |
 |---|---|
 | Discover URLs only | `axon map <url>` |
-| Capture a docs site or section as artifacts | `axon crawl <url> --output-dir <dir>` |
+| Capture a docs site or section as artifacts | `axon <url> --scope site --output-dir <dir>` |
 | Fetch selected pages | `axon scrape <url> --output-dir <dir>` |
 | Discover topic sources | `axon search` or `axon research` |
-| Ingest repos, RSS, Reddit, YouTube, or sessions | `axon ingest` / `axon sessions` |
-| Refresh existing indexed corpus | `axon refresh [filter] --yes` |
-| Schedule freshness | `axon crawl|scrape|embed|ingest ... --fresh <Nd>` |
+| Index repos, feeds, Reddit, YouTube, packages, local paths | `axon <source>` |
+| Index AI sessions | `axon sessions`, or `axon "session:<provider>:<path>"` |
+| Refresh an existing source | re-run `axon <source>` — the ledger diffs manifests and only re-prepares what changed |
+| Schedule freshness | `axon watch create "<source>" --every-seconds <N>` |
 | Reuse indexed content | `axon query`, `axon ask`, `axon retrieve`, `axon sources` |
 
 Choose an explicit workflow output directory and pass it with `--output-dir` or
 `--output` for commands that write files. Do not treat repo-local `.axon/` paths
 as Axon's internal data directory.
 
-For finished knowledge-base deliverables, run async Axon commands in blocking mode: `axon crawl ... --wait true`, `axon ingest ... --wait true`, and `axon embed ... --wait true`. If you intentionally enqueue instead, report the job ID and the exact status command to run next.
+For finished knowledge-base deliverables, run indexing in blocking mode:
+`axon <source> ... --wait true`. Without `--wait true` the CLI enqueues and
+returns a job id — if you intentionally enqueue, report the job id and the exact
+follow-up command (`axon jobs get <job-id>`).
 
 ## Parallel Work
 

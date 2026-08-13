@@ -1,6 +1,6 @@
 ---
 name: download
-description: Save website or documentation content locally with Axon map, scrape, crawl, output-dir, and screenshots.
+description: Save website or documentation content locally with Axon map, scrape, site-scope source indexing, output-dir, and screenshots.
 ---
 
 # Axon Download
@@ -26,11 +26,15 @@ Section capture:
 
 ```bash
 mkdir -p .axon/download
-axon crawl "https://docs.example.com/reference" \
+axon "https://docs.example.com/reference" \
+  --scope site \
   --max-pages 200 \
   --wait true \
   --output-dir .axon/download/reference
 ```
+
+Add `--warc .axon/download/reference.warc` to archive every fetched page, or
+`--skip-embed` to save files without publishing to Qdrant.
 
 Screenshot:
 
@@ -41,7 +45,7 @@ axon screenshot "https://example.com" --output .axon/download/example.png
 ## Guidance
 
 - Start with `map` if you need to choose which paths to capture.
-- Use `crawl` with explicit caps for large sections.
+- Use `--scope site` with explicit caps (`--max-pages`, `--max-depth`, `--budget`) for large sections.
 - Expect markdown, manifests, WARC files, and screenshots, not a full offline website mirror.
 - Keep generated captures out of commits unless the user explicitly asks for curated artifacts.
 
