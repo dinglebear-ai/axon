@@ -99,6 +99,8 @@ handle_live_admin_setup_scenario() {
         run_live_setup_home "$name" compose up --json
         assert_live_json "compose up phases" "$LAST_LIVE_LOG" \
           '.has_errors == false and any(.phases[]; .name == "compose-up" and .status == "ok")'
+        assert_live_container_stable "compose up container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "compose down")
         run_live_setup_home "$name" compose down --json
@@ -112,6 +114,8 @@ handle_live_admin_setup_scenario() {
         run_live_setup_home "$name" compose restart --json
         assert_live_json "compose restart phases" "$LAST_LIVE_LOG" \
           '.has_errors == false and any(.phases[]; .name == "compose-restart" and .status == "ok")'
+        assert_live_container_stable "compose restart container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "compose rebuild")
         run_live_setup_home "$name" compose rebuild --json
@@ -119,6 +123,8 @@ handle_live_admin_setup_scenario() {
           '.has_errors == false
            and any(.phases[]; .name == "compose-build" and .status == "ok")
            and any(.phases[]; .name == "compose-up" and .status == "ok")'
+        assert_live_container_stable "compose rebuild container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "setup plugin-hook")
         run_live_setup_home "$name" setup plugin-hook --no-setup --json
