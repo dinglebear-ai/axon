@@ -10,13 +10,18 @@
 - Added a defensive SessionStart hook that recalls compact `memory.context` for the current git project when Axon memory is available.
 
 ### Changed
+- Realigned the whole skill surface, both references, and the `researcher` agent with the unified source pipeline. Removed every reference to the retired `crawl`/`ingest`/`embed`/`refresh` commands and the retired `crawl`/`scrape`/`embed`/`ingest` MCP actions in favor of `axon <source> [--scope …]` and `action: "source"`, and replaced per-family job lifecycles with the unified `jobs` surface.
+- Rewrote `skills/monitor` for the unified watch model: `axon watch create <SOURCE> --every-seconds N`, dropping the nonexistent `--task-type`/`--task-payload` flags.
+- Rewrote `references/async-job-lifecycle.md` around the single durable job model, including the opposite MCP (`detached`) and CLI (`--wait`) async defaults and the worker requirement.
+- Replaced the nonexistent `--respect-robots` guidance in four workflow skills with explicit page/depth/budget bounding, since Axon has no robots.txt enforcement.
+- Corrected the `--cache` default in `using-axon` — cache reuse is off by default and opted into with `--cache true`.
 - Rebranded the imported Firecrawl-style skills as Axon-native workflows, removing the `axon-` folder prefix now that the skills live inside the Axon plugin namespace.
 - Moved the runtime RAG synthesis prompt from a user-facing skill path to `references/rag-synthesize/` so it can be embedded by Axon without appearing as an invocable plugin skill.
 - Updated the plugin README to describe the current HTTP MCP configuration, minimal user config, skills layout, and reference files.
 
 ### Fixed
 - Added skill hygiene coverage so missing `SKILL.md`, missing `agents/openai.yaml`, stale `axon-` folder prefixes, or misplaced reference-only skills fail in tests.
-- Clarified that Axon download/offline-capture guidance is a composed `scrape`/`crawl --output-dir`/`screenshot` workflow, not a single first-class offline-site mirroring command.
+- Clarified that Axon download/offline-capture guidance is a composed `scrape`/`<url> --scope site --output-dir`/`screenshot` workflow, not a single first-class offline-site mirroring command.
 
 ## [1.5.4] - 2026-05-06
 

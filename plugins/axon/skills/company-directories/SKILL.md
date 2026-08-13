@@ -23,7 +23,7 @@ Axon.
 
 Suggested sources include YC companies, Crunchbase, Product Hunt, G2 categories, or any custom directory URL.
 
-For finished deliverables, run async Axon commands in blocking mode: `axon extract ... --wait true --json` and `axon crawl ... --wait true`. For public directories, pass `--respect-robots true` unless the user gives a specific authorized reason not to.
+For finished deliverables, run Axon commands in blocking mode: `axon extract ... --wait true --json` and `axon <url> --scope site --wait true`. Axon has **no robots.txt enforcement flag** — bound public-directory capture yourself with a tight start URL plus `--max-pages`, `--max-depth`, and `--budget PATH=N`, and honor the source's terms.
 
 Stop at login walls, paywalls, CAPTCHAs, or contractual restrictions unless the
 user confirms authorized access and source terms allow automated extraction.
@@ -72,7 +72,7 @@ Use `source`, `filters`, `extractedAt`, `totalResults`, and `companies[]` with `
 
 - Deduplicate companies.
 - Track pagination progress.
-- Respect source terms, rate limits, and robots where applicable; use `--respect-robots true` for public directory crawls by default.
+- Respect source terms, rate limits, and robots directives where applicable. Axon does not enforce robots.txt for you — keep capture bounded with explicit page/depth/budget caps.
 - Stop at login walls, paywalls, or CAPTCHA blocks unless authorized and allowed.
 - Record filters/query/date plus a rerun command or structured rerun config.
 - For examples, see [workflow-output-templates.md](../../examples/workflow-output-templates.md).

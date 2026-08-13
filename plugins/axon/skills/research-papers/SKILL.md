@@ -27,8 +27,9 @@ Core tools:
 - `axon search "<paper/topic query>" --json` to gather candidate URLs.
 - `axon scrape <url>` or `axon summarize <url>` for one
   paper, report, abstract page, HTML page, or readable PDF landing page.
-- `axon ingest <repo-or-feed>` or `axon embed <path-or-url>`
-  when the user provides a corpus to index.
+- `axon <source> --wait true` when the user provides a corpus to index — one
+  command covers repos, feeds, local directories of papers, and URLs. Add
+  `--scope site` for a whole publication section.
 - `axon ask "<question>"` and `axon query "<topic>"` after
   indexing to synthesize or inspect retrieved chunks.
 
