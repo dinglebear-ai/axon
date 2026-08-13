@@ -125,10 +125,22 @@ jobs:
         with:
           context: .
           file: config/Dockerfile
+          # Must match docker-image.yml. config/Dockerfile ends with the
+          # `dev-runtime` stage, so an untargeted build smoke-tests a stage
+          # that is never published.
+          target: runtime
           push: false
+          load: true
           tags: axon:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Building the image proves it compiles, not that it runs. The published
+      # image once shipped the dev-runtime entrypoint, which execs a
+      # bind-mounted host binary and crash-loops for anyone who just pulls it.
+      # Executing the entrypoint is what catches that class of regression.
+      - name: Verify the built image runs its own binary
+        run: docker run --rm axon:smoke --version
 
   compose-smoke-gate:
     name: compose-smoke-gate

@@ -308,6 +308,30 @@ assert_live_nonempty() {
   record "$name" "contract" "$result" "$exit_code" "non-empty output" "$logfile"
 }
 
+# `compose up` reporting every phase ok only proves compose accepted the
+# stack, not that the container survived its own entrypoint. A container that
+# exits immediately is restarted by `restart: unless-stopped` roughly once a
+# minute until the EXIT trap tears the project down, so the churn is invisible
+# to a phase-only assertion. Settle briefly, then require it still be up and
+# not have restarted.
+assert_live_container_stable() {
+  local name="$1" container="$2" state result exit_code
+  sleep 5
+  state="$(docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
+    "$container" 2>/dev/null || true)"
+  if [ "$state" = "true 0" ]; then
+    result="PASS"
+    exit_code=0
+    confirm_pending_behavior
+  else
+    result="FAIL"
+    exit_code=1
+    failures=$((failures + 1))
+  fi
+  record "$name" "contract" "$result" "$exit_code" \
+    "container running with no restarts (got: ${state:-missing})" "$container"
+}
+
 run_live_server() {
   local name="$1" port="$2"
   shift 2

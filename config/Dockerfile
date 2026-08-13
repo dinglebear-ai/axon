@@ -114,6 +114,9 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/axon"]
 CMD ["serve"]
 
 # ── Dev runtime ───────────────────────────────────────────────────────────────
+# This is the LAST stage, so an untargeted `docker build` selects it. Every
+# build that ships an image must pin `--target runtime`; publishing this stage
+# gives a container with no binary that crash-loops on the exec below.
 # Runs the host-built debug binary bind-mounted by docker-compose.yaml.
 # Use a newer libc than the production image so the host binary can run without
 # rebuilding the full container for ordinary Rust code changes.
