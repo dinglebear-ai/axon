@@ -25,19 +25,33 @@ BUILD_ACTION = "docker/build-push-action"
 STAGE_RE = re.compile(r"^\s*FROM\s+.+\s+AS\s+(\S+)", re.IGNORECASE | re.MULTILINE)
 
 
-def dockerfile_stages(path: Path) -> list[str]:
+def dockerfile_stages(path: Path) -> list[str] | None:
+    """Stage names in build order, or None when the file cannot be read.
+
+    The caller must not fold None into "no stages to check". Treating an
+    unreadable Dockerfile as nothing-to-do is how a check like this passes
+    while the thing it guards is broken.
+    """
     try:
         return STAGE_RE.findall(path.read_text(encoding="utf-8"))
     except OSError:
-        return []
+        return None
 
 
 def step_blocks(text: str) -> list[tuple[int, list[str]]]:
     """Split a workflow into `- uses:`/`- name:` step blocks with 1-based starts.
 
     Steps are found by indentation rather than parsed as YAML so this stays a
-    dependency-free pre-commit check. A step runs until the next line at the
-    same indentation that starts a new `- ` item.
+    dependency-free pre-commit check -- PyYAML is not vendored, and the
+    self-hosted runners and dev machines that run this have no install step.
+    A step runs until the next line at the same indentation that starts a new
+    `- ` item.
+
+    These are therefore approximate boundaries, not true step boundaries:
+    trailing comment lines belong to whichever step precedes them, and a
+    `run: |` block containing literal `- ` lines would split wrongly. Both are
+    harmless because the patterns below anchor on `file:`/`target:` keys, but
+    do not reuse this splitter for anything that needs exact steps.
     """
     lines = text.splitlines()
     blocks: list[tuple[int, list[str]]] = []
@@ -74,10 +88,18 @@ def check_workflow(path: Path, repo_root: Path) -> list[str]:
         # No `file:` means the default ./Dockerfile; resolve it the same way.
         dockerfile = repo_root / (file_match.group(1) if file_match else "Dockerfile")
         stages = dockerfile_stages(dockerfile)
+        if stages is None:
+            failures.append(
+                f"{path}:{start}: {BUILD_ACTION} builds {dockerfile}, which "
+                f"cannot be read. Refusing to report a build as checked when "
+                f"its Dockerfile was never inspected."
+            )
+            continue
         if len(stages) < 2:
             continue
 
-        if not re.search(r"^\s*target:\s*(\S+)", body, re.MULTILINE):
+        target_match = re.search(r"^\s*target:\s*(\S+)", body, re.MULTILINE)
+        if not target_match:
             failures.append(
                 f"{path}:{start}: {BUILD_ACTION} builds {dockerfile.name} "
                 f"({len(stages)} stages, last is '{stages[-1]}') without a "
@@ -85,7 +107,7 @@ def check_workflow(path: Path, repo_root: Path) -> list[str]:
             )
             continue
 
-        target = re.search(r"^\s*target:\s*(\S+)", body, re.MULTILINE).group(1)
+        target = target_match.group(1)
         if target not in stages:
             failures.append(
                 f"{path}:{start}: {BUILD_ACTION} sets `target: {target}`, which "
