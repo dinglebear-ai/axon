@@ -18,7 +18,7 @@ use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
     MapDiscoveryOutcome, MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
-    merge_map_candidate_urls, resolve_map_seed_url,
+    merge_discovery_candidate_urls, merge_map_candidate_urls, resolve_map_seed_url,
 };
 use crate::boundary::{FetchProvider, RenderProvider};
 
@@ -30,6 +30,16 @@ use crate::boundary::{FetchProvider, RenderProvider};
 /// site with a rich sitemap skips the extra fetch entirely, while a thin or
 /// out-of-scope one still gets anchors.
 const MIN_DISCOVERY_URLS: usize = 200;
+const MIN_LLMS_DISCOVERY_URLS: usize = 100;
+
+pub(crate) fn discovery_is_sufficient(source: &str, url_count: usize) -> bool {
+    let minimum = if source.contains("llms") {
+        MIN_LLMS_DISCOVERY_URLS
+    } else {
+        MIN_DISCOVERY_URLS
+    };
+    url_count >= minimum
+}
 
 /// Merged-result count below which the map is reported as possibly incomplete.
 const MIN_HEALTHY_MAP_URLS: usize = 5;
@@ -368,8 +378,7 @@ pub async fn discover_site_urls(
         (false, true) => None,
     };
 
-    let mut combined = sitemap_discovery.urls;
-    combined.extend(llms_urls);
+    let combined = merge_discovery_candidate_urls(sitemap_discovery.urls, llms_urls);
     let discovery_urls = scope_and_filter_map_urls(cfg, combined, &scope);
 
     if cfg.sitemap_only {
@@ -395,7 +404,7 @@ pub async fn discover_site_urls(
     // whose entries all fell outside scope. Gate on the RESULTING URL count, not
     // on how many documents parsed, so those cases still reach anchor discovery.
     if let Some(source) = discovery_source
-        && discovery_urls.len() >= MIN_DISCOVERY_URLS
+        && discovery_is_sufficient(source, discovery_urls.len())
     {
         return Ok(build_discovery_map_result(
             discovery_urls,

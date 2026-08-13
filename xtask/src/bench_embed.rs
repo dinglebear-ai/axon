@@ -82,6 +82,12 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let collection = args
         .collection
         .unwrap_or_else(|| format!("axon_embed_bench_{}", unix_timestamp()));
+    let state_root = root.join("target/bench-embed");
+    std::fs::create_dir_all(&state_root)?;
+    let state = tempfile::Builder::new()
+        .prefix("state-")
+        .tempdir_in(&state_root)
+        .context("create isolated bench-embed state directory")?;
     let axon_bin = args
         .axon_bin
         .unwrap_or_else(|| default_axon_bin(root).unwrap_or_else(|| PathBuf::from("axon")));
@@ -99,11 +105,13 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let start = Instant::now();
     let mut command = Command::new(&axon_bin);
     command
-        .arg("embed")
+        .arg("source")
         .arg(&corpus)
         .arg("--wait")
         .arg("true")
         .arg("--json")
+        .env("AXON_HOME", state.path())
+        .env("AXON_DATA_DIR", state.path())
         .env("AXON_COLLECTION", &collection)
         .env("QDRANT_URL", &qdrant_url)
         .env("AXON_QDRANT_URL", &qdrant_url);
@@ -121,7 +129,7 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         bail!(
-            "axon embed failed with status {}\nstdout:\n{}\nstderr:\n{}",
+            "axon source failed with status {}\nstdout:\n{}\nstderr:\n{}",
             output.status,
             stdout,
             stderr
@@ -168,6 +176,7 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let docs_embedded = first_u64_pointer(
         axon_json.as_ref(),
         &[
+            "/documents_prepared",
             "/docs_embedded",
             "/summary/docs_embedded",
             "/result/docs_embedded",
@@ -177,6 +186,7 @@ pub fn run(root: &Path, args: BenchEmbedArgs) -> Result<()> {
     let chunks_embedded = first_u64_pointer(
         axon_json.as_ref(),
         &[
+            "/chunks_prepared",
             "/chunks_embedded",
             "/summary/chunks_embedded",
             "/result/chunks_embedded",

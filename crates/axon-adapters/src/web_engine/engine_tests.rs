@@ -414,6 +414,37 @@ fn test_exclude_path_prefix_handles_non_normalized_input() {
 }
 
 #[test]
+fn discovery_prefers_markdown_alternate_over_duplicate_html_url() {
+    let urls = map::merge_discovery_candidate_urls(
+        vec![
+            "https://example.com/docs/en/overview".to_string(),
+            "https://example.com/docs/en/html-only".to_string(),
+        ],
+        vec![
+            "https://example.com/docs/en/overview.md".to_string(),
+            "https://example.com/docs/en/markdown-only.md".to_string(),
+        ],
+    );
+
+    assert_eq!(
+        urls,
+        vec![
+            "https://example.com/docs/en/html-only",
+            "https://example.com/docs/en/overview.md",
+            "https://example.com/docs/en/markdown-only.md",
+        ]
+    );
+}
+
+#[test]
+fn technical_docs_sitemap_is_rich_enough_without_root_anchor_expansion() {
+    assert!(map::discovery_is_sufficient("sitemap+llms", 182));
+    assert!(!map::discovery_is_sufficient("sitemap+llms", 99));
+    assert!(!map::discovery_is_sufficient("sitemap", 182));
+    assert!(map::discovery_is_sufficient("sitemap", 200));
+}
+
+#[test]
 fn test_canonicalize_url_trailing_slash_and_fragment() {
     let a = canonicalize_url_for_dedupe("https://example.com/docs/");
     let b = canonicalize_url_for_dedupe("https://example.com/docs#intro");
