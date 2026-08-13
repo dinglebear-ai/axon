@@ -95,6 +95,13 @@ jobs:
       - name: Validate llama.cpp compose
         run: docker compose -f docker-compose.llama.yaml config --quiet
 
+      # Cheap, deterministic gate on the root cause: a workflow that builds a
+      # multi-stage Dockerfile without naming its stage ships whatever stage
+      # happens to be last. Runs here rather than in the build job so it fails
+      # in seconds instead of after a full in-container cargo build.
+      - name: Require explicit Dockerfile build targets
+        run: python3 scripts/ci/check_dockerfile_build_targets.py
+
       - name: Validate helper shell scripts
         run: |
           bash -n scripts/build-on-winhost.sh scripts/test-ask-gemma4.sh scripts/test-build-on-winhost-safety.sh
@@ -125,22 +132,24 @@ jobs:
         with:
           context: .
           file: config/Dockerfile
-          # Must match docker-image.yml. config/Dockerfile ends with the
-          # `dev-runtime` stage, so an untargeted build smoke-tests a stage
-          # that is never published.
+          # Must be the same stage docker-image.yml publishes, or this job
+          # smoke-tests an image nobody ships. See the stage comment in
+          # config/Dockerfile.
           target: runtime
           push: false
+          # setup-buildx-action defaults to the docker-container driver, whose
+          # output is invisible to `docker run` unless loaded.
           load: true
           tags: axon:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       # Building the image proves it compiles, not that it runs. The published
-      # image once shipped the dev-runtime entrypoint, which execs a
-      # bind-mounted host binary and crash-loops for anyone who just pulls it.
+      # image once shipped an entrypoint that execs a bind-mounted host binary,
+      # so every pulled image crash-looped while this job stayed green.
       # Executing the entrypoint is what catches that class of regression.
       - name: Verify the built image runs its own binary
-        run: docker run --rm axon:smoke --version
+        run: timeout 30s docker run --rm axon:smoke --version
 
   compose-smoke-gate:
     name: compose-smoke-gate

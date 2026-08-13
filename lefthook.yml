@@ -28,6 +28,12 @@ pre-commit:
     compose-ports:
       glob: "{docker-compose,compose}*.{yaml,yml}"
       run: scripts/with_timeout.sh 30 -- python3 scripts/check_compose_port_bindings.py --staged
+    dockerfile-build-targets:
+      # Checks every workflow, not just the staged ones: adding a stage to a
+      # Dockerfile can invalidate a target pinned in a workflow this commit
+      # does not touch.
+      glob: "{.github/workflows/*.{yml,yaml},config/Dockerfile}"
+      run: scripts/with_timeout.sh 30 -- python3 scripts/ci/check_dockerfile_build_targets.py
     xtask-check:
       # Keep pre-commit to fast structural checks. Full aggregate
       # `xtask check` can regenerate artifacts and exceed the hook budget during

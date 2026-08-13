@@ -15,10 +15,19 @@ FROM rust:1.94.0-bookworm AS builder
 
 # Build deps for sqlx-sqlite (libsqlite3), reqwest+rustls (pkg-config), and
 # anything that links against system libraries during cargo build.
+#
+# cmake, clang, and libclang-dev are for boring-sys2, which wreq pulls in: it
+# builds BoringSSL from source with CMake and then generates its bindings with
+# bindgen, which dlopens libclang. Nothing caught their absence for a long
+# while because no build ever selected this stage -- see the dev-runtime stage
+# comment below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         libsqlite3-dev \
         ca-certificates \
+        cmake \
+        clang \
+        libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -114,10 +123,14 @@ ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/axon"]
 CMD ["serve"]
 
 # ── Dev runtime ───────────────────────────────────────────────────────────────
-# This is the LAST stage, so an untargeted `docker build` selects it. Every
-# build that ships an image must pin `--target runtime`; publishing this stage
-# gives a container with no binary that crash-loops on the exec below.
 # Runs the host-built debug binary bind-mounted by docker-compose.yaml.
+#
+# THIS IS THE LAST STAGE, so an untargeted `docker build` selects it. Any build
+# that ships an image must pin `--target runtime`; publishing this stage gives
+# a container with no binary of its own, which crash-loops on the ENTRYPOINT
+# exec below for everyone who does not bind-mount a host build over it. That
+# shipped once already — scripts/ci/check_dockerfile_build_targets.py now
+# fails any workflow that builds this file without a target.
 # Use a newer libc than the production image so the host binary can run without
 # rebuilding the full container for ordinary Rust code changes.
 FROM node:24-trixie-slim AS dev-runtime

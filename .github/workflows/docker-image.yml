@@ -85,11 +85,9 @@ jobs:
         with:
           context: .
           file: config/Dockerfile
-          # `runtime` MUST stay pinned. config/Dockerfile ends with the
-          # `dev-runtime` stage, which ships no binary and execs a
-          # bind-mounted host build at /home/axon/.axon/dev/axon. Without
-          # this, the default last-stage build publishes that stage and every
-          # pulled image crash-loops on `exec ... No such file or directory`.
+          # MUST stay pinned -- an untargeted build publishes a stage that
+          # ships no binary. See the stage comment in config/Dockerfile, and
+          # scripts/ci/check_dockerfile_build_targets.py, which enforces this.
           target: runtime
           push: true
           tags: ${{ steps.meta.outputs.tags }}

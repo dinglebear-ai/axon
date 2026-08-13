@@ -308,17 +308,44 @@ assert_live_nonempty() {
   record "$name" "contract" "$result" "$exit_code" "non-empty output" "$logfile"
 }
 
-# `compose up` reporting every phase ok only proves compose accepted the
-# stack, not that the container survived its own entrypoint. A container that
-# exits immediately is restarted by `restart: unless-stopped` roughly once a
-# minute until the EXIT trap tears the project down, so the churn is invisible
-# to a phase-only assertion. Settle briefly, then require it still be up and
-# not have restarted.
+# A compose command reporting every phase ok only proves compose accepted the
+# stack, not that the container survived its own entrypoint.
+#
+# This catches the immediate-exit class: `restart: unless-stopped` retries on a
+# backoff that starts near 100ms and doubles, so a container that dies in its
+# entrypoint has already logged several restarts within the settle window
+# below. It is deliberately NOT a health check — a container that starts, runs
+# for a minute, then dies still passes here. Widen the window rather than
+# reading a PASS as "the service is healthy".
+#
+# The EXIT trap tears the compose project down, taking the crashed container
+# and its logs with it, so capture the evidence here or lose it.
 assert_live_container_stable() {
-  local name="$1" container="$2" state result exit_code
+  local name="$1" container="$2" state detail result exit_code evidence slug
+  local stderr_file reason
   sleep 5
-  state="$(docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
-    "$container" 2>/dev/null || true)"
+  slug="$(printf '%s' "$name" | tr ' /' '__')"
+  evidence="$OUTDIR/logs/container-stable-${slug}.log"
+  stderr_file="$evidence.stderr"
+  {
+    printf '=== docker inspect %s ===\n' "$container"
+    docker inspect "$container" 2>&1
+    printf '\n=== docker logs --tail 200 %s ===\n' "$container"
+    docker logs --tail 200 "$container" 2>&1
+  } >"$evidence"
+  # Keep "docker is unusable" distinguishable from "the container died".
+  # Collapsing both into one signal is the same blindness this assertion exists
+  # to remove, so surface docker's own words rather than a generic failure.
+  if state="$(docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
+    "$container" 2>"$stderr_file")"; then
+    detail="container running with no restarts (got: $state)"
+  else
+    state=""
+    reason="$(tr '\n' ' ' <"$stderr_file" | cut -c1-160)"
+    detail="docker inspect failed for $container: ${reason:-no error output}"
+  fi
+  cat "$stderr_file" >>"$evidence"
+  rm -f "$stderr_file"
   if [ "$state" = "true 0" ]; then
     result="PASS"
     exit_code=0
@@ -328,8 +355,7 @@ assert_live_container_stable() {
     exit_code=1
     failures=$((failures + 1))
   fi
-  record "$name" "contract" "$result" "$exit_code" \
-    "container running with no restarts (got: ${state:-missing})" "$container"
+  record "$name" "contract" "$result" "$exit_code" "$detail" "$evidence"
 }
 
 run_live_server() {
