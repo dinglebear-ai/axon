@@ -97,7 +97,7 @@ pub(super) fn positional<'a>(
 }
 
 pub(super) fn print_value(value: impl serde::Serialize) -> Result<(), Box<dyn Error>> {
-    println!("{}", serde_json::to_string_pretty(&value)?);
+    crate::json::print_json_gated(&value)?;
     Ok(())
 }
 

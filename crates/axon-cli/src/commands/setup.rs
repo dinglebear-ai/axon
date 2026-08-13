@@ -49,15 +49,12 @@ pub async fn run_setup(cfg: &Config) -> Result<(), Box<dyn Error>> {
 fn run_config_preflight(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let preview = axon_services::config::config_rewrite_preview()?;
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "status": if preview.stale_keys.is_empty() { "ok" } else { "stale_config" },
-                "removed_keys": preview.stale_keys,
-                "env_path": preview.env_path,
-                "toml_path": preview.toml_path,
-            }))?
-        );
+        crate::json::print_json_gated(&serde_json::json!({
+            "status": if preview.stale_keys.is_empty() { "ok" } else { "stale_config" },
+            "removed_keys": preview.stale_keys,
+            "env_path": preview.env_path,
+            "toml_path": preview.toml_path,
+        }))?;
         return Ok(());
     }
     println!("{}", primary("Config Preflight"));
@@ -87,7 +84,7 @@ fn run_setup_config_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 axon_services::config::config_rewrite_apply()?
             };
             if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&preview)?);
+                crate::json::print_json_gated(&preview)?;
                 return Ok(());
             }
             println!("{}", primary("Config Rewrite Preview"));
@@ -266,7 +263,7 @@ fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
     };
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&targets)?);
+        crate::json::print_json_gated(&targets)?;
         return Ok(());
     }
 
@@ -300,10 +297,7 @@ fn run_targets_command(cfg: &Config) -> Result<(), Box<dyn Error>> {
 
 fn print_usage(cfg: &Config) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({ "usage": USAGE_LINES }))?
-        );
+        crate::json::print_json_gated(&json!({ "usage": USAGE_LINES }))?;
     } else {
         println!("{}", primary("Usage"));
         for line in USAGE_LINES {
@@ -326,26 +320,20 @@ async fn run_plugin_hook_setup_command(cfg: &Config) -> Result<(), Box<dyn Error
     // It never runs preflight or `docker compose`.
     if setup::stack_already_healthy().await {
         if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&json!({
-                    "exit_policy": "success",
-                    "stack": "already_healthy",
-                }))?
-            );
+            crate::json::print_json_gated(&json!({
+                "exit_policy": "success",
+                "stack": "already_healthy",
+            }))?;
         }
         return Ok(());
     }
 
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "exit_policy": "success",
-                "stack": "down",
-                "action": "run /axon-deploy",
-            }))?
-        );
+        crate::json::print_json_gated(&json!({
+            "exit_policy": "success",
+            "stack": "down",
+            "action": "run /axon-deploy",
+        }))?;
     } else {
         eprintln!("axon stack not reachable on /readyz — run /axon-deploy to start it");
     }
@@ -405,7 +393,7 @@ fn print_local_setup_report(
     report: &setup::LocalSetupReport,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(report)?);
+        crate::json::print_json_gated(report)?;
         return Ok(());
     }
 

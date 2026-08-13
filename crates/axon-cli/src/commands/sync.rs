@@ -14,7 +14,7 @@ pub fn run_sync<'a>(cfg: &'a Config, _ctx: &'a ServiceContext) -> CommandFuture<
             return Err(format!("unknown sync subcommand: {subcommand}").into());
         }
         if cfg.json_output {
-            println!("{}", serde_json::json!({ "synced": 0, "pending": 0 }));
+            crate::json::print_json_gated(&serde_json::json!({ "synced": 0, "pending": 0 }))?;
         } else {
             println!("{}", muted("Sync pending: 0 synced, 0 pending"));
         }

@@ -44,7 +44,7 @@ fn headless_safety_redacts_authorization_header_without_space_after_colon() {
 
     assert!(redacted.contains("[REDACTED]"));
     assert!(redacted.contains("normal"));
-    assert!(!redacted.contains("Authorization:Bearer"));
+    assert!(redacted.contains("Authorization:Bearer [REDACTED]"));
     assert!(!redacted.contains("sk-secret-value"));
 }
 

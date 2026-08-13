@@ -258,6 +258,29 @@ pub enum ColorChoice {
     Never,
 }
 
+/// Terminal motion override for interactive progress surfaces.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum MotionChoice {
+    /// Animate only on an interactive terminal outside CI (default).
+    #[default]
+    Auto,
+    /// Force terminal animation when a progress surface is visible.
+    Always,
+    /// Keep progress surfaces static.
+    Never,
+}
+
+impl fmt::Display for MotionChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Auto => "auto",
+            Self::Always => "always",
+            Self::Never => "never",
+        })
+    }
+}
+
 impl fmt::Display for ColorChoice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

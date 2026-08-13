@@ -381,7 +381,7 @@ fn command_options(command: &Command, path: &[&str]) -> Vec<(String, String)> {
     options
 }
 
-const COMMON_GLOBAL_IDS: &[&str] = &["json", "color", "quiet"];
+const COMMON_GLOBAL_IDS: &[&str] = &["json", "color", "motion", "verbose", "quiet"];
 const CRON_GLOBAL_IDS: &[&str] = &["cron_every_seconds", "cron_max_runs"];
 const SOURCE_GLOBAL_IDS: &[&str] = &[
     "max_pages",

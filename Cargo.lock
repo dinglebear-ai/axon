@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "axon-adapters"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "axon-error",
  "chrono",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "anyhow",
  "axon-api",
@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "axon-document"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "axon-embedding"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "axon-error"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "chrono",
  "schemars",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "axon-core",
  "axon-graph",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "axon-graph"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -683,7 +683,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ledger"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "axon-llm"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "axon-memory"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "axon-observe"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -790,7 +790,7 @@ dependencies = [
 
 [[package]]
 name = "axon-parse"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "axon-api",
  "axon-graph",
@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "axon-prune"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "axon-retrieval"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "axon-route"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vectors"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -929,7 +929,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "7.2.18"
+version = "7.2.19"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -3764,6 +3764,7 @@ dependencies = [
  "portable-atomic",
  "unicode-width",
  "unit-prefix",
+ "vt100",
  "web-time",
 ]
 
@@ -8494,6 +8495,27 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
+
+[[package]]
+name = "vt100"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9"
+dependencies = [
+ "itoa",
+ "unicode-width",
+ "vte",
+]
+
+[[package]]
+name = "vte"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+dependencies = [
+ "arrayvec",
+ "memchr",
+]
 
 [[package]]
 name = "wait-timeout"

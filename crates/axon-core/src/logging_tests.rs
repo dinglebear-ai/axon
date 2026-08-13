@@ -79,6 +79,29 @@ impl<'a> MakeWriter<'a> for BufWriter {
 }
 
 #[test]
+fn compact_console_format_omits_timestamp_and_level_block() {
+    let _guard = COLOR_TEST_GUARD
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let previous = COLOR_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
+    install_color_choice(ColorChoice::Never);
+
+    let buf = BufWriter::default();
+    let layer = tracing_subscriber::fmt::layer()
+        .event_format(super::CliFormat { detailed: false })
+        .with_ansi(false)
+        .with_writer(buf.clone());
+    let subscriber = tracing_subscriber::registry().with(layer);
+    tracing::subscriber::with_default(subscriber, || {
+        tracing::warn!(attempt = 2, "provider retry");
+    });
+
+    let written = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+    assert_eq!(written, "warning: provider retry  attempt=2\n");
+    COLOR_OVERRIDE.store(previous, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[test]
 fn span_fields_are_redacted_on_console_output() {
     // Fix 1: span-level fields (e.g. from a future
     // `#[tracing::instrument(fields(...))]`) must be scrubbed identically to
@@ -87,7 +110,7 @@ fn span_fields_are_redacted_on_console_output() {
     // secret-shaped span field leaked on both console and file-JSON output.
     let buf = BufWriter::default();
     let layer = tracing_subscriber::fmt::layer()
-        .event_format(super::CliFormat)
+        .event_format(super::CliFormat { detailed: true })
         .with_ansi(false)
         .with_writer(buf.clone());
     let subscriber = tracing_subscriber::registry().with(layer);

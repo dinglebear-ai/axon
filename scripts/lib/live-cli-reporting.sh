@@ -98,7 +98,7 @@ worktree_content_fingerprint() {
 }
 
 record() {
-  local first=1 field
+  local first=1 field line=""
   for field in "$@"; do
     field="${field//$'\t'/ }"
     field="${field//$'\r'/ }"
@@ -106,11 +106,37 @@ record() {
     if [ "$first" -eq 1 ]; then
       first=0
     else
-      printf '\t' >>"$REPORT"
+      line+=$'\t'
     fi
-    printf '%s' "$field" >>"$REPORT"
+    line+="$field"
   done
-  printf '\n' >>"$REPORT"
+  {
+    flock 9
+    printf '%s\n' "$line" >&9
+  } 9>>"$REPORT"
+}
+
+record_timing() {
+  local started_ms="$1" phase="$2" name="$3" invocation="$4"
+  local elapsed_ms field line=""
+  elapsed_ms=$(( $(now_millis) - started_ms ))
+  for field in "$elapsed_ms" "$phase" "$name" "$invocation"; do
+    field="${field//$'\t'/ }"
+    field="${field//$'\r'/ }"
+    field="${field//$'\n'/ }"
+    [ -n "$line" ] && line+=$'\t'
+    line+="$field"
+  done
+  {
+    flock 9
+    printf '%s\n' "$line" >&9
+  } 9>>"$TIMINGS_REPORT"
+}
+
+now_millis() {
+  local epoch_ns
+  epoch_ns="$(date +%s%N)"
+  printf '%s\n' "$((epoch_ns / 1000000))"
 }
 
 ensure_behavior_global_options() {
@@ -129,6 +155,9 @@ ensure_behavior_global_options() {
       if (line ~ /<[^>]+>/) print option >> values
     }
   ' "$OUTDIR/logs/behavior-global-help.log" >"$BEHAVIOR_GLOBAL_OPTIONS"
+  awk '
+    /^  -[A-Za-z], --[a-z0-9]/ { print substr($1, 1, 2) }
+  ' "$OUTDIR/logs/behavior-global-help.log" >>"$BEHAVIOR_GLOBAL_OPTIONS"
 
   local option
   for option in     --automation-script --batch-concurrency --block-assets --budget --cache     --cache-http-only --chrome-screenshot --chrome-wait-for-selector --color     --cron-every-seconds --cron-max-runs --etag-conditional --exclude-path     --exclude-path-prefix --exclude-selector --format --normalize --output-dir     --performance-profile --quiet --root-selector --screenshot-full-page     --sitemap-only --url-glob --urls --viewport --warc --yes; do

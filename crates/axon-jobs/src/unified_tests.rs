@@ -23,7 +23,7 @@ async fn public_status_update_reserves_writer_before_reading_snapshot() {
     let writer = axon_core::sqlite::open_pool_unlocked(&path_string)
         .await
         .expect("open independent writer pool");
-    let (entered, resume) = super::snapshot_test_hook::install();
+    let (entered, resume) = super::snapshot_test_hook::install(job.job_id);
     let entered_wait = entered.notified();
     let updating_store = Arc::clone(&store);
     let updating = tokio::spawn(async move {
@@ -386,6 +386,61 @@ async fn job_events_page_after_sequence_reads_only_next_page() {
     assert_eq!(page.events[0].sequence, 11);
     assert_eq!(page.events[4].sequence, 15);
     assert!(page.next_cursor.is_some());
+}
+
+#[tokio::test]
+async fn terminal_status_collects_durable_warnings_from_job_events() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::Running,
+            phase: PipelinePhase::Vectorizing,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("start job");
+
+    let expected = SourceWarning {
+        code: "source.vectorize.redaction_skipped_chunks".to_string(),
+        severity: Severity::Warning,
+        message: "skipped 2 chunks".to_string(),
+        source_item_key: Some(SourceItemKey::new("servers/authorization")),
+        retryable: false,
+    };
+    let mut event = progress_event(job.job_id, 1, Visibility::Public);
+    event.phase = PipelinePhase::Publishing;
+    event.status = LifecycleStatus::CompletedDegraded;
+    event.severity = Severity::Degraded;
+    event.warning = Some(expected.clone());
+    store
+        .append_event(event)
+        .await
+        .expect("append warning event");
+
+    store
+        .update_status(JobStatusUpdate {
+            job_id: job.job_id,
+            source_id: None,
+            status: LifecycleStatus::CompletedDegraded,
+            phase: PipelinePhase::Complete,
+            stage_id: None,
+            counts: None,
+            current: None,
+            message: None,
+            error: None,
+        })
+        .await
+        .expect("complete job");
+
+    let summary = store.get(job.job_id).await.unwrap().unwrap();
+    assert_eq!(summary.warnings, vec![expected]);
 }
 
 #[tokio::test]

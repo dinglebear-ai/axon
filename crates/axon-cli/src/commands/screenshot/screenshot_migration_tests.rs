@@ -59,7 +59,7 @@ fn screenshot_json_contract_is_stable() {
 }
 
 #[test]
-fn screenshot_json_keeps_progress_on_stderr_and_data_on_stdout() {
+fn screenshot_json_keeps_stdout_machine_readable_and_default_stderr_silent() {
     let cfg = Config {
         json_output: true,
         chrome_remote_url: Some("http://127.0.0.1:6000".to_string()),
@@ -94,8 +94,41 @@ fn screenshot_json_keeps_progress_on_stderr_and_data_on_stdout() {
     );
     assert!(!stdout.contains("capturing"));
     assert!(!stdout.contains("completed"));
+    assert!(stderr.is_empty());
+}
+
+#[test]
+fn screenshot_json_verbose_progress_stays_on_stderr() {
+    let cfg = Config {
+        json_output: true,
+        verbosity: 1,
+        chrome_remote_url: Some("http://127.0.0.1:6000".to_string()),
+        ..Config::default()
+    };
+    let result = axon_services::types::ScreenshotResult {
+        artifact_id: ArtifactId::new("art_screenshot_verbose"),
+        width: 1280,
+        height: 720,
+        captured_at: Timestamp("2026-07-30T00:00:00Z".to_string()),
+        warnings: Vec::new(),
+    };
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    write_json_screenshot_preamble(&cfg, "https://example.com", &mut stderr).unwrap();
+    write_json_screenshot_result(
+        &cfg,
+        "https://example.com",
+        &result,
+        &mut stdout,
+        &mut stderr,
+    )
+    .unwrap();
+
+    let stderr = String::from_utf8(stderr).unwrap();
     assert!(stderr.contains("screenshot: capturing"));
     assert!(stderr.contains("screenshot: completed"));
+    serde_json::from_slice::<serde_json::Value>(&stdout).unwrap();
 }
 
 #[test]

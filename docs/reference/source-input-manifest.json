@@ -726,7 +726,7 @@
         {
           "path": "crates/axon-vectors/src/payload.rs",
           "kind": "rust_module",
-          "checksum": "sha256:f94bde7fcf24357c13f823f39d19ba44edfb5520f47a808d76b9196ab99f4c52"
+          "checksum": "sha256:9f0fbd0bd0bbdd9364741c66a564cdc81c160b3e99be99802990054a1146b17c"
         },
         {
           "path": "crates/axon-vectors/src/payload_families.rs",
@@ -736,7 +736,7 @@
         {
           "path": "crates/axon-vectors/src/point.rs",
           "kind": "rust_module",
-          "checksum": "sha256:f10723828d703802ad6f592d2093f92f87a6e5017ff35b15b0a4b1f722998939"
+          "checksum": "sha256:65d50890f2ac1b72874c027a6f6e8fc3b368a583745b151bb0915e7b01ea9110"
         },
         {
           "path": "crates/axon-vectors/src/schema_registry.rs",
@@ -761,10 +761,10 @@
         {
           "path": "xtask/src/schemas/vector_payload_markdown.rs",
           "kind": "rust_module",
-          "checksum": "sha256:51f270178b9f6f66877c10a6321241a95236d5f7e86c6fa401ab200ac3c61c54"
+          "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c"
         }
       ],
-      "manifest_checksum": "a425ad22439886c668274d55d9453e16b14e9e7950348483b32a014ac5ed4e9a"
+      "manifest_checksum": "f54ea297bcac44a0599c80186d021f979f96ae43a05d3246fb048d5eccf90da3"
     }
   ]
 }

@@ -1,11 +1,12 @@
 use axon_api::source::*;
 use sqlx::Row;
-use sqlx::Sqlite;
-use sqlx::query::Query;
-use sqlx::sqlite::SqliteArguments;
 use uuid::Uuid;
 
 use super::SqliteUnifiedJobStore;
+use super::ops_helpers::{
+    append_event_filters, append_job_filters, bind_job_filters, optional_u64,
+};
+use super::terminal_warnings::collect_terminal_warnings;
 use crate::boundary::Result;
 use crate::limits::clamp_page_limit;
 use crate::state_machine::{validate_stage_plan, validate_transition};
@@ -191,15 +192,16 @@ impl SqliteUnifiedJobStore {
 
     pub(crate) async fn update_job_status(&self, status: JobStatusUpdate) -> Result<()> {
         let mut tx = ImmediateTx::begin(&self.pool).await.map_err(sql_error)?;
-        let row = sqlx::query("SELECT status, started_at FROM jobs WHERE job_id = ?")
-            .bind(status.job_id.0.to_string())
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(sql_error)?
-            .ok_or_else(|| missing_job(status.job_id))?;
+        let row =
+            sqlx::query("SELECT status, started_at, warnings_json FROM jobs WHERE job_id = ?")
+                .bind(status.job_id.0.to_string())
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(sql_error)?
+                .ok_or_else(|| missing_job(status.job_id))?;
         let current = parse_enum::<LifecycleStatus>(row.get::<String, _>("status"))?;
         #[cfg(test)]
-        super::snapshot_test_hook::pause_once_after_read().await;
+        super::snapshot_test_hook::pause_once_after_read(status.job_id).await;
         validate_transition(status.job_id, current, status.status)?;
         let now = now_timestamp();
         let job_started_at = (row.get::<Option<String>, _>("started_at").is_none()
@@ -207,6 +209,18 @@ impl SqliteUnifiedJobStore {
             .then(|| now.0.clone());
         let stage_started_at = (status.status == LifecycleStatus::Running).then(|| now.0.clone());
         let finished_at = is_terminal(status.status).then(|| now.0.clone());
+        let terminal_warnings = if is_terminal(status.status) {
+            Some(
+                collect_terminal_warnings(
+                    &mut tx,
+                    status.job_id,
+                    row.get::<String, _>("warnings_json"),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
 
         // cooldown_until: cleared on every transition to a non-Waiting status
         // (a job that cooled once and later runs/completes/fails must not
@@ -219,7 +233,7 @@ impl SqliteUnifiedJobStore {
             "UPDATE jobs SET
                 source_id = COALESCE(?, source_id),
                 status = ?, phase = ?, counts_json = ?, current_json = ?,
-                last_error_json = ?, updated_at = ?,
+                last_error_json = ?, warnings_json = COALESCE(?, warnings_json), updated_at = ?,
                 started_at = COALESCE(started_at, ?),
                 finished_at = COALESCE(?, finished_at),
                 cooldown_until = CASE WHEN ? = 'waiting' THEN cooldown_until ELSE NULL END
@@ -236,6 +250,7 @@ impl SqliteUnifiedJobStore {
         .bind(optional_to_json(&status.counts)?)
         .bind(optional_to_json(&status.current)?)
         .bind(optional_to_json(&status.error)?)
+        .bind(terminal_warnings.as_deref())
         .bind(now.0.as_str())
         .bind(job_started_at.as_deref())
         .bind(finished_at.as_deref())
@@ -412,87 +427,4 @@ impl SqliteUnifiedJobStore {
         .map(|sequence| sequence as u64);
         Ok(sequence)
     }
-}
-
-fn optional_u64(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<u64>> {
-    row.try_get::<Option<i64>, _>(column)
-        .map_err(sql_error)?
-        .map(|value| {
-            u64::try_from(value).map_err(|_| {
-                ApiError::new(
-                    "job.counts_invalid",
-                    ErrorStage::Retrieving,
-                    format!("negative historical counter in {column}"),
-                )
-            })
-        })
-        .transpose()
-}
-
-struct JobFilterBindings {
-    source_id: Option<String>,
-    watch_id: Option<String>,
-}
-
-fn append_job_filters(sql: &mut String, request: &JobListRequest) -> Result<JobFilterBindings> {
-    if let Some(status) = request.status {
-        sql.push_str(&format!(" AND status = '{}'", enum_name(status)?));
-    }
-    if let Some(kind) = request.kind {
-        sql.push_str(&format!(" AND kind = '{}'", enum_name(kind)?));
-    }
-    if let Some(source_id) = &request.source_id {
-        sql.push_str(" AND source_id = ?");
-        let source_id = Some(source_id.0.clone());
-        let watch_id = request.watch_id.as_ref().map(|watch_id| watch_id.0.clone());
-        if watch_id.is_some() {
-            sql.push_str(" AND watch_id = ?");
-        }
-        return Ok(JobFilterBindings {
-            source_id,
-            watch_id,
-        });
-    }
-    if let Some(watch_id) = &request.watch_id {
-        sql.push_str(" AND watch_id = ?");
-        return Ok(JobFilterBindings {
-            source_id: None,
-            watch_id: Some(watch_id.0.clone()),
-        });
-    }
-    Ok(JobFilterBindings {
-        source_id: None,
-        watch_id: None,
-    })
-}
-
-fn bind_job_filters<'q>(
-    mut query: Query<'q, Sqlite, SqliteArguments<'q>>,
-    bindings: &'q JobFilterBindings,
-) -> Query<'q, Sqlite, SqliteArguments<'q>> {
-    if let Some(source_id) = bindings.source_id.as_deref() {
-        query = query.bind(source_id);
-    }
-    if let Some(watch_id) = bindings.watch_id.as_deref() {
-        query = query.bind(watch_id);
-    }
-    query
-}
-
-fn append_event_filters(sql: &mut String, request: &JobEventListRequest) -> Result<()> {
-    if let Some(phase) = request.phase {
-        sql.push_str(&format!(" AND phase = '{}'", enum_name(phase)?));
-    }
-    if let Some(severity) = request.severity {
-        sql.push_str(&format!(" AND severity = '{}'", enum_name(severity)?));
-    }
-    if let Some(visibility) = request.visibility {
-        sql.push_str(&format!(" AND visibility = '{}'", enum_name(visibility)?));
-    } else {
-        sql.push_str(" AND visibility IN ('public', 'redacted', 'derived')");
-    }
-    if let Some(since_sequence) = request.since_sequence {
-        sql.push_str(&format!(" AND sequence > {since_sequence}"));
-    }
-    Ok(())
 }

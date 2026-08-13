@@ -115,13 +115,12 @@ pub async fn run_update(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let report = perform_update(options).await?;
 
     if cfg.json_output {
-        let json = serde_json::to_string_pretty(&serde_json::json!({
+        crate::json::print_json_gated(&serde_json::json!({
             "version": report.version,
             "install_path": report.install_path,
             "installed": report.installed,
             "container_synced": report.container_synced,
         }))?;
-        println!("{json}");
     } else {
         if report.installed {
             println!("{}", primary(&format!("installed axon {}", report.version)));

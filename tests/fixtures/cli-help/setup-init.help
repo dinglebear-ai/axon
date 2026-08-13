@@ -25,5 +25,7 @@ Options
                                    Reddit client secret for Reddit ingest
   --json                           Output results as machine-readable JSON
   --color <COLOR>                  Color output: auto (TTY detect, default), always, never Possible values: auto, always, never
+  --motion <MOTION>                Terminal motion: auto (interactive TTY outside CI), always, never Possible values: auto, always, never
+  -v, --verbose                    Show operator diagnostics; repeat for debug detail (-vv)
   --quiet                          Suppress spinners and progress output (useful in scripts). JSON data is unaffected
   -h, --help                       Print help

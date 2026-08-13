@@ -8,6 +8,7 @@ use super::timestamp;
 pub(super) struct VectorPointBuild {
     pub(super) batch: VectorPointBatch,
     pub(super) skipped_redaction: u64,
+    pub(super) redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64>,
     #[cfg_attr(not(test), allow(dead_code))]
     pub(super) points_by_document: std::collections::BTreeMap<DocumentId, u32>,
 }
@@ -25,6 +26,7 @@ pub(super) fn point_batch(
         .collect::<std::collections::BTreeMap<_, _>>();
     let mut points = Vec::new();
     let mut skipped_redaction = 0u64;
+    let mut redaction_skips_by_source_item = std::collections::BTreeMap::new();
     let mut points_by_document = std::collections::BTreeMap::new();
     for document in documents {
         let document_embeddings = EmbeddingResult {
@@ -54,6 +56,12 @@ pub(super) fn point_batch(
         points_by_document.insert(document.document_id.clone(), document_point_count);
         points.extend(batch.points);
         skipped_redaction += document_skipped;
+        if document_skipped > 0 {
+            redaction_skips_by_source_item
+                .entry(document.source_item_key.clone())
+                .and_modify(|count| *count += document_skipped)
+                .or_insert(document_skipped);
+        }
     }
     Ok(VectorPointBuild {
         batch: VectorPointBatch {
@@ -66,6 +74,7 @@ pub(super) fn point_batch(
             payload_indexes: collection.payload_indexes,
         },
         skipped_redaction,
+        redaction_skips_by_source_item,
         points_by_document,
     })
 }

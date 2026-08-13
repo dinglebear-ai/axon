@@ -54,3 +54,69 @@ fn markdown_sections_stamps_code_fence_language() {
         "rust"
     );
 }
+
+#[test]
+fn html_article_excludes_non_content_payloads_before_chunking() {
+    let hydration =
+        "window.__next_f.push(['<script data-template>', 'secret-looking-auth-token']);"
+            .repeat(2_000);
+    let html = format!(
+        r#"<!doctype html>
+        <html>
+          <head>
+            <style>.hidden {{ display: none }}</style>
+            <script>{hydration}</script>
+          </head>
+          <body>
+            <nav>Documentation navigation</nav>
+            <main><h1>Authorization</h1><p>Use Bearer authentication for protected requests.</p></main>
+            <footer>Site footer</footer>
+          </body>
+        </html>"#
+    );
+
+    let chunks = html_article(&html);
+    let content = chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(content.contains("Authorization"));
+    assert!(content.contains("Use Bearer authentication"));
+    assert!(content.contains("Site footer"));
+    assert!(!content.contains("window.__next_f"));
+    assert!(!content.contains("secret-looking-auth-token"));
+    assert!(!content.contains("display: none"));
+    assert!(chunks.len() <= 10, "hydration data must not amplify chunks");
+}
+
+#[test]
+fn html_article_does_not_emit_one_chunk_per_dom_node() {
+    let nodes = (0..500)
+        .map(|index| format!("<span>word-{index}</span>"))
+        .collect::<String>();
+    let chunks = html_article(&format!("<main>{nodes}</main>"));
+
+    assert!(
+        chunks.len() <= 3,
+        "DOM nodes must coalesce into text windows"
+    );
+    assert!(
+        chunks
+            .iter()
+            .any(|chunk| chunk.content.contains("word-499"))
+    );
+}
+
+#[test]
+fn html_article_preserves_content_after_unclosed_non_content_tag() {
+    let chunks = html_article("<p>before</p><script>broken markup then visible fallback");
+    let text = chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(text.contains("before"));
+    assert!(text.contains("visible fallback"));
+}

@@ -6,7 +6,7 @@
 //! the local `VectorPayloadValidationError` type and a body-text carve-out
 //! (`chunk_text` gets the strict body check, not the generic one).
 
-use axon_core::redact::{contains_bare_secret_token, raw_dotenv_assignment};
+use axon_core::redact::secret_value_detector;
 use serde_json::Value;
 
 use crate::payload::VectorPayloadValidationError;
@@ -22,11 +22,13 @@ pub(crate) fn validate_forbidden_value(
     value: &Value,
 ) -> Result<(), VectorPayloadValidationError> {
     match value {
-        Value::String(value) if forbidden_string_value(path, value) => {
-            Err(VectorPayloadValidationError::ForbiddenValue {
+        Value::String(value) => match forbidden_string_reason(path, value) {
+            Some(detector) => Err(VectorPayloadValidationError::ForbiddenValue {
                 field: path.to_string(),
-            })
-        }
+                detector: detector.to_string(),
+            }),
+            None => Ok(()),
+        },
         Value::Array(values) => {
             for (index, value) in values.iter().enumerate() {
                 validate_forbidden_value(&format!("{path}[{index}]"), value)?;
@@ -37,12 +39,16 @@ pub(crate) fn validate_forbidden_value(
             if adapter_response_blob(object) {
                 return Err(VectorPayloadValidationError::ForbiddenValue {
                     field: path.to_string(),
+                    detector: "adapter_response_blob".to_string(),
                 });
             }
             for (field, value) in object {
                 let child_path = format!("{path}.{field}");
                 if forbidden_field_name(field) {
-                    return Err(VectorPayloadValidationError::ForbiddenValue { field: child_path });
+                    return Err(VectorPayloadValidationError::ForbiddenValue {
+                        field: child_path,
+                        detector: "forbidden_field_name".to_string(),
+                    });
                 }
                 validate_forbidden_value(&child_path, value)?;
             }
@@ -52,29 +58,19 @@ pub(crate) fn validate_forbidden_value(
     }
 }
 
-fn forbidden_string_value(path: &str, value: &str) -> bool {
+fn forbidden_string_reason(path: &str, value: &str) -> Option<&'static str> {
     if BODY_TEXT_FIELDS.contains(&path) {
-        return forbidden_body_text_value(value);
+        return secret_value_detector(value);
     }
     let normalized = value.to_ascii_lowercase();
-    FORBIDDEN_VALUE_FRAGMENTS
-        .iter()
-        .any(|fragment| normalized.contains(fragment))
-        || raw_dotenv_assignment(value)
-        || contains_bare_secret_token(value)
-        || value_is_absolute_local_path(value)
-        || raw_html_blob(&normalized)
-        || normalized.contains("adapter_response")
-}
-
-fn forbidden_body_text_value(value: &str) -> bool {
-    let normalized = value.to_ascii_lowercase();
-    FORBIDDEN_VALUE_FRAGMENTS
-        .iter()
-        .any(|fragment| normalized.contains(fragment))
-        || raw_dotenv_assignment(value)
-        || contains_bare_secret_token(value)
-        || normalized.contains("adapter_response")
+    secret_value_detector(value)
+        .or_else(|| value_is_absolute_local_path(value).then_some("absolute_local_path"))
+        .or_else(|| raw_html_blob(&normalized).then_some("raw_html_blob"))
+        .or_else(|| {
+            normalized
+                .contains("adapter_response")
+                .then_some("adapter_response_marker")
+        })
 }
 
 fn raw_html_blob(normalized: &str) -> bool {

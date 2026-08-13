@@ -1,6 +1,6 @@
 use super::build_config::tests::{env_guard, with_env_saved};
 use super::docker::is_docker_service_host;
-use crate::config::types::{CommandKind, McpTransport};
+use crate::config::types::{CommandKind, McpTransport, MotionChoice};
 use clap::Parser;
 use std::env;
 
@@ -1369,4 +1369,32 @@ fn cron_is_rejected_for_unproven_command_surfaces() {
         error,
         "--cron-every-seconds is not supported by `axon preflight`; run `axon preflight --help` to see valid options"
     );
+}
+
+#[test]
+fn console_controls_parse_globally() {
+    let _guard = env_guard();
+    let cli = super::Cli::try_parse_from([
+        "axon",
+        "--tei-url",
+        "http://127.0.0.1:52000",
+        "--qdrant-url",
+        "http://127.0.0.1:53333",
+        "--motion",
+        "never",
+        "-vv",
+        "query",
+        "hello",
+    ])
+    .expect("console controls should parse before a subcommand");
+    let cfg = super::build_config::into_config(cli).expect("console controls config");
+    assert_eq!(cfg.motion_choice, MotionChoice::Never);
+    assert_eq!(cfg.verbosity, 2);
+}
+
+#[test]
+fn quiet_conflicts_with_verbose() {
+    let error = super::Cli::try_parse_from(["axon", "query", "hello", "--quiet", "-v"])
+        .expect_err("quiet and verbose express conflicting operator intent");
+    assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
 }

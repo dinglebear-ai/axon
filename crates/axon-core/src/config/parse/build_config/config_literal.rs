@@ -476,6 +476,8 @@ fn populate_misc(
     cfg.warc_output = g.warc.clone();
     cfg.automation_script = g.automation_script.clone();
     cfg.quiet = g.quiet;
+    cfg.motion_choice = g.motion;
+    cfg.verbosity = g.verbose;
     cfg.log_level = env::var("AXON_LOG_LEVEL").ok();
     Ok(())
 }

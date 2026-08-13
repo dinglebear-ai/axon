@@ -57,7 +57,7 @@ pub(super) async fn run_import(
     )
     .await
     .map_err(|err| format!("memory import failed: {err}"))?;
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    crate::json::print_json_gated(&result)?;
     Ok(())
 }
 

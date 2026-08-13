@@ -51,7 +51,7 @@ async fn list_jobs(cfg: &Config, service_context: &ServiceContext) -> Result<(),
     .map_err(|error| Box::<dyn Error>::from(error.to_string()))?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&page)?);
+        crate::json::print_json_gated(&page)?;
         return Ok(());
     }
 
@@ -87,7 +87,7 @@ async fn get_job(cfg: &Config, service_context: &ServiceContext) -> Result<(), B
         .map_err(|error| Box::<dyn Error>::from(error.to_string()))?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&job)?);
+        crate::json::print_json_gated(&job)?;
         return Ok(());
     }
 
@@ -168,7 +168,7 @@ async fn job_events(cfg: &Config, service_context: &ServiceContext) -> Result<()
     .map_err(|error| Box::<dyn Error>::from(error.to_string()))?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&page)?);
+        crate::json::print_json_gated(&page)?;
         return Ok(());
     }
     println!(
@@ -303,7 +303,7 @@ fn render_value_or_line<T: serde::Serialize>(
     message: &str,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(value)?);
+        crate::json::print_json_gated(value)?;
     } else {
         println!("{} {message}", symbol_for_status("completed"));
     }

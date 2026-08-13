@@ -7,7 +7,7 @@ use super::common::parse_urls;
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url};
 use axon_core::logging::log_done;
-use axon_core::ui::{primary, print_option, print_phase};
+use axon_core::ui::{primary, print_option, print_phase, success, wait_spinner_for};
 use axon_services::screenshot::screenshot_capture;
 use std::error::Error;
 use util::require_chrome;
@@ -17,7 +17,7 @@ fn write_json_screenshot_preamble(
     normalized: &str,
     stderr: &mut dyn std::io::Write,
 ) -> std::io::Result<()> {
-    if !cfg.quiet {
+    if cfg.verbosity > 0 && !cfg.quiet {
         writeln!(
             stderr,
             "screenshot: capturing url={normalized} full_page={} viewport={}x{} chrome_remote_url={}",
@@ -36,20 +36,23 @@ pub(crate) fn print_screenshot_preamble(cfg: &Config, normalized: &str) {
             .expect("write screenshot progress to stderr");
         return;
     }
-    print_phase("◐", "Screenshot", normalized);
-    println!("  {}", primary("Options:"));
-    print_option("fullPage", &cfg.screenshot_full_page.to_string());
-    print_option(
-        "viewport",
-        &format!("{}x{}", cfg.viewport_width, cfg.viewport_height),
-    );
-    print_option(
-        "chromeRemoteUrl",
-        cfg.chrome_remote_url.as_deref().unwrap_or("none"),
-    );
-    println!();
+    if cfg.verbosity > 0 {
+        print_phase("◐", "Screenshot", normalized);
+        println!("  {}", primary("Options:"));
+        print_option("fullPage", &cfg.screenshot_full_page.to_string());
+        print_option(
+            "viewport",
+            &format!("{}x{}", cfg.viewport_width, cfg.viewport_height),
+        );
+        print_option(
+            "chromeRemoteUrl",
+            cfg.chrome_remote_url.as_deref().unwrap_or("none"),
+        );
+        println!();
+    }
 }
 
+#[cfg(test)]
 fn write_json_screenshot_result(
     cfg: &Config,
     normalized: &str,
@@ -58,7 +61,7 @@ fn write_json_screenshot_result(
     stderr: &mut dyn std::io::Write,
 ) -> Result<(), Box<dyn Error>> {
     writeln!(stdout, "{}", serde_json::to_string(result)?)?;
-    if !cfg.quiet {
+    if cfg.verbosity > 0 && !cfg.quiet {
         writeln!(
             stderr,
             "screenshot: completed url={normalized} artifact_id={} format=png",
@@ -74,13 +77,13 @@ pub(crate) fn emit_screenshot_result(
     result: &axon_services::types::ScreenshotResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        write_json_screenshot_result(
-            cfg,
-            normalized,
-            result,
-            &mut std::io::stdout(),
-            &mut std::io::stderr(),
-        )?;
+        crate::json::print_json_gated(result)?;
+        if cfg.verbosity > 0 && !cfg.quiet {
+            eprintln!(
+                "screenshot: completed url={normalized} artifact_id={} format=png",
+                result.artifact_id.0
+            );
+        }
     } else {
         let explicit_output = cfg
             .output_path
@@ -91,6 +94,7 @@ pub(crate) fn emit_screenshot_result(
             "captured: artifact_id={} url={normalized} format=png{explicit_output}",
             result.artifact_id.0
         ));
+        println!("{} captured {}", success("✓"), result.artifact_id.0);
     }
     Ok(())
 }
@@ -116,7 +120,12 @@ async fn screenshot_one(cfg: &Config, url: &str) -> Result<(), Box<dyn Error>> {
 
     print_screenshot_preamble(cfg, &normalized);
 
-    let result = screenshot_capture(cfg, &normalized).await?;
+    let spinner = wait_spinner_for(cfg, "Capturing screenshot");
+    let result = screenshot_capture(cfg, &normalized).await;
+    if let Some(spinner) = spinner {
+        spinner.clear();
+    }
+    let result = result?;
     emit_screenshot_result(cfg, &normalized, &result)?;
 
     Ok(())

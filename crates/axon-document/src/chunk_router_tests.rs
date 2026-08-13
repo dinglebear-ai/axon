@@ -263,7 +263,6 @@ fn large_document_falls_back_to_second_chain_step_for_wired_profiles() {
     for profile in [
         ChunkingProfile::CodeSymbol,
         ChunkingProfile::MarkdownSections,
-        ChunkingProfile::HtmlArticle,
     ] {
         let small_decision = decision_for_profile(profile, small, None, None);
         assert_eq!(
@@ -287,6 +286,7 @@ fn large_document_does_not_override_method_for_unwired_profiles() {
     // regardless of size), so the router must not claim it ran.
     for profile in [
         ChunkingProfile::CodeManifest,
+        ChunkingProfile::HtmlArticle,
         ChunkingProfile::PlainTextWindows,
         ChunkingProfile::TranscriptSegments,
         ChunkingProfile::StructuredRecords,

@@ -19,16 +19,16 @@ use serde_json::Value;
 
 pub use axon_api::source::RedactionStatus;
 
-use super::REDACTION_PLACEHOLDER;
 use super::detectors::{
     field_is_opaque_token_context, forbidden_field_name, last_field_segment,
     secret_like_field_name, value_contains_secret, value_is_absolute_local_path,
     value_is_high_entropy_token,
 };
+use super::{REDACTION_PLACEHOLDER, redact_secrets};
 
 /// Redaction contract version stamped alongside `redaction_status` so a
 /// payload records which detector generation classified it.
-pub const REDACTION_VERSION: &str = "2026-07-16";
+pub const REDACTION_VERSION: &str = "2026-08-09";
 
 /// Surface a redaction pass is scrubbing for. Mirrors the surface table in
 /// the redaction contract.
@@ -267,9 +267,14 @@ impl Redactor for DefaultRedactor {
         // internal paths. This is NOT the payload `chunk_text` path — that
         // stays untouched in `redact_json` so a body secret still skips the
         // chunk instead of being laundered into the index.
-        if value_contains_secret(input)
-            || (!context.allow_internal_paths && value_is_absolute_local_path(input))
-        {
+        let span_redacted = redact_secrets(input);
+        if span_redacted != input {
+            if requires_full_redaction(&span_redacted, context) {
+                return REDACTION_PLACEHOLDER.to_string();
+            }
+            return span_redacted;
+        }
+        if requires_full_redaction(input, context) {
             REDACTION_PLACEHOLDER.to_string()
         } else {
             input.to_string()
@@ -328,6 +333,14 @@ impl DefaultRedactor {
                 // into the index.
                 if Self::is_structural_field(path) {
                     return Value::String(text);
+                }
+                let span_redacted = redact_secrets(&text);
+                if span_redacted != text {
+                    report.record_redacted(path, "secret_value");
+                    if requires_full_redaction(&span_redacted, context) {
+                        return Value::String(REDACTION_PLACEHOLDER.to_string());
+                    }
+                    return Value::String(span_redacted);
                 }
                 if value_contains_secret(&text) {
                     report.record_redacted(path, "secret_value");
@@ -389,6 +402,11 @@ impl DefaultRedactor {
             other => other,
         }
     }
+}
+
+fn requires_full_redaction(text: &str, context: &RedactionContext) -> bool {
+    value_contains_secret(text)
+        || (!context.allow_internal_paths && value_is_absolute_local_path(text))
 }
 
 /// Upper bound on free text the redaction boundary will scan. Unbounded regex

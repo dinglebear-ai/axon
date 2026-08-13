@@ -14,13 +14,8 @@
 //! render call site cannot skip the scrub, not to introduce a new failure
 //! mode.
 //!
-//! NOTE: as of this writing this module is not yet wired into every `--json`
-//! call site in `commands/*.rs` — most call `println!` directly. This is a
-//! known scope gap (see the redaction boundary extension plan); the CLI JSON
-//! chokepoint is not currently a single shared function the way vector
-//! payloads / job events / graph evidence / memory rows are. `common_jobs.rs`
-//! is wired as the flagship adoption; broader retrofit across all call sites
-//! is tracked separately.
+//! Explicit secret-reveal and file-export paths serialize separately by design;
+//! normal machine-readable command output uses this gate.
 
 use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use serde::Serialize;

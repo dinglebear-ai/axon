@@ -82,6 +82,8 @@ impl Default for Config {
             prune_confirm: false,
             reset_plan_id: None,
             color_choice: super::enums::ColorChoice::Auto,
+            motion_choice: super::enums::MotionChoice::Auto,
+            verbosity: 0,
             watch_mode: false,
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,

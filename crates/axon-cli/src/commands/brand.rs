@@ -33,7 +33,7 @@ fn parse_brand_url(cfg: &Config) -> Result<String, Box<dyn Error>> {
 
 pub(crate) fn emit_brand_result(cfg: &Config, result: &BrandResult) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(result)?);
+        crate::json::print_json_gated(result)?;
         return Ok(());
     }
 

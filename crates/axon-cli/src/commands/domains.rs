@@ -24,7 +24,7 @@ pub async fn run_domains(cfg: &Config) -> Result<(), Box<dyn Error>> {
 async fn run_domain_check(cfg: &Config, domain: &str) -> Result<(), Box<dyn Error>> {
     let result = system::domain_indexed(cfg, domain).await?;
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
         return Ok(());
     }
 
@@ -86,7 +86,7 @@ fn render_fast_domain_results(
     let domains: Vec<(String, usize)> = domains.into_iter().collect();
     if cfg.json_output {
         let out: BTreeMap<String, usize> = domains.into_iter().collect();
-        println!("{}", serde_json::to_string_pretty(&out)?);
+        crate::json::print_json_gated(&out)?;
         return Ok(());
     }
     println!("{}", primary("Domains"));
@@ -113,7 +113,7 @@ fn render_detailed_domains(
             .into_iter()
             .map(|row| (row.domain, (row.vectors, row.urls)))
             .collect();
-        println!("{}", serde_json::to_string_pretty(&out)?);
+        crate::json::print_json_gated(&out)?;
     } else {
         println!("{}", primary("Domains"));
         print_aurora_table(

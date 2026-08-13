@@ -315,6 +315,8 @@ impl fmt::Debug for Config {
                     .collect::<Vec<_>>(),
             )
             .field("quiet", &self.quiet)
+            .field("motion_choice", &self.motion_choice)
+            .field("verbosity", &self.verbosity)
             .field("job_wait_timeout_secs", &self.job_wait_timeout_secs)
             .field("doctor_diagnose", &self.doctor_diagnose)
             .finish()

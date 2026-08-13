@@ -51,7 +51,7 @@ async fn event_is_redacted_and_stamped_before_sqlite_persistence() {
             .await
             .unwrap();
     let value: serde_json::Value = serde_json::from_str(&row).unwrap();
-    assert_eq!(value["message"], "[REDACTED]");
+    assert_eq!(value["message"], "authorization: bearer [REDACTED]");
     assert_eq!(value["redaction_status"], "redacted");
     assert!(value["redaction_version"].is_string());
     assert_eq!(value["redacted_field_count"], 1);

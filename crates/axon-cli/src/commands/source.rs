@@ -15,12 +15,15 @@ use axon_api::source::{
 use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
 use axon_services::context::ServiceContext;
-use axon_services::index_source;
-use futures_util::stream::{self, StreamExt};
+use axon_services::{index_source, index_source_with_progress};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::error::Error;
+use std::io::IsTerminal;
 
+use super::wait_progress::{ProgressMode, WaitProgressSession};
+
+mod batch;
 pub(crate) mod detach;
 
 pub async fn run_source(
@@ -39,102 +42,7 @@ pub async fn run_source(
         return Err("--output accepts only one source input".into());
     }
 
-    let concurrency = cfg.batch_concurrency.clamp(1, 512);
-    let outcomes = stream::iter(inputs.into_iter().enumerate())
-        .map(|(index, input)| async move {
-            let reported_input = input.clone();
-            let result = match build_source_request(cfg, input) {
-                Ok(request) => execute_source_request(cfg, service_context, request).await,
-                Err(error) => Err(error),
-            };
-            result
-                .map(|result| (index, result))
-                .map_err(|error| (index, reported_input, error.to_string()))
-        })
-        .buffer_unordered(concurrency)
-        .collect::<Vec<Result<(usize, SourceResult), (usize, String, String)>>>()
-        .await;
-    if should_detach(cfg)
-        && outcomes.iter().any(|outcome| {
-            outcome
-                .as_ref()
-                .is_ok_and(|(_, result)| result.job.is_some())
-        })
-    {
-        // A sibling input can fail after other jobs were durably enqueued.
-        // Start the worker before propagating that error so successful jobs do
-        // not remain queued indefinitely.
-        detach::ensure_worker_process(cfg).await;
-    }
-    let mut indexed_results = Vec::new();
-    let mut batch_errors = Vec::new();
-    for outcome in outcomes {
-        match outcome {
-            Ok(result) => indexed_results.push(result),
-            Err(error) => batch_errors.push(error),
-        }
-    }
-    indexed_results.sort_by_key(|(index, _)| *index);
-    batch_errors.sort_by_key(|(index, _, _)| *index);
-    let semantic_failures = indexed_results
-        .iter()
-        .filter(|(_, result)| result.status == LifecycleStatus::Failed)
-        .count();
-    let failed = batch_errors.len() + semantic_failures;
-    let succeeded = indexed_results.len() - semantic_failures;
-
-    if cfg.json_output {
-        let mut rendered = indexed_results
-            .iter()
-            .map(|(index, result)| {
-                if is_queued_descriptor(result) {
-                    (*index, queued_descriptor_json(result))
-                } else {
-                    (*index, source_result_json(cfg, result))
-                }
-            })
-            .collect::<Vec<_>>();
-        rendered.extend(batch_errors.iter().map(|(index, input, error)| {
-            (
-                *index,
-                serde_json::json!({
-                    "input": input,
-                    "status": "failed",
-                    "error": error,
-                }),
-            )
-        }));
-        rendered.sort_by_key(|(index, _)| *index);
-        let rendered = rendered
-            .into_iter()
-            .map(|(_, value)| value)
-            .collect::<Vec<_>>();
-        println!(
-            "{}",
-            serde_json::json!({
-                "count": rendered.len(),
-                "succeeded": succeeded,
-                "failed": failed,
-                "results": rendered,
-            })
-        );
-    } else {
-        for (_, result) in &indexed_results {
-            render_source_result(cfg, result);
-        }
-        for (_, input, error) in &batch_errors {
-            eprintln!("{} {}: {}", muted("failed"), input, error);
-        }
-    }
-    if failed > 0 {
-        return Err(format!(
-            "{} of {} source inputs failed",
-            failed,
-            indexed_results.len() + batch_errors.len()
-        )
-        .into());
-    }
-    Ok(())
+    batch::run(cfg, service_context, inputs).await
 }
 
 /// Per the command contract, `axon <source>` is detached by default: it
@@ -176,14 +84,55 @@ async fn execute_source_request(
     Ok(if detached {
         detach::enqueue_source_detached(service_context, request).await?
     } else {
-        index_source(request, service_context)
-            .await
-            // Preserve the whole error chain: `anyhow::Error` erases to a
-            // `Box<dyn Error>` whose `.source()` walk `main` renders, so the
-            // actionable cause (e.g. the git adapter's clone failure) survives
-            // instead of being flattened to only the outermost context.
-            .map_err(|e| -> Box<dyn Error> { e.into() })?
+        execute_waited_source_request(cfg, service_context, request, None).await?
     })
+}
+
+pub(crate) async fn execute_waited_source_request(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    request: SourceRequest,
+    display_target: Option<String>,
+) -> Result<SourceResult, Box<dyn Error>> {
+    let mode = ProgressMode::for_config(cfg, std::io::stderr().is_terminal());
+    if mode == ProgressMode::Silent {
+        return index_source(request, service_context)
+            .await
+            .map_err(|error| error.into());
+    }
+    let target = display_target.unwrap_or_else(|| request.source.clone());
+    let scope = request.scope;
+    let (sender, receiver) =
+        axon_services::source::foreground_progress::foreground_progress_channel();
+    let mut session = WaitProgressSession::source(
+        cfg,
+        target,
+        scope,
+        receiver,
+        service_context.foreground_event_store(),
+    );
+    let work = index_source_with_progress(request, service_context, sender);
+    session.run_until(work).await
+}
+
+async fn execute_batch_source_request(
+    cfg: &Config,
+    service_context: &ServiceContext,
+    index: usize,
+    request: SourceRequest,
+    forwarder: Option<super::wait_progress::BatchProgressForwarder>,
+) -> Result<SourceResult, Box<dyn Error>> {
+    let Some(forwarder) = forwarder else {
+        return execute_source_request(cfg, service_context, request).await;
+    };
+    let target = request.source.clone();
+    let (sender, receiver) =
+        axon_services::source::foreground_progress::foreground_progress_channel();
+    let work = index_source_with_progress(request, service_context, sender);
+    forwarder
+        .run_until(index, target, receiver, work)
+        .await
+        .map_err(|error| error.into())
 }
 
 /// Parse a `--scope` string (e.g. `page`, `site`) into a [`SourceScope`].

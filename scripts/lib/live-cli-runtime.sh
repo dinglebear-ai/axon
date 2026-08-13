@@ -149,7 +149,7 @@ prepare_live_invocation() {
 run_live() {
   local name="$1"
   shift
-  local logfile stderr_log exit_code result json_expected=0 arg contract_filter
+  local logfile stderr_log exit_code result json_expected=0 arg contract_filter started_ms
   prepare_live_invocation "$@"
   for arg in "${PREPARED_ARGS[@]}"; do
     [ "$arg" = "--json" ] && json_expected=1
@@ -162,8 +162,15 @@ run_live() {
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"
   LAST_LIVE_LOG="$logfile"
+  started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
+  if [ "$exit_code" -ne 0 ] && retryable_live_failure "$name" "$stderr_log"; then
+    mv "$logfile" "${logfile%.log}.attempt-1.log"
+    mv "$stderr_log" "${stderr_log%.log}.attempt-1.log"
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
+    exit_code=$?
+  fi
   if [ "$exit_code" -eq 0 ] && { [ "$json_expected" -eq 0 ] || jq -e . "$logfile" >/dev/null 2>&1; }; then
     result="PASS"
   else
@@ -178,6 +185,17 @@ run_live() {
     fi
   fi
   record "$name" "live" "$result" "$exit_code" "${PREPARED_ARGS[*]}" "$logfile"
+  record_timing "$started_ms" "live" "$name" "${PREPARED_ARGS[*]}"
+}
+
+retryable_live_failure() {
+  local name="$1" stderr_log="$2"
+  case "$name" in
+    source|scrape|map|brand|search|research|extract|screenshot) ;;
+    *) return 1 ;;
+  esac
+  grep -Eq '\[(fetch\.timeout|fetch\.network|provider\.timeout|provider\.unavailable)\]' \
+    "$stderr_log"
 }
 
 run_live_expect_failure() {

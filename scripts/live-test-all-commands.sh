@@ -38,12 +38,17 @@ esac
 AXON_BIN="${AXON_BIN:-$ROOT_DIR/target/debug/axon}"
 REGISTRY="${AXON_COMMAND_REGISTRY:-$ROOT_DIR/docs/reference/cli/commands.json}"
 TIMEOUT_SECS="${AXON_LIVE_COMMAND_TIMEOUT_SECS:-120}"
+PARSER_JOBS="${AXON_LIVE_PARSER_JOBS:-4}"
+if ! [[ "$PARSER_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "AXON_LIVE_PARSER_JOBS must be a positive integer" >&2
+  exit 2
+fi
 TS="$(date +%Y%m%d-%H%M%S)"
 if [ -n "${AXON_LIVE_TEST_OUTDIR:-}" ]; then
   OUTDIR="$AXON_LIVE_TEST_OUTDIR"
   mkdir -p "$OUTDIR"
 else
-  live_test_root="$ROOT_DIR/.cache/live-test"
+  live_test_root="${AXON_LIVE_TEST_ROOT:-$ROOT_DIR/.cache/live-test}"
   mkdir -p "$live_test_root"
   OUTDIR="$(mktemp -d "$live_test_root/$TS.XXXXXX")" || {
     echo "failed to allocate a unique live-test output directory" >&2
@@ -91,9 +96,14 @@ REGISTRY="$(realpath -- "$REGISTRY")"
 OUTDIR="$(realpath -- "$OUTDIR")"
 REPORT="$OUTDIR/report.tsv"
 BEHAVIOR_REPORT="$OUTDIR/behavioral-coverage.tsv"
+TIMINGS_REPORT="$OUTDIR/timings.tsv"
 
 command -v jq >/dev/null 2>&1 || {
   echo "jq is required" >&2
+  exit 2
+}
+command -v flock >/dev/null 2>&1 || {
+  echo "flock is required" >&2
   exit 2
 }
 [ -x "$AXON_BIN" ] || {
@@ -107,6 +117,7 @@ jq -e '.commands | type == "array"' "$REGISTRY" >/dev/null || {
 
 printf 'command\tphase\tresult\texit\tinvocation\tlog\n' > "$REPORT"
 printf 'command\toption\tresult\tevidence\n' >"$BEHAVIOR_REPORT"
+printf 'milliseconds\tphase\tcommand\tinvocation\n' >"$TIMINGS_REPORT"
 BEHAVIOR_ACTUAL="$OUTDIR/behavioral-actual.tsv"
 BEHAVIOR_SEMANTIC="$OUTDIR/behavioral-semantic.tsv"
 BEHAVIOR_EXPECTED="$OUTDIR/behavioral-expected.tsv"

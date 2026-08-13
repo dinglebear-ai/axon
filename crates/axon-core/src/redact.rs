@@ -12,24 +12,20 @@
 //! shapes — Google API keys (`AIza...`), Google OAuth tokens (`ya29.<token>`),
 //! OpenAI keys (`sk-...`), GitHub tokens (`ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`),
 //! `atk_` tokens — plus `Authorization:`/`Authorization=` header values and the
-//! `API_KEY`/`TOKEN`/`SECRET` (`=` or `:`) marker rules, plus a high-entropy 32+
-//! char run.
+//! contextual `API_KEY`/`TOKEN`/`SECRET` (`=` or `:`) assignment rules.
 //!
 //! The token-anchored prefix rules (`sk-`, `gh*_`, `atk_`) use a `\b` word
 //! boundary so they fire only at the start of a token — `task-force` is not
 //! redacted by the `sk-` rule, but ` sk-...` is. They match any length, so a
 //! short/malformed token in an error tail is still caught.
 //!
-//! The high-entropy fallback is gated on a Shannon-entropy threshold so that
-//! degenerate runs (long benign padding like `xxxxxxxx…`, repeated filler) are
-//! left intact while genuinely random-looking tokens are redacted.
+//! Entropy is never applied to context-free prose. The structured boundary
+//! redactor uses it only as a secondary signal when the field name or JSON
+//! path already classifies the value as secret-like.
 //!
 //! This module also owns sensitive-*name* detection ([`is_secret_like`], for
 //! header/field/file names) in addition to redacting secret *values* embedded
 //! in free text — a single home for both halves of the S-L1 policy.
-
-use regex::Regex;
-use std::sync::LazyLock;
 
 /// Placeholder substituted for every matched secret span.
 pub const REDACTION_PLACEHOLDER: &str = "[REDACTED]";
@@ -45,43 +41,13 @@ pub const REDACTION_PLACEHOLDER: &str = "[REDACTED]";
 /// opaque-token classifier instead of re-implementing entropy scoring.
 const MIN_ENTROPY_BITS: f64 = 3.0;
 
-/// Structured secret shapes — redacted unconditionally.
-static STRUCTURED_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"(?x)
-          AIza[0-9A-Za-z_\-]{35}              # Google API key
-        | ya29\.[\w\-]+                        # Google OAuth access token
-        | \bsk-[A-Za-z0-9][A-Za-z0-9_\-]*      # OpenAI-style key (token-anchored, any length)
-        | \bgh[pousr]_[A-Za-z0-9]+             # GitHub token ghp_/gho_/ghu_/ghs_/ghr_ (any length, no tail leak)
-        | \batk_[A-Za-z0-9_\-]+                # atk_-prefixed token
-        | (?i:authorization)[:=][\ \t]*(?:(?i:bearer|basic|token)[\ \t]+)?\S*  # Authorization value, with or without scheme word/spacing (horizontal space only so a bare header never swallows the next line)
-        | \S*(?i:API_KEY|TOKEN|SECRET)[:=]\S*  # any non-ws run with API_KEY/TOKEN/SECRET followed by = or : (case-insensitive)
-        ",
-    )
-    .expect("structured secret regex is valid")
-});
-
-/// Candidate runs for the entropy-gated fallback.
-static HIGH_ENTROPY_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"[A-Za-z0-9_\-]{32,}").expect("high-entropy regex is valid"));
-
 /// Replace every secret-looking span in `text` with [`REDACTION_PLACEHOLDER`].
 ///
 /// Safe to call on arbitrary untrusted text; non-secret content is returned
 /// unchanged.
 #[must_use]
 pub fn redact_secrets(text: &str) -> String {
-    let structured = STRUCTURED_RE.replace_all(text, REDACTION_PLACEHOLDER);
-    HIGH_ENTROPY_RE
-        .replace_all(&structured, |caps: &regex::Captures| {
-            let run = &caps[0];
-            if shannon_entropy_bits(run) >= MIN_ENTROPY_BITS {
-                REDACTION_PLACEHOLDER.to_string()
-            } else {
-                run.to_string()
-            }
-        })
-        .into_owned()
+    detectors::redact_secret_spans(text)
 }
 
 /// Shannon entropy of `s` in bits per character. Candidate runs are ASCII
@@ -157,7 +123,7 @@ pub use boundary::{
 pub use detectors::{
     BARE_SECRET_TOKEN_PREFIXES, FORBIDDEN_FIELD_FRAGMENTS, FORBIDDEN_VALUE_FRAGMENTS,
     SECRET_LIKE_FIELD_FRAGMENTS, contains_bare_secret_token, forbidden_field_name,
-    raw_dotenv_assignment, secret_like_field_name, value_contains_secret,
+    raw_dotenv_assignment, secret_like_field_name, secret_value_detector, value_contains_secret,
     value_is_absolute_local_path,
 };
 

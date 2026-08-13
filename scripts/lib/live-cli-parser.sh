@@ -2,12 +2,13 @@
 # Non-executing command and option recognition coverage.
 
 run_help_path() {
-  local encoded="$1" name path_json logfile exit_code result
+  local encoded="$1" name path_json logfile exit_code result started_ms
   name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
   path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
   logfile="$OUTDIR/logs/help-$(printf '%s' "$name" | tr ' /' '__').log"
   mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
 
+  started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${path[@]}" --help >"$logfile" 2>&1
   exit_code=$?
   if [ "$exit_code" -eq 0 ] && grep -Fq "axon ${path[*]}" "$logfile"; then
@@ -17,6 +18,7 @@ run_help_path() {
     failures=$((failures + 1))
   fi
   record "$name" "parser-command" "$result" "$exit_code" "${path[*]} --help" "$logfile"
+  record_timing "$started_ms" "parser-command" "$name" "${path[*]} --help"
 }
 
 run_root_help() {
@@ -96,10 +98,11 @@ option_value() {
 run_option_probe() {
   local name="$1" option="$2" value_name="$3"
   shift 3
-  local logfile exit_code result invocation
+  local logfile exit_code result invocation started_ms
   local -a path=("$@")
   logfile="$OUTDIR/logs/option-$(printf '%s-%s' "$name" "$option" | tr ' /' '___').log"
   invocation="${path[*]} $option"
+  started_ms="$(now_millis)"
   if [ -n "$value_name" ]; then
     local value
     value="$(option_value "$name" "$option" "$value_name")"
@@ -117,6 +120,7 @@ run_option_probe() {
     failures=$((failures + 1))
   fi
   record "$name" "parser-option" "$result" "$exit_code" "$invocation" "$logfile"
+  record_timing "$started_ms" "parser-option" "$name" "$invocation"
 }
 
 run_parser_rejection() {
@@ -164,18 +168,37 @@ probe_help_options() {
   )
 }
 
+probe_command_bundle() {
+  local encoded="$1" name path_json help_log
+  run_help_path "$encoded"
+  name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
+  path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
+  mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
+  help_log="$OUTDIR/logs/help-$(printf '%s' "$name" | tr ' /' '__').log"
+  probe_help_options "$name" "$help_log" "${path[@]}"
+}
+
 if [ "$MODE" != "scenarios" ]; then
   run_root_help
   probe_help_options "<root>" "$OUTDIR/logs/help-root.log"
 
-  while IFS= read -r encoded; do
-    run_help_path "$encoded"
-    name="$(printf '%s' "$encoded" | base64 --decode | jq -r '.name')"
-    path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
-    mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
-    help_log="$OUTDIR/logs/help-$(printf '%s' "$name" | tr ' /' '__').log"
-    probe_help_options "$name" "$help_log" "${path[@]}"
-  done < <(jq -r '.commands[] | @base64' "$REGISTRY")
+  if [ "$PARSER_JOBS" -gt 1 ]; then
+    active_jobs=0
+    while IFS= read -r encoded; do
+      probe_command_bundle "$encoded" &
+      active_jobs=$((active_jobs + 1))
+      if [ "$active_jobs" -ge "$PARSER_JOBS" ]; then
+        wait -n || true
+        active_jobs=$((active_jobs - 1))
+      fi
+    done < <(jq -r '.commands[] | @base64' "$REGISTRY")
+    wait
+    failures="$(awk -F '\t' 'NR > 1 && $3 == "FAIL" { count++ } END { print count + 0 }' "$REPORT")"
+  else
+    while IFS= read -r encoded; do
+      probe_command_bundle "$encoded"
+    done < <(jq -r '.commands[] | @base64' "$REGISTRY")
+  fi
 fi
 
 probe_hidden_global_options() {

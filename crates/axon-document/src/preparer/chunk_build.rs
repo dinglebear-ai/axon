@@ -44,9 +44,6 @@ pub(super) fn build_chunks(
             size_fallback_chunks(text, "plain_text_windows")
         }
         ChunkingProfile::MarkdownSections => markdown::markdown_sections(text),
-        ChunkingProfile::HtmlArticle if use_fallback => {
-            size_fallback_chunks(text, "plain_text_windows")
-        }
         ChunkingProfile::HtmlArticle => markdown::html_article(text),
         ChunkingProfile::PlainTextWindows => text::plain_text_windows(text),
         ChunkingProfile::TranscriptSegments => transcript::transcript_segments(text),

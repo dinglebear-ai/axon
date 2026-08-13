@@ -139,4 +139,4 @@ pub async fn extract_start_with_context(
 
 // --- Sync extract (--wait true) ---
 
-pub use sync::extract_sync;
+pub use sync::{ExtractProgress, extract_sync, extract_sync_with_progress};

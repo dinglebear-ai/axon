@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::commands::wait_progress::ProgressMode;
 use axon_api::source::SourceItemKey;
 
 fn warning(message: &str, severity: Severity) -> SourceWarning {
@@ -10,6 +11,33 @@ fn warning(message: &str, severity: Severity) -> SourceWarning {
         source_item_key: Some(SourceItemKey::from("item")),
         retryable: false,
     }
+}
+
+#[test]
+fn waited_source_uses_progress_but_json_and_quiet_do_not() {
+    let mut cfg = Config {
+        command: CommandKind::Source,
+        wait: true,
+        ..Config::default()
+    };
+    assert_eq!(
+        ProgressMode::for_config(&cfg, true),
+        ProgressMode::Interactive
+    );
+    cfg.json_output = true;
+    assert_eq!(ProgressMode::for_config(&cfg, true), ProgressMode::Silent);
+    cfg.json_output = false;
+    cfg.quiet = true;
+    assert_eq!(ProgressMode::for_config(&cfg, true), ProgressMode::Silent);
+}
+
+#[test]
+fn scrape_projection_is_foreground_progress_capable() {
+    let cfg = Config {
+        command: CommandKind::Scrape,
+        ..Config::default()
+    };
+    assert!(!should_detach(&cfg));
 }
 
 #[test]

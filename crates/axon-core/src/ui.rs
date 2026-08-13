@@ -1,8 +1,10 @@
+mod console;
 mod hyperlinks;
 mod panel;
 mod sparkline;
 mod table;
 
+pub use console::{ConsoleLogLevel, ConsolePolicy};
 pub use hyperlinks::hyperlink;
 pub use panel::panel;
 pub use sparkline::sparkline;
@@ -19,16 +21,20 @@ use std::env;
 use std::error::Error;
 use std::time::Duration;
 
-// Aurora design tokens — keep in sync with
-// aurora-design-system/registry/aurora/styles/aurora.css
-pub const PRIMARY_ANSI: &str = "\x1b[38;2;249;168;196m"; // --aurora-accent-pink        #F9A8C4
-pub const ACCENT_ANSI: &str = "\x1b[38;2;41;182;246m"; // --aurora-accent-primary     #29B6F6
+// Aurora CLI/editor tokens. These are intentionally brighter than Aurora's
+// web/product palette so accents survive dark terminals and low-gamut
+// emulators. Canonical source:
+// aurora/themes/editors/claude-code/TOKENS.md
+pub const PRIMARY_ANSI: &str = "\x1b[38;2;255;126;182m"; // CLI rose                 #FF7EB6
+pub const ACCENT_ANSI: &str = "\x1b[38;2;54;201;255m"; // CLI cyan                 #36C9FF
+const SHIMMER_ANSI: &str = "\x1b[38;2;126;224;255m"; // CLI cyan shimmer         #7EE0FF
 const SUCCESS_ANSI: &str = "\x1b[38;2;125;211;199m"; // --aurora-success            #7DD3C7
 const WARN_ANSI: &str = "\x1b[38;2;198;163;107m"; // --aurora-warn               #C6A36B
 const ERROR_ANSI: &str = "\x1b[38;2;199;132;144m"; // --aurora-error              #C78490
 const INFO_ANSI: &str = "\x1b[38;2;114;200;245m"; // --aurora-info               #72C8F5
-const MUTED_ANSI: &str = "\x1b[38;2;167;188;201m"; // --aurora-text-muted         #A7BCC9
+const MUTED_ANSI: &str = "\x1b[38;2;207;224;236m"; // CLI inactive text         #CFE0EC
 const SUBTLE_ANSI: &str = "\x1b[38;2;196;107;136m"; // --aurora-accent-pink-deep   #C46B88
+const NEUTRAL_ANSI: &str = "\x1b[38;2;145;168;182m"; // --aurora-neutral            #91A8B6
 
 const COLOR_AUTO: u8 = 0;
 const COLOR_ALWAYS: u8 = 1;
@@ -72,6 +78,12 @@ pub fn install_color_choice(choice: crate::config::ColorChoice) {
 pub fn color_enabled_public() -> bool {
     use std::io::IsTerminal;
     color_enabled_for_auto_tty(std::io::stdout().is_terminal())
+}
+
+/// Canonical color accessor for progress and diagnostics rendered on stderr.
+pub fn stderr_color_enabled() -> bool {
+    use std::io::IsTerminal;
+    color_enabled_for_auto_tty(std::io::stderr().is_terminal())
 }
 
 /// True iff the installed `--color` override is `Always`. Used by the tracing
@@ -118,7 +130,11 @@ fn color_enabled_for_auto_tty(is_terminal: bool) -> bool {
 }
 
 pub fn ansi_colorize(code: &str, text: &str) -> String {
-    if color_enabled_public() {
+    ansi_colorize_when(color_enabled_public(), code, text)
+}
+
+fn ansi_colorize_when(enabled: bool, code: &str, text: &str) -> String {
+    if enabled {
         format!("{code}{text}\x1b[0m")
     } else {
         text.to_string()
@@ -126,7 +142,11 @@ pub fn ansi_colorize(code: &str, text: &str) -> String {
 }
 
 pub fn ansi_bold(text: &str) -> String {
-    ansi_colorize("\x1b[1m", text)
+    ansi_bold_when(color_enabled_public(), text)
+}
+
+fn ansi_bold_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, "\x1b[1m", text)
 }
 
 pub fn ansi_dim(text: &str) -> String {
@@ -138,21 +158,41 @@ pub struct Spinner {
 }
 
 impl Spinner {
-    pub fn new(message: &str) -> Self {
+    fn new(message: &str, motion: bool, color: bool) -> Self {
         let bar = ProgressBar::new_spinner();
-        bar.enable_steady_tick(Duration::from_millis(100));
-        // indicatif's template DSL only supports named/256 colors; cyan is the
-        // closest stand-in for Aurora's --aurora-accent-primary (#29B6F6).
-        bar.set_style(
-            ProgressStyle::with_template("{spinner:.cyan} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
+        let frames: Vec<String> = if motion {
+            ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, frame)| {
+                    if index % 3 == 1 {
+                        shimmer_when(color, frame)
+                    } else {
+                        accent_when(color, frame)
+                    }
+                })
+                .collect()
+        } else {
+            let marker = accent_when(color, "•");
+            vec![marker.clone(), marker]
+        };
+        let frame_refs: Vec<&str> = frames.iter().map(String::as_str).collect();
+        let style = ProgressStyle::with_template("{spinner} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&frame_refs);
+        bar.set_style(style);
         bar.set_message(message.to_string());
+        if motion {
+            bar.enable_steady_tick(Duration::from_millis(80));
+        } else {
+            bar.tick();
+        }
         Self { bar }
     }
 
     pub fn finish(&self, message: &str) {
-        self.bar.finish_with_message(message.to_string());
+        let _ = message;
+        self.bar.finish_and_clear();
     }
 
     /// Clear the spinner from the terminal without printing a final message.
@@ -167,15 +207,19 @@ impl Spinner {
 /// Returns `None` when suppressed so callers can pattern-match without
 /// needing a flag variable.
 pub fn wait_spinner_for(cfg: &Config, msg: &str) -> Option<Spinner> {
-    use std::io::IsTerminal;
-    if cfg.json_output || cfg.quiet || !std::io::stderr().is_terminal() {
+    let policy = ConsolePolicy::for_config(cfg);
+    if !policy.progress_enabled() {
         return None;
     }
-    Some(Spinner::new(msg))
+    Some(Spinner::new(
+        msg,
+        policy.motion_enabled(),
+        stderr_color_enabled(),
+    ))
 }
 
 pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn Error>> {
-    if cfg.yes || !console::Term::stderr().is_term() {
+    if cfg.yes || !::console::Term::stderr().is_term() {
         return Ok(true);
     }
 
@@ -187,23 +231,78 @@ pub fn confirm_destructive(cfg: &Config, prompt: &str) -> Result<bool, Box<dyn E
 }
 
 pub fn primary(text: &str) -> String {
-    ansi_bold(&ansi_colorize(PRIMARY_ANSI, text))
+    primary_when(color_enabled_public(), text)
+}
+
+pub fn primary_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, PRIMARY_ANSI, text))
 }
 
 pub fn accent(text: &str) -> String {
-    ansi_colorize(ACCENT_ANSI, text)
+    accent_when(color_enabled_public(), text)
+}
+
+pub fn accent_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, ACCENT_ANSI, text)
+}
+
+/// Brighter cyan used for the leading edge of animated CLI progress.
+pub fn shimmer_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, SHIMMER_ANSI, text)
 }
 
 pub fn success(text: &str) -> String {
-    ansi_bold(&ansi_colorize(SUCCESS_ANSI, text))
+    success_when(color_enabled_public(), text)
+}
+
+pub fn success_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, SUCCESS_ANSI, text))
 }
 
 pub fn warning(text: &str) -> String {
-    ansi_bold(&ansi_colorize(WARN_ANSI, text))
+    warning_when(color_enabled_public(), text)
+}
+
+pub fn warning_when(enabled: bool, text: &str) -> String {
+    ansi_bold_when(enabled, &ansi_colorize_when(enabled, WARN_ANSI, text))
+}
+
+pub fn error_when(enabled: bool, text: &str) -> String {
+    if enabled {
+        error(text)
+    } else {
+        text.to_string()
+    }
+}
+
+pub fn muted_when(enabled: bool, text: &str) -> String {
+    if enabled {
+        muted(text)
+    } else {
+        text.to_string()
+    }
 }
 
 pub fn muted(text: &str) -> String {
     ansi_colorize(MUTED_ANSI, text)
+}
+
+/// Aurora informational blue for supporting active metadata.
+pub fn info(text: &str) -> String {
+    info_when(color_enabled_public(), text)
+}
+
+pub fn info_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, INFO_ANSI, text)
+}
+
+/// Aurora neutral blue-gray for low-emphasis operator metadata.
+pub fn neutral(text: &str) -> String {
+    neutral_when(color_enabled_public(), text)
+}
+
+pub fn neutral_when(enabled: bool, text: &str) -> String {
+    ansi_colorize_when(enabled, NEUTRAL_ANSI, text)
 }
 
 /// Aurora rose-deep — secondary info (UUIDs, ages, separators).

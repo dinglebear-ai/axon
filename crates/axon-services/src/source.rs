@@ -30,6 +30,7 @@ pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
 mod executor;
+pub mod foreground_progress;
 pub mod graph;
 pub mod job_tracking;
 pub(crate) mod local_identity;
@@ -83,6 +84,19 @@ pub async fn index_source(
     .await
 }
 
+pub async fn index_source_with_progress(
+    request: SourceRequest,
+    ctx: &ServiceContext,
+    foreground: foreground_progress::ForegroundProgressSender,
+) -> anyhow::Result<SourceResult> {
+    let execution = SourceExecutionContext::inline_with_progress(
+        request.clone(),
+        Some(AuthSnapshot::trusted_cli(env!("CARGO_PKG_VERSION"))),
+        foreground,
+    );
+    index_source_inner(request, ctx, execution).await
+}
+
 pub(crate) async fn index_source_with_execution(
     request: SourceRequest,
     ctx: &ServiceContext,
@@ -115,7 +129,8 @@ async fn index_source_inner(
         &input,
         execution.auth_snapshot.as_ref(),
         events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id)
-            .with_attempt(execution.attempt),
+            .with_attempt(execution.attempt)
+            .with_optional_foreground(execution.foreground.clone()),
     )
     .await
     {

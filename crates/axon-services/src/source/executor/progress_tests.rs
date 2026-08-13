@@ -174,6 +174,43 @@ async fn progress_persistence_failure_is_non_fatal() {
 }
 
 #[tokio::test]
+async fn normalized_snapshot_reaches_foreground_feed_when_store_write_fails() {
+    let writer = Arc::new(RecordingWriter {
+        updates: Mutex::new(Vec::new()),
+        fail: true,
+    });
+    let (tx, mut rx) = crate::source::foreground_progress::foreground_progress_channel();
+    let coordinator = ProgressCoordinator::with_writer_and_foreground(
+        writer,
+        JobId::new(uuid::Uuid::from_u128(1)),
+        SourceId::new("src-progress-test"),
+        "local",
+        Duration::ZERO,
+        Some(tx),
+    );
+    coordinator
+        .checkpoint(
+            PipelinePhase::Embedding,
+            stage_counts(Some(2), 2, Some(2), 2, Some(10), 3),
+            "embedding chunks",
+        )
+        .await;
+
+    rx.snapshots.changed().await.unwrap();
+    let snapshot = rx.snapshots.borrow().clone().unwrap();
+    assert_eq!(
+        snapshot
+            .status()
+            .unwrap()
+            .counts
+            .as_ref()
+            .unwrap()
+            .chunks_done,
+        3
+    );
+}
+
+#[tokio::test]
 async fn failed_status_write_emits_an_uncounted_running_event() {
     let writer = Arc::new(RecordingWriter {
         updates: Mutex::new(Vec::new()),

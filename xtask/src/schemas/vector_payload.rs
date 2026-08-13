@@ -296,19 +296,21 @@ fn redaction_guardrails() -> Value {
             "still_rejected": [
                 "auth headers",
                 "cookies",
-                "dotenv-style assignments",
+                "secret assignments",
                 "bare secret tokens",
-                "adapter response markers"
+                "PEM private keys",
+                "credential-bearing URLs"
             ]
         },
         "forbidden_field_fragments": FORBIDDEN_FIELD_FRAGMENTS,
         "forbidden_value_fragments": FORBIDDEN_VALUE_FRAGMENTS,
+        "value_fragment_matching": "contextual_not_substring",
         "bare_secret_token_prefixes": BARE_SECRET_TOKEN_PREFIXES,
         "also_rejects": [
-            "dotenv-style assignments",
-            "absolute local paths",
-            "raw HTML blobs in metadata",
-            "adapter response blobs"
+            "secret assignments in all strings",
+            "absolute local paths in metadata and locator fields",
+            "raw HTML blobs in metadata and locator fields",
+            "adapter response blobs in metadata and locator fields"
         ]
     })
 }

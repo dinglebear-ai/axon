@@ -429,6 +429,13 @@ containing cached source text.
 
 ### Output and CLI
 
+All commands accept `--color auto|always|never` and
+`--motion auto|always|never`. Motion defaults to animated progress only when
+stderr is an interactive terminal outside CI; `--motion never` keeps the same
+status surface static. Normal output shows results and actionable warnings.
+Use `-v` for operational detail, `-vv` for timestamped debug diagnostics, and
+`--quiet` to retain only errors plus the command's stdout result.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AXON_OUTPUT_DIR` | `$AXON_DATA_DIR/output` (default `~/.axon/output`) | Output directory for file-writing commands |

@@ -15,6 +15,7 @@ use axon_jobs::boundary::{JobStore, Result as JobResult};
 use tokio::sync::Mutex;
 
 use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime};
+use crate::source::foreground_progress::ForegroundProgressSender;
 
 const DEFAULT_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
@@ -46,6 +47,7 @@ pub(super) struct ProgressCoordinator {
     adapter: String,
     state: Arc<Mutex<CoordinatorState>>,
     interval: Duration,
+    foreground: Option<ForegroundProgressSender>,
 }
 
 impl ProgressCoordinator {
@@ -57,6 +59,7 @@ impl ProgressCoordinator {
             adapter: input.plan.route.adapter.name.clone(),
             state: Arc::new(Mutex::new(CoordinatorState::default())),
             interval: DEFAULT_PROGRESS_INTERVAL,
+            foreground: input.execution.foreground.clone(),
         }
     }
 
@@ -68,6 +71,18 @@ impl ProgressCoordinator {
         adapter: impl Into<String>,
         interval: Duration,
     ) -> Self {
+        Self::with_writer_and_foreground(writer, job_id, source_id, adapter, interval, None)
+    }
+
+    #[cfg(test)]
+    fn with_writer_and_foreground(
+        writer: Arc<dyn ProgressStatusWriter>,
+        job_id: JobId,
+        source_id: SourceId,
+        adapter: impl Into<String>,
+        interval: Duration,
+        foreground: Option<ForegroundProgressSender>,
+    ) -> Self {
         Self {
             writer,
             job_id,
@@ -75,6 +90,7 @@ impl ProgressCoordinator {
             adapter: adapter.into(),
             state: Arc::new(Mutex::new(CoordinatorState::default())),
             interval,
+            foreground,
         }
     }
 
@@ -162,7 +178,7 @@ impl ProgressCoordinator {
             message: Some(message.to_string()),
             error: None,
         };
-        let persisted = match self.writer.update(update).await {
+        let persisted = match self.writer.update(update.clone()).await {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(
@@ -179,6 +195,9 @@ impl ProgressCoordinator {
                 false
             }
         };
+        if let Some(foreground) = &self.foreground {
+            foreground.snapshot(update);
+        }
         (counts, persisted)
     }
 }

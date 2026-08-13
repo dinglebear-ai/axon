@@ -214,7 +214,9 @@ if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
   mkdir -p "$HOME/.axon"
   : > "$HOME/.axon/.env"
 fi
-if [ "${1:-}" = config ] && [ "${2:-}" = path ]; then
+if [ "${1:-}" = doctor ]; then
+  printf '%s\n' '{"all_ok":true,"services":{"qdrant":{"ok":true},"tei":{"ok":true},"chrome":{"ok":true},"llm":{"ok":true}}}'
+elif [ "${1:-}" = config ] && [ "${2:-}" = path ]; then
   printf '{"toml_path":"%s","env_path":"%s"}\n' "$AXON_CONFIG_PATH" "$AXON_ENV_FILE"
 elif [[ " $* " == *" screenshot "* ]]; then
   output=""
@@ -273,12 +275,16 @@ fi
         .output()
         .expect("run isolated scenario harness");
 
-    assert!(
-        output.status.success(),
-        "harness failed:\nstdout={}\nstderr={}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    if !output.status.success() {
+        let report = fs::read_to_string(results.join("report.tsv")).unwrap_or_default();
+        let behavior =
+            fs::read_to_string(results.join("behavioral-coverage.tsv")).unwrap_or_default();
+        panic!(
+            "harness failed:\nstdout={}\nstderr={}\nreport={report}\nbehavior={behavior}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     let calls = fs::read_to_string(calls).unwrap();
     assert!(
         !calls.contains(&poison.display().to_string()) && !calls.contains("poison.invalid"),
@@ -435,7 +441,7 @@ fn scenario_mode_preserves_non_loopback_hostnames_containing_localhost() {
     write_executable(
         &fake_axon,
         format!(
-            "#!/usr/bin/env bash\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nif [ \"${{1:-}}\" = config ] && [ \"${{2:-}}\" = set ]; then cp \"$AXON_ENV_FILE\" '{}'; fi\nprintf '{{}}\\n'\n",
+            "#!/usr/bin/env bash\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nif [ \"${{1:-}}\" = config ] && [ \"${{2:-}}\" = set ]; then cp \"$AXON_ENV_FILE\" '{}'; fi\nif [ \"${{1:-}}\" = doctor ]; then printf '%s\\n' '{{\"all_ok\":true,\"services\":{{\"qdrant\":{{\"ok\":true}},\"tei\":{{\"ok\":true}},\"chrome\":{{\"ok\":true}},\"llm\":{{\"ok\":true}}}}}}'; else printf '{{}}\\n'; fi\n",
             setup_env.display()
         ),
     );
@@ -486,7 +492,7 @@ fn scenario_mode_owns_a_collision_safe_chrome_and_bounds_cleanup() {
     let fake_axon = bin_dir.join("axon");
     fs::write(
         &fake_axon,
-        "#!/usr/bin/env bash\nif [ \"${1:-}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{}\\n'\n",
+        "#!/usr/bin/env bash\nif [ \"${1:-}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nif [ \"${1:-}\" = doctor ]; then printf '%s\\n' '{\"all_ok\":true,\"services\":{\"qdrant\":{\"ok\":true},\"tei\":{\"ok\":true},\"chrome\":{\"ok\":true},\"llm\":{\"ok\":true}}}'; else printf '{}\\n'; fi\n",
     )
     .unwrap();
     let mut permissions = fs::metadata(&fake_axon).unwrap().permissions();
@@ -704,6 +710,10 @@ for arg in "${args[@]}"; do
   case "$arg" in --json|--quiet) ;; *) filtered+=("$arg") ;; esac
 done
 set -- "${filtered[@]}"
+if [ "${1:-}" = doctor ]; then
+  printf '%s\n' '{"all_ok":true,"services":{"qdrant":{"ok":true},"tei":{"ok":true},"chrome":{"ok":true},"llm":{"ok":true}}}'
+  exit 0
+fi
 if [ "${1:-}" = config ]; then printf '{}\n'; exit 0; fi
 if [ "${1:-}" = setup ] && [ "${2:-}" = init ]; then
   mkdir -p "$HOME/.axon"
@@ -884,7 +894,7 @@ fn simultaneous_default_runs_receive_distinct_atomic_identities() {
     fs::write(
         &fake_axon,
         format!(
-            "#!/usr/bin/env bash\nprintf '%s|%s\\n' \"$PWD\" \"${{AXON_COLLECTION:-}}\" >> '{}'\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nprintf '{{}}\\n'\n",
+            "#!/usr/bin/env bash\nprintf '%s|%s\\n' \"$PWD\" \"${{AXON_COLLECTION:-}}\" >> '{}'\nif [ \"${{1:-}}\" = setup ]; then mkdir -p \"$HOME/.axon\"; : > \"$HOME/.axon/.env\"; fi\nif [ \"${{1:-}}\" = doctor ]; then printf '%s\\n' '{{\"all_ok\":true,\"services\":{{\"qdrant\":{{\"ok\":true}},\"tei\":{{\"ok\":true}},\"chrome\":{{\"ok\":true}},\"llm\":{{\"ok\":true}}}}}}'; else printf '{{}}\\n'; fi\n",
             calls.display()
         ),
     )
@@ -1249,4 +1259,39 @@ fn hidden_cli_alias_inventory_is_behaviorally_covered() {
     let ask = fs::read_to_string("scripts/lib/live-cli-scenarios-web-rag.sh")
         .expect("read ask scenarios");
     assert!(ask.contains("prove_option_behavior \"ask\" \"--continue\""));
+}
+
+#[test]
+fn live_retry_policy_is_narrowly_limited_to_transient_web_failures() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let stderr_log = temp.path().join("stderr.log");
+    fs::write(&stderr_log, "Error: [fetch.timeout] request timed out\n").unwrap();
+    let probe = format!(
+        "source scripts/lib/live-cli-runtime.sh; \
+         retryable_live_failure scrape '{}' && \
+         ! retryable_live_failure 'jobs clear' '{}'",
+        stderr_log.display(),
+        stderr_log.display()
+    );
+    let output = Command::new("bash").arg("-c").arg(probe).output().unwrap();
+    assert!(
+        output.status.success(),
+        "retry policy probe failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    fs::write(&stderr_log, "Error: invalid argument\n").unwrap();
+    let probe = format!(
+        "source scripts/lib/live-cli-runtime.sh; \
+         ! retryable_live_failure scrape '{}'",
+        stderr_log.display()
+    );
+    assert!(
+        Command::new("bash")
+            .arg("-c")
+            .arg(probe)
+            .status()
+            .unwrap()
+            .success()
+    );
 }

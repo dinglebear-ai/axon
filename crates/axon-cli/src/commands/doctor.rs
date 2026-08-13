@@ -14,7 +14,7 @@ pub async fn run_doctor(
         .map_err(|e| -> Box<dyn Error> { e })?;
     let report = result.payload;
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&report)?);
+        crate::json::print_json_gated(&report)?;
     } else {
         render_doctor_report_human(&report);
         if cfg.doctor_diagnose {

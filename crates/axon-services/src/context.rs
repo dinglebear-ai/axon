@@ -312,6 +312,13 @@ impl ServiceContext {
         self.jobs.unified_job_store()
     }
 
+    pub fn foreground_event_store(
+        &self,
+    ) -> Option<crate::source::foreground_progress::ForegroundEventStore> {
+        self.job_store()
+            .map(crate::source::foreground_progress::ForegroundEventStore::new)
+    }
+
     /// Wake the unified durable-job worker so a freshly enqueued job is
     /// claimed on its next wakeup instead of waiting out the poll interval.
     /// No-op for enqueue-only runtimes (no in-process workers).
