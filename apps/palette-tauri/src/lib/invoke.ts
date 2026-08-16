@@ -8,8 +8,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
-export const isTauriRuntime =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export const isTauriRuntime = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 // Shared Tauri window handle with a browser fallback. In the Tauri runtime it is
 // the real window (event listeners wired); under `vite dev` it is a no-op stub so
@@ -32,7 +31,10 @@ export async function invoke<T = unknown>(
       const method = (req.method ?? "GET").toUpperCase();
       const init: RequestInit = { method, headers: { accept: "application/json" } };
       if (req.body != null && method !== "GET" && method !== "DELETE") {
-        init.headers = { ...(init.headers as Record<string, string>), "content-type": "application/json" };
+        init.headers = {
+          ...(init.headers as Record<string, string>),
+          "content-type": "application/json",
+        };
         init.body = JSON.stringify(req.body);
       }
       const resp = await fetch(req.path ?? "/", init);
@@ -75,8 +77,6 @@ export async function invoke<T = unknown>(
         openResultsInline: true,
         agentBubbles: false,
         showFooterHints: false,
-        envValues: {},
-        configValues: {},
       } as T;
     case "save_palette_settings":
       return (args?.settings ?? args) as T;
@@ -122,7 +122,9 @@ interface GitHubBrowseDevResult {
  * shapes, always unauthenticated, no `GITHUB_TOKEN` (the browser can't read
  * `~/.axon/.env`). Kept intentionally small; production correctness lives in
  * the Rust command and its own test suite. */
-async function githubBrowseDevFallback(request: GitHubBrowseDevRequest): Promise<GitHubBrowseDevResult> {
+async function githubBrowseDevFallback(
+  request: GitHubBrowseDevRequest,
+): Promise<GitHubBrowseDevResult> {
   const owner = request.owner ?? "";
   const repo = request.repo;
   const branch = request.branch;
@@ -136,10 +138,7 @@ async function githubBrowseDevFallback(request: GitHubBrowseDevRequest): Promise
   } else if (kind === "tree") {
     url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo ?? "")}/git/trees/${encodeURIComponent(branch || "main")}?recursive=1`;
   } else if (kind === "file") {
-    const encodedPath = (path ?? "")
-      .split("/")
-      .map(encodeURIComponent)
-      .join("/");
+    const encodedPath = (path ?? "").split("/").map(encodeURIComponent).join("/");
     url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo ?? "")}/contents/${encodedPath}`;
     if (branch) url += `?ref=${encodeURIComponent(branch)}`;
   } else {
@@ -286,7 +285,8 @@ function normalizeDevFeedEvent(raw: unknown): Record<string, unknown> | null {
   const repoName = (event.repo as Record<string, unknown> | undefined)?.name;
   const actorLogin = (event.actor as Record<string, unknown> | undefined)?.login;
   const createdAt = event.created_at;
-  if (typeof type !== "string" || typeof repoName !== "string" || typeof createdAt !== "string") return null;
+  if (typeof type !== "string" || typeof repoName !== "string" || typeof createdAt !== "string")
+    return null;
 
   return {
     kind: "activity",

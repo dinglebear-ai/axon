@@ -206,24 +206,16 @@ fn merge_result(primary: &mut ParseResult, mut secondary: ParseResult) {
 }
 
 fn unsupported_result(input: &ParseInput) -> ParseResult {
-    let warning = SourceWarning {
-        code: "parse.unsupported".to_string(),
-        severity: Severity::Warning,
-        message: format!(
-            "no parser registered for content kind {:?}",
-            input.document.content_kind
-        ),
-        source_item_key: Some(input.document.source_item_key.clone()),
-        retryable: false,
-    };
     ParseResult {
-        header: stage_header(input, LifecycleStatus::Skipped, vec![warning.clone()], None),
+        // Parsing is optional enrichment. A document with no specialized
+        // parser is an expected skip, not a degraded publication.
+        header: stage_header(input, LifecycleStatus::Skipped, Vec::new(), None),
         document_id: input.document.document_id.clone(),
         facts: Vec::new(),
         graph_candidates: Vec::new(),
         parser_id: "none".to_string(),
         parser_version: "0".to_string(),
-        warnings: vec![warning],
+        warnings: Vec::new(),
         errors: Vec::new(),
     }
 }

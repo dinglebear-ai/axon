@@ -175,7 +175,12 @@
       const answer = r.answer || p.answer || "";
       if (!answer) return null;
       let citations = arr(r.citations).length ? r.citations : arr(p.citations).length ? p.citations : arr(p.sources);
-      citations = citations.map((c, i) => (typeof c === "string" ? { n: i + 1, src: hostOf(c) } : { n: c.n != null ? c.n : i + 1, src: c.src || c.source || hostOf(c.url || "") }));
+      citations = citations.map((c, i) => (typeof c === "string"
+        ? { n: i + 1, src: hostOf(c) }
+        : {
+            n: c.n != null ? c.n : i + 1,
+            src: c.src || c.source || c.canonical_uri || c.source_id || hostOf(c.url || "")
+          }));
       return { answer, citations };
     },
     scrape(r) {

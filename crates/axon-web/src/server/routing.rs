@@ -120,6 +120,7 @@ fn read_routes(cfg: Arc<Config>, service_context: Arc<ServiceContext>) -> Router
             "/v1/memories/{memory_id}",
             get(handlers::memory::show_memory),
         )
+        .route("/v1/memories", get(handlers::memory::list_memories))
         .route("/v1/query", post(handlers::rag::query))
         .route("/v1/retrieve", post(handlers::rag::retrieve))
         .route("/v1/map", post(handlers::exploration::map))

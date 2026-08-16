@@ -168,29 +168,48 @@ fun AxonClient.streamJobEvents(jobId: String): Flow<JobStreamEventDto> = flow {
 }.flowOn(Dispatchers.IO)
 
 /**
- * Parses a single SSE data payload into an [AskStreamEvent].
+ * Parses the unified [JobStreamEventDto] envelope used by REST SSE and MCP streaming
+ * into the smaller Ask/Chat UI event model.
  *
- * Wire format — each event is a JSON object with a `"type"` discriminator:
- * - `{"type":"meta","phase":"retrieval"}` — a processing-phase indicator
- * - `{"type":"delta","text":"..."}` — an incremental LLM token
- * - `{"type":"done","result":{"answer":"..."}}` — synthesis complete; full answer attached
- * - `{"type":"done","answer":"..."}` — older flat completion shape
- * - `{"type":"error","message":"..."}` — server-side failure during streaming
- *
- * Returns null when the type is unknown or the payload is malformed, so the
- * caller can skip unrecognised events without crashing the stream.
+ * The server contract is discriminated by `kind`; kind-specific fields live in
+ * `data`, while structured failures live in `error`.
  */
 private fun parseStreamEvent(data: String): AskStreamEvent? = runCatching {
-    val obj = json.parseToJsonElement(data).jsonObject
-    when (obj["type"]?.jsonPrimitive?.content) {
-        "meta"  -> AskStreamEvent.Meta(phase = obj["phase"]?.jsonPrimitive?.content ?: "")
-        "delta" -> AskStreamEvent.Delta(text = obj["text"]?.jsonPrimitive?.content ?: "")
-        "done"  -> AskStreamEvent.Done(
-            answer = obj["answer"]?.jsonPrimitive?.contentOrNull
-                ?: obj["result"]?.jsonObject?.get("answer")?.jsonPrimitive?.contentOrNull
-                ?: ""
+    val envelope = json.decodeFromString<JobStreamEventDto>(data)
+    val payload = envelope.data?.jsonObject
+    when (envelope.kind) {
+        "progress" -> {
+            // SourceProgressEvent.message carries the user-facing phase label
+            // (for example "retrieving" / "chatting"). Fall back to the enum
+            // phase when a producer omits the message.
+            val phase =
+                payload?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: payload?.get("phase")?.jsonPrimitive?.contentOrNull
+                    ?: ""
+            AskStreamEvent.Meta(phase = phase)
+        }
+
+        "token" -> AskStreamEvent.Delta(
+            text = payload?.get("text")?.jsonPrimitive?.contentOrNull ?: "",
         )
-        "error" -> AskStreamEvent.Error(message = obj["message"]?.jsonPrimitive?.content ?: "Unknown error")
-        else    -> null
+
+        "final" -> AskStreamEvent.Done(
+            answer =
+                payload?.get("answer")?.jsonPrimitive?.contentOrNull
+                    ?: payload?.get("reply")?.jsonPrimitive?.contentOrNull
+                    ?: "",
+        )
+
+        "error" -> AskStreamEvent.Error(
+            message =
+                envelope.error?.jsonObject?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: payload?.get("message")?.jsonPrimitive?.contentOrNull
+                    ?: "Unknown error",
+        )
+
+        // Citation, artifact, and warning events are not represented by the
+        // current AskStreamEvent UI model yet. Ignore them without aborting the
+        // stream; final/error will still terminate it below.
+        else -> null
     }
 }.getOrNull()

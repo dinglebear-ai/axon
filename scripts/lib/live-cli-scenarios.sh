@@ -27,6 +27,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   HARNESS_SOURCE_BIN="$AXON_BIN"
   HARNESS_SOURCE_BIN_SHA256="$(sha256sum -- "$HARNESS_SOURCE_BIN" | awk '{print $1}')"
   WORKTREE_CONTENT_SHA256="$(worktree_content_fingerprint)"
+  PALETTE_WORKTREE_CONTENT_SHA256="$(worktree_content_fingerprint \
+    Cargo.toml Cargo.lock src crates/axon-cli scripts tests/live_command_harness.rs)"
   install -m 0755 "$AXON_BIN" "$isolated_bin_dir/axon"
   AXON_BIN="$isolated_bin_dir/axon"
   export AXON_UPDATE_INSTALL_PATH="$isolated_bin_dir/axon"

@@ -16,7 +16,7 @@ See the family contract for declared output paths.
 |---|---|
 | `crates/axon-api/src/source/vector.rs` | `sha256:5997767a80a26ad2b9d632129d4067b63cf4364e5d142febb8fe69d3fa655cc3` |
 | `crates/axon-vectors/src/payload.rs` | `sha256:9f0fbd0bd0bbdd9364741c66a564cdc81c160b3e99be99802990054a1146b17c` |
-| `crates/axon-vectors/src/payload_families.rs` | `sha256:dcc6d5ec5d07892f0c20d777f75e050d67e825101ce1111866784b2bc2cc94fc` |
+| `crates/axon-vectors/src/payload_families.rs` | `sha256:84e9abac65d826b2d96a77eee2b0d2d4337b714309ba75c90f0612ba9f05bcff` |
 | `crates/axon-vectors/src/point.rs` | `sha256:65d50890f2ac1b72874c027a6f6e8fc3b368a583745b151bb0915e7b01ea9110` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
@@ -116,7 +116,7 @@ Payload validation rejects forbidden field names and concrete secret values befo
 | `package` | `package_ecosystem`, `package_name`, `package_version` |
 | `session` | `session_provider`, `session_id`, `session_turn_index`, `session_tool_name`, `session_skill_name` |
 | `graph` | `graph_node_ids`, `graph_edge_ids`, `graph_confidence` |
-| `memory` | `memory_id`, `memory_importance`, `memory_status`, `memory_recallable`, `memory_type`, `memory_scope_kind`, `memory_scope_value`, `memory_confidence`, `memory_salience`, `memory_acquire`, `memory_decay_profile`, `memory_embedding_ref_count`, `memory_link_count`, `memory_normalize` |
+| `memory` | `memory_id`, `memory_importance`, `memory_status`, `memory_recallable`, `memory_type`, `memory_scope_kind`, `memory_scope_value`, `memory_confidence`, `memory_salience`, `memory_title`, `memory_acquire`, `memory_decay_profile`, `memory_embedding_ref_count`, `memory_link_count`, `memory_normalize` |
 | `local` | `local_checkout`, `local_path_key`, `local_git_remote`, `local_git_commit` |
 | `tool` | `tool_name`, `tool_action`, `tool_side_effect_class`, `tool_output_artifact_id` |
 | `docker` | `docker_image`, `docker_service`, `docker_port`, `docker_volume` |

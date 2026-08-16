@@ -1,14 +1,4 @@
-import {
-  ArrowLeft,
-  ChevronDown,
-  CircleHelp,
-  Menu,
-  Search,
-  Send,
-  Settings,
-  SlidersHorizontal,
-  TerminalSquare,
-} from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleHelp, Menu, Search, Send, Settings } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { actionIcon } from "@/components/palette/ActionIcon";
@@ -439,38 +429,6 @@ export function PaletteCommandBar({
               <span>
                 <strong>Settings</strong>
                 <small>Palette preferences</small>
-              </span>
-            </Button>
-            <Button
-              variant="plain"
-              size="unstyled"
-              className="command-menu-item"
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onToggleSettings();
-              }}
-            >
-              <SlidersHorizontal size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span>
-                <strong>Config</strong>
-                <small>config.toml tuning</small>
-              </span>
-            </Button>
-            <Button
-              variant="plain"
-              size="unstyled"
-              className="command-menu-item"
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onToggleSettings();
-              }}
-            >
-              <TerminalSquare size={15} strokeWidth={1.7} aria-hidden="true" />
-              <span>
-                <strong>Environment</strong>
-                <small>.env secrets & URLs</small>
               </span>
             </Button>
             <Button

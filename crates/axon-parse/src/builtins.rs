@@ -95,7 +95,6 @@ impl SourceParser for ManifestParser {
                 ContentKind::Json,
                 ContentKind::Yaml,
                 ContentKind::Xml,
-                ContentKind::PlainText,
             ],
             mime_types: Vec::new(),
             file_extensions: Vec::new(),
@@ -146,7 +145,7 @@ impl SourceParser for SchemaParser {
         CAPABILITY.get_or_init(|| ParserCapability {
             parser_id: "api_schema".to_string(),
             parser_version: crate::facts::PARSER_VERSION.to_string(),
-            content_kinds: vec![ContentKind::Json, ContentKind::Yaml, ContentKind::PlainText],
+            content_kinds: vec![ContentKind::Json, ContentKind::Yaml],
             mime_types: vec![
                 "application/schema+json".to_string(),
                 "application/graphql".to_string(),
@@ -180,7 +179,7 @@ impl SourceParser for DockerManifestParser {
         CAPABILITY.get_or_init(|| ParserCapability {
             parser_id: "docker_manifest".to_string(),
             parser_version: crate::facts::PARSER_VERSION.to_string(),
-            content_kinds: vec![ContentKind::PlainText, ContentKind::Yaml],
+            content_kinds: vec![ContentKind::Yaml],
             mime_types: Vec::new(),
             file_extensions: Vec::new(),
             path_suffixes: vec![
@@ -209,7 +208,7 @@ impl SourceParser for EnvExampleParser {
         CAPABILITY.get_or_init(|| ParserCapability {
             parser_id: "env_example".to_string(),
             parser_version: crate::facts::PARSER_VERSION.to_string(),
-            content_kinds: vec![ContentKind::PlainText],
+            content_kinds: Vec::new(),
             mime_types: Vec::new(),
             file_extensions: Vec::new(),
             path_suffixes: vec![

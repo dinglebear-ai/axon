@@ -1,6 +1,6 @@
 use super::{
-    MAX_SSE_LINE_BYTES, done_answer_from_value, drain_sse_lines,
-    parse_sse_data_line as parse_data_line, sentence_label,
+    MAX_SSE_LINE_BYTES, done_answer_from_value, drain_sse_lines, palette_stream_event_type,
+    parse_sse_data_line as parse_data_line, sentence_label, stream_string_field,
 };
 
 #[test]
@@ -107,6 +107,31 @@ fn done_answer_reads_stream_result_payload() {
     assert_eq!(
         done_answer_from_value(&value).as_deref(),
         Some("normalized answer\n\n## Sources\n- [S1] https://docs.example.com")
+    );
+}
+
+#[test]
+fn current_server_token_envelope_maps_to_delta() {
+    let value = serde_json::json!({
+        "kind": "token",
+        "data": { "text": "Axon" }
+    });
+
+    assert_eq!(palette_stream_event_type(&value), Some("delta"));
+    assert_eq!(stream_string_field(&value, "text"), Some("Axon"));
+}
+
+#[test]
+fn current_server_final_envelope_maps_to_done_answer() {
+    let value = serde_json::json!({
+        "kind": "final",
+        "data": { "answer": "Axon answer" }
+    });
+
+    assert_eq!(palette_stream_event_type(&value), Some("done"));
+    assert_eq!(
+        done_answer_from_value(&value).as_deref(),
+        Some("Axon answer")
     );
 }
 

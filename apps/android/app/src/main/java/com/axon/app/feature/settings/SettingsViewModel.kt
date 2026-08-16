@@ -479,7 +479,11 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val tempClient = AxonClient(trimmedUrl, token.trim())
-            val result = tempClient.healthz()
+            // The public reverse proxy may protect the anonymous /healthz route
+            // with its own login redirect. Exercise an authenticated Axon API
+            // route so this verifies both reachability and the supplied bearer
+            // token against the service the app will actually use.
+            val result = tempClient.doctor()
             _connection.value = result.fold(
                 onSuccess = {
                     val warning = if (trimmedUrl.startsWith("http://")) {

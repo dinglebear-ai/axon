@@ -7,7 +7,7 @@
 // onSave; toggle a switch → assert onChange. jest-dom matchers, jest-axe, and
 // DOM polyfills are registered globally via src/test/setup.ts (Lane B).
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,9 +27,9 @@ vi.mock("@/lib/oauthClient", async () => {
   };
 });
 
-import { connectionFeedback, SettingsPanel } from "./SettingsPanel";
 import type { PaletteConfig } from "@/lib/axonClient";
 import type { OauthStatus } from "@/lib/oauthClient";
+import { connectionFeedback, SettingsPanel } from "./SettingsPanel";
 
 const baseConfig: PaletteConfig = {
   serverUrl: "http://127.0.0.1:8001",
@@ -68,9 +68,9 @@ afterEach(() => {
 });
 
 describe("SettingsPanel", () => {
-  it("renders the connection tab with the server field", () => {
+  it("renders the connection settings with the server URL field", () => {
     renderPanel();
-    expect(screen.getByText("Server")).toBeInTheDocument();
+    expect(screen.getByText("Server URL")).toBeInTheDocument();
     expect(screen.getByDisplayValue("http://127.0.0.1:8001")).toBeInTheDocument();
   });
 
@@ -122,35 +122,20 @@ describe("SettingsPanel", () => {
     expect(last.showFooterHints).toBe(true);
   });
 
-  describe("tabs (A11Y-H2)", () => {
-    it("exposes a tablist with three tabs and one selected tabpanel", () => {
-      renderPanel();
-      const tablist = screen.getByRole("tablist", { name: "Settings sections" });
-      const tabs = within(tablist).getAllByRole("tab");
-      expect(tabs).toHaveLength(3);
-
-      const selected = within(tablist).getByRole("tab", { selected: true });
-      expect(selected).toHaveTextContent("Connection");
-      expect(selected).toHaveAttribute("aria-controls", "settings-tabpanel-connection");
-
-      const panel = screen.getByRole("tabpanel");
-      expect(panel).toHaveAttribute("aria-labelledby", "settings-tab-connection");
-    });
-
-    it("roves selection with the ArrowRight key", async () => {
-      const user = userEvent.setup();
-      renderPanel();
-      const connectionTab = screen.getByRole("tab", { name: /Connection/ });
-      connectionTab.focus();
-      await user.keyboard("{ArrowRight}");
-      const envTab = screen.getByRole("tab", { name: /Environment/ });
-      expect(envTab).toHaveAttribute("aria-selected", "true");
-      expect(envTab).toHaveFocus();
-    });
+  it("only exposes Axon connection and palette-local settings", () => {
+    renderPanel();
+    expect(screen.getByText("Server URL")).toBeInTheDocument();
+    expect(screen.getByText("Bearer token")).toBeInTheDocument();
+    expect(screen.getByText("Global shortcut")).toBeInTheDocument();
+    expect(screen.queryByText("Environment")).not.toBeInTheDocument();
+    expect(screen.queryByText("config.toml")).not.toBeInTheDocument();
+    expect(screen.queryByText("Collection")).not.toBeInTheDocument();
   });
 
   it("describes persisted connection test feedback", () => {
-    expect(connectionFeedback({ status: "connected", checkedAt: 1, detail: "Doctor checks passed" })).toEqual({
+    expect(
+      connectionFeedback({ status: "connected", checkedAt: 1, detail: "Doctor checks passed" }),
+    ).toEqual({
       tone: "success",
       label: "Connected",
       detail: "Doctor checks passed",
@@ -174,8 +159,6 @@ const authConfig: PaletteConfig = {
   openResultsInline: true,
   agentBubbles: false,
   showFooterHints: false,
-  envValues: {},
-  configValues: {},
 };
 
 describe("SettingsPanel authentication block", () => {

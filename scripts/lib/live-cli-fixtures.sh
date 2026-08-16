@@ -95,6 +95,8 @@ run_operator_output_contracts() {
     && grep -Fq 'COMMAND_EXIT_CODE="0"' "$motion_log"; then
     record "operator motion-enabled PTY" "contract" "PASS" "0" \
       "motion-enabled PTY preserved styled output and exited cleanly" "$motion_log"
+    prove_option_behavior "@global" "--motion" \
+      "motion-enabled PTY preserved styled output and exited cleanly"
   else
     failures=$((failures + 1))
     record "operator motion-enabled PTY" "contract" "FAIL" "1" \
@@ -115,6 +117,8 @@ run_operator_output_contracts() {
     && grep -Fq 'info:' "$verbose_err"; then
     record "operator verbose output" "contract" "PASS" "0" \
       "verbose stderr contains operator diagnostics" "$verbose_err"
+    prove_option_behavior "@global" "--verbose" \
+      "verbose doctor emitted operator diagnostics"
   else
     failures=$((failures + 1))
     record "operator verbose output" "contract" "FAIL" "1" \

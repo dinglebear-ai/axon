@@ -62,8 +62,8 @@ use rmcp::{
     model::{
         CallToolRequestParams, CallToolResponse, CallToolResult, CancelTaskParams, GetTaskParams,
         GetTaskResult, InitializeRequestParams, InitializeResult, ListResourcesResult,
-        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, ServerInfo,
-        TASKS_EXTENSION_ID, UpdateTaskParams,
+        PaginatedRequestParams, ReadResourceRequestParams, ReadResourceResponse, RequestMetaObject,
+        ServerInfo, TASKS_EXTENSION_ID, UpdateTaskParams,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -273,9 +273,15 @@ impl AxonMcpServer {
 impl ServerHandler for AxonMcpServer {
     async fn call_tool(
         &self,
-        request: CallToolRequestParams,
+        mut request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        // rmcp strips wire `params._meta` from the typed params and moves it
+        // into `RequestContext::meta` before dispatch. Rehydrate the params so
+        // task augmentation and progress-token handling below see the actual
+        // wire metadata (typed params metadata remains useful for direct SDK
+        // callers that bypass the transport loop).
+        rehydrate_request_meta(&mut request, &context.meta);
         // SEP-2663: rmcp 3.x removed the dedicated `ServerHandler::enqueue_task`
         // hook and the typed `CallToolRequestParams::task` field that rmcp 1.x
         // used to route task-augmented `tools/call` requests. Task augmentation
@@ -502,4 +508,10 @@ fn is_task_augmented(request: &CallToolRequestParams) -> bool {
         .meta
         .as_ref()
         .is_some_and(|meta| meta.contains_key(TASKS_EXTENSION_ID))
+}
+
+fn rehydrate_request_meta(request: &mut CallToolRequestParams, context_meta: &RequestMetaObject) {
+    if request.meta.is_none() && !context_meta.is_empty() {
+        request.meta = Some(context_meta.clone());
+    }
 }

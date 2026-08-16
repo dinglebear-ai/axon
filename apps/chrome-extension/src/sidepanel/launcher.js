@@ -69,8 +69,9 @@
     state.lastStatus = res.status;
     const text = await res.text();
     if (!res.ok) {
-      let message = text;
-      try { const j = JSON.parse(text); message = j.message || j.error || text; } catch { /* keep text */ }
+      const message = typeof AxonApiError === "undefined"
+        ? text
+        : AxonApiError.messageFromResponseText(text, `HTTP ${res.status}`);
       const err = new Error(message || `HTTP ${res.status}`); err.status = res.status; err.statusText = res.statusText; throw err;
     }
     if (!text) return {};

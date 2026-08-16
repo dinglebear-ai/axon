@@ -32,9 +32,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.decodeFromJsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -528,8 +530,17 @@ class AxonClient(
                 if (!resp.isSuccessful) {
                     error(httpErrorMessage(resp.code, resp.body?.string(), resp.message))
                 }
-                // Read body exactly once — use() closes the response, so the stream is single-pass.
-                json.decodeFromString<R>(resp.body?.string() ?: error("Empty response body"))
+                // Axon's versioned REST routes return a SuccessEnvelope<T>, while
+                // panel and health endpoints still return their payload directly.
+                // Normalize both shapes at this boundary so feature clients only
+                // model the operation result rather than duplicating envelopes.
+                val element = json.parseToJsonElement(resp.body?.string() ?: error("Empty response body"))
+                val payload: JsonElement =
+                    (element as? JsonObject)
+                        ?.takeIf { it.containsKey("contract_version") && it.containsKey("data") }
+                        ?.get("data")
+                        ?: element
+                json.decodeFromJsonElement<R>(payload)
             }
         }.onFailure { t ->
             if (t is CancellationException) throw t

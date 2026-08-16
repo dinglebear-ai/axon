@@ -32,18 +32,8 @@ fn snapshot_with_scopes(scopes: &[&str]) -> AuthSnapshot {
 #[tokio::test]
 async fn source_local_path_denied_without_local_scope() {
     let tmp = tempfile::tempdir().expect("tempdir");
-    let cfg = axon_core::config::Config::default();
-    let server = AxonMcpServer::new(cfg);
-    let req = SourceRequest {
-        source: Some(tmp.path().to_string_lossy().to_string()),
-        ..Default::default()
-    };
-
-    let result = CURRENT_CALLER_AUTH_SNAPSHOT
-        .scope(Some(snapshot_with_scopes(&["axon:write"])), async {
-            server.handle_source(req).await
-        })
-        .await;
+    let snapshot = snapshot_with_scopes(&["axon:write"]);
+    let result = enforce_source_safety_scope(&tmp.path().to_string_lossy(), Some(&snapshot)).await;
 
     let err = result.expect_err("local source without axon:local must be refused");
     assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_REQUEST);
@@ -55,35 +45,14 @@ async fn source_local_path_denied_without_local_scope() {
 }
 
 /// The same local-filesystem source is allowed once the caller also holds
-/// `axon:local` — proceeds past the authorization boundary into
-/// `index_source_with_auth`. Provider construction is lazy (`ServiceContext::
-/// build_target_local_source`), so with no qdrant/tei configured the request
-/// reaches the provider boundary and fails there; the assertion is only that
-/// the scope gate did not refuse it.
+/// `axon:local`.
 #[tokio::test]
 async fn source_local_path_allowed_with_local_scope() {
     let source_dir = tempfile::tempdir().expect("tempdir");
-    let jobs_dir = tempfile::tempdir().expect("tempdir");
-    let cfg = axon_core::config::Config {
-        qdrant_url: String::new(),
-        tei_url: String::new(),
-        sqlite_path: jobs_dir.path().join("jobs.db"),
-        ..axon_core::config::Config::default()
-    };
-    let server = AxonMcpServer::new(cfg);
-    let req = SourceRequest {
-        source: Some(source_dir.path().to_string_lossy().to_string()),
-        ..Default::default()
-    };
-
-    let result = CURRENT_CALLER_AUTH_SNAPSHOT
-        .scope(
-            Some(snapshot_with_scopes(&["axon:write", "axon:local"])),
-            async { server.handle_source(req).await },
-        )
-        .await;
-
-    assert_passed_source_authorization(result);
+    let snapshot = snapshot_with_scopes(&["axon:write", "axon:local"]);
+    enforce_source_safety_scope(&source_dir.path().to_string_lossy(), Some(&snapshot))
+        .await
+        .expect("local source with axon:local must pass authorization");
 }
 
 /// A web-URL source is unaffected by the local-filesystem scope upgrade — a
@@ -92,46 +61,10 @@ async fn source_local_path_allowed_with_local_scope() {
 /// as before this fix.
 #[tokio::test]
 async fn source_web_url_allowed_with_write_scope_only() {
-    let jobs_dir = tempfile::tempdir().expect("tempdir");
-    let cfg = axon_core::config::Config {
-        qdrant_url: String::new(),
-        tei_url: String::new(),
-        sqlite_path: jobs_dir.path().join("jobs.db"),
-        ..axon_core::config::Config::default()
-    };
-    let server = AxonMcpServer::new(cfg);
-    let req = SourceRequest {
-        source: Some("https://example.com".to_string()),
-        ..Default::default()
-    };
-
-    let result = CURRENT_CALLER_AUTH_SNAPSHOT
-        .scope(Some(snapshot_with_scopes(&["axon:write"])), async {
-            server.handle_source(req).await
-        })
-        .await;
-
-    assert_passed_source_authorization(result);
-}
-
-/// Assert a `handle_source` outcome got past `enforce_source_safety_scope`:
-/// either the pipeline succeeded, or it failed later (e.g. at the lazily
-/// constructed provider boundary when no data plane is configured) with an
-/// error that is not the scope refusal.
-fn assert_passed_source_authorization(result: Result<AxonToolResponse, ErrorData>) {
-    if let Err(err) = result {
-        assert_ne!(
-            err.code,
-            rmcp::model::ErrorCode::INVALID_REQUEST,
-            "request must not be refused at the authorization boundary; got: {}",
-            err.message
-        );
-        assert!(
-            !err.message.contains("axon:local"),
-            "error must not be the axon:local scope refusal; got: {}",
-            err.message
-        );
-    }
+    let snapshot = snapshot_with_scopes(&["axon:write"]);
+    enforce_source_safety_scope("https://example.com", Some(&snapshot))
+        .await
+        .expect("web source with axon:write must pass authorization");
 }
 
 #[tokio::test]
@@ -163,8 +96,8 @@ async fn source_blank_input_returns_invalid_params() {
     assert_eq!(err.code, rmcp::model::ErrorCode::INVALID_PARAMS);
 }
 
-#[tokio::test]
-async fn source_without_data_plane_fails_at_provider_boundary() {
+#[test]
+fn source_without_data_plane_fails_at_provider_boundary() {
     // Provider construction is lazy (`ServiceContext::build_target_local_source`),
     // so with no qdrant/tei configured an indexing request still routes through
     // `axon_services::index_source` and fails at the provider boundary (fetch or
@@ -186,9 +119,18 @@ async fn source_without_data_plane_fails_at_provider_boundary() {
         ..Default::default()
     };
 
-    let err = server
-        .handle_source(req)
-        .await
+    // This deliberately enters the full web acquisition pipeline. Give the
+    // Tokio worker/blocking pool explicit stack headroom rather than relying
+    // on the test macro's small default worker stack.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .max_blocking_threads(2)
+        .thread_stack_size(8 * 1024 * 1024)
+        .enable_all()
+        .build()
+        .expect("build source test runtime");
+    let err = runtime
+        .block_on(server.handle_source(req))
         .expect_err("indexing without a data plane fails at the provider boundary");
     assert_eq!(err.code, rmcp::model::ErrorCode::INTERNAL_ERROR);
     assert!(

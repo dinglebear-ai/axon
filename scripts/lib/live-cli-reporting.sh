@@ -75,6 +75,7 @@ trap cleanup_live_fixtures EXIT
 worktree_content_fingerprint() {
   (
     cd "$ROOT_DIR" || exit 1
+    local -a pathspec=("$@")
 
     # Keep symlink targets distinct from regular-file content. NUL delimiters
     # preserve unusual but valid path and target bytes without ambiguity.
@@ -82,7 +83,7 @@ worktree_content_fingerprint() {
     while IFS= read -r -d '' path; do
       [ -L "$path" ] || continue
       printf '%s\0%s\0' "$path" "$(readlink -- "$path")"
-    done < <(git ls-files -co --exclude-standard -z | LC_ALL=C sort -z)
+    done < <(git ls-files -co --exclude-standard -z -- "${pathspec[@]}" | LC_ALL=C sort -z)
 
     # Hash regular files in batches. The previous implementation launched one
     # sha256sum process per path, which made the 4,000+ file worktree
@@ -92,7 +93,7 @@ worktree_content_fingerprint() {
       if [ -f "$path" ] && [ ! -L "$path" ]; then
         printf '%s\0' "$path"
       fi
-    done < <(git ls-files -co --exclude-standard -z | LC_ALL=C sort -z) \
+    done < <(git ls-files -co --exclude-standard -z -- "${pathspec[@]}" | LC_ALL=C sort -z) \
       | xargs -0 -r sha256sum -z --
   ) | sha256sum | awk '{print $1}'
 }

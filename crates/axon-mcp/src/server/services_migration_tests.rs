@@ -157,6 +157,22 @@ fn mcp_apps_capabilities_advertise_html_app_mime_type() {
     );
 }
 
+#[test]
+fn task_augmented_wire_metadata_is_detected() {
+    let mut request: rmcp::model::CallToolRequestParams =
+        serde_json::from_value(serde_json::json!({
+            "name": "axon",
+            "arguments": {"action": "extract", "subaction": "start"}
+        }))
+        .expect("deserialize tools/call params");
+    let context_meta: rmcp::model::RequestMetaObject = serde_json::from_value(serde_json::json!({
+        "io.modelcontextprotocol/tasks": {}, "progressToken": "test"
+    }))
+    .expect("deserialize request context metadata");
+    super::rehydrate_request_meta(&mut request, &context_meta);
+    assert!(super::is_task_augmented(&request));
+}
+
 // The rmcp 1.x `tasks` capability object (`tasks.requests.tools.call`,
 // `tasks.list`, `tasks.cancel`) no longer exists — SEP-2663 replaced it with a
 // single key in the `extensions` map. See
