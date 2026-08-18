@@ -269,7 +269,7 @@
         {
           "path": "xtask/src/schemas/families.rs",
           "kind": "rust_module",
-          "checksum": "sha256:b9992bf960847db37dede00b3b8dc9ba4102a292bf943f2a38c6ad1c389b2fed"
+          "checksum": "sha256:b455f8ba5b37ccb19ae41f0eca0762fe62718a54b224392e5b4c638124540721"
         },
         {
           "path": "xtask/src/schemas/families/bundles.rs",
@@ -297,7 +297,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "d27d29706eaed5268b9c4f2ab3d700bc6fafc8b24cce77b767365691876c4c44"
+      "manifest_checksum": "b498436f0d79115b642e5cd3790edfeb4d939729cd684a0a686c81e0a7b5b8cf"
     },
     {
       "family": "cli",
