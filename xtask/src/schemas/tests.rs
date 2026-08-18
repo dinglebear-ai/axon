@@ -100,6 +100,8 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/api_defs.rs",
         "xtask/src/schemas/families.rs",
         "xtask/src/schemas/families/bundles.rs",
+        "xtask/src/schemas/families/family_specs.rs",
+        "xtask/src/schemas/families/markdown.rs",
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/registry/canonical_enums.rs",
         "xtask/src/schemas/schema_json.rs",
