@@ -13,6 +13,7 @@ struct ConditionalState {
     body: String,
     etag: String,
     conditional_304: bool,
+    conditional_body: Option<String>,
     conditional_fetches: usize,
     full_fetches: usize,
 }
@@ -30,6 +31,7 @@ impl ConditionalFetchProvider {
                 body: body.to_string(),
                 etag: etag.to_string(),
                 conditional_304: false,
+                conditional_body: None,
                 conditional_fetches: 0,
                 full_fetches: 0,
             })),
@@ -43,6 +45,10 @@ impl ConditionalFetchProvider {
 
     async fn set_conditional_304(&self, enabled: bool) {
         self.state.lock().await.conditional_304 = enabled;
+    }
+
+    async fn set_conditional_body(&self, body: &str) {
+        self.state.lock().await.conditional_body = Some(body.to_string());
     }
 
     async fn conditional_fetches(&self) -> usize {
@@ -77,6 +83,11 @@ impl FetchProvider for ConditionalFetchProvider {
         };
         let body = if status == 304 {
             String::new()
+        } else if conditional.is_some() {
+            state
+                .conditional_body
+                .clone()
+                .unwrap_or_else(|| state.body.clone())
         } else {
             state.body.clone()
         };
@@ -221,6 +232,16 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
     .expect("seed committed generation");
     let embed_calls_after_seed = harness.embedder().calls().await.len();
 
+    // Make discovery look changed so acquisition runs, while the conditional
+    // HTTP 200 itself returns the exact prior bytes. This exercises the
+    // same-content cache-forwarding path rather than the manifest no-op path.
+    provider
+        .set_body("<html><body>transient discovery change</body></html>")
+        .await;
+    provider
+        .set_conditional_body("<html><body>stable body</body></html>")
+        .await;
+
     crate::source::index_source_with_auth(
         page_request(),
         harness.ctx(),
@@ -247,8 +268,8 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
     assert_eq!(provider.conditional_fetches().await, 2);
     assert_eq!(
         provider.full_fetches().await,
-        full_fetches_before_304,
-        "follow-up 304 must not fall back to an unconditional refetch"
+        full_fetches_before_304 + 1,
+        "follow-up 304 should perform discovery but no unconditional cache-miss refetch"
     );
     assert_eq!(
         harness.embedder().calls().await.len(),
