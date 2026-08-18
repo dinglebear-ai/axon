@@ -590,13 +590,13 @@ pub struct Config {
     /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 96.
     pub tei_max_client_batch_size: usize,
 
-    /// Max concurrent client requests to native TEI `/embed`. Feeds
-    /// `ProviderReservationConfig.capacity` for the target local-source
-    /// embedding reservation pool (`axon-services::context::target_runtime::
-    /// embedding_reservation_config`) — every `embed()` call reserves 1 flat
-    /// unit out of this pool regardless of batch size (see
-    /// `embed_tei_max_in_flight_inputs` below for the still-unwired weighted
-    /// variant).
+    /// Max concurrent requests to native TEI `/embed`. This value sizes both
+    /// the target local-source scheduler's logical embed-call capacity and the
+    /// provider-owned HTTP request semaphore shared by every transient TEI
+    /// client. Each logical `embed()` call reserves one flat scheduler unit,
+    /// while its internal client batches share this process-wide HTTP ceiling;
+    /// `embed_tei_max_in_flight_inputs` independently bounds aggregate chunk
+    /// inputs across those requests.
     /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `embed.tei-max-concurrent`. Clamped 1–64. Default: 8.
     pub embed_tei_max_concurrent: usize,
 
