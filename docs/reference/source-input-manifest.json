@@ -608,12 +608,67 @@
           "checksum": "sha256:27cb2ee8ec9a6f0920842885b028266fdf5c551172a8e5da60cb2dd016807e73"
         },
         {
+          "path": "crates/axon-web/src/schema_registry/admin_watch_routes.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:e76c07f91410786b0e79ad2c32aaa2ac9486d21a6baea3739f2c7d1ca8d68059"
+        },
+        {
+          "path": "crates/axon-web/src/schema_registry/extract_routes.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:ed5a2623857d813b13af1785ea4a5e49b97b0241092b94dbf58f39a6a24cc3b6"
+        },
+        {
+          "path": "crates/axon-web/src/schema_registry/graph_routes.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:11e98efece91d4ff1dc7201fb031de58300ed3651111277b12573170c3211716"
+        },
+        {
+          "path": "crates/axon-web/src/schema_registry/helpers.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:2ba52309e46521a200a37950aea2edb5afc76ec1aa72417d9d0b777ed2b58856"
+        },
+        {
+          "path": "crates/axon-web/src/schema_registry/memory_routes.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:0042da0f2f28c2e35a9e9aa620f1037c87b4634fa8ce04a411390c61b82d2c61"
+        },
+        {
           "path": "docs/pipeline-unification/schemas/openapi-schema.md",
           "kind": "markdown_contract",
           "checksum": "sha256:b6b77f73e8b7f0ace2ab340b338ddf2a911273a5258928bf32070aeaceb8c0c7"
+        },
+        {
+          "path": "xtask/src/schemas/families.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b455f8ba5b37ccb19ae41f0eca0762fe62718a54b224392e5b4c638124540721"
+        },
+        {
+          "path": "xtask/src/schemas/families/bundles.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:e06e9d73ae8b2f88993f0582ca080d31764df3f62d8ae33fd2dc2ee77a39ff58"
+        },
+        {
+          "path": "xtask/src/schemas/families/family_specs.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:2c8f81ae025d904f66e5b264e641b3a755bb004b3e6c826829cd93df882a229c"
+        },
+        {
+          "path": "xtask/src/schemas/families/markdown.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:f51e765aeb416c7c457d1d8535354b5e0b380169f257da9e4f0299b8fdc8b282"
+        },
+        {
+          "path": "xtask/src/schemas/schema_json.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:09683a203e931d619a76fff0ab5abb04efbaac1ae9849bd763303d7f364759f8"
+        },
+        {
+          "path": "xtask/src/schemas/source_input.rs",
+          "kind": "rust_module",
+          "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "42f5481eb1f9ef975ea26c860addb98efc56508cf41cfa2dce7973f8116fc76b"
+      "manifest_checksum": "64534bdd8ef5200af39dae9ad9333a37d4a0187ac02c9330199d15a764783e48"
     },
     {
       "family": "presentation",
