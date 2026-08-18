@@ -4,8 +4,8 @@
 handle_live_admin_setup_scenario() {
   local name="$1"
   case "$name" in
-      "serve") run_live_server "$name" 38131 serve ;;
-      "serve mcp") run_live_server "$name" 38132 serve mcp --transport http ;;
+      "serve") run_live_server "$name" "$LIVE_SERVE_PORT" serve ;;
+      "serve mcp") run_live_server "$name" "$LIVE_MCP_SERVE_PORT" serve mcp --transport http ;;
       "reset")
         reset_data="$OUTDIR/reset-data"
         mkdir -p "$reset_data"
@@ -72,7 +72,7 @@ handle_live_admin_setup_scenario() {
         prune_fixture="$OUTDIR/prune-source"
         mkdir -p "$prune_fixture"
         printf '# Prune fixture\nGeneration one.\n' >"$prune_fixture/content.md"
-        "$AXON_BIN" source "$prune_fixture" --wait true \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$prune_fixture" --wait true \
           --collection "$AXON_COLLECTION" --json \
           >"$OUTDIR/logs/fixture-prune-source.json" \
           2>"$OUTDIR/logs/fixture-prune-source.stderr.log"
@@ -80,7 +80,7 @@ handle_live_admin_setup_scenario() {
         prune_generation="$(jq -r '.generation // empty' "$OUTDIR/logs/fixture-prune-source.json")"
         printf '# Prune fixture\nGeneration two has changed content.\n' \
           >"$prune_fixture/content.md"
-        "$AXON_BIN" source "$prune_fixture" --wait true \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$prune_fixture" --wait true \
           --collection "$AXON_COLLECTION" --json \
           >"$OUTDIR/logs/fixture-prune-current-source.json" \
           2>"$OUTDIR/logs/fixture-prune-current-source.stderr.log"
@@ -99,6 +99,8 @@ handle_live_admin_setup_scenario() {
         run_live_setup_home "$name" compose up --json
         assert_live_json "compose up phases" "$LAST_LIVE_LOG" \
           '.has_errors == false and any(.phases[]; .name == "compose-up" and .status == "ok")'
+        assert_live_container_stable "compose up container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "compose down")
         run_live_setup_home "$name" compose down --json
@@ -112,6 +114,8 @@ handle_live_admin_setup_scenario() {
         run_live_setup_home "$name" compose restart --json
         assert_live_json "compose restart phases" "$LAST_LIVE_LOG" \
           '.has_errors == false and any(.phases[]; .name == "compose-restart" and .status == "ok")'
+        assert_live_container_stable "compose restart container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "compose rebuild")
         run_live_setup_home "$name" compose rebuild --json
@@ -119,6 +123,8 @@ handle_live_admin_setup_scenario() {
           '.has_errors == false
            and any(.phases[]; .name == "compose-build" and .status == "ok")
            and any(.phases[]; .name == "compose-up" and .status == "ok")'
+        assert_live_container_stable "compose rebuild container stays up" \
+          "${isolated_compose_project}-axon"
         ;;
       "setup plugin-hook")
         run_live_setup_home "$name" setup plugin-hook --no-setup --json
@@ -141,7 +147,7 @@ handle_live_admin_setup_scenario() {
         ;;
       "setup init")
         run_live_setup_home "$name" setup init \
-          --mcp-host 127.0.0.1 --mcp-port 38133 --auth-mode oauth \
+          --mcp-host 127.0.0.1 --mcp-port "$LIVE_SETUP_PORT" --auth-mode oauth \
           --mcp-token live-fixture-token \
           --oauth-public-url https://axon.invalid \
           --google-client-id live-fixture-google-client \
@@ -161,7 +167,7 @@ handle_live_admin_setup_scenario() {
       "setup targets") run_live_setup_home "$name" setup targets --json ;;
       "setup install") run_live_setup_home "$name" setup install --json ;;
       "setup config rewrite") run_live_setup_home "$name" setup config rewrite --dry-run --json ;;
-      "mcp") run_live_server "$name" 38134 mcp --transport http ;;
+      "mcp") run_live_server "$name" "$LIVE_MCP_PORT" mcp --transport http ;;
       "migrate")
         migrate_from="${AXON_COLLECTION}_unnamed"
         migrate_to="${AXON_COLLECTION}_named"
@@ -176,8 +182,8 @@ handle_live_admin_setup_scenario() {
         curl -fsS -X DELETE "${QDRANT_URL%/}/collections/$migrate_to" >"$OUTDIR/logs/migrate-delete-to.json"
         ;;
       "config list")
-        "$AXON_BIN" config set retrieval.hybrid-candidates 72 --json >"$OUTDIR/logs/fixture-config-set.json" 2>"$OUTDIR/logs/fixture-config-set.stderr.log"
-        "$AXON_BIN" config set AXON_LIVE_HARNESS_TOKEN live-fixture-value --env --json \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set retrieval.hybrid-candidates 72 --json >"$OUTDIR/logs/fixture-config-set.json" 2>"$OUTDIR/logs/fixture-config-set.stderr.log"
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set AXON_LIVE_HARNESS_TOKEN live-fixture-value --env --json \
           >"$OUTDIR/logs/fixture-config-set-env.json"
         run_live "$name" config list --env --reveal --json
         assert_live_json "config list env reveal" "$LAST_LIVE_LOG" \

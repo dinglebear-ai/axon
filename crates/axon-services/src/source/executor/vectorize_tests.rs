@@ -210,7 +210,17 @@ fn vectorized_document_statuses_count_only_redaction_eligible_points() {
         .into_iter()
         .collect::<std::collections::BTreeSet<_>>();
 
-    let result = vectorize_result(vec![document], Vec::new(), &eligible, vector_write(2), 1);
+    let redaction_skips = [(SourceItemKey::new("item-window-test"), 1)]
+        .into_iter()
+        .collect();
+    let result = vectorize_result(
+        vec![document],
+        Vec::new(),
+        &eligible,
+        vector_write(2),
+        1,
+        &redaction_skips,
+    );
 
     assert_eq!(result.points_written, 2);
     assert_eq!(result.document_statuses.len(), 1);
@@ -219,5 +229,12 @@ fn vectorized_document_statuses_count_only_redaction_eligible_points() {
     assert_eq!(
         result.warnings.first().map(|warning| warning.code.as_str()),
         Some("source.vectorize.redaction_skipped_chunks")
+    );
+    assert_eq!(
+        result
+            .warnings
+            .first()
+            .and_then(|warning| warning.source_item_key.as_ref()),
+        Some(&SourceItemKey::new("item-window-test"))
     );
 }

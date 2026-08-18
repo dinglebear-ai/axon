@@ -36,7 +36,7 @@ pub async fn run_status(
     if cfg.json_output {
         // JSON path: route through the service layer for a stable payload shape.
         let result = axon_services::system::full_status(service_context).await?;
-        println!("{}", serde_json::to_string_pretty(&result.payload)?);
+        crate::json::print_json_gated(&result.payload)?;
     } else {
         // Human path: use the detailed per-job renderer for rich terminal output.
         run_status_impl(cfg, service_context).await?;

@@ -35,18 +35,19 @@ axon extract "https://example.com/products" "https://example.com/products/page-2
   --json > .axon/products.json
 ```
 
-For broad sites, crawl or map first:
+For broad sites, map or index the section first:
 
 ```bash
 axon map "https://docs.example.com" --json > .axon/docs-map.json
-axon crawl "https://docs.example.com/reference" --max-pages 100 --wait true --output-dir .axon/reference-crawl
+axon "https://docs.example.com/reference" --scope site --max-pages 100 --wait true --output-dir .axon/reference
 ```
 
 ## Notes
 
 - Axon is self-hosted; do not mention hosted API credits, hosted-team limits, or unrelated API keys.
 - Prefer `scrape` for a single readable page and `extract` when the desired result is structured fields.
-- If extraction needs authenticated or interactive page state, use Axon's Chrome rendering and automation-script support from the scrape/crawl flow first, then extract from the reachable URL set.
+- If extraction needs authenticated or interactive page state, use Axon's Chrome rendering and `--automation-script` support on the source/scrape path first, then extract from the reachable URL set.
+- `extract` is the one remaining action besides `memory` with its own subaction family. Its lifecycle conveniences (`status`, `cancel`, `errors`, `list`, `cleanup`, `clear`, `worker`, `recover`) are projections over the **unified** job store — `axon jobs ...` works on extract jobs too.
 
 ## See Also
 

@@ -85,5 +85,6 @@ test-util = []
 [dev-dependencies]
 axon-core = { path = "../axon-core", features = ["test-util"] }
 httpmock = "0.8"
+indicatif = { version = "0.18", features = ["in_memory"] }
 serial_test = "3"
 proptest = "1"

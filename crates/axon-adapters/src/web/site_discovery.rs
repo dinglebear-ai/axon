@@ -5,6 +5,7 @@
 //! into canonical manifest items; crawl output directories and
 //! `manifest.jsonl` are not part of this contract.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axon_api::source::*;
@@ -21,11 +22,32 @@ pub(super) struct ManifestDiscovery {
     pub(super) metadata: MetadataMap,
 }
 
-fn finalize_items(mut items: Vec<ManifestItem>, limit: usize) -> Vec<ManifestItem> {
+fn finalize_items(
+    mut items: Vec<ManifestItem>,
+    limit: usize,
+    prefer_markdown_representations: bool,
+) -> Vec<ManifestItem> {
+    if prefer_markdown_representations {
+        let markdown_routes = items
+            .iter()
+            .filter_map(|item| markdown_representation_route(&item.canonical_uri))
+            .collect::<BTreeSet<_>>();
+        items.retain(|item| {
+            item.canonical_uri.ends_with(".md")
+                || !markdown_routes.contains(item.canonical_uri.trim_end_matches('/'))
+        });
+    }
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
     items.dedup_by(|left, right| left.source_item_key == right.source_item_key);
     items.truncate(limit);
     items
+}
+
+fn markdown_representation_route(uri: &str) -> Option<String> {
+    let mut url = url::Url::parse(uri).ok()?;
+    let path = url.path().strip_suffix(".md")?.to_string();
+    url.set_path(&path);
+    Some(url.to_string().trim_end_matches('/').to_string())
 }
 
 pub(super) async fn manifest_items(
@@ -63,6 +85,7 @@ pub(super) async fn manifest_items(
     let items = finalize_items(
         items,
         crate::web_engine::engine::sitemap::sitemap_url_limit(&cfg),
+        plan.route.scope == SourceScope::Docs,
     );
 
     let mut metadata = MetadataMap::new();

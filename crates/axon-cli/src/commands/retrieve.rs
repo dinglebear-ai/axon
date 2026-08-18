@@ -29,23 +29,20 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
     }
 
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "requested_url": result.requested_url,
-                "matched_url": result.matched_url,
-                "chunks": result.chunk_count,
-                "backend": result.backend,
-                "truncated": result.truncated,
-                "token_estimate": result.token_estimate,
-                "next_cursor": result.next_cursor,
-                "remaining_tokens_estimate": result.remaining_tokens_estimate,
-                "warnings": result.warnings,
-                "variant_errors": result.variant_errors,
-                "refresh_status": result.refresh_status,
-                "content": result.content.trim()
-            }))?
-        );
+        crate::json::print_json_gated(&serde_json::json!({
+            "requested_url": result.requested_url,
+            "matched_url": result.matched_url,
+            "chunks": result.chunk_count,
+            "backend": result.backend,
+            "truncated": result.truncated,
+            "token_estimate": result.token_estimate,
+            "next_cursor": result.next_cursor,
+            "remaining_tokens_estimate": result.remaining_tokens_estimate,
+            "warnings": result.warnings,
+            "variant_errors": result.variant_errors,
+            "refresh_status": result.refresh_status,
+            "content": result.content.trim()
+        }))?;
     } else {
         println!("{}", primary(&format!("Retrieve Result for {target}")));
         println!("{} {}\n", muted("Chunks:"), result.chunk_count);

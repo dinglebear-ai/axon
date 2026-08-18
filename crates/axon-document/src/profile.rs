@@ -84,10 +84,7 @@ impl ChunkingProfile {
     /// `chunk_router::decision_for_profile`'s reported fallback method so it
     /// never claims a method that no code path executes.
     pub(crate) fn has_wired_structural_fallback(self) -> bool {
-        matches!(
-            self,
-            Self::CodeSymbol | Self::MarkdownSections | Self::HtmlArticle
-        )
+        matches!(self, Self::CodeSymbol | Self::MarkdownSections)
     }
 }
 

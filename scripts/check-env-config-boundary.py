@@ -55,10 +55,14 @@ IGNORED_TOKENS = {
     "AXON_INCUS_RUN_SERVER",  # Incus bootstrap test control, not runtime config
     "AXON_INCUS_TEI_MODE",  # Incus bootstrap selector, not Axon runtime config
     "AXON_LIVE_COLLECTION",  # live-harness isolated fixture state
+    "AXON_LIVE_CLEANUP_TIMEOUT_SECS",  # live-harness cleanup bound
     "AXON_LIVE_COMMAND_TIMEOUT_SECS",  # live-harness timeout
     "AXON_LIVE_DATA_DIR",  # live-harness isolated fixture state
     "AXON_LIVE_FIXTURE_URL",  # live-harness fixture endpoint
     "AXON_LIVE_MAP_FIXTURE_URL",  # live-harness map fixture endpoint
+    "AXON_LIVE_PARSER_JOBS",  # live-harness parser concurrency
+    "AXON_LIVE_PORT_BASE",  # live-harness per-run port allocation
+    "AXON_LIVE_TEST_ROOT",  # live-harness isolated output root
     "AXON_LIVE_USE_PRODUCTION_STATE",  # live-harness opt-in control
     "AXON_LIVE_HARNESS_SET",  # live-harness config mutation fixture
     "AXON_LIVE_HARNESS_TOKEN",  # live-harness config secret fixture

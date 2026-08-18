@@ -28,7 +28,7 @@ In `path` mode, `data` looks like:
 
 ## Getting the content — use RAG, not the file
 
-Everything axon scrapes/crawls/ingests is **already embedded**. When you need the actual content, go back through the index, not the artifact bytes:
+Everything axon indexes through `source` is **already embedded**. When you need the actual content, go back through the index, not the artifact bytes:
 
 - **`ask`** — synthesized, cited answer over what's indexed.
 - **`query`** — top-K semantic chunks.

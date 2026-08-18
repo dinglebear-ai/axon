@@ -43,6 +43,7 @@ pub mod sync;
 pub mod train;
 pub mod unified_server;
 pub mod update;
+mod wait_progress;
 pub mod watch;
 
 #[cfg(test)]

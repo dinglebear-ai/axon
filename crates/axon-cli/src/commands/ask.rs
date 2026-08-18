@@ -50,7 +50,7 @@ pub async fn run_ask(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn E
     result.session = Some(active_session.clone());
 
     if session_cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
         record_successful_turn(&session_cfg, &query, &result);
         return Ok(());
     }
@@ -106,7 +106,7 @@ fn run_list_sessions(cfg: &Config) -> Result<(), Box<dyn Error>> {
                 })
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&payload)?);
+        crate::json::print_json_gated(&payload)?;
         return Ok(());
     }
 

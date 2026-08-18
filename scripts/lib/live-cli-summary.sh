@@ -5,7 +5,7 @@ build_behavioral_coverage_report() {
   local root_help root_options encoded name path_json help_log option key result evidence
   root_help="$OUTDIR/logs/behavior-root-help.log"
   root_options="$OUTDIR/behavioral-global-options.txt"
-  "$AXON_BIN" --help >"$root_help" 2>&1
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" --help >"$root_help" 2>&1
   awk '
     /^  Global Options$/ { in_options=1; next }
     in_options && /^  Commands$/ { exit }
@@ -44,7 +44,7 @@ build_behavioral_coverage_report() {
     path_json="$(printf '%s' "$encoded" | base64 --decode | jq -c '.path')"
     mapfile -t path < <(printf '%s' "$path_json" | jq -r '.[]')
     help_log="$OUTDIR/logs/behavior-help-$(printf '%s' "$name" | tr ' /' '__').log"
-    "$AXON_BIN" "${path[@]}" --help >"$help_log" 2>&1
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${path[@]}" --help >"$help_log" 2>&1
     printf '%s\t%s\n' "$name" "__command__" >>"$BEHAVIOR_EXPECTED"
     while IFS= read -r option; do
       [ "$option" = "--help" ] && continue

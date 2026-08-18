@@ -43,7 +43,7 @@ pub struct VectorPayload {
 pub enum VectorPayloadValidationError {
     MissingRequiredField { field: String },
     ForbiddenField { field: String },
-    ForbiddenValue { field: String },
+    ForbiddenValue { field: String, detector: String },
     UnknownSourceSpecificField { field: String },
     InvalidGeneration { field: String },
     InvalidContractVersion,
@@ -62,8 +62,11 @@ impl fmt::Display for VectorPayloadValidationError {
             Self::ForbiddenField { field } => {
                 write!(f, "forbidden vector payload field `{field}`")
             }
-            Self::ForbiddenValue { field } => {
-                write!(f, "forbidden vector payload value under `{field}`")
+            Self::ForbiddenValue { field, detector } => {
+                write!(
+                    f,
+                    "forbidden vector payload value under `{field}` detected by `{detector}`"
+                )
             }
             Self::UnknownSourceSpecificField { field } => {
                 write!(

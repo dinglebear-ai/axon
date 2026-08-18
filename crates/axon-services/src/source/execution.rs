@@ -1,5 +1,7 @@
 use axon_api::source::{AuthSnapshot, JobId, JobPriority, SourceRequest};
 
+use super::foreground_progress::ForegroundProgressSender;
+
 #[derive(Debug, Clone)]
 pub(crate) struct SourceExecutionContext {
     pub(crate) existing_job_id: Option<JobId>,
@@ -7,6 +9,7 @@ pub(crate) struct SourceExecutionContext {
     pub(crate) priority: JobPriority,
     pub(crate) idempotency_key: Option<String>,
     pub(crate) attempt: u32,
+    pub(crate) foreground: Option<ForegroundProgressSender>,
 }
 
 impl SourceExecutionContext {
@@ -17,7 +20,18 @@ impl SourceExecutionContext {
             priority: request.execution.priority,
             idempotency_key: request.idempotency_key,
             attempt: 1,
+            foreground: None,
         }
+    }
+
+    pub(crate) fn inline_with_progress(
+        request: SourceRequest,
+        auth_snapshot: Option<AuthSnapshot>,
+        foreground: ForegroundProgressSender,
+    ) -> Self {
+        let mut execution = Self::inline(request, auth_snapshot);
+        execution.foreground = Some(foreground);
+        execution
     }
 
     pub(crate) fn existing_job(
@@ -32,6 +46,7 @@ impl SourceExecutionContext {
             priority: request.execution.priority,
             idempotency_key: request.idempotency_key,
             attempt,
+            foreground: None,
         }
     }
 }

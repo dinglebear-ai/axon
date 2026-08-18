@@ -5,7 +5,10 @@ use axon_api::source::{
     Severity, SourceError, SourceGenerationId, SourceId, SourceKind, SourceProgressEvent,
     SourceScope, SourceWarning, StageCounts, Timestamp, Visibility,
 };
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use axon_jobs::boundary::JobStore;
+
+use super::foreground_progress::ForegroundProgressSender;
 
 #[derive(Clone)]
 pub(crate) struct SourceEventEmitter {
@@ -17,6 +20,7 @@ pub(crate) struct SourceEventEmitter {
     scope: Option<SourceScope>,
     adapter: Option<AdapterRef>,
     attempt: u32,
+    foreground: Option<ForegroundProgressSender>,
 }
 
 impl SourceEventEmitter {
@@ -30,6 +34,7 @@ impl SourceEventEmitter {
             scope: None,
             adapter: None,
             attempt: 1,
+            foreground: None,
         }
     }
 
@@ -57,6 +62,19 @@ impl SourceEventEmitter {
 
     pub(crate) fn with_attempt(mut self, attempt: u32) -> Self {
         self.attempt = attempt.max(1);
+        self
+    }
+
+    pub(crate) fn with_optional_foreground(
+        mut self,
+        foreground: Option<ForegroundProgressSender>,
+    ) -> Self {
+        self.foreground = foreground;
+        if let (Some(foreground), Some(job_id), Some(source_kind)) =
+            (&self.foreground, self.job_id, self.source_kind)
+        {
+            foreground.routed(job_id, source_kind);
+        }
         self
     }
 
@@ -226,11 +244,10 @@ impl SourceEventEmitter {
                 "failed to record source progress metric"
             );
         }
-        let (Some(jobs), Some(job_id)) = (self.jobs.as_ref(), self.job_id) else {
+        let Some(job_id) = self.job_id else {
             return;
         };
-        if let Err(err) = emit_source_event(
-            jobs.as_ref(),
+        let event = public_source_event(build_source_event(
             job_id,
             phase,
             status,
@@ -242,9 +259,16 @@ impl SourceEventEmitter {
             self.attempt,
             message,
             details,
-        )
-        .await
-        {
+        ));
+        let persisted = if let Some(jobs) = self.jobs.as_ref() {
+            jobs.append_event(event.clone()).await
+        } else {
+            Ok(())
+        };
+        if let Some(foreground) = &self.foreground {
+            foreground.event(event);
+        }
+        if let Err(err) = persisted {
             tracing::warn!(
                 job_id = %job_id.0,
                 phase = %phase_label,
@@ -253,6 +277,33 @@ impl SourceEventEmitter {
             );
         }
     }
+}
+
+fn public_source_event(event: SourceProgressEvent) -> SourceProgressEvent {
+    if event.validate_bounds().is_err() {
+        return suppressed_source_event(&event);
+    }
+    let Ok(value) = serde_json::to_value(&event) else {
+        return suppressed_source_event(&event);
+    };
+    let (redacted, _) = DefaultRedactor::new().redact_json(value, &RedactionContext::job_event());
+    serde_json::from_value(redacted).unwrap_or_else(|_| suppressed_source_event(&event))
+}
+
+fn suppressed_source_event(event: &SourceProgressEvent) -> SourceProgressEvent {
+    let mut safe = SourceProgressEvent::minimal(
+        event.job_id,
+        event.sequence,
+        event.phase,
+        event.status,
+        event.severity,
+        "progress detail suppressed by redaction boundary",
+    );
+    safe.event_id.clone_from(&event.event_id);
+    safe.attempt = event.attempt;
+    safe.counts = event.counts.clone();
+    safe.timestamp = event.timestamp.clone();
+    safe
 }
 
 #[derive(Debug, Clone, Default)]
@@ -265,8 +316,7 @@ pub(crate) struct SourceEventDetails {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn emit_source_event(
-    jobs: &dyn JobStore,
+fn build_source_event(
     job_id: JobId,
     phase: PipelinePhase,
     status: LifecycleStatus,
@@ -278,7 +328,7 @@ pub(crate) async fn emit_source_event(
     attempt: u32,
     message: impl Into<String>,
     details: SourceEventDetails,
-) -> anyhow::Result<()> {
+) -> SourceProgressEvent {
     let mut event = SourceProgressEvent::minimal(job_id, 0, phase, status, severity, message);
     event.attempt = attempt.max(1);
     event.visibility = Visibility::Public;
@@ -292,8 +342,7 @@ pub(crate) async fn emit_source_event(
     event.warning = details.warning;
     event.error = details.error;
     event.timestamp = Timestamp::from(chrono::Utc::now());
-    jobs.append_event(event).await?;
-    Ok(())
+    event
 }
 
 fn record_metric(

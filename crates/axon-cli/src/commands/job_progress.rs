@@ -93,7 +93,7 @@ fn fetching_progress(source_kind: Option<SourceKind>, metrics: &Value) -> Option
     metric_progress(metrics, "items_done", "items_total", singular, plural)
 }
 
-fn source_unit(source_kind: Option<SourceKind>) -> (&'static str, &'static str) {
+pub(crate) fn source_unit(source_kind: Option<SourceKind>) -> (&'static str, &'static str) {
     match source_kind {
         Some(SourceKind::Web) => ("page", "pages"),
         Some(SourceKind::Local | SourceKind::Git | SourceKind::Upload) => ("file", "files"),

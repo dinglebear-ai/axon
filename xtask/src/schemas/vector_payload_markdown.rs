@@ -24,14 +24,14 @@ pub(super) fn markdown(inputs: &[SourceInput], registry: &StaticVectorPayloadCon
     out.push_str("\nGeneration fields are deliberately split: `source_generation` is the staged source generation written during prepare/vector-point construction, while `committed_generation` is `null` until a later publisher promotes a complete generation. Retrieval generation filters target `committed_generation`.\n");
 
     out.push_str("\n## Redaction Guardrails\n\n");
-    out.push_str("Payload validation applies metadata and locator guardrails before vector writes. `chunk_text` is treated as document body text and is not rejected merely for containing examples such as local paths or HTML snippets, but auth headers, cookies, dotenv-style assignments, bare secret tokens, and adapter response markers still fail closed.\n\n");
+    out.push_str("Payload validation applies metadata and locator guardrails before vector writes. `chunk_text` is treated as document body text and is not rejected merely for containing examples such as local paths, HTML snippets, or secret-related vocabulary. Concrete auth headers, cookies, secret assignments, known token formats, PEM private keys, and credential-bearing URLs still fail closed. Metadata and locator fields additionally reject local paths, raw HTML, and adapter-response blobs.\n\n");
     out.push_str("| Category | Values |\n|---|---|\n");
     out.push_str(&format!(
         "| Forbidden field fragments | `{}` |\n",
         FORBIDDEN_FIELD_FRAGMENTS.join("`, `")
     ));
     out.push_str(&format!(
-        "| Forbidden value fragments | `{}` |\n",
+        "| Contextual value markers (not substring rules) | `{}` |\n",
         FORBIDDEN_VALUE_FRAGMENTS.join("`, `")
     ));
     out.push_str(&format!(
@@ -42,7 +42,7 @@ pub(super) fn markdown(inputs: &[SourceInput], registry: &StaticVectorPayloadCon
     out.push_str("\n## Enum Tables\n\nVisibility and source-family enum values are generated in the JSON schema definitions.\n\n");
     out.push_str("## Extension Points\n\nSource-specific metadata families are declared by the vector payload registry.\n\n");
     out.push_str("## Forbidden Fields\n\n");
-    out.push_str("Payload validation rejects secret field fragments and secret value fragments before public writes.\n\n");
+    out.push_str("Payload validation rejects forbidden field names and concrete secret values before public writes. Contextual marker vocabulary is published for compatibility and documentation; a marker alone is not sufficient to reject ordinary prose.\n\n");
     out.push_str("\n## Source-Specific Families\n\n| Family | Fields |\n|---|---|\n");
     for (family, fields) in registry.source_families {
         out.push_str(&format!("| `{}` | `{}` |\n", family, fields.join("`, `")));

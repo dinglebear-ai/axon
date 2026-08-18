@@ -33,6 +33,15 @@ pub async fn extract_sync(
     urls: &[String],
     prompt: &str,
 ) -> Result<ExtractSyncResult, Box<dyn Error>> {
+    extract_sync_with_progress(cfg, urls, prompt, None).await
+}
+
+pub async fn extract_sync_with_progress(
+    cfg: &Config,
+    urls: &[String],
+    prompt: &str,
+    progress_tx: Option<tokio::sync::watch::Sender<ExtractProgress>>,
+) -> Result<ExtractSyncResult, Box<dyn Error>> {
     let extract_start = std::time::Instant::now();
     let items_path = cfg.output_dir.join("extract-items.ndjson");
     if let Some(parent) = items_path.parent() {
@@ -40,7 +49,8 @@ pub async fn extract_sync(
     }
     let mut items_file = std::fs::File::create(&items_path)?;
 
-    let agg = execute_extract_runs(cfg, urls, prompt, &mut items_file).await?;
+    let agg =
+        execute_extract_runs(cfg, urls, prompt, &mut items_file, progress_tx.as_ref()).await?;
     let summary = build_extract_summary(cfg, urls, prompt, &agg)?;
     let summary_path = write_extract_summary(cfg, &summary).await?;
     let duration_ms = extract_start.elapsed().as_millis();
@@ -57,6 +67,51 @@ pub async fn extract_sync(
         total_items: agg.total_items,
         duration_ms,
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractProgress {
+    urls_total: u64,
+    urls_done: u64,
+    items_done: u64,
+    last_completed_url: Option<String>,
+}
+
+impl ExtractProgress {
+    pub fn new(urls_total: usize) -> Self {
+        Self {
+            urls_total: urls_total as u64,
+            urls_done: 0,
+            items_done: 0,
+            last_completed_url: None,
+        }
+    }
+
+    pub fn completed_url(mut self, url: impl Into<String>, items: usize) -> Self {
+        if self.urls_done >= self.urls_total {
+            return self;
+        }
+        self.urls_done = self.urls_done.saturating_add(1).min(self.urls_total);
+        self.items_done = self.items_done.saturating_add(items as u64);
+        self.last_completed_url = Some(url.into());
+        self
+    }
+
+    pub fn urls_total(&self) -> u64 {
+        self.urls_total
+    }
+
+    pub fn urls_done(&self) -> u64 {
+        self.urls_done
+    }
+
+    pub fn items_done(&self) -> u64 {
+        self.items_done
+    }
+
+    pub fn last_completed_url(&self) -> Option<&str> {
+        self.last_completed_url.as_deref()
+    }
 }
 
 #[derive(Default)]
@@ -80,6 +135,7 @@ async fn execute_extract_runs(
     urls: &[String],
     prompt: &str,
     items_file: &mut std::fs::File,
+    progress_tx: Option<&tokio::sync::watch::Sender<ExtractProgress>>,
 ) -> Result<ExtractAggregation, Box<dyn Error>> {
     let engine = Arc::new(DeterministicExtractionEngine::with_default_parsers());
 
@@ -93,9 +149,12 @@ async fn execute_extract_runs(
         .buffer_unordered(16);
 
     let mut agg = ExtractAggregation::default();
+    let mut progress = ExtractProgress::new(urls.len());
     while let Some(run_result) = pending_runs.next().await {
-        let item_lines = {
+        let (item_lines, completed_url, completed_items) = {
             let run = run_result?;
+            let completed_url = run.start_url.clone();
+            let completed_items = run.results.len();
             accumulate_run(&mut agg, &run);
 
             let mut item_lines = Vec::with_capacity(run.results.len());
@@ -121,11 +180,15 @@ async fn execute_extract_runs(
                 "parser_hits": run.parser_hits,
                 "total_items": run.results.len(),
             }));
-            item_lines
+            (item_lines, completed_url, completed_items)
         };
 
         for line in item_lines {
             items_file.write_all(line.as_bytes())?;
+        }
+        progress = progress.completed_url(completed_url, completed_items);
+        if let Some(progress_tx) = progress_tx {
+            progress_tx.send_replace(progress.clone());
         }
     }
 

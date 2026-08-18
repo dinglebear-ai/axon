@@ -30,7 +30,7 @@ pub async fn run_search(
     let query = resolve_input_text(cfg)
         .ok_or_else(|| anyhow::anyhow!("search requires a query (positional or --query)"))?;
 
-    if !cfg.quiet && !cfg.json_output {
+    if !cfg.quiet && !cfg.json_output && cfg.verbosity > 0 {
         log_info(&format!("command=search query_len={}", query.len()));
         print_phase("\u{25d0}", "Searching", &query);
     }
@@ -48,19 +48,16 @@ pub async fn run_search(
     let duration_ms = search_start.elapsed().as_millis();
 
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "source_index_status": result.source_index_status,
-                "query": query,
-                "limit": cfg.search_limit,
-                "offset": 0,
-                "search_time_range": cfg.search_time_range.as_deref(),
-                "results": result.results,
-                "source_jobs": result.source_jobs,
-                "source_jobs_rejected": result.source_jobs_rejected,
-            }))?
-        );
+        crate::json::print_json_gated(&serde_json::json!({
+            "source_index_status": result.source_index_status,
+            "query": query,
+            "limit": cfg.search_limit,
+            "offset": 0,
+            "search_time_range": cfg.search_time_range.as_deref(),
+            "results": result.results,
+            "source_jobs": result.source_jobs,
+            "source_jobs_rejected": result.source_jobs_rejected,
+        }))?;
         return Ok(());
     }
 

@@ -142,7 +142,7 @@ pub fn handle_job_cancel(
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
         let resp = JobCancelResponse::new(id, canceled);
-        println!("{}", serde_json::to_string_pretty(&resp)?);
+        crate::json::print_json_gated(&resp)?;
     } else if canceled {
         println!(
             "{} canceled {command_name} job {}",
@@ -171,7 +171,7 @@ pub fn handle_job_errors<T: JobStatus>(
         Some(job) => {
             if cfg.json_output {
                 let contract = job.to_errors_response_json();
-                println!("{}", serde_json::to_string_pretty(&contract)?);
+                crate::json::print_json_gated(&contract)?;
             } else {
                 println!(
                     "{} {} job {} {}",
@@ -249,7 +249,7 @@ where
             "offset": result.offset,
             "truncated": result.is_truncated(),
         });
-        println!("{}", serde_json::to_string_pretty(&out)?);
+        crate::json::print_json_gated(&out)?;
         return Ok(());
     }
 

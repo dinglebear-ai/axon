@@ -5,7 +5,12 @@ description: Use Axon scrape to turn one or more known URLs into markdown, HTML,
 
 # Axon Scrape
 
-Use `axon scrape` when the user gives a URL and wants the page content.
+Use `axon scrape` when the user gives a URL and wants that page's content.
+
+`scrape` is the retained one-page projection of the unified source pipeline —
+same adapter, ledger, embedding, and publication path as `axon <url> --scope page`.
+Reach for it rather than a bare `axon <url>`: the web family's default scope is
+`site`, so an unscoped URL indexes the whole domain.
 
 ## Examples
 
@@ -29,7 +34,7 @@ axon scrape "https://example.com" "https://example.com/docs" --output-dir .axon/
 - Save output to `.axon/` for anything larger than a short answer.
 - Use Chrome rendering when HTTP output is thin.
 - Use `extract` when the desired output is structured fields rather than markdown.
-- Use `crawl` when you need many linked pages.
+- Use `axon <url> --scope site` when you need many linked pages — `scrape` is the one-page projection of the same source pipeline.
 
 ## See Also
 

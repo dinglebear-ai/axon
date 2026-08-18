@@ -35,7 +35,7 @@ handle_live_web_rag_scenario() {
         assert_live_json "map sitemap path exclusion" "$LAST_LIVE_LOG" \
           '.map_source != null and (.urls | length) > 0
            and all(.urls[]; (startswith("https://gofastmcp.com/apps") | not))'
-        "$AXON_BIN" source "$map_fixture_url" --scope map --wait true \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$map_fixture_url" --scope map --wait true \
           --collection "$AXON_COLLECTION" --json \
           >"$OUTDIR/logs/fixture-map-job.json" \
           2>"$OUTDIR/logs/fixture-map-job.stderr.log"
@@ -43,7 +43,7 @@ handle_live_web_rag_scenario() {
         run_live "jobs get (map item-only)" jobs get "$map_job_id" --json
         assert_live_json "jobs get map item counts" "$LAST_LIVE_LOG" \
           '.counts.items_done > 0 and .counts.documents_done == 0 and .counts.chunks_done == 0'
-        "$AXON_BIN" jobs get "$map_job_id" \
+        timeout "${TIMEOUT_SECS}s" "$AXON_BIN" jobs get "$map_job_id" \
           >"$OUTDIR/logs/live-jobs_get-map-human.log" \
           2>"$OUTDIR/logs/live-jobs_get-map-human.stderr.log"
         assert_live_text "jobs get map item details" \
@@ -54,6 +54,13 @@ handle_live_web_rag_scenario() {
           --include-bundles true --first-party-only true --unique-only true \
           --max-scripts 2 --max-scan-bytes 1000000 --verify --capture-network \
           --probe-rpc --probe-rpc-subdomains --json
+        assert_live_json "endpoints option behavior" "$LAST_LIVE_LOG" \
+          '(.endpoints | length) > 0
+           and all(.endpoints[]; .first_party == true)
+           and (([.endpoints[].normalized_url] | unique | length) == (.endpoints | length))
+           and any(.endpoints[]; .source == "network_capture")
+           and any(.endpoints[]; .verified.reachable == true)
+           and any(.mcp_candidates[]; .host_kind == "apex_subdomain")'
         ;;
       "extract")
         run_live "$name" extract "$fixture_url" --query "extract the page title" --wait false --json

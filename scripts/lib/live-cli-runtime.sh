@@ -149,7 +149,7 @@ prepare_live_invocation() {
 run_live() {
   local name="$1"
   shift
-  local logfile stderr_log exit_code result json_expected=0 arg contract_filter
+  local logfile stderr_log exit_code result json_expected=0 arg contract_filter started_ms
   prepare_live_invocation "$@"
   for arg in "${PREPARED_ARGS[@]}"; do
     [ "$arg" = "--json" ] && json_expected=1
@@ -162,8 +162,15 @@ run_live() {
   logfile="$OUTDIR/logs/live-${log_slug}${log_suffix}.log"
   stderr_log="${logfile%.log}.stderr.log"
   LAST_LIVE_LOG="$logfile"
+  started_ms="$(now_millis)"
   timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
+  if [ "$exit_code" -ne 0 ] && retryable_live_failure "$name" "$stderr_log"; then
+    mv "$logfile" "${logfile%.log}.attempt-1.log"
+    mv "$stderr_log" "${stderr_log%.log}.attempt-1.log"
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
+    exit_code=$?
+  fi
   if [ "$exit_code" -eq 0 ] && { [ "$json_expected" -eq 0 ] || jq -e . "$logfile" >/dev/null 2>&1; }; then
     result="PASS"
   else
@@ -178,6 +185,17 @@ run_live() {
     fi
   fi
   record "$name" "live" "$result" "$exit_code" "${PREPARED_ARGS[*]}" "$logfile"
+  record_timing "$started_ms" "live" "$name" "${PREPARED_ARGS[*]}"
+}
+
+retryable_live_failure() {
+  local name="$1" stderr_log="$2"
+  case "$name" in
+    source|scrape|map|brand|search|research|extract|screenshot) ;;
+    *) return 1 ;;
+  esac
+  grep -Eq '\[(fetch\.timeout|fetch\.network|provider\.timeout|provider\.unavailable)\]' \
+    "$stderr_log"
 }
 
 run_live_expect_failure() {
@@ -218,7 +236,7 @@ run_live_monitor_jsonl() {
     >"$logfile" 2>"$stderr_log" &
   monitor_pid=$!
   sleep 1
-  "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" source "$map_fixture_url?monitor=$$" --scope map --wait true \
     --collection "$AXON_COLLECTION" --json \
     >"$OUTDIR/logs/fixture-monitor-transition.json" \
     2>"$OUTDIR/logs/fixture-monitor-transition.stderr.log" || true
@@ -288,6 +306,56 @@ assert_live_nonempty() {
     failures=$((failures + 1))
   fi
   record "$name" "contract" "$result" "$exit_code" "non-empty output" "$logfile"
+}
+
+# A compose command reporting every phase ok only proves compose accepted the
+# stack, not that the container survived its own entrypoint.
+#
+# This catches the immediate-exit class: `restart: unless-stopped` retries on a
+# backoff that starts near 100ms and doubles, so a container that dies in its
+# entrypoint has already logged several restarts within the settle window
+# below. It is deliberately NOT a health check — a container that starts, runs
+# for a minute, then dies still passes here. Widen the window rather than
+# reading a PASS as "the service is healthy".
+#
+# The EXIT trap tears the compose project down, taking the crashed container
+# and its logs with it, so capture the evidence here or lose it.
+assert_live_container_stable() {
+  local name="$1" container="$2" state detail result exit_code evidence slug
+  local stderr_file reason
+  sleep 5
+  slug="$(printf '%s' "$name" | tr ' /' '__')"
+  evidence="$OUTDIR/logs/container-stable-${slug}.log"
+  stderr_file="$evidence.stderr"
+  {
+    printf '=== docker inspect %s ===\n' "$container"
+    docker inspect "$container" 2>&1
+    printf '\n=== docker logs --tail 200 %s ===\n' "$container"
+    docker logs --tail 200 "$container" 2>&1
+  } >"$evidence"
+  # Keep "docker is unusable" distinguishable from "the container died".
+  # Collapsing both into one signal is the same blindness this assertion exists
+  # to remove, so surface docker's own words rather than a generic failure.
+  if state="$(docker inspect --format '{{.State.Running}} {{.RestartCount}}' \
+    "$container" 2>"$stderr_file")"; then
+    detail="container running with no restarts (got: $state)"
+  else
+    state=""
+    reason="$(tr '\n' ' ' <"$stderr_file" | cut -c1-160)"
+    detail="docker inspect failed for $container: ${reason:-no error output}"
+  fi
+  cat "$stderr_file" >>"$evidence"
+  rm -f "$stderr_file"
+  if [ "$state" = "true 0" ]; then
+    result="PASS"
+    exit_code=0
+    confirm_pending_behavior
+  else
+    result="FAIL"
+    exit_code=1
+    failures=$((failures + 1))
+  fi
+  record "$name" "contract" "$result" "$exit_code" "$detail" "$evidence"
 }
 
 run_live_server() {
@@ -390,8 +458,8 @@ run_live_setup_home() {
     -u TEI_HTTP_PORT -u AXON_CHROME_MANAGEMENT_PORT \
     -u AXON_CHROME_CDP_PORT -u AXON_CHROME_DEVTOOLS_PORT \
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
-    TEI_HTTP_PORT=38200 AXON_CHROME_MANAGEMENT_PORT=38600 \
-    AXON_CHROME_CDP_PORT=39222 AXON_CHROME_DEVTOOLS_PORT=39223 \
+    TEI_HTTP_PORT="$LIVE_TEI_PORT" AXON_CHROME_MANAGEMENT_PORT="$LIVE_CHROME_MANAGEMENT_PORT" \
+    AXON_CHROME_CDP_PORT="$LIVE_CHROME_CDP_PORT" AXON_CHROME_DEVTOOLS_PORT="$LIVE_CHROME_DEVTOOLS_PORT" \
     PATH="$SETUP_HELPER_BIN:$PATH" \
     "$AXON_BIN" "${PREPARED_ARGS[@]}" >"$logfile" 2>"$stderr_log"
   exit_code=$?
@@ -413,12 +481,12 @@ run_live_setup_home() {
 
 run_live_setup_check() {
   local pid ready=0 _attempt
-  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT=38133 AXON_BIND=127.0.0.1 \
+  AXON_HTTP_HOST=127.0.0.1 AXON_HTTP_PORT="$LIVE_SETUP_PORT" AXON_BIND=127.0.0.1 \
     "$AXON_BIN" serve >"$OUTDIR/logs/setup-check-server.log" \
     2>"$OUTDIR/logs/setup-check-server.stderr.log" &
   pid=$!
   for _attempt in $(seq 1 60); do
-    if curl -fsS --max-time 1 "http://127.0.0.1:38133/readyz" >/dev/null 2>&1; then
+    if curl -fsS --max-time 1 "http://127.0.0.1:$LIVE_SETUP_PORT/readyz" >/dev/null 2>&1; then
       ready=1
       break
     fi

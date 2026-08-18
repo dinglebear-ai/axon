@@ -88,7 +88,7 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     );
     let auto_stderr = String::from_utf8_lossy(&auto_output.stderr);
     assert!(
-        auto_stderr.contains("WARN") && auto_stderr.contains("from_mode"),
+        auto_stderr.contains("warning:") && auto_stderr.contains("from_mode"),
         "fixture must produce a warning: {auto_stderr:?}"
     );
     assert!(
@@ -118,7 +118,7 @@ fn color_auto_does_not_emit_ansi_to_piped_stdout_but_always_does() {
     );
     let always_stderr = String::from_utf8_lossy(&always_output.stderr);
     assert!(
-        always_stderr.contains("WARN") && always_stderr.contains("from_mode"),
+        always_stderr.contains("warning:") && always_stderr.contains("from_mode"),
         "fixture must produce an always-mode warning: {always_stderr:?}"
     );
     assert!(

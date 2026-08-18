@@ -9,15 +9,12 @@ pub async fn run_suggest(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let focus = resolve_input_text(cfg);
     let result = query_service::suggest(cfg, focus.as_deref()).await?;
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "suggestions": result.suggestions.iter().map(|s| serde_json::json!({
-                    "url": &s.url,
-                    "reason": &s.reason,
-                })).collect::<Vec<_>>()
-            }))?
-        );
+        crate::json::print_json_gated(&serde_json::json!({
+            "suggestions": result.suggestions.iter().map(|s| serde_json::json!({
+                "url": &s.url,
+                "reason": &s.reason,
+            })).collect::<Vec<_>>()
+        }))?;
     } else if result.suggestions.is_empty() {
         println!("{}", muted("No suggestions found."));
     } else {

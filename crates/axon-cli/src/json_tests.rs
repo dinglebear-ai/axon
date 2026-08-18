@@ -9,10 +9,7 @@ fn print_json_gated_redacts_secret_before_render() {
     let value = json!({ "note": "authorization: bearer abcdef0123456789abcdef" });
     let (redacted, report) =
         DefaultRedactor::new().redact_json(value, &RedactionContext::cli_json());
-    assert_eq!(
-        redacted["note"],
-        json!(axon_core::redact::REDACTION_PLACEHOLDER)
-    );
+    assert_eq!(redacted["note"], json!("authorization: bearer [REDACTED]"));
     assert_eq!(
         report.status(),
         axon_core::redact::RedactionStatus::Redacted

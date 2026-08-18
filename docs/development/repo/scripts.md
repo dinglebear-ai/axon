@@ -59,10 +59,17 @@ The enforcement checks below live in the `xtask` crate (see `axon_rust-pp5`). Ru
 | Script | Purpose |
 |--------|---------|
 | `test-mcp-tools-mcporter.sh` | MCP smoke test suite (50+ tool calls) |
-| `live-test-all-commands.sh` | Registry-wide parser checks plus isolated live scenarios; fails on missing command/flag behavioral contracts |
+| `live-test-all-commands.sh` | Registry-wide parser checks plus isolated live scenarios; performs an early provider preflight, writes per-command timings, fails on missing command/flag behavioral contracts, and supports targeted `--mode scenarios --scenario-group web-rag|jobs-source|admin|resources` reruns |
 | `stress-crawler.sh` | Opt-in isolated crawler/embedding/graph stress run with concurrent jobs, metrics, verification, and automatic cleanup |
 | `test-client-server-mode.sh` | CLI client/server smoke against a running `axon serve` |
 | `test-ask-quality-regressions.sh` | RAG answer quality regression tests |
+
+Run the full CLI contract suite with `scripts/live-test-all-commands.sh`. For a
+faster focused rerun, select a scenario group, for example
+`scripts/live-test-all-commands.sh --mode scenarios --scenario-group resources`.
+Parser checks use four workers by default; override that with
+`AXON_LIVE_PARSER_JOBS`. Every run writes `report.tsv`,
+`behavioral-coverage.tsv`, and `timings.tsv` beneath its output directory.
 | `test-mcp-oauth-protection.sh` | MCP OAuth endpoint security tests |
 | `test_qdrant_quality.py` | Qdrant data quality analysis |
 

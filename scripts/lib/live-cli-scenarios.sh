@@ -30,16 +30,113 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   install -m 0755 "$AXON_BIN" "$isolated_bin_dir/axon"
   AXON_BIN="$isolated_bin_dir/axon"
   export AXON_UPDATE_INSTALL_PATH="$isolated_bin_dir/axon"
+  HARNESS_COMMAND_CWD="$OUTDIR/command-workdir"
+  mkdir -p "$HARNESS_COMMAND_CWD"
+  cd "$HARNESS_COMMAND_CWD" || exit 2
 
   # shellcheck disable=SC1091
   source "$ROOT_DIR/scripts/lib/axon-env.sh"
   load_axon_env_file "$ROOT_DIR"
+  configured_chrome_remote_url="${AXON_CHROME_REMOTE_URL:-http://127.0.0.1:6000}"
+
+  probe_live_chrome() {
+    local endpoint="$1" diagnostic="$2" expected_ws_prefix="${3:-}"
+    if ! curl -fsS --max-time 2 "${endpoint%/}/json/version" >"$diagnostic" 2>&1; then
+      return 1
+    fi
+    jq -e --arg expected_ws_prefix "$expected_ws_prefix" '
+      (.Browser | type == "string")
+      and ((.Browser | startswith("HeadlessChrome")) or (.Browser | startswith("Chrome")))
+      and (.webSocketDebuggerUrl | type == "string")
+      and ((.webSocketDebuggerUrl | startswith("ws://"))
+        or (.webSocketDebuggerUrl | startswith("wss://")))
+      and (($expected_ws_prefix == "") or (.webSocketDebuggerUrl | startswith($expected_ws_prefix)))
+    ' "$diagnostic" >/dev/null 2>&1
+  }
+
+  if [ -n "${AXON_LIVE_CHROME_REMOTE_URL:-}" ]; then
+    live_chrome_remote_url="$AXON_LIVE_CHROME_REMOTE_URL"
+    if ! probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-explicit-probe.log"; then
+      echo "explicit Chrome endpoint is not a reachable CDP endpoint: $live_chrome_remote_url" >&2
+      exit 2
+    fi
+  elif probe_live_chrome "$configured_chrome_remote_url" "$OUTDIR/logs/chrome-configured-probe.log"; then
+    live_chrome_remote_url="$configured_chrome_remote_url"
+  elif probe_live_chrome "http://127.0.0.1:9222" "$OUTDIR/logs/chrome-fallback-probe.log"; then
+    live_chrome_remote_url="http://127.0.0.1:9222"
+  else
+    live_chrome_port="${AXON_LIVE_CHROME_PORT:-0}"
+    if ! [[ "$live_chrome_port" =~ ^([1-9][0-9]{0,4}|0)$ ]] \
+      || [ "$live_chrome_port" -gt 65535 ]; then
+      echo "AXON_LIVE_CHROME_PORT must be 0 or an integer from 1 through 65535" >&2
+      exit 2
+    fi
+    if [ "$live_chrome_port" != "0" ] \
+      && probe_live_chrome "http://127.0.0.1:$live_chrome_port" \
+        "$OUTDIR/logs/chrome-fixed-port-probe.log" \
+        "ws://127.0.0.1:$live_chrome_port/"; then
+      echo "refusing foreign CDP endpoint on fixed port $live_chrome_port; use AXON_LIVE_CHROME_REMOTE_URL to opt in" >&2
+      exit 2
+    fi
+    live_chrome_binary="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+    if [ -z "$live_chrome_binary" ]; then
+      echo "live scenarios require Chrome; set AXON_LIVE_CHROME_REMOTE_URL or install Chrome/Chromium" >&2
+      exit 2
+    fi
+    command -v setsid >/dev/null 2>&1 || {
+      echo "live scenarios require setsid for owned Chrome process-group cleanup" >&2
+      exit 2
+    }
+    live_chrome_session_token="axon-live-chrome-$LIVE_RUN_ID-$$"
+    rm -f -- "$OUTDIR/chrome-profile/DevToolsActivePort"
+    AXON_LIVE_CHROME_SESSION_TOKEN="$live_chrome_session_token" \
+      setsid "$live_chrome_binary" --headless=new --no-sandbox --disable-gpu \
+      --remote-debugging-address=127.0.0.1 --remote-debugging-port="$live_chrome_port" \
+      --user-data-dir="$OUTDIR/chrome-profile" about:blank \
+      >"$OUTDIR/logs/chrome.log" 2>"$OUTDIR/logs/chrome.stderr.log" &
+    live_chrome_pid=$!
+    live_chrome_pgid="$(ps -o pgid= -p "$live_chrome_pid" 2>/dev/null | tr -d ' ')"
+    live_chrome_start_time="$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)"
+    if [ "$live_chrome_pgid" != "$live_chrome_pid" ]; then
+      echo "harness-owned Chrome did not start in its own process group" >&2
+      exit 2
+    fi
+    live_chrome_ready=0
+    for _attempt in $(seq 1 60); do
+      if [ "$live_chrome_port" = "0" ] && [ -s "$OUTDIR/chrome-profile/DevToolsActivePort" ]; then
+        live_chrome_port="$(sed -n '1p' "$OUTDIR/chrome-profile/DevToolsActivePort")"
+      fi
+      live_chrome_remote_url="http://127.0.0.1:$live_chrome_port"
+      if [ "$live_chrome_port" != "0" ] \
+        && probe_live_chrome "$live_chrome_remote_url" "$OUTDIR/logs/chrome-owned-probe.log" \
+          "ws://127.0.0.1:$live_chrome_port/"; then
+        live_chrome_ready=1
+        break
+      fi
+      kill -0 "$live_chrome_pid" 2>/dev/null || break
+      sleep 0.25
+    done
+    if [ "$live_chrome_ready" -ne 1 ]; then
+      echo "harness-owned Chrome did not become ready at $live_chrome_remote_url" >&2
+      exit 2
+    fi
+  fi
+  export AXON_CHROME_REMOTE_URL="$live_chrome_remote_url"
+  case "$live_chrome_remote_url" in
+    http://127.0.0.1|http://127.0.0.1:*|https://127.0.0.1|https://127.0.0.1:*)
+      external_chrome_remote_url="${live_chrome_remote_url/\/\/127.0.0.1/\/\/host.docker.internal}"
+      ;;
+    http://localhost|http://localhost:*|https://localhost|https://localhost:*)
+      external_chrome_remote_url="${live_chrome_remote_url/\/\/localhost/\/\/host.docker.internal}"
+      ;;
+    *) external_chrome_remote_url="$live_chrome_remote_url" ;;
+  esac
   unset AXON_HOME AXON_SERVER_URL AXON_SQLITE_PATH AXON_OUTPUT_DIR \
     AXON_ARTIFACT_BIN_DIR AXON_ARTIFACT_ROOT AXON_CONFIG_PATH AXON_ENV_FILE
   export AXON_DATA_DIR="${AXON_LIVE_DATA_DIR:-$OUTDIR/data}"
-  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_${TS//[^0-9]/}}"
-  if [[ "$AXON_COLLECTION" != axon_live_* ]]; then
-    echo "isolated live collection must start with axon_live_: $AXON_COLLECTION" >&2
+  export AXON_COLLECTION="${AXON_LIVE_COLLECTION:-axon_live_$LIVE_RUN_ID}"
+  if ! [[ "$AXON_COLLECTION" =~ ^axon_live_[A-Za-z0-9_-]{1,120}$ ]]; then
+    echo "isolated live collection must match ^axon_live_[A-Za-z0-9_-]{1,120}$: $AXON_COLLECTION" >&2
     exit 2
   fi
   isolated_collection="$AXON_COLLECTION"
@@ -49,8 +146,8 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   mkdir -p "$AXON_DATA_DIR"
   install -m 0600 /dev/null "$AXON_CONFIG_PATH"
   install -m 0600 /dev/null "$AXON_ENV_FILE"
-  "$AXON_BIN" config set jobs.auto-worker false --json >"$OUTDIR/logs/fixture-disable-auto-worker.json"
-  "$AXON_BIN" config set jobs.worker-idle-exit-secs 2 --json >"$OUTDIR/logs/fixture-worker-idle.json"
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set jobs.auto-worker false --json >"$OUTDIR/logs/fixture-disable-auto-worker.json"
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set jobs.worker-idle-exit-secs 2 --json >"$OUTDIR/logs/fixture-worker-idle.json"
   SETUP_HOME="$OUTDIR/setup-home"
   SETUP_HELPER_BIN="$OUTDIR/setup-helper-bin"
   mkdir -p "$SETUP_HOME" "$SETUP_HELPER_BIN"
@@ -59,11 +156,11 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     HOME="$SETUP_HOME" AXON_DATA_DIR="$SETUP_HOME/.axon" \
     QDRANT_URL="${QDRANT_URL:-http://127.0.0.1:53333}" \
     TEI_URL="${TEI_URL:-http://127.0.0.1:52000}" \
-    AXON_CHROME_REMOTE_URL="${AXON_CHROME_REMOTE_URL:-http://127.0.0.1:6000}" \
-    "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port 38133 --auth-mode bearer --json \
+    AXON_CHROME_REMOTE_URL="$live_chrome_remote_url" \
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" setup init --mcp-host 127.0.0.1 --mcp-port "$LIVE_SETUP_PORT" --auth-mode bearer --json \
     >"$OUTDIR/logs/fixture-setup-init.json" 2>"$OUTDIR/logs/fixture-setup-init.stderr.log"
   {
-    isolated_compose_project="axon-live-${TS//[^0-9]/}"
+    isolated_compose_project="axon-live-${LIVE_RUN_ID//_/-}"
     isolated_compose_network="$isolated_compose_project"
     printf 'AXON_COMPOSE_PROJECT_NAME=%s\n' "$isolated_compose_project"
     printf 'AXON_CONTAINER_NAME=%s-axon\n' "$isolated_compose_project"
@@ -71,30 +168,31 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
     printf 'AXON_TEI_CONTAINER_NAME=%s-tei\n' "$isolated_compose_project"
     printf 'AXON_CHROME_CONTAINER_NAME=%s-chrome\n' "$isolated_compose_project"
     printf 'DOCKER_NETWORK=%s\n' "$isolated_compose_network"
-    printf 'AXON_CHROME_MANAGEMENT_PORT=38600\n'
-    printf 'AXON_CHROME_CDP_PORT=39222\n'
-    printf 'AXON_CHROME_DEVTOOLS_PORT=39223\n'
-    printf 'TEI_HTTP_PORT=38200\n'
+    printf 'AXON_CHROME_MANAGEMENT_PORT=%s\n' "$LIVE_CHROME_MANAGEMENT_PORT"
+    printf 'AXON_CHROME_CDP_PORT=%s\n' "$LIVE_CHROME_CDP_PORT"
+    printf 'AXON_CHROME_DEVTOOLS_PORT=%s\n' "$LIVE_CHROME_DEVTOOLS_PORT"
+    printf 'TEI_HTTP_PORT=%s\n' "$LIVE_TEI_PORT"
     printf 'AXON_EXTERNAL_QDRANT_URL=%s\n' "${QDRANT_URL:-http://127.0.0.1:53333}"
     printf 'AXON_EXTERNAL_TEI_URL=http://host.docker.internal:52000\n'
-    printf 'AXON_EXTERNAL_CHROME_REMOTE_URL=http://host.docker.internal:6000\n'
+    printf 'AXON_EXTERNAL_CHROME_REMOTE_URL=%s\n' "$external_chrome_remote_url"
   } >>"$SETUP_HOME/.axon/.env"
   AXON_DATA_DIR="$SETUP_HOME/.axon" \
     AXON_CONFIG_PATH="$SETUP_HOME/.axon/config.toml" \
     AXON_ENV_FILE="$SETUP_HOME/.axon/.env" \
-    "$AXON_BIN" config set AXON_HTTP_PUBLISH 38135 --env --json \
+    timeout "${TIMEOUT_SECS}s" "$AXON_BIN" config set AXON_HTTP_PUBLISH "$LIVE_COMPOSE_PORT" --env --json \
     >"$OUTDIR/logs/fixture-compose-port.json" \
     2>"$OUTDIR/logs/fixture-compose-port.stderr.log"
   if jq -e '.commands[] | select(.name | startswith("compose "))' "$REGISTRY" >/dev/null; then
-    docker compose --env-file "$SETUP_HOME/.axon/.env" \
+    timeout "${TIMEOUT_SECS}s" docker compose --env-file "$SETUP_HOME/.axon/.env" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       config --format json >"$OUTDIR/logs/fixture-compose-rendered.json"
     assert_live_json "compose isolated loopback port" \
       "$OUTDIR/logs/fixture-compose-rendered.json" \
+      --arg port "$LIVE_COMPOSE_PORT" \
       '.services.axon.ports
-       | any(.target == 8001 and .published == "38135" and .host_ip == "127.0.0.1")'
+       | any(.target == 8001 and .published == $port and .host_ip == "127.0.0.1")'
   fi
   fixture_url="${AXON_LIVE_FIXTURE_URL:-https://example.com}"
   map_fixture_url="${AXON_LIVE_MAP_FIXTURE_URL:-https://www.rust-lang.org/}"
@@ -105,7 +203,9 @@ if [ "$MODE" = "live" ] || [ "$MODE" = "scenarios" ]; then
   memory_id=""
   replacement_memory_id=""
   prune_plan_id=""
-  screenshot_artifact_id=""
+  artifact_fixture_id=""
+  artifact_fixture_second_id=""
+  artifact_fixture_error="artifact fixture was not prepared"
   upload_id=""
   abort_upload_id=""
   graph_node_id=""

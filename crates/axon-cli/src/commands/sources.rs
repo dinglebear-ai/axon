@@ -26,7 +26,7 @@ pub async fn run_sources(cfg: &Config) -> Result<(), Box<dyn Error>> {
             "offset": result.offset,
             "urls": result.urls,
         });
-        println!("{}", serde_json::to_string_pretty(&json)?);
+        crate::json::print_json_gated(&json)?;
     } else {
         println!("{}", primary("Sources"));
         print_aurora_table(
@@ -58,7 +58,7 @@ async fn run_domain_sources(cfg: &Config, domain: &str) -> Result<(), Box<dyn Er
         system::sources_for_domain(cfg, domain, Pagination { limit, offset: 0 }, None).await?;
 
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&result)?);
+        crate::json::print_json_gated(&result)?;
         return Ok(());
     }
 

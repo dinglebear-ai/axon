@@ -42,16 +42,13 @@ pub async fn run_prune(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
         let (plan, result, receipt) =
             prune_execute_saved(ctx, plan_id, true, &PruneAuthz::admin()).await?;
         if cfg.json_output {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&serde_json::json!({
-                    "ok": true,
-                    "subaction": "exec",
-                    "plan": plan,
-                    "result": result,
-                    "receipt_path": receipt,
-                }))?
-            );
+            crate::json::print_json_gated(&serde_json::json!({
+                "ok": true,
+                "subaction": "exec",
+                "plan": plan,
+                "result": result,
+                "receipt_path": receipt,
+            }))?;
         } else {
             report_result(&result);
             println!("{}", muted(&format!("receipt: {receipt}")));
@@ -81,15 +78,12 @@ pub async fn run_prune(cfg: &Config, ctx: &ServiceContext) -> Result<(), Box<dyn
     let (plan, result) = prune(ctx, &request, &authz).await?;
 
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "ok": true,
-                "subaction": subaction,
-                "plan": plan,
-                "result": result,
-            }))?
-        );
+        crate::json::print_json_gated(&serde_json::json!({
+            "ok": true,
+            "subaction": subaction,
+            "plan": plan,
+            "result": result,
+        }))?;
         return Ok(());
     }
 

@@ -98,7 +98,7 @@ pub async fn run_watch(
             )
             .await?;
             if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&watches)?);
+                crate::json::print_json_gated(&watches)?;
             } else {
                 println!("{}", primary("Source Watches"));
                 if watches.items.is_empty() {
@@ -205,10 +205,7 @@ async fn handle_watch_create(
         None => watch_svc::create_source_watch(cfg, None, request, None).await?,
     };
     if cfg.json_output {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&watch_create_json_output(&created))?
-        );
+        crate::json::print_json_gated(&watch_create_json_output(&created))?;
     } else {
         println!("{}", watch_create_human_output(&created));
     }
@@ -254,7 +251,7 @@ async fn handle_watch_exec(
     )
     .await?;
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&run)?);
+        crate::json::print_json_gated(&run)?;
     } else {
         println!("watch job {} status={:?}", run.job_id.0, run.status);
     }
@@ -272,7 +269,7 @@ async fn handle_watch_get(
     match found {
         Some(watch) => {
             if cfg.json_output {
-                println!("{}", serde_json::to_string_pretty(&watch)?);
+                crate::json::print_json_gated(&watch)?;
             } else {
                 println!(
                     "{} {} enabled={} every={}s",
@@ -339,7 +336,7 @@ async fn handle_watch_update(
     let watch_id = watch_svc::WatchId::new(raw_id);
     let updated = watch_svc::SourceWatchStoreTrait::update(&store, watch_id, request).await?;
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(&updated)?);
+        crate::json::print_json_gated(&updated)?;
     } else {
         println!(
             "watch {} updated enabled={} every={}s",

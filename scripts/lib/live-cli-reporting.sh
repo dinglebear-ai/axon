@@ -2,27 +2,73 @@
 # Reporting and semantic coverage helpers.
 
 cleanup_live_fixtures() {
-  local collection
+  local collection _attempt member member_pgid
+  cleanup_warning() {
+    printf 'warning: failed to clean up %s; inspect %s\n' "$1" "$2" >&2
+  }
+  chrome_group_has_session_token() {
+    [ -n "${live_chrome_pgid:-}" ] && [ -n "${live_chrome_session_token:-}" ] || return 1
+    while read -r member member_pgid; do
+      [ "$member_pgid" = "$live_chrome_pgid" ] || continue
+      [ -r "/proc/$member/environ" ] || continue
+      if tr '\0' '\n' <"/proc/$member/environ" 2>/dev/null \
+        | grep -Fqx "AXON_LIVE_CHROME_SESSION_TOKEN=$live_chrome_session_token"; then
+        return 0
+      fi
+    done < <(ps -eo pid=,pgid= 2>/dev/null)
+    return 1
+  }
+  if [ -n "${live_chrome_pid:-}" ] \
+    && [ -n "${live_chrome_pgid:-}" ] \
+    && [ -n "${live_chrome_start_time:-}" ] \
+    && [ "$(awk '{print $22}' "/proc/$live_chrome_pid/stat" 2>/dev/null)" = "$live_chrome_start_time" ] \
+    && chrome_group_has_session_token; then
+    kill -TERM -- "-$live_chrome_pgid" 2>/dev/null || true
+    for _attempt in $(seq 1 20); do
+      kill -0 -- "-$live_chrome_pgid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 -- "-$live_chrome_pgid" 2>/dev/null; then
+      if chrome_group_has_session_token; then
+        kill -KILL -- "-$live_chrome_pgid" 2>/dev/null || true
+      else
+        cleanup_warning "Chrome process group (ownership identity changed before KILL)" \
+          "$OUTDIR/logs/chrome.stderr.log"
+      fi
+    fi
+    wait "$live_chrome_pid" 2>/dev/null || true
+  elif [ -n "${live_chrome_pid:-}" ]; then
+    cleanup_warning "Chrome process group (ownership identity unavailable)" \
+      "$OUTDIR/logs/chrome.stderr.log"
+  fi
   if [[ "$isolated_compose_project" == axon-live-* ]] \
     && [[ "$isolated_compose_network" == axon-live-* ]] \
     && [ -f "${SETUP_HOME:-}/.axon/.env" ] \
     && [ -f "${SETUP_HOME:-}/.axon/compose/docker-compose.yaml" ]; then
-    docker compose --env-file "$SETUP_HOME/.axon/.env" \
+    timeout "${AXON_LIVE_CLEANUP_TIMEOUT_SECS:-30}s" docker compose --env-file "$SETUP_HOME/.axon/.env" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-qdrant.yaml" \
       -f "$SETUP_HOME/.axon/compose/docker-compose.external-providers.yaml" \
       down --remove-orphans \
-      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" || true
-    docker network rm "$isolated_compose_network" \
-      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" || true
+      >"$OUTDIR/logs/cleanup-compose.log" 2>"$OUTDIR/logs/cleanup-compose.stderr.log" \
+      || cleanup_warning "compose stack" "$OUTDIR/logs/cleanup-compose.stderr.log"
+    timeout "${AXON_LIVE_CLEANUP_TIMEOUT_SECS:-30}s" docker network rm "$isolated_compose_network" \
+      >"$OUTDIR/logs/cleanup-network.log" 2>"$OUTDIR/logs/cleanup-network.stderr.log" \
+      || cleanup_warning "Docker network $isolated_compose_network" "$OUTDIR/logs/cleanup-network.stderr.log"
   fi
   for collection in "${isolated_collections[@]}"; do
     if [[ "$collection" == axon_live_* ]] && [ -n "${QDRANT_URL:-}" ]; then
       curl -fsS -X DELETE \
+        --connect-timeout 2 --max-time 10 --retry 2 --retry-connrefused \
         "${QDRANT_URL%/}/collections/$collection" \
-        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" || true
+        >>"$OUTDIR/logs/cleanup-qdrant.json" 2>>"$OUTDIR/logs/cleanup-qdrant.stderr.log" \
+        || cleanup_warning "Qdrant collection $collection" "$OUTDIR/logs/cleanup-qdrant.stderr.log"
     fi
   done
+  if [ -n "${PORT_LEASE_DIR:-}" ] && [ -d "$PORT_LEASE_DIR" ]; then
+    rmdir "$PORT_LEASE_DIR" 2>/dev/null \
+      || cleanup_warning "port lease $PORT_LEASE_DIR" "$OUTDIR/logs"
+  fi
 }
 trap cleanup_live_fixtures EXIT
 
@@ -52,7 +98,7 @@ worktree_content_fingerprint() {
 }
 
 record() {
-  local first=1 field
+  local first=1 field line=""
   for field in "$@"; do
     field="${field//$'\t'/ }"
     field="${field//$'\r'/ }"
@@ -60,17 +106,43 @@ record() {
     if [ "$first" -eq 1 ]; then
       first=0
     else
-      printf '\t' >>"$REPORT"
+      line+=$'\t'
     fi
-    printf '%s' "$field" >>"$REPORT"
+    line+="$field"
   done
-  printf '\n' >>"$REPORT"
+  {
+    flock 9
+    printf '%s\n' "$line" >&9
+  } 9>>"$REPORT"
+}
+
+record_timing() {
+  local started_ms="$1" phase="$2" name="$3" invocation="$4"
+  local elapsed_ms field line=""
+  elapsed_ms=$(( $(now_millis) - started_ms ))
+  for field in "$elapsed_ms" "$phase" "$name" "$invocation"; do
+    field="${field//$'\t'/ }"
+    field="${field//$'\r'/ }"
+    field="${field//$'\n'/ }"
+    [ -n "$line" ] && line+=$'\t'
+    line+="$field"
+  done
+  {
+    flock 9
+    printf '%s\n' "$line" >&9
+  } 9>>"$TIMINGS_REPORT"
+}
+
+now_millis() {
+  local epoch_ns
+  epoch_ns="$(date +%s%N)"
+  printf '%s\n' "$((epoch_ns / 1000000))"
 }
 
 ensure_behavior_global_options() {
   [ -s "$BEHAVIOR_GLOBAL_OPTIONS" ] && return
   : >"$BEHAVIOR_GLOBAL_VALUE_OPTIONS"
-  "$AXON_BIN" --help >"$OUTDIR/logs/behavior-global-help.log" 2>&1 || true
+  timeout "${TIMEOUT_SECS}s" "$AXON_BIN" --help >"$OUTDIR/logs/behavior-global-help.log" 2>&1 || true
   awk -v values="$BEHAVIOR_GLOBAL_VALUE_OPTIONS" '
     /^  Global Options$/ { in_options=1; next }
     in_options && /^  Commands$/ { exit }
@@ -83,6 +155,9 @@ ensure_behavior_global_options() {
       if (line ~ /<[^>]+>/) print option >> values
     }
   ' "$OUTDIR/logs/behavior-global-help.log" >"$BEHAVIOR_GLOBAL_OPTIONS"
+  awk '
+    /^  -[A-Za-z], --[a-z0-9]/ { print substr($1, 1, 2) }
+  ' "$OUTDIR/logs/behavior-global-help.log" >>"$BEHAVIOR_GLOBAL_OPTIONS"
 
   local option
   for option in     --automation-script --batch-concurrency --block-assets --budget --cache     --cache-http-only --chrome-screenshot --chrome-wait-for-selector --color     --cron-every-seconds --cron-max-runs --etag-conditional --exclude-path     --exclude-path-prefix --exclude-selector --format --normalize --output-dir     --performance-profile --quiet --root-selector --screenshot-full-page     --sitemap-only --url-glob --urls --viewport --warc --yes; do

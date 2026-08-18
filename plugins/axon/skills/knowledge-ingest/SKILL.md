@@ -1,6 +1,6 @@
 ---
 name: knowledge-ingest
-description: Use when ingesting docs portals where Axon Chrome rendering, crawl automation scripts, or host browser-assisted URL discovery are needed.
+description: Use when indexing docs portals where Axon Chrome rendering, capture-time automation scripts, or host browser-assisted URL discovery are needed.
 ---
 
 # Axon Knowledge Ingest
@@ -16,12 +16,17 @@ Ask at most 1-3 concise questions only if blocked, such as the portal URL, wheth
 
 ## Axon Collection Plan
 
-Use Axon `scrape`/`crawl --render-mode chrome` and `--automation-script` when
-Chrome rendering or scripted capture-time page steps can collect content. For
+All indexing runs through the unified source command: `axon <source>` (or
+`axon scrape <url>` for a single page). Use `--render-mode chrome` and
+`--automation-script` when Chrome rendering or scripted capture-time page steps
+can collect the content, and `--scope site` for a whole portal section. For
 login flows or interactive portal navigation, use host browser automation to
 establish access and discover URLs, then feed discovered URLs/content to Axon.
 
-For finished ingest deliverables, run async Axon commands in blocking mode: `axon crawl ... --wait true`, `axon ingest ... --wait true`, and `axon embed ... --wait true`. If you enqueue instead, include the job ID, status command, and worker requirement in the handoff.
+For finished ingest deliverables, run indexing in blocking mode:
+`axon <source> --scope site --render-mode chrome --wait true`. If you enqueue
+instead, include the job id, the follow-up command (`axon jobs get <job-id>`),
+and the worker requirement in the handoff.
 
 Collect:
 

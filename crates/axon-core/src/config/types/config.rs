@@ -256,6 +256,13 @@ pub struct Config {
     /// Terminal color override. Flag: `--color=auto|always|never`.
     pub color_choice: super::enums::ColorChoice,
 
+    /// Terminal motion override. Flag: `--motion=auto|always|never`.
+    pub motion_choice: super::enums::MotionChoice,
+
+    /// Operator diagnostic detail. `0` is quiet-by-default, `1` is `-v`, and
+    /// `2+` is debug-oriented `-vv` output.
+    pub verbosity: u8,
+
     /// Live-update mode for `axon status` and `axon monitor jobs`. Flag: `--watch`.
     pub watch_mode: bool,
 

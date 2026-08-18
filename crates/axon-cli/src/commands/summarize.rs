@@ -77,7 +77,7 @@ pub(crate) fn emit_summarize_result(
     result: &SummarizeResult,
 ) -> Result<(), Box<dyn Error>> {
     if cfg.json_output {
-        println!("{}", serde_json::to_string_pretty(result)?);
+        crate::json::print_json_gated(result)?;
         return Ok(());
     }
 

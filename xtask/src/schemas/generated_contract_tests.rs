@@ -401,6 +401,10 @@ fn generated_vector_payload_redaction_guardrails_match_runtime_constants() {
         guardrails["bare_secret_token_prefixes"],
         serde_json::json!(BARE_SECRET_TOKEN_PREFIXES)
     );
+    assert_eq!(
+        guardrails["value_fragment_matching"],
+        "contextual_not_substring"
+    );
 }
 
 #[test]
