@@ -1,5 +1,5 @@
 # Config Schema Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-17
 
 ## Contract
 
@@ -42,10 +42,13 @@ Required metadata per setting:
 
 ## Root Artifact Shape
 
-This is the target schema output. Current implementation does not yet expose
-`cargo xtask schemas config`, and current `config.toml` accepts the existing
-runtime sections from `config.toml.example` rather than the clean-break section
-set below.
+This is the generated schema output. The current implementation exposes
+`cargo xtask schemas config`; the runtime loader accepts the clean-break
+provider sections and preserves only the migration aliases documented in the
+env migration matrix.
+
+The examples below abbreviate source checksums as `sha256:<generated>`; the
+generated artifacts contain the real checksum for each source input.
 
 `docs/reference/config/config.schema.json`:
 
@@ -53,32 +56,22 @@ set below.
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://axon.local/schemas/config/config.schema.json",
-  "title": "AxonConfigToml",
+  "title": "AxonConfigSchema",
   "x-axon": {
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas config",
     "owner_crates": ["axon-core"],
-    "source_inputs": ["crates/axon-core/src/config"]
+    "source_inputs": [
+      {"path": "docs/pipeline-unification/configuration/config-contract.md", "kind": "markdown_contract", "checksum": "sha256:<generated>"},
+      {"path": "docs/pipeline-unification/schemas/config-schema.md", "kind": "markdown_contract", "checksum": "sha256:<generated>"},
+      {"path": "xtask/src/schemas/config_schema_registry.rs", "kind": "rust_module", "checksum": "sha256:<generated>"}
+    ]
   },
   "type": "object",
-  "required": [
-    "server",
-    "sources",
-    "pipeline",
-    "watch",
-    "jobs",
-    "providers",
-    "retrieval",
-    "ask",
-    "crawl",
-    "memory",
-    "graph",
-    "artifacts",
-    "prune",
-    "observability",
-    "security"
-  ],
-  "properties": {},
+  "required": ["config_keys"],
+  "properties": {
+    "config_keys": {"type": "array"}
+  },
   "additionalProperties": false
 }
 ```
@@ -89,15 +82,22 @@ set below.
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://axon.local/schemas/config/env.schema.json",
-  "title": "AxonEnv",
+  "title": "AxonEnvSchema",
   "x-axon": {
     "contract_version": "2026-06-30",
     "generated_by": "cargo xtask schemas config",
     "owner_crates": ["axon-core"],
-    "source_inputs": ["crates/axon-core/src/config/env.rs", ".env.example"]
+    "source_inputs": [
+      {"path": "docs/pipeline-unification/configuration/config-contract.md", "kind": "markdown_contract", "checksum": "sha256:<generated>"},
+      {"path": "docs/pipeline-unification/schemas/config-schema.md", "kind": "markdown_contract", "checksum": "sha256:<generated>"},
+      {"path": "xtask/src/schemas/config_schema_registry.rs", "kind": "rust_module", "checksum": "sha256:<generated>"}
+    ]
   },
   "type": "object",
-  "properties": {},
+  "required": ["env_vars"],
+  "properties": {
+    "env_vars": {"type": "array"}
+  },
   "additionalProperties": false
 }
 ```
@@ -108,15 +108,15 @@ set below.
 {
   "path": "providers.embedding.batch_size",
   "type": "integer",
-  "default": 64,
+  "default": 96,
   "minimum": 1,
-  "maximum": 512,
-  "env_override": "AXON_EMBEDDING_BATCH_SIZE",
-  "restart_required": false,
+  "maximum": 256,
+  "env_override": "TEI_MAX_CLIENT_BATCH_SIZE",
+  "restart_required": true,
   "secret": false,
   "owner_crate": "axon-embedding",
   "description": "Maximum chunks per embedding request.",
-  "example": 128,
+  "example": 96,
   "removed": false,
   "replacement": null
 }
@@ -157,11 +157,13 @@ The target `config.toml` schema must include these keys at minimum:
 | `sources.default_scope_local` | enum | `directory` | `axon-services` |
 | `watch.tick_secs` | integer | `15` | `axon-jobs` |
 | `watch.lease_secs` | integer | `300` | `axon-jobs` |
-| `providers.embedding.batch_size` | integer | `128` | `axon-embedding` |
-| `providers.embedding.max_concurrent_requests` | integer | `4` | `axon-embedding` |
+| `providers.embedding.batch_size` | integer | `96` | `axon-embedding` |
+| `providers.embedding.max_concurrent_requests` | integer | `8` | `axon-embedding` |
+| `providers.embedding.max_in_flight_inputs` | integer | `320` | `axon-embedding` |
 | `providers.embedding.interactive_reserved_requests` | integer | `1` | `axon-jobs` |
-| `providers.vector.write_concurrency` | integer | `4` | `axon-vectors` |
-| `providers.vector.read_concurrency` | integer | `16` | `axon-vectors` |
+| `providers.vector.write_concurrency` | integer | `1` | `axon-vectors` |
+| `providers.vector.upsert_batch_points` | integer | `1024` | `axon-vectors` |
+| `providers.vector.read_concurrency` | integer | `16` (accepted, not enforced) | `axon-vectors` |
 | `providers.llm.completion_concurrency` | integer | `4` | `axon-llm` |
 | `providers.search.default` | enum | `searxng-then-tavily` | `axon-adapters` |
 | `retrieval.limit` | integer | `10` | `axon-retrieval` |

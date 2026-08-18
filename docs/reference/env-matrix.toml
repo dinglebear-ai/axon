@@ -810,7 +810,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.max-client-batch-size"
+toml_destination = "providers.embedding.batch-size"
 compatibility = "warn-env-override"
 reason = "TEI client request batch size. Distinguish from TEI server argv in Compose."
 
@@ -822,7 +822,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.max-retries"
+toml_destination = "providers.embedding.max-retries"
 compatibility = "warn-env-override"
 reason = "TEI client retry tuning."
 
@@ -834,7 +834,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.request-timeout-ms"
+toml_destination = "providers.embedding.request-timeout-ms"
 compatibility = "warn-env-override"
 reason = "TEI client timeout tuning."
 
@@ -846,7 +846,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.retry-backoff-ms"
+toml_destination = "providers.embedding.retry-backoff-ms"
 compatibility = "warn-env-override"
 reason = "Base backoff (ms) before exponential growth + jitter between retried TEI `/embed` requests on 429/5xx."
 
@@ -858,7 +858,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.cooldown-after-failures"
+toml_destination = "providers.embedding.cooldown-after-failures"
 compatibility = "warn-env-override"
 reason = "Consecutive TEI failures before the provider self-reports a cooldown."
 
@@ -870,7 +870,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.cooldown-secs"
+toml_destination = "providers.embedding.cooldown-secs"
 compatibility = "warn-env-override"
 reason = "Cooldown window length (seconds) once the TEI failure threshold trips."
 
@@ -882,7 +882,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.interactive-reserved-requests"
+toml_destination = "providers.embedding.interactive-reserved-requests"
 compatibility = "warn-env-override"
 reason = "Embedding reservation slots reserved for interactive (ask/query) embeddings out of max-concurrent-requests."
 
@@ -894,7 +894,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.background-max-concurrent-requests"
+toml_destination = "providers.embedding.background-max-concurrent-requests"
 compatibility = "warn-env-override"
 reason = "Soft per-tier concurrency ceiling for background-priority embed requests."
 
@@ -906,7 +906,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.maintenance-max-concurrent-requests"
+toml_destination = "providers.embedding.maintenance-max-concurrent-requests"
 compatibility = "warn-env-override"
 reason = "Soft per-tier concurrency ceiling for maintenance-priority embed requests (migrate/reindex-class jobs)."
 
@@ -918,7 +918,7 @@ surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
 container_allowed = false
-toml_destination = "tei.query-instruction-enabled"
+toml_destination = "providers.embedding.query-instruction-enabled"
 compatibility = "warn-env-override"
 reason = "Apply the query/document instruction prefix when the embedding provider capability supports it."
 
@@ -1416,51 +1416,51 @@ reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a ty
 
 [[env]]
 key = "AXON_EMBED_POOL_MAX_INPUTS"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "docs"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret embed pooling tuning knob; migrate to config.toml once a typed config.toml field is wired."
+container_allowed = false
+toml_destination = "providers.embedding.pool-max-inputs"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding pool capacity is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_EMBED_PREP_CONCURRENCY"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret embed preparation tuning knob; migrate to config.toml when typed fields are wired."
+container_allowed = false
+toml_destination = "providers.embedding.prep-concurrency"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding preparation concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_EMBED_MAX_CHUNKS_PER_DOC"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret embed volume guard for generated or prose documents; migrate to config.toml when typed fields are wired."
+container_allowed = false
+toml_destination = "providers.embedding.max-chunks-per-doc"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding chunk-volume guard is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret embed volume guard for source-code-like documents; migrate to config.toml when typed fields are wired."
+container_allowed = false
+toml_destination = "providers.embedding.max-source-chunks-per-doc"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding source-chunk guard is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_RESIDUAL_GAP_FLOOR"
@@ -1476,15 +1476,15 @@ reason = "Min stripped-char count for an inter-declaration residual gap to survi
 
 [[env]]
 key = "AXON_EMBED_DEDUPE_EXACT_CHUNKS"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "docs", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret embed dedupe guard; migrate to config.toml when typed fields are wired."
+container_allowed = false
+toml_destination = "providers.embedding.dedupe-exact-chunks"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding dedupe policy is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_EXCLUDE_PATH_PREFIX"
@@ -2364,15 +2364,15 @@ reason = "URL/path/bootstrap override; env is allowed when supplied by the opera
 
 [[env]]
 key = "AXON_TEI_MAX_CONCURRENT"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Non-secret tuning knob; migrate to config.toml. Kept in env until a typed config.toml field is wired."
+container_allowed = false
+toml_destination = "providers.embedding.max-concurrent-requests"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_TEST_AMQP_URL"
@@ -3624,15 +3624,15 @@ reason = "Qdrant int8 quantization always-in-RAM toggle (memory vs latency for t
 
 [[env]]
 key = "AXON_TEI_MAX_IN_FLIGHT_INPUTS"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "env-template", "docs", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "Process-wide cap for chunk inputs concurrently submitted to TEI. Non-secret throughput tuning; kept in env until a typed config.toml field is wired."
+container_allowed = false
+toml_destination = "providers.embedding.max-in-flight-inputs"
+compatibility = "warn-env-override"
+reason = "Typed provider embedding in-flight input capacity is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_MARKDOWN_CHUNK_MIN_CHARS"
@@ -3672,63 +3672,63 @@ reason = "Adjacent prose/markdown chunk overlap. Non-secret chunking tuning; kep
 
 [[env]]
 key = "AXON_OPENAI_EMBEDDING_MODEL"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "OpenAI-compatible embedding model override. Runtime selector; kept in env until a typed config.toml field is wired."
+container_allowed = false
+toml_destination = "providers.embedding.openai-model"
+compatibility = "warn-env-override"
+reason = "OpenAI-compatible embedding model is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "OpenAI-compatible embedding request batch-size cap. Non-secret throughput tuning."
+container_allowed = false
+toml_destination = "providers.embedding.openai-max-client-batch-size"
+compatibility = "warn-env-override"
+reason = "OpenAI-compatible embedding request batch size is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_OPENAI_EMBED_MAX_CONCURRENT"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "OpenAI-compatible embedding request concurrency cap. Non-secret throughput tuning."
+container_allowed = false
+toml_destination = "providers.embedding.openai-max-concurrent"
+compatibility = "warn-env-override"
+reason = "OpenAI-compatible embedding request concurrency is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "OpenAI-compatible embedding process-wide in-flight input cap. Non-secret throughput tuning."
+container_allowed = false
+toml_destination = "providers.embedding.openai-max-in-flight-inputs"
+compatibility = "warn-env-override"
+reason = "OpenAI-compatible embedding in-flight input capacity is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "AXON_OPENAI_EMBED_POOL_MAX_INPUTS"
-classification = "keep-env"
-runtime_placement = "both"
+classification = "move-toml"
+runtime_placement = "not-runtime"
 surfaces = ["src", "config-example"]
 secret = false
 url_or_path = false
-container_allowed = true
-toml_destination = ""
-compatibility = "canonical"
-reason = "OpenAI-compatible embedding input pool size before client sub-batching. Non-secret throughput tuning."
+container_allowed = false
+toml_destination = "providers.embedding.openai-pool-max-inputs"
+compatibility = "warn-env-override"
+reason = "OpenAI-compatible embedding input pool size is wired in config.toml; the env key remains accepted as a compatibility override."
 
 [[env]]
 key = "OPENAI_EMBED_CONCURRENCY"

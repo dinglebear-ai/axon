@@ -52,6 +52,11 @@ pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
     let embedding_provider = build_tei_provider(cfg, &identity);
     let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
     axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
+    axon_vectors::qdrant::configure_parallelism(
+        &mut vector_store,
+        axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
+        axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
+    );
     TargetReadStores {
         vector_store: Arc::new(vector_store),
         embedding_provider: Arc::new(embedding_provider),
@@ -71,6 +76,8 @@ fn build_tei_provider(cfg: &Config, identity: &EmbeddingIdentity) -> TeiEmbeddin
         dimensions: identity.dimensions,
         timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
         max_batch_inputs: cfg.tei_max_client_batch_size as u32,
+        max_concurrent_requests: cfg.embed_tei_max_concurrent,
+        max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
         max_batch_tokens: MAX_BATCH_TOKENS,
         instruction_support: query_instruction_support(cfg),
@@ -218,6 +225,8 @@ async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration
         dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
         timeout: Duration::from_millis(cfg.tei_request_timeout_ms),
         max_batch_inputs: cfg.tei_max_client_batch_size as u32,
+        max_concurrent_requests: cfg.embed_tei_max_concurrent,
+        max_in_flight_inputs: cfg.embed_tei_max_in_flight_inputs,
         max_input_tokens: MAX_INPUT_TOKENS,
         max_batch_tokens: MAX_BATCH_TOKENS,
         instruction_support: query_instruction_support(cfg),
@@ -322,6 +331,11 @@ impl TargetLocalSourceRuntime {
 
         let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
         axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
+        axon_vectors::qdrant::configure_parallelism(
+            &mut vector_store,
+            axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
+            axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
+        );
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
@@ -392,6 +406,7 @@ impl TargetLocalSourceRuntime {
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
+            embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
             fetch_provider,
             render_provider,
             web_source_adapter,

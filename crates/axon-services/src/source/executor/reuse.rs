@@ -66,10 +66,29 @@ pub(super) async fn resolve_acquisition(
         });
     }
 
+    let previous_items = previous_manifest_items(runtime, diff).await?;
+    let mut refreshed_items = BTreeMap::new();
     let mut fetched = Vec::new();
     let mut reused_item_keys = Vec::new();
     for item in std::mem::take(&mut acquisition.fetched_items) {
+        refreshed_items.insert(
+            item.manifest_item.source_item_key.clone(),
+            item.manifest_item.clone(),
+        );
         if !reuse_required(&item) {
+            let item_key = item.manifest_item.source_item_key.clone();
+            let same_content = previous_items.get(&item_key).is_some_and(|previous| {
+                previous.content_hash.is_some()
+                    && previous.content_hash == item.manifest_item.content_hash
+            });
+            if same_content && reuse_cached_document(runtime, diff, &item_key).await? {
+                reused_item_keys.push(item_key);
+                continue;
+            }
+            // A byte-identical 200 response can only skip normalization when the
+            // previous normalized document was successfully advanced into the
+            // new generation's cache. Otherwise process the fetched body so this
+            // generation becomes a valid cache source for the next 304.
             fetched.push(item);
             continue;
         }
@@ -97,11 +116,37 @@ pub(super) async fn resolve_acquisition(
         }
     }
 
+    for manifest_item in &mut acquisition.manifest.items {
+        if let Some(refreshed) = refreshed_items.remove(&manifest_item.source_item_key) {
+            *manifest_item = refreshed;
+        }
+    }
     acquisition.fetched_items = fetched;
     Ok(ResolvedAcquisition {
         acquisition,
         reused_item_keys,
     })
+}
+
+async fn previous_manifest_items(
+    runtime: &TargetLocalSourceRuntime,
+    diff: &SourceManifestDiff,
+) -> anyhow::Result<BTreeMap<SourceItemKey, ManifestItem>> {
+    let Some(generation) = diff.previous_generation.clone() else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(runtime
+        .ledger
+        .get_manifest(diff.source_id.clone(), generation)
+        .await?
+        .map(|manifest| {
+            manifest
+                .items
+                .into_iter()
+                .map(|item| (item.source_item_key.clone(), item))
+                .collect()
+        })
+        .unwrap_or_default())
 }
 
 pub(super) async fn normalize_acquisition(

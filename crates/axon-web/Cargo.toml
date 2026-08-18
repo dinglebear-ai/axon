@@ -45,7 +45,7 @@ tokio-util = { version = "0.7", features = ["compat", "io"] }
 tracing = "0.1"
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-axum = "0.2"
-utoipa-swagger-ui = { version = "9", features = ["axum", "debug-embed"] }
+utoipa-swagger-ui = { version = "9", features = ["axum", "debug-embed", "vendored"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 lab-auth = { git = "https://github.com/dinglebear-ai/labby.git", rev = "87cec3241f9baef22335de9cc8629ebbcd8ba047", package = "lab-auth" }
 url = "2"

@@ -401,6 +401,7 @@ fn deprecated_top_level_sections_are_rejected() {
     for (old, needle) in [
         ("[llm]\ncompletion-concurrency = 4", "providers.llm"),
         ("[tei]\nmax-retries = 3", "providers.embedding"),
+        ("[embed]\npool-max-inputs = 512", "providers.embedding"),
         ("[scrape]\nrespect-robots = true", "crawl"),
         ("[workers]\ningest-lanes = 2", "pipeline"),
         ("[chrome]\nbypass-csp = true", "providers.render"),

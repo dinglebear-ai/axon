@@ -225,7 +225,30 @@ fn toml_tei_max_client_batch_size_wins_over_default() {
     assert_eq!(
         cfg.unwrap().tei_max_client_batch_size,
         96,
-        "TOML tei.max-client-batch-size=96 should match or override the default"
+        "TOML providers.embedding.batch-size=96 should match or override the default"
+    );
+}
+
+#[allow(unsafe_code)]
+#[serial_test::serial]
+#[test]
+fn default_tei_max_client_batch_size_matches_runtime_contract() {
+    let _guard = env_guard();
+    let f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    let mut got = 0usize;
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "TEI_MAX_CLIENT_BATCH_SIZE"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::remove_var("TEI_MAX_CLIENT_BATCH_SIZE");
+            got = into_config_via_args(&["status"])
+                .unwrap()
+                .tei_max_client_batch_size;
+        },
+    );
+    assert_eq!(
+        got, 96,
+        "runtime default must match the 96-item config contract"
     );
 }
 

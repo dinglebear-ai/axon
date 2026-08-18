@@ -959,7 +959,7 @@ fn tei_max_client_batch_size(toml: &TomlConfig) -> usize {
     resolve_clamped_usize(
         "TEI_MAX_CLIENT_BATCH_SIZE",
         toml.tei.max_client_batch_size,
-        128,
+        96,
         1,
         256,
     )

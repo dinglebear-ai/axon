@@ -1,5 +1,54 @@
 use super::*;
+use httpmock::MockServer;
 use std::time::{Duration, Instant};
+
+#[tokio::test]
+async fn embed_all_overlaps_independent_client_batches() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .delay(Duration::from_secs(2))
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
+        })
+        .await;
+    let client = TeiClient::new(TeiClientParams {
+        endpoint: server.base_url(),
+        provider_id: "tei".to_string(),
+        max_batch_inputs: 1,
+        max_concurrent_requests: 4,
+        max_in_flight_inputs: 4,
+        max_attempts: 1,
+        request_timeout: Duration::from_secs(5),
+        retry_backoff_base_ms: 1,
+    })
+    .expect("client");
+
+    let client = Arc::new(client);
+    let task_client = Arc::clone(&client);
+    let task = tokio::spawn(async move {
+        task_client
+            .embed_all(&["a".into(), "b".into(), "c".into(), "d".into()])
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if endpoint.calls_async().await == 4 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("all four requests should be admitted before the first delayed response completes");
+
+    let outcome = task.await.expect("embed task").expect("embed batches");
+    assert_eq!(outcome.vectors.len(), 4);
+    assert_eq!(outcome.requests, 4);
+    endpoint.assert_calls_async(4).await;
+}
 
 #[test]
 fn is_retryable_status_covers_429_and_5xx_only() {
@@ -55,6 +104,13 @@ fn resolve_batch_size_clamps_to_valid_range() {
 }
 
 #[test]
+fn request_concurrency_respects_aggregate_input_budget() {
+    assert_eq!(effective_request_concurrency(8, 320, 96), 3);
+    assert_eq!(effective_request_concurrency(8, 32, 96), 1);
+    assert_eq!(effective_request_concurrency(0, 0, 0), 1);
+}
+
+#[test]
 fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
     let before = shared_client_build_count();
     for i in 0..5 {
@@ -62,6 +118,8 @@ fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
             endpoint: "http://127.0.0.1:1".to_string(),
             provider_id: format!("tei-{i}"),
             max_batch_inputs: 8,
+            max_concurrent_requests: 1,
+            max_in_flight_inputs: 8,
             max_attempts: 1,
             request_timeout: Duration::from_millis(10),
             retry_backoff_base_ms: 500,
@@ -78,6 +136,8 @@ fn tei_client_new_reuses_the_shared_client_across_many_constructions() {
             endpoint: "http://127.0.0.1:1".to_string(),
             provider_id: format!("tei-{i}"),
             max_batch_inputs: 8,
+            max_concurrent_requests: 1,
+            max_in_flight_inputs: 8,
             max_attempts: 1,
             request_timeout: Duration::from_millis(10),
             retry_backoff_base_ms: 500,
@@ -97,6 +157,8 @@ fn exhausted_cooling_attaches_provider_cooling_metadata_and_marks_retryable() {
         endpoint: "http://127.0.0.1:1".to_string(),
         provider_id: "tei".to_string(),
         max_batch_inputs: 8,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 8,
         max_attempts: 1,
         request_timeout: Duration::from_millis(10),
         retry_backoff_base_ms: 500,

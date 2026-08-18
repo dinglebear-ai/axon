@@ -1,5 +1,7 @@
 //! Live `VectorStore` implementation over the Qdrant REST API.
 
+use std::sync::Arc;
+
 use axon_api::source::*;
 
 use super::QdrantVectorStore;
@@ -37,13 +39,16 @@ impl QdrantVectorStore {
         }
 
         let url = http.endpoint().collection_path(&spec.collection, "");
-        http.put_json(
-            stage,
-            &url,
-            &collection_create_json(&spec),
-            "qdrant_create_collection",
-        )
-        .await?;
+        {
+            let _permit = self.write_permit(stage).await?;
+            http.put_json(
+                stage,
+                &url,
+                &collection_create_json(&spec),
+                "qdrant_create_collection",
+            )
+            .await?;
+        }
         self.ensure_payload_indexes(&http, &spec, stage).await?;
         self.cache_collection_spec(spec).await;
         Ok(())
@@ -58,7 +63,7 @@ impl QdrantVectorStore {
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
             .await?;
-        upsert_batches_rest(&http, &spec, batch, self.point_buffer, stage).await
+        upsert_batches_rest(self, &http, &spec, batch, stage).await
     }
 
     pub(super) async fn delete_inner(
@@ -80,6 +85,7 @@ impl QdrantVectorStore {
         let url = http
             .endpoint()
             .collection_path(&collection, "points/delete?wait=true");
+        let _permit = self.write_permit(stage).await?;
         let _ack: DeleteResponse = http.post_json(stage, &url, &body, "qdrant_delete").await?;
         Ok(qdrant_delete_result(
             collection,
@@ -126,15 +132,35 @@ impl QdrantVectorStore {
         let url = http
             .endpoint()
             .collection_path(&spec.collection, "index?wait=true");
-        for index in &spec.payload_indexes {
-            http.put_json(
-                stage,
-                &url,
-                &payload_index_json(index),
-                "qdrant_payload_index",
-            )
+        use futures_util::stream::{self, StreamExt, TryStreamExt};
+        let bodies = spec
+            .payload_indexes
+            .iter()
+            .map(payload_index_json)
+            .collect::<Vec<_>>();
+        let payload_index_slots = self.payload_index_slots();
+        let provider_id = self.provider_id().0.clone();
+        stream::iter(bodies)
+            .map(|body| {
+                let url = &url;
+                let payload_index_slots = Arc::clone(&payload_index_slots);
+                let provider_id = provider_id.clone();
+                async move {
+                    let _permit = payload_index_slots.acquire_owned().await.map_err(|_| {
+                        ApiError::new(
+                            "vector.qdrant.payload_index_admission_closed",
+                            stage,
+                            "Qdrant payload-index admission gate is closed",
+                        )
+                        .with_provider_id(provider_id)
+                    })?;
+                    http.put_json(stage, url, &body, "qdrant_payload_index")
+                        .await
+                }
+            })
+            .buffer_unordered(self.payload_index_parallelism)
+            .try_collect::<Vec<_>>()
             .await?;
-        }
         Ok(())
     }
 }
@@ -268,6 +294,7 @@ async fn delete_collection_points_by_scroll(
 
         for batch in ids.chunks(COLLECTION_DELETE_BATCH_SIZE) {
             let body = serde_json::json!({ "points": batch });
+            let _permit = store.write_permit(stage).await?;
             let _ack: DeleteResponse = http
                 .post_json(stage, &url, &body, "qdrant_delete_collection_points")
                 .await?;

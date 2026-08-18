@@ -23,11 +23,11 @@ mod store_trait;
 mod upsert;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, Weak};
 
 use axon_api::source::*;
 use axon_observe::reservation::{ProviderReservationConfig, ProviderReservationManager};
-use tokio::sync::RwLock;
+use tokio::sync::{OwnedSemaphorePermit, RwLock, Semaphore};
 
 // Re-export the request-shape conversion helpers exercised by the crate's
 // contract tests and any transport that needs the typed builders.
@@ -53,6 +53,7 @@ pub const MODULE_NAME: &str = "qdrant";
 /// into `capabilities()`, not to gate concurrency.
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const DEFAULT_POINT_BUFFER: usize = 1024;
+const DEFAULT_WRITE_PARALLELISM: usize = 1;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 
@@ -60,6 +61,47 @@ const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 /// recreate Qdrant through raw HTTP without access to every live store clone;
 /// advancing this epoch makes all per-instance entries stale immediately.
 static COLLECTION_SPEC_CACHE_EPOCHS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ParallelismKey {
+    url: String,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
+}
+
+#[derive(Debug)]
+struct QdrantParallelismGates {
+    write_slots: Arc<Semaphore>,
+    payload_index_slots: Arc<Semaphore>,
+}
+
+static PARALLELISM_GATES: LazyLock<Mutex<HashMap<ParallelismKey, Weak<QdrantParallelismGates>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn shared_parallelism_gates(
+    url: &str,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
+) -> Arc<QdrantParallelismGates> {
+    let key = ParallelismKey {
+        url: url.trim().trim_end_matches('/').to_string(),
+        write_parallelism: write_parallelism.max(1),
+        payload_index_parallelism: payload_index_parallelism.max(1),
+    };
+    let mut registry = PARALLELISM_GATES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    registry.retain(|_, gates| gates.strong_count() > 0);
+    if let Some(gates) = registry.get(&key).and_then(Weak::upgrade) {
+        return gates;
+    }
+    let gates = Arc::new(QdrantParallelismGates {
+        write_slots: Arc::new(Semaphore::new(key.write_parallelism)),
+        payload_index_slots: Arc::new(Semaphore::new(key.payload_index_parallelism)),
+    });
+    registry.insert(key, Arc::downgrade(&gates));
+    gates
+}
 
 /// Qdrant-backed [`VectorStore`](crate::store::VectorStore).
 ///
@@ -70,6 +112,9 @@ pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
     point_buffer: usize,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
+    parallelism_gates: Arc<QdrantParallelismGates>,
     health: ProviderReservationManager,
     collection_specs: Arc<RwLock<HashMap<String, (u64, CollectionSpec)>>>,
 }
@@ -88,6 +133,7 @@ impl QdrantVectorStore {
         provider_id: impl Into<String>,
         point_buffer: usize,
     ) -> Self {
+        let url = url.into();
         let provider_id = ProviderId::new(provider_id);
         let health = ProviderReservationManager::new(ProviderReservationConfig {
             provider_id: provider_id.clone(),
@@ -97,10 +143,15 @@ impl QdrantVectorStore {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
+        let parallelism_gates =
+            shared_parallelism_gates(&url, DEFAULT_WRITE_PARALLELISM, DEFAULT_WRITE_PARALLELISM);
         Self {
-            url: url.into(),
+            url,
             provider_id,
             point_buffer: point_buffer.max(1),
+            write_parallelism: DEFAULT_WRITE_PARALLELISM,
+            payload_index_parallelism: DEFAULT_WRITE_PARALLELISM,
+            parallelism_gates,
             health,
             collection_specs: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -108,6 +159,39 @@ impl QdrantVectorStore {
 
     pub fn point_buffer(&self) -> usize {
         self.point_buffer
+    }
+
+    pub fn write_parallelism(&self) -> usize {
+        self.write_parallelism
+    }
+
+    pub fn payload_index_parallelism(&self) -> usize {
+        self.payload_index_parallelism
+    }
+
+    pub(super) async fn write_permit(
+        &self,
+        stage: ErrorStage,
+    ) -> Result<OwnedSemaphorePermit, ApiError> {
+        Arc::clone(&self.parallelism_gates.write_slots)
+            .acquire_owned()
+            .await
+            .map_err(|_| {
+                ApiError::new(
+                    "vector.qdrant.write_admission_closed",
+                    stage,
+                    "Qdrant write admission gate is closed",
+                )
+                .with_provider_id(self.provider_id.0.clone())
+            })
+    }
+
+    pub(super) fn write_slots(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.parallelism_gates.write_slots)
+    }
+
+    pub(super) fn payload_index_slots(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.parallelism_gates.payload_index_slots)
     }
 
     /// The configured Qdrant URL (may embed credentials — do not log).
@@ -163,6 +247,20 @@ impl QdrantVectorStore {
 /// construction/method operation to orchestration-layer callers.
 pub fn configure_point_buffer(store: &mut QdrantVectorStore, point_buffer: usize) {
     store.point_buffer = point_buffer.max(1);
+}
+
+pub fn configure_parallelism(
+    store: &mut QdrantVectorStore,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
+) {
+    store.write_parallelism = write_parallelism.max(1);
+    store.payload_index_parallelism = payload_index_parallelism.max(1);
+    store.parallelism_gates = shared_parallelism_gates(
+        &store.url,
+        store.write_parallelism,
+        store.payload_index_parallelism,
+    );
 }
 
 fn collection_spec_cache_epochs() -> &'static Mutex<HashMap<String, u64>> {

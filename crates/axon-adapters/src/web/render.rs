@@ -100,6 +100,12 @@ pub(super) fn acquired_from_rendered(
     reject_binary_rendered_payload(item, &rendered.markdown)?;
     let mut manifest_item = item.clone();
     manifest_item.content_kind = Some(ContentKind::Markdown);
+    manifest_item.content_hash = Some(super::manifest_items::content_ref_hash(
+        &ContentRef::InlineText {
+            text: rendered.markdown.clone(),
+        },
+    ));
+    manifest_item.version = None;
 
     let mut metadata = MetadataMap::new();
     metadata.insert(

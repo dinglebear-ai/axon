@@ -1,6 +1,8 @@
 mod strategy;
 
 pub use strategy::discover_site_urls;
+#[cfg(test)]
+pub(crate) use strategy::discovery_is_sufficient;
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -102,6 +104,28 @@ pub fn merge_map_candidate_urls(
     }
 
     merged
+}
+
+/// Merge sitemap and llms.txt candidates while preferring a direct Markdown
+/// representation over the equivalent extensionless HTML page.
+pub(crate) fn merge_discovery_candidate_urls(
+    sitemap_urls: Vec<String>,
+    llms_urls: Vec<String>,
+) -> Vec<String> {
+    let markdown_alternates: HashSet<String> = llms_urls
+        .iter()
+        .filter_map(|url| {
+            url.strip_suffix(".md")
+                .or_else(|| url.strip_suffix(".markdown"))
+        })
+        .map(str::to_string)
+        .collect();
+
+    sitemap_urls
+        .into_iter()
+        .filter(|url| !markdown_alternates.contains(url.as_str()))
+        .chain(llms_urls)
+        .collect()
 }
 
 pub(crate) async fn resolve_map_seed_url(

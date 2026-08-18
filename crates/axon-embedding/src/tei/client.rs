@@ -8,15 +8,17 @@
 //! `"configured"` is attached to error context, mirroring the qdrant store's
 //! redaction pattern.
 
-use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
 use axon_error::ErrorStage;
 use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
+use futures_util::future::join_all;
 use reqwest::{Client, StatusCode};
+use tokio::sync::Semaphore;
 
 /// Opaque endpoint context marker attached to errors.
 ///
@@ -39,10 +41,10 @@ const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
 
 /// Process-wide reqwest client shared by every [`TeiClient`].
 ///
-/// `TeiEmbeddingProvider::build_client()` calls [`TeiClient::new`] for each
-/// provider operation. Building a fresh `reqwest::Client` there throws away its
-/// connection pool and DNS resolver on every embed/probe call, so the transport
-/// keeps request timeouts per call and shares the pool process-wide.
+/// `TeiEmbeddingProvider::build_client()` constructs each transport with
+/// [`TeiClient::new_with_gates`] so provider instances share admission state.
+/// Building a fresh `reqwest::Client` per operation would also throw away its
+/// connection pool and DNS resolver, so the HTTP client stays process-wide.
 static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     #[cfg(test)]
     CLIENT_BUILDS.fetch_add(1, Ordering::SeqCst);
@@ -66,6 +68,8 @@ pub struct TeiClientParams {
     pub provider_id: String,
     /// Initial per-request chunk size (`config.max_batch_inputs`).
     pub max_batch_inputs: usize,
+    pub max_concurrent_requests: usize,
+    pub max_in_flight_inputs: usize,
     /// Total attempts = retries + 1; matches legacy `tei_max_retries + 1`.
     pub max_attempts: usize,
     pub request_timeout: Duration,
@@ -112,6 +116,9 @@ pub struct TeiClient {
     info_url: String,
     provider_id: String,
     max_batch_inputs: usize,
+    max_concurrent_requests: usize,
+    request_slots: Arc<Semaphore>,
+    input_slots: Arc<Semaphore>,
     max_attempts: usize,
     request_timeout: Duration,
     retry_backoff_base_ms: u64,
@@ -123,17 +130,37 @@ impl TeiClient {
     ///
     /// The `/embed` path is appended to the configured base. The reqwest client
     /// carries no per-request timeout; each request applies `request_timeout`.
+    #[cfg(test)]
     pub fn new(params: TeiClientParams) -> Result<Self, ApiError> {
+        let request_slots = Arc::new(Semaphore::new(params.max_concurrent_requests.max(1)));
+        let input_slots = Arc::new(Semaphore::new(params.max_in_flight_inputs.max(1)));
+        Self::new_with_gates(params, request_slots, input_slots)
+    }
+
+    pub(crate) fn new_with_gates(
+        params: TeiClientParams,
+        request_slots: Arc<Semaphore>,
+        input_slots: Arc<Semaphore>,
+    ) -> Result<Self, ApiError> {
         let base = params.endpoint.trim().trim_end_matches('/');
         let embed_url = format!("{base}/embed");
         let info_url = format!("{base}/info");
-        let max_batch_inputs = resolve_batch_size(params.max_batch_inputs);
+        let max_in_flight_inputs = params.max_in_flight_inputs.max(1);
+        let max_batch_inputs =
+            resolve_batch_size(params.max_batch_inputs).min(max_in_flight_inputs);
         Ok(Self {
             client: SHARED_CLIENT.clone(),
             embed_url,
             info_url,
             provider_id: params.provider_id,
             max_batch_inputs,
+            max_concurrent_requests: effective_request_concurrency(
+                params.max_concurrent_requests,
+                max_in_flight_inputs,
+                max_batch_inputs,
+            ),
+            request_slots,
+            input_slots,
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
             retry_backoff_base_ms: params.retry_backoff_base_ms,
@@ -201,28 +228,37 @@ impl TeiClient {
             start += chunk.len();
         }
 
-        while let Some((offset, chunk)) = pending.pop() {
-            match self.send_chunk_with_retries(chunk).await? {
-                ChunkOutcome::Vectors(batch) => {
-                    if batch.len() != chunk.len() {
-                        return Err(self.error(
-                            "embedding.tei.count_mismatch",
-                            &format!(
-                                "TEI returned {} vectors for a {}-input batch",
-                                batch.len(),
-                                chunk.len()
-                            ),
-                        ));
-                    }
-                    for (i, vec) in batch.into_iter().enumerate() {
-                        slots[offset + i] = vec;
-                    }
+        while !pending.is_empty() {
+            let wave = std::mem::take(&mut pending);
+            for group in wave.chunks(self.max_concurrent_requests) {
+                let mut requests = Vec::with_capacity(group.len());
+                for &(offset, chunk) in group {
+                    requests.push(self.send_indexed_chunk(offset, chunk));
                 }
-                ChunkOutcome::Split => {
-                    let mid = chunk.len() / 2;
-                    let (left, right) = chunk.split_at(mid);
-                    pending.push((offset, left));
-                    pending.push((offset + mid, right));
+                for (offset, chunk, outcome) in join_all(requests).await {
+                    match outcome? {
+                        ChunkOutcome::Vectors(batch) => {
+                            if batch.len() != chunk.len() {
+                                return Err(self.error(
+                                    "embedding.tei.count_mismatch",
+                                    &format!(
+                                        "TEI returned {} vectors for a {}-input batch",
+                                        batch.len(),
+                                        chunk.len()
+                                    ),
+                                ));
+                            }
+                            for (i, vec) in batch.into_iter().enumerate() {
+                                slots[offset + i] = vec;
+                            }
+                        }
+                        ChunkOutcome::Split => {
+                            let mid = chunk.len() / 2;
+                            let (left, right) = chunk.split_at(mid);
+                            pending.push((offset, left));
+                            pending.push((offset + mid, right));
+                        }
+                    }
                 }
             }
         }
@@ -231,6 +267,14 @@ impl TeiClient {
             vectors: slots,
             requests: self.requests.load(Ordering::Relaxed),
         })
+    }
+
+    async fn send_indexed_chunk<'a>(
+        &'a self,
+        offset: usize,
+        chunk: &'a [String],
+    ) -> (usize, &'a [String], Result<ChunkOutcome, ApiError>) {
+        (offset, chunk, self.send_chunk_with_retries(chunk).await)
     }
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a
@@ -255,6 +299,31 @@ impl TeiClient {
         let mut last_retryable = true;
 
         for attempt in 1..=self.max_attempts {
+            let request_permit = Arc::clone(&self.request_slots)
+                .acquire_owned()
+                .await
+                .map_err(|_| {
+                    self.error(
+                        "embedding.tei.admission_closed",
+                        "TEI request admission gate is closed",
+                    )
+                })?;
+            let input_count = u32::try_from(chunk.len()).map_err(|_| {
+                self.error(
+                    "embedding.tei.input_budget_invalid",
+                    "TEI client batch exceeds the weighted admission range",
+                )
+            })?;
+            let input_permit = Arc::clone(&self.input_slots)
+                .acquire_many_owned(input_count)
+                .await
+                .map_err(|_| {
+                    self.error(
+                        "embedding.tei.admission_closed",
+                        "TEI input admission gate is closed",
+                    )
+                })?;
+
             self.requests.fetch_add(1, Ordering::Relaxed);
             let send = self
                 .client
@@ -267,6 +336,8 @@ impl TeiClient {
             let resp = match send {
                 Ok(resp) => resp,
                 Err(err) => {
+                    drop(input_permit);
+                    drop(request_permit);
                     last = Some(self.transport(error_category(&err)));
                     last_retryable = true;
                     if attempt < self.max_attempts {
@@ -298,6 +369,8 @@ impl TeiClient {
             last = Some(self.status_error(status));
             last_retryable = retryable;
             if retryable && attempt < self.max_attempts {
+                drop(input_permit);
+                drop(request_permit);
                 tokio::time::sleep(retry_delay(attempt, started, self.retry_backoff_base_ms)).await;
                 continue;
             }
@@ -361,6 +434,17 @@ impl TeiClient {
         .with_context("status", status.as_u16().to_string())
         .with_provider_id(&self.provider_id)
     }
+}
+
+fn effective_request_concurrency(
+    configured: usize,
+    max_in_flight_inputs: usize,
+    max_batch_inputs: usize,
+) -> usize {
+    configured
+        .max(1)
+        .min(max_in_flight_inputs.max(1) / max_batch_inputs.max(1))
+        .max(1)
 }
 
 /// Resolve the initial client-side batch size, honouring the

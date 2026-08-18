@@ -1,5 +1,5 @@
 # Config TOML Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-17
 
 ## Contract
 
@@ -110,8 +110,8 @@ This section is critical for avoiding bottlenecks.
 
 ```toml
 [providers.embedding]
-batch_size = 128
-max_concurrent_requests = 4
+batch_size = 96
+max_concurrent_requests = 8
 max_in_flight_inputs = 320
 request_timeout_ms = 30000
 max_retries = 5
@@ -128,18 +128,18 @@ Rules:
 
 - `interactive_reserved_requests` protects `ask`/`query` query embeddings.
 - background source jobs cannot consume the reserved interactive lane.
-- `max_in_flight_inputs` is global across jobs.
-- batch size is a provider hint, not a license to exceed scheduler capacity.
+- `max_concurrent_requests` and `max_in_flight_inputs` are shared across TEI providers with the same endpoint/admission profile.
+- batch size is a provider hint, not a license to exceed scheduler or transport capacity.
 
 ## Providers: Vector
 
 | Key | Default | Meaning |
 |---|---|---|
-| `write_concurrency` | `4` | Concurrent vector writes. |
-| `read_concurrency` | `16` | Concurrent vector reads. |
-| `delete_concurrency` | `2` | Cleanup/prune delete concurrency. |
-| `upsert_batch_points` | `256` | Points per upsert. |
-| `delete_batch_points` | `512` | Points per delete selector batch. |
+| `write_concurrency` | `1` | Process-shared concurrent vector point/generation writes for stores using the same endpoint/profile; payload-index creation is gated separately. |
+| `read_concurrency` | `16` (accepted, not enforced) | Parsed for forward compatibility; Qdrant reads are not yet admission-gated by this key. |
+| `delete_concurrency` | reserved | Accepted by the schema but not currently enforced independently of `write_concurrency`. |
+| `upsert_batch_points` | `1024` | Points per Qdrant upsert request. |
+| `delete_batch_points` | reserved | Accepted by the schema but not currently wired to runtime delete batching. |
 | `hybrid_enabled` | `true` | Dense + sparse RRF when collection supports it. |
 | `hnsw_ef` | `128` | Named-mode search ef. |
 
@@ -290,8 +290,8 @@ Endpoint URLs and API keys stay in `.env`.
 default_collection = "axon"
 
 [providers.embedding]
-batch_size = 128
-max_concurrent_requests = 4
+batch_size = 96
+max_concurrent_requests = 8
 max_in_flight_inputs = 320
 interactive_reserved_requests = 1
 

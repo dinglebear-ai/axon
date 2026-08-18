@@ -414,6 +414,57 @@ fn test_exclude_path_prefix_handles_non_normalized_input() {
 }
 
 #[test]
+fn discovery_prefers_markdown_alternate_over_duplicate_html_url() {
+    let urls = map::merge_discovery_candidate_urls(
+        vec![
+            "https://example.com/docs/en/overview".to_string(),
+            "https://example.com/docs/en/html-only".to_string(),
+        ],
+        vec![
+            "https://example.com/docs/en/overview.md".to_string(),
+            "https://example.com/docs/en/markdown-only.md".to_string(),
+        ],
+    );
+
+    assert_eq!(
+        urls,
+        vec![
+            "https://example.com/docs/en/html-only",
+            "https://example.com/docs/en/overview.md",
+            "https://example.com/docs/en/markdown-only.md",
+        ]
+    );
+}
+
+#[test]
+fn technical_docs_sitemap_requires_llms_corroboration_before_skipping_anchors() {
+    let sitemap = (0..182)
+        .map(|index| format!("https://example.com/docs/page-{index}"))
+        .collect::<Vec<_>>();
+    let well_covered_llms = (0..180)
+        .map(|index| format!("https://example.com/docs/page-{index}.md"))
+        .collect::<Vec<_>>();
+    let partial_llms = (0..90)
+        .map(|index| format!("https://example.com/docs/page-{index}.md"))
+        .collect::<Vec<_>>();
+
+    assert!(map::discovery_is_sufficient(
+        "sitemap+llms",
+        182,
+        &sitemap,
+        &well_covered_llms,
+    ));
+    assert!(!map::discovery_is_sufficient(
+        "sitemap+llms",
+        182,
+        &sitemap,
+        &partial_llms,
+    ));
+    assert!(!map::discovery_is_sufficient("sitemap", 182, &sitemap, &[],));
+    assert!(map::discovery_is_sufficient("sitemap", 200, &sitemap, &[],));
+}
+
+#[test]
 fn test_canonicalize_url_trailing_slash_and_fragment() {
     let a = canonicalize_url_for_dedupe("https://example.com/docs/");
     let b = canonicalize_url_for_dedupe("https://example.com/docs#intro");

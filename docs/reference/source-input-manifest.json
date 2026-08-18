@@ -368,20 +368,20 @@
         {
           "path": "docs/pipeline-unification/configuration/config-contract.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:acd46422e9d9e129b9612dfd7b87319d6d4af1de6be9c24472cb0e7a8e7acb4d"
+          "checksum": "sha256:76d4b050eb45d3bf08f3dfccd35fd0fc43ee285e4a3b02faeb41ce18ab8d8792"
         },
         {
           "path": "docs/pipeline-unification/schemas/config-schema.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24"
+          "checksum": "sha256:94689a80107aba459b8f57b9e631498a670e6dc6e1f48577411964c5dbfc594c"
         },
         {
           "path": "xtask/src/schemas/config_schema_registry.rs",
           "kind": "rust_module",
-          "checksum": "sha256:7371fdeb0b0c38dd5cb6f05ae438d3e9a37bf23ef755afcd1cc3b2d2f56bb394"
+          "checksum": "sha256:0a1da13cb09f70aa6b5bfe1c0048ff97fa0ab3a44753eacdb94b03883efc84e8"
         }
       ],
-      "manifest_checksum": "c7b41133fc49538d1281e50dbd6fcc2d516bc609fc4d843060c2d7318d7f442e"
+      "manifest_checksum": "4b4ae7c0e0fc425581ea695c26c02df5e8d82cb3f5bc83f3319c91d1a4b36bca"
     },
     {
       "family": "database",

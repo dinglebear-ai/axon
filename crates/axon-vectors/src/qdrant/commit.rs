@@ -7,7 +7,10 @@
 //! `mark_unchanged_items_committed` copies carried-forward points into the new
 //! committed generation without mutating the previous generation's points.
 
+use std::sync::Arc;
+
 use axon_api::source::*;
+use futures_util::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
 
 use super::QdrantVectorStore;
@@ -15,7 +18,7 @@ use super::http::QdrantHttp;
 use super::store_impl::request_usage;
 use crate::payload::generation_payload_i64;
 use crate::store::Result;
-use crate::store_helpers::stage_header;
+use crate::store_helpers::{carried_point_id, stage_header};
 
 const SCROLL_PAGE_LIMIT: u64 = 256;
 
@@ -52,6 +55,7 @@ pub async fn mark_generation_committed_rest(
     let url = http
         .endpoint()
         .collection_path(&collection, "points/payload?wait=true");
+    let _permit = store.write_permit(stage).await?;
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_mark_generation_committed")
         .await?;
@@ -92,6 +96,7 @@ pub async fn retire_generation_rest(
     let url = http
         .endpoint()
         .collection_path(&collection, "points/payload?wait=true");
+    let _permit = store.write_permit(stage).await?;
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_retire_generation")
         .await?;
@@ -163,21 +168,50 @@ pub async fn mark_unchanged_items_committed_rest(
             "document_status".to_string(),
             serde_json::Value::from("published"),
         );
-        let new_id = format!("{}::{}", point_id_string(&point.id), committed_generation.0);
+        let new_id = carried_point_id(&point_id_string(&point.id), &committed_generation);
+        payload.insert(
+            "vector_point_id".to_string(),
+            serde_json::Value::from(new_id.0.clone()),
+        );
         carried.push(serde_json::json!({
-            "id": new_id,
+            "id": new_id.0,
             "vector": point.vector,
             "payload": payload,
         }));
     }
 
     let attempted = carried.len() as u64;
+    let mut requests = 1;
     if attempted > 0 {
         let url = http
             .endpoint()
             .collection_path(&collection, "points?wait=true");
-        let body = serde_json::json!({ "points": carried });
-        http.put_json(stage, &url, &body, "qdrant_mark_unchanged_items_committed")
+        let bodies = carried_upsert_chunks(carried, store.point_buffer())
+            .map(|points| serde_json::json!({ "points": points }))
+            .collect::<Vec<_>>();
+        requests += bodies.len() as u64;
+        let write_slots = store.write_slots();
+        let provider_id = store.provider_id().0.clone();
+        stream::iter(bodies)
+            .map(|body| {
+                let url = &url;
+                let write_slots = Arc::clone(&write_slots);
+                let provider_id = provider_id.clone();
+                async move {
+                    let _permit = write_slots.acquire_owned().await.map_err(|_| {
+                        ApiError::new(
+                            "vector.qdrant.write_admission_closed",
+                            stage,
+                            "Qdrant write admission gate is closed",
+                        )
+                        .with_provider_id(provider_id)
+                    })?;
+                    http.put_json(stage, url, &body, "qdrant_mark_unchanged_items_committed")
+                        .await
+                }
+            })
+            .buffer_unordered(store.write_parallelism())
+            .try_collect::<Vec<_>>()
             .await?;
     }
 
@@ -187,7 +221,7 @@ pub async fn mark_unchanged_items_committed_rest(
         points_attempted: attempted,
         points_written: attempted,
         payload_indexes_created: Vec::new(),
-        usage: request_usage(2),
+        usage: request_usage(requests),
     })
 }
 
@@ -287,5 +321,36 @@ fn point_id_string(id: &serde_json::Value) -> String {
         serde_json::Value::String(value) => value.clone(),
         serde_json::Value::Number(value) => value.to_string(),
         other => other.to_string(),
+    }
+}
+
+fn carried_upsert_chunks(
+    points: Vec<serde_json::Value>,
+    point_buffer: usize,
+) -> impl Iterator<Item = Vec<serde_json::Value>> {
+    let mut points = points.into_iter();
+    let chunk_size = point_buffer.max(1);
+    std::iter::from_fn(move || {
+        let chunk = points.by_ref().take(chunk_size).collect::<Vec<_>>();
+        (!chunk.is_empty()).then_some(chunk)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carried_upserts_are_bounded_by_the_store_point_buffer() {
+        let points = (0..2_050)
+            .map(|index| serde_json::json!({ "id": index }))
+            .collect::<Vec<_>>();
+
+        let chunks = carried_upsert_chunks(points, 1_024).collect::<Vec<_>>();
+
+        assert_eq!(
+            chunks.iter().map(Vec::len).collect::<Vec<_>>(),
+            [1_024, 1_024, 2]
+        );
     }
 }

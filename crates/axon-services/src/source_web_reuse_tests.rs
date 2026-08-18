@@ -13,6 +13,7 @@ struct ConditionalState {
     body: String,
     etag: String,
     conditional_304: bool,
+    conditional_body: Option<String>,
     conditional_fetches: usize,
     full_fetches: usize,
 }
@@ -30,6 +31,7 @@ impl ConditionalFetchProvider {
                 body: body.to_string(),
                 etag: etag.to_string(),
                 conditional_304: false,
+                conditional_body: None,
                 conditional_fetches: 0,
                 full_fetches: 0,
             })),
@@ -43,6 +45,10 @@ impl ConditionalFetchProvider {
 
     async fn set_conditional_304(&self, enabled: bool) {
         self.state.lock().await.conditional_304 = enabled;
+    }
+
+    async fn set_conditional_body(&self, body: &str) {
+        self.state.lock().await.conditional_body = Some(body.to_string());
     }
 
     async fn conditional_fetches(&self) -> usize {
@@ -77,6 +83,11 @@ impl FetchProvider for ConditionalFetchProvider {
         };
         let body = if status == 304 {
             String::new()
+        } else if conditional.is_some() {
+            state
+                .conditional_body
+                .clone()
+                .unwrap_or_else(|| state.body.clone())
         } else {
             state.body.clone()
         };
@@ -128,6 +139,145 @@ fn page_request() -> SourceRequest {
         .values
         .insert("cache_policy".to_string(), serde_json::json!("revalidate"));
     request
+}
+
+fn site_request() -> SourceRequest {
+    let mut request = page_request();
+    request.scope = Some(SourceScope::Site);
+    request.limits.max_items = Some(2);
+    request
+}
+
+#[tokio::test]
+async fn unchanged_site_content_is_not_reembedded_without_http_validators() {
+    let provider = Arc::new(ConditionalFetchProvider::new(
+        "<html><body><a href=\"/docs\">docs</a></body></html>",
+        "",
+    ));
+    let harness =
+        crate::test_support::source_context_with_web_providers(provider.clone(), provider.clone())
+            .await
+            .expect("site refresh harness");
+
+    crate::source::index_source_with_auth(
+        site_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("site-content-reuse-test")),
+    )
+    .await
+    .expect("seed site generation");
+    let embeds_after_seed = harness.embedder().calls().await.len();
+    let upserts_after_seed = harness
+        .vectors()
+        .calls()
+        .await
+        .into_iter()
+        .filter(|call| *call == "upsert")
+        .count();
+
+    crate::source::index_source_with_auth(
+        site_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("site-content-reuse-test")),
+    )
+    .await
+    .expect("refresh unchanged site");
+
+    assert_eq!(harness.embedder().calls().await.len(), embeds_after_seed);
+    assert_eq!(
+        harness
+            .vectors()
+            .calls()
+            .await
+            .into_iter()
+            .filter(|call| *call == "upsert")
+            .count(),
+        upserts_after_seed,
+        "byte-identical site pages must retain their committed vectors"
+    );
+
+    provider
+        .set_body("<html><body><a href=\"/docs\">updated docs</a></body></html>")
+        .await;
+    crate::source::index_source_with_auth(
+        site_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("site-content-reuse-test")),
+    )
+    .await
+    .expect("refresh changed site");
+    assert!(
+        harness.embedder().calls().await.len() > embeds_after_seed,
+        "content changes must still be embedded"
+    );
+}
+
+#[tokio::test]
+async fn identical_conditional_200_advances_cache_for_followup_304() {
+    let provider = Arc::new(ConditionalFetchProvider::new(
+        "<html><body>stable body</body></html>",
+        "etag-stable",
+    ));
+    let harness =
+        crate::test_support::source_context_with_web_providers(provider.clone(), provider.clone())
+            .await
+            .expect("canonical web harness");
+
+    crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("seed committed generation");
+    let embed_calls_after_seed = harness.embedder().calls().await.len();
+
+    // Make discovery look changed so acquisition runs, while the conditional
+    // HTTP 200 itself returns the exact prior bytes. This exercises the
+    // same-content cache-forwarding path rather than the manifest no-op path.
+    provider
+        .set_body("<html><body>transient discovery change</body></html>")
+        .await;
+    provider
+        .set_conditional_body("<html><body>stable body</body></html>")
+        .await;
+
+    crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("identical conditional 200 should publish by reuse");
+    assert_eq!(provider.conditional_fetches().await, 1);
+    assert_eq!(
+        harness.embedder().calls().await.len(),
+        embed_calls_after_seed
+    );
+
+    provider.set_conditional_304(true).await;
+    let followup = crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("follow-up 304 should reuse the cache advanced by the identical 200");
+
+    assert_eq!(provider.conditional_fetches().await, 2);
+    assert_eq!(
+        harness.embedder().calls().await.len(),
+        embed_calls_after_seed
+    );
+    assert_eq!(
+        followup
+            .warnings
+            .iter()
+            .filter(|warning| warning.code == "source.reuse.cache_miss_refetch")
+            .count(),
+        0,
+        "follow-up 304 must reuse the cache advanced by the identical 200"
+    );
 }
 
 #[tokio::test]
@@ -229,7 +379,17 @@ async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
         .committed_generation(third.source_id.clone())
         .await
         .expect("committed generation lookup");
-    assert_eq!(committed, Some(third.ledger.generation));
+    assert_eq!(committed, Some(third.ledger.generation.clone()));
+    let manifest = harness
+        .ledger()
+        .get_manifest(third.source_id, third.ledger.generation)
+        .await
+        .expect("manifest lookup")
+        .expect("committed manifest");
+    assert!(
+        manifest.items[0].content_hash.is_some(),
+        "an unconditional cache-miss refetch must persist the fetched content hash"
+    );
 }
 
 #[tokio::test]

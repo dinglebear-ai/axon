@@ -332,6 +332,16 @@ async fn unchanged_items_are_carried_forward_without_mutating_previous_generatio
         point.payload["source_generation"] == json!(9)
             && point.payload["committed_generation"] == json!(9)
     }));
+    let carried_point = carried
+        .iter()
+        .find(|point| point.payload["committed_generation"] == json!(9))
+        .unwrap();
+    Uuid::parse_str(&carried_point.point_id.0)
+        .expect("carried-forward point ids must be valid Qdrant UUIDs");
+    assert_eq!(
+        carried_point.payload["vector_point_id"],
+        json!(carried_point.point_id.0)
+    );
 }
 
 #[tokio::test]

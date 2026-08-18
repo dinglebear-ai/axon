@@ -10,7 +10,6 @@ use super::{SourceEventEmitter, SourcePipelineInput, TargetLocalSourceRuntime, t
 use crate::reserved_call::{self, ProviderCallContext};
 
 const DOCUMENT_BATCH_SIZE: usize = 64;
-const CHUNK_BATCH_SIZE: usize = 512;
 const DOCUMENT_STATUS_BATCH_SIZE: usize = 64;
 
 #[derive(Debug, Default)]
@@ -72,7 +71,7 @@ pub(super) async fn prepare_embed_publish(
                 "prepared source documents",
             )
             .await;
-        let batches = chunk_batches(prepared);
+        let batches = chunk_batches(prepared, runtime.embed_pool_max_inputs);
         let batch_count = batches.len();
         for (batch_index, batch) in batches.into_iter().enumerate() {
             let is_final_vector_batch = is_final_source_batch && batch_index + 1 == batch_count;
@@ -109,13 +108,20 @@ pub(super) async fn prepare_embed_publish(
     Ok(output)
 }
 
-fn chunk_batches(documents: Vec<PreparedDocument>) -> Vec<Vec<PreparedDocument>> {
+fn chunk_batches(
+    documents: Vec<PreparedDocument>,
+    max_chunks: usize,
+) -> Vec<Vec<PreparedDocument>> {
+    let max_chunks = max_chunks.max(1);
     let mut batches = Vec::new();
     let mut current = Vec::new();
     let mut chunks = 0;
-    for document in documents.into_iter().flat_map(split_oversized_document) {
+    for document in documents
+        .into_iter()
+        .flat_map(|document| split_oversized_document(document, max_chunks))
+    {
         let count = document.chunks.len().max(1);
-        if !current.is_empty() && chunks + count > CHUNK_BATCH_SIZE {
+        if !current.is_empty() && chunks + count > max_chunks {
             batches.push(std::mem::take(&mut current));
             chunks = 0;
         }
@@ -128,12 +134,16 @@ fn chunk_batches(documents: Vec<PreparedDocument>) -> Vec<Vec<PreparedDocument>>
     batches
 }
 
-fn split_oversized_document(document: PreparedDocument) -> Vec<PreparedDocument> {
-    if document.chunks.len() <= CHUNK_BATCH_SIZE {
+fn split_oversized_document(
+    document: PreparedDocument,
+    max_chunks: usize,
+) -> Vec<PreparedDocument> {
+    let max_chunks = max_chunks.max(1);
+    if document.chunks.len() <= max_chunks {
         return vec![document];
     }
     let mut windows = Vec::new();
-    for (index, chunks) in document.chunks.chunks(CHUNK_BATCH_SIZE).enumerate() {
+    for (index, chunks) in document.chunks.chunks(max_chunks).enumerate() {
         let mut window = document.clone();
         window.chunks = chunks.to_vec();
         if index > 0 {

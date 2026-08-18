@@ -117,8 +117,10 @@ fn stress_crawler_contains_no_container_runtime_control() {
         "failed stress runs must retain a structured report with cleanup evidence"
     );
     assert!(
-        script.contains("durable_provider_reservations_applicable: false"),
-        "source stress must label unwired durable scheduler reservations as not applicable"
+        script.contains("durable_provider_reservations_applicable: true")
+            && script.contains("provider_reservations_terminal")
+            && !script.contains("durable_provider_reservations_applicable: false"),
+        "source stress must validate durable scheduler reservation evidence"
     );
     assert!(
         script.contains("secret_redaction_skips")
