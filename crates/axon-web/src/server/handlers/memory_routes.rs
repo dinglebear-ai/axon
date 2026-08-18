@@ -128,6 +128,30 @@ memory_route!(compact_memories, post, "/v1/memories/compact", Compact);
 
 #[utoipa::path(
     get,
+    path = "/v1/memories",
+    responses(
+        (status = 200, description = "Persistent memories", body = serde_json::Value),
+        (status = 502, description = "Upstream vector or embedding service unavailable", body = crate::server::error::ErrorBody)
+    ),
+    tag = "memory"
+)]
+pub(crate) async fn list_memories(
+    State((state, _cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
+) -> Result<Json<serde_json::Value>, HttpError> {
+    log_caller("/v1/memories", auth.as_ref());
+    dispatch_subaction(
+        &state,
+        empty_rest_request(),
+        axon_services::client_contract::RestMemorySubaction::List,
+    )
+    .await
+    .map(Json)
+    .map_err(memory_error)
+}
+
+#[utoipa::path(
+    get,
     path = "/v1/memories/{memory_id}",
     params(("memory_id" = String, Path, description = "Memory id")),
     responses(

@@ -54,13 +54,7 @@ cargo test --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
 `generate:api` reads `apps/web/openapi/axon.json` by default (local file, offline).
 Override with `AXON_OPENAPI_URL` or pass `--live` to fetch from a live instance.
 
-The app reads Axon connection settings from the environment first, then `~/.axon/.env`:
-
-- `AXON_SERVER_URL`
-- `AXON_HTTP_TOKEN`
-- `AXON_COLLECTION`
-
-Runtime palette preferences are stored in the platform app config directory as `settings.json`. The settings panel can override the server URL, token, shortcut, collection, result limit, theme, and hide-on-blur behavior. Hide-on-blur is on by default so clicking outside the palette dismisses it.
+Runtime palette preferences are stored in the platform app config directory as `settings.json`. To connect, configure the Axon server URL and either a static bearer token or OAuth sign-in. The palette does not read or write the server's `~/.axon/.env` or `~/.axon/config.toml`; server runtime configuration stays on the Axon host. The remaining settings control only the desktop palette, including its shortcut, result limit, theme, and hide-on-blur behavior.
 
 When using the browser dev entry against a public reverse-proxied Axon endpoint
 for live QA, set `AXON_DEV_SERVER` to the live server and `AXON_DEV_TOKEN` to a
@@ -78,7 +72,7 @@ so public-origin/CORS drift remains visible.
 
 The palette authenticates to Axon two ways, and both can be configured at once:
 
-- **Static bearer token** — set `AXON_HTTP_TOKEN` or the **Bearer token** field in the Connection settings tab.
+- **Static bearer token** — enter it in the **Bearer token** field in Settings.
 - **OAuth "Sign in with Google"** — click **Sign in with Google** in the Connection tab's **Authentication** block. The palette runs an OAuth 2.0 Authorization Code + PKCE flow (RFC 8414 discovery → RFC 7591 dynamic client registration → server-native callback polling → `/token` exchange) **entirely in the Rust shell**. The system browser is launched with the `open` crate and completes on the Axon server's HTTPS `/native/callback` endpoint; the palette polls `/native/poll` for the short-lived authorization code and then exchanges it with PKCE. No webview HTTP and no new Tauri capabilities or CSP changes are involved.
 
 Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.json` (mode `0o600`, holding the refresh token) and cached in-process. The access token is refreshed proactively (60s skew) with single-flight safety: concurrent requests at expiry produce exactly one `/token` call and one disk write, against the `token_endpoint` persisted from discovery (so reverse-proxy deployments refresh correctly). **When signed in, the OAuth token takes precedence over the static token**; if no valid OAuth token exists for the active server, the static token is used.

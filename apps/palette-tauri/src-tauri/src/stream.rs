@@ -188,9 +188,9 @@ fn handle_palette_sse_line(
         return Ok(false);
     };
     let value: serde_json::Value = serde_json::from_str(&data).map_err(|err| err.to_string())?;
-    match value.get("type").and_then(|kind| kind.as_str()) {
+    match palette_stream_event_type(&value) {
         Some("delta") => {
-            let text = match value.get("text").and_then(|t| t.as_str()) {
+            let text = match stream_string_field(&value, "text") {
                 Some(t) => t,
                 None => {
                     crate::diag::warn(&format!(
@@ -269,9 +269,7 @@ fn handle_palette_sse_line(
             Ok(true)
         }
         Some("error") => {
-            let message = value
-                .get("message")
-                .and_then(|message| message.as_str())
+            let message = stream_string_field(&value, "message")
                 .unwrap_or("stream error")
                 .to_string();
             window
@@ -291,6 +289,30 @@ fn handle_palette_sse_line(
         }
         None => Ok(false),
     }
+}
+
+fn palette_stream_event_type(value: &serde_json::Value) -> Option<&str> {
+    if let Some(kind) = value.get("type").and_then(|kind| kind.as_str()) {
+        return Some(kind);
+    }
+    match value.get("kind").and_then(|kind| kind.as_str()) {
+        Some("token") => Some("delta"),
+        Some("final") => Some("done"),
+        Some("error") => Some("error"),
+        _ => None,
+    }
+}
+
+fn stream_string_field<'a>(value: &'a serde_json::Value, field: &str) -> Option<&'a str> {
+    value
+        .get(field)
+        .and_then(|field| field.as_str())
+        .or_else(|| {
+            value
+                .get("data")
+                .and_then(|data| data.get(field))
+                .and_then(|field| field.as_str())
+        })
 }
 
 fn sentence_label(value: &str) -> String {
@@ -316,9 +338,7 @@ fn sentence_label(value: &str) -> String {
 }
 
 fn done_answer_from_value(value: &serde_json::Value) -> Option<String> {
-    value
-        .get("answer")
-        .and_then(|answer| answer.as_str())
+    stream_string_field(value, "answer")
         .or_else(|| {
             value
                 .get("result")

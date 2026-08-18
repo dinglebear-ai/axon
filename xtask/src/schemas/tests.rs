@@ -72,6 +72,11 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-adapters/src/web.rs",
         "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
         "crates/axon-web/src/schema_registry.rs",
+        "crates/axon-web/src/schema_registry/admin_watch_routes.rs",
+        "crates/axon-web/src/schema_registry/extract_routes.rs",
+        "crates/axon-web/src/schema_registry/graph_routes.rs",
+        "crates/axon-web/src/schema_registry/helpers.rs",
+        "crates/axon-web/src/schema_registry/memory_routes.rs",
         "crates/axon-mcp/src/schema_registry.rs",
         "xtask/src/schemas/mcp_action_registry.rs",
         "crates/axon-mcp/src/server/authz.rs",
@@ -95,6 +100,8 @@ pub(super) fn fixture_repo() -> TempDir {
         "xtask/src/schemas/api_defs.rs",
         "xtask/src/schemas/families.rs",
         "xtask/src/schemas/families/bundles.rs",
+        "xtask/src/schemas/families/family_specs.rs",
+        "xtask/src/schemas/families/markdown.rs",
         "xtask/src/schemas/registry.rs",
         "xtask/src/schemas/registry/canonical_enums.rs",
         "xtask/src/schemas/schema_json.rs",
@@ -302,6 +309,12 @@ fn needs_real_fixture(path: &str) -> bool {
             | "crates/axon-llm/src/provider.rs"
             | "crates/axon-llm/src/fake.rs"
             | "crates/axon-vectors/src/store.rs"
+            | "crates/axon-web/src/schema_registry.rs"
+            | "crates/axon-web/src/schema_registry/admin_watch_routes.rs"
+            | "crates/axon-web/src/schema_registry/extract_routes.rs"
+            | "crates/axon-web/src/schema_registry/graph_routes.rs"
+            | "crates/axon-web/src/schema_registry/helpers.rs"
+            | "crates/axon-web/src/schema_registry/memory_routes.rs"
             | "crates/axon-adapters/src/boundary.rs"
             | "crates/axon-authz/src/policy.rs"
             | "crates/axon-observe/src/reservation.rs"
@@ -1190,6 +1203,33 @@ fn openapi_has_no_dangling_refs() {
     )
     .unwrap();
     assert!(value["routes"].is_array());
+}
+
+#[test]
+fn openapi_provenance_covers_route_registry_submodules() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Openapi(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/rest/openapi.json")).unwrap(),
+    )
+    .unwrap();
+    let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+    assert!(
+        inputs.iter().any(|input| {
+            input["path"] == "crates/axon-web/src/schema_registry/memory_routes.rs"
+        })
+    );
+    assert!(
+        inputs
+            .iter()
+            .any(|input| { input["path"] == "crates/axon-web/src/schema_registry/helpers.rs" })
+    );
 }
 
 #[test]

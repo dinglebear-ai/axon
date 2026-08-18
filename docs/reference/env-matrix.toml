@@ -1739,6 +1739,54 @@ compatibility = "canonical"
 reason = "Non-secret MCP task result wait tuning knob; kept in env until a typed config.toml field is wired."
 
 [[env]]
+key = "AXON_API_URL"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Authenticated REST live-E2E target URL override; harness-only and not a production runtime key."
+
+[[env]]
+key = "AXON_API_EVIDENCE_DIR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Optional evidence output directory for the REST live-E2E harness."
+
+[[env]]
+key = "AXON_MCP_BINARY"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Optional Axon binary override used by MCP live-wire harnesses."
+
+[[env]]
+key = "AXON_MCP_TASK_OUTDIR"
+classification = "external/test-only"
+runtime_placement = "not-runtime"
+surfaces = ["scripts"]
+secret = false
+url_or_path = true
+container_allowed = false
+toml_destination = ""
+compatibility = "advanced"
+reason = "Optional evidence output directory for the MCP task live-wire harness."
+
+[[env]]
 key = "AXON_LIVE_TEST_OUTDIR"
 classification = "external/test-only"
 runtime_placement = "not-runtime"

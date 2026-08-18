@@ -364,7 +364,19 @@ fn mcp_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
 
 fn openapi_artifacts(root: &Path) -> Result<Vec<SchemaArtifact>> {
     let spec = family_specs::spec_for(SchemaFamily::Openapi);
-    let inputs = source_inputs(root, spec.source_paths)?;
+    let inputs = source_inputs_with_rust_module_closure(
+        root,
+        &[
+            "docs/pipeline-unification/schemas/openapi-schema.md",
+            "xtask/src/schemas/families.rs",
+            "xtask/src/schemas/families/bundles.rs",
+            "xtask/src/schemas/families/family_specs.rs",
+            "xtask/src/schemas/families/markdown.rs",
+            "xtask/src/schemas/schema_json.rs",
+            "xtask/src/schemas/source_input.rs",
+        ],
+        &["crates/axon-web/src/schema_registry.rs"],
+    )?;
     let routes = axon_web::schema_registry::rest_route_registry()
         .iter()
         .map(|route| {

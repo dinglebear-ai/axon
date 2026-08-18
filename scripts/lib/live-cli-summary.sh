@@ -16,11 +16,17 @@ build_behavioral_coverage_report() {
       print line
     }
   ' "$root_help" | sort -u >"$root_options"
+  awk '
+    /^  Global Options$/ { in_options=1; next }
+    in_options && /^  Commands$/ { exit }
+    in_options && /^  -[A-Za-z], --[a-z0-9]/ { print substr($1, 1, 2) }
+  ' "$root_help" >>"$root_options"
+  sort -u -o "$root_options" "$root_options"
 
   : >"$BEHAVIOR_EXPECTED"
   if [ "$REGISTRY" = "$ROOT_DIR/docs/reference/cli/commands.json" ]; then
     while IFS= read -r option; do
-      [ "$option" = "--help" ] && continue
+      case "$option" in --help|-h|-v) continue ;; esac
       printf '%s\t%s\n' "@global" "$option" >>"$BEHAVIOR_EXPECTED"
     done <"$root_options"
     for option in \

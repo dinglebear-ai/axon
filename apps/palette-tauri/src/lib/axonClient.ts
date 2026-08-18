@@ -5,16 +5,15 @@
 // generated types serve as a reference for the wire shapes in `bodyFor()`.
 // See: apps/palette-tauri/src/lib/axon-api.d.ts (generated)
 
-import { invoke } from "./invoke";
-
-import type { PaletteAction, PaletteSubcommand, RemotePaletteAction } from "./actions";
 import { ACTION_REGISTRY } from "./actionRegistry";
 import {
-  buildRequestContext,
   type ActionRouteTemplate,
+  buildRequestContext,
   type GitHubBrowseResult,
   type HttpMethod,
 } from "./actionRequest";
+import type { PaletteAction, PaletteSubcommand, RemotePaletteAction } from "./actions";
+import { invoke } from "./invoke";
 
 export interface PaletteConfig {
   serverUrl: string;
@@ -27,8 +26,6 @@ export interface PaletteConfig {
   openResultsInline?: boolean;
   agentBubbles?: boolean;
   showFooterHints?: boolean;
-  envValues?: Record<string, string | number | boolean | string[]>;
-  configValues?: Record<string, string | number | boolean | string[]>;
   sftpConnections?: import("./sftpModel").SftpConnectionProfile[];
 }
 
@@ -61,7 +58,7 @@ export type ErrorResult = PaletteResult & { ok: false };
 
 // HttpMethod / ActionRouteTemplate now live in actionRequest.ts (the request
 // shaping module). Re-exported here for existing importers (actionMeta, etc.).
-export type { HttpMethod, ActionRouteTemplate };
+export type { ActionRouteTemplate, HttpMethod };
 
 export interface Client {
   baseUrl: string;

@@ -185,7 +185,7 @@ fn registry_uses_priority_as_same_score_tie_breaker() {
 }
 
 #[test]
-fn unsupported_input_degrades_to_warning_result() {
+fn unsupported_input_is_an_expected_skip_without_warning() {
     let registry = ParserRegistry::new();
     let result = registry.parse(&input(source_doc(
         ContentKind::BinaryMetadata,
@@ -196,8 +196,7 @@ fn unsupported_input_degrades_to_warning_result() {
 
     assert_eq!(result.parser_id, "none");
     assert_eq!(result.header.status, LifecycleStatus::Skipped);
-    assert_eq!(result.warnings.len(), 1);
-    assert_eq!(result.warnings[0].code, "parse.unsupported");
+    assert!(result.warnings.is_empty());
     assert!(result.facts.is_empty());
     assert!(result.graph_candidates.is_empty());
 }
@@ -268,7 +267,7 @@ fn unregistered_document_hint_is_recorded_even_when_nothing_matches() {
 
     assert_eq!(result.header.status, LifecycleStatus::Skipped);
     assert!(
-        result
+        !result
             .warnings
             .iter()
             .any(|warning| warning.code == "parse.unsupported")
@@ -358,6 +357,19 @@ fn production_registry_runs_real_parser_families() {
             .iter()
             .any(|fact| { fact.fact_kind == "secret_reference" && fact.name == "OPENAI_API_KEY" })
     );
+}
+
+#[test]
+fn generic_plain_text_does_not_select_a_specialized_parser() {
+    let registry = production_registry();
+    let mut document = source_doc(
+        ContentKind::PlainText,
+        None,
+        Some("text/plain"),
+        "The sky appears blue under ordinary daylight.",
+    );
+    document.canonical_uri = "memory://mem_plain".to_string();
+    assert!(registry.select(&input(document)).is_none());
 }
 
 #[test]

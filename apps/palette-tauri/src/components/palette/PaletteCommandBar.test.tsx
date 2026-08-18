@@ -6,8 +6,8 @@ import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
-import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
 
 const config = {
   serverUrl: "http://127.0.0.1:9999",
@@ -18,8 +18,6 @@ const config = {
   theme: "dark" as const,
   hideOnBlur: false,
   openResultsInline: true,
-  envValues: {},
-  configValues: {},
 };
 
 const scrape = ACTIONS.find((a) => a.subcommand === "scrape") as PaletteAction;
@@ -113,7 +111,10 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     const { props } = renderBar({ modeAction: scrape, onSwitchAction });
 
     await user.click(screen.getByRole("button", { name: /Switch from/ }));
-    expect(screen.getByRole("button", { name: /Switch from/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Switch from/ })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     const askButton = screen
@@ -156,8 +157,8 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(true);
 
     expect(screen.getByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Config")).toBeInTheDocument();
-    expect(screen.getByText("Environment")).toBeInTheDocument();
+    expect(screen.queryByText("Config")).not.toBeInTheDocument();
+    expect(screen.queryByText("Environment")).not.toBeInTheDocument();
 
     await user.click(screen.getByText("Help"));
     expect(onHelp).toHaveBeenCalledTimes(1);
@@ -195,7 +196,11 @@ describe("PaletteCommandBar Ask session disclosure", () => {
       prompt: "What is a Claude Code hook?",
       transcript: [
         { id: "u1", role: "user" as const, content: "What is a Claude Code hook?" },
-        { id: "a1", role: "assistant" as const, content: "Hooks let you run commands around Claude Code events." },
+        {
+          id: "a1",
+          role: "assistant" as const,
+          content: "Hooks let you run commands around Claude Code events.",
+        },
       ],
       when: "just now",
     };

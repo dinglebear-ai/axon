@@ -4059,12 +4059,12 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:7e31008399ea192e5e546d9a48f3fabb9c75c56929e6af7ecbbdc30259f3ac9a",
+        "checksum": "sha256:99aaea6d8f5352a67a5d1247bad2c5b31b6a38cae2a117c3866cbad2e59c3edc",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },
       {
-        "checksum": "sha256:fca993bad9e5de047226bc3853cdc8cd3d20f9f53ab49111270c8aecc20d5ae9",
+        "checksum": "sha256:6fab7996dbda20241bda6296f0e6420ef6eb216ce4af889e0a79f48dd1c318e1",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server/authz.rs"
       },

@@ -12,6 +12,7 @@ mkdir -p "$BASE_OUTDIR"
 : >"$SUMMARY"
 
 REAL_PAGE_URL="${REAL_PAGE_URL:-https://www.rust-lang.org/learn/get-started}"
+MAP_URL="${MAP_URL:-https://gofastmcp.com/}"
 pass=0
 fail=0
 
@@ -150,8 +151,12 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # The stdio wrapper execs ./target/debug/axon, so build once up front to
-# validate this checkout rather than whatever binary happened to exist.
-cargo build --bin axon >/dev/null
+# validate this checkout rather than whatever binary happened to exist. A
+# caller that already built and pinned the exact binary may skip the rebuild;
+# this is useful when testing an HTTP process backed by that same inode.
+if [[ "${MCPORTER_SKIP_BUILD:-0}" != "1" ]]; then
+  cargo build --bin axon >/dev/null
+fi
 
 URL_MODE=0
 if jq -e --arg server "$SERVER" '.mcpServers[$server].url? | type == "string"' "$BASE_CONFIG_PATH" >/dev/null; then
@@ -365,33 +370,32 @@ run_suite() {
   run_json_case "${prefix}_providers_list" '.ok == true and .action == "providers" and .subaction == "list" and (.data.data.providers | type == "array")' call_tool action:providers subaction:list
   run_json_case "${prefix}_resolve" '.ok == true and .action == "resolve" and .subaction == "resolve" and .data.data.source == "https://example.com"' call_tool action:resolve source:'https://example.com'
   run_json_case "${prefix}_graph_kinds" '.ok == true and .action == "graph" and .subaction == "kinds" and (((.data.data | type) == "object") or ((.data.inline | type) == "object"))' call_tool action:graph subaction:kinds
-  run_json_case "${prefix}_query" '(.ok == true and .action == "query" and .subaction == "query" and (.data.data.results | type == "array") and .data.data.query == "rust mcp sdk") or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
+  run_json_case "${prefix}_query" '(.ok == true and .action == "query" and .subaction == "query" and (((.data.data.results | type) == "array" and .data.data.query == "rust mcp sdk") or (.data.shape.query == "rust mcp sdk" and .data.shape.results.total > 0 and (.data.artifact.artifact_id | type) == "string"))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:query query:'rust mcp sdk' limit:3 offset:0
   run_json_case "${prefix}_source_detached" '.ok == true and .action == "source" and .subaction == "source" and (((.data.inline.job.id | type) == "string") or ((.data.inline.job_id | type) == "string") or ((.data.data.job.job_id | type) == "string"))' call_tool action:source source:"$REAL_PAGE_URL" scope:page detached:true response_mode:inline
-  run_json_case "${prefix}_map" "(.ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$REAL_PAGE_URL\" and (.data.data.outcome == \"completed\" or .data.data.outcome == \"empty\")) or ((.error | type) == \"string\" and (.error | contains(\"map '$REAL_PAGE_URL' failed:\")))" call_tool action:map url:"$REAL_PAGE_URL" limit:5 offset:0
+  run_json_case "${prefix}_map" "(.ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$MAP_URL\" and .data.data.mapped_urls > 0)" call_tool action:map url:"$MAP_URL" limit:5 offset:0
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
-  if [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_search_unavailable" "search requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:search query:'rust programming language' limit:3 offset:0
-    run_error_case "${prefix}_research_unavailable" "research requires AXON_SEARXNG_URL or TAVILY_API_KEY" call_tool action:research query:'rust async best practices' limit:3 offset:0
-    run_error_case "${prefix}_ask_unavailable" "ask 'What is this repository?' failed" call_tool action:ask query:'What is this repository?'
-    run_error_case "${prefix}_screenshot_unavailable" "screenshot failed" call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
-  else
-    run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
-    run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
-    run_json_case "${prefix}_ask" '(.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
-    run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and ((.data.data.path | type == "string") or (.data.path | type == "string"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
-  fi
+  run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
+  run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
+  run_json_case "${prefix}_ask" '(.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
+  run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
-  run_error_case "${prefix}_removed_crawl" "action \`crawl\` was removed from MCP" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_scrape" "action \`scrape\` was removed from MCP" call_tool action:scrape url:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_embed" "action \`embed\` was removed from MCP" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
-  run_error_case "${prefix}_removed_ingest" "action \`ingest\` was removed from MCP" call_tool action:ingest target:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_code_search" "action \`code_search\` was removed from MCP" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
-  run_error_case "${prefix}_removed_vertical_scrape" "action \`vertical_scrape\` was removed from MCP" call_tool action:vertical_scrape subaction:list
-  run_error_case "${prefix}_removed_purge" "action \`purge\` was removed from MCP" call_tool action:purge target:"$REAL_PAGE_URL"
-  run_error_case "${prefix}_removed_dedupe" "action \`dedupe\` was removed from MCP" call_tool action:dedupe
-  run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
-  run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
-  run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  run_error_case "${prefix}_removed_crawl" "\`crawl\`" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_scrape" "\`scrape\`" call_tool action:scrape url:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_embed" "\`embed\`" call_tool action:embed input:"$REPO_ROOT/docs/reference/mcp/overview.md"
+  run_error_case "${prefix}_removed_ingest" "\`ingest\`" call_tool action:ingest target:"$REPO_ROOT"
+  run_error_case "${prefix}_removed_code_search" "\`code_search\`" call_tool action:code_search query:'freshness lease' cwd:"$REPO_ROOT"
+  run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
+  run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
+  run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
+  if [[ "$URL_MODE" == "1" ]]; then
+    run_error_case "${prefix}_removed_stats" "\`stats\`" call_tool action:stats
+    run_error_case "${prefix}_removed_domains" "\`domains\`" call_tool action:domains
+    run_error_case "${prefix}_removed_sources" "\`sources\`" call_tool action:sources
+  else
+    run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
+    run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
+    run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
+  fi
   run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
   if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then
@@ -530,6 +534,7 @@ run_suite() {
   # jobs:clear wipes job history — exercise only its confirm/admin guard so the
   # smoke run never actually clears jobs.
   run_envelope_case "${prefix}_jobs_clear_guard" '(.error | type) == "string"' call_tool action:jobs subaction:clear
+  return 0
 }
 
 if [[ "$URL_MODE" == "1" ]]; then

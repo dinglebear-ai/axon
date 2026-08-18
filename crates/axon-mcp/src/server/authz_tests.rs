@@ -18,6 +18,11 @@ fn collections_is_read_only_and_rejects_mutation_subactions() {
 }
 
 #[test]
+fn watch_status_is_read_scoped() {
+    assert_eq!(required_scope_for("watch", "status"), Some("axon:read"));
+}
+
+#[test]
 fn uploads_split_read_and_write_scopes_and_reject_unknown_subactions() {
     for subaction in ["list", "get"] {
         assert_eq!(required_scope_for("uploads", subaction), Some("axon:read"));

@@ -141,7 +141,13 @@ pub(super) async fn build(
         "browser_runtime": browser_runtime,
         "stale_jobs": 0_i64,
         "pending_jobs": pending_jobs,
-        "all_ok": sqlite_ok && tei_ok && qdrant_ok && vector_mode_mismatch.is_none() && dimension_mismatch.is_none(),
+        "all_ok": sqlite_ok
+            && tei_ok
+            && qdrant_ok
+            && chrome_ok
+            && llm_roundtrip.0
+            && vector_mode_mismatch.is_none()
+            && dimension_mismatch.is_none(),
     }))
 }
 

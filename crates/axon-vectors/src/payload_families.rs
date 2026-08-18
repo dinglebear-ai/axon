@@ -151,6 +151,7 @@ pub const VECTOR_SOURCE_FAMILY_FIELDS: &[(&str, &[&str])] = &[
             "memory_scope_value",
             "memory_confidence",
             "memory_salience",
+            "memory_title",
             // Also emitted by the memory adapter (`axon-adapters/src/memory.rs`
             // `memory_metadata`); the fail-closed family allowlist rejected the
             // whole memory point without these. Surfaced once the non-web FK

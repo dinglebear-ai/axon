@@ -254,6 +254,7 @@ fn initial_source_specific_registry_allows_only_declared_family_fields() {
     assert!(source_family_allows_field("memory", "memory_id"));
     assert!(source_family_allows_field("memory", "memory_importance"));
     assert!(source_family_allows_field("memory", "memory_status"));
+    assert!(source_family_allows_field("memory", "memory_title"));
 
     assert!(!source_family_allows_field("web", "web_canonical_url"));
     assert!(!source_family_allows_field("code", "web_title"));

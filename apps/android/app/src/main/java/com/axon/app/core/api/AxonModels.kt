@@ -218,13 +218,12 @@ data class ResearchHit(
 // ── Ask stream events ─────────────────────────────────────────────────────────
 
 /**
- * Discriminated union of SSE events emitted by POST /v1/ask/stream.
+ * UI projection of the unified SSE [com.axon.app.core.api.models.JobStreamEventDto]
+ * envelope emitted by POST /v1/ask/stream and POST /v1/chat/stream.
  *
- * Each event is a JSON object with a `"type"` field. Parsing is done manually in
- * `parseStreamEvent` (AxonClientStreaming.kt) rather than via [kotlinx.serialization]
- * because the discriminator field name (`"type"`) conflicts with Kotlin's type keyword
- * and the sealed interface hierarchy needs no serialization annotations for the
- * streaming path.
+ * The transport envelope is discriminated by `kind` and carries kind-specific
+ * payloads in `data`. AxonClientStreaming maps the transport shape into this
+ * intentionally small Ask/Chat rendering model.
  */
 sealed interface AskStreamEvent {
     /** Phase indicator — emitted before synthesis starts (e.g. "retrieval", "synthesis"). */
