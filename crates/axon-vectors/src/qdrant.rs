@@ -53,6 +53,7 @@ pub const MODULE_NAME: &str = "qdrant";
 /// into `capabilities()`, not to gate concurrency.
 const HEALTH_TRACKER_CAPACITY: u32 = 1_000_000;
 const DEFAULT_POINT_BUFFER: usize = 1024;
+const DEFAULT_WRITE_PARALLELISM: usize = 1;
 const HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES: u32 = 1;
 const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 
@@ -70,6 +71,8 @@ pub struct QdrantVectorStore {
     url: String,
     provider_id: ProviderId,
     point_buffer: usize,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
     health: ProviderReservationManager,
     collection_specs: Arc<RwLock<HashMap<String, (u64, CollectionSpec)>>>,
 }
@@ -101,6 +104,8 @@ impl QdrantVectorStore {
             url: url.into(),
             provider_id,
             point_buffer: point_buffer.max(1),
+            write_parallelism: DEFAULT_WRITE_PARALLELISM,
+            payload_index_parallelism: DEFAULT_WRITE_PARALLELISM,
             health,
             collection_specs: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -108,6 +113,14 @@ impl QdrantVectorStore {
 
     pub fn point_buffer(&self) -> usize {
         self.point_buffer
+    }
+
+    pub fn write_parallelism(&self) -> usize {
+        self.write_parallelism
+    }
+
+    pub fn payload_index_parallelism(&self) -> usize {
+        self.payload_index_parallelism
     }
 
     /// The configured Qdrant URL (may embed credentials — do not log).
@@ -163,6 +176,15 @@ impl QdrantVectorStore {
 /// construction/method operation to orchestration-layer callers.
 pub fn configure_point_buffer(store: &mut QdrantVectorStore, point_buffer: usize) {
     store.point_buffer = point_buffer.max(1);
+}
+
+pub fn configure_parallelism(
+    store: &mut QdrantVectorStore,
+    write_parallelism: usize,
+    payload_index_parallelism: usize,
+) {
+    store.write_parallelism = write_parallelism.max(1);
+    store.payload_index_parallelism = payload_index_parallelism.max(1);
 }
 
 fn collection_spec_cache_epochs() -> &'static Mutex<HashMap<String, u64>> {

@@ -253,6 +253,8 @@ async fn tei_adapter_config_is_reflected_in_capabilities_without_network_calls()
         dimensions: 1024,
         timeout: Duration::from_secs(30),
         max_batch_inputs: 64,
+        max_concurrent_requests: 1,
+        max_in_flight_inputs: 64,
         max_input_tokens: 8192,
         max_batch_tokens: 131_072,
         instruction_support: InstructionSupport::QueryAndDocument,

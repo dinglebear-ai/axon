@@ -58,7 +58,15 @@ impl QdrantVectorStore {
         let spec = self
             .require_collection_spec(&http, &batch.collection, stage)
             .await?;
-        upsert_batches_rest(&http, &spec, batch, self.point_buffer, stage).await
+        upsert_batches_rest(
+            &http,
+            &spec,
+            batch,
+            self.point_buffer,
+            self.write_parallelism,
+            stage,
+        )
+        .await
     }
 
     pub(super) async fn delete_inner(
@@ -126,15 +134,23 @@ impl QdrantVectorStore {
         let url = http
             .endpoint()
             .collection_path(&spec.collection, "index?wait=true");
-        for index in &spec.payload_indexes {
-            http.put_json(
-                stage,
-                &url,
-                &payload_index_json(index),
-                "qdrant_payload_index",
-            )
+        use futures_util::stream::{self, StreamExt, TryStreamExt};
+        let bodies = spec
+            .payload_indexes
+            .iter()
+            .map(payload_index_json)
+            .collect::<Vec<_>>();
+        stream::iter(bodies)
+            .map(|body| {
+                let url = &url;
+                async move {
+                    http.put_json(stage, url, &body, "qdrant_payload_index")
+                        .await
+                }
+            })
+            .buffer_unordered(self.payload_index_parallelism)
+            .try_collect::<Vec<_>>()
             .await?;
-        }
         Ok(())
     }
 }

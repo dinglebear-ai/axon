@@ -13,6 +13,7 @@ publish = false
 
 [dependencies]
 async-trait = "0.1"
+futures-util = "0.3"
 axon-api = { path = "../axon-api" }
 axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
@@ -31,6 +32,7 @@ url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
+httpmock = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 

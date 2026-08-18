@@ -1,4 +1,5 @@
 use super::*;
+use crate::qdrant::configure_parallelism;
 use serde_json::json;
 
 fn collection_spec(name: &str) -> CollectionSpec {
@@ -22,6 +23,18 @@ fn collection_spec(name: &str) -> CollectionSpec {
         distance: Some(VectorDistance::Cosine),
         metadata: MetadataMap::new(),
     }
+}
+
+#[test]
+fn qdrant_parallelism_configuration_is_bounded_away_from_zero() {
+    let mut store = QdrantVectorStore::new("http://127.0.0.1:9", "qdrant-test");
+    configure_parallelism(&mut store, 0, 0);
+    assert_eq!(store.write_parallelism(), 1);
+    assert_eq!(store.payload_index_parallelism(), 1);
+
+    configure_parallelism(&mut store, 4, 8);
+    assert_eq!(store.write_parallelism(), 4);
+    assert_eq!(store.payload_index_parallelism(), 8);
 }
 
 #[test]

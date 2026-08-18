@@ -97,8 +97,9 @@ fn empty_range() -> SourceRange {
 
 #[test]
 fn oversized_document_is_split_into_bounded_chunk_windows() {
-    let chunk_count = CHUNK_BATCH_SIZE * 2 + 1;
-    let batches = chunk_batches(vec![prepared_document(chunk_count)]);
+    let max_chunks = 512;
+    let chunk_count = max_chunks * 2 + 1;
+    let batches = chunk_batches(vec![prepared_document(chunk_count)], max_chunks);
 
     assert_eq!(batches.len(), 3);
     assert!(batches.iter().all(|batch| {
@@ -106,7 +107,7 @@ fn oversized_document_is_split_into_bounded_chunk_windows() {
             .iter()
             .map(|document| document.chunks.len())
             .sum::<usize>()
-            <= CHUNK_BATCH_SIZE
+            <= max_chunks
     }));
     assert_eq!(
         batches
@@ -120,9 +121,10 @@ fn oversized_document_is_split_into_bounded_chunk_windows() {
 
 #[test]
 fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
-    let chunk_count = CHUNK_BATCH_SIZE + 7;
+    let max_chunks = 512;
+    let chunk_count = max_chunks + 7;
     let mut merged = VectorizeResult::default();
-    for window in split_oversized_document(prepared_document(chunk_count)) {
+    for window in split_oversized_document(prepared_document(chunk_count), max_chunks) {
         merge_vectorize_result(
             &mut merged,
             statuses_only(vec![window], DocumentLifecycleStatus::Prepared),

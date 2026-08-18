@@ -8,6 +8,7 @@
 //! committed generation without mutating the previous generation's points.
 
 use axon_api::source::*;
+use futures_util::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
 
 use super::QdrantVectorStore;
@@ -181,12 +182,21 @@ pub async fn mark_unchanged_items_committed_rest(
         let url = http
             .endpoint()
             .collection_path(&collection, "points?wait=true");
-        for points in carried_upsert_chunks(carried, store.point_buffer()) {
-            let body = serde_json::json!({ "points": points });
-            http.put_json(stage, &url, &body, "qdrant_mark_unchanged_items_committed")
-                .await?;
-            requests += 1;
-        }
+        let bodies = carried_upsert_chunks(carried, store.point_buffer())
+            .map(|points| serde_json::json!({ "points": points }))
+            .collect::<Vec<_>>();
+        requests += bodies.len() as u64;
+        stream::iter(bodies)
+            .map(|body| {
+                let url = &url;
+                async move {
+                    http.put_json(stage, url, &body, "qdrant_mark_unchanged_items_committed")
+                        .await
+                }
+            })
+            .buffer_unordered(store.write_parallelism())
+            .try_collect::<Vec<_>>()
+            .await?;
     }
 
     Ok(VectorStoreWriteResult {

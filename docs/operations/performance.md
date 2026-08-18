@@ -158,6 +158,8 @@ Qdrant controls:
   `2-4` parallel streams; on the local `code.claude.com` docs corpus,
   `1024/1` measured faster, so treat `256/2-4` as a large-import tuning profile
   to validate with `bench-embed`
+- payload-index creation fanout via `qdrant.payload-index-parallelism`; requests
+  are bounded client-side even though Qdrant may serialize index work internally
 - fresh-collection bulk indexing profile via `qdrant.bulk-load=true`
   (env override: `AXON_QDRANT_BULK_LOAD=true`): Axon creates the collection
   with `qdrant.bulk-indexing-threshold-kb` and restores

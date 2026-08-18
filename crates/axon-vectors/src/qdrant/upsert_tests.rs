@@ -1,13 +1,22 @@
 use super::*;
+use httpmock::MockServer;
+use std::time::{Duration, Instant};
 
 fn point(n: usize) -> VectorPoint {
-    VectorPoint {
-        point_id: VectorPointId::new(format!("point-{n}")),
-        chunk_id: ChunkId::new(format!("chunk-{n}")),
-        vector: vec![n as f32],
-        sparse_vector: None,
-        payload: MetadataMap::new(),
-    }
+    let point_id = format!("point-{n}");
+    let chunk_id = format!("chunk-{n}");
+    crate::testing::test_clean_point(crate::testing::TestPointSpec {
+        collection: "axon-test",
+        point_id: &point_id,
+        chunk_id: &chunk_id,
+        vector: &[n as f32],
+        text: "test chunk",
+        namespace: "chunk",
+        batch_id: &uuid::Uuid::from_u128(7).to_string(),
+        model: "test-model",
+        dimensions: 1,
+        job_id: "00000000-0000-0000-0000-000000000007",
+    })
 }
 
 fn batch(points: usize) -> VectorPointBatch {
@@ -119,4 +128,44 @@ fn chunked_upsert_batches_scale_without_losing_or_reordering_points() {
 #[test]
 fn chunked_upsert_batches_empty_batch_makes_no_requests() {
     assert!(ChunkedUpsertBatches::new(batch(0), 2).next().is_none());
+}
+
+#[tokio::test]
+async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
+    let server = MockServer::start_async().await;
+    let endpoint = server
+        .mock_async(|when, then| {
+            when.method("PUT").path("/collections/axon-test/points");
+            then.status(200).delay(Duration::from_millis(100));
+        })
+        .await;
+    let http = QdrantHttp::new(&server.base_url(), "qdrant-test").expect("http");
+    let spec = CollectionSpec {
+        collection: "axon-test".to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 1,
+            distance: VectorDistance::Cosine,
+        },
+        payload_indexes: Vec::new(),
+        sparse: Some(SparseVectorConfig {
+            name: "bm42".to_string(),
+            modifier: SparseVectorModifier::Idf,
+        }),
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    };
+
+    let started = Instant::now();
+    let result = upsert_batches_rest(&http, &spec, batch(5), 2, 3, ErrorStage::Upserting)
+        .await
+        .expect("parallel upsert");
+
+    assert_eq!(result.usage.requests, 3);
+    assert!(
+        started.elapsed() < Duration::from_millis(250),
+        "three delayed writes should overlap"
+    );
+    endpoint.assert_calls_async(3).await;
 }

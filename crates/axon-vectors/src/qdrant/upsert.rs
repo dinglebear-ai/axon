@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::vec::IntoIter;
 
 use axon_api::source::*;
+use futures_util::stream::{self, StreamExt, TryStreamExt};
 
 use super::convert::upsert_points_json;
 use super::http::QdrantHttp;
@@ -17,6 +18,7 @@ pub(super) async fn upsert_batches_rest(
     spec: &CollectionSpec,
     batch: VectorPointBatch,
     point_buffer: usize,
+    parallelism: usize,
     stage: ErrorStage,
 ) -> Result<VectorStoreWriteResult> {
     validate_upsert_batch(spec, &batch, stage)?;
@@ -32,12 +34,18 @@ pub(super) async fn upsert_batches_rest(
         .endpoint()
         .collection_path(&batch.collection, "points?wait=true");
 
-    let mut requests = 0u64;
-    for chunk in ChunkedUpsertBatches::new(batch, point_buffer) {
-        let body = upsert_points_json(spec, &chunk)?;
-        http.put_json(stage, &url, &body, "qdrant_upsert").await?;
-        requests += 1;
-    }
+    let bodies = ChunkedUpsertBatches::new(batch, point_buffer)
+        .map(|chunk| upsert_points_json(spec, &chunk))
+        .collect::<Result<Vec<_>>>()?;
+    let requests = bodies.len() as u64;
+    stream::iter(bodies)
+        .map(|body| {
+            let url = &url;
+            async move { http.put_json(stage, url, &body, "qdrant_upsert").await }
+        })
+        .buffer_unordered(parallelism.max(1))
+        .try_collect::<Vec<_>>()
+        .await?;
 
     Ok(VectorStoreWriteResult {
         header: stage_header(PipelinePhase::Upserting),

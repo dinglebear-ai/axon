@@ -43,6 +43,10 @@ pub struct TeiEmbeddingConfig {
     pub dimensions: u32,
     pub timeout: Duration,
     pub max_batch_inputs: u32,
+    /// Maximum number of independent client batches issued concurrently.
+    pub max_concurrent_requests: usize,
+    /// Maximum aggregate inputs admitted across concurrent requests.
+    pub max_in_flight_inputs: usize,
     pub max_input_tokens: u32,
     pub max_batch_tokens: u32,
     pub instruction_support: InstructionSupport,
@@ -149,6 +153,8 @@ impl TeiEmbeddingProvider {
             endpoint: self.config.endpoint.clone(),
             provider_id: "tei".to_string(),
             max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
+            max_concurrent_requests: self.config.max_concurrent_requests.max(1),
+            max_in_flight_inputs: self.config.max_in_flight_inputs.max(1),
             max_attempts: self.max_attempts,
             request_timeout: self.config.timeout,
             retry_backoff_base_ms: self.config.retry_backoff_ms,

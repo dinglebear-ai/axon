@@ -143,13 +143,14 @@ responses. Axon's retries make those runs slower and more variable. Length
 sorting produced only a marginal improvement and does not justify reordering
 the production pipeline by itself.
 
-The source executor currently forms sequential 512-chunk vector batches. The
-TEI transport then splits each batch into sequential requests capped by the
-configured client batch size. `AXON_EMBED_POOL_MAX_INPUTS` is parsed into
-configuration but is not consumed by this source path; changing it cannot tune
-these runs. Concurrently overlapping a bounded number of TEI requests remains
-an implementation change, not an untested configuration knob. Exact-corpus
-replay shows its realistic upside is about one second before overload begins.
+The source executor forms 512-chunk vector batches. The TEI transport now
+overlaps its client-sized requests while preserving response order. Concurrency
+is bounded by both `AXON_TEI_MAX_CONCURRENT` and
+`AXON_TEI_MAX_IN_FLIGHT_INPUTS / TEI_MAX_CLIENT_BATCH_SIZE`; the default
+`8 / 320 / 96` profile therefore admits three requests, staying below the
+measured overload boundary. Exact-corpus replay before this implementation
+showed a realistic upside of about one second; a new end-to-end benchmark is
+still required before attributing a production wall-time gain to the change.
 
 TEI 1.9.3 exposes no quantized or FP8 mode for this backend. Its available
 dtype choices are FP16 and FP32; FP16 is already in use. The deployed server
@@ -206,12 +207,11 @@ claim an artificial speedup.
 
 ## Qdrant findings
 
-Fresh collection setup creates 25 required payload indexes sequentially and
-costs roughly 9-10 seconds. The parsed
-`AXON_QDRANT_PAYLOAD_INDEX_PROFILE` and
-`AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM` settings do not currently affect the
-source collection specification. Manual parallel index creation showed Qdrant
-serializes much of the work internally:
+The measured baseline created 25 required payload indexes sequentially and
+cost roughly 9-10 seconds. Payload-index requests are now issued with bounded
+parallelism controlled by `AXON_QDRANT_PAYLOAD_INDEX_PARALLELISM`. The profile
+selector still requires separate collection-spec wiring. Manual parallel index
+creation showed Qdrant serializes much of the work internally:
 
 | Client parallelism | 25 indexes |
 | ---: | ---: |
@@ -245,15 +245,14 @@ Credible next options, in descending order:
    collection; it must not silently overwrite the Qwen3 index.
 2. Improve GPU cooling and repeat the exact-corpus replay. The current card is
    already compute-saturated and touches its thermal target.
-3. Pipeline Qdrant upserts concurrently with subsequent embedding batches.
-   Keep bounded backpressure, preserve generation atomicity, await every write
-   before publication, and test partial-failure cleanup.
+3. Re-run the isolated benchmark with bounded TEI request overlap and Qdrant
+   write/index fanout enabled; retain the settings only where the measured
+   workload improves.
 4. Make bulk-load collection configuration effective for both new and
    explicitly opted-in existing collections, then restore and verify HNSW
    indexing after upload.
-5. Fix or remove the currently ineffective payload-index profile and
-   parallelism settings and `AXON_EMBED_POOL_MAX_INPUTS` so configuration
-   accurately describes runtime behavior.
+5. Wire or remove the remaining ineffective payload-index profile setting so
+   configuration accurately describes runtime behavior.
 
 No test weakened secret redaction, dropped non-duplicate English pages, reused
 a warm Axon crawl cache, or counted a failed TEI overload run as a speed result.

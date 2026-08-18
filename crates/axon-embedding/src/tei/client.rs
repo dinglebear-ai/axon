@@ -16,6 +16,7 @@ use axon_api::source::ApiError;
 use axon_error::ErrorStage;
 use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
+use futures_util::future::join_all;
 use reqwest::{Client, StatusCode};
 
 /// Opaque endpoint context marker attached to errors.
@@ -66,6 +67,8 @@ pub struct TeiClientParams {
     pub provider_id: String,
     /// Initial per-request chunk size (`config.max_batch_inputs`).
     pub max_batch_inputs: usize,
+    pub max_concurrent_requests: usize,
+    pub max_in_flight_inputs: usize,
     /// Total attempts = retries + 1; matches legacy `tei_max_retries + 1`.
     pub max_attempts: usize,
     pub request_timeout: Duration,
@@ -112,6 +115,7 @@ pub struct TeiClient {
     info_url: String,
     provider_id: String,
     max_batch_inputs: usize,
+    max_concurrent_requests: usize,
     max_attempts: usize,
     request_timeout: Duration,
     retry_backoff_base_ms: u64,
@@ -134,6 +138,11 @@ impl TeiClient {
             info_url,
             provider_id: params.provider_id,
             max_batch_inputs,
+            max_concurrent_requests: effective_request_concurrency(
+                params.max_concurrent_requests,
+                params.max_in_flight_inputs,
+                max_batch_inputs,
+            ),
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
             retry_backoff_base_ms: params.retry_backoff_base_ms,
@@ -201,28 +210,37 @@ impl TeiClient {
             start += chunk.len();
         }
 
-        while let Some((offset, chunk)) = pending.pop() {
-            match self.send_chunk_with_retries(chunk).await? {
-                ChunkOutcome::Vectors(batch) => {
-                    if batch.len() != chunk.len() {
-                        return Err(self.error(
-                            "embedding.tei.count_mismatch",
-                            &format!(
-                                "TEI returned {} vectors for a {}-input batch",
-                                batch.len(),
-                                chunk.len()
-                            ),
-                        ));
-                    }
-                    for (i, vec) in batch.into_iter().enumerate() {
-                        slots[offset + i] = vec;
-                    }
+        while !pending.is_empty() {
+            let wave = std::mem::take(&mut pending);
+            for group in wave.chunks(self.max_concurrent_requests) {
+                let mut requests = Vec::with_capacity(group.len());
+                for &(offset, chunk) in group {
+                    requests.push(self.send_indexed_chunk(offset, chunk));
                 }
-                ChunkOutcome::Split => {
-                    let mid = chunk.len() / 2;
-                    let (left, right) = chunk.split_at(mid);
-                    pending.push((offset, left));
-                    pending.push((offset + mid, right));
+                for (offset, chunk, outcome) in join_all(requests).await {
+                    match outcome? {
+                        ChunkOutcome::Vectors(batch) => {
+                            if batch.len() != chunk.len() {
+                                return Err(self.error(
+                                    "embedding.tei.count_mismatch",
+                                    &format!(
+                                        "TEI returned {} vectors for a {}-input batch",
+                                        batch.len(),
+                                        chunk.len()
+                                    ),
+                                ));
+                            }
+                            for (i, vec) in batch.into_iter().enumerate() {
+                                slots[offset + i] = vec;
+                            }
+                        }
+                        ChunkOutcome::Split => {
+                            let mid = chunk.len() / 2;
+                            let (left, right) = chunk.split_at(mid);
+                            pending.push((offset, left));
+                            pending.push((offset + mid, right));
+                        }
+                    }
                 }
             }
         }
@@ -231,6 +249,14 @@ impl TeiClient {
             vectors: slots,
             requests: self.requests.load(Ordering::Relaxed),
         })
+    }
+
+    async fn send_indexed_chunk<'a>(
+        &'a self,
+        offset: usize,
+        chunk: &'a [String],
+    ) -> (usize, &'a [String], Result<ChunkOutcome, ApiError>) {
+        (offset, chunk, self.send_chunk_with_retries(chunk).await)
     }
 
     /// Send one chunk, retrying transport errors and 429/5xx, and signalling a
@@ -361,6 +387,17 @@ impl TeiClient {
         .with_context("status", status.as_u16().to_string())
         .with_provider_id(&self.provider_id)
     }
+}
+
+fn effective_request_concurrency(
+    configured: usize,
+    max_in_flight_inputs: usize,
+    max_batch_inputs: usize,
+) -> usize {
+    configured
+        .max(1)
+        .min(max_in_flight_inputs.max(1) / max_batch_inputs.max(1))
+        .max(1)
 }
 
 /// Resolve the initial client-side batch size, honouring the
