@@ -72,6 +72,11 @@ pub(super) fn fixture_repo() -> TempDir {
         "crates/axon-adapters/src/web.rs",
         "crates/axon-adapters/fixtures/provider-variant-exceptions.json",
         "crates/axon-web/src/schema_registry.rs",
+        "crates/axon-web/src/schema_registry/admin_watch_routes.rs",
+        "crates/axon-web/src/schema_registry/extract_routes.rs",
+        "crates/axon-web/src/schema_registry/graph_routes.rs",
+        "crates/axon-web/src/schema_registry/helpers.rs",
+        "crates/axon-web/src/schema_registry/memory_routes.rs",
         "crates/axon-mcp/src/schema_registry.rs",
         "xtask/src/schemas/mcp_action_registry.rs",
         "crates/axon-mcp/src/server/authz.rs",
@@ -302,6 +307,12 @@ fn needs_real_fixture(path: &str) -> bool {
             | "crates/axon-llm/src/provider.rs"
             | "crates/axon-llm/src/fake.rs"
             | "crates/axon-vectors/src/store.rs"
+            | "crates/axon-web/src/schema_registry.rs"
+            | "crates/axon-web/src/schema_registry/admin_watch_routes.rs"
+            | "crates/axon-web/src/schema_registry/extract_routes.rs"
+            | "crates/axon-web/src/schema_registry/graph_routes.rs"
+            | "crates/axon-web/src/schema_registry/helpers.rs"
+            | "crates/axon-web/src/schema_registry/memory_routes.rs"
             | "crates/axon-adapters/src/boundary.rs"
             | "crates/axon-authz/src/policy.rs"
             | "crates/axon-observe/src/reservation.rs"
