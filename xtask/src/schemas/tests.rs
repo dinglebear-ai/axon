@@ -1193,6 +1193,33 @@ fn openapi_has_no_dangling_refs() {
 }
 
 #[test]
+fn openapi_provenance_covers_route_registry_submodules() {
+    let tmp = fixture_repo();
+    run(
+        tmp.path(),
+        SchemasArgs {
+            command: SchemaCommand::Openapi(SchemaGenerateArgs::default()),
+        },
+    )
+    .unwrap();
+    let value: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(tmp.path().join("docs/reference/rest/openapi.json")).unwrap(),
+    )
+    .unwrap();
+    let inputs = value["x-axon"]["source_inputs"].as_array().unwrap();
+    assert!(
+        inputs.iter().any(|input| {
+            input["path"] == "crates/axon-web/src/schema_registry/memory_routes.rs"
+        })
+    );
+    assert!(
+        inputs
+            .iter()
+            .any(|input| { input["path"] == "crates/axon-web/src/schema_registry/helpers.rs" })
+    );
+}
+
+#[test]
 fn openapi_routes_have_auth_scope_and_envelopes() {
     let tmp = fixture_repo();
     run(
