@@ -599,8 +599,8 @@ pub struct Config {
 
     /// Max concurrent requests to native TEI `/embed`. This value sizes both
     /// the target local-source scheduler's logical embed-call capacity and the
-    /// provider-owned HTTP request semaphore shared by every transient TEI
-    /// client. Each logical `embed()` call reserves one flat scheduler unit,
+    /// process-shared HTTP request semaphore reused by TEI providers with the
+    /// same endpoint/admission profile. Each logical `embed()` call reserves one flat scheduler unit,
     /// while its internal client batches share this process-wide HTTP ceiling;
     /// `embed_tei_max_in_flight_inputs` independently bounds aggregate chunk
     /// inputs across those requests.
@@ -608,9 +608,10 @@ pub struct Config {
     pub embed_tei_max_concurrent: usize,
 
     /// Weighted cap on input chunks simultaneously admitted to native TEI
-    /// `/embed` HTTP requests. `TeiEmbeddingProvider` owns a shared weighted
-    /// semaphore sized from this value, so concurrent logical `embed()` calls
-    /// cannot multiply the input budget. The scheduler reservation pool remains
+    /// `/embed` HTTP requests. TEI providers with the same endpoint/admission
+    /// profile reuse a process-shared weighted semaphore sized from this value,
+    /// so concurrent logical `embed()` calls or separately constructed read/write
+    /// providers cannot multiply the input budget. The scheduler reservation pool remains
     /// intentionally request-oriented and reserves one flat unit per logical
     /// `embed()` call; this field constrains the transport's aggregate chunk
     /// fanout underneath those scheduler slots.

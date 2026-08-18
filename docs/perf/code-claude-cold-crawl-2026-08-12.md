@@ -144,9 +144,10 @@ sorting produced only a marginal improvement and does not justify reordering
 the production pipeline by itself.
 
 The source executor forms 512-chunk vector batches. The TEI transport now
-overlaps its client-sized requests while preserving response order. Provider-
-owned request and weighted-input semaphores are shared across every logical
-embed call, so `AXON_TEI_MAX_CONCURRENT` caps aggregate HTTP request fanout
+overlaps its client-sized requests while preserving response order. Process-shared request and weighted-input semaphores are reused across TEI
+providers with the same endpoint/admission profile, so both logical embed calls
+and separately constructed read/write providers stay under
+`AXON_TEI_MAX_CONCURRENT` for aggregate HTTP request fanout
 and `AXON_TEI_MAX_IN_FLIGHT_INPUTS` caps aggregate chunk inputs. With the
 default `8 / 320 / 96` profile, one embed call can schedule three client
 requests concurrently while all calls together remain inside the shared 8-
