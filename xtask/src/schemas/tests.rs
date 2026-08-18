@@ -2143,6 +2143,7 @@ fn config_schema_covers_all_required_contract_keys() {
         "watch.lease_secs",
         "providers.embedding.batch_size",
         "providers.embedding.max_concurrent_requests",
+        "providers.embedding.max_in_flight_inputs",
         "providers.embedding.interactive_reserved_requests",
         "providers.vector.write_concurrency",
         "providers.vector.upsert_batch_points",

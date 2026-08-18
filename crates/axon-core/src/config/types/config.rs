@@ -586,15 +586,15 @@ pub struct Config {
     pub ask_fulldoc_skip_score_delta: f64,
 
     /// Maximum TEI embed retry attempts after the initial request.
-    /// Env: `TEI_MAX_RETRIES`. TOML: `tei.max-retries`. Clamped 0–20. Default: 5.
+    /// Env: `TEI_MAX_RETRIES`. TOML: `providers.embedding.max-retries`. Clamped 0–20. Default: 5.
     pub tei_max_retries: usize,
 
     /// Per-attempt timeout in milliseconds for TEI embed requests.
-    /// Env: `TEI_REQUEST_TIMEOUT_MS`. TOML: `tei.request-timeout-ms`. Clamped 1000–300_000. Default: 30_000.
+    /// Env: `TEI_REQUEST_TIMEOUT_MS`. TOML: `providers.embedding.request-timeout-ms`. Clamped 1000–300_000. Default: 30_000.
     pub tei_request_timeout_ms: u64,
 
     /// Default client-side batch size for TEI embed requests (auto-splits on HTTP 413).
-    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `tei.max-client-batch-size`. Clamped 1–128. Default: 96.
+    /// Env: `TEI_MAX_CLIENT_BATCH_SIZE`. TOML: `providers.embedding.batch-size`. Clamped 1–256. Default: 96.
     pub tei_max_client_batch_size: usize,
 
     /// Max concurrent requests to native TEI `/embed`. This value sizes both
@@ -604,7 +604,7 @@ pub struct Config {
     /// while its internal client batches share this process-wide HTTP ceiling;
     /// `embed_tei_max_in_flight_inputs` independently bounds aggregate chunk
     /// inputs across those requests.
-    /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `embed.tei-max-concurrent`. Clamped 1–64. Default: 8.
+    /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `providers.embedding.max-concurrent-requests`. Clamped 1–64. Default: 8.
     pub embed_tei_max_concurrent: usize,
 
     /// Weighted cap on input chunks simultaneously admitted to native TEI
@@ -615,14 +615,14 @@ pub struct Config {
     /// intentionally request-oriented and reserves one flat unit per logical
     /// `embed()` call; this field constrains the transport's aggregate chunk
     /// fanout underneath those scheduler slots.
-    /// Env: `AXON_TEI_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.tei-max-in-flight-inputs`. Clamped 1–4096. Default: 320.
+    /// Env: `AXON_TEI_MAX_IN_FLIGHT_INPUTS`. TOML: `providers.embedding.max-in-flight-inputs`. Clamped 1–4096. Default: 320.
     pub embed_tei_max_in_flight_inputs: usize,
 
     /// Base backoff (before exponential growth + jitter) between retried TEI
     /// embed requests on 429/5xx. Was previously a hardcoded 1000ms literal in
     /// `axon-embedding`'s TEI client — see `[providers.embedding].retry-backoff-ms`
     /// in `docs/pipeline-unification/configuration/config-contract.md`.
-    /// Env: `AXON_TEI_RETRY_BACKOFF_MS`. TOML: `embed.tei-retry-backoff-ms`. Clamped 50–60000. Default: 500.
+    /// Env: `AXON_TEI_RETRY_BACKOFF_MS`. TOML: `providers.embedding.retry-backoff-ms`. Clamped 50–60000. Default: 500.
     pub embed_tei_retry_backoff_ms: u64,
 
     /// Consecutive reservation failures before the target local-source
@@ -639,14 +639,14 @@ pub struct Config {
     /// `embed_retry_exhaustion_cools_the_provider_and_capabilities_report_it_live`
     /// (provider-contract F5-10..13/V01/V03) — raising it there would make a
     /// single genuinely-exhausted request stop reporting `Cooling`.
-    /// Env: `AXON_TEI_COOLDOWN_AFTER_FAILURES`. TOML: `embed.tei-cooldown-after-failures`. Clamped 1–20. Default: 3.
+    /// Env: `AXON_TEI_COOLDOWN_AFTER_FAILURES`. TOML: `providers.embedding.cooldown-after-failures`. Clamped 1–20. Default: 3.
     pub embed_tei_cooldown_after_failures: usize,
 
     /// Cooldown window length once the embedding reservation pool trips
     /// `embed_tei_cooldown_after_failures`, in seconds. Same scope caveat as
     /// `embed_tei_cooldown_after_failures` — the TEI provider's own health
     /// tracker keeps its fixed 30s window.
-    /// Env: `AXON_TEI_COOLDOWN_SECS`. TOML: `embed.tei-cooldown-secs`. Clamped 1–3600. Default: 30.
+    /// Env: `AXON_TEI_COOLDOWN_SECS`. TOML: `providers.embedding.cooldown-secs`. Clamped 1–3600. Default: 30.
     pub embed_tei_cooldown_secs: u64,
 
     /// Embedding reservation slots reserved exclusively for interactive
@@ -657,7 +657,7 @@ pub struct Config {
     /// `axon-services::context::target_runtime`. Was previously a hardcoded
     /// constant (`RESERVATION_INTERACTIVE_RESERVE = 1`) disconnected from
     /// config entirely.
-    /// Env: `AXON_TEI_INTERACTIVE_RESERVED_REQUESTS`. TOML: `embed.tei-interactive-reserved-requests`. Clamped 0–64. Default: 1.
+    /// Env: `AXON_TEI_INTERACTIVE_RESERVED_REQUESTS`. TOML: `providers.embedding.interactive-reserved-requests`. Clamped 0–64. Default: 1.
     pub embed_tei_interactive_reserved_requests: usize,
 
     /// Documented soft ceiling on concurrent background-priority embed
@@ -671,60 +671,60 @@ pub struct Config {
     /// constructors across axon-embedding/axon-llm/axon-vectors/axon-adapters),
     /// which is out of scope for this config-wiring fix — tracked as a
     /// follow-up under the #298 pipeline-unification effort.
-    /// Env: `AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS`. TOML: `embed.tei-background-max-concurrent-requests`. Clamped 1–64. Default: 3.
+    /// Env: `AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS`. TOML: `providers.embedding.background-max-concurrent-requests`. Clamped 1–64. Default: 3.
     pub embed_tei_background_max_concurrent_requests: usize,
 
     /// Documented soft ceiling on concurrent maintenance-priority embed
     /// reservations (migrate/reindex-class jobs). Same enforcement caveat as
     /// `embed_tei_background_max_concurrent_requests`.
-    /// Env: `AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS`. TOML: `embed.tei-maintenance-max-concurrent-requests`. Clamped 1–64. Default: 1.
+    /// Env: `AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS`. TOML: `providers.embedding.maintenance-max-concurrent-requests`. Clamped 1–64. Default: 1.
     pub embed_tei_maintenance_max_concurrent_requests: usize,
 
     /// Whether the TEI embedding provider applies the query/document
     /// instruction prefix (when the provider capability advertises
     /// instruction support). `false` forces `InstructionSupport::None` at
     /// provider construction regardless of the model's real capability.
-    /// Env: `AXON_TEI_QUERY_INSTRUCTION_ENABLED`. TOML: `embed.tei-query-instruction-enabled`. Default: true.
+    /// Env: `AXON_TEI_QUERY_INSTRUCTION_ENABLED`. TOML: `providers.embedding.query-instruction-enabled`. Default: true.
     pub embed_tei_query_instruction_enabled: bool,
 
     /// Max chunk inputs pooled into one native TEI embed wave.
-    /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `embed.pool-max-inputs`. Clamped 64–65536. Default: 512.
+    /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,
 
     /// Concurrent source-document preparation tasks before embedding.
-    /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `embed.prep-concurrency`. Clamped 1–64.
+    /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,
 
     /// Optional per-document chunk cap after exact dedupe; `None` disables the cap.
-    /// Env: `AXON_EMBED_MAX_CHUNKS_PER_DOC`. TOML: `embed.max-chunks-per-doc`.
+    /// Env: `AXON_EMBED_MAX_CHUNKS_PER_DOC`. TOML: `providers.embedding.max-chunks-per-doc`.
     pub embed_max_chunks_per_doc: Option<usize>,
 
     /// Optional per-source-document chunk cap after exact dedupe; `None` disables the cap.
-    /// Env: `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`. TOML: `embed.max-source-chunks-per-doc`.
+    /// Env: `AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC`. TOML: `providers.embedding.max-source-chunks-per-doc`.
     pub embed_max_source_chunks_per_doc: Option<usize>,
 
     /// Drop exact duplicate chunks within one logical document before embedding.
-    /// Env: `AXON_EMBED_DEDUPE_EXACT_CHUNKS`. TOML: `embed.dedupe-exact-chunks`. Default: true.
+    /// Env: `AXON_EMBED_DEDUPE_EXACT_CHUNKS`. TOML: `providers.embedding.dedupe-exact-chunks`. Default: true.
     pub embed_dedupe_exact_chunks: bool,
 
     /// Model sent to OpenAI-compatible `/v1/embeddings` endpoints.
-    /// Env: `AXON_OPENAI_EMBEDDING_MODEL` or `VLLM_SERVED_MODEL_NAME`. TOML: `embed.openai-model`.
+    /// Env: `AXON_OPENAI_EMBEDDING_MODEL` or `VLLM_SERVED_MODEL_NAME`. TOML: `providers.embedding.openai-model`.
     pub openai_embed_model: String,
 
     /// Client batch size for OpenAI-compatible `/v1/embeddings`.
-    /// Env: `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`. TOML: `embed.openai-max-client-batch-size`. Clamped 1–256. Default: 32.
+    /// Env: `AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE`. TOML: `providers.embedding.openai-max-client-batch-size`. Clamped 1–256. Default: 32.
     pub openai_embed_max_client_batch_size: usize,
 
     /// Max concurrent client requests to OpenAI-compatible `/v1/embeddings`.
-    /// Env: `AXON_OPENAI_EMBED_MAX_CONCURRENT`. TOML: `embed.openai-max-concurrent`. Clamped 1–64. Default: 32.
+    /// Env: `AXON_OPENAI_EMBED_MAX_CONCURRENT`. TOML: `providers.embedding.openai-max-concurrent`. Clamped 1–64. Default: 32.
     pub openai_embed_max_concurrent: usize,
 
     /// Weighted cap on input chunks in flight to OpenAI-compatible `/v1/embeddings`.
-    /// Env: `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.openai-max-in-flight-inputs`. Clamped 1–4096. Default: 512.
+    /// Env: `AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS`. TOML: `providers.embedding.openai-max-in-flight-inputs`. Clamped 1–4096. Default: 512.
     pub openai_embed_max_in_flight_inputs: usize,
 
     /// Max chunk inputs pooled into one OpenAI-compatible embed wave.
-    /// Env: `AXON_OPENAI_EMBED_POOL_MAX_INPUTS`. TOML: `embed.openai-pool-max-inputs`. Clamped 64–65536. Default: 1024.
+    /// Env: `AXON_OPENAI_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.openai-pool-max-inputs`. Clamped 64–65536. Default: 1024.
     pub openai_embed_pool_max_inputs: usize,
 
     /// Maximum number of unified-job-store jobs the single unified worker

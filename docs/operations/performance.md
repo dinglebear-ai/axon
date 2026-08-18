@@ -124,7 +124,7 @@ TEI behavior:
 
 - batch embedding with automatic split on payload-too-large patterns
 - retry on transient overload (`429` or any `5xx`) with exponential backoff
-- client batch sizing via `tei.max-client-batch-size` in `~/.axon/config.toml`
+- client batch sizing via `providers.embedding.batch-size` in `~/.axon/config.toml`
 
 Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
 

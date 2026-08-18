@@ -46,33 +46,95 @@ fn moved_tuning_has_toml_destination() {
 }
 
 #[test]
-fn tei_tuning_env_keys_map_to_embed_section() {
-    // These fields live on `TomlEmbedSection` (config/parse/toml_config.rs), not
-    // `TomlTeiSection` — both sections use `#[serde(deny_unknown_fields)]`, so a
-    // destination under `tei.*` would make `axon doctor`'s remediation hint add
-    // an unknown field to `[tei]` and hard-fail config parsing.
+fn embedding_tuning_env_keys_map_to_clean_break_provider_section() {
+    // The clean-break parser accepts embedding tuning only under
+    // `[providers.embedding]`. Legacy `[tei]`/`[embed]` sections are
+    // rejected, so remediation hints must never point there.
     let expected = [
-        ("AXON_TEI_RETRY_BACKOFF_MS", "embed.tei-retry-backoff-ms"),
+        (
+            "TEI_MAX_CLIENT_BATCH_SIZE",
+            "providers.embedding.batch-size",
+        ),
+        ("TEI_MAX_RETRIES", "providers.embedding.max-retries"),
+        (
+            "TEI_REQUEST_TIMEOUT_MS",
+            "providers.embedding.request-timeout-ms",
+        ),
+        (
+            "AXON_TEI_RETRY_BACKOFF_MS",
+            "providers.embedding.retry-backoff-ms",
+        ),
         (
             "AXON_TEI_COOLDOWN_AFTER_FAILURES",
-            "embed.tei-cooldown-after-failures",
+            "providers.embedding.cooldown-after-failures",
         ),
-        ("AXON_TEI_COOLDOWN_SECS", "embed.tei-cooldown-secs"),
+        (
+            "AXON_TEI_COOLDOWN_SECS",
+            "providers.embedding.cooldown-secs",
+        ),
         (
             "AXON_TEI_INTERACTIVE_RESERVED_REQUESTS",
-            "embed.tei-interactive-reserved-requests",
+            "providers.embedding.interactive-reserved-requests",
         ),
         (
             "AXON_TEI_BACKGROUND_MAX_CONCURRENT_REQUESTS",
-            "embed.tei-background-max-concurrent-requests",
+            "providers.embedding.background-max-concurrent-requests",
         ),
         (
             "AXON_TEI_MAINTENANCE_MAX_CONCURRENT_REQUESTS",
-            "embed.tei-maintenance-max-concurrent-requests",
+            "providers.embedding.maintenance-max-concurrent-requests",
         ),
         (
             "AXON_TEI_QUERY_INSTRUCTION_ENABLED",
-            "embed.tei-query-instruction-enabled",
+            "providers.embedding.query-instruction-enabled",
+        ),
+        (
+            "AXON_TEI_MAX_CONCURRENT",
+            "providers.embedding.max-concurrent-requests",
+        ),
+        (
+            "AXON_TEI_MAX_IN_FLIGHT_INPUTS",
+            "providers.embedding.max-in-flight-inputs",
+        ),
+        (
+            "AXON_EMBED_POOL_MAX_INPUTS",
+            "providers.embedding.pool-max-inputs",
+        ),
+        (
+            "AXON_EMBED_PREP_CONCURRENCY",
+            "providers.embedding.prep-concurrency",
+        ),
+        (
+            "AXON_EMBED_MAX_CHUNKS_PER_DOC",
+            "providers.embedding.max-chunks-per-doc",
+        ),
+        (
+            "AXON_EMBED_MAX_SOURCE_CHUNKS_PER_DOC",
+            "providers.embedding.max-source-chunks-per-doc",
+        ),
+        (
+            "AXON_EMBED_DEDUPE_EXACT_CHUNKS",
+            "providers.embedding.dedupe-exact-chunks",
+        ),
+        (
+            "AXON_OPENAI_EMBEDDING_MODEL",
+            "providers.embedding.openai-model",
+        ),
+        (
+            "AXON_OPENAI_EMBED_MAX_CLIENT_BATCH_SIZE",
+            "providers.embedding.openai-max-client-batch-size",
+        ),
+        (
+            "AXON_OPENAI_EMBED_MAX_CONCURRENT",
+            "providers.embedding.openai-max-concurrent",
+        ),
+        (
+            "AXON_OPENAI_EMBED_MAX_IN_FLIGHT_INPUTS",
+            "providers.embedding.openai-max-in-flight-inputs",
+        ),
+        (
+            "AXON_OPENAI_EMBED_POOL_MAX_INPUTS",
+            "providers.embedding.openai-pool-max-inputs",
         ),
     ];
 

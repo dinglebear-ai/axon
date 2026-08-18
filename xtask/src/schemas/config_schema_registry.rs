@@ -24,15 +24,8 @@ pub struct ConfigKeySpec {
     pub secret: bool,
     /// Whether changing this key requires a process restart to take effect.
     /// Axon has no config hot-reload path today (config is loaded once at
-    /// process start — see `crates/axon-core/src/config`), so `true` is the
-    /// conservative, currently-accurate default for every key. The one
-    /// exception (`providers.embedding.batch_size`) matches the literal
-    /// `restart_required: false` worked example in
-    /// `docs/pipeline-unification/schemas/config-schema.md`'s "Config Setting
-    /// Shape" — a per-key decision for whoever implements hot-reload for that
-    /// section, not one this registry invents. Flagged for follow-up: as each
-    /// section lands in the real cutover, its owning crate should confirm
-    /// (and if needed flip) this value rather than inherit the default.
+    /// process start — see `crates/axon-core/src/config`), so every currently
+    /// enforced config key is restart-required.
     pub restart_required: bool,
     pub description: &'static str,
 }
@@ -66,9 +59,8 @@ type RawConfigKey = (
 //
 // `secret` is `false` for every row by construction — see `ConfigKeySpec::secret`'s
 // doc comment; a secret-shaped key belongs in the env var registry, not here.
-// `restart_required` defaults to `true` (no config hot-reload path exists yet);
-// the one `false` below is the contract's own worked example, not an invented
-// exception — see `ConfigKeySpec::restart_required`'s doc comment.
+// `restart_required` is `true` for current runtime-backed keys because config
+// is loaded once at process start and Axon has no hot-reload path today.
 // `env_key` is populated only where a target or currently-shipped override name
 // is documented (`docs/pipeline-unification/schemas/config-schema.md`'s worked
 // example, or the currently-shipped env vars in the root `CLAUDE.md` env
@@ -216,12 +208,9 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "integer",
         "96",
         "axon-embedding",
-        Some("AXON_EMBEDDING_BATCH_SIZE"),
+        Some("TEI_MAX_CLIENT_BATCH_SIZE"),
         false,
-        // Contract's own worked example ("Config Setting Shape" in
-        // config-schema.md) states `restart_required: false` for this exact
-        // key — the one documented exception to the conservative default.
-        false,
+        true,
         "Maximum chunks per embedding request.",
     ),
     (
@@ -230,10 +219,21 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "integer",
         "8",
         "axon-embedding",
-        None,
+        Some("AXON_TEI_MAX_CONCURRENT"),
         false,
         true,
         "Process-shared concurrent TEI requests for one endpoint/admission profile.",
+    ),
+    (
+        "providers.embedding.max_in_flight_inputs",
+        "providers",
+        "integer",
+        "320",
+        "axon-embedding",
+        Some("AXON_TEI_MAX_IN_FLIGHT_INPUTS"),
+        false,
+        true,
+        "Process-shared aggregate TEI inputs across concurrent requests.",
     ),
     (
         "providers.embedding.interactive_reserved_requests",
@@ -241,7 +241,7 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "integer",
         "1",
         "axon-jobs",
-        None,
+        Some("AXON_TEI_INTERACTIVE_RESERVED_REQUESTS"),
         false,
         true,
         "Requests reserved for ask/query embeddings.",

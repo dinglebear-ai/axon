@@ -184,7 +184,7 @@
 [providers.embedding]
 # This section is critical for avoiding embedding-pipeline bottlenecks.
 # Env: TEI_MAX_CLIENT_BATCH_SIZE
-# batch-size = 128
+# batch-size = 96
 # Process-wide max concurrent Axon client requests to native TEI `/embed`.
 # Env: AXON_TEI_MAX_CONCURRENT
 # max-concurrent-requests = 8
