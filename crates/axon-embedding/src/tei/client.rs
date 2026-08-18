@@ -41,10 +41,10 @@ const TEI_MAX_CLIENT_BATCH_SIZE_ENV: &str = "TEI_MAX_CLIENT_BATCH_SIZE";
 
 /// Process-wide reqwest client shared by every [`TeiClient`].
 ///
-/// `TeiEmbeddingProvider::build_client()` calls [`TeiClient::new`] for each
-/// provider operation. Building a fresh `reqwest::Client` there throws away its
-/// connection pool and DNS resolver on every embed/probe call, so the transport
-/// keeps request timeouts per call and shares the pool process-wide.
+/// `TeiEmbeddingProvider::build_client()` constructs each transport with
+/// [`TeiClient::new_with_gates`] so provider instances share admission state.
+/// Building a fresh `reqwest::Client` per operation would also throw away its
+/// connection pool and DNS resolver, so the HTTP client stays process-wide.
 static SHARED_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     #[cfg(test)]
     CLIENT_BUILDS.fetch_add(1, Ordering::SeqCst);
@@ -130,6 +130,7 @@ impl TeiClient {
     ///
     /// The `/embed` path is appended to the configured base. The reqwest client
     /// carries no per-request timeout; each request applies `request_timeout`.
+    #[cfg(test)]
     pub fn new(params: TeiClientParams) -> Result<Self, ApiError> {
         let request_slots = Arc::new(Semaphore::new(params.max_concurrent_requests.max(1)));
         let input_slots = Arc::new(Semaphore::new(params.max_in_flight_inputs.max(1)));
