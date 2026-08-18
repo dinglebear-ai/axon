@@ -8,8 +8,8 @@
 //! `"configured"` is attached to error context, mirroring the qdrant store's
 //! redaction pattern.
 
-use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use axon_api::source::ApiError;
@@ -18,6 +18,7 @@ use axon_error::cooling::ProviderCooling;
 use chrono::Utc;
 use futures_util::future::join_all;
 use reqwest::{Client, StatusCode};
+use tokio::sync::Semaphore;
 
 /// Opaque endpoint context marker attached to errors.
 ///
@@ -116,6 +117,8 @@ pub struct TeiClient {
     provider_id: String,
     max_batch_inputs: usize,
     max_concurrent_requests: usize,
+    request_slots: Arc<Semaphore>,
+    input_slots: Arc<Semaphore>,
     max_attempts: usize,
     request_timeout: Duration,
     retry_backoff_base_ms: u64,
@@ -128,10 +131,22 @@ impl TeiClient {
     /// The `/embed` path is appended to the configured base. The reqwest client
     /// carries no per-request timeout; each request applies `request_timeout`.
     pub fn new(params: TeiClientParams) -> Result<Self, ApiError> {
+        let request_slots = Arc::new(Semaphore::new(params.max_concurrent_requests.max(1)));
+        let input_slots = Arc::new(Semaphore::new(params.max_in_flight_inputs.max(1)));
+        Self::new_with_gates(params, request_slots, input_slots)
+    }
+
+    pub(crate) fn new_with_gates(
+        params: TeiClientParams,
+        request_slots: Arc<Semaphore>,
+        input_slots: Arc<Semaphore>,
+    ) -> Result<Self, ApiError> {
         let base = params.endpoint.trim().trim_end_matches('/');
         let embed_url = format!("{base}/embed");
         let info_url = format!("{base}/info");
-        let max_batch_inputs = resolve_batch_size(params.max_batch_inputs);
+        let max_in_flight_inputs = params.max_in_flight_inputs.max(1);
+        let max_batch_inputs =
+            resolve_batch_size(params.max_batch_inputs).min(max_in_flight_inputs);
         Ok(Self {
             client: SHARED_CLIENT.clone(),
             embed_url,
@@ -140,9 +155,11 @@ impl TeiClient {
             max_batch_inputs,
             max_concurrent_requests: effective_request_concurrency(
                 params.max_concurrent_requests,
-                params.max_in_flight_inputs,
+                max_in_flight_inputs,
                 max_batch_inputs,
             ),
+            request_slots,
+            input_slots,
             max_attempts: params.max_attempts.max(1),
             request_timeout: params.request_timeout,
             retry_backoff_base_ms: params.retry_backoff_base_ms,
@@ -281,6 +298,31 @@ impl TeiClient {
         let mut last_retryable = true;
 
         for attempt in 1..=self.max_attempts {
+            let request_permit = Arc::clone(&self.request_slots)
+                .acquire_owned()
+                .await
+                .map_err(|_| {
+                    self.error(
+                        "embedding.tei.admission_closed",
+                        "TEI request admission gate is closed",
+                    )
+                })?;
+            let input_count = u32::try_from(chunk.len()).map_err(|_| {
+                self.error(
+                    "embedding.tei.input_budget_invalid",
+                    "TEI client batch exceeds the weighted admission range",
+                )
+            })?;
+            let input_permit = Arc::clone(&self.input_slots)
+                .acquire_many_owned(input_count)
+                .await
+                .map_err(|_| {
+                    self.error(
+                        "embedding.tei.admission_closed",
+                        "TEI input admission gate is closed",
+                    )
+                })?;
+
             self.requests.fetch_add(1, Ordering::Relaxed);
             let send = self
                 .client
@@ -293,6 +335,8 @@ impl TeiClient {
             let resp = match send {
                 Ok(resp) => resp,
                 Err(err) => {
+                    drop(input_permit);
+                    drop(request_permit);
                     last = Some(self.transport(error_category(&err)));
                     last_retryable = true;
                     if attempt < self.max_attempts {
@@ -324,6 +368,8 @@ impl TeiClient {
             last = Some(self.status_error(status));
             last_retryable = retryable;
             if retryable && attempt < self.max_attempts {
+                drop(input_permit);
+                drop(request_permit);
                 tokio::time::sleep(retry_delay(attempt, started, self.retry_backoff_base_ms)).await;
                 continue;
             }

@@ -600,21 +600,13 @@ pub struct Config {
     /// Env: `AXON_TEI_MAX_CONCURRENT`. TOML: `embed.tei-max-concurrent`. Clamped 1–64. Default: 8.
     pub embed_tei_max_concurrent: usize,
 
-    /// Weighted cap on input chunks in flight to native TEI `/embed`. Parsed,
-    /// defaulted, and exposed here, but **not yet consumed by any gate**: the
-    /// reservation pool that `embed_tei_max_concurrent` drives reserves a flat
-    /// 1 unit per `embed()` call (`units: 1` at every `reserve_embedding`-style
-    /// call site across the `*_source_vectorize.rs` family), not one weighted
-    /// by `batch.items.len()`, so this field currently has no effect on
-    /// runtime behavior. Wiring it for real means threading the batch's chunk
-    /// count as the reservation `units` at all ~14 call sites and sizing
-    /// `capacity` in chunks rather than call count — out of scope for a
-    /// config-wiring fix; tracked as a follow-up under the #298
-    /// pipeline-unification effort. The standalone `tuning::
-    /// embed_tei_max_in_flight_inputs()`/`embed_tei_max_concurrent()`
-    /// accessor functions that duplicated this resolution with zero callers
-    /// have been removed (axon_rust-ldozg) — this `Config` field is the only
-    /// place `[providers.embedding].max-in-flight-inputs` now resolves to.
+    /// Weighted cap on input chunks simultaneously admitted to native TEI
+    /// `/embed` HTTP requests. `TeiEmbeddingProvider` owns a shared weighted
+    /// semaphore sized from this value, so concurrent logical `embed()` calls
+    /// cannot multiply the input budget. The scheduler reservation pool remains
+    /// intentionally request-oriented and reserves one flat unit per logical
+    /// `embed()` call; this field constrains the transport's aggregate chunk
+    /// fanout underneath those scheduler slots.
     /// Env: `AXON_TEI_MAX_IN_FLIGHT_INPUTS`. TOML: `embed.tei-max-in-flight-inputs`. Clamped 1–4096. Default: 320.
     pub embed_tei_max_in_flight_inputs: usize,
 

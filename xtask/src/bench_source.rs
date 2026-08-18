@@ -189,7 +189,7 @@ pub fn run(root: &Path, args: BenchSourceArgs) -> anyhow::Result<()> {
         if warm {
             fs::create_dir_all(&shared_state)?;
             eprintln!("priming warm benchmark cache for {}", args.url);
-            execute_run(
+            if let Err(error) = execute_run(
                 &client,
                 &axon_bin,
                 &args.url,
@@ -200,7 +200,19 @@ pub fn run(root: &Path, args: BenchSourceArgs) -> anyhow::Result<()> {
                 &shared_collection,
                 &qdrant_url,
                 tei_metrics_url.as_deref(),
-            )?;
+            ) {
+                if args.keep_state {
+                    return Err(error);
+                }
+                let cleanup = cleanup_benchmark_resources(
+                    &client,
+                    &work_root,
+                    &qdrant_url,
+                    &shared_state,
+                    &shared_collection,
+                );
+                return Err(combine_run_and_cleanup(error, cleanup));
+            }
         }
         for iteration in 1..=args.runs {
             let state = if warm {
@@ -218,7 +230,7 @@ pub fn run(root: &Path, args: BenchSourceArgs) -> anyhow::Result<()> {
             };
             fs::create_dir_all(&state)?;
             eprintln!("running {name} benchmark {iteration}/{}", args.runs);
-            let record = execute_run(
+            let run_result = execute_run(
                 &client,
                 &axon_bin,
                 &args.url,
@@ -229,18 +241,48 @@ pub fn run(root: &Path, args: BenchSourceArgs) -> anyhow::Result<()> {
                 &collection,
                 &qdrant_url,
                 tei_metrics_url.as_deref(),
-            )?;
-            records.push(record);
-            if !args.keep_state && !warm {
-                cleanup_generated_state(&work_root, &state)?;
-                support::delete_collection(&client, &qdrant_url, &collection)
-                    .with_context(|| format!("remove benchmark collection {collection}"))?;
+            );
+
+            if warm {
+                match run_result {
+                    Ok(record) => records.push(record),
+                    Err(error) => {
+                        if args.keep_state {
+                            return Err(error);
+                        }
+                        let cleanup = cleanup_benchmark_resources(
+                            &client,
+                            &work_root,
+                            &qdrant_url,
+                            &shared_state,
+                            &shared_collection,
+                        );
+                        return Err(combine_run_and_cleanup(error, cleanup));
+                    }
+                }
+            } else {
+                let cleanup = if args.keep_state {
+                    Ok(())
+                } else {
+                    cleanup_benchmark_resources(
+                        &client,
+                        &work_root,
+                        &qdrant_url,
+                        &state,
+                        &collection,
+                    )
+                };
+                records.push(resolve_run_with_cleanup(run_result, cleanup)?);
             }
         }
         if !args.keep_state && warm {
-            cleanup_generated_state(&work_root, &shared_state)?;
-            support::delete_collection(&client, &qdrant_url, &shared_collection)
-                .with_context(|| format!("remove benchmark collection {shared_collection}"))?;
+            cleanup_benchmark_resources(
+                &client,
+                &work_root,
+                &qdrant_url,
+                &shared_state,
+                &shared_collection,
+            )?;
         }
     }
 
@@ -326,6 +368,48 @@ fn cleanup_generated_state(root: &Path, path: &Path) -> anyhow::Result<()> {
     }
     fs::remove_dir_all(path)?;
     Ok(())
+}
+
+fn cleanup_benchmark_resources(
+    client: &reqwest::blocking::Client,
+    work_root: &Path,
+    qdrant_url: &str,
+    state: &Path,
+    collection: &str,
+) -> anyhow::Result<()> {
+    let state_cleanup = cleanup_generated_state(work_root, state);
+    let collection_cleanup = support::delete_collection(client, qdrant_url, collection)
+        .with_context(|| format!("remove benchmark collection {collection}"));
+    match (state_cleanup, collection_cleanup) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(state_error), Err(collection_error)) => Err(anyhow!(
+            "benchmark state cleanup failed: {state_error:#}; collection cleanup failed: {collection_error:#}"
+        )),
+    }
+}
+
+fn combine_run_and_cleanup(error: anyhow::Error, cleanup: anyhow::Result<()>) -> anyhow::Error {
+    match cleanup {
+        Ok(()) => error,
+        Err(cleanup_error) => anyhow!(
+            "benchmark run failed: {error:#}; benchmark cleanup also failed: {cleanup_error:#}"
+        ),
+    }
+}
+
+fn resolve_run_with_cleanup<T>(
+    run: anyhow::Result<T>,
+    cleanup: anyhow::Result<()>,
+) -> anyhow::Result<T> {
+    match (run, cleanup) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(cleanup_error)) => Err(cleanup_error),
+        (Err(error), Err(cleanup_error)) => Err(anyhow!(
+            "benchmark run failed: {error:#}; benchmark cleanup also failed: {cleanup_error:#}"
+        )),
+    }
 }
 
 fn validate_baseline(
@@ -636,6 +720,25 @@ mod tests {
             source_cache_args(true),
             vec!["--cache", "true", "--etag-conditional"]
         );
+    }
+
+    #[test]
+    fn failed_run_preserves_cleanup_failure_context() {
+        let error = resolve_run_with_cleanup::<()>(
+            Err(anyhow!("run exploded")),
+            Err(anyhow!("cleanup exploded")),
+        )
+        .unwrap_err();
+        let message = format!("{error:#}");
+        assert!(message.contains("run exploded"));
+        assert!(message.contains("cleanup exploded"));
+    }
+
+    #[test]
+    fn successful_run_still_fails_when_cleanup_fails() {
+        let error =
+            resolve_run_with_cleanup(Ok(42_u64), Err(anyhow!("cleanup exploded"))).unwrap_err();
+        assert!(format!("{error:#}").contains("cleanup exploded"));
     }
 
     #[test]

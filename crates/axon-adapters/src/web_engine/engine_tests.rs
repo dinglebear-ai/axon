@@ -437,11 +437,31 @@ fn discovery_prefers_markdown_alternate_over_duplicate_html_url() {
 }
 
 #[test]
-fn technical_docs_sitemap_is_rich_enough_without_root_anchor_expansion() {
-    assert!(map::discovery_is_sufficient("sitemap+llms", 182));
-    assert!(!map::discovery_is_sufficient("sitemap+llms", 99));
-    assert!(!map::discovery_is_sufficient("sitemap", 182));
-    assert!(map::discovery_is_sufficient("sitemap", 200));
+fn technical_docs_sitemap_requires_llms_corroboration_before_skipping_anchors() {
+    let sitemap = (0..182)
+        .map(|index| format!("https://example.com/docs/page-{index}"))
+        .collect::<Vec<_>>();
+    let well_covered_llms = (0..180)
+        .map(|index| format!("https://example.com/docs/page-{index}.md"))
+        .collect::<Vec<_>>();
+    let partial_llms = (0..90)
+        .map(|index| format!("https://example.com/docs/page-{index}.md"))
+        .collect::<Vec<_>>();
+
+    assert!(map::discovery_is_sufficient(
+        "sitemap+llms",
+        182,
+        &sitemap,
+        &well_covered_llms,
+    ));
+    assert!(!map::discovery_is_sufficient(
+        "sitemap+llms",
+        182,
+        &sitemap,
+        &partial_llms,
+    ));
+    assert!(!map::discovery_is_sufficient("sitemap", 182, &sitemap, &[],));
+    assert!(map::discovery_is_sufficient("sitemap", 200, &sitemap, &[],));
 }
 
 #[test]

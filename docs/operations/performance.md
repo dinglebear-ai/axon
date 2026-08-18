@@ -130,9 +130,9 @@ Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
   if TEI fails warmup with CUDA OOM
 - use `TEI_MAX_BATCH_REQUESTS=512` to avoid false overloads when multiple real
   docs batches are in flight
-- keep Axon's client batch around `TEI_MAX_CLIENT_BATCH_SIZE=128`; on the
-  `code.claude.com` docs corpus this reduced TEI calls to 37 and was faster
-  than 96, 192, and 256
+- keep Axon's client batch around `TEI_MAX_CLIENT_BATCH_SIZE=96`; on the
+  `code.claude.com` docs corpus 96 was the best measured region, while 128
+  was close but slightly slower
 - keep `AXON_EMBED_POOL_MAX_INPUTS=512` for docs-style corpora so small files
   are pooled before TEI client-side sub-batching
 - `AXON_TEI_MAX_CONCURRENT=8` is a reasonable single-process ceiling when the

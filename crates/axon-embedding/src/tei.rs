@@ -7,7 +7,12 @@
 
 mod client;
 
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use tokio::sync::Semaphore;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -93,6 +98,8 @@ const HEALTH_TRACKER_COOLDOWN_SECS: u64 = 30;
 pub struct TeiEmbeddingProvider {
     config: TeiEmbeddingConfig,
     health: ProviderReservationManager,
+    request_slots: Arc<Semaphore>,
+    input_slots: Arc<Semaphore>,
     max_attempts: usize,
 }
 
@@ -106,11 +113,20 @@ impl TeiEmbeddingProvider {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
+        // These gates are provider-owned so every transient TeiClient built by
+        // concurrent embed calls shares one process-local admission budget. The
+        // scheduler still limits logical embed calls; these semaphores prevent
+        // each admitted call from multiplying that ceiling into independent HTTP
+        // fanout and also enforce the weighted input budget end to end.
+        let request_slots = Arc::new(Semaphore::new(config.max_concurrent_requests.max(1)));
+        let input_slots = Arc::new(Semaphore::new(config.max_in_flight_inputs.max(1)));
         // At least 1 attempt regardless of a misconfigured/zero `max_attempts`.
         let max_attempts = config.max_attempts.max(1);
         Self {
             config,
             health,
+            request_slots,
+            input_slots,
             max_attempts,
         }
     }
@@ -149,16 +165,20 @@ impl TeiEmbeddingProvider {
     }
 
     fn build_client(&self) -> Result<TeiClient> {
-        TeiClient::new(TeiClientParams {
-            endpoint: self.config.endpoint.clone(),
-            provider_id: "tei".to_string(),
-            max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
-            max_concurrent_requests: self.config.max_concurrent_requests.max(1),
-            max_in_flight_inputs: self.config.max_in_flight_inputs.max(1),
-            max_attempts: self.max_attempts,
-            request_timeout: self.config.timeout,
-            retry_backoff_base_ms: self.config.retry_backoff_ms,
-        })
+        TeiClient::new_with_gates(
+            TeiClientParams {
+                endpoint: self.config.endpoint.clone(),
+                provider_id: "tei".to_string(),
+                max_batch_inputs: self.config.max_batch_inputs.max(1) as usize,
+                max_concurrent_requests: self.config.max_concurrent_requests.max(1),
+                max_in_flight_inputs: self.config.max_in_flight_inputs.max(1),
+                max_attempts: self.max_attempts,
+                request_timeout: self.config.timeout,
+                retry_backoff_base_ms: self.config.retry_backoff_ms,
+            },
+            Arc::clone(&self.request_slots),
+            Arc::clone(&self.input_slots),
+        )
     }
 
     fn error(&self, code: &str, message: &str) -> ApiError {

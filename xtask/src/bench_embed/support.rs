@@ -93,7 +93,11 @@ pub(crate) fn delete_collection(
         qdrant_url.trim_end_matches('/'),
         collection
     );
-    client.delete(url).send()?.error_for_status()?;
+    let response = client.delete(url).send()?;
+    if response.status().as_u16() == 404 {
+        return Ok(());
+    }
+    response.error_for_status()?;
     Ok(())
 }
 

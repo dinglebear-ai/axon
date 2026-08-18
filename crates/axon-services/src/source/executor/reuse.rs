@@ -76,16 +76,19 @@ pub(super) async fn resolve_acquisition(
             item.manifest_item.clone(),
         );
         if !reuse_required(&item) {
-            if previous_items
-                .get(&item.manifest_item.source_item_key)
-                .is_some_and(|previous| {
-                    previous.content_hash.is_some()
-                        && previous.content_hash == item.manifest_item.content_hash
-                })
-            {
-                reused_item_keys.push(item.manifest_item.source_item_key.clone());
+            let item_key = item.manifest_item.source_item_key.clone();
+            let same_content = previous_items.get(&item_key).is_some_and(|previous| {
+                previous.content_hash.is_some()
+                    && previous.content_hash == item.manifest_item.content_hash
+            });
+            if same_content && reuse_cached_document(runtime, diff, &item_key).await? {
+                reused_item_keys.push(item_key);
                 continue;
             }
+            // A byte-identical 200 response can only skip normalization when the
+            // previous normalized document was successfully advanced into the
+            // new generation's cache. Otherwise process the fetched body so this
+            // generation becomes a valid cache source for the next 304.
             fetched.push(item);
             continue;
         }

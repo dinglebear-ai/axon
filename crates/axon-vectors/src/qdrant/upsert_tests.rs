@@ -1,6 +1,6 @@
 use super::*;
 use httpmock::MockServer;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn point(n: usize) -> VectorPoint {
     let point_id = format!("point-{n}");
@@ -136,7 +136,7 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
     let endpoint = server
         .mock_async(|when, then| {
             when.method("PUT").path("/collections/axon-test/points");
-            then.status(200).delay(Duration::from_millis(100));
+            then.status(200).delay(Duration::from_secs(2));
         })
         .await;
     let http = QdrantHttp::new(&server.base_url(), "qdrant-test").expect("http");
@@ -157,15 +157,22 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
         metadata: MetadataMap::new(),
     };
 
-    let started = Instant::now();
-    let result = upsert_batches_rest(&http, &spec, batch(5), 2, 3, ErrorStage::Upserting)
-        .await
-        .expect("parallel upsert");
+    let task = tokio::spawn(async move {
+        upsert_batches_rest(&http, &spec, batch(5), 2, 3, ErrorStage::Upserting).await
+    });
 
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if endpoint.calls_async().await == 3 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("all three writes should be admitted before the first delayed response completes");
+
+    let result = task.await.expect("upsert task").expect("parallel upsert");
     assert_eq!(result.usage.requests, 3);
-    assert!(
-        started.elapsed() < Duration::from_millis(250),
-        "three delayed writes should overlap"
-    );
     endpoint.assert_calls_async(3).await;
 }

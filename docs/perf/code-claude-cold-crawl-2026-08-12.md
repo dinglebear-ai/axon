@@ -144,11 +144,13 @@ sorting produced only a marginal improvement and does not justify reordering
 the production pipeline by itself.
 
 The source executor forms 512-chunk vector batches. The TEI transport now
-overlaps its client-sized requests while preserving response order. Concurrency
-is bounded by both `AXON_TEI_MAX_CONCURRENT` and
-`AXON_TEI_MAX_IN_FLIGHT_INPUTS / TEI_MAX_CLIENT_BATCH_SIZE`; the default
-`8 / 320 / 96` profile therefore admits three requests, staying below the
-measured overload boundary. Exact-corpus replay before this implementation
+overlaps its client-sized requests while preserving response order. Provider-
+owned request and weighted-input semaphores are shared across every logical
+embed call, so `AXON_TEI_MAX_CONCURRENT` caps aggregate HTTP request fanout
+and `AXON_TEI_MAX_IN_FLIGHT_INPUTS` caps aggregate chunk inputs. With the
+default `8 / 320 / 96` profile, one embed call can schedule three client
+requests concurrently while all calls together remain inside the shared 8-
+request / 320-input budget. Exact-corpus replay before this implementation
 showed a realistic upside of about one second; a new end-to-end benchmark is
 still required before attributing a production wall-time gain to the change.
 

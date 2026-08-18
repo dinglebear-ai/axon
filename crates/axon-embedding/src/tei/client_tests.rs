@@ -9,7 +9,7 @@ async fn embed_all_overlaps_independent_client_batches() {
         .mock_async(|when, then| {
             when.method("POST").path("/embed");
             then.status(200)
-                .delay(Duration::from_millis(100))
+                .delay(Duration::from_secs(2))
                 .json_body(serde_json::json!([[0.1_f32, 0.2_f32]]));
         })
         .await;
@@ -20,23 +20,33 @@ async fn embed_all_overlaps_independent_client_batches() {
         max_concurrent_requests: 4,
         max_in_flight_inputs: 4,
         max_attempts: 1,
-        request_timeout: Duration::from_secs(1),
+        request_timeout: Duration::from_secs(5),
         retry_backoff_base_ms: 1,
     })
     .expect("client");
 
-    let started = Instant::now();
-    let outcome = client
-        .embed_all(&["a".into(), "b".into(), "c".into(), "d".into()])
-        .await
-        .expect("embed batches");
+    let client = Arc::new(client);
+    let task_client = Arc::clone(&client);
+    let task = tokio::spawn(async move {
+        task_client
+            .embed_all(&["a".into(), "b".into(), "c".into(), "d".into()])
+            .await
+    });
 
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if endpoint.calls_async().await == 4 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("all four requests should be admitted before the first delayed response completes");
+
+    let outcome = task.await.expect("embed task").expect("embed batches");
     assert_eq!(outcome.vectors.len(), 4);
     assert_eq!(outcome.requests, 4);
-    assert!(
-        started.elapsed() < Duration::from_millis(300),
-        "four 100ms requests should overlap rather than serialize"
-    );
     endpoint.assert_calls_async(4).await;
 }
 

@@ -202,6 +202,61 @@ async fn unchanged_site_content_is_not_reembedded_without_http_validators() {
 }
 
 #[tokio::test]
+async fn identical_conditional_200_advances_cache_for_followup_304() {
+    let provider = Arc::new(ConditionalFetchProvider::new(
+        "<html><body>stable body</body></html>",
+        "etag-stable",
+    ));
+    let harness =
+        crate::test_support::source_context_with_web_providers(provider.clone(), provider.clone())
+            .await
+            .expect("canonical web harness");
+
+    crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("seed committed generation");
+    let embed_calls_after_seed = harness.embedder().calls().await.len();
+
+    crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("identical conditional 200 should publish by reuse");
+    assert_eq!(provider.conditional_fetches().await, 1);
+    assert_eq!(
+        harness.embedder().calls().await.len(),
+        embed_calls_after_seed
+    );
+
+    provider.set_conditional_304(true).await;
+    let full_fetches_before_304 = provider.full_fetches().await;
+    crate::source::index_source_with_auth(
+        page_request(),
+        harness.ctx(),
+        Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
+    )
+    .await
+    .expect("follow-up 304 should reuse the cache advanced by the identical 200");
+
+    assert_eq!(provider.conditional_fetches().await, 2);
+    assert_eq!(
+        provider.full_fetches().await,
+        full_fetches_before_304,
+        "follow-up 304 must not fall back to an unconditional refetch"
+    );
+    assert_eq!(
+        harness.embedder().calls().await.len(),
+        embed_calls_after_seed
+    );
+}
+
+#[tokio::test]
 async fn canonical_web_304_reuses_cache_and_cache_miss_refetches() {
     let provider = Arc::new(ConditionalFetchProvider::new(
         "<html><body>version one</body></html>",
