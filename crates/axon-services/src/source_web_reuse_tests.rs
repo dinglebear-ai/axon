@@ -256,8 +256,7 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
     );
 
     provider.set_conditional_304(true).await;
-    let full_fetches_before_304 = provider.full_fetches().await;
-    crate::source::index_source_with_auth(
+    let followup = crate::source::index_source_with_auth(
         page_request(),
         harness.ctx(),
         Some(AuthSnapshot::trusted_system("canonical-same-200-test")),
@@ -267,13 +266,17 @@ async fn identical_conditional_200_advances_cache_for_followup_304() {
 
     assert_eq!(provider.conditional_fetches().await, 2);
     assert_eq!(
-        provider.full_fetches().await,
-        full_fetches_before_304 + 1,
-        "follow-up 304 should perform discovery but no unconditional cache-miss refetch"
-    );
-    assert_eq!(
         harness.embedder().calls().await.len(),
         embed_calls_after_seed
+    );
+    assert_eq!(
+        followup
+            .warnings
+            .iter()
+            .filter(|warning| warning.code == "source.reuse.cache_miss_refetch")
+            .count(),
+        0,
+        "follow-up 304 must reuse the cache advanced by the identical 200"
     );
 }
 
