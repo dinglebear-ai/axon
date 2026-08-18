@@ -16,6 +16,7 @@ import { isRecord, strField, unwrapPayload } from "@/lib/payload";
 interface SettingsPanelProps {
   configError: string | null;
   draftConfig: PaletteConfig;
+  mobile?: boolean;
   shortcutOptions: readonly string[];
   onChange: (config: PaletteConfig) => void;
   onClose: () => void;
@@ -66,6 +67,7 @@ export function connectionFeedback(state: ConnectionTestState): {
 export function SettingsPanel({
   configError,
   draftConfig,
+  mobile = false,
   shortcutOptions,
   onChange,
   onClose,
@@ -129,6 +131,7 @@ export function SettingsPanel({
       <div className="settings-scroll">
         <ConnectionPanel
           draftConfig={draftConfig}
+          mobile={mobile}
           shortcutOptions={shortcutOptions}
           updateConfig={updateConfig}
         />
@@ -148,10 +151,12 @@ export function SettingsPanel({
 
 function ConnectionPanel({
   draftConfig,
+  mobile,
   shortcutOptions,
   updateConfig,
 }: {
   draftConfig: PaletteConfig;
+  mobile: boolean;
   shortcutOptions: readonly string[];
   updateConfig: <Key extends keyof PaletteConfig>(key: Key, value: PaletteConfig[Key]) => void;
 }) {
@@ -176,13 +181,15 @@ function ConnectionPanel({
       <SettingsAuthBlock />
       <div className="settings-stack">
         <span className="settings-section-label">Client</span>
-        <Field label="Global shortcut" hint="press to record">
-          <TextInput
-            value={draftConfig.shortcut || shortcutOptions[0]}
-            onChange={(value) => updateConfig("shortcut", value)}
-            mono
-          />
-        </Field>
+        {!mobile && (
+          <Field label="Global shortcut" hint="press to record">
+            <TextInput
+              value={draftConfig.shortcut || shortcutOptions[0]}
+              onChange={(value) => updateConfig("shortcut", value)}
+              mono
+            />
+          </Field>
+        )}
         <Field label="Max results">
           <TextInput
             value={String(draftConfig.resultLimit)}
@@ -192,12 +199,14 @@ function ConnectionPanel({
             mono
           />
         </Field>
-        <ToggleRow
-          label="Hide on blur"
-          sub="Dismiss when the window loses focus"
-          on={draftConfig.hideOnBlur}
-          onChange={(value) => updateConfig("hideOnBlur", value)}
-        />
+        {!mobile && (
+          <ToggleRow
+            label="Hide on blur"
+            sub="Dismiss when the window loses focus"
+            on={draftConfig.hideOnBlur}
+            onChange={(value) => updateConfig("hideOnBlur", value)}
+          />
+        )}
         <ToggleRow
           label="Open results inline"
           sub="Expand the panel instead of a new window"

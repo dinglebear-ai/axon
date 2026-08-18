@@ -59,6 +59,7 @@ interface PaletteShellProps {
   listboxOpen: boolean;
   liveRefresh: LiveRefreshState;
   modeAction: PaletteAction | null;
+  mobileRuntime: boolean;
   onBack: () => void;
   onCollapse: () => void;
   onCopy: (text: string) => void;
@@ -252,6 +253,7 @@ function SettingsRegion(props: PaletteShellProps) {
       <SettingsPanel
         configError={props.configError}
         draftConfig={props.draftConfig}
+        mobile={props.mobileRuntime}
         shortcutOptions={props.shortcutOptions}
         onChange={props.setDraftConfig}
         onClose={() => props.dispatchView({ type: "closeSettings" })}
@@ -392,6 +394,7 @@ function FooterRegion(props: PaletteShellProps) {
       }}
       onSettings={() => props.dispatchView({ type: "toggleSettings" })}
       onHide={() => void invoke("hide_palette")}
+      showHide={!props.mobileRuntime}
     />
   );
 }

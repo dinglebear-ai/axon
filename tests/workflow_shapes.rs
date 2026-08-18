@@ -1259,6 +1259,7 @@ fn ci_gate_covers_expensive_and_contract_jobs() {
         "toml-fmt",
         "lefthook-pre-commit-speed",
         "palette-tauri",
+        "palette-tauri-android",
         "windows-check",
         "windows-build",
         "web-panel",
@@ -1300,6 +1301,7 @@ fn ci_jobs_and_gate_consume_the_same_route_outputs() {
         ("toml-fmt", "run_toml_fmt"),
         ("lefthook-pre-commit-speed", "run_lefthook_speed"),
         ("palette-tauri", "run_palette"),
+        ("palette-tauri-android", "run_palette"),
         ("windows-check", "run_windows_check"),
         ("windows-build", "run_windows_build"),
         ("web-panel", "run_web"),
@@ -1604,6 +1606,44 @@ fn release_artifact_actions_are_immutable_and_renovate_managed() {
 }
 
 #[test]
+fn palette_android_ci_builds_arm64_apk_with_pinned_mobile_toolchain() {
+    let ci = workflow_job_block(
+        include_str!("../.github/workflows/ci.yml"),
+        "palette-tauri-android",
+    );
+    assert!(ci.contains("runs-on: ci-pool-system"));
+    assert!(ci.contains("targets: aarch64-linux-android"));
+    assert!(ci.contains("java-version: \"21\""));
+    assert!(ci.contains(r#""ndk;28.2.13676358""#));
+    assert!(ci.contains("tauri android init --ci --skip-targets-install"));
+    assert!(ci.contains("tauri android build --debug --target aarch64 --apk --ci"));
+    assert!(ci.contains("app-universal-debug.apk"));
+}
+
+#[test]
+fn palette_release_builds_and_signs_android_apk_and_aab() {
+    let release = include_str!("../.github/workflows/palette-release.yml");
+    let android = workflow_job_block(release, "palette-android");
+    assert!(android.contains(
+        "aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android"
+    ));
+    assert!(android.contains(r#""ndk;28.2.13676358""#));
+    assert!(android.contains("tauri android init"));
+    assert!(android.contains("--apk --aab --ci --config src-tauri/tauri.ci.conf.json"));
+    assert!(android.contains("ANDROID_KEYSTORE_BASE64"));
+    assert!(android.contains("apksigner"));
+    assert!(android.contains("jarsigner"));
+    assert!(android.contains("Palette Android publishing requires Android keystore secrets"));
+    assert!(android.contains("-unsigned.apk"));
+    assert!(android.contains("-unsigned.aab"));
+
+    let publish = workflow_job_block(release, "publish");
+    assert!(publish.contains("needs: [version, palette-linux, palette-windows, palette-android]"));
+    assert!(publish.contains("axon-palette-android-$version.apk"));
+    assert!(publish.contains("axon-palette-android-$version.aab"));
+}
+
+#[test]
 fn palette_builds_frontend_once_per_ci_or_release_run() {
     let ci = workflow_job_block(include_str!("../.github/workflows/ci.yml"), "palette-tauri");
     assert_eq!(
@@ -1622,7 +1662,7 @@ fn palette_builds_frontend_once_per_ci_or_release_run() {
         1
     );
     assert!(frontend.contains("name: axon-palette-frontend"));
-    for job_name in ["palette-linux", "palette-windows"] {
+    for job_name in ["palette-linux", "palette-windows", "palette-android"] {
         let job = workflow_job_block(release, job_name);
         assert!(job.contains("needs: [version, frontend]"));
         assert!(job.contains("name: axon-palette-frontend"));

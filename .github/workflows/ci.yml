@@ -614,6 +614,59 @@ jobs:
           node apps/palette-tauri/scripts/copy-artifacts.mjs
           test -s bin/axon-palette-release
 
+  palette-tauri-android:
+    name: palette-tauri-android
+    runs-on: ci-pool-system
+    timeout-minutes: 60
+    needs: [changes]
+    if: ${{ needs.changes.outputs.run_palette == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.3.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: apps/palette-tauri/pnpm-lock.yaml
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+      - uses: ./.github/actions/setup-rust-kache
+        with:
+          toolchain: 1.97.1
+          targets: aarch64-linux-android
+      - name: Install Palette Android SDK packages
+        run: >-
+          sdkmanager
+          "platforms;android-36"
+          "build-tools;36.0.0"
+          "ndk;28.2.13676358"
+      - name: Install palette dependencies
+        run: pnpm --dir apps/palette-tauri install --frozen-lockfile
+      - name: Initialize Tauri Android project
+        run: pnpm --dir apps/palette-tauri exec tauri android init --ci --skip-targets-install
+      - name: Build Tauri Palette Android ARM64 debug APK
+        run: pnpm --dir apps/palette-tauri exec tauri android build --debug --target aarch64 --apk --ci
+      - name: Verify Palette Android debug APK
+        run: test -s apps/palette-tauri/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+      - uses: actions/upload-artifact@v5
+        with:
+          name: axon-palette-android-arm64-debug
+          path: apps/palette-tauri/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          if-no-files-found: error
+
   windows-check:
     name: windows-check (xtask only)
     runs-on: windows-latest
@@ -1209,6 +1262,7 @@ jobs:
       - toml-fmt
       - lefthook-pre-commit-speed
       - palette-tauri
+      - palette-tauri-android
       - windows-check
       - windows-build
       - web-panel
@@ -1251,6 +1305,7 @@ jobs:
           require_success_or_intentional_skip toml-fmt "${{ needs.toml-fmt.result }}" "${{ needs.changes.outputs.run_toml_fmt }}"
           require_success_or_intentional_skip lefthook-pre-commit-speed "${{ needs.lefthook-pre-commit-speed.result }}" "${{ needs.changes.outputs.run_lefthook_speed }}"
           require_success_or_intentional_skip palette-tauri "${{ needs.palette-tauri.result }}" "${{ needs.changes.outputs.run_palette }}"
+          require_success_or_intentional_skip palette-tauri-android "${{ needs.palette-tauri-android.result }}" "${{ needs.changes.outputs.run_palette }}"
           require_success_or_intentional_skip windows-check "${{ needs.windows-check.result }}" "${{ needs.changes.outputs.run_windows_check }}"
           require_success_or_intentional_skip windows-build "${{ needs.windows-build.result }}" "${{ needs.changes.outputs.run_windows_build }}"
           require_success_or_intentional_skip web-panel "${{ needs.web-panel.result }}" "${{ needs.changes.outputs.run_web }}"

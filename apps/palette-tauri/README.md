@@ -1,15 +1,14 @@
 # Axon Palette Tauri
 
-> Current pre-#298 desktop client docs. The future Palette contract is
-> `docs/pipeline-unification/surfaces/palette-contract.md`; after the
-> source-pipeline cutover, generated DTOs/OpenAPI should drive source/job/graph
-> and memory surfaces.
+> Current Palette client docs. The source-pipeline contract is
+> `docs/pipeline-unification/surfaces/palette-contract.md`; generated
+> DTOs/OpenAPI should drive source/job/graph and memory surfaces.
 
-Tauri v2 palette for the Axon HTTP API. The frontend uses React, Aurora registry components installed through the shadcn CLI, and an OpenAPI-generated TypeScript type layer.
+Tauri v2 desktop + Android palette for the Axon HTTP API. The frontend uses React, Aurora registry components installed through the shadcn CLI, and an OpenAPI-generated TypeScript type layer.
 
 > **Note (M1):** OpenAPI types are generated into `src/lib/axon-api.d.ts` via `pnpm generate:api`.  Request execution is currently hand-coded in `src/lib/axonClient.ts`; a full migration to the generated request helpers is tracked in issue #177 (finding M1).  Known state: the generated `axon-api.d.ts` is **not yet imported anywhere** — it serves only as a reference for the wire shapes hand-coded in `axonClient.ts`, and responses are read by **key-probing** untyped payloads rather than against the generated types. Closing #177 is what wires the generated types in.
 
-The desktop shell launches hidden, registers a global shortcut, and exposes a tray/menu entry for showing the palette, opening settings, and quitting. The main window is an undecorated transient palette that hides on Escape, close, and blur by default.
+On desktop, the shell launches hidden, registers a global shortcut, and exposes a tray/menu entry for showing the palette, opening settings, and quitting. The desktop main window is an undecorated transient palette that hides on Escape, close, and blur by default. Android uses a normal visible full-screen main window with a phone-oriented top-anchored command surface.
 
 ## Commands
 
@@ -54,7 +53,39 @@ cargo test --manifest-path apps/palette-tauri/src-tauri/Cargo.toml
 `generate:api` reads `apps/web/openapi/axon.json` by default (local file, offline).
 Override with `AXON_OPENAPI_URL` or pass `--live` to fetch from a live instance.
 
-Runtime palette preferences are stored in the platform app config directory as `settings.json`. To connect, configure the Axon server URL and either a static bearer token or OAuth sign-in. The palette does not read or write the server's `~/.axon/.env` or `~/.axon/config.toml`; server runtime configuration stays on the Axon host. The remaining settings control only the desktop palette, including its shortcut, result limit, theme, and hide-on-blur behavior.
+## Android
+
+Android uses Tauri 2's generated Gradle project under `src-tauri/gen/android/`. That directory is intentionally gitignored and can be regenerated from the tracked Tauri configuration.
+
+Host prerequisites:
+
+- JDK 21 (`JAVA_HOME`)
+- Android SDK with platform-tools, build-tools, command-line tools, and an installed platform (`ANDROID_HOME` / `ANDROID_SDK_ROOT`)
+- Android NDK 28.2.13676358 or newer (`NDK_HOME`); CI pins 28.2.13676358
+- Rust Android targets: `aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, and `x86_64-linux-android`
+
+```bash
+# Generate/regenerate the ignored Android Gradle project.
+pnpm exec tauri android init --ci
+
+# Run against a connected device/emulator.
+pnpm android:dev
+
+# Build Android APKs (Tauri builds all supported ABIs by default).
+pnpm android:build
+
+# Fast architecture-specific CI/local smoke.
+pnpm exec tauri android build --debug --target aarch64 --apk --ci
+
+# Google Play / release artifacts.
+pnpm exec tauri android build --apk --aab --ci --config src-tauri/tauri.ci.conf.json
+```
+
+The mobile surface intentionally excludes desktop-local actions whose semantics do not carry over safely: **Browser**, **Files/SFTP**, and **Terminal** are removed from mobile discovery, slash commands, and help, and their Rust IPC commands reject direct calls on mobile. Desktop-only global-shortcut, hide-on-blur, and hide-palette controls are also hidden. Remote Axon HTTP actions, GitHub browsing, settings, history, and OAuth remain available.
+
+`.github/workflows/ci.yml` has a required `palette-tauri-android` lane that builds an ARM64 debug APK whenever Palette changes. `palette-release.yml` builds APK + AAB artifacts for the Palette `palette-v*` release stream. Release publishing requires `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. Manual non-publishing runs can emit explicitly `-unsigned` inspection artifacts when those secrets are absent.
+
+Runtime palette preferences are stored in the platform app config directory as `settings.json`. To connect, configure the Axon server URL and either a static bearer token or OAuth sign-in. The palette does not read or write the server's `~/.axon/.env` or `~/.axon/config.toml`; server runtime configuration stays on the Axon host. Palette-local preferences remain available on both clients, while desktop-only shortcut and hide-on-blur controls are hidden on mobile.
 
 When using the browser dev entry against a public reverse-proxied Axon endpoint
 for live QA, set `AXON_DEV_SERVER` to the live server and `AXON_DEV_TOKEN` to a
@@ -73,7 +104,7 @@ so public-origin/CORS drift remains visible.
 The palette authenticates to Axon two ways, and both can be configured at once:
 
 - **Static bearer token** — enter it in the **Bearer token** field in Settings.
-- **OAuth "Sign in with Google"** — click **Sign in with Google** in the Connection tab's **Authentication** block. The palette runs an OAuth 2.0 Authorization Code + PKCE flow (RFC 8414 discovery → RFC 7591 dynamic client registration → server-native callback polling → `/token` exchange) **entirely in the Rust shell**. The system browser is launched with the `open` crate and completes on the Axon server's HTTPS `/native/callback` endpoint; the palette polls `/native/poll` for the short-lived authorization code and then exchanges it with PKCE. No webview HTTP and no new Tauri capabilities or CSP changes are involved.
+- **OAuth "Sign in with Google"** — click **Sign in with Google** in the Connection tab's **Authentication** block. The palette runs an OAuth 2.0 Authorization Code + PKCE flow (RFC 8414 discovery → RFC 7591 dynamic client registration → server-native callback polling → `/token` exchange) **entirely in the Rust shell**. The system browser is launched through Tauri's cross-platform `tauri-plugin-opener` and completes on the Axon server's HTTPS `/native/callback` endpoint; the palette polls `/native/poll` for the short-lived authorization code and then exchanges it with PKCE. No webview HTTP and no new Tauri capabilities or CSP changes are involved.
 
 Issued credentials are stored beside `settings.json` as `<app config dir>/oauth.json` (mode `0o600`, holding the refresh token) and cached in-process. The access token is refreshed proactively (60s skew) with single-flight safety: concurrent requests at expiry produce exactly one `/token` call and one disk write, against the `token_endpoint` persisted from discovery (so reverse-proxy deployments refresh correctly). **When signed in, the OAuth token takes precedence over the static token**; if no valid OAuth token exists for the active server, the static token is used.
 

@@ -74,6 +74,14 @@ describe("SettingsPanel", () => {
     expect(screen.getByDisplayValue("http://127.0.0.1:8001")).toBeInTheDocument();
   });
 
+  it("hides desktop-only client controls on mobile", () => {
+    renderPanel({ mobile: true });
+    expect(screen.queryByText("Global shortcut")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Hide on blur/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Max results")).toBeInTheDocument();
+    expect(screen.getByText("Open results inline")).toBeInTheDocument();
+  });
+
   it("calls onChange when the server URL is edited", async () => {
     const user = userEvent.setup();
     const { onChange } = renderPanel();

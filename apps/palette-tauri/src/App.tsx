@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { platform } from "@tauri-apps/plugin-os";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { PaletteShell } from "@/components/palette/PaletteShell";
@@ -8,7 +9,7 @@ import {
   confirmationFor,
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
-import { ACTIONS, actionMatches, type PaletteAction } from "@/lib/actions";
+import { ACTIONS, MOBILE_ACTIONS, actionMatches, type PaletteAction } from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
@@ -47,7 +48,12 @@ import { useWindowChrome } from "@/lib/useWindowChrome";
 
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 
+const runtimePlatform = isTauriRuntime ? platform() : null;
+const mobileRuntime = runtimePlatform === "android" || runtimePlatform === "ios";
+const runtimeActions = mobileRuntime ? MOBILE_ACTIONS : ACTIONS;
+
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
+document.documentElement.classList.toggle("tauri-mobile-runtime", mobileRuntime);
 
 export default function App() {
   const [view, dispatchView] = useReducer(viewReducer, INITIAL_VIEW);
@@ -118,6 +124,7 @@ export default function App() {
     showResultsLayout,
     validation,
   } = usePaletteSelection({
+    actions: runtimeActions,
     browseOpen,
     browserOpen,
     history,
@@ -168,6 +175,7 @@ export default function App() {
   }, []);
 
   const { submit } = useActionRunner({
+    actions: runtimeActions,
     client,
     config,
     run,
@@ -286,7 +294,13 @@ export default function App() {
     focusInput(true);
   }
 
-  const showHelpFor = usePaletteHelp({ dispatchView, setHistory, setQuery, setRun });
+  const showHelpFor = usePaletteHelp({
+    actions: runtimeActions,
+    dispatchView,
+    setHistory,
+    setQuery,
+    setRun,
+  });
   const onInputKeyDown = usePaletteInputKeyDown({
     active,
     askFallback,
@@ -352,7 +366,7 @@ export default function App() {
       const conversationAction =
         active?.subcommand === "chat"
           ? active
-          : ACTIONS.find((action) => action.subcommand === "ask");
+          : runtimeActions.find((action) => action.subcommand === "ask");
       if (!conversationAction) return;
       dispatchView({ type: "enterModeForRun", action: conversationAction });
       setQuery(text);
@@ -423,6 +437,7 @@ export default function App() {
         listboxOpen,
         liveRefresh,
         modeAction,
+        mobileRuntime,
         onCloseBrowser,
         onCollapse,
         onCopy,

@@ -12,6 +12,7 @@ interface PaletteFooterProps {
   onRecent: () => void;
   onSettings: () => void;
   onHide: () => void;
+  showHide?: boolean;
 }
 
 // Footer row: keyboard hint legend on the left, endpoint status + settings/hide
@@ -22,6 +23,7 @@ export function PaletteFooter({
   onRecent,
   onSettings,
   onHide,
+  showHide = true,
 }: PaletteFooterProps) {
   const showHints = config?.showFooterHints ?? false;
   return (
@@ -76,16 +78,18 @@ export function PaletteFooter({
         >
           <Settings size={14} />
         </Button>
-        <Button
-          variant="plain"
-          size="unstyled"
-          className="titlebar-button"
-          type="button"
-          onClick={onHide}
-          aria-label="Hide palette"
-        >
-          <X size={14} />
-        </Button>
+        {showHide && (
+          <Button
+            variant="plain"
+            size="unstyled"
+            className="titlebar-button"
+            type="button"
+            onClick={onHide}
+            aria-label="Hide palette"
+          >
+            <X size={14} />
+          </Button>
+        )}
       </span>
     </footer>
   );

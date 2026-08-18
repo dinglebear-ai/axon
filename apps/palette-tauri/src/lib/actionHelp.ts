@@ -61,16 +61,19 @@ export function isHelpRequest(value: string): boolean {
   return /^(?:help|--help|-h|\?)$/i.test(value.trim());
 }
 
-export function helpAction(): PaletteAction {
-  const action = ACTIONS.find((candidate) => candidate.subcommand === "help");
+export function helpAction(actions: readonly PaletteAction[] = ACTIONS): PaletteAction {
+  const action = actions.find((candidate) => candidate.subcommand === "help");
   if (!action) throw new Error("missing local help action");
   return action;
 }
 
-export function findHelpTarget(value: string): PaletteAction | undefined {
+export function findHelpTarget(
+  value: string,
+  actions: readonly PaletteAction[] = ACTIONS,
+): PaletteAction | undefined {
   const token = value.trim().split(/\s+/)[0] ?? "";
   if (!token) return undefined;
-  return ACTIONS.find((action) => action.subcommand !== "help" && actionInvokedBy(action, token));
+  return actions.find((action) => action.subcommand !== "help" && actionInvokedBy(action, token));
 }
 
 export function buildActionHelp(action: PaletteAction): ActionHelp {
@@ -90,14 +93,18 @@ export function buildActionHelp(action: PaletteAction): ActionHelp {
   };
 }
 
-export function buildCatalogHelp(): ActionHelp[] {
-  return ACTIONS.filter((action) => action.subcommand !== "help").map(buildActionHelp);
+export function buildCatalogHelp(actions: readonly PaletteAction[] = ACTIONS): ActionHelp[] {
+  return actions.filter((action) => action.subcommand !== "help").map(buildActionHelp);
 }
 
-export function helpMarkdown(target?: PaletteAction, unknownTarget?: string): string {
+export function helpMarkdown(
+  target?: PaletteAction,
+  unknownTarget?: string,
+  actions: readonly PaletteAction[] = ACTIONS,
+): string {
   if (!target) {
     const groups = new Map<string, ActionHelp[]>();
-    for (const item of buildCatalogHelp()) {
+    for (const item of buildCatalogHelp(actions)) {
       const list = groups.get(item.category) ?? [];
       list.push(item);
       groups.set(item.category, list);
@@ -140,18 +147,23 @@ export function helpMarkdown(target?: PaletteAction, unknownTarget?: string): st
 export function buildHelpPayload(
   target?: PaletteAction,
   unknownTarget?: string,
+  actions: readonly PaletteAction[] = ACTIONS,
 ): { target?: ActionHelp; catalog?: ActionHelp[]; unknownTarget?: string } {
-  return target ? { target: buildActionHelp(target) } : { catalog: buildCatalogHelp(), unknownTarget };
+  return target ? { target: buildActionHelp(target) } : { catalog: buildCatalogHelp(actions), unknownTarget };
 }
 
-export function buildHelpRun(target?: PaletteAction, unknownTarget?: string): HelpRunState {
-  const text = helpMarkdown(target, unknownTarget);
+export function buildHelpRun(
+  target?: PaletteAction,
+  unknownTarget?: string,
+  actions: readonly PaletteAction[] = ACTIONS,
+): HelpRunState {
+  const text = helpMarkdown(target, unknownTarget, actions);
   const result: PaletteResult = {
     ok: true,
     status: 200,
     path: "palette://help",
     method: "GET",
-    payload: buildHelpPayload(target, unknownTarget),
+    payload: buildHelpPayload(target, unknownTarget, actions),
   };
   return {
     kind: "success",

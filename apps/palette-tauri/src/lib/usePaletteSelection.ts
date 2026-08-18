@@ -20,6 +20,7 @@ import {
 import type { RunState } from "@/lib/runState";
 
 interface PaletteSelectionInput {
+  actions?: PaletteAction[];
   browseOpen: boolean;
   browserOpen: boolean;
   history: HistoryItem[];
@@ -35,6 +36,7 @@ interface PaletteSelectionInput {
 
 export function usePaletteSelection(input: PaletteSelectionInput) {
   const {
+    actions = ACTIONS,
     browseOpen,
     browserOpen,
     history,
@@ -48,17 +50,26 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
     settingsOpen,
   } = input;
   const parsed = useMemo(() => parseCommand(query), [query]);
+  const invoked = useMemo(
+    () =>
+      parsed.invoked
+        ? actions.find((action) => action.subcommand === parsed.invoked?.subcommand)
+        : undefined,
+    [actions, parsed.invoked],
+  );
+  const unavailableInvocation = Boolean(parsed.invoked && !invoked);
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
-    if (parsed.invoked) return [parsed.invoked];
-    if (looksLikeUrl(parsed.search)) return sortActionsForDisplay(ACTIONS).slice(0, 12);
-    const matches = ACTIONS.filter((action) => actionMatches(action, parsed.search));
+    if (unavailableInvocation) return [];
+    if (invoked) return [invoked];
+    if (looksLikeUrl(parsed.search)) return sortActionsForDisplay(actions).slice(0, 12);
+    const matches = actions.filter((action) => actionMatches(action, parsed.search));
     if (parsed.search.trim().length > 0 && matches.length === 0) {
-      const ask = ACTIONS.find((action) => action.subcommand === "ask");
+      const ask = actions.find((action) => action.subcommand === "ask");
       return ask ? [ask] : [];
     }
     return sortActionsByRelevance(matches, parsed.search).slice(0, 12);
-  }, [parsed.invoked, parsed.search]);
+  }, [actions, invoked, parsed.search, unavailableInvocation]);
   const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
   const previousSelectionKey = useRef(selectionKey);
   let selectedIndex = selected;
@@ -69,8 +80,10 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
   }
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
-  const slashInvokedAction = query.trimStart().startsWith("/") ? parsed.invoked : undefined;
-  const active = slashInvokedAction ?? modeAction ?? suggestedAction;
+  const slashInvokedAction = query.trimStart().startsWith("/") ? invoked : undefined;
+  const active = unavailableInvocation
+    ? undefined
+    : (slashInvokedAction ?? modeAction ?? suggestedAction);
   const askSessions = useMemo(
     () =>
       history.filter(

@@ -174,7 +174,7 @@ body[data-fixture] {
 }
 
 @media (max-width: 559px) {
-  body:not(.tauri-runtime) {
+  body {
     min-width: 0;
   }
 
@@ -397,6 +397,38 @@ textarea {
 .tauri-runtime .palette-shell-browse {
   height: 100vh;
   max-height: none;
+}
+
+/* Mobile uses the same Palette renderer as desktop, but the native surface is a
+   full-screen app rather than a floating launcher window. Keep the compact
+   command surface anchored near the top and give it phone-safe breathing room
+   instead of inheriting the desktop launcher's vertical centering. */
+.tauri-mobile-runtime,
+.tauri-mobile-runtime body,
+.tauri-mobile-runtime #app {
+  height: 100dvh;
+  background: var(--aurora-page-bg);
+}
+
+.tauri-mobile-runtime .palette-shell,
+.tauri-mobile-runtime .palette-shell-results,
+.tauri-mobile-runtime .palette-shell-browse,
+.tauri-mobile-runtime .palette-shell-compact {
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+}
+
+.tauri-mobile-runtime .palette-shell-compact {
+  --axon-launcher-inset: 0px;
+  min-height: 100dvh;
+  justify-content: flex-start;
+  overflow: hidden;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
 }
 
 .palette-titlebar {
