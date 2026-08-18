@@ -1,11 +1,13 @@
 //! Bounded Qdrant upsert batching.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::vec::IntoIter;
 
 use axon_api::source::*;
 use futures_util::stream::{self, StreamExt, TryStreamExt};
 
+use super::QdrantVectorStore;
 use super::convert::upsert_points_json;
 use super::http::QdrantHttp;
 use super::store_impl::request_usage;
@@ -14,11 +16,10 @@ use crate::store_helpers::stage_header;
 use crate::validation::validate_upsert_batch;
 
 pub(super) async fn upsert_batches_rest(
+    store: &QdrantVectorStore,
     http: &QdrantHttp,
     spec: &CollectionSpec,
     batch: VectorPointBatch,
-    point_buffer: usize,
-    parallelism: usize,
     stage: ErrorStage,
 ) -> Result<VectorStoreWriteResult> {
     validate_upsert_batch(spec, &batch, stage)?;
@@ -34,16 +35,30 @@ pub(super) async fn upsert_batches_rest(
         .endpoint()
         .collection_path(&batch.collection, "points?wait=true");
 
-    let bodies = ChunkedUpsertBatches::new(batch, point_buffer)
+    let bodies = ChunkedUpsertBatches::new(batch, store.point_buffer())
         .map(|chunk| upsert_points_json(spec, &chunk))
         .collect::<Result<Vec<_>>>()?;
     let requests = bodies.len() as u64;
+    let write_slots = store.write_slots();
+    let provider_id = store.provider_id().0.clone();
     stream::iter(bodies)
         .map(|body| {
             let url = &url;
-            async move { http.put_json(stage, url, &body, "qdrant_upsert").await }
+            let write_slots = Arc::clone(&write_slots);
+            let provider_id = provider_id.clone();
+            async move {
+                let _permit = write_slots.acquire_owned().await.map_err(|_| {
+                    ApiError::new(
+                        "vector.qdrant.write_admission_closed",
+                        stage,
+                        "Qdrant write admission gate is closed",
+                    )
+                    .with_provider_id(provider_id)
+                })?;
+                http.put_json(stage, url, &body, "qdrant_upsert").await
+            }
         })
-        .buffer_unordered(parallelism.max(1))
+        .buffer_unordered(store.write_parallelism())
         .try_collect::<Vec<_>>()
         .await?;
 

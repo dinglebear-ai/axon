@@ -1,5 +1,5 @@
 # Config Schema Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-17
 
 ## Contract
 
@@ -157,11 +157,14 @@ The target `config.toml` schema must include these keys at minimum:
 | `sources.default_scope_local` | enum | `directory` | `axon-services` |
 | `watch.tick_secs` | integer | `15` | `axon-jobs` |
 | `watch.lease_secs` | integer | `300` | `axon-jobs` |
-| `providers.embedding.batch_size` | integer | `128` | `axon-embedding` |
-| `providers.embedding.max_concurrent_requests` | integer | `4` | `axon-embedding` |
+| `providers.embedding.batch_size` | integer | `96` | `axon-embedding` |
+| `providers.embedding.max_concurrent_requests` | integer | `8` | `axon-embedding` |
 | `providers.embedding.interactive_reserved_requests` | integer | `1` | `axon-jobs` |
-| `providers.vector.write_concurrency` | integer | `4` | `axon-vectors` |
-| `providers.vector.read_concurrency` | integer | `16` | `axon-vectors` |
+| `providers.vector.write_concurrency` | integer | `1` | `axon-vectors` |
+| `providers.vector.upsert_batch_points` | integer | `1024` | `axon-vectors` |
+| `providers.vector.read_concurrency` | integer | reserved / not enforced | reserved |
+| `providers.vector.delete_concurrency` | integer | reserved / not enforced | reserved |
+| `providers.vector.delete_batch_points` | integer | reserved / not enforced | reserved |
 | `providers.llm.completion_concurrency` | integer | `4` | `axon-llm` |
 | `providers.search.default` | enum | `searxng-then-tavily` | `axon-adapters` |
 | `retrieval.limit` | integer | `10` | `axon-retrieval` |

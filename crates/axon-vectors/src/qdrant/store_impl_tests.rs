@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::*;
 use crate::qdrant::configure_parallelism;
 use serde_json::json;
@@ -35,6 +37,25 @@ fn qdrant_parallelism_configuration_is_bounded_away_from_zero() {
     configure_parallelism(&mut store, 4, 8);
     assert_eq!(store.write_parallelism(), 4);
     assert_eq!(store.payload_index_parallelism(), 8);
+}
+
+#[test]
+fn qdrant_stores_share_parallelism_gates_for_the_same_endpoint_and_profile() {
+    let mut first = QdrantVectorStore::new("http://qdrant-shared.test", "first");
+    let mut second = QdrantVectorStore::new("http://qdrant-shared.test/", "second");
+    let mut other = QdrantVectorStore::new("http://qdrant-other.test", "other");
+    configure_parallelism(&mut first, 4, 8);
+    configure_parallelism(&mut second, 4, 8);
+    configure_parallelism(&mut other, 4, 8);
+
+    assert!(Arc::ptr_eq(
+        &first.parallelism_gates,
+        &second.parallelism_gates
+    ));
+    assert!(!Arc::ptr_eq(
+        &first.parallelism_gates,
+        &other.parallelism_gates
+    ));
 }
 
 #[test]

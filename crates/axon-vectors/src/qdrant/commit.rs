@@ -7,6 +7,8 @@
 //! `mark_unchanged_items_committed` copies carried-forward points into the new
 //! committed generation without mutating the previous generation's points.
 
+use std::sync::Arc;
+
 use axon_api::source::*;
 use futures_util::stream::{self, StreamExt, TryStreamExt};
 use serde::Deserialize;
@@ -53,6 +55,7 @@ pub async fn mark_generation_committed_rest(
     let url = http
         .endpoint()
         .collection_path(&collection, "points/payload?wait=true");
+    let _permit = store.write_permit(stage).await?;
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_mark_generation_committed")
         .await?;
@@ -93,6 +96,7 @@ pub async fn retire_generation_rest(
     let url = http
         .endpoint()
         .collection_path(&collection, "points/payload?wait=true");
+    let _permit = store.write_permit(stage).await?;
     let _ack: SimpleAck = http
         .post_json(stage, &url, &body, "qdrant_retire_generation")
         .await?;
@@ -186,10 +190,22 @@ pub async fn mark_unchanged_items_committed_rest(
             .map(|points| serde_json::json!({ "points": points }))
             .collect::<Vec<_>>();
         requests += bodies.len() as u64;
+        let write_slots = store.write_slots();
+        let provider_id = store.provider_id().0.clone();
         stream::iter(bodies)
             .map(|body| {
                 let url = &url;
+                let write_slots = Arc::clone(&write_slots);
+                let provider_id = provider_id.clone();
                 async move {
+                    let _permit = write_slots.acquire_owned().await.map_err(|_| {
+                        ApiError::new(
+                            "vector.qdrant.write_admission_closed",
+                            stage,
+                            "Qdrant write admission gate is closed",
+                        )
+                        .with_provider_id(provider_id)
+                    })?;
                     http.put_json(stage, url, &body, "qdrant_mark_unchanged_items_committed")
                         .await
                 }

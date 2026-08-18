@@ -155,7 +155,11 @@ Qdrant controls:
 - upsert batching via `qdrant.upsert-batch-size` in `~/.axon/config.toml`
   (env override: `AXON_QDRANT_UPSERT_BATCH_SIZE`; default `1024`)
 - upsert fanout via `qdrant.upsert-parallelism` in `~/.axon/config.toml`
-  (env override: `AXON_QDRANT_UPSERT_PARALLELISM`; default `1`).
+  (env override: `AXON_QDRANT_UPSERT_PARALLELISM`; default `1`). This is a
+  process-shared point/generation-write request ceiling for stores using the
+  same Qdrant endpoint/admission profile; durable vector scheduler slots govern
+  logical operations separately. Payload-index creation has its own bounded
+  `qdrant.payload-index-parallelism` gate.
   Qdrant's generic bulk-upload guidance suggests `64-256` point batches with
   `2-4` parallel streams; on the local `code.claude.com` docs corpus,
   `1024/1` measured faster, so treat `256/2-4` as a large-import tuning profile

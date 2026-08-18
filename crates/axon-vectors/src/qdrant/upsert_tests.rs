@@ -140,6 +140,9 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
         })
         .await;
     let http = QdrantHttp::new(&server.base_url(), "qdrant-test").expect("http");
+    let mut store = QdrantVectorStore::new(server.base_url(), "qdrant-test");
+    crate::qdrant::configure_point_buffer(&mut store, 2);
+    crate::qdrant::configure_parallelism(&mut store, 3, 1);
     let spec = CollectionSpec {
         collection: "axon-test".to_string(),
         dense: VectorConfig {
@@ -158,7 +161,7 @@ async fn qdrant_upsert_chunks_overlap_with_configured_parallelism() {
     };
 
     let task = tokio::spawn(async move {
-        upsert_batches_rest(&http, &spec, batch(5), 2, 3, ErrorStage::Upserting).await
+        upsert_batches_rest(&store, &http, &spec, batch(5), ErrorStage::Upserting).await
     });
 
     tokio::time::timeout(Duration::from_secs(1), async {
