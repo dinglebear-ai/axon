@@ -2145,6 +2145,7 @@ fn config_schema_covers_all_required_contract_keys() {
         "providers.embedding.max_concurrent_requests",
         "providers.embedding.interactive_reserved_requests",
         "providers.vector.write_concurrency",
+        "providers.vector.upsert_batch_points",
         "providers.vector.read_concurrency",
         "providers.llm.completion_concurrency",
         "providers.search.default",

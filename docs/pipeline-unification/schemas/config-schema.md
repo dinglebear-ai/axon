@@ -116,7 +116,7 @@ set below.
   "secret": false,
   "owner_crate": "axon-embedding",
   "description": "Maximum chunks per embedding request.",
-  "example": 128,
+  "example": 96,
   "removed": false,
   "replacement": null
 }
@@ -162,9 +162,7 @@ The target `config.toml` schema must include these keys at minimum:
 | `providers.embedding.interactive_reserved_requests` | integer | `1` | `axon-jobs` |
 | `providers.vector.write_concurrency` | integer | `1` | `axon-vectors` |
 | `providers.vector.upsert_batch_points` | integer | `1024` | `axon-vectors` |
-| `providers.vector.read_concurrency` | integer | reserved / not enforced | reserved |
-| `providers.vector.delete_concurrency` | integer | reserved / not enforced | reserved |
-| `providers.vector.delete_batch_points` | integer | reserved / not enforced | reserved |
+| `providers.vector.read_concurrency` | integer | `16` (accepted, not enforced) | `axon-vectors` |
 | `providers.llm.completion_concurrency` | integer | `4` | `axon-llm` |
 | `providers.search.default` | enum | `searxng-then-tavily` | `axon-adapters` |
 | `retrieval.limit` | integer | `10` | `axon-retrieval` |

@@ -2,9 +2,9 @@
 //!
 //! This module is the xtask-local source of truth for the settled 20-section
 //! `config.toml` contract and the `.env` bootstrap/secret contract. It is
-//! intentionally independent of `axon-core`'s runtime config (which has not
-//! yet implemented this shape) so the generator can reflect the contract
-//! ahead of the runtime cutover. See:
+//! intentionally separate from `axon-core`'s runtime config structs, but its
+//! keys, defaults, and enforcement descriptions must match the shipped parser
+//! and provider behavior. See:
 //! - `docs/pipeline-unification/schemas/config-schema.md` (artifact shape)
 //! - `docs/pipeline-unification/configuration/config-contract.md` (20-section
 //!   shape + required key table)
@@ -214,7 +214,7 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "providers.embedding.batch_size",
         "providers",
         "integer",
-        "128",
+        "96",
         "axon-embedding",
         Some("AXON_EMBEDDING_BATCH_SIZE"),
         false,
@@ -228,12 +228,12 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "providers.embedding.max_concurrent_requests",
         "providers",
         "integer",
-        "4",
+        "8",
         "axon-embedding",
         None,
         false,
         true,
-        "Max concurrent embedding requests.",
+        "Process-shared concurrent TEI requests for one endpoint/admission profile.",
     ),
     (
         "providers.embedding.interactive_reserved_requests",
@@ -250,12 +250,23 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         "providers.vector.write_concurrency",
         "providers",
         "integer",
-        "4",
+        "1",
         "axon-vectors",
         None,
         false,
         true,
-        "Concurrent vector writes.",
+        "Process-shared concurrent vector point/generation writes.",
+    ),
+    (
+        "providers.vector.upsert_batch_points",
+        "providers",
+        "integer",
+        "1024",
+        "axon-vectors",
+        Some("AXON_QDRANT_UPSERT_BATCH_SIZE"),
+        false,
+        true,
+        "Maximum points per Qdrant upsert request.",
     ),
     (
         "providers.vector.read_concurrency",
@@ -266,7 +277,7 @@ const RAW_CONFIG_KEYS: &[RawConfigKey] = &[
         None,
         false,
         true,
-        "Concurrent vector reads.",
+        "Accepted for forward compatibility; not currently enforced.",
     ),
     (
         "providers.llm.completion_concurrency",

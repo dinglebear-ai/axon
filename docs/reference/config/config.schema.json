@@ -147,7 +147,7 @@
       "type": "integer"
     },
     {
-      "default": 128,
+      "default": 96,
       "description": "Maximum chunks per embedding request.",
       "env_key": "AXON_EMBEDDING_BATCH_SIZE",
       "key": "providers.embedding.batch_size",
@@ -160,8 +160,8 @@
       "type": "integer"
     },
     {
-      "default": 4,
-      "description": "Max concurrent embedding requests.",
+      "default": 8,
+      "description": "Process-shared concurrent TEI requests for one endpoint/admission profile.",
       "env_key": null,
       "key": "providers.embedding.max_concurrent_requests",
       "owner_crate": "axon-embedding",
@@ -186,8 +186,8 @@
       "type": "integer"
     },
     {
-      "default": 4,
-      "description": "Concurrent vector writes.",
+      "default": 1,
+      "description": "Process-shared concurrent vector point/generation writes.",
       "env_key": null,
       "key": "providers.vector.write_concurrency",
       "owner_crate": "axon-vectors",
@@ -199,8 +199,21 @@
       "type": "integer"
     },
     {
+      "default": 1024,
+      "description": "Maximum points per Qdrant upsert request.",
+      "env_key": "AXON_QDRANT_UPSERT_BATCH_SIZE",
+      "key": "providers.vector.upsert_batch_points",
+      "owner_crate": "axon-vectors",
+      "removed": false,
+      "replacement": null,
+      "restart_required": true,
+      "secret": false,
+      "section": "providers",
+      "type": "integer"
+    },
+    {
       "default": 16,
-      "description": "Concurrent vector reads.",
+      "description": "Accepted for forward compatibility; not currently enforced.",
       "env_key": null,
       "key": "providers.vector.read_concurrency",
       "owner_crate": "axon-vectors",
@@ -430,17 +443,17 @@
     ],
     "source_inputs": [
       {
-        "checksum": "sha256:acd46422e9d9e129b9612dfd7b87319d6d4af1de6be9c24472cb0e7a8e7acb4d",
+        "checksum": "sha256:76d4b050eb45d3bf08f3dfccd35fd0fc43ee285e4a3b02faeb41ce18ab8d8792",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/configuration/config-contract.md"
       },
       {
-        "checksum": "sha256:fcec11271050d626b8a4a42f1714c45bfcff2bd66b75ad4a3962e51d0ef84c24",
+        "checksum": "sha256:bafb8843a22824f572bb9bd81bf20269b874d5522a842cf169202ef3f612e7ec",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/schemas/config-schema.md"
       },
       {
-        "checksum": "sha256:7371fdeb0b0c38dd5cb6f05ae438d3e9a37bf23ef755afcd1cc3b2d2f56bb394",
+        "checksum": "sha256:0d2b3cc42f13c8f25d92a540e382584671e79cb21d62cfd87af8dad9b0fa7984",
         "kind": "rust_module",
         "path": "xtask/src/schemas/config_schema_registry.rs"
       }

@@ -136,7 +136,7 @@ Rules:
 | Key | Default | Meaning |
 |---|---|---|
 | `write_concurrency` | `1` | Process-shared concurrent vector point/generation writes for stores using the same endpoint/profile; payload-index creation is gated separately. |
-| `read_concurrency` | reserved | Accepted by the schema but not currently enforced. |
+| `read_concurrency` | `16` (accepted, not enforced) | Parsed for forward compatibility; Qdrant reads are not yet admission-gated by this key. |
 | `delete_concurrency` | reserved | Accepted by the schema but not currently enforced independently of `write_concurrency`. |
 | `upsert_batch_points` | `1024` | Points per Qdrant upsert request. |
 | `delete_batch_points` | reserved | Accepted by the schema but not currently wired to runtime delete batching. |
