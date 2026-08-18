@@ -55,6 +55,7 @@ use super::{handlers, routing};
         handlers::exploration::research,
         handlers::exploration::exploration_stream::research_stream,
         handlers::memory::remember_memory,
+        handlers::memory::list_memories,
         handlers::memory::search_memories,
         handlers::memory::memory_context,
         handlers::memory::review_memories,

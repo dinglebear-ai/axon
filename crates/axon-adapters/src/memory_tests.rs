@@ -105,6 +105,10 @@ async fn adapter_projects_one_record_through_discover_acquire_normalize() {
         document.metadata.get("memory_status"),
         Some(&serde_json::json!("active"))
     );
+    assert_eq!(
+        document.chunk_hints.first().map(|hint| &hint.profile),
+        Some(&ChunkProfile::AtomicMetadata)
+    );
     assert!(
         document
             .metadata

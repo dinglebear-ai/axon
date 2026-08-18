@@ -323,7 +323,14 @@ fn memory_document(
         mime_type: Some("text/plain".to_string()),
         structured_payload: None,
         artifact_id: None,
-        chunk_hints: plan.route.chunking_hints.clone(),
+        // Memory bodies are opaque facts, not API schemas. Pin the adapter's
+        // document contract here so later enrichment cannot misclassify text
+        // containing words such as "API" as structured schema input.
+        chunk_hints: vec![ChunkHint {
+            profile: ChunkProfile::AtomicMetadata,
+            reason: "memory records are atomic facts".to_string(),
+            options: MetadataMap::new(),
+        }],
         parser_hints: plan.route.parser_hints.clone(),
     })
 }

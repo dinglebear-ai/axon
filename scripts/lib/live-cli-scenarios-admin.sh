@@ -237,7 +237,8 @@ handle_live_admin_setup_scenario() {
         kill -TERM "$palette_xvfb_pid" 2>/dev/null || true
         wait "$palette_xvfb_pid" 2>/dev/null || true
         palette_source_sha256="$(sha256sum -- "$HARNESS_SOURCE_BIN" | awk '{print $1}')"
-        palette_worktree_sha256="$(worktree_content_fingerprint)"
+        palette_worktree_sha256="$(worktree_content_fingerprint \
+          Cargo.toml Cargo.lock src crates/axon-cli scripts tests/live_command_harness.rs)"
         if [ "$palette_source_sha256" = "$HARNESS_SOURCE_BIN_SHA256" ]; then
           record "palette source binary isolation" "contract" "PASS" "0" \
             "target/debug/axon checksum unchanged" "$HARNESS_SOURCE_BIN"
@@ -246,7 +247,7 @@ handle_live_admin_setup_scenario() {
           record "palette source binary isolation" "contract" "FAIL" "1" \
             "target/debug/axon checksum changed" "$HARNESS_SOURCE_BIN"
         fi
-        if [ "$palette_worktree_sha256" = "$WORKTREE_CONTENT_SHA256" ]; then
+        if [ "$palette_worktree_sha256" = "$PALETTE_WORKTREE_CONTENT_SHA256" ]; then
           record "palette worktree isolation" "contract" "PASS" "0" \
             "tracked and non-ignored source files unchanged" "$ROOT_DIR"
         else

@@ -1049,6 +1049,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -1602,6 +1607,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -2125,6 +2135,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -2643,6 +2658,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -3102,6 +3122,11 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_title"
               ]
             },
             {
@@ -3679,6 +3704,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -4238,6 +4268,11 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_title"
               ]
             },
             {
@@ -4811,6 +4846,11 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_title"
               ]
             },
             {
@@ -5921,6 +5961,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -6485,6 +6530,11 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_title"
               ]
             },
             {
@@ -7057,6 +7107,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -7621,6 +7676,11 @@
             {
               "required": [
                 "memory_salience"
+              ]
+            },
+            {
+              "required": [
+                "memory_title"
               ]
             },
             {
@@ -8203,6 +8263,11 @@
             },
             {
               "required": [
+                "memory_title"
+              ]
+            },
+            {
+              "required": [
                 "memory_acquire"
               ]
             },
@@ -8627,6 +8692,9 @@
       "type": "string"
     },
     "memory_status": {
+      "type": "string"
+    },
+    "memory_title": {
       "type": "string"
     },
     "memory_type": {
@@ -9874,6 +9942,7 @@
         "memory_scope_kind": "memory_scope_kind",
         "memory_scope_value": "memory_scope_value",
         "memory_status": "active",
+        "memory_title": "memory_title",
         "memory_type": "memory_type",
         "payload_contract_version": "2026-07-01",
         "redacted_field_count": 0,
@@ -10553,7 +10622,7 @@
         "path": "crates/axon-vectors/src/payload.rs"
       },
       {
-        "checksum": "sha256:dcc6d5ec5d07892f0c20d777f75e050d67e825101ce1111866784b2bc2cc94fc",
+        "checksum": "sha256:84e9abac65d826b2d96a77eee2b0d2d4337b714309ba75c90f0612ba9f05bcff",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
@@ -10725,6 +10794,7 @@
           "memory_scope_value",
           "memory_confidence",
           "memory_salience",
+          "memory_title",
           "memory_acquire",
           "memory_decay_profile",
           "memory_embedding_ref_count",

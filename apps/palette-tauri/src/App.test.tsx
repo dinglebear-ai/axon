@@ -27,8 +27,6 @@ const config = {
   openResultsInline: true,
   agentBubbles: false,
   showFooterHints: false,
-  envValues: {},
-  configValues: {},
 };
 
 describe("App local help", () => {

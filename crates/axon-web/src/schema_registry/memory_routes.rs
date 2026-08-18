@@ -7,6 +7,7 @@
 use super::{RestRouteSpec, read, read_query_surface, write};
 
 pub(super) static MEMORY_ROUTES: &[RestRouteSpec] = &[
+    read("GET", "/v1/memories", "list_memories", "MemoryResponse"),
     write(
         "POST",
         "/v1/memories",

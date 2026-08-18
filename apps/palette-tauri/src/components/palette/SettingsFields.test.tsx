@@ -4,21 +4,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { SecretInput, SelectInput } from "./SettingsFields";
+import { SecretInput } from "./SettingsFields";
 
 describe("SettingsFields", () => {
-  it("keeps unset-option semantics while using the Aurora native select", async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<SelectInput value="" options={["", "dark", "light"]} onChange={onChange} />);
-
-    const select = screen.getByRole("combobox");
-    expect(select).toHaveDisplayValue("(unset)");
-
-    await user.selectOptions(select, "dark");
-    expect(onChange).toHaveBeenCalledWith("dark");
-  });
-
   it("keeps secret values hidden and suppressed from browser helpers until explicit reveal", async () => {
     const user = userEvent.setup();
     render(<SecretInput value="token-123" onChange={vi.fn()} />);

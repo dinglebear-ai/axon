@@ -28,12 +28,11 @@ impl ProviderScheduler {
         let expired_grants = sqlx::query(
             "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
              terminal_reason = 'grant_expired', updated_at = datetime('now')
-             WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
+             WHERE capacity_domain = ? AND instance_id = ?
                AND status = 'granted' AND grant_deadline <= datetime('now')",
         )
         .bind(domain_name(self.domain.kind)?)
         .bind(&self.domain.instance_id)
-        .bind(&self.domain.authority_id)
         .execute(&self.pool)
         .await?
         .rows_affected();

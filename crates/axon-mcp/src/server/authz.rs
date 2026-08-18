@@ -407,7 +407,7 @@ pub fn required_scope_for(action: &str, subaction: &str) -> Option<&'static str>
     // state.
     if action == "watch" {
         return match subaction {
-            "list" | "get" | "history" | "" => Some("axon:read"),
+            "list" | "get" | "status" | "history" | "" => Some("axon:read"),
             "create" | "exec" | "update" | "pause" | "resume" | "delete" => Some("axon:write"),
             _ => Some("__deny__"),
         };

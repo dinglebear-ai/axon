@@ -11,7 +11,6 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Input } from "@/components/ui/aurora/input";
-import { NativeSelect } from "@/components/ui/aurora/native-select";
 
 export function TextInput({
   value,
@@ -35,7 +34,15 @@ export function TextInput({
   );
 }
 
-export function SecretInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+export function SecretInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
   const [show, setShow] = useState(false);
   return (
     <span className="settings-secret">
@@ -53,33 +60,28 @@ export function SecretInput({ value, onChange, placeholder }: { value: string; o
         spellCheck={false}
         data-1p-ignore
       />
-      <Button variant="plain" size="unstyled" type="button" onClick={() => setShow((visible) => !visible)} aria-label={show ? "Hide secret" : "Reveal secret"}>
+      <Button
+        variant="plain"
+        size="unstyled"
+        type="button"
+        onClick={() => setShow((visible) => !visible)}
+        aria-label={show ? "Hide secret" : "Reveal secret"}
+      >
         {show ? <EyeOff size={13} /> : <Eye size={13} />}
       </Button>
     </span>
   );
 }
 
-export function SelectInput({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
-  return (
-    <span className="settings-select settings-native-select">
-      <NativeSelect
-        value={value}
-        className="settings-select-control"
-        style={{ height: "34px" }}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option || "(unset)"}
-          </option>
-        ))}
-      </NativeSelect>
-    </span>
-  );
-}
-
-export function MiniToggle({ label, on, onChange }: { label?: string; on: boolean; onChange: (value: boolean) => void }) {
+export function MiniToggle({
+  label,
+  on,
+  onChange,
+}: {
+  label?: string;
+  on: boolean;
+  onChange: (value: boolean) => void;
+}) {
   return (
     <Button
       variant="plain"

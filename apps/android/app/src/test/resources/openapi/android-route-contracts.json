@@ -215,6 +215,11 @@
     "requiresAuth": true
   },
   {
+    "method": "GET",
+    "path": "/v1/memories",
+    "requiresAuth": true
+  },
+  {
     "method": "POST",
     "path": "/v1/memories",
     "requiresAuth": true

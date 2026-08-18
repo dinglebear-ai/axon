@@ -19,6 +19,7 @@ async fn rest_exposes_per_verb_memory_routes() {
     let memory_id = "mem_test";
 
     let routes: &[(&str, String)] = &[
+        ("GET", "/v1/memories".to_string()),
         ("POST", "/v1/memories".to_string()),
         ("POST", "/v1/memories/search".to_string()),
         ("GET", format!("/v1/memories/{memory_id}")),

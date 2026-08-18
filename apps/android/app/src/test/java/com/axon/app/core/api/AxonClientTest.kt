@@ -87,15 +87,19 @@ class AxonClientTest {
     }
 
     @Test
-    fun `askStream reads nested done result answer from server SSE`() = runBlocking {
+    fun `askStream reads unified StreamEvent final answer from server SSE`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody(
                     """
-                    data: {"type":"meta","phase":"retrieving"}
-                    data: {"type":"delta","text":"streamed "}
-                    data: {"type":"delta","text":"answer"}
-                    data: {"type":"done","result":{"query":"hello","answer":"final answer","timing_ms":null}}
+                    event: progress
+                    data: {"event_id":"evt-1","kind":"progress","sequence":0,"timestamp":"2026-08-15T23:00:00Z","job_id":"job-1","data":{"phase":"synthesizing","message":"retrieving"}}
+                    event: delta
+                    data: {"event_id":"evt-2","kind":"token","sequence":1,"timestamp":"2026-08-15T23:00:01Z","job_id":"job-1","data":{"text":"streamed "}}
+                    event: delta
+                    data: {"event_id":"evt-3","kind":"token","sequence":2,"timestamp":"2026-08-15T23:00:02Z","job_id":"job-1","data":{"text":"answer"}}
+                    event: done
+                    data: {"event_id":"evt-4","kind":"final","sequence":3,"timestamp":"2026-08-15T23:00:03Z","job_id":"job-1","data":{"query":"hello","answer":"final answer","timing_ms":null}}
 
                     """.trimIndent(),
                 )
@@ -113,14 +117,17 @@ class AxonClientTest {
     }
 
     @Test
-    fun `chatStream reads direct chat done answer from server SSE`() = runBlocking {
+    fun `chatStream reads unified StreamEvent final answer from server SSE`() = runBlocking {
         server.enqueue(
             MockResponse()
                 .setBody(
                     """
-                    data: {"type":"meta","phase":"chatting"}
-                    data: {"type":"delta","text":"plain "}
-                    data: {"type":"done","answer":"plain answer"}
+                    event: progress
+                    data: {"event_id":"evt-1","kind":"progress","sequence":0,"timestamp":"2026-08-15T23:00:00Z","job_id":"job-1","data":{"phase":"synthesizing","message":"chatting"}}
+                    event: delta
+                    data: {"event_id":"evt-2","kind":"token","sequence":1,"timestamp":"2026-08-15T23:00:01Z","job_id":"job-1","data":{"text":"plain "}}
+                    event: done
+                    data: {"event_id":"evt-3","kind":"final","sequence":2,"timestamp":"2026-08-15T23:00:02Z","job_id":"job-1","data":{"message":"hello","answer":"plain answer","model":"chat-model"}}
 
                     """.trimIndent(),
                 )
@@ -139,6 +146,25 @@ class AxonClientTest {
     }
 
     @Test
+    fun `askStream surfaces unified structured error from server SSE`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """
+                    event: error
+                    data: {"event_id":"evt-1","kind":"error","sequence":0,"timestamp":"2026-08-15T23:00:00Z","job_id":"job-1","data":{},"error":{"code":"ask.stream_failed","message":"provider unavailable","stage":"synthesizing","retryable":true,"severity":"error","visibility":"public","details":{}}}
+
+                    """.trimIndent(),
+                )
+                .addHeader("Content-Type", "text/event-stream"),
+        )
+
+        val events = client.askStream(AskRequest(query = "hello")).toList()
+
+        assertEquals(listOf(AskStreamEvent.Error("provider unavailable")), events)
+    }
+
+    @Test
     fun `query deserializes results list`() = runBlocking {
         server.enqueue(
             MockResponse()
@@ -149,6 +175,21 @@ class AxonClientTest {
         assertTrue(result.isSuccess)
         assertEquals(1, result.getOrThrow().results.size)
         assertEquals("https://a.com", result.getOrThrow().results[0].url)
+    }
+
+    @Test
+    fun `query unwraps the versioned success envelope`() = runBlocking {
+        server.enqueue(
+            MockResponse()
+                .setBody(
+                    """{"ok":true,"contract_version":"1","data":{"results":[{"rank":1,"score":0.9,"rerank_score":0.0,"url":"https://a.com","source":"a.com","snippet":"some text","chunk_index":null}]},"warnings":[],"request_id":"req-1","trace":{},"artifacts":[]}""",
+                ).addHeader("Content-Type", "application/json"),
+        )
+
+        val result = client.query(QueryRequest(query = "test"))
+
+        assertTrue(result.isSuccess)
+        assertEquals("https://a.com", result.getOrThrow().results.single().url)
     }
 
     @Test

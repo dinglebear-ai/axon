@@ -273,6 +273,12 @@ pub(super) const REST_ROUTE_INVENTORY: &[RestRouteInfo] = &[
         openapi: true,
     },
     RestRouteInfo {
+        method: "GET",
+        path: "/v1/memories",
+        auth: RestRouteAuth::Read,
+        openapi: true,
+    },
+    RestRouteInfo {
         method: "POST",
         path: "/v1/memories",
         auth: RestRouteAuth::Write,

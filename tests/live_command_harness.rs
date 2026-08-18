@@ -114,6 +114,10 @@ fn worktree_fingerprint_batches_hashing_and_detects_mutations() {
         !helper.contains("sha256sum -- \"$path\""),
         "the fingerprint must not spawn one sha256sum process per file"
     );
+    assert!(
+        helper.contains("git ls-files -co --exclude-standard -z -- \"${pathspec[@]}\""),
+        "the fingerprint must support a scoped pathspec for concurrent harness runs"
+    );
 
     let temp = tempfile::tempdir().expect("tempdir");
     let git_status = Command::new("git")

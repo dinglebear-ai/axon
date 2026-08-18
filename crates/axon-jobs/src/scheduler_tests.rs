@@ -216,7 +216,10 @@ async fn reconcile_cancels_expired_grants_and_quarantines_uncertain_calls() {
         })
         .await
         .expect("grant");
-    sqlx::query("UPDATE provider_reservations SET grant_deadline = datetime('now', '-1 second') WHERE reservation_id = ?")
+    // A crashed/replaced scheduler authority must not permanently consume
+    // shared capacity. Grant deadlines are authority-independent because a
+    // grant has not activated provider work yet.
+    sqlx::query("UPDATE provider_reservations SET grant_deadline = datetime('now', '-1 second'), authority_id = 'replaced-authority' WHERE reservation_id = ?")
         .bind(&grant.reservation_id)
         .execute(&pool)
         .await

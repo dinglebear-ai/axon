@@ -1,9 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
 };
 
 use serde::{Deserialize, Serialize};
@@ -48,8 +45,6 @@ struct PaletteSettings {
     open_results_inline: bool,
     agent_bubbles: bool,
     show_footer_hints: bool,
-    env_values: HashMap<String, serde_json::Value>,
-    config_values: HashMap<String, serde_json::Value>,
     /// Persisted SFTP connection profiles (host/username/local-key-path
     /// triples — never a password or key material). See
     /// `persistence::write_settings`'s blast-radius note: settings.json is
@@ -106,7 +101,7 @@ fn load_palette_config(app: AppHandle) -> Result<PaletteSettings, String> {
 
 #[tauri::command]
 fn load_palette_default_config() -> PaletteSettings {
-    default_settings(&read_default_env_entries())
+    default_settings()
 }
 
 #[tauri::command]
@@ -115,23 +110,11 @@ fn save_palette_settings(
     settings: PaletteSettings,
 ) -> Result<PaletteSettings, String> {
     let settings = normalize_settings(settings);
-    // 1. Validate and persist Axon runtime config (env + toml) first so that
-    //    file writes succeed before any in-process state is mutated.
-    save_axon_env(&settings)?;
-    save_axon_config(&settings)?;
-    // 2. Persist palette-only preferences (no env/config keys).
+    // Axon server configuration belongs to the server. The desktop app only
+    // persists its connection credentials and palette-local preferences.
     save_palette_prefs(&app, &settings)?;
-    // 3. Only mutate runtime state (shortcut) after all writes succeed.
     update_shortcut(&app, &settings)?;
-    Ok(settings_with_file_values(settings))
-}
-
-fn save_axon_env(settings: &PaletteSettings) -> Result<(), String> {
-    write_axon_env_values(&settings.env_values).map_err(|err| err.to_string())
-}
-
-fn save_axon_config(settings: &PaletteSettings) -> Result<(), String> {
-    write_axon_config_values(&settings.config_values).map_err(|err| err.to_string())
+    Ok(settings)
 }
 
 fn save_palette_prefs(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
@@ -192,8 +175,7 @@ fn set_blur_dismiss(state: tauri::State<'_, BlurDismiss>, enabled: bool) {
 
 fn merged_settings(app: &AppHandle) -> Result<PaletteSettings, String> {
     let persisted = read_settings_result(app)?;
-    let env_entries = read_default_env_entries();
-    let defaults = default_settings(&env_entries);
+    let defaults = default_settings();
 
     Ok(merge_settings(persisted, defaults))
 }
@@ -203,7 +185,7 @@ fn merged_settings_or_default(app: &AppHandle) -> PaletteSettings {
         Ok(settings) => settings,
         Err(err) => {
             diag::warn(&err.to_string());
-            default_settings(&read_default_env_entries())
+            default_settings()
         }
     }
 }
@@ -225,41 +207,22 @@ fn merge_settings(persisted: PartialPaletteSettings, defaults: PaletteSettings) 
         open_results_inline: persisted.open_results_inline.unwrap_or(true),
         agent_bubbles: persisted.agent_bubbles.unwrap_or(false),
         show_footer_hints: persisted.show_footer_hints.unwrap_or(false),
-        env_values: defaults.env_values,
-        config_values: defaults.config_values,
         sftp_connections: persisted.sftp_connections.unwrap_or_default(),
     })
 }
 
-fn default_settings(env_entries: &[(String, String)]) -> PaletteSettings {
-    let server_url = value_for("AXON_SERVER_URL", env_entries)
-        .map(|value| value.trim().trim_end_matches('/').to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string());
-    let token = value_for("AXON_HTTP_TOKEN", env_entries)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let collection = value_for("AXON_COLLECTION", env_entries)
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "axon".to_string());
-
+fn default_settings() -> PaletteSettings {
     PaletteSettings {
-        server_url,
-        token,
+        server_url: DEFAULT_SERVER_URL.to_string(),
+        token: None,
         shortcut: DEFAULT_SHORTCUT.to_string(),
-        collection,
+        collection: "axon".to_string(),
         result_limit: 10,
         theme: PaletteTheme::System,
         hide_on_blur: true,
         open_results_inline: true,
         agent_bubbles: false,
         show_footer_hints: false,
-        env_values: env_entries
-            .iter()
-            .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
-            .collect(),
-        config_values: read_default_config_values(),
         sftp_connections: Vec::new(),
     }
 }
