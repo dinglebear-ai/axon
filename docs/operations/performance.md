@@ -1,14 +1,15 @@
 ---
-title: "Performance Tuning Guide"
+title: "Performance"
 created: 2026-02-25
-updated: 2026-07-30
+updated: 2026-08-17
 ---
 
-# Performance Tuning Guide
-Last Modified: 2026-03-03
+# Performance
 
-Version: 1.0.0
-Last Updated: 2026-02-25T01:26:53-05:00
+Axon throughput is bounded by source acquisition, document preparation,
+embedding capacity, Qdrant writes, provider reservations, and the durable job
+scheduler. Tune one constrained boundary at a time and keep correctness gates
+enabled.
 
 ## Table of Contents
 
@@ -22,7 +23,8 @@ Last Updated: 2026-02-25T01:26:53-05:00
 8. Server-Mode HTTP Tuning
 9. Benchmark Workflow
 10. Symptom -> Tuning Matrix
-11. Source Map
+11. Safety Limits
+12. Source Map
 
 ## Scope
 
@@ -326,10 +328,10 @@ Each run owns an `axon_stress_*` collection and an isolated
 `AXON_DATA_DIR`/SQLite database. The exit trap deletes both even after failure.
 The retained report contains discovery evidence, per-job latency, p50/p95/max
 latency, document/chunk/vector throughput, terminal counts, graph counts,
-error counts, and Qdrant point verification. Durable scheduler reservations are
-reported as not applicable because source plans currently manage embedding
-capacity in memory rather than requesting rows in `provider_reservations`.
-Prepared chunks are pre-redaction while Qdrant points are post-redaction, so the
+error counts, Qdrant point verification, and durable provider-reservation rows
+for the tracked jobs. Verification fails if any reservation remains requested,
+queued, granted, or active after those jobs are terminal. Prepared chunks are
+pre-redaction while Qdrant points are post-redaction, so the
 report records secret-policy skips and the resulting point delta explicitly;
 it requires nonzero publication rather than falsely requiring those counts to
 match.
@@ -348,12 +350,20 @@ verified SQLite/Qdrant cleanup. Heavy mode rejects loopback and the
 | `ask` too slow | context size/LLM latency | lower candidate/chunk/context limits |
 | HTTP/MCP action appears slow | upstream TEI/Qdrant/LLM or network latency | compare with local CLI, lower ask context, verify service endpoints |
 
+## Safety Limits
+
+Do not remove SSRF checks, authorization, redaction, cancellation polling,
+generation publication rules, provider reservation cleanup, or cleanup-debt
+handling to gain throughput. Those boundaries are part of correctness and the
+benchmark/stress harnesses are expected to keep them enabled.
+
 ## Source Map
 
 - `README.md` (profiles and tuning flags)
-- `src/core/config/*`
-- `src/crawl/engine.rs`
-- `src/vector/ops/tei/tei_client.rs`
-- `src/vector/ops/commands/*`
-- `src/web/server/handlers/rest/*` (server-mode REST + ask routes)
-- `src/web/server.rs`
+- `crates/axon-core/src/config/` (runtime configuration and tuning)
+- `crates/axon-adapters/src/web_engine/` (web acquisition and discovery)
+- `crates/axon-services/src/source/` (unified source execution)
+- `crates/axon-embedding/src/tei.rs` (embedding provider admission)
+- `crates/axon-vectors/src/qdrant/` (Qdrant writes and indexing)
+- `crates/axon-jobs/src/scheduler.rs` (durable provider scheduling)
+- `crates/axon-web/src/server/` (REST/MCP-adjacent HTTP surfaces)

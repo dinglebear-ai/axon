@@ -306,10 +306,15 @@ sqlite3 -json "$AXON_SQLITE_PATH" \
      FROM jobs
     WHERE job_id IN ($(sed "s/.*/'&'/" "$jobs_file" | paste -sd, -));" \
   >"$OUTDIR/sqlite-jobs.json"
-jq -n '{
-  status: "not_applicable",
-  reason: "source plans do not request durable scheduler reservations; embedding capacity is managed in memory"
-}' >"$OUTDIR/provider-reservations.json"
+sqlite3 -json "$AXON_SQLITE_PATH" \
+  "SELECT reservation_id, job_id, stage_id, provider_kind, provider_id,
+          capacity_domain, instance_id, requested_priority, effective_priority,
+          requested_units, granted_units, status, attempt, terminal_reason,
+          quarantined, updated_at
+     FROM provider_reservations
+    WHERE job_id IN ($(sed "s/.*/'&'/" "$jobs_file" | paste -sd, -))
+    ORDER BY updated_at, reservation_id;" \
+  >"$OUTDIR/provider-reservations.json"
 sqlite3 -json "$AXON_SQLITE_PATH" \
   "SELECT
       (SELECT COUNT(*) FROM graph_nodes) AS nodes,
@@ -441,7 +446,9 @@ jq -n \
           primary_met_threshold: ($primary_documents * 100 >= $target_pages * $min_completion_percent),
           qdrant_has_points: ($qdrant_points > 0),
           graph_published: (($graph[0][0].nodes // 0) > 0 and ($graph[0][0].evidence // 0) > 0),
-          durable_provider_reservations_applicable: false,
+          durable_provider_reservations_applicable: true,
+          provider_reservations_terminal: all(($providers[0] // [])[];
+            .status == "released" or .status == "expired" or .status == "canceled" or .status == "failed"),
           no_error_events: (($errors[0][0].error_events // 0) == 0)
         }
       }
@@ -454,6 +461,7 @@ jq -e '
     and .primary_met_threshold
     and .qdrant_has_points
     and .graph_published
+    and .provider_reservations_terminal
     and .no_error_events
 ' "$REPORT" >/dev/null || die "stress verification failed; see $REPORT"
 
