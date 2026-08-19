@@ -104,7 +104,7 @@ Pushed after reviewing Depot `25de725` constructor/contract semantics:
 - `cargo test -p axon-api artifact_candidate -- --nocapture`: 7 passed, 0 failed;
 - `generated-contracts refresh && check`: passed; generated schema reports the five G0 core required fields, 18 properties, and `additionalProperties=false`.
 
-### C2 unified SourceRequest candidate sink - implementation complete, final clippy running
+### 9ad1b48d4 - unified SourceRequest candidate sink
 
 Current wiring:
 
@@ -142,18 +142,17 @@ Adversarial review findings addressed before checkpoint:
 - impossible accepted/partial/rejected receipt counts are rejected as degraded evidence;
 - no new migration/table/job/ledger/vector path, unbounded fan-out, retry loop, spawn, or destructive publication authority was introduced by C2.
 
-C2 is ready for checkpoint commit/push.
+C2 checkpoint `9ad1b48d4` is committed and pushed to draft PR #569.
 
 ## Next
 
-1. complete C2 and push checkpoint;
-2. implement structured/bounded skills.sh discovery through the unified source adapter path;
-3. prove incremental refresh/watch via existing ledger;
-4. inspect Depot's current intake API and add versioned sink;
-5. semantic/graph evidence hooks;
-6. bounded seed only after gates;
-7. fmt/clippy/warnings/generated contracts/layering/focused concurrency+differential tests;
-8. adversarial review and resolve findings.
+1. implement structured/bounded skills.sh discovery through the unified source adapter path;
+2. prove incremental refresh/watch via existing ledger;
+3. inspect Depot's current intake API and add versioned sink;
+4. semantic/graph evidence hooks;
+5. bounded seed only after gates;
+6. fmt/clippy/warnings/generated contracts/layering/focused concurrency+differential tests;
+7. adversarial review and resolve findings.
 
 ## Do not do yet
 
