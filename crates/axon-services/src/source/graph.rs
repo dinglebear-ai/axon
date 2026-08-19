@@ -39,7 +39,7 @@ use axon_api::source::{
     EnrichmentKind, EnrichmentStatus, GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate,
     GraphEvidence, GraphNodeCandidate, GraphWriteSummary, ItemKind, ManifestItem, MetadataMap,
     ParserHint, PipelinePhase, SourceEnrichment, SourceId, SourceItemKey, SourceKind,
-    SourceManifest, StageCounts, StageId, StageResultHeader, Timestamp,
+    SourceManifest, SourceScope, StageCounts, StageId, StageResultHeader, Timestamp,
 };
 use axon_graph::candidate::validate_candidate;
 use axon_graph::sqlite::SqliteGraphStore;
@@ -266,7 +266,7 @@ fn build_candidate(
     // `graph query <uri>` can never match a plain URI (seen live on the
     // reset 7.0 stores).
     let container = GraphNodeCandidate {
-        node_kind: container_node_kind(kind).to_string(),
+        node_kind: container_node_kind(kind, manifest.scope).to_string(),
         stable_key: container_key.clone(),
         label: canonical_uri.to_string(),
         properties: uri_properties(canonical_uri),
@@ -275,7 +275,7 @@ fn build_candidate(
     let mut nodes = vec![container];
     let mut edges = Vec::new();
     let mut evidence = Vec::new();
-    let edge_kind = containment_edge_kind(kind);
+    let edge_kind = containment_edge_kind(kind, manifest.scope);
 
     for item in &manifest.items {
         let doc_key = document_stable_key(item);
@@ -373,19 +373,20 @@ fn document_stable_key(item: &ManifestItem) -> String {
 
 /// Registry node kind for the source container, chosen per acquisition family.
 /// Every returned name is a closed [`axon_graph::node::GraphNodeKind`] variant.
-fn container_node_kind(kind: SourceKind) -> &'static str {
-    match kind {
-        SourceKind::Web => "web_origin",
-        SourceKind::Git => "repo",
-        SourceKind::Local => "local_checkout",
-        SourceKind::Feed => "feed",
-        SourceKind::Reddit => "reddit_subreddit",
-        SourceKind::Youtube => "youtube_channel",
-        SourceKind::Session => "session",
-        SourceKind::Registry => "package",
-        SourceKind::CliTool | SourceKind::McpTool => "artifact",
-        SourceKind::Memory => "source",
-        SourceKind::Upload => "derived_source",
+fn container_node_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
+    match (kind, scope) {
+        (SourceKind::Registry, SourceScope::Api) => "source",
+        (SourceKind::Web, _) => "web_origin",
+        (SourceKind::Git, _) => "repo",
+        (SourceKind::Local, _) => "local_checkout",
+        (SourceKind::Feed, _) => "feed",
+        (SourceKind::Reddit, _) => "reddit_subreddit",
+        (SourceKind::Youtube, _) => "youtube_channel",
+        (SourceKind::Session, _) => "session",
+        (SourceKind::Registry, _) => "package",
+        (SourceKind::CliTool | SourceKind::McpTool, _) => "artifact",
+        (SourceKind::Memory, _) => "source",
+        (SourceKind::Upload, _) => "derived_source",
     }
 }
 
@@ -409,18 +410,19 @@ fn document_node_kind(item: &ManifestItem) -> &'static str {
 
 /// Registry containment edge kind (container → document) per family. Every
 /// returned name is a closed [`axon_graph::edge::GraphEdgeKind`] variant.
-fn containment_edge_kind(kind: SourceKind) -> &'static str {
-    match kind {
-        SourceKind::Web => "docs_site_contains_page",
-        SourceKind::Git => "commit_contains_file",
-        SourceKind::Local => "commit_contains_file",
-        SourceKind::Feed => "feed_contains_entry",
-        SourceKind::Reddit => "subreddit_has_thread",
-        SourceKind::Youtube => "youtube_channel_has_video",
-        SourceKind::Session => "session_has_turn",
-        SourceKind::Registry => "package_has_version",
-        SourceKind::CliTool | SourceKind::McpTool => "source_produced_artifact",
-        SourceKind::Memory | SourceKind::Upload => "source_indexed_as",
+fn containment_edge_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
+    match (kind, scope) {
+        (SourceKind::Registry, SourceScope::Api) => "source_indexed_as",
+        (SourceKind::Web, _) => "docs_site_contains_page",
+        (SourceKind::Git, _) => "commit_contains_file",
+        (SourceKind::Local, _) => "commit_contains_file",
+        (SourceKind::Feed, _) => "feed_contains_entry",
+        (SourceKind::Reddit, _) => "subreddit_has_thread",
+        (SourceKind::Youtube, _) => "youtube_channel_has_video",
+        (SourceKind::Session, _) => "session_has_turn",
+        (SourceKind::Registry, _) => "package_has_version",
+        (SourceKind::CliTool | SourceKind::McpTool, _) => "source_produced_artifact",
+        (SourceKind::Memory | SourceKind::Upload, _) => "source_indexed_as",
     }
 }
 

@@ -1604,12 +1604,12 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:0a65275defcc4bae3306cdc940b344cbb25a0c0f2be2d22162fc63c5f2f40740",
+        "checksum": "sha256:a0186e2268a11bee663c224a4cf9d4e28430330401f95d5637e3445aeaa4f979",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd",
+        "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

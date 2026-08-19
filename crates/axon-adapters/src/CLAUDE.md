@@ -31,7 +31,7 @@ normalize; they don't own storage.
 | `memory.rs` / `upload.rs` | `MemorySourceAdapter` / `UploadSourceAdapter` — memory + upload source families |
 | `manifest.rs` | `AcquisitionManifest` (added/changed/removed) |
 | `web.rs` / `local.rs` / `git.rs` | web page/site, local file/dir, git repo adapters |
-| `registry_sources.rs` / `feed.rs` | package-registry, RSS/Atom/JSON feed adapters |
+| `registry_sources.rs` / `feed.rs` | package registries plus bounded `skills.sh` catalog API, RSS/Atom/JSON feed adapters |
 | `youtube.rs` / `reddit.rs` / `sessions.rs` | media/social/session-export adapters |
 | `cli_tool.rs` / `mcp_tool.rs` | CLI-tool and MCP-tool call adapters |
 | `testing.rs` | `FakeSourceAdapter` + happy/auth/degraded/failure fixtures |
@@ -50,7 +50,8 @@ normalize; they don't own storage.
 - **Every adapter emits `SourceDocument`, never `PreparedDocument`** or vector points.
 - `artifact_candidates` is additive and defaults empty; candidates are bounded evidence tied to the same changed documents/job/generation, never a second crawl path.
 - Candidate/sink types cannot claim Depot publication/revision authority; the individual payload stays `dinglebear.artifact-candidate/v1`.
-- **Every adapter declares scopes and required auth/secrets.**
+- **Every adapter declares scopes and required auth/secrets.** `skills.sh` is `registry + api`, uses only its bounded structured API with a short-lived bearer token, and must not persist or log that token.
+- `skills.sh` catalog acquisition is metadata-only: do not call detail/file endpoints or mirror third-party skill bytes before explicit license/right gates exist.
 - **Acquisition never writes to ledger or vector store directly** — all acquired content re-enters the shared pipeline afterward.
 - Adapter failures carry `FetchStatus` plus a retry/degradation policy.
 - Bringing a new source online = register adapter + scope + parser + metadata + tests + docs per `sources/new-source-contract.md`.

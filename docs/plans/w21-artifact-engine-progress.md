@@ -144,15 +144,52 @@ Adversarial review findings addressed before checkpoint:
 
 C2 checkpoint `9ad1b48d4` is committed and pushed to draft PR #569.
 
+### C3 structured skills.sh catalog discovery - implementation in progress
+
+Current structured provider slice:
+
+- routes `skills.sh`, `skills.sh:leaderboard`, and `skills.sh:search` through the existing `SourceRequest` path as `SourceKind::Registry + SourceScope::Api`, canonicalized under `catalog://skills.sh/...`;
+- treats that canonical URI as the sole leaderboard/search mode identity: adapter options cannot override `mode` and silently make the fetched endpoint diverge from source identity;
+- keeps the concrete registry executor and existing ledger/jobs/watch lifecycle rather than creating a skills-specific persistence or scheduling subsystem;
+- uses the official `https://skills.sh/api/v1/skills` JSON API with Vercel OIDC bearer auth, a 20-second request timeout, 4 MiB streaming response cap, default 100-row/one-page discovery, hard 1,000-row/10-page ceiling, and provider-documented 500 leaderboard / 200 search page ceilings;
+- pagination is sequential and stable-sized for the run, with stable-id dedupe so duplicate rows cannot consume the unique result ceiling;
+- HTTP 429 stops the current bounded run immediately, caps `Retry-After` at 300 seconds, and projects a provider-scope retry hint without sleeping/retrying locally; 5xx/network failures are likewise provider-scope retryable while 401/403 fail closed with redacted credential errors;
+- never persists or logs the OIDC token;
+- deliberately does not call the detail/files endpoint, so third-party skill files do not enter Axon catalog materialization before license/right gates exist;
+- maps safe listing JSON into stable manifest items, structured `SourceDocument`s, and frozen `dinglebear.artifact-candidate/v1` evidence from the same changed item;
+- candidate evidence preserves installs/source type/duplicate state, resolves safe `installUrl` repository pointers without inventing a source path/ref, marks redistribution unknown, emits no observed files, and therefore fails the public-byte gate;
+- candidate observation time is evidence-backed from the catalog dump and fails closed if that timestamp is missing rather than falling back to wall clock time;
+- Registry `api` graph projection uses generic source/artifact semantics instead of pretending catalog rows are package versions.
+
+C3 close items still intentionally outstanding:
+
+- bounded audit-signal enrichment must avoid an N+1/full-corpus request pattern.
+
+Focused C3 proof after adversarial hardening:
+
+- `axon-adapters` skills.sh filter: 16 passed, 0 failed, including canonical route-mode inference, provider-future cancellation with exactly one request, HTTP 429 capped retry hint, HTTP 503 provider retry classification, canonical pointer mapping, evidence-backed timestamps, hard limits, and the registry dump -> document -> frozen candidate vertical path;
+- `axon-route` skills.sh filter: 2 passed, 0 failed, including rejection of mode overrides that could diverge canonical source identity;
+- `axon-services` source-pipeline differential filter: 4 passed, 0 failed;
+- `axon-services` graph filter: 29 passed, 0 failed, including family-specific Registry `api` graph semantics;
+- generated-contract refresh/check: passed, including 504 doc-link checks, 127 removed-surface contract checks, and full docs inventory;
+- `xtask check-layering`: passed;
+- `cargo check -p axon-route -p axon-adapters -p axon-services --lib`: passed;
+- `cargo clippy -p axon-route -p axon-adapters -p axon-services --all-targets -- -D warnings`: passed;
+- `cargo fmt --all -- --check`: passed;
+- all new/touched C3 Rust modules checked by `scripts/enforce_monoliths.py --file`: passed with no allowlist additions;
+- `git diff --check`: passed;
+- live authenticated seed was not attempted because neither `SKILLS_SH_OIDC_TOKEN` nor `VERCEL_OIDC_TOKEN` is present in the DOOKIE execution environment; the adapter does not fall back to unauthenticated scraping.
+
 ## Next
 
-1. implement structured/bounded skills.sh discovery through the unified source adapter path;
+1. add bounded optional skills.sh audit-signal enrichment without default N+1 expansion;
 2. prove incremental refresh/watch via existing ledger;
 3. inspect Depot's current intake API and add versioned sink;
 4. semantic/graph evidence hooks;
 5. bounded seed only after gates;
-6. fmt/clippy/warnings/generated contracts/layering/focused concurrency+differential tests;
-7. adversarial review and resolve findings.
+6. final fmt/clippy/warnings checks and adversarial review;
+7. keep draft PR evidence current.
+
 
 ## Do not do yet
 

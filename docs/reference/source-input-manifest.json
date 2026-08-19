@@ -32,12 +32,12 @@
         {
           "path": "crates/axon-route/src/capability.rs",
           "kind": "rust_module",
-          "checksum": "sha256:0a65275defcc4bae3306cdc940b344cbb25a0c0f2be2d22162fc63c5f2f40740"
+          "checksum": "sha256:a0186e2268a11bee663c224a4cf9d4e28430330401f95d5637e3445aeaa4f979"
         },
         {
           "path": "docs/pipeline-unification/sources/adapter-scopes.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd"
+          "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af"
         },
         {
           "path": "docs/pipeline-unification/sources/new-source-contract.md",
@@ -45,7 +45,7 @@
           "checksum": "sha256:ee8c4580ce0787b176dd84b77e260adae4c0a02b607dc67f9fa7a3ac2f874fdd"
         }
       ],
-      "manifest_checksum": "6d697fa80425425b4594dd7fc3593d54de11a6def1c6ea5294be6dd692d8f292"
+      "manifest_checksum": "103fa583448d6a7c8007dfa3187fbc8fb18975a6e203adffc2d0ffe6e56db8f2"
     },
     {
       "family": "api",

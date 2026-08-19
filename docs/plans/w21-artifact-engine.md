@@ -63,15 +63,17 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 
 ### C3: skills.sh structured discovery
 
-- [ ] add a structured skills.sh adapter/path inside SourceRequest routing;
-- [ ] bounded leaderboard/search discovery with configurable page/result ceilings;
-- [ ] handle rate-limit headers and Retry-After with bounded backoff;
-- [ ] resolve source/installUrl to canonical repo/base URL/ref/path;
-- [ ] stable manifest item keys + hashes for ledger diffing;
-- [ ] emit SourceDocument metadata and ArtifactCandidate evidence from the same item;
-- [ ] preserve installs/sourceType/duplicate/audit signals as aggregator evidence;
-- [ ] do not copy detail-file bytes into public candidate delivery when license is unknown;
-- [ ] deterministic mock/server tests for pagination, 429, cancellation, and limits.
+- [x] add a structured skills.sh adapter/path inside SourceRequest routing;
+- [x] bounded leaderboard/search discovery with configurable page/result ceilings;
+- [x] project rate-limit `Retry-After` as a capped provider-scope retry hint without adapter-local sleep/retry loops;
+- [x] resolve `source`/`installUrl` to a canonical repo/base URL while leaving ref/path unset unless exact evidence exists;
+- [x] stable manifest item keys + hashes for ledger diffing;
+- [x] emit SourceDocument metadata and ArtifactCandidate evidence from the same item;
+- [x] preserve installs/sourceType/duplicate signals as aggregator evidence;
+- [ ] add bounded audit-signal enrichment without creating an N+1/full-corpus fetch pattern;
+- [x] do not call the detail/files endpoint or copy third-party file bytes into candidate delivery when license is unknown;
+- [x] deterministic mock/server tests for pagination, search, 429/Retry-After, 503, and hard limits;
+- [x] prove provider-future cancellation stops without hidden page fan-out.
 
 ### C4: incremental refresh/watch
 

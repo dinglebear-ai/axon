@@ -212,15 +212,33 @@ fn build_candidate_emits_container_and_document_skeleton() {
 
 #[test]
 fn document_and_edge_kinds_are_family_specific() {
-    assert_eq!(container_node_kind(SourceKind::Feed), "feed");
     assert_eq!(
-        containment_edge_kind(SourceKind::Feed),
+        container_node_kind(SourceKind::Feed, SourceScope::Feed),
+        "feed"
+    );
+    assert_eq!(
+        containment_edge_kind(SourceKind::Feed, SourceScope::Feed),
         "feed_contains_entry"
     );
-    assert_eq!(container_node_kind(SourceKind::Reddit), "reddit_subreddit");
     assert_eq!(
-        containment_edge_kind(SourceKind::Reddit),
+        container_node_kind(SourceKind::Reddit, SourceScope::Subreddit),
+        "reddit_subreddit"
+    );
+    assert_eq!(
+        containment_edge_kind(SourceKind::Reddit, SourceScope::Subreddit),
         "subreddit_has_thread"
+    );
+    assert_eq!(
+        container_node_kind(SourceKind::Registry, SourceScope::Api),
+        "source"
+    );
+    assert_eq!(
+        containment_edge_kind(SourceKind::Registry, SourceScope::Api),
+        "source_indexed_as"
+    );
+    assert_eq!(
+        container_node_kind(SourceKind::Registry, SourceScope::Package),
+        "package"
     );
     let repo_item = manifest_item("s", "k", "u", ItemKind::RepoFile);
     assert_eq!(document_node_kind(&repo_item), "repo_file");
