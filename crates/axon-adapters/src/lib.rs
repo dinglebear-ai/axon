@@ -44,8 +44,8 @@ pub use adapter::{
     SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
 };
 pub use artifact_candidates::{
-    ArtifactCandidateSink, NoopArtifactCandidateSink, artifact_candidate_dedupe,
-    artifact_candidate_id,
+    ArtifactCandidateSink, NoopArtifactCandidateSink, artifact_candidate_batch_idempotency_key,
+    artifact_candidate_dedupe, artifact_candidate_id,
 };
 pub use capability::{AdapterCapability, AdapterVersion};
 pub use enrichment::{NoopSourceEnricher, SourceEnricher};

@@ -93,16 +93,56 @@ PR #569 CI root cause and repair:
 
 ## Current work
 
-C2 shared pipeline wiring is staged locally but no further design expansion occurred until the neutral parity seam was frozen. The current wiring:
+### 1b8898b06 - frozen G0 optional evidence semantics
 
-- injects an ArtifactCandidateSink into TargetLocalSourceRuntime with a no-op default;
-- adds an additive default SourceAdapter candidate hook so all existing adapters remain unchanged;
-- collects candidates beside normalized changed documents from the same SourceRequest generation;
-- buffers candidates until generation publish succeeds, preventing ghost candidates from failed generations;
-- validates shared payload/crawl correlation and suppresses duplicate candidate IDs;
-- submits bounded post-commit candidate batches with optional/degraded sink failure semantics.
+Pushed after reviewing Depot `25de725` constructor/contract semantics:
 
-Next C2 proof is differential testing that no-op candidate plumbing leaves existing SourceDocument/chunk/vector results unchanged.
+- shared v1 fields remain unchanged;
+- only `schemaVersion`, `id`, `canonicalSourceUri`, `sourceProvider`, and `observedAt` are required by Axon's generated schema;
+- optional evidence deserializes with Depot-equivalent null/empty defaults;
+- canonical Rust serialization still emits the full 18-field frozen candidate shape;
+- `cargo test -p axon-api artifact_candidate -- --nocapture`: 7 passed, 0 failed;
+- `generated-contracts refresh && check`: passed; generated schema reports the five G0 core required fields, 18 properties, and `additionalProperties=false`.
+
+### C2 unified SourceRequest candidate sink - implementation complete, final clippy running
+
+Current wiring:
+
+- injects `ArtifactCandidateSink` into `TargetLocalSourceRuntime` with `NoopArtifactCandidateSink` production/test defaults;
+- adds an additive default `SourceAdapter::artifact_candidates` hook so existing adapters produce no candidate evidence unless explicitly artifact-aware;
+- collects candidates beside normalized changed documents from the same `SourceRequest`, `job_id`, source and ledger generation;
+- applies Axon's complete public-write redaction boundary to the candidate before shared-contract validation, including token-shaped values under otherwise innocent evidence keys;
+- validates frozen shared payload bounds plus crawl job/generation/source-item correlation and suppresses duplicate candidate IDs;
+- buffers candidates until the source generation has actually committed, preventing failed-generation ghost intake;
+- submits bounded candidate batches after commit only, with a hard Axon ceiling of 64 and smaller sink-advertised limits honored;
+- requires wrapper-version compatibility and sink idempotency support; impossible receipt accounting is rejected as degraded evidence;
+- sink capability, delivery, partial, rejected and invalid-receipt failures become source warnings and do not roll back already-committed RAG/vector state;
+- unchanged refresh does not replay candidate delivery.
+
+Focused proof:
+
+- final `axon-services` test binary compiled successfully;
+- candidate/sink + integration filter: 10 passed, 0 failed;
+- dedicated post-commit/unchanged-refresh integration: 1 passed, 0 failed;
+- existing `source_pipeline_differential_tests`: 4 passed, 0 failed;
+- default adapter candidate hook regression: 1 passed, 0 failed;
+- `cargo check -p axon-services --lib`: passed;
+- `cargo fmt --all -- --check`: passed;
+- `xtask check-layering`: passed;
+- `generated-contracts check`: passed;
+- changed product files pass the monolith hard limits with no allowlist additions;
+- `git diff --check`: passed.
+- `cargo clippy -p axon-api -p axon-adapters -p axon-services --all-targets -- -D warnings`: passed.
+
+Adversarial review findings addressed before checkpoint:
+
+- retry/recovery could have produced different batch idempotency keys if the same candidate set arrived in a different order; candidate IDs are now sorted before bounded partitioning, and the replay test reverses producer order while requiring identical delivery keys;
+- token-shaped evidence under a non-secret key could have bypassed shared key-name validation; the entire candidate now crosses Axon's existing public-write redactor before shared validation;
+- sinks that do not advertise idempotency are rejected before submission;
+- impossible accepted/partial/rejected receipt counts are rejected as degraded evidence;
+- no new migration/table/job/ledger/vector path, unbounded fan-out, retry loop, spawn, or destructive publication authority was introduced by C2.
+
+C2 is ready for checkpoint commit/push.
 
 ## Next
 

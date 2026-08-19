@@ -45,17 +45,21 @@ Add ArtifactCandidate discovery/enrichment delivery to Axon's existing SourceReq
 - [x] register ArtifactCandidate as a generated API schema root and refresh generated contract snapshots;
 - [x] identify and fix PR #569 rust-contracts root cause; ci-gate was only the downstream gate failure.
 
-W20 PR #37 had not yet pushed the conductor-requested corrected canonical fixture at the last parity check (`origin/feat/w20-artifact-registry` still `759f347`). Axon already targets the final `dinglebear.artifact-candidate/v1` identifier and the exact current G0 field/bound vocabulary. The copied fixture is intentionally replaceable byte-for-byte when W20 publishes its canonical JSON fixture.
+Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its canonical ArtifactCandidate and ArtifactInterchange v1 fixtures and treats the shared v1 field set as frozen. Evidence fields follow the G0 optional/default semantics while canonical serialization emits the full 18-field candidate shape.
 
 ### C2: shared pipeline wiring
 
-- [ ] inject ArtifactCandidateSink into ServiceContext with no-op default;
-- [ ] add a default no-candidate adapter/provider hook so existing adapters compile unchanged;
-- [ ] produce candidates after normalized SourceDocument creation from the same generation;
-- [ ] submit only bounded candidate batches;
-- [ ] preserve candidate receipt/warnings in source execution evidence without altering vector/RAG semantics;
-- [ ] ensure sink failure policy is explicit and optional by default;
-- [ ] prove no candidate path for existing adapters changes source document/vector counts.
+- [x] inject ArtifactCandidateSink into ServiceContext with no-op default;
+- [x] add a default no-candidate adapter/provider hook so existing adapters compile unchanged;
+- [x] produce candidates beside normalized changed SourceDocuments from the same generation;
+- [x] redact the complete candidate at Axon's public-write boundary before validation/delivery;
+- [x] buffer candidate output until source generation commit, preventing failed-generation ghost intake;
+- [x] submit only bounded candidate batches (hard ceiling 64, respecting smaller sink limits);
+- [x] require sink wrapper-version support and idempotency capability; validate receipt accounting;
+- [x] preserve candidate receipt/warnings in source execution evidence without altering committed vector/RAG semantics;
+- [x] ensure sink failure policy is explicit and optional/degraded by default;
+- [x] prove unchanged refresh does not replay candidate delivery;
+- [x] prove existing SourceRequest pipeline characterization remains unchanged with default/no-op candidate behavior.
 
 ### C3: skills.sh structured discovery
 

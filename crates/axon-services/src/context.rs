@@ -8,9 +8,9 @@ use axon_adapters::providers::{
     chrome_render::{ChromeRenderConfig, ChromeRenderProvider},
     http_fetch::{HttpFetchConfig, HttpFetchProvider},
 };
+use axon_adapters::{ArtifactCandidateSink, SourceAdapter, SourceAdapterRegistry, SourceEnricher};
 #[cfg(test)]
-use axon_adapters::{NoopSourceEnricher, web::WebSourceAdapter};
-use axon_adapters::{SourceAdapter, SourceAdapterRegistry, SourceEnricher};
+use axon_adapters::{NoopArtifactCandidateSink, NoopSourceEnricher, web::WebSourceAdapter};
 use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
@@ -66,6 +66,10 @@ pub struct TargetLocalSourceRuntime {
     pub vector_scheduler: Option<Arc<ProviderScheduler>>,
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
+    /// Optional evidence delivery boundary for ArtifactCandidate batches. The
+    /// production default is a no-op sink so existing SourceRequest/RAG behavior
+    /// is unchanged unless a sink (for example Depot) is explicitly configured.
+    pub artifact_candidate_sink: Arc<dyn ArtifactCandidateSink>,
     source_adapters: Arc<OnceCell<SourceAdapterRegistry>>,
     pub(crate) web_source_adapter: Arc<dyn SourceAdapter>,
     /// Real acquisition boundaries injected into the canonical web adapter.
@@ -81,6 +85,11 @@ pub struct TargetLocalSourceRuntime {
 }
 
 impl TargetLocalSourceRuntime {
+    pub fn with_artifact_candidate_sink(mut self, sink: Arc<dyn ArtifactCandidateSink>) -> Self {
+        self.artifact_candidate_sink = sink;
+        self
+    }
+
     pub(crate) async fn source_adapter_registry(
         &self,
         ctx: &ServiceContext,
@@ -135,6 +144,7 @@ impl TargetLocalSourceRuntime {
             embed_pool_max_inputs: 512,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
+            artifact_candidate_sink: Arc::new(NoopArtifactCandidateSink),
             source_adapters: Arc::new(OnceCell::new()),
             web_source_adapter,
             fetch_provider,

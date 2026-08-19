@@ -1,12 +1,12 @@
 ---
 title: "Source Pipeline"
 created: 2026-07-15
-updated: 2026-07-30
+updated: 2026-08-19
 ---
 
 # Source Pipeline
 
-Last Modified: 2026-07-19
+Last Modified: 2026-08-19
 
 All source acquisition, refresh, watch, indexing, graph extraction, embedding,
 publishing, and cleanup flow through one pipeline. CLI, MCP, and REST are thin
@@ -26,15 +26,19 @@ SourceRequest
   → acquire                    (axon-adapters, per-family)
   → ledger generation + manifest (axon-ledger)
   → normalize / parse / prepare (axon-document, axon-parse, axon-extract)
+    ↘ ArtifactCandidate[]      (optional evidence sibling; axon-api/axon-adapters)
   → embed                      (axon-embedding)
   → publish / vector write     (axon-vectors, axon-ledger)
+    ↘ candidate sink delivery  (optional, bounded, only after generation commit)
   → graph                      (axon-graph)
   → cleanup debt               (axon-prune)
   → SourceResult
 ```
 
 One durable `job_id` crosses every stage. Logs, events, ledger rows, graph
-updates, artifacts, vector payloads, and document status all share it.
+updates, artifacts, vector payloads, document status, and artifact-candidate
+batches all share it. `ArtifactCandidate` is an evidence output from the same
+generation, not a new pipeline phase or publication authority.
 
 ## Implemented stage order
 
@@ -53,10 +57,14 @@ requested
   → complete                            (result_map::to_source_result_with_counts)
 ```
 
-The family adapter owns the inner acquire→prepare→embed→publish run. The
-post-publish graph step writes the source container + document nodes/edges from
-`counts.graph_candidates`, and the cleanup step drains debt across vector,
-graph, memory, jobs, artifact, and document-cache stores.
+The family adapter owns the inner acquire→prepare→embed→publish run. An
+artifact-aware adapter may also emit neutral `dinglebear.artifact-candidate/v1`
+evidence beside normalized changed documents. The executor buffers that evidence
+and calls the optional `ArtifactCandidateSink` only after the generation has
+committed; sink failure degrades evidence delivery without rolling back already
+published RAG state. The post-publish graph step writes the source container +
+document nodes/edges from `counts.graph_candidates`, and the cleanup step drains
+debt across vector, graph, memory, jobs, artifact, and document-cache stores.
 
 ## Stage → owner map
 
@@ -109,7 +117,10 @@ The family dispatch (`dispatch_kind`) selects one of:
 | `upload` | uploaded files/archives/WARC/Repomix |
 
 Each adapter emits `SourceDocument` values; adapters never emit
-`PreparedDocument` directly (that is the DocumentPreparer's job).
+`PreparedDocument` directly (that is the DocumentPreparer's job). Artifact-aware
+adapters may additionally implement the additive `artifact_candidates` hook, but
+those candidates remain evidence-only outputs tied to the same changed documents,
+job, and generation.
 
 ## Transport projections
 

@@ -1,5 +1,6 @@
 //! Generic adapter-owned pipeline for sources.
 
+mod artifact_candidates;
 mod created_generation;
 mod generation_state;
 mod helpers;

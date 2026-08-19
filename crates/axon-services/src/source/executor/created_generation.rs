@@ -12,7 +12,7 @@ use super::helpers::*;
 use super::progress::{AcquisitionBatchProgress, ProgressCoordinator, stage_counts};
 use super::{
     ACQUIRE_BATCH_SIZE, SOURCE_LEASE_TTL_SECONDS, SourceEventEmitter, SourcePipelineInput,
-    metadata, publish, reuse, vectorize,
+    artifact_candidates, metadata, publish, reuse, vectorize,
 };
 use crate::context::TargetLocalSourceRuntime;
 use crate::reserved_call::{self, ArtifactCleanupGuard, ProviderCallContext};
@@ -105,7 +105,9 @@ pub(super) async fn run_created_generation(
             "publishing source generation",
         )
         .await;
-    let result = publish_created_generation(
+    let candidates = finalized.artifact_candidates;
+    let candidate_generation = generation.generation.clone();
+    let mut result = publish_created_generation(
         runtime,
         input,
         emitter,
@@ -129,6 +131,20 @@ pub(super) async fn run_created_generation(
             )
             .await;
         artifact_cleanup.disarm();
+        if let Ok(output) = &mut result {
+            let candidate_warnings = artifact_candidates::submit_committed_candidates(
+                runtime.artifact_candidate_sink.as_ref(),
+                input.plan.job_id,
+                input.plan.route.source.source_id.clone(),
+                &candidate_generation,
+                candidates,
+            )
+            .await;
+            if !candidate_warnings.is_empty() {
+                output.warnings.extend(candidate_warnings);
+                super::persist_degraded_summary(runtime, output).await;
+            }
+        }
     }
     result
 }
@@ -247,8 +263,9 @@ async fn process_changed_batch(
         )
         .await;
 
-    apply_enrichments(&mut documents, &enrichments);
-    let clean_output = output::store_clean_outputs(runtime, &input.plan, &documents).await?;
+    let (candidate_collection, clean_output) =
+        finalize_normalized_batch(runtime, input, generation, &mut documents, &enrichments).await?;
+    warnings.extend(candidate_collection.warnings);
     let enrichment_graph = enrichment_graph_candidates(&enrichments);
     let vectorized = vectorize::prepare_embed_publish(
         runtime,
@@ -264,21 +281,48 @@ async fn process_changed_batch(
     )
     .await?;
 
-    let mut enrichment_artifacts = Vec::new();
-    for enrichment in enrichments.values() {
-        warnings.extend(enrichment.warnings.clone());
-        enrichment_artifacts.extend(enrichment.artifacts.clone());
-    }
+    let enrichment_artifacts = collect_enrichment_outputs(&enrichments, &mut warnings);
     Ok(ProcessedBatch {
         vectorized,
         acquisition_artifacts,
         enrichment_artifacts,
         clean_output,
         archive_items,
+        artifact_candidates: candidate_collection.candidates,
         warnings,
         reused_item_keys: resolved.reused_item_keys,
         refreshed_manifest_items,
     })
+}
+
+async fn finalize_normalized_batch(
+    runtime: &TargetLocalSourceRuntime,
+    input: &SourcePipelineInput<'_>,
+    generation: &SourceGenerationId,
+    documents: &mut [SourceDocument],
+    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+) -> anyhow::Result<(
+    artifact_candidates::CandidateCollection,
+    output::SourceOutput,
+)> {
+    apply_enrichments(documents, enrichments);
+    let candidates =
+        artifact_candidates::collect_changed_candidates(input, generation, documents, enrichments)
+            .await;
+    let clean_output = output::store_clean_outputs(runtime, &input.plan, documents).await?;
+    Ok((candidates, clean_output))
+}
+
+fn collect_enrichment_outputs(
+    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    warnings: &mut Vec<SourceWarning>,
+) -> Vec<ArtifactRef> {
+    let mut artifacts = Vec::new();
+    for enrichment in enrichments.values() {
+        warnings.extend(enrichment.warnings.clone());
+        artifacts.extend(enrichment.artifacts.clone());
+    }
+    artifacts
 }
 
 async fn enrich_changed_items(

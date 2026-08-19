@@ -23,6 +23,7 @@ pub(super) struct ProcessedBatch {
     pub(super) enrichment_artifacts: Vec<ArtifactRef>,
     pub(super) clean_output: SourceOutput,
     pub(super) archive_items: Vec<AcquiredSourceItem>,
+    pub(super) artifact_candidates: Vec<ArtifactCandidate>,
     pub(super) warnings: Vec<SourceWarning>,
     pub(super) reused_item_keys: Vec<SourceItemKey>,
     pub(super) refreshed_manifest_items: Vec<ManifestItem>,
@@ -34,6 +35,7 @@ pub(super) struct GenerationAccumulator {
     artifacts: Vec<ArtifactRef>,
     output: SourceOutput,
     archive_items: Vec<AcquiredSourceItem>,
+    artifact_candidates: Vec<ArtifactCandidate>,
     warnings: Vec<SourceWarning>,
     reused_item_keys: Vec<SourceItemKey>,
     refreshed_manifest_items: Vec<ManifestItem>,
@@ -43,6 +45,7 @@ pub(super) struct FinalizedGeneration {
     pub(super) diff: SourceManifestDiff,
     pub(super) vectorized: vectorize::VectorizeResult,
     pub(super) artifacts: Vec<ArtifactRef>,
+    pub(super) artifact_candidates: Vec<ArtifactCandidate>,
     pub(super) inline: Option<InlineSourceResult>,
 }
 
@@ -54,6 +57,7 @@ impl GenerationAccumulator {
         self.artifacts.extend(batch.acquisition_artifacts);
         self.artifacts.extend(batch.enrichment_artifacts);
         self.archive_items.extend(batch.archive_items);
+        self.artifact_candidates.extend(batch.artifact_candidates);
         self.warnings.extend(batch.warnings);
         self.reused_item_keys.extend(batch.reused_item_keys);
         self.refreshed_manifest_items
@@ -99,6 +103,7 @@ impl GenerationAccumulator {
             diff,
             vectorized: self.vectorized,
             artifacts: self.artifacts,
+            artifact_candidates: self.artifact_candidates,
             inline: self.output.inline,
         })
     }

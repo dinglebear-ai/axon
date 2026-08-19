@@ -13,7 +13,9 @@ use std::time::{Duration, Instant};
 
 use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
 use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
-use axon_adapters::{NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter};
+use axon_adapters::{
+    NoopArtifactCandidateSink, NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter,
+};
 use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
@@ -412,6 +414,7 @@ impl TargetLocalSourceRuntime {
             web_source_adapter,
             artifact_store: Arc::new(artifact_store),
             document_cache: Arc::new(document_cache),
+            artifact_candidate_sink: Arc::new(NoopArtifactCandidateSink),
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
