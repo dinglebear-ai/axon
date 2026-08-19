@@ -1,117 +1,157 @@
 use super::*;
-use uuid::Uuid;
 
-fn timestamp() -> Timestamp {
-    Timestamp("2026-08-19T13:45:00Z".to_string())
+const NEUTRAL_FIXTURE: &str =
+    include_str!("../tests/fixtures/schema/artifact_candidate.v1.neutral.json");
+
+fn fixture_value() -> serde_json::Value {
+    serde_json::from_str(NEUTRAL_FIXTURE).expect("neutral ArtifactCandidate fixture is valid JSON")
 }
 
 fn candidate() -> ArtifactCandidate {
-    let observed_at = timestamp();
-    ArtifactCandidate {
-        contract_version: ARTIFACT_CANDIDATE_CONTRACT_VERSION.to_string(),
-        candidate_id: ArtifactCandidateId::from("sha256:candidate"),
-        job_id: JobId::from(Uuid::nil()),
-        source_id: SourceId::from("src_skills_sh"),
-        generation: SourceGenerationId::from("7"),
-        source_item_key: SourceItemKey::from("vercel-labs/skills/find-skills"),
-        canonical_observed_uri: "https://skills.sh/vercel-labs/skills/find-skills".to_string(),
-        canonical_source_uri: "https://github.com/vercel-labs/skills/tree/main/skills/find-skills"
-            .to_string(),
-        kind_hints: vec![ArtifactCandidateKindHint::Skill],
-        dedupe: ArtifactCandidateDedupe {
-            identity_key: "sha256:identity".to_string(),
-            content_key: Some("sha256:content-key".to_string()),
-            content_hash: Some("sha256:content".to_string()),
-        },
-        provenance: ArtifactProvenanceEvidence {
-            provider: "skills.sh".to_string(),
-            source_kind: SourceKind::Registry,
-            observed_uri: "https://skills.sh/vercel-labs/skills/find-skills".to_string(),
-            canonical_source_uri:
-                "https://github.com/vercel-labs/skills/tree/main/skills/find-skills".to_string(),
-            repository_url: Some("https://github.com/vercel-labs/skills".to_string()),
-            source_ref: Some("main".to_string()),
-            source_path: Some("skills/find-skills".to_string()),
-            source_digest: Some("sha256:content".to_string()),
-            adapter: AdapterRef {
-                name: "skills_sh".to_string(),
-                version: "1".to_string(),
-            },
-            observed_at: observed_at.clone(),
-            metadata: MetadataMap::new(),
-        },
-        license: ArtifactLicenseEvidence {
-            declared_expression: None,
-            detected_expression: None,
-            detection_confidence: None,
-            redistribution: ArtifactRedistributionClass::Unknown,
-            modification: ArtifactModificationClass::Unknown,
-            evidence: Vec::new(),
-            notice_refs: Vec::new(),
-            attribution_refs: Vec::new(),
-            observed_at: observed_at.clone(),
-        },
-        discovery_evidence: Vec::new(),
-        enrichment_evidence: Vec::new(),
-        observed_metadata: MetadataMap::new(),
-        observed_at,
-        warnings: Vec::new(),
-    }
+    serde_json::from_value(fixture_value()).expect("neutral ArtifactCandidate fixture deserializes")
 }
 
 #[test]
-fn artifact_candidate_round_trips_with_generation_and_job_correlation() {
+fn neutral_candidate_fixture_round_trips_with_exact_shared_field_names() {
+    let expected = fixture_value();
     let value = candidate();
-    let encoded = serde_json::to_value(&value).expect("candidate serializes");
+    value
+        .validate_shared_contract()
+        .expect("neutral fixture satisfies shared bounds");
+
+    assert_eq!(value.schema_version, ARTIFACT_CANDIDATE_SCHEMA_VERSION);
     assert_eq!(
-        encoded["contract_version"],
-        ARTIFACT_CANDIDATE_CONTRACT_VERSION
+        ARTIFACT_CANDIDATE_SCHEMA_VERSION,
+        "dinglebear.artifact-candidate/v1"
     );
-    assert_eq!(encoded["source_id"], "src_skills_sh");
-    assert_eq!(encoded["generation"], "7");
-    assert_eq!(encoded["source_item_key"], "vercel-labs/skills/find-skills");
-    assert_eq!(encoded["job_id"], Uuid::nil().to_string());
 
-    let decoded: ArtifactCandidate =
-        serde_json::from_value(encoded).expect("candidate deserializes");
-    assert_eq!(decoded, value);
+    let encoded = serde_json::to_value(&value).expect("candidate serializes");
+    assert_eq!(encoded, expected);
+
+    let keys = encoded
+        .as_object()
+        .expect("candidate is a JSON object")
+        .keys()
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_keys = [
+        "schemaVersion",
+        "id",
+        "canonicalSourceUri",
+        "sourceProvider",
+        "observedAt",
+        "repository",
+        "ref",
+        "sourcePath",
+        "kindHints",
+        "observedFiles",
+        "manifestMetadata",
+        "contentDigests",
+        "discoveryEvidence",
+        "popularitySignals",
+        "licenseEvidence",
+        "crawlGenerationId",
+        "crawlJobId",
+        "warnings",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(keys, expected_keys);
 }
 
 #[test]
-fn artifact_candidate_contract_rejects_unknown_fields() {
-    let mut encoded = serde_json::to_value(candidate()).expect("candidate serializes");
-    encoded
-        .as_object_mut()
-        .expect("candidate is an object")
-        .insert(
-            "authoritative_revision".to_string(),
-            serde_json::json!(true),
-        );
-
-    assert!(serde_json::from_value::<ArtifactCandidate>(encoded).is_err());
-}
-
-#[test]
-fn unknown_and_index_only_license_states_fail_closed_for_public_bytes() {
-    for state in [
-        ArtifactRedistributionClass::Unknown,
-        ArtifactRedistributionClass::Restricted,
-        ArtifactRedistributionClass::MetadataOnly,
-        ArtifactRedistributionClass::CacheForIndex,
+fn neutral_candidate_rejects_axons_old_competing_top_level_fields() {
+    for forbidden in [
+        "contractVersion",
+        "candidateId",
+        "jobId",
+        "sourceId",
+        "generation",
+        "sourceItemKey",
+        "dedupe",
+        "provenance",
+        "license",
+        "enrichmentEvidence",
+        "observedMetadata",
+        "publication",
+        "revision",
+        "artifact",
     ] {
-        assert!(!state.permits_public_byte_mirroring(), "state={state:?}");
+        let mut encoded = fixture_value();
+        encoded
+            .as_object_mut()
+            .expect("candidate is an object")
+            .insert(forbidden.to_string(), serde_json::json!(true));
+        assert!(
+            serde_json::from_value::<ArtifactCandidate>(encoded).is_err(),
+            "unexpected shared candidate field accepted: {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn shared_candidate_bounds_match_w20_g0_contract() {
+    let mut value = candidate();
+    value.kind_hints = vec!["skill".to_string(); ARTIFACT_CANDIDATE_MAX_KIND_HINTS + 1];
+    assert!(value.validate_shared_contract().is_err());
+
+    let mut value = candidate();
+    value.repository = Some("r".repeat(513));
+    assert!(value.validate_shared_contract().is_err());
+
+    let mut value = candidate();
+    value.warnings = vec!["warning".to_string(); ARTIFACT_CANDIDATE_MAX_WARNINGS + 1];
+    assert!(value.validate_shared_contract().is_err());
+
+    let mut value = candidate();
+    value.content_digests = vec!["sha256:not-a-digest".to_string()];
+    assert!(value.validate_shared_contract().is_err());
+
+    let mut value = candidate();
+    value
+        .manifest_metadata
+        .insert("apiToken".to_string(), serde_json::json!("do-not-store"));
+    assert!(value.validate_shared_contract().is_err());
+}
+
+#[test]
+fn unknown_and_index_only_license_evidence_fail_closed_for_public_bytes() {
+    for state in ["unknown", "restricted", "metadata_only", "cache_for_index"] {
+        let mut value = candidate();
+        value
+            .license_evidence
+            .insert("redistribution".to_string(), serde_json::json!(state));
+        assert!(!value.permits_public_byte_mirroring(), "state={state}");
     }
 
-    assert!(ArtifactRedistributionClass::Redistributable.permits_public_byte_mirroring());
-    assert!(ArtifactRedistributionClass::Forkable.permits_public_byte_mirroring());
+    for state in ["redistributable", "forkable"] {
+        let mut value = candidate();
+        value
+            .license_evidence
+            .insert("redistribution".to_string(), serde_json::json!(state));
+        assert!(value.permits_public_byte_mirroring(), "state={state}");
+    }
 }
 
 #[test]
-fn serialized_candidate_has_no_byte_payload_field() {
+fn candidate_payload_remains_byte_free_and_authority_free() {
     let encoded = serde_json::to_value(candidate()).expect("candidate serializes");
     let object = encoded.as_object().expect("candidate is an object");
-
-    for forbidden in ["bytes", "content", "bundle", "archive", "raw_bytes"] {
+    for forbidden in [
+        "bytes",
+        "content",
+        "bundle",
+        "archive",
+        "rawBytes",
+        "publication",
+        "redistribution",
+        "owner",
+        "revision",
+        "revisionAuthority",
+        "authoritativeLicense",
+        "artifact",
+    ] {
         assert!(
             !object.contains_key(forbidden),
             "unexpected field: {forbidden}"

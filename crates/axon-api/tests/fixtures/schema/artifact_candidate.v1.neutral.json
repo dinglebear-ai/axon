@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "dinglebear.artifact-candidate/v1",
+  "id": "cand_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "canonicalSourceUri": "https://github.com/vercel-labs/skills/tree/main/skills/find-skills",
+  "sourceProvider": "axon",
+  "observedAt": "2026-08-19T13:00:00Z",
+  "repository": "https://github.com/vercel-labs/skills",
+  "ref": "main",
+  "sourcePath": "skills/find-skills",
+  "kindHints": ["skill"],
+  "observedFiles": [
+    {
+      "path": "skills/find-skills/SKILL.md",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "manifestMetadata": {
+    "axonSourceItemKey": "vercel-labs/skills/find-skills",
+    "axonDedupe": {
+      "identityKey": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "contentKey": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  },
+  "contentDigests": [
+    "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "discoveryEvidence": {
+    "skillsSh": {
+      "sourceType": "github",
+      "duplicate": false,
+      "audit": "clean"
+    }
+  },
+  "popularitySignals": {
+    "skillsShInstalls": 1234
+  },
+  "licenseEvidence": {
+    "redistribution": "unknown",
+    "declared": null,
+    "notices": []
+  },
+  "crawlGenerationId": "7",
+  "crawlJobId": "00000000-0000-0000-0000-000000000000",
+  "warnings": []
+}

@@ -6,9 +6,9 @@
 
 use async_trait::async_trait;
 use axon_api::source::{
-    ARTIFACT_CANDIDATE_CONTRACT_VERSION, ApiError, ArtifactCandidateBatch, ArtifactCandidateDedupe,
-    ArtifactCandidateId, ArtifactCandidateSinkCapability, ArtifactCandidateSinkResult,
-    ArtifactCandidateSinkStatus,
+    ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION, ApiError, ArtifactCandidate, ArtifactCandidateBatch,
+    ArtifactCandidateDedupe, ArtifactCandidateId, ArtifactCandidateSinkCapability,
+    ArtifactCandidateSinkResult, ArtifactCandidateSinkStatus, JobId, SourceGenerationId, SourceId,
 };
 use sha2::{Digest, Sha256};
 
@@ -44,7 +44,7 @@ impl ArtifactCandidateSink for NoopArtifactCandidateSink {
         Ok(ArtifactCandidateSinkCapability {
             name: "noop".to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
-            contract_versions: vec![ARTIFACT_CANDIDATE_CONTRACT_VERSION.to_string()],
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
             max_batch_size: u32::MAX,
             supports_idempotency: true,
         })
@@ -88,28 +88,59 @@ pub fn artifact_candidate_dedupe(
 /// Candidate identity is content-aware when a content hash is available and
 /// otherwise falls back to the stable canonical source identity.
 pub fn artifact_candidate_id(dedupe: &ArtifactCandidateDedupe) -> ArtifactCandidateId {
-    ArtifactCandidateId::from(
-        dedupe
-            .content_key
-            .as_deref()
-            .unwrap_or(&dedupe.identity_key),
-    )
+    let digest = dedupe
+        .content_key
+        .as_deref()
+        .unwrap_or(&dedupe.identity_key)
+        .strip_prefix("sha256:")
+        .unwrap_or_else(|| {
+            dedupe
+                .content_key
+                .as_deref()
+                .unwrap_or(&dedupe.identity_key)
+        });
+    ArtifactCandidateId::from(format!("cand_{digest}"))
+}
+
+/// Build a deterministic idempotency key for one bounded candidate delivery.
+/// Replaying the same source generation and candidate partition produces the
+/// same key, while any candidate identity change produces a different key.
+pub fn artifact_candidate_batch_idempotency_key(
+    job_id: &JobId,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+    candidates: &[ArtifactCandidate],
+) -> String {
+    let job = job_id.0.to_string();
+    let mut hasher = Sha256::new();
+    hasher.update(b"axon-artifact-candidate-batch-v1");
+    hash_part(&mut hasher, Some(&job));
+    hash_part(&mut hasher, Some(&source_id.0));
+    hash_part(&mut hasher, Some(&generation.0));
+    for candidate in candidates {
+        hash_part(&mut hasher, Some(&candidate.id.0));
+    }
+    format!("sha256:{:x}", hasher.finalize())
 }
 
 fn digest_parts(domain: &[u8], parts: &[Option<&str>]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(domain);
     for part in parts {
-        match part {
-            Some(value) => {
-                hasher.update([1]);
-                hasher.update((value.len() as u64).to_be_bytes());
-                hasher.update(value.as_bytes());
-            }
-            None => hasher.update([0]),
-        }
+        hash_part(&mut hasher, *part);
     }
     format!("sha256:{:x}", hasher.finalize())
+}
+
+fn hash_part(hasher: &mut Sha256, part: Option<&str>) {
+    match part {
+        Some(value) => {
+            hasher.update([1]);
+            hasher.update((value.len() as u64).to_be_bytes());
+            hasher.update(value.as_bytes());
+        }
+        None => hasher.update([0]),
+    }
 }
 
 #[cfg(test)]

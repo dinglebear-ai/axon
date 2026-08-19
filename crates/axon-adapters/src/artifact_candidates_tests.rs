@@ -1,6 +1,6 @@
 use super::*;
 use axon_api::source::{
-    ARTIFACT_CANDIDATE_CONTRACT_VERSION, ArtifactCandidateBatch, ArtifactCandidateSinkStatus,
+    ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION, ArtifactCandidateBatch, ArtifactCandidateSinkStatus,
     JobId, SourceGenerationId, SourceId, Timestamp,
 };
 use uuid::Uuid;
@@ -29,7 +29,11 @@ fn dedupe_keys_are_stable_and_content_sensitive() {
     assert_eq!(first, same);
     assert_eq!(first.identity_key, changed.identity_key);
     assert_ne!(first.content_key, changed.content_key);
-    assert_eq!(artifact_candidate_id(&first).0, first.content_key.unwrap());
+    let content_key = first.content_key.as_deref().expect("content key");
+    assert_eq!(
+        artifact_candidate_id(&first).0,
+        format!("cand_{}", content_key.trim_start_matches("sha256:"))
+    );
 }
 
 #[test]
@@ -48,7 +52,10 @@ fn candidate_id_falls_back_to_source_identity_without_content_hash() {
         None,
     );
     assert!(dedupe.content_key.is_none());
-    assert_eq!(artifact_candidate_id(&dedupe).0, dedupe.identity_key);
+    assert_eq!(
+        artifact_candidate_id(&dedupe).0,
+        format!("cand_{}", dedupe.identity_key.trim_start_matches("sha256:"))
+    );
 }
 
 #[tokio::test]
@@ -56,7 +63,7 @@ async fn noop_sink_is_explicitly_disabled_without_rejecting_pipeline_work() {
     let sink = NoopArtifactCandidateSink;
     let result = sink
         .submit(ArtifactCandidateBatch {
-            contract_version: ARTIFACT_CANDIDATE_CONTRACT_VERSION.to_string(),
+            contract_version: ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string(),
             delivery_id: "delivery-1".to_string(),
             idempotency_key: "idem-1".to_string(),
             job_id: JobId::from(Uuid::nil()),
@@ -76,7 +83,7 @@ async fn noop_sink_is_explicitly_disabled_without_rejecting_pipeline_work() {
     assert!(
         capability
             .contract_versions
-            .contains(&ARTIFACT_CANDIDATE_CONTRACT_VERSION.to_string())
+            .contains(&ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string())
     );
     assert!(capability.supports_idempotency);
 }

@@ -1,0 +1,128 @@
+# W21 Artifact Crawl/Index/Enrichment Implementation Plan
+
+Status: active
+Date: 2026-08-19
+Worktree: /home/jmagar/workspace/axon-w21-artifact-engine
+Branch: codex/w21-artifact-engine-20260819
+Draft PR: #569
+
+## Goal
+
+Add ArtifactCandidate discovery/enrichment delivery to Axon's existing SourceRequest pipeline so Axon can seed and incrementally refresh Depot/Bazaar without becoming an artifact publication authority or regressing RAG behavior.
+
+## Non-negotiable constraints
+
+- no second crawler/job/ledger pipeline;
+- Depot remains publication authority;
+- candidate contract remains byte-free;
+- unknown/restricted license state never enables public byte mirroring;
+- structured/API discovery preferred over HTML scraping;
+- bounded pagination, rate limits, concurrency, candidate batches, retries, and buffers;
+- existing SourceDocument/RAG behavior preserved and differentially tested;
+- no massive seed until intake/license/backpressure gates are proven.
+
+## Checkpoints
+
+### C0: repository isolation and governing contract
+
+- [x] inspect all Axon worktrees/branches and leave dirty trees untouched;
+- [x] fetch current origin/main and create fresh isolated W21 worktree;
+- [x] confirm no pre-existing open PR owns this branch/lane;
+- [x] read source-pipeline/ledger/adapter/service contracts;
+- [x] read Phoenix ADR-0023 + Depot/Axon/schemas/licensing/meta-plan;
+- [x] verify official skills.sh API/Terms and current ARD/APM docs.
+
+### C1: candidate contract and provider boundary
+
+- [x] introduce the initial typed evidence/sink seam and open draft PR #569;
+- [x] project the Depot W20-owned shared `dinglebear.artifact-candidate/v1` payload in axon-api rather than defining a competing Axon candidate schema;
+- [x] match the neutral camelCase field set and W20 G0 bounds/secret-safety rules;
+- [x] add a copied neutral JSON fixture and exact serialize/deserialize parity tests;
+- [x] keep source/job/generation/item correlation in shared crawl fields, bounded evidence metadata, and the separate Axon batch wrapper;
+- [x] keep exact identity + content-aware SHA-256 dedupe helpers outside the shared top-level payload;
+- [x] preserve a fail-closed public-byte guard over neutral license evidence;
+- [x] define the separate versioned Axon ArtifactCandidateBatch/sink capability/result transport contract;
+- [x] register ArtifactCandidate as a generated API schema root and refresh generated contract snapshots;
+- [x] identify and fix PR #569 rust-contracts root cause; ci-gate was only the downstream gate failure.
+
+W20 PR #37 had not yet pushed the conductor-requested corrected canonical fixture at the last parity check (`origin/feat/w20-artifact-registry` still `759f347`). Axon already targets the final `dinglebear.artifact-candidate/v1` identifier and the exact current G0 field/bound vocabulary. The copied fixture is intentionally replaceable byte-for-byte when W20 publishes its canonical JSON fixture.
+
+### C2: shared pipeline wiring
+
+- [ ] inject ArtifactCandidateSink into ServiceContext with no-op default;
+- [ ] add a default no-candidate adapter/provider hook so existing adapters compile unchanged;
+- [ ] produce candidates after normalized SourceDocument creation from the same generation;
+- [ ] submit only bounded candidate batches;
+- [ ] preserve candidate receipt/warnings in source execution evidence without altering vector/RAG semantics;
+- [ ] ensure sink failure policy is explicit and optional by default;
+- [ ] prove no candidate path for existing adapters changes source document/vector counts.
+
+### C3: skills.sh structured discovery
+
+- [ ] add a structured skills.sh adapter/path inside SourceRequest routing;
+- [ ] bounded leaderboard/search discovery with configurable page/result ceilings;
+- [ ] handle rate-limit headers and Retry-After with bounded backoff;
+- [ ] resolve source/installUrl to canonical repo/base URL/ref/path;
+- [ ] stable manifest item keys + hashes for ledger diffing;
+- [ ] emit SourceDocument metadata and ArtifactCandidate evidence from the same item;
+- [ ] preserve installs/sourceType/duplicate/audit signals as aggregator evidence;
+- [ ] do not copy detail-file bytes into public candidate delivery when license is unknown;
+- [ ] deterministic mock/server tests for pagination, 429, cancellation, and limits.
+
+### C4: incremental refresh/watch
+
+- [ ] use existing SourceManifest/SourceManifestDiff/SourceGeneration lifecycle;
+- [ ] unchanged entries avoid candidate resubmission;
+- [ ] added/modified entries generate candidates;
+- [ ] removed entries produce reconciliation evidence rather than authoritative deletion;
+- [ ] existing watch scheduler can rerun the exact SourceRequest;
+- [ ] differential refresh test proves changed-only work.
+
+### C5: Depot sink
+
+- [ ] inspect current Depot intake/API operations before choosing endpoint shape;
+- [ ] implement versioned serialized HTTP sink using Axon's existing HTTP/provider infrastructure;
+- [ ] bounded batch size + max in-flight delivery;
+- [ ] idempotency/delivery keys;
+- [ ] auth kept out of candidate envelope;
+- [ ] classify 2xx/4xx/429/5xx with bounded retry/degradation semantics;
+- [ ] cross-repo JSON fixture contract with Depot once intake endpoint is frozen.
+
+### C6: semantic/graph enrichment hooks
+
+- [ ] attach exact/near-duplicate evidence without redefining exact dedupe identity;
+- [ ] add graph candidates for source/repo/artifact relationships;
+- [ ] semantic and graph signals remain non-authoritative evidence;
+- [ ] no graph/enrichment failure may grant publication or rights.
+
+### C7: bounded seed and hardening
+
+- [ ] run a deliberately small skills.sh seed with intake/license/backpressure gates enabled;
+- [ ] prove candidate count, source/doc counts, sink receipts, and no public byte mirroring for unknown rights;
+- [ ] run fmt + generated-contract check;
+- [ ] clippy/warnings-as-errors on changed crates;
+- [ ] focused unit/integration/differential/concurrency tests;
+- [ ] layering check;
+- [ ] adversarial review and resolve all findings;
+- [ ] update docs/progress/PR evidence;
+- [ ] leave PR draft only while unresolved gates remain.
+
+## Test matrix
+
+Minimum focused matrix before bounded seed:
+
+| Area | Required proof |
+|---|---|
+| contract | exact neutral fixture round trip, `dinglebear.artifact-candidate/v1`, old Axon-field rejection, shared bounds, byte/authority-free shape |
+| license | unknown/restricted/index-only fail closed; redistributable/forkable only permissive states |
+| dedupe | deterministic, delimiter-safe, content changes preserve identity but change content key |
+| sink | disabled/no-op, batch ceiling, idempotent retry, partial/rejected responses |
+| skills.sh | page cap, total cap, 429/Retry-After, canonical pointer resolution, duplicate evidence |
+| ledger | initial add, unchanged refresh, modified refresh, removal/reconciliation |
+| RAG differential | same existing SourceDocument/chunk/vector results when candidate sink disabled |
+| concurrency | bounded discovery and sink in-flight counts under delayed providers |
+| security | redacted metadata, no token leakage, no raw byte field, SSRF policy inherited from source acquisition |
+
+## Commit discipline
+
+Each checkpoint is committed and pushed independently. The draft PR is updated after meaningful evidence changes. Long repository hooks that exceed LABBY Code Mode's wall-clock envelope are run explicitly as bounded validation commands; hooks may be skipped for the mechanical commit/push only after equivalent checks are recorded.

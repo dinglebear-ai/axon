@@ -1,200 +1,174 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::common::{AdapterRef, SourceWarning};
-use super::enums::{AuthorityLevel, SourceKind};
+use super::common::SourceWarning;
 use super::ids::{
-    ArtifactCandidateId, JobId, MetadataMap, SourceGenerationId, SourceId, SourceItemKey, Timestamp,
+    ArtifactCandidateId, JobId, MetadataMap, SourceGenerationId, SourceId, Timestamp,
 };
 
-/// Stable Axon -> ArtifactCandidate sink wire-contract version.
-pub const ARTIFACT_CANDIDATE_CONTRACT_VERSION: &str = "1";
+/// Shared neutral ArtifactCandidate payload schema owned by the cross-repo G0 contract.
+/// Axon is a producer of this payload, not its publication/domain authority.
+pub const ARTIFACT_CANDIDATE_SCHEMA_VERSION: &str = "dinglebear.artifact-candidate/v1";
 
-/// Media type used by serialized ArtifactCandidate sink implementations.
+/// Axon-specific transport-batch version. This is deliberately separate from
+/// ARTIFACT_CANDIDATE_SCHEMA_VERSION, which versions each neutral candidate.
+pub const ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION: &str = "1";
+
+/// Media type for the Axon transport wrapper around neutral ArtifactCandidate payloads.
 pub const ARTIFACT_CANDIDATE_MEDIA_TYPE: &str =
     "application/vnd.dinglebear.axon.artifact-candidates+json;version=1";
 
-/// Artifact-family hints inferred by discovery/enrichment.
-///
-/// These are evidence only. Depot remains responsible for authoritative artifact
-/// classification and publication state.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactCandidateKindHint {
-    Skill,
-    Prompt,
-    AgentDefinition,
-    AgentRuntime,
-    McpServer,
-    McpConfig,
-    AgentPlugin,
-    ApmPackage,
-    ArdResource,
-    Workflow,
-    Unknown,
-}
+pub const ARTIFACT_CANDIDATE_MAX_BYTES: usize = 262_144;
+pub const ARTIFACT_CANDIDATE_MAX_KIND_HINTS: usize = 32;
+pub const ARTIFACT_CANDIDATE_MAX_OBSERVED_FILES_BYTES: usize = 65_536;
+pub const ARTIFACT_CANDIDATE_MAX_MANIFEST_METADATA_BYTES: usize = 65_536;
+pub const ARTIFACT_CANDIDATE_MAX_DISCOVERY_EVIDENCE_BYTES: usize = 65_536;
+pub const ARTIFACT_CANDIDATE_MAX_POPULARITY_SIGNALS_BYTES: usize = 32_768;
+pub const ARTIFACT_CANDIDATE_MAX_LICENSE_EVIDENCE_BYTES: usize = 65_536;
+pub const ARTIFACT_CANDIDATE_MAX_CONTENT_DIGESTS: usize = 2_000;
+pub const ARTIFACT_CANDIDATE_MAX_WARNINGS: usize = 128;
 
-/// Rights state observed by Axon for a candidate source/revision.
-///
-/// Unknown, Restricted, MetadataOnly, and CacheForIndex all fail closed for
-/// public byte mirroring. Discovery is never treated as a redistribution grant.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactRedistributionClass {
-    MetadataOnly,
-    CacheForIndex,
-    Redistributable,
-    Forkable,
-    Restricted,
-    #[default]
-    Unknown,
-}
+const MAX_JSON_DEPTH: usize = 8;
+const MAX_MAP_ENTRIES: usize = 128;
+const MAX_LIST_ENTRIES: usize = 256;
+const MAX_JSON_STRING_BYTES: usize = 16_384;
+const SECRET_KEYS: &[&str] = &[
+    "authorization",
+    "password",
+    "passwd",
+    "token",
+    "secret",
+    "api_key",
+    "apikey",
+    "credential",
+    "cookie",
+];
 
-impl ArtifactRedistributionClass {
-    /// Whether evidence currently permits a public sink to mirror source bytes.
-    /// Depot may apply stricter policy, but Axon never upgrades unknown or
-    /// index-only evidence into redistribution rights.
-    pub const fn permits_public_byte_mirroring(self) -> bool {
-        matches!(self, Self::Redistributable | Self::Forkable)
-    }
-}
-
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactModificationClass {
-    Allowed,
-    Restricted,
-    Prohibited,
-    ReviewRequired,
-    #[default]
-    Unknown,
-}
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub enum ArtifactEvidenceKind {
-    Discovery,
-    Popularity,
-    Duplicate,
-    Audit,
-    Integrity,
-    License,
-    Notice,
-    Attribution,
-    Semantic,
-    Graph,
-    Compatibility,
-}
-
-/// One attributable evidence record attached to an artifact candidate.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactEvidenceRecord {
-    pub kind: ArtifactEvidenceKind,
-    pub provider: String,
-    pub authority: AuthorityLevel,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub uri: Option<String>,
-    pub values: MetadataMap,
-    pub observed_at: Timestamp,
-}
-
-/// Provenance resolved from the discovery pointer to a canonical source.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactProvenanceEvidence {
-    /// Discovery/source provider that produced this observation.
-    pub provider: String,
-    pub source_kind: SourceKind,
-    pub observed_uri: String,
-    pub canonical_source_uri: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_digest: Option<String>,
-    pub adapter: AdapterRef,
-    pub observed_at: Timestamp,
-    pub metadata: MetadataMap,
-}
-
-/// License/NOTICE evidence and the conservative redistribution classification
-/// derived from it at observation time.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ArtifactLicenseEvidence {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub declared_expression: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detected_expression: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detection_confidence: Option<f32>,
-    pub redistribution: ArtifactRedistributionClass,
-    pub modification: ArtifactModificationClass,
-    pub evidence: Vec<ArtifactEvidenceRecord>,
-    pub notice_refs: Vec<String>,
-    pub attribution_refs: Vec<String>,
-    pub observed_at: Timestamp,
-}
-
-impl ArtifactLicenseEvidence {
-    pub const fn permits_public_byte_mirroring(&self) -> bool {
-        self.redistribution.permits_public_byte_mirroring()
-    }
-}
-
-/// Stable and content-aware keys used for candidate de-duplication.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
+/// Stable and content-aware keys used by Axon while producing neutral candidates.
+/// This helper is not a field in the shared ArtifactCandidate wire schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactCandidateDedupe {
-    /// Stable for the canonical source/ref/path identity even when bytes change.
     pub identity_key: String,
-    /// Stable for identical bytes at the same canonical source/ref/path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_key: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
 }
 
-/// Axon's typed discovery/enrichment observation for Depot intake.
-///
-/// The candidate is deliberately byte-free and non-authoritative. It can point
-/// at source bytes and carry content hashes/evidence, but it cannot represent a
-/// published Artifact revision or grant redistribution/authorization rights.
+/// Shared neutral ArtifactCandidate payload.
+/// Field names intentionally mirror the Depot-owned G0 fixture exactly.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactCandidate {
-    pub contract_version: String,
-    pub candidate_id: ArtifactCandidateId,
-    pub job_id: JobId,
-    pub source_id: SourceId,
-    pub generation: SourceGenerationId,
-    pub source_item_key: SourceItemKey,
-    pub canonical_observed_uri: String,
+    pub schema_version: String,
+    pub id: ArtifactCandidateId,
     pub canonical_source_uri: String,
-    pub kind_hints: Vec<ArtifactCandidateKindHint>,
-    pub dedupe: ArtifactCandidateDedupe,
-    pub provenance: ArtifactProvenanceEvidence,
-    pub license: ArtifactLicenseEvidence,
-    pub discovery_evidence: Vec<ArtifactEvidenceRecord>,
-    pub enrichment_evidence: Vec<ArtifactEvidenceRecord>,
-    pub observed_metadata: MetadataMap,
+    pub source_provider: String,
     pub observed_at: Timestamp,
-    pub warnings: Vec<SourceWarning>,
+    pub repository: Option<String>,
+    #[serde(rename = "ref")]
+    pub source_ref: Option<String>,
+    pub source_path: Option<String>,
+    pub kind_hints: Vec<String>,
+    pub observed_files: Vec<serde_json::Value>,
+    pub manifest_metadata: MetadataMap,
+    pub content_digests: Vec<String>,
+    pub discovery_evidence: MetadataMap,
+    pub popularity_signals: MetadataMap,
+    pub license_evidence: MetadataMap,
+    pub crawl_generation_id: Option<String>,
+    pub crawl_job_id: Option<String>,
+    pub warnings: Vec<String>,
 }
 
-/// Versioned delivery envelope sent to a candidate sink such as Depot.
+impl ArtifactCandidate {
+    /// Validate the effective bounds and secret-safe JSON rules of the neutral
+    /// G0 candidate contract before an Axon sink can deliver this payload.
+    pub fn validate_shared_contract(&self) -> Result<(), String> {
+        if self.schema_version != ARTIFACT_CANDIDATE_SCHEMA_VERSION {
+            return Err(format!(
+                "unsupported ArtifactCandidate schemaVersion {}",
+                self.schema_version
+            ));
+        }
+        validate_id(&self.id.0)?;
+        validate_source_uri(&self.canonical_source_uri)?;
+        validate_kind(&self.source_provider, "sourceProvider")?;
+        validate_timestamp(&self.observed_at.0)?;
+        validate_optional_string(self.repository.as_deref(), 512, "repository")?;
+        validate_optional_string(self.source_ref.as_deref(), 512, "ref")?;
+        validate_source_path(self.source_path.as_deref())?;
+
+        if self.kind_hints.len() > ARTIFACT_CANDIDATE_MAX_KIND_HINTS {
+            return Err("kindHints exceeds 32 entries".to_string());
+        }
+        for hint in &self.kind_hints {
+            validate_kind(hint, "kindHints")?;
+        }
+
+        validate_json_value(
+            &serde_json::Value::Array(self.observed_files.clone()),
+            "observedFiles",
+            ARTIFACT_CANDIDATE_MAX_OBSERVED_FILES_BYTES,
+        )?;
+        validate_json_value(
+            &serde_json::to_value(&self.manifest_metadata).map_err(|error| error.to_string())?,
+            "manifestMetadata",
+            ARTIFACT_CANDIDATE_MAX_MANIFEST_METADATA_BYTES,
+        )?;
+        validate_json_value(
+            &serde_json::to_value(&self.discovery_evidence).map_err(|error| error.to_string())?,
+            "discoveryEvidence",
+            ARTIFACT_CANDIDATE_MAX_DISCOVERY_EVIDENCE_BYTES,
+        )?;
+        validate_json_value(
+            &serde_json::to_value(&self.popularity_signals).map_err(|error| error.to_string())?,
+            "popularitySignals",
+            ARTIFACT_CANDIDATE_MAX_POPULARITY_SIGNALS_BYTES,
+        )?;
+        validate_json_value(
+            &serde_json::to_value(&self.license_evidence).map_err(|error| error.to_string())?,
+            "licenseEvidence",
+            ARTIFACT_CANDIDATE_MAX_LICENSE_EVIDENCE_BYTES,
+        )?;
+
+        if self.content_digests.len() > ARTIFACT_CANDIDATE_MAX_CONTENT_DIGESTS {
+            return Err("contentDigests exceeds 2000 entries".to_string());
+        }
+        for digest in &self.content_digests {
+            validate_digest(digest)?;
+        }
+        validate_optional_string(
+            self.crawl_generation_id.as_deref(),
+            256,
+            "crawlGenerationId",
+        )?;
+        validate_optional_string(self.crawl_job_id.as_deref(), 256, "crawlJobId")?;
+        if self.warnings.len() > ARTIFACT_CANDIDATE_MAX_WARNINGS {
+            return Err("warnings exceeds 128 entries".to_string());
+        }
+        for warning in &self.warnings {
+            validate_string(warning, 1_024, "warning", true)?;
+        }
+
+        let value = serde_json::to_value(self).map_err(|error| error.to_string())?;
+        validate_json_shape(&value, 0)?;
+        let encoded = serde_json::to_vec(&value).map_err(|error| error.to_string())?;
+        if encoded.len() > ARTIFACT_CANDIDATE_MAX_BYTES {
+            return Err("ArtifactCandidate exceeds 262144 bytes".to_string());
+        }
+        Ok(())
+    }
+
+    /// Conservative Axon-side mirroring guard over neutral license evidence.
+    pub fn permits_public_byte_mirroring(&self) -> bool {
+        self.license_evidence
+            .get("redistribution")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|value| matches!(value, "redistributable" | "forkable"))
+    }
+}
+
+/// Versioned Axon delivery envelope sent to a candidate sink such as Depot.
+/// This is a transport wrapper only; each candidate has its own neutral schemaVersion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactCandidateBatch {
@@ -219,7 +193,6 @@ pub enum ArtifactCandidateSinkStatus {
     Rejected,
 }
 
-/// Transport-neutral receipt returned by an ArtifactCandidate sink.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactCandidateSinkResult {
@@ -230,8 +203,7 @@ pub struct ArtifactCandidateSinkResult {
     pub warnings: Vec<SourceWarning>,
 }
 
-/// Sink capability contract. A sink advertises supported serialized contract
-/// versions so Axon and Depot can evolve independently.
+/// Capability for the Axon batch wrapper, not the neutral candidate schema.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactCandidateSinkCapability {
@@ -240,4 +212,188 @@ pub struct ArtifactCandidateSinkCapability {
     pub contract_versions: Vec<String>,
     pub max_batch_size: u32,
     pub supports_idempotency: bool,
+}
+
+fn validate_id(value: &str) -> Result<(), String> {
+    validate_string(value, 160, "id", false)?;
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return Err("id is empty".to_string());
+    };
+    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
+        return Err("id has invalid first character".to_string());
+    }
+    if !chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-') {
+        return Err("id contains invalid characters".to_string());
+    }
+    Ok(())
+}
+
+fn validate_kind(value: &str, field: &str) -> Result<(), String> {
+    validate_string(value, 64, field, false)?;
+    if value.split('-').any(|segment| {
+        segment.is_empty()
+            || !segment
+                .chars()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
+    }) {
+        return Err(format!("{field} is not a lowercase kebab-case kind"));
+    }
+    Ok(())
+}
+
+fn validate_digest(value: &str) -> Result<(), String> {
+    let Some(hex) = value.strip_prefix("sha256:") else {
+        return Err("content digest must use sha256:".to_string());
+    };
+    if hex.len() != 64
+        || !hex
+            .chars()
+            .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+    {
+        return Err("content digest must contain 64 lowercase hex characters".to_string());
+    }
+    Ok(())
+}
+
+fn validate_source_uri(value: &str) -> Result<(), String> {
+    validate_string(value, 4_096, "canonicalSourceUri", false)?;
+    let Some((scheme, rest)) = value.split_once("://") else {
+        return Err("canonicalSourceUri must have a URI scheme".to_string());
+    };
+    if scheme.is_empty()
+        || matches!(
+            scheme.to_ascii_lowercase().as_str(),
+            "file" | "data" | "javascript"
+        )
+    {
+        return Err("canonicalSourceUri uses an invalid or blocked scheme".to_string());
+    }
+    let authority = rest.split('/').next().unwrap_or_default();
+    if authority.contains('@') {
+        return Err("canonicalSourceUri must not contain credentials".to_string());
+    }
+    Ok(())
+}
+
+fn validate_timestamp(value: &str) -> Result<(), String> {
+    validate_string(value, 64, "observedAt", false)?;
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|_| ())
+        .map_err(|_| "observedAt must be an ISO-8601 timestamp".to_string())
+}
+
+fn validate_source_path(value: Option<&str>) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    validate_string(value, 4_096, "sourcePath", false)?;
+    if value.starts_with('/')
+        || value.contains('\\')
+        || value.get(1..2) == Some(":")
+        || value
+            .split('/')
+            .any(|segment| matches!(segment, "" | "." | ".."))
+    {
+        return Err("sourcePath must be a safe relative slash path".to_string());
+    }
+    Ok(())
+}
+
+fn validate_optional_string(value: Option<&str>, max: usize, field: &str) -> Result<(), String> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    validate_string(value, max, field, true)
+}
+
+fn validate_string(value: &str, max: usize, field: &str, allow_empty: bool) -> Result<(), String> {
+    if !allow_empty && value.is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    if value.len() > max {
+        return Err(format!("{field} exceeds {max} bytes"));
+    }
+    if value.as_bytes().contains(&0) {
+        return Err(format!("{field} contains a NUL byte"));
+    }
+    Ok(())
+}
+
+fn validate_json_value(
+    value: &serde_json::Value,
+    field: &str,
+    max_bytes: usize,
+) -> Result<(), String> {
+    validate_json_shape(value, 0)?;
+    let encoded = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    if encoded.len() > max_bytes {
+        return Err(format!("{field} exceeds {max_bytes} JSON bytes"));
+    }
+    Ok(())
+}
+
+fn validate_json_shape(value: &serde_json::Value, depth: usize) -> Result<(), String> {
+    if depth > MAX_JSON_DEPTH {
+        return Err("candidate JSON exceeds max depth 8".to_string());
+    }
+    match value {
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            Ok(())
+        }
+        serde_json::Value::String(value) => {
+            if value.len() > MAX_JSON_STRING_BYTES {
+                return Err("candidate JSON string exceeds 16384 bytes".to_string());
+            }
+            if value.as_bytes().contains(&0) {
+                return Err("candidate JSON string contains a NUL byte".to_string());
+            }
+            Ok(())
+        }
+        serde_json::Value::Array(values) => {
+            if values.len() > MAX_LIST_ENTRIES {
+                return Err("candidate JSON list exceeds 256 entries".to_string());
+            }
+            for value in values {
+                validate_json_shape(value, depth + 1)?;
+            }
+            Ok(())
+        }
+        serde_json::Value::Object(map) => {
+            if map.len() > MAX_MAP_ENTRIES {
+                return Err("candidate JSON map exceeds 128 entries".to_string());
+            }
+            for (key, value) in map {
+                if key.len() > 128 {
+                    return Err("candidate metadata key exceeds 128 bytes".to_string());
+                }
+                if is_secret_key(key) {
+                    return Err(format!("candidate metadata contains secret-like key {key}"));
+                }
+                validate_json_shape(value, depth + 1)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn is_secret_key(key: &str) -> bool {
+    let normalized = key
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let compact = normalized.replace('_', "");
+    SECRET_KEYS.iter().any(|secret| {
+        let compact_secret = secret.replace('_', "");
+        normalized == *secret
+            || compact == compact_secret
+            || normalized.ends_with(&format!("_{secret}"))
+            || compact.ends_with(&compact_secret)
+    })
 }
