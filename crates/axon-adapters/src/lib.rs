@@ -11,6 +11,7 @@
 pub mod acquisition;
 mod acquisition_security;
 pub mod adapter;
+pub mod artifact_candidates;
 pub mod boundary;
 pub mod capability;
 pub mod cli_tool;
@@ -41,6 +42,10 @@ pub use acquisition::{AcquiredItem, AcquisitionManifest, FetchStatus};
 pub use adapter::{
     AcquisitionProgress, AcquisitionProgressSink, GeneratedArchive, ReusePolicy,
     SOURCE_ADAPTER_CONTRACT_VERSION, SourceAdapter,
+};
+pub use artifact_candidates::{
+    ArtifactCandidateSink, NoopArtifactCandidateSink, artifact_candidate_dedupe,
+    artifact_candidate_id,
 };
 pub use capability::{AdapterCapability, AdapterVersion};
 pub use enrichment::{NoopSourceEnricher, SourceEnricher};
