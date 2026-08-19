@@ -1,7 +1,11 @@
 use super::*;
 
 const NEUTRAL_FIXTURE: &str =
+    include_str!("../tests/fixtures/artifact-registry/artifact-candidate-v1.json");
+const SCHEMA_FIXTURE: &str =
     include_str!("../tests/fixtures/schema/artifact_candidate.v1.neutral.json");
+const INTERCHANGE_FIXTURE: &str =
+    include_str!("../tests/fixtures/artifact-registry/artifact-interchange-v1.json");
 
 fn fixture_value() -> serde_json::Value {
     serde_json::from_str(NEUTRAL_FIXTURE).expect("neutral ArtifactCandidate fixture is valid JSON")
@@ -27,6 +31,15 @@ fn neutral_candidate_fixture_round_trips_with_exact_shared_field_names() {
 
     let encoded = serde_json::to_value(&value).expect("candidate serializes");
     assert_eq!(encoded, expected);
+    assert_eq!(
+        serde_json::to_string(&encoded).expect("candidate canonical JSON serializes"),
+        NEUTRAL_FIXTURE.trim_end(),
+        "Rust serialization must match the frozen Depot 25de725 canonical JSON fixture exactly"
+    );
+
+    let decoded: ArtifactCandidate =
+        serde_json::from_value(encoded.clone()).expect("serialized candidate round-trips");
+    assert_eq!(decoded, value);
 
     let keys = encoded
         .as_object()
@@ -58,6 +71,21 @@ fn neutral_candidate_fixture_round_trips_with_exact_shared_field_names() {
     .map(str::to_string)
     .collect::<std::collections::BTreeSet<_>>();
     assert_eq!(keys, expected_keys);
+}
+
+#[test]
+fn copied_g0_fixtures_are_pinned_to_the_frozen_shared_contract() {
+    assert_eq!(
+        SCHEMA_FIXTURE, NEUTRAL_FIXTURE,
+        "the schema-validation copy must remain byte-identical to the frozen Depot candidate fixture"
+    );
+
+    let interchange: serde_json::Value = serde_json::from_str(INTERCHANGE_FIXTURE)
+        .expect("frozen ArtifactInterchange fixture is valid JSON");
+    assert_eq!(
+        interchange["schemaVersion"],
+        serde_json::json!("dinglebear.artifact-interchange/v1")
+    );
 }
 
 #[test]

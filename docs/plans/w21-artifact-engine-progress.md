@@ -70,7 +70,16 @@ Neutral fixture seam:
 - W20-equivalent candidate/JSON/path/digest/secret-key bounds;
 - byte/authority-field exclusion.
 
-W20 remote status at last check: PR #37 branch `origin/feat/w20-artifact-registry` remained `759f347` and had not yet published the conductor-requested corrected `dinglebear.*` identifiers/canonical fixture. Axon therefore targets the final conductor-specified ID now and keeps the copied fixture intentionally replaceable with W20's canonical JSON once pushed. No Depot implementation code is imported or copied.
+Depot W20 G0 is frozen at commit `25de725`. Axon copies the open canonical fixtures byte-for-byte from `docs/artifact-registry/fixtures/artifact-candidate-v1.json` and `artifact-interchange-v1.json`; no Depot implementation code is imported or linked.
+
+Frozen-fixture proof:
+
+- candidate SHA-256: `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732`;
+- interchange SHA-256: `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`;
+- both Axon copies compare byte-identical to Depot `25de725`;
+- `cargo test -p axon-api artifact_candidate -- --nocapture`: 6 passed, 0 failed, including exact canonical JSON serialization and round-trip parity for the individual candidate payload;
+- `./target/debug/xtask generated-contracts check`: passed against the frozen candidate fixture;
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
 
 PR #569 CI root cause and repair:
 
