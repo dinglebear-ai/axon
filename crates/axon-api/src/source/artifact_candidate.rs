@@ -63,19 +63,31 @@ pub struct ArtifactCandidate {
     pub canonical_source_uri: String,
     pub source_provider: String,
     pub observed_at: Timestamp,
+    #[serde(default)]
     pub repository: Option<String>,
-    #[serde(rename = "ref")]
+    #[serde(default, rename = "ref")]
     pub source_ref: Option<String>,
+    #[serde(default)]
     pub source_path: Option<String>,
+    #[serde(default)]
     pub kind_hints: Vec<String>,
+    #[serde(default)]
     pub observed_files: Vec<serde_json::Value>,
+    #[serde(default)]
     pub manifest_metadata: MetadataMap,
+    #[serde(default)]
     pub content_digests: Vec<String>,
+    #[serde(default)]
     pub discovery_evidence: MetadataMap,
+    #[serde(default)]
     pub popularity_signals: MetadataMap,
+    #[serde(default)]
     pub license_evidence: MetadataMap,
+    #[serde(default)]
     pub crawl_generation_id: Option<String>,
+    #[serde(default)]
     pub crawl_job_id: Option<String>,
+    #[serde(default)]
     pub warnings: Vec<String>,
 }
 

@@ -325,18 +325,21 @@
           "type": "string"
         },
         "contentDigests": {
+          "default": [],
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "crawlGenerationId": {
+          "default": null,
           "type": [
             "string",
             "null"
           ]
         },
         "crawlJobId": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -344,12 +347,14 @@
         },
         "discoveryEvidence": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "id": {
           "$ref": "#/$defs/ArtifactCandidate_ArtifactCandidateId"
         },
         "kindHints": {
+          "default": [],
           "items": {
             "type": "string"
           },
@@ -357,30 +362,36 @@
         },
         "licenseEvidence": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "manifestMetadata": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "observedAt": {
           "type": "string"
         },
         "observedFiles": {
+          "default": [],
           "items": true,
           "type": "array"
         },
         "popularitySignals": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "ref": {
+          "default": null,
           "type": [
             "string",
             "null"
           ]
         },
         "repository": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -390,6 +401,7 @@
           "type": "string"
         },
         "sourcePath": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -399,6 +411,7 @@
           "type": "string"
         },
         "warnings": {
+          "default": [],
           "items": {
             "type": "string"
           },
@@ -410,15 +423,7 @@
         "id",
         "canonicalSourceUri",
         "sourceProvider",
-        "observedAt",
-        "kindHints",
-        "observedFiles",
-        "manifestMetadata",
-        "contentDigests",
-        "discoveryEvidence",
-        "popularitySignals",
-        "licenseEvidence",
-        "warnings"
+        "observedAt"
       ],
       "title": "ArtifactCandidate",
       "type": "object"
@@ -477,18 +482,21 @@
           "type": "string"
         },
         "contentDigests": {
+          "default": [],
           "items": {
             "type": "string"
           },
           "type": "array"
         },
         "crawlGenerationId": {
+          "default": null,
           "type": [
             "string",
             "null"
           ]
         },
         "crawlJobId": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -496,12 +504,14 @@
         },
         "discoveryEvidence": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "id": {
           "$ref": "#/$defs/ArtifactCandidateBatch_ArtifactCandidateId"
         },
         "kindHints": {
+          "default": [],
           "items": {
             "type": "string"
           },
@@ -509,30 +519,36 @@
         },
         "licenseEvidence": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "manifestMetadata": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "observedAt": {
           "type": "string"
         },
         "observedFiles": {
+          "default": [],
           "items": true,
           "type": "array"
         },
         "popularitySignals": {
           "additionalProperties": true,
+          "default": {},
           "type": "object"
         },
         "ref": {
+          "default": null,
           "type": [
             "string",
             "null"
           ]
         },
         "repository": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -542,6 +558,7 @@
           "type": "string"
         },
         "sourcePath": {
+          "default": null,
           "type": [
             "string",
             "null"
@@ -551,6 +568,7 @@
           "type": "string"
         },
         "warnings": {
+          "default": [],
           "items": {
             "type": "string"
           },
@@ -562,15 +580,7 @@
         "id",
         "canonicalSourceUri",
         "sourceProvider",
-        "observedAt",
-        "kindHints",
-        "observedFiles",
-        "manifestMetadata",
-        "contentDigests",
-        "discoveryEvidence",
-        "popularitySignals",
-        "licenseEvidence",
-        "warnings"
+        "observedAt"
       ],
       "type": "object"
     },
@@ -29175,7 +29185,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:bd63de74b22958113b056de02287e3ab665ae781bd6b0a3693e95ed1479c84f3",
+        "checksum": "sha256:93716321ecaf4c90846b1e0185e1c488f6dc08df0fa1e4172436c99f1c580c7b",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/artifact_candidate.rs"
       },

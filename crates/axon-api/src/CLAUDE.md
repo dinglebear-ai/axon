@@ -21,7 +21,7 @@ side effects.
 ## Module map
 | File | Owns |
 |---|---|
-| `source.rs` + `source/` | `SourceIntent`, `SourceRefreshPolicy`, source/job/watch/artifact/graph/memory DTOs and opaque IDs |
+| `source.rs` + `source/` | `SourceIntent`, `SourceRefreshPolicy`, source/job/watch/artifact/graph/memory DTOs and opaque IDs; `source/artifact_candidate.rs` projects frozen neutral `dinglebear.artifact-candidate/v1` plus Axon-only batch/sink DTOs |
 | `result.rs` | ask/query/evaluate result contracts (former `services::types::service::query`) |
 | `explain.rs` | ask-explain trace types (former `core::ask_explain`) |
 | `diff.rs` | diff DTOs |
@@ -51,6 +51,7 @@ side effects.
 ## Invariants (review checklist)
 - **No transport, provider, store, or domain-crate imports.**
 - Every DTO serializes/deserializes with **stable JSON names**; schema generation is deterministic.
+- The individual `ArtifactCandidate` payload must remain exact-parity with the frozen cross-repo `dinglebear.artifact-candidate/v1` fixture; Axon-specific delivery metadata belongs only in `ArtifactCandidateBatch`.
 - **Enum additions fail** unless schema fixtures are updated; transport fixtures share the same DTO snapshots.
 - Implementation crates **depend on these DTOs** rather than redefining the same concept.
 

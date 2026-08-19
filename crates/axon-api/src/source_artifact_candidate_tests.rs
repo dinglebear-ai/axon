@@ -74,6 +74,54 @@ fn neutral_candidate_fixture_round_trips_with_exact_shared_field_names() {
 }
 
 #[test]
+fn optional_g0_evidence_defaults_and_canonicalizes_to_the_full_shared_shape() {
+    let minimal = serde_json::json!({
+        "schemaVersion": ARTIFACT_CANDIDATE_SCHEMA_VERSION,
+        "id": "cand_minimal_v1",
+        "canonicalSourceUri": "https://github.com/dinglebear-ai/example",
+        "sourceProvider": "axon",
+        "observedAt": "2026-08-19T13:00:00Z"
+    });
+    let value: ArtifactCandidate =
+        serde_json::from_value(minimal).expect("optional G0 evidence defaults");
+    value
+        .validate_shared_contract()
+        .expect("minimal canonical candidate remains valid");
+
+    let encoded = serde_json::to_value(value).expect("minimal candidate canonicalizes");
+    let object = encoded.as_object().expect("candidate is an object");
+    assert_eq!(object.len(), 18);
+    for key in [
+        "repository",
+        "ref",
+        "sourcePath",
+        "crawlGenerationId",
+        "crawlJobId",
+    ] {
+        assert!(object[key].is_null(), "{key} must canonicalize to null");
+    }
+    for key in ["kindHints", "observedFiles", "contentDigests", "warnings"] {
+        assert_eq!(
+            object[key],
+            serde_json::json!([]),
+            "{key} must default empty"
+        );
+    }
+    for key in [
+        "manifestMetadata",
+        "discoveryEvidence",
+        "popularitySignals",
+        "licenseEvidence",
+    ] {
+        assert_eq!(
+            object[key],
+            serde_json::json!({}),
+            "{key} must default empty"
+        );
+    }
+}
+
+#[test]
 fn copied_g0_fixtures_are_pinned_to_the_frozen_shared_contract() {
     assert_eq!(
         SCHEMA_FIXTURE, NEUTRAL_FIXTURE,
