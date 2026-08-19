@@ -144,7 +144,7 @@ Adversarial review findings addressed before checkpoint:
 
 C2 checkpoint `9ad1b48d4` is committed and pushed to draft PR #569.
 
-### C3 structured skills.sh catalog discovery - implementation in progress
+### C3 structured skills.sh catalog discovery - complete
 
 Current structured provider slice:
 
@@ -186,7 +186,11 @@ Focused C3 proof after adversarial hardening:
 - `cargo fmt --all -- --check`: passed;
 - all new/touched C3 Rust modules checked by `scripts/enforce_monoliths.py --file`: passed with no allowlist additions;
 - `git diff --check`: passed;
+- post-audit `cargo clippy -p axon-route -p axon-adapters --all-targets -- -D warnings`: passed;
+- post-audit monolith checks passed for all 9 touched route/adapter Rust files;
 - live authenticated seed was not attempted because neither `SKILLS_SH_OIDC_TOKEN` nor `VERCEL_OIDC_TOKEN` is present in the DOOKIE execution environment; the adapter does not fall back to unauthenticated scraping.
+
+C3 checkpoints are pushed to draft PR #569: core structured discovery `95122ed47`; bounded audit evidence and trust-boundary hardening `e44493acb`.
 
 ## Next
 
