@@ -1,3 +1,9 @@
+---
+title: "Artifact Candidate Pipeline"
+created: 2026-08-19
+updated: 2026-08-19
+---
+
 # Artifact Candidate Pipeline
 
 Status: active W21 implementation
@@ -18,7 +24,7 @@ The cross-repo authority model is defined by Phoenix ADR-0023 and the accompanyi
 - Labby owns the open personal/local Artifact + MCP/runtime gateway.
 - Discovery evidence never grants authorization or redistribution rights.
 
-Depot W20 is the provisional G0 owner for the shared neutral Artifact payload contracts. Axon must consume/emit that shared contract rather than defining a competing candidate domain schema.
+Depot W20 froze the shared neutral Artifact payload contracts at commit `25de725`. Axon must consume/emit those exact v1 contracts rather than defining a competing candidate domain schema; shared v1 fields are frozen.
 
 ## Pipeline placement
 
@@ -50,9 +56,12 @@ Each serialized candidate uses the shared schema identifier:
 
 - schemaVersion: dinglebear.artifact-candidate/v1
 
-The copied neutral fixture lives at:
+The frozen open-contract copies live at:
 
-- crates/axon-api/tests/fixtures/schema/artifact_candidate.v1.neutral.json
+- `crates/axon-api/tests/fixtures/artifact-registry/artifact-candidate-v1.json`;
+- `crates/axon-api/tests/fixtures/artifact-registry/artifact-interchange-v1.json`.
+
+The generated-schema validator also consumes an identical candidate copy at `crates/axon-api/tests/fixtures/schema/artifact_candidate.v1.neutral.json`.
 
 The top-level field set is intentionally identical to the W20 G0 contract:
 

@@ -1,11 +1,11 @@
 # ArtifactCandidate Contract Integration
 
-Status: active W21 integration of Depot W20 provisional G0 contract
+Status: active W21 integration of Depot W20 frozen G0 contract (`25de725`)
 Last reviewed: 2026-08-19
 
 ## Ownership
 
-The individual ArtifactCandidate payload is a shared neutral cross-repo contract. Depot W20 is the provisional G0 owner while the first Rust/Elixir parity seam is frozen. Axon does not define a competing candidate domain schema.
+The individual ArtifactCandidate payload is a shared neutral cross-repo contract frozen by Depot W20 at commit `25de725`. Axon consumes that G0 contract and does not define a competing candidate domain schema. Any field-set or semantic change to shared v1 requires a new shared version.
 
 Shared payload identifier:
 
@@ -15,9 +15,11 @@ Axon Rust projection:
 
 - crates/axon-api/src/source/artifact_candidate.rs
 
-Copied neutral fixture:
+Copied frozen G0 fixtures:
 
-- crates/axon-api/tests/fixtures/schema/artifact_candidate.v1.neutral.json
+- `crates/axon-api/tests/fixtures/artifact-registry/artifact-candidate-v1.json` copied byte-for-byte from Depot `25de725`;
+- `crates/axon-api/tests/fixtures/artifact-registry/artifact-interchange-v1.json` copied byte-for-byte from Depot `25de725`;
+- `crates/axon-api/tests/fixtures/schema/artifact_candidate.v1.neutral.json` is an identical candidate copy used by Axon's generated-schema fixture validator.
 
 Axon sink/batch boundary:
 
@@ -48,7 +50,7 @@ Every candidate carries schemaVersion=dinglebear.artifact-candidate/v1 and seria
 - crawlJobId
 - warnings
 
-The Rust DTO uses serde camelCase projection and denies unknown top-level fields. Parity tests load the neutral JSON fixture, deserialize it, validate the shared bounds, serialize it again, and require exact JSON-value equality.
+The Rust DTO uses serde camelCase projection and denies unknown top-level fields. Parity tests load the frozen `25de725` candidate fixture, deserialize it, validate the shared bounds, serialize it again, and require both exact JSON-value equality and exact canonical JSON byte content.
 
 The previous Axon-only top-level fields contractVersion, candidateId, jobId, sourceId, generation, sourceItemKey, dedupe, provenance, license, enrichmentEvidence, and observedMetadata are explicitly rejected by tests.
 
