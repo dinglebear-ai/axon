@@ -127,7 +127,15 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "map_urls",
 ];
 const SESSION_ADAPTER_OPTION_KEYS: &[&str] = &["project_filter"];
-const SKILLS_SH_OPTION_KEYS: &[&str] = &["view", "query", "owner", "page", "per_page", "max_pages"];
+const SKILLS_SH_OPTION_KEYS: &[&str] = &[
+    "view",
+    "query",
+    "owner",
+    "page",
+    "per_page",
+    "max_pages",
+    "audit_limit",
+];
 const CLI_TOOL_OPTION_KEYS: &[&str] = &[
     "execution_mode",
     "tool_action",

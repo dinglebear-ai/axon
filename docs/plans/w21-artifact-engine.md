@@ -70,7 +70,7 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 - [x] stable manifest item keys + hashes for ledger diffing;
 - [x] emit SourceDocument metadata and ArtifactCandidate evidence from the same item;
 - [x] preserve installs/sourceType/duplicate signals as aggregator evidence;
-- [ ] add bounded audit-signal enrichment without creating an N+1/full-corpus fetch pattern;
+- [x] add opt-in, hard-bounded audit-signal enrichment with zero default N+1 expansion and fail-soft fan-out stop;
 - [x] do not call the detail/files endpoint or copy third-party file bytes into candidate delivery when license is unknown;
 - [x] deterministic mock/server tests for pagination, search, 429/Retry-After, 503, and hard limits;
 - [x] prove provider-future cancellation stops without hidden page fan-out.
@@ -123,7 +123,7 @@ Minimum focused matrix before bounded seed:
 | license | unknown/restricted/index-only fail closed; redistributable/forkable only permissive states |
 | dedupe | deterministic, delimiter-safe, content changes preserve identity but change content key |
 | sink | disabled/no-op, batch ceiling, idempotent retry, partial/rejected responses |
-| skills.sh | page cap, total cap, 429/Retry-After, canonical pointer resolution, duplicate evidence |
+| skills.sh | page/total caps, 429/Retry-After, canonical pointer resolution, duplicate evidence, opt-in audit cap/404/fail-soft stop/trust-boundary validation |
 | ledger | initial add, unchanged refresh, modified refresh, removal/reconciliation |
 | RAG differential | same existing SourceDocument/chunk/vector results when candidate sink disabled |
 | concurrency | bounded discovery and sink in-flight counts under delayed providers |

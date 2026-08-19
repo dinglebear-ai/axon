@@ -51,7 +51,7 @@ normalize; they don't own storage.
 - `artifact_candidates` is additive and defaults empty; candidates are bounded evidence tied to the same changed documents/job/generation, never a second crawl path.
 - Candidate/sink types cannot claim Depot publication/revision authority; the individual payload stays `dinglebear.artifact-candidate/v1`.
 - **Every adapter declares scopes and required auth/secrets.** `skills.sh` is `registry + api`, uses only its bounded structured API with a short-lived bearer token, and must not persist or log that token.
-- `skills.sh` catalog acquisition is metadata-only: do not call detail/file endpoints or mirror third-party skill bytes before explicit license/right gates exist.
+- `skills.sh` catalog acquisition is metadata-only: do not call detail/file endpoints or mirror third-party skill bytes before explicit license/right gates exist. Audit enrichment is separately authenticated, defaults off (`audit_limit = 0`), is hard-capped at 25 sequential lookups, and may add evidence only after strict identity/shape validation.
 - **Acquisition never writes to ledger or vector store directly** — all acquired content re-enters the shared pipeline afterward.
 - Adapter failures carry `FetchStatus` plus a retry/degradation policy.
 - Bringing a new source online = register adapter + scope + parser + metadata + tests + docs per `sources/new-source-contract.md`.

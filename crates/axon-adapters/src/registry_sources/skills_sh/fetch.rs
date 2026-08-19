@@ -38,27 +38,13 @@ pub(crate) trait SkillsShPageProvider: Send + Sync {
 
 #[derive(Clone)]
 pub(crate) struct HttpSkillsShPageProvider {
+    client: reqwest::Client,
     base_url: String,
-    token_override: Option<String>,
+    token: String,
 }
 
-impl Default for HttpSkillsShPageProvider {
-    fn default() -> Self {
-        Self {
-            base_url: API_BASE.to_string(),
-            token_override: None,
-        }
-    }
-}
-
-#[async_trait]
-impl SkillsShPageProvider for HttpSkillsShPageProvider {
-    async fn fetch_page(&self, request: SkillsShPageRequest) -> Result<SkillsShPage> {
-        let token = match self.token_override.as_deref() {
-            Some(token) => token.to_string(),
-            None => oidc_token()?,
-        };
-        let url = request_url(&self.base_url, &request)?;
+impl HttpSkillsShPageProvider {
+    fn new(base_url: String, token: String) -> Result<Self> {
         let client = build_client(REQUEST_TIMEOUT_SECS, Some(USER_AGENT)).map_err(|error| {
             ApiError::new(
                 "adapter.skills_sh.client_init_failed",
@@ -66,9 +52,26 @@ impl SkillsShPageProvider for HttpSkillsShPageProvider {
                 error.to_string(),
             )
         })?;
-        let response = client
+        Ok(Self {
+            client,
+            base_url,
+            token,
+        })
+    }
+
+    fn production() -> Result<Self> {
+        Self::new(API_BASE.to_string(), oidc_token()?)
+    }
+}
+
+#[async_trait]
+impl SkillsShPageProvider for HttpSkillsShPageProvider {
+    async fn fetch_page(&self, request: SkillsShPageRequest) -> Result<SkillsShPage> {
+        let url = request_url(&self.base_url, &request)?;
+        let response = self
+            .client
             .get(url)
-            .bearer_auth(token)
+            .bearer_auth(&self.token)
             .send()
             .await
             .map_err(|error| {
@@ -169,7 +172,11 @@ pub(crate) async fn fetch_dump_to_temporary_file(
     plan: &SourcePlan,
 ) -> Result<(tempfile::TempDir, std::path::PathBuf)> {
     let options = options(plan)?;
-    let dump = fetch_dump(&HttpSkillsShPageProvider::default(), &options).await?;
+    let provider = HttpSkillsShPageProvider::production()?;
+    let mut dump = fetch_dump(&provider, &options).await?;
+    if options.audit_limit > 0 {
+        super::audit::enrich_dump(&mut dump, options.audit_limit).await;
+    }
     let temporary = tempfile::tempdir().map_err(|error| {
         ApiError::new(
             "adapter.skills_sh.tempdir_failed",
@@ -214,7 +221,7 @@ pub(crate) async fn fetch_dump(
                     limit: options.per_page,
                 })
                 .await?;
-            extend_unique(&mut skills, page.data, options.total_limit);
+            extend_unique(&mut skills, page.data, options.total_limit)?;
             pages_fetched = 1;
         }
         SkillsShMode::Leaderboard => {
@@ -242,7 +249,7 @@ pub(crate) async fn fetch_dump(
                     .pagination
                     .as_ref()
                     .is_some_and(|pagination| pagination.has_more);
-                extend_unique(&mut skills, page.data, options.total_limit);
+                extend_unique(&mut skills, page.data, options.total_limit)?;
                 if !has_more {
                     break;
                 }
@@ -285,13 +292,109 @@ fn extend_unique(
     skills: &mut BTreeMap<String, super::SkillsShSkill>,
     page: Vec<super::SkillsShSkill>,
     total_limit: usize,
-) {
+) -> Result<()> {
     for skill in page {
         if skills.len() >= total_limit {
             break;
         }
+        let skill = validate_and_sanitize_listing_skill(skill)?;
         skills.entry(skill.id.clone()).or_insert(skill);
     }
+    Ok(())
+}
+
+fn validate_and_sanitize_listing_skill(
+    mut skill: super::SkillsShSkill,
+) -> Result<super::SkillsShSkill> {
+    bounded_listing_text(&skill.id, 1024, "id")?;
+    bounded_listing_text(&skill.slug, 256, "slug")?;
+    bounded_listing_text(&skill.name, 512, "name")?;
+    bounded_listing_text(&skill.source, 512, "source")?;
+    bounded_listing_text(&skill.source_type, 32, "sourceType")?;
+    if skill
+        .slug
+        .chars()
+        .any(|ch| matches!(ch, '/' | '\\' | '?' | '#'))
+        || matches!(skill.slug.as_str(), "." | "..")
+    {
+        return Err(listing_shape_error("slug is not a safe path segment"));
+    }
+    if skill.id != format!("{}/{}", skill.source, skill.slug) {
+        return Err(listing_shape_error(
+            "stable id must exactly match the documented {source}/{slug} shape",
+        ));
+    }
+    match skill.source_type.as_str() {
+        "github" if valid_github_source(&skill.source) => {}
+        "well-known" if valid_well_known_source(&skill.source) => {}
+        "github" | "well-known" => {
+            return Err(listing_shape_error(
+                "source does not match the documented sourceType shape",
+            ));
+        }
+        _ => {
+            return Err(listing_shape_error(
+                "sourceType is not supported by the v1 listing API",
+            ));
+        }
+    }
+    for (field, value) in [("installUrl", &skill.install_url), ("url", &skill.url)] {
+        if let Some(value) = value
+            && (value.len() > 2048 || value.chars().any(char::is_control))
+        {
+            return Err(listing_shape_error(&format!(
+                "{field} exceeds the bounded URL evidence shape"
+            )));
+        }
+    }
+    // These fields are Axon-owned enrichment. The listing/search API cannot
+    // inject them and bypass the dedicated audit-response validator.
+    skill.audits.clear();
+    skill.audit_status = None;
+    skill.audit_warnings.clear();
+    Ok(skill)
+}
+
+fn bounded_listing_text(value: &str, max: usize, field: &str) -> Result<()> {
+    if value.trim().is_empty() || value.len() > max || value.chars().any(char::is_control) {
+        return Err(listing_shape_error(&format!(
+            "listing {field} must be non-empty, control-free, and at most {max} bytes"
+        )));
+    }
+    Ok(())
+}
+
+fn valid_github_source(source: &str) -> bool {
+    let mut parts = source.split('/');
+    matches!(
+        (parts.next(), parts.next(), parts.next()),
+        (Some(owner), Some(repo), None)
+            if valid_listing_segment(owner) && valid_listing_segment(repo)
+    )
+}
+
+fn valid_well_known_source(source: &str) -> bool {
+    !source.contains('/')
+        && Url::parse(&format!("https://{source}/"))
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+            .is_some_and(|host| host.eq_ignore_ascii_case(source))
+}
+
+fn valid_listing_segment(value: &str) -> bool {
+    !value.is_empty()
+        && !matches!(value, "." | "..")
+        && !value
+            .chars()
+            .any(|ch| ch.is_control() || matches!(ch, '/' | '\\' | '?' | '#'))
+}
+
+fn listing_shape_error(message: &str) -> ApiError {
+    ApiError::new(
+        "adapter.skills_sh.listing_invalid",
+        ErrorStage::Fetching,
+        message,
+    )
 }
 
 fn request_url(base_url: &str, request: &SkillsShPageRequest) -> Result<Url> {
@@ -326,7 +429,7 @@ fn request_url(base_url: &str, request: &SkillsShPageRequest) -> Result<Url> {
     Ok(url)
 }
 
-fn oidc_token() -> Result<String> {
+pub(super) fn oidc_token() -> Result<String> {
     let token = std::env::var(PRIMARY_TOKEN_ENV)
         .ok()
         .filter(|value| !value.trim().is_empty())
@@ -351,11 +454,11 @@ pub(crate) fn request_url_for_test(request: &SkillsShPageRequest) -> Result<Url>
 }
 
 #[cfg(test)]
-pub(crate) fn http_provider_for_test(base_url: Url, token: &str) -> HttpSkillsShPageProvider {
-    HttpSkillsShPageProvider {
-        base_url: base_url.to_string(),
-        token_override: Some(token.to_string()),
-    }
+pub(crate) fn http_provider_for_test(
+    base_url: Url,
+    token: &str,
+) -> Result<HttpSkillsShPageProvider> {
+    HttpSkillsShPageProvider::new(base_url.to_string(), token.to_string())
 }
 
 #[cfg(test)]

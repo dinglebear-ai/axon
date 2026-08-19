@@ -3,6 +3,7 @@
 //! skills.sh is a pointer/evidence catalog, not the canonical source or license
 //! authority. This module never fetches the detail endpoint's file contents.
 
+mod audit;
 mod fetch;
 mod map;
 
@@ -24,6 +25,7 @@ pub(crate) const OWNER_OPTION: &str = "owner";
 pub(crate) const PAGE_OPTION: &str = "page";
 pub(crate) const PER_PAGE_OPTION: &str = "per_page";
 pub(crate) const MAX_PAGES_OPTION: &str = "max_pages";
+pub(crate) const AUDIT_LIMIT_OPTION: &str = "audit_limit";
 
 const DEFAULT_TOTAL_LIMIT: u64 = 100;
 const HARD_TOTAL_LIMIT: u64 = 1_000;
@@ -32,6 +34,8 @@ const HARD_PAGE_SIZE: u32 = 500;
 const DEFAULT_MAX_PAGES: u32 = 1;
 const HARD_MAX_PAGES: u32 = 10;
 const HARD_SEARCH_LIMIT: u32 = 200;
+const DEFAULT_AUDIT_LIMIT: u32 = 0;
+const HARD_AUDIT_LIMIT: u32 = 25;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SkillsShMode {
@@ -66,6 +70,7 @@ pub(crate) struct SkillsShOptions {
     pub(crate) per_page: u32,
     pub(crate) max_pages: u32,
     pub(crate) total_limit: usize,
+    pub(crate) audit_limit: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -98,7 +103,36 @@ pub(crate) struct SkillsShSkill {
     #[serde(default, rename = "isDuplicate", alias = "duplicate")]
     pub(crate) is_duplicate: Option<bool>,
     #[serde(default)]
-    pub(crate) hash: Option<String>,
+    pub(crate) audits: Vec<SkillsShAudit>,
+    #[serde(default, rename = "auditStatus")]
+    pub(crate) audit_status: Option<String>,
+    #[serde(default, rename = "auditWarnings")]
+    pub(crate) audit_warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SkillsShAudit {
+    pub(crate) provider: String,
+    pub(crate) slug: String,
+    pub(crate) status: String,
+    pub(crate) summary: String,
+    #[serde(rename = "auditedAt")]
+    pub(crate) audited_at: String,
+    #[serde(default, rename = "riskLevel")]
+    pub(crate) risk_level: Option<String>,
+    #[serde(default)]
+    pub(crate) categories: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SkillsShAuditResponse {
+    pub(crate) id: String,
+    pub(crate) source: String,
+    pub(crate) slug: String,
+    #[serde(default)]
+    pub(crate) audits: Vec<SkillsShAudit>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -155,6 +189,9 @@ pub(crate) fn options(plan: &SourcePlan) -> Result<SkillsShOptions> {
     let max_pages = optional_u32(values.get(MAX_PAGES_OPTION), MAX_PAGES_OPTION)?
         .unwrap_or(DEFAULT_MAX_PAGES)
         .clamp(1, HARD_MAX_PAGES);
+    let requested_audit_limit = optional_u32(values.get(AUDIT_LIMIT_OPTION), AUDIT_LIMIT_OPTION)?
+        .unwrap_or(DEFAULT_AUDIT_LIMIT)
+        .min(HARD_AUDIT_LIMIT);
     let requested_limit = plan
         .limits
         .effective
@@ -168,6 +205,9 @@ pub(crate) fn options(plan: &SourcePlan) -> Result<SkillsShOptions> {
             .min(HARD_SEARCH_LIMIT)
             .min(requested_limit.max(1) as u32),
     };
+    let audit_limit = usize::try_from(requested_audit_limit)
+        .unwrap_or(HARD_AUDIT_LIMIT as usize)
+        .min(total_limit);
     Ok(SkillsShOptions {
         mode,
         view,
@@ -177,6 +217,7 @@ pub(crate) fn options(plan: &SourcePlan) -> Result<SkillsShOptions> {
         per_page,
         max_pages,
         total_limit,
+        audit_limit,
     })
 }
 

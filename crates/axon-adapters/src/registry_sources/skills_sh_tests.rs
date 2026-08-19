@@ -82,6 +82,7 @@ fn default_options_are_small_bounded_and_incremental_friendly() {
     assert_eq!(options.per_page, 100);
     assert_eq!(options.max_pages, 1);
     assert_eq!(options.total_limit, 100);
+    assert_eq!(options.audit_limit, 0);
 }
 
 #[test]
@@ -97,11 +98,13 @@ fn explicit_limits_are_clamped_to_hard_provider_bounds() {
     let mut values = MetadataMap::new();
     values.insert("per_page".to_string(), serde_json::json!(9_999));
     values.insert("max_pages".to_string(), serde_json::json!(999));
+    values.insert("audit_limit".to_string(), serde_json::json!(999));
     let plan = plan_with_options(values, Some(50_000));
     let options = options(&plan).expect("provider bounds apply");
     assert_eq!(options.total_limit, 1_000);
     assert_eq!(options.per_page, 500);
     assert_eq!(options.max_pages, 10);
+    assert_eq!(options.audit_limit, 25);
 }
 
 fn dump_with_skill(installs: u64) -> SkillsShDump {
@@ -119,7 +122,9 @@ fn dump_with_skill(installs: u64) -> SkillsShDump {
             install_url: Some("https://github.com/vercel-labs/skills".to_string()),
             url: Some("https://skills.sh/vercel-labs/skills/find-skills".to_string()),
             is_duplicate: Some(false),
-            hash: None,
+            audits: Vec::new(),
+            audit_status: None,
+            audit_warnings: Vec::new(),
         }],
         pages_fetched: 1,
         total_reported: Some(1),
@@ -177,7 +182,17 @@ fn added_diff(plan: &SourcePlan, manifest: &SourceManifest) -> SourceManifestDif
 
 #[tokio::test]
 async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candidates() {
-    let dump = dump_with_skill(24_531);
+    let mut dump = dump_with_skill(24_531);
+    dump.skills[0].audit_status = Some("available".to_string());
+    dump.skills[0].audits.push(SkillsShAudit {
+        provider: "Socket".to_string(),
+        slug: "socket".to_string(),
+        status: "pass".to_string(),
+        summary: "No alerts".to_string(),
+        audited_at: "2026-08-19T14:00:00Z".to_string(),
+        risk_level: Some("LOW".to_string()),
+        categories: Vec::new(),
+    });
     let (_temp, path) = write_dump(&dump);
     let mut plan = plan_with_options(MetadataMap::new(), Some(10));
     set_dump_path(&mut plan, &path);
@@ -237,7 +252,16 @@ async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candid
         Some(expected_job_id.as_str())
     );
     assert_eq!(candidate.license_evidence["redistribution"], "unknown");
+    assert_eq!(
+        candidate.discovery_evidence["skillsSh"]["auditStatus"],
+        "available"
+    );
+    assert_eq!(
+        candidate.discovery_evidence["skillsSh"]["audits"][0]["status"],
+        "pass"
+    );
     assert!(candidate.observed_files.is_empty());
+    assert!(candidate.content_digests.is_empty());
     assert!(!candidate.permits_public_byte_mirroring());
 }
 
@@ -248,6 +272,34 @@ fn listing_digest_changes_when_catalog_evidence_changes() {
     let plan = plan_with_options(MetadataMap::new(), Some(10));
     let first_manifest = discover(&plan, &first).expect("first manifest");
     let second_manifest = discover(&plan, &second).expect("second manifest");
+    assert_ne!(
+        first_manifest.items[0].content_hash,
+        second_manifest.items[0].content_hash
+    );
+    assert_eq!(
+        first_manifest.items[0].source_item_key,
+        second_manifest.items[0].source_item_key
+    );
+}
+
+#[test]
+fn audit_evidence_changes_listing_digest_without_changing_item_identity() {
+    let first = dump_with_skill(10);
+    let mut second = dump_with_skill(10);
+    second.skills[0].audit_status = Some("available".to_string());
+    second.skills[0].audits.push(SkillsShAudit {
+        provider: "Socket".to_string(),
+        slug: "socket".to_string(),
+        status: "warn".to_string(),
+        summary: "Review recommended".to_string(),
+        audited_at: "2026-08-19T14:00:00Z".to_string(),
+        risk_level: Some("MEDIUM".to_string()),
+        categories: Vec::new(),
+    });
+    let plan = plan_with_options(MetadataMap::new(), Some(10));
+    let first_manifest = discover(&plan, &first).expect("first manifest");
+    let second_manifest = discover(&plan, &second).expect("audited manifest");
+
     assert_ne!(
         first_manifest.items[0].content_hash,
         second_manifest.items[0].content_hash

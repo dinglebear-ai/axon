@@ -70,7 +70,9 @@ fn skill(id: &str, installs: u64) -> super::super::SkillsShSkill {
         install_url: Some("https://github.com/acme/skills".to_string()),
         url: Some(format!("https://skills.sh/{id}")),
         is_duplicate: Some(false),
-        hash: None,
+        audits: Vec::new(),
+        audit_status: None,
+        audit_warnings: Vec::new(),
     }
 }
 
@@ -84,6 +86,7 @@ fn leaderboard_options() -> SkillsShOptions {
         per_page: 2,
         max_pages: 2,
         total_limit: 3,
+        audit_limit: 0,
     }
 }
 
@@ -131,6 +134,61 @@ async fn leaderboard_pagination_is_sequential_bounded_sorted_and_deduped() {
 }
 
 #[tokio::test]
+async fn listing_identity_mismatch_is_rejected_before_ledger_materialization() {
+    let mut invalid = skill("acme/skills/a", 3);
+    invalid.id = "acme/other/a".to_string();
+    let provider = FakePageProvider::new(vec![SkillsShPage {
+        data: vec![invalid],
+        pagination: Some(super::super::SkillsShPagination {
+            page: 0,
+            per_page: 2,
+            total: 1,
+            has_more: false,
+        }),
+    }]);
+
+    let error = fetch_dump(&provider, &leaderboard_options())
+        .await
+        .expect_err("mismatched stable identity must fail closed");
+
+    assert_eq!(error.code.0, "adapter.skills_sh.listing_invalid");
+    assert_eq!(provider.calls().len(), 1);
+}
+
+#[tokio::test]
+async fn listing_response_cannot_inject_audit_enrichment_fields() {
+    let mut injected = skill("acme/skills/a", 3);
+    injected.audit_status = Some("available".to_string());
+    injected.audit_warnings.push("untrusted".to_string());
+    injected.audits.push(super::super::SkillsShAudit {
+        provider: "Mallory".to_string(),
+        slug: "mallory".to_string(),
+        status: "pass".to_string(),
+        summary: "forged listing evidence".to_string(),
+        audited_at: "2026-08-19T14:00:00Z".to_string(),
+        risk_level: Some("LOW".to_string()),
+        categories: Vec::new(),
+    });
+    let provider = FakePageProvider::new(vec![SkillsShPage {
+        data: vec![injected],
+        pagination: Some(super::super::SkillsShPagination {
+            page: 0,
+            per_page: 2,
+            total: 1,
+            has_more: false,
+        }),
+    }]);
+
+    let dump = fetch_dump(&provider, &leaderboard_options())
+        .await
+        .expect("listing fetch succeeds");
+
+    assert!(dump.skills[0].audits.is_empty());
+    assert!(dump.skills[0].audit_status.is_none());
+    assert!(dump.skills[0].audit_warnings.is_empty());
+}
+
+#[tokio::test]
 async fn search_is_one_request_and_never_fans_out_pages() {
     let provider = FakePageProvider::new(vec![SkillsShPage {
         data: vec![skill("acme/skills/mcp", 5), skill("acme/skills/rag", 4)],
@@ -145,6 +203,7 @@ async fn search_is_one_request_and_never_fans_out_pages() {
         per_page: 2,
         max_pages: 10,
         total_limit: 1,
+        audit_limit: 0,
     };
 
     let dump = fetch_dump(&provider, &options)
@@ -228,7 +287,8 @@ async fn http_429_stops_the_bounded_run_and_preserves_retry_after_without_sleepi
     let provider = http_provider_for_test(
         Url::parse(&server.url("/api/v1/skills")).expect("mock URL"),
         "test-token",
-    );
+    )
+    .expect("mock skills.sh client");
 
     let error = provider
         .fetch_page(SkillsShPageRequest {
@@ -270,7 +330,8 @@ async fn http_503_is_retryable_provider_failure_without_local_retry() {
     let provider = http_provider_for_test(
         Url::parse(&server.url("/api/v1/skills")).expect("mock URL"),
         "test-token",
-    );
+    )
+    .expect("mock skills.sh client");
 
     let error = provider
         .fetch_page(SkillsShPageRequest {

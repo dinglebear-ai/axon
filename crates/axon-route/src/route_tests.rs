@@ -350,6 +350,10 @@ fn skills_sh_routes_as_structured_registry_api_with_bearer_requirement() {
         .options
         .values
         .insert("query".to_string(), serde_json::json!("mcp"));
+    request
+        .options
+        .values
+        .insert("audit_limit".to_string(), serde_json::json!(3));
     let resolved = resolver.resolve(&request).expect("skills.sh resolves");
     assert_eq!(resolved.source_kind, SourceKind::Registry);
     assert_eq!(resolved.canonical_uri, "catalog://skills.sh/search");
@@ -364,6 +368,10 @@ fn skills_sh_routes_as_structured_registry_api_with_bearer_requirement() {
     assert_eq!(
         route.validated_options.values["query"],
         serde_json::json!("mcp")
+    );
+    assert_eq!(
+        route.validated_options.values["audit_limit"],
+        serde_json::json!(3)
     );
     assert!(!route.validated_options.values.contains_key("mode"));
 }

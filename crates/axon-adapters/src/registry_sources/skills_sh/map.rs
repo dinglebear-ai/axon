@@ -31,7 +31,7 @@ pub(crate) fn discover(plan: &SourcePlan, dump: &SkillsShDump) -> Result<SourceM
             size_bytes: None,
             content_hash: Some(listing_digest(skill)?),
             mtime: None,
-            version: normalized_sha256(skill.hash.as_deref()),
+            version: None,
             fetch_plan: None,
             metadata: MetadataMap::new(),
             graph_hints: Vec::new(),
@@ -163,6 +163,13 @@ pub(crate) fn normalize(
             if let Some(duplicate) = skill.is_duplicate {
                 metadata.insert("is_duplicate".to_string(), serde_json::json!(duplicate));
             }
+            if let Some(status) = skill.audit_status.as_deref() {
+                metadata.insert("audit_status".to_string(), serde_json::json!(status));
+            }
+            metadata.insert(
+                "audit_count".to_string(),
+                serde_json::json!(skill.audits.len()),
+            );
             Ok(SourceDocument {
                 document_id: DocumentId::from(format!("doc_skills_sh_{}", digest_id(&skill.id))),
                 source_id: acquisition.source_id.clone(),
@@ -224,9 +231,7 @@ fn candidate_from_document(
         )
     })?;
     let (canonical_source_uri, repository, mut warnings) = canonical_source_pointer(&skill);
-    let source_digest = normalized_sha256(skill.hash.as_deref());
-    let dedupe =
-        artifact_candidate_dedupe(&canonical_source_uri, None, None, source_digest.as_deref());
+    let dedupe = artifact_candidate_dedupe(&canonical_source_uri, None, None, None);
     let mut manifest_metadata = MetadataMap::new();
     manifest_metadata.insert(
         "axonSourceItemKey".to_string(),
@@ -256,6 +261,8 @@ fn candidate_from_document(
             "sourceType": skill.source_type,
             "installUrl": skill.install_url,
             "isDuplicate": skill.is_duplicate,
+            "auditStatus": skill.audit_status,
+            "audits": skill.audits,
         }),
     );
     let mut popularity_signals = MetadataMap::new();
@@ -269,11 +276,7 @@ fn candidate_from_document(
         "source".to_string(),
         serde_json::json!("canonical repository license unresolved"),
     );
-    if source_digest.is_none() && skill.hash.is_some() {
-        warnings.push(
-            "skills.sh hash was not a canonical SHA-256 digest and was not trusted".to_string(),
-        );
-    }
+    warnings.extend(skill.audit_warnings.clone());
     Ok(ArtifactCandidate {
         schema_version: ARTIFACT_CANDIDATE_SCHEMA_VERSION.to_string(),
         id: artifact_candidate_id(&dedupe),
@@ -286,7 +289,7 @@ fn candidate_from_document(
         kind_hints: vec!["skill".to_string()],
         observed_files: Vec::new(),
         manifest_metadata,
-        content_digests: source_digest.into_iter().collect(),
+        content_digests: Vec::new(),
         discovery_evidence,
         popularity_signals,
         license_evidence,
@@ -341,50 +344,119 @@ fn listing_digest(skill: &SkillsShSkill) -> Result<String> {
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
 }
 
-fn normalized_sha256(value: Option<&str>) -> Option<String> {
-    let value = value?.trim();
-    let hex = value.strip_prefix("sha256:").unwrap_or(value);
-    (hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .then(|| format!("sha256:{}", hex.to_ascii_lowercase()))
-}
-
 fn canonical_source_pointer(skill: &SkillsShSkill) -> (String, Option<String>, Vec<String>) {
-    if let Some(install_url) = skill.install_url.as_deref()
-        && let Ok(mut url) = Url::parse(install_url)
-        && matches!(url.scheme(), "http" | "https")
-        && url.username().is_empty()
-        && url.password().is_none()
-        && url.host_str().is_some()
-    {
-        url.set_query(None);
-        url.set_fragment(None);
-        let canonical = url
-            .as_str()
-            .trim_end_matches('/')
-            .trim_end_matches(".git")
-            .to_string();
-        let repository = (skill.source_type.eq_ignore_ascii_case("github")
-            && valid_repository_name(&skill.source))
-        .then(|| skill.source.clone());
+    if let Some(canonical) = canonical_install_url(skill) {
+        let repository = skill
+            .source_type
+            .eq_ignore_ascii_case("github")
+            .then(|| skill.source.clone());
         return (canonical, repository, Vec::new());
     }
-    let fallback = skill
-        .url
-        .clone()
-        .unwrap_or_else(|| format!("https://skills.sh/{}", skill.id));
     (
-        fallback,
+        canonical_skills_sh_page(skill),
         None,
         vec![
-            "canonical source pointer could not be resolved from skills.sh installUrl; aggregator URL retained as evidence"
+            "canonical source pointer could not be resolved from a provider-matching skills.sh installUrl; aggregator URL retained as evidence"
                 .to_string(),
         ],
     )
 }
 
+fn canonical_install_url(skill: &SkillsShSkill) -> Option<String> {
+    let install_url = skill.install_url.as_deref()?;
+    let mut url = Url::parse(install_url).ok()?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return None;
+    }
+    match skill.source_type.as_str() {
+        "github" => {
+            if !valid_repository_name(&skill.source)
+                || !url
+                    .host_str()
+                    .is_some_and(|host| host.eq_ignore_ascii_case("github.com"))
+            {
+                return None;
+            }
+            let path = url.path().trim_end_matches('/');
+            let path = path.strip_suffix(".git").unwrap_or(path);
+            if path != format!("/{}", skill.source) {
+                return None;
+            }
+            url.set_path(&format!("/{}", skill.source));
+        }
+        "well-known" => {
+            if !valid_well_known_source(&skill.source)
+                || !url
+                    .host_str()
+                    .is_some_and(|host| host.eq_ignore_ascii_case(&skill.source))
+            {
+                return None;
+            }
+        }
+        _ => return None,
+    }
+    let _ = url.set_port(None);
+    url.set_query(None);
+    url.set_fragment(None);
+    Some(url.as_str().trim_end_matches('/').to_string())
+}
+
+fn canonical_skills_sh_page(skill: &SkillsShSkill) -> String {
+    if let Some(raw) = skill.url.as_deref()
+        && let Ok(mut url) = Url::parse(raw)
+        && url.scheme() == "https"
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.port_or_known_default() == Some(443)
+        && url
+            .host_str()
+            .is_some_and(|host| host.eq_ignore_ascii_case("skills.sh"))
+        && url.path().trim_end_matches('/') == format!("/{}", skill.id)
+    {
+        let _ = url.set_port(None);
+        url.set_query(None);
+        url.set_fragment(None);
+        return url.as_str().trim_end_matches('/').to_string();
+    }
+    let Ok(mut url) = Url::parse("https://skills.sh/") else {
+        return "https://skills.sh/".to_string();
+    };
+    if let Ok(mut path) = url.path_segments_mut() {
+        path.clear();
+        for segment in skill.id.split('/').filter(|segment| !segment.is_empty()) {
+            path.push(segment);
+        }
+    }
+    url.as_str().trim_end_matches('/').to_string()
+}
+
 fn valid_repository_name(value: &str) -> bool {
     let mut parts = value.split('/');
-    matches!((parts.next(), parts.next(), parts.next()), (Some(owner), Some(repo), None) if !owner.is_empty() && !repo.is_empty())
+    matches!((parts.next(), parts.next(), parts.next()), (Some(owner), Some(repo), None) if valid_source_segment(owner) && valid_source_segment(repo))
+}
+
+fn valid_well_known_source(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 253
+        && !value.contains('/')
+        && !value.chars().any(char::is_control)
+        && Url::parse(&format!("https://{value}/"))
+            .ok()
+            .and_then(|url| url.host_str().map(str::to_string))
+            .is_some_and(|host| host.eq_ignore_ascii_case(value))
+}
+
+fn valid_source_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && !matches!(value, "." | "..")
+        && !value
+            .chars()
+            .any(|ch| ch.is_control() || matches!(ch, '/' | '\\' | '?' | '#'))
 }
 
 fn digest_id(value: &str) -> String {
@@ -407,7 +479,9 @@ mod tests {
             install_url: Some("https://github.com/vercel-labs/skills.git".to_string()),
             url: Some("https://skills.sh/vercel-labs/skills/find-skills".to_string()),
             is_duplicate: Some(false),
-            hash: None,
+            audits: Vec::new(),
+            audit_status: None,
+            audit_warnings: Vec::new(),
         };
         let (uri, repo, warnings) = canonical_source_pointer(&skill);
         assert_eq!(uri, "https://github.com/vercel-labs/skills");
@@ -416,12 +490,27 @@ mod tests {
     }
 
     #[test]
-    fn sha256_normalization_is_fail_closed() {
-        assert_eq!(
-            normalized_sha256(Some(&"a".repeat(64))),
-            Some(format!("sha256:{}", "a".repeat(64)))
-        );
-        assert!(normalized_sha256(Some("not-a-digest")).is_none());
+    fn github_pointer_rejects_unrelated_install_host_and_falls_back_to_skills_sh() {
+        let skill = SkillsShSkill {
+            id: "vercel-labs/skills/find-skills".to_string(),
+            slug: "find-skills".to_string(),
+            name: "Find Skills".to_string(),
+            source: "vercel-labs/skills".to_string(),
+            installs: 42,
+            source_type: "github".to_string(),
+            install_url: Some("https://example.invalid/vercel-labs/skills".to_string()),
+            url: Some("https://skills.sh/vercel-labs/skills/find-skills".to_string()),
+            is_duplicate: None,
+            audits: Vec::new(),
+            audit_status: None,
+            audit_warnings: Vec::new(),
+        };
+
+        let (uri, repo, warnings) = canonical_source_pointer(&skill);
+
+        assert_eq!(uri, "https://skills.sh/vercel-labs/skills/find-skills");
+        assert!(repo.is_none());
+        assert_eq!(warnings.len(), 1);
     }
 
     #[test]

@@ -161,14 +161,22 @@ Current structured provider slice:
 - candidate observation time is evidence-backed from the catalog dump and fails closed if that timestamp is missing rather than falling back to wall clock time;
 - Registry `api` graph projection uses generic source/artifact semantics instead of pretending catalog rows are package versions.
 
-C3 close items still intentionally outstanding:
+C3 audit enrichment is now implemented behind an explicit bounded option:
 
-- bounded audit-signal enrichment must avoid an N+1/full-corpus request pattern.
+- `audit_limit` defaults to 0, hard-caps at 25, and is additionally capped by the selected catalog result ceiling, so the default structured crawl performs zero audit N+1 calls;
+- audit lookup uses the documented stable listing `id` at `/api/v1/skills/audit/{id}`, reuses one authenticated HTTP client for the bounded run, executes sequentially, and performs no hidden retries;
+- HTTP 404 records `none`; validated responses record `available`; the first auth/rate/provider/shape failure records `unavailable`, marks the remaining selected rows `skipped_after_failure`, and stops issuing audit calls without discarding base catalog discovery;
+- audit response identity must exactly match listing `id/source/slug`; audit entry counts/strings/status/risk/timestamps/categories are bounded and validated before becoming evidence, then partner entries are sorted deterministically;
+- listing/search responses cannot inject audit-owned fields: those fields are cleared at the listing trust boundary and only the dedicated audit endpoint may populate them;
+- listing rows now validate the documented `id == source/slug` identity and `github|well-known` source shapes before ledger materialization;
+- GitHub canonical pointers require HTTPS `github.com/<same owner/repo>`; unrelated install hosts fail closed to the validated skills.sh aggregator page and do not populate `repository`;
+- the undocumented listing `hash` field was removed completely. Because the listing API does not promise a content hash and C3 deliberately does not call the detail/files endpoint, skills.sh candidates emit no source content digests;
+- audit evidence changes the listing content hash while preserving the stable source item identity, so existing ledger diffing can treat audit changes as modified evidence without inventing a new item.
 
 Focused C3 proof after adversarial hardening:
 
-- `axon-adapters` skills.sh filter: 16 passed, 0 failed, including canonical route-mode inference, provider-future cancellation with exactly one request, HTTP 429 capped retry hint, HTTP 503 provider retry classification, canonical pointer mapping, evidence-backed timestamps, hard limits, and the registry dump -> document -> frozen candidate vertical path;
-- `axon-route` skills.sh filter: 2 passed, 0 failed, including rejection of mode overrides that could diverge canonical source identity;
+- `axon-adapters` skills.sh filter: 24 passed, 0 failed, covering canonical route-mode inference, provider-future cancellation, listing trust-boundary validation, audit bounds/404/429/fail-soft stop, hostile pointer fallback, evidence-backed timestamps, hard limits, and the registry dump -> document -> frozen candidate vertical path;
+- `axon-route` skills.sh filter: 2 passed, 0 failed, including acceptance of bounded `audit_limit` and rejection of mode overrides that could diverge canonical source identity;
 - `axon-services` source-pipeline differential filter: 4 passed, 0 failed;
 - `axon-services` graph filter: 29 passed, 0 failed, including family-specific Registry `api` graph semantics;
 - generated-contract refresh/check: passed, including 504 doc-link checks, 127 removed-surface contract checks, and full docs inventory;
@@ -182,13 +190,11 @@ Focused C3 proof after adversarial hardening:
 
 ## Next
 
-1. add bounded optional skills.sh audit-signal enrichment without default N+1 expansion;
-2. prove incremental refresh/watch via existing ledger;
-3. inspect Depot's current intake API and add versioned sink;
-4. semantic/graph evidence hooks;
-5. bounded seed only after gates;
-6. final fmt/clippy/warnings checks and adversarial review;
-7. keep draft PR evidence current.
+1. prove incremental refresh/watch via the existing SourceManifest/SourceManifestDiff/SourceGeneration ledger lifecycle;
+2. inspect Depot's current intake API and add the versioned sink without changing frozen v1 candidate fields;
+3. add semantic/graph evidence hooks;
+4. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;
+5. keep draft PR evidence current and preserve the no-second-pipeline boundary.
 
 
 ## Do not do yet
