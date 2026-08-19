@@ -46,9 +46,13 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| internal_error(format!("service context init failed: {e}")))?;
-        let result = query_svc::retrieve(ctx.as_ref(), &cfg, &target, opts)
-            .await
-            .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
+        let result =
+            query_svc::retrieve_with_auth(ctx.as_ref(), &cfg, &target, opts, caller_auth_snapshot)
+                .await
+                .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
         respond_with_mode(
             "retrieve",
             "retrieve",
@@ -333,7 +337,7 @@ impl AxonMcpServer {
         let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
             .try_with(Clone::clone)
             .unwrap_or_default();
-        let result = search_svc::research_with_context(
+        let result = search_svc::research_with_context_tracked_with_auth(
             self.cfg.as_ref(),
             &service_context,
             &query,
@@ -397,7 +401,10 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| internal_error(format!("service context: {e}")))?;
-        let result = query_svc::ask(&ctx, &cfg, &query, None)
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
+        let result = query_svc::ask_with_auth(&ctx, &cfg, &query, None, caller_auth_snapshot)
             .await
             .map_err(|e| logged_internal_error(&format!("ask '{query}'"), e.as_ref()))?;
 

@@ -75,10 +75,9 @@ async fn sweep_due_watches(
     let source_due = source_store
         .lease_due(now, lease_ttl_ms, LEASE_BATCH_LIMIT)
         .await?;
-    let count = source_due.len();
+    let mut enqueued = 0usize;
     if !source_due.is_empty() {
         let job_store = SqliteUnifiedJobStore::new((**pool).clone());
-        let mut enqueued = 0usize;
         for watch in source_due {
             let watch_id = watch.watch_id.0.clone();
             match enqueue_leased_source_watch(&source_store, &job_store, watch, now).await {
@@ -113,7 +112,7 @@ async fn sweep_due_watches(
             unified_notify.notify_waiters();
         }
     }
-    Ok(count)
+    Ok(enqueued)
 }
 
 async fn enqueue_leased_source_watch(
@@ -123,12 +122,10 @@ async fn enqueue_leased_source_watch(
     scheduled_at_ms: i64,
 ) -> Result<JobDescriptor, String> {
     let source_request = source_request_for_scheduled_watch(&watch, scheduled_at_ms);
-    let descriptor = JobStore::create(
-        job_store,
-        source_watch_job_create_request(&watch, source_request, scheduled_at_ms),
-    )
-    .await
-    .map_err(|err| err.to_string())?;
+    let create_request = source_watch_job_create_request(&watch, source_request, scheduled_at_ms)?;
+    let descriptor = JobStore::create(job_store, create_request)
+        .await
+        .map_err(|err| err.to_string())?;
     WatchStore::record_run(source_store, watch.watch_id, descriptor.job_id)
         .await
         .map_err(|err| err.to_string())?;
@@ -174,7 +171,13 @@ fn source_watch_job_create_request(
     watch: &LeasedSourceWatch,
     source_request: SourceRequest,
     scheduled_at_ms: i64,
-) -> JobCreateRequest {
+) -> Result<JobCreateRequest, String> {
+    let auth_snapshot = watch.auth_snapshot.clone().ok_or_else(|| {
+        format!(
+            "source watch {} has no persisted auth snapshot; refusing to invent scheduler authority",
+            watch.watch_id.0
+        )
+    })?;
     let priority = source_request.execution.priority;
     let idempotency_key = source_request.idempotency_key.clone();
     let mut metadata = MetadataMap::new();
@@ -190,7 +193,7 @@ fn source_watch_job_create_request(
         "source_watch_scheduled_at_ms".to_string(),
         serde_json::json!(scheduled_at_ms),
     );
-    JobCreateRequest {
+    Ok(JobCreateRequest {
         request_id: None,
         job_kind: JobKind::Source,
         job_intent: JobIntent::Watch,
@@ -205,7 +208,7 @@ fn source_watch_job_create_request(
         idempotency_key,
         stage_plan: Vec::new(),
         request: Some(serde_json::json!({ "source_request": source_request })),
-        auth_snapshot: watch.auth_snapshot.clone().unwrap_or_default(),
+        auth_snapshot,
         config_snapshot_id: None,
         requirements: MetadataMap::new(),
         result_schema: Some("source_result".to_string()),
@@ -213,7 +216,7 @@ fn source_watch_job_create_request(
         error: None,
         metadata,
         deadline_at: None,
-    }
+    })
 }
 
 fn source_watch_idempotency_key(watch_id: &str, scheduled_at_ms: i64) -> String {

@@ -68,60 +68,88 @@ fn raw_env_text_validates_before_write() {
 }
 
 #[test]
-fn panel_env_redacts_secrets_and_preserves_masked_values_on_save() {
+fn panel_env_inventory_is_compile_time_allowlisted_and_value_free() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join(".env");
     write_env_text(
         &path,
-        "# keep me
-QDRANT_URL=http://localhost:6333
+        "QDRANT_URL=http://localhost:6333
 TAVILY_API_KEY='super secret'
-AXON_HTTP_TOKEN=token-value
+UNKNOWN_RUNTIME_FLAG=surprise
 ",
     )
     .unwrap();
 
-    let panel = read_env_text_for_panel(&path).unwrap();
-    assert!(panel.contains("# keep me"));
-    assert!(panel.contains("QDRANT_URL=http://localhost:6333"));
-    assert!(panel.contains(&format!("TAVILY_API_KEY={PANEL_REDACTED_ENV_VALUE}")));
-    assert!(panel.contains(&format!("AXON_HTTP_TOKEN={PANEL_REDACTED_ENV_VALUE}")));
-    assert!(!panel.contains("super secret"));
-    assert!(!panel.contains("token-value"));
+    let states = panel_env_key_states(&path).unwrap();
+    assert_eq!(states.len(), PANEL_ENV_ALLOWLIST.len());
+    assert!(
+        states
+            .iter()
+            .any(|state| state.key == "QDRANT_URL" && state.configured)
+    );
+    assert!(
+        states
+            .iter()
+            .any(|state| state.key == "AXON_SEARXNG_URL" && !state.configured)
+    );
+    assert!(!states.iter().any(|state| state.key == "TAVILY_API_KEY"));
+    assert!(
+        !states
+            .iter()
+            .any(|state| state.key == "UNKNOWN_RUNTIME_FLAG")
+    );
 
-    let edited = panel.replace(
-        "QDRANT_URL=http://localhost:6333",
-        "QDRANT_URL=http://qdrant:6333",
-    );
-    write_env_text_from_panel(&path, &edited).unwrap();
-    let entries = read_env_entries(&path).unwrap();
-    assert_eq!(
-        entries.get("QDRANT_URL").map(String::as_str),
-        Some("http://qdrant:6333")
-    );
-    assert_eq!(
-        entries.get("TAVILY_API_KEY").map(String::as_str),
-        Some("super secret")
-    );
-    assert_eq!(
-        entries.get("AXON_HTTP_TOKEN").map(String::as_str),
-        Some("token-value")
-    );
+    let encoded = serde_json::to_string(&states).unwrap();
+    assert!(!encoded.contains("super secret"));
+    assert!(!encoded.contains("http://localhost:6333"));
+    assert!(!encoded.contains("TAVILY_API_KEY"));
+    assert!(!encoded.contains("UNKNOWN_RUNTIME_FLAG"));
 }
 
 #[test]
-fn panel_env_rejects_mask_for_missing_secret() {
+fn panel_env_allowlist_is_registered_non_secret_and_unique() {
+    let mut keys = std::collections::BTreeSet::new();
+    for key in PANEL_ENV_ALLOWLIST {
+        assert!(
+            keys.insert(*key),
+            "duplicate panel env allowlist key: {key}"
+        );
+        let spec = axon_core::config::parse::env_registry::spec_for(key)
+            .unwrap_or_else(|| panic!("panel env key is not registered: {key}"));
+        assert!(
+            !spec.secret,
+            "secret env key must not be panel-visible: {key}"
+        );
+    }
+    assert!(!PANEL_ENV_ALLOWLIST.contains(&"AXON_SOURCE_LOCAL_ALLOWED_ROOTS"));
+    assert!(!PANEL_ENV_ALLOWLIST.contains(&"AXON_HTTP_TOKEN"));
+    assert!(!PANEL_ENV_ALLOWLIST.contains(&"AXON_WEB_API_TOKEN"));
+}
+
+#[test]
+fn panel_env_write_only_allows_explicit_non_secret_keys() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join(".env");
-    let error = write_env_text_from_panel(
-        &path,
-        &format!(
-            "TAVILY_API_KEY={PANEL_REDACTED_ENV_VALUE}
-"
-        ),
-    )
-    .unwrap_err();
-    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+
+    write_panel_env_entry(&path, "QDRANT_URL", Some("http://qdrant:6333")).unwrap();
+    assert_eq!(
+        read_env_entries(&path)
+            .unwrap()
+            .get("QDRANT_URL")
+            .map(String::as_str),
+        Some("http://qdrant:6333")
+    );
+
+    let secret = write_panel_env_entry(&path, "TAVILY_API_KEY", Some("nope")).unwrap_err();
+    assert_eq!(secret.kind(), ErrorKind::PermissionDenied);
+    let local =
+        write_panel_env_entry(&path, "AXON_SOURCE_LOCAL_ALLOWED_ROOTS", Some("/tmp")).unwrap_err();
+    assert_eq!(local.kind(), ErrorKind::PermissionDenied);
+    let unknown = write_panel_env_entry(&path, "SURPRISE_KEY", Some("nope")).unwrap_err();
+    assert_eq!(unknown.kind(), ErrorKind::PermissionDenied);
+
+    write_panel_env_entry(&path, "QDRANT_URL", None).unwrap();
+    assert!(!read_env_entries(&path).unwrap().contains_key("QDRANT_URL"));
 }
 
 #[test]

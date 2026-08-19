@@ -238,14 +238,36 @@ pub async fn research_with_context_tracked(
     opts: SearchOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ResearchResult, SearchError> {
+    research_with_context_tracked_with_auth(
+        cfg,
+        service_context,
+        query,
+        opts,
+        tx,
+        Some(axon_api::source::AuthSnapshot::trusted_cli("runtime")),
+    )
+    .await
+}
+
+/// Auth-aware tracked research path for REST/MCP. Parent research work and
+/// auto-index child source jobs clone the same immutable caller snapshot.
+#[must_use = "research_with_context_tracked_with_auth returns a Result that should be handled"]
+pub async fn research_with_context_tracked_with_auth(
+    cfg: &Config,
+    service_context: &crate::context::ServiceContext,
+    query: &str,
+    opts: SearchOptions,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    auth_snapshot: Option<axon_api::source::AuthSnapshot>,
+) -> Result<ResearchResult, SearchError> {
     let request_json = serde_json::json!({
         "operation": "research",
         "query": query,
         "limit": opts.limit,
         "offset": opts.offset,
     });
-    job_tracking::track_research_job(service_context, request_json, || {
-        research_with_context(cfg, service_context, query, opts, tx, None)
+    job_tracking::track_research_job(service_context, request_json, auth_snapshot.clone(), || {
+        research_with_context(cfg, service_context, query, opts, tx, auth_snapshot)
     })
     .await
 }

@@ -367,7 +367,7 @@ pub(crate) async fn research(
         .map(|Extension(auth)| auth_snapshot_from_context(auth));
     tokio::time::timeout(
         Duration::from_secs(35),
-        services::search::research_with_context(
+        services::search::research_with_context_tracked_with_auth(
             &cfg,
             &service_context,
             &query,

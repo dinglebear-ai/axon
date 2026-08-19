@@ -5,11 +5,14 @@ use axon_services::client_contract::{
     RestRetrieveRequest as RetrieveRequest, RestSuggestRequest as SuggestRequest,
 };
 use axon_services::transport;
+use axum::Extension;
 use axum::extract::State;
+use lab_auth::AuthContext;
 use std::sync::Arc;
 
 use super::super::error::HttpError;
 use super::super::json::Json;
+use super::super::utils::auth_snapshot_from_auth;
 
 type WebState = (super::super::state::AppState, Arc<Config>);
 
@@ -26,6 +29,7 @@ type WebState = (super::super::state::AppState, Arc<Config>);
 )]
 pub(crate) async fn query(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::QueryResult>>, HttpError> {
     let query = required_text(&req.query, "query")?;
@@ -36,11 +40,13 @@ pub(crate) async fn query(
         req.before,
         req.hybrid_search,
     )?;
-    let result = services::query::query(
+    let result = services::query::query_with_auth(
         &state.service_context,
         &cfg,
         query,
         transport::pagination(req.limit, req.offset, cfg.search_limit),
+        auth.as_ref()
+            .map(|extension| auth_snapshot_from_auth(&extension.0)),
     )
     .await
     .map_err(HttpError::from_box)?;
@@ -60,15 +66,18 @@ pub(crate) async fn query(
 )]
 pub(crate) async fn retrieve(
     State((state, cfg)): State<WebState>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<RetrieveRequest>,
 ) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::RetrieveResult>>, HttpError> {
     let url = required_text(&req.url, "url")?;
     let cfg = with_query_overrides(&cfg, req.collection, req.since, req.before, None)?;
-    let result = services::query::retrieve(
+    let result = services::query::retrieve_with_auth(
         &state.service_context,
         &cfg,
         url,
         transport::retrieve_options(req.max_points, req.cursor, req.token_budget),
+        auth.as_ref()
+            .map(|extension| auth_snapshot_from_auth(&extension.0)),
     )
     .await
     .map_err(HttpError::from_box_send_sync)?;

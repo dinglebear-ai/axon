@@ -416,86 +416,71 @@ pub fn write_env_text(path: &Path, raw_env: &str) -> io::Result<()> {
     write_private_file_atomic(path, raw_env)
 }
 
-pub const PANEL_REDACTED_ENV_VALUE: &str = "[redacted-secret]";
+/// Environment keys the browser panel may know about or mutate.
+///
+/// This list is intentionally independent from the full environment registry:
+/// adding a new Axon environment variable must never make it panel-visible by
+/// accident. Secret-bearing keys and authority-expanding local/tool settings
+/// are deliberately absent. The panel only receives each key plus whether it
+/// is currently configured; values never cross the REST boundary.
+pub const PANEL_ENV_ALLOWLIST: &[&str] = &[
+    "QDRANT_URL",
+    "TEI_URL",
+    "AXON_CHROME_REMOTE_URL",
+    "AXON_SEARXNG_URL",
+    "REDDIT_CLIENT_ID",
+    "AXON_LLM_BACKEND",
+    "AXON_PROVIDER",
+    "AXON_HEADLESS_GEMINI_CMD",
+    "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+    "AXON_HEADLESS_GEMINI_MODEL",
+    "AXON_CHAT_HEADLESS_GEMINI_MODEL",
+    "AXON_OPENAI_BASE_URL",
+    "AXON_CODEX_MODEL",
+    "AXON_SYNTHESIS_CODEX_MODEL",
+    "AXON_CODEX_COMPLETION_CONCURRENCY",
+    "AXON_CODEX_LOAD_USER_CONFIG",
+    "AXON_SYNTHESIS_OPENAI_MODEL",
+    "AXON_CHAT_OPENAI_MODEL",
+    "AXON_CHROME_PROXY",
+];
 
-/// Read the raw env editor surface without returning secret values to the
-/// browser. Comments and non-sensitive assignments are preserved.
-pub fn read_env_text_for_panel(path: &Path) -> io::Result<String> {
-    let raw = read_env_text(path)?;
-    Ok(redact_env_text_for_panel(&raw))
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct PanelEnvKeyState {
+    pub key: &'static str,
+    pub configured: bool,
 }
 
-/// Save panel-edited env text while treating the redaction placeholder as
-/// "keep the current secret". This lets the editor round-trip an existing
-/// secret without ever receiving its value over REST.
-pub fn write_env_text_from_panel(path: &Path, raw_env: &str) -> io::Result<()> {
-    parse_env_pairs_from_str(raw_env)?;
-    let existing = read_env_text(path)?;
-    let merged = restore_redacted_panel_values(&existing, raw_env)?;
-    write_env_text(path, &merged)
+/// Return the fixed, compile-time panel environment inventory without exposing
+/// values, defaults, lengths, paths, secret-key names, or dynamically inferred
+/// metadata.
+pub fn panel_env_key_states(path: &Path) -> io::Result<Vec<PanelEnvKeyState>> {
+    let configured = read_env_entries(path)?;
+    Ok(PANEL_ENV_ALLOWLIST
+        .iter()
+        .copied()
+        .map(|key| PanelEnvKeyState {
+            key,
+            configured: configured.contains_key(key),
+        })
+        .collect())
 }
 
-fn redact_env_text_for_panel(raw: &str) -> String {
-    transform_env_lines(raw, |line| {
-        let Some((key, _value)) = env_assignment(line) else {
-            return Ok(line.to_string());
-        };
-        if axon_core::redact::is_secret_like(&key.to_ascii_lowercase()) {
-            Ok(format!("{key}={PANEL_REDACTED_ENV_VALUE}"))
-        } else {
-            Ok(line.to_string())
-        }
-    })
-    .expect("panel redaction is infallible")
-}
-
-fn restore_redacted_panel_values(existing: &str, submitted: &str) -> io::Result<String> {
-    let existing_lines = existing
-        .lines()
-        .filter_map(|line| env_assignment(line).map(|(key, _)| (key.to_string(), line.to_string())))
-        .collect::<BTreeMap<_, _>>();
-    transform_env_lines(submitted, |line| {
-        let Some((key, value)) = env_assignment(line) else {
-            return Ok(line.to_string());
-        };
-        if axon_core::redact::is_secret_like(&key.to_ascii_lowercase())
-            && value.trim() == PANEL_REDACTED_ENV_VALUE
-        {
-            return existing_lines.get(key).cloned().ok_or_else(|| {
-                io::Error::new(
-                    ErrorKind::InvalidInput,
-                    format!("{key} is redacted but has no existing value; enter a replacement"),
-                )
-            });
-        }
-        Ok(line.to_string())
-    })
-}
-
-fn transform_env_lines<F>(raw: &str, mut transform: F) -> io::Result<String>
-where
-    F: FnMut(&str) -> io::Result<String>,
-{
-    let had_trailing_newline = raw.ends_with('\n');
-    let mut lines = Vec::new();
-    for line in raw.lines() {
-        lines.push(transform(line.strip_suffix('\r').unwrap_or(line))?);
+/// Set or clear one explicitly panel-allowlisted, non-secret environment key.
+///
+/// The browser cannot read the prior value. A missing value means clear the
+/// key; a present value replaces it atomically through the canonical env writer.
+pub fn write_panel_env_entry(path: &Path, key: &str, value: Option<&str>) -> io::Result<()> {
+    if !PANEL_ENV_ALLOWLIST.contains(&key) {
+        return Err(io::Error::new(
+            ErrorKind::PermissionDenied,
+            format!("environment key {key:?} is not editable from the panel"),
+        ));
     }
-    let mut output = lines.join("\n");
-    if had_trailing_newline {
-        output.push('\n');
+    match value {
+        Some(value) => set_env_entry(path, key, value),
+        None => unset_env_entry(path, key).map(|_| ()),
     }
-    Ok(output)
-}
-
-fn env_assignment(line: &str) -> Option<(&str, &str)> {
-    let trimmed = line.trim_start();
-    if trimmed.is_empty() || trimmed.starts_with('#') {
-        return None;
-    }
-    let (key, value) = trimmed.split_once('=')?;
-    let key = key.trim();
-    is_valid_env_key(key).then_some((key, value))
 }
 
 pub fn write_env_entries(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {

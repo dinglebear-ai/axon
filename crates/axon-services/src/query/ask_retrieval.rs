@@ -21,7 +21,7 @@
 use std::collections::BTreeSet;
 use std::error::Error;
 
-use axon_api::source::OperationKind;
+use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::Config;
 use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
@@ -56,6 +56,20 @@ pub async fn ask_via_retrieval<F>(
 where
     F: FnMut(&str) + Send,
 {
+    ask_via_retrieval_with_auth(ctx, cfg, question, on_delta, None).await
+}
+
+/// Auth-aware ask path used by authenticated transports.
+pub async fn ask_via_retrieval_with_auth<F>(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    on_delta: Option<F>,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<AskResult, Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(
             "ask requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
@@ -71,8 +85,15 @@ where
     // trace-building logic and its module doc for what narrowed relative to
     // the retired legacy reranker's trace.
     if cfg.ask_explain {
-        let (ask_ctx, hits) =
-            retrieval_ask_context_with_hits(ctx, cfg, question, "ask", false).await?;
+        let (ask_ctx, hits) = retrieval_ask_context_with_hits(
+            ctx,
+            cfg,
+            question,
+            "ask",
+            false,
+            auth_snapshot.clone(),
+        )
+        .await?;
         let trace = explain::build_explain_trace(
             cfg,
             question,
@@ -89,7 +110,7 @@ where
         ));
     }
 
-    let ask_ctx = retrieval_ask_context(ctx, cfg, question, "ask").await?;
+    let ask_ctx = retrieval_ask_context_with_auth(ctx, cfg, question, "ask", auth_snapshot).await?;
 
     let synth = match on_delta {
         Some(cb) => {
@@ -122,7 +143,18 @@ pub(crate) async fn retrieval_ask_context(
     question: &str,
     label: &str,
 ) -> Result<AskContext, Box<dyn Error>> {
-    let (ask_ctx, _hits) = retrieval_ask_context_with_hits(ctx, cfg, question, label, true).await?;
+    retrieval_ask_context_with_auth(ctx, cfg, question, label, None).await
+}
+
+pub(crate) async fn retrieval_ask_context_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    label: &str,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<AskContext, Box<dyn Error>> {
+    let (ask_ctx, _hits) =
+        retrieval_ask_context_with_hits(ctx, cfg, question, label, true, auth_snapshot).await?;
     Ok(ask_ctx)
 }
 
@@ -137,6 +169,7 @@ async fn retrieval_ask_context_with_hits(
     question: &str,
     label: &str,
     diversify_documents: bool,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<(AskContext, Vec<QueryServiceHit>), Box<dyn Error>> {
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(format!(
@@ -154,6 +187,7 @@ async fn retrieval_ask_context_with_hits(
             "collection": cfg.collection,
             "label": label,
         }),
+        auth_snapshot,
     )
     .await?;
     let store = execution.scheduled_vectors();

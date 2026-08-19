@@ -5,7 +5,10 @@ use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::transport::{AskTransportOverrides, apply_ask_overrides};
 use axum::{Extension, Json, response::IntoResponse};
+use lab_auth::AuthContext;
 use std::sync::Arc;
+
+use super::super::utils::auth_snapshot_from_auth;
 
 pub(super) fn ask_transport_overrides(req: &AskRequestBody) -> AskTransportOverrides {
     AskTransportOverrides {
@@ -46,6 +49,7 @@ pub(super) fn ask_transport_overrides(req: &AskRequestBody) -> AskTransportOverr
 pub async fn v1_ask(
     Extension(cfg): Extension<Arc<Config>>,
     Extension(ctx): Extension<Arc<ServiceContext>>,
+    auth: Option<Extension<AuthContext>>,
     Json(req): Json<AskRequestBody>,
 ) -> impl IntoResponse {
     use super::super::types::ASK_QUERY_MAX_CHARS;
@@ -73,7 +77,16 @@ pub async fn v1_ask(
 
     let want_diagnostics = req_cfg.ask_diagnostics;
 
-    match query_svc::ask(&ctx, &req_cfg, &req.query, None).await {
+    match query_svc::ask_with_auth(
+        &ctx,
+        &req_cfg,
+        &req.query,
+        None,
+        auth.as_ref()
+            .map(|extension| auth_snapshot_from_auth(&extension.0)),
+    )
+    .await
+    {
         Ok(result) => Json(result).into_response(),
         Err(err) => {
             HttpError::from_error_with_diagnostics(err.as_ref(), want_diagnostics).into_response()

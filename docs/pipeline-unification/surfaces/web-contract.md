@@ -1,5 +1,5 @@
 # Web App Contract
-Last Modified: 2026-06-30
+Last Modified: 2026-08-19
 
 ## Contract
 
@@ -41,6 +41,8 @@ Web app depends on the full REST contract, with emphasis on:
 | bootstrap | `GET /api/panel/state`, `GET /v1/server`, `GET /v1/capabilities`, `GET /readyz` |
 | auth/setup | `/api/panel/login`, setup and auth routes from `rest-contract.md` |
 | config | `GET /api/panel/config`, `PUT /api/panel/config`, `GET /api/panel/env`, `PUT /api/panel/env` |
+
+The environment surface is deliberately not a raw `.env` editor. `GET /api/panel/env` returns only a fixed compile-time allowlist of non-secret key names and `configured: bool`. It never exposes values, defaults, lengths, paths, secret-key names, dynamic prefixes, or inferred metadata. `PUT /api/panel/env` is write-only per key: it may set or clear only those explicitly allowlisted keys, and cannot grant Local or Execute authority.
 | source lifecycle | `/v1/sources*`, `/v1/watches*`, `/v1/jobs*` |
 | retrieval | `/v1/search`, `/v1/query`, `/v1/retrieve`, `/v1/ask`, streaming variants |
 | memory | `/v1/memories/*` |

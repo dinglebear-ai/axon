@@ -49,7 +49,7 @@ async fn track_research_job_records_failed_status_on_error() {
 
     let request_json = serde_json::json!({"operation": "research", "query": "test query"});
     let result: Result<(), crate::search::SearchError> =
-        track_research_job(&ctx, request_json, || async {
+        track_research_job(&ctx, request_json, None, || async {
             crate::search::ensure_tavily_configured(ctx.cfg(), "research")
         })
         .await;
@@ -92,7 +92,7 @@ async fn track_research_job_records_completed_status_on_success() {
 
     let request_json = serde_json::json!({"operation": "research", "query": "test query"});
     let result: Result<u32, Box<dyn std::error::Error>> =
-        track_research_job(&ctx, request_json, || async { Ok(42u32) }).await;
+        track_research_job(&ctx, request_json, None, || async { Ok(42u32) }).await;
 
     assert_eq!(result.expect("op should succeed"), 42);
 
@@ -110,4 +110,30 @@ async fn track_research_job_records_completed_status_on_success() {
 
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].status, LifecycleStatus::Completed);
+}
+
+#[tokio::test]
+async fn track_research_job_persists_exact_caller_snapshot() {
+    let ctx = test_ctx().await;
+    let snapshot = axon_api::source::AuthSnapshot::panel("research-policy-v1");
+    let request_json = serde_json::json!({"operation": "research", "query": "auth proof"});
+
+    let result: Result<u32, Box<dyn std::error::Error>> =
+        track_research_job(&ctx, request_json, Some(snapshot.clone()), || async {
+            Ok(7u32)
+        })
+        .await;
+    assert_eq!(result.expect("op should succeed"), 7);
+
+    let pool = ctx.sqlite_pool().expect("sqlite pool");
+    let stored_json: String = sqlx::query_scalar(
+        "SELECT auth_snapshot_json FROM jobs WHERE kind = 'research' ORDER BY created_at DESC LIMIT 1",
+    )
+    .fetch_one(pool.as_ref())
+    .await
+    .expect("stored research auth snapshot");
+    let stored: axon_api::source::AuthSnapshot =
+        serde_json::from_str(&stored_json).expect("deserialize research auth snapshot");
+
+    assert_eq!(stored, snapshot);
 }

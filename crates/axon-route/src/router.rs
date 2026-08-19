@@ -19,9 +19,15 @@ pub struct RouteSecurityPolicy {
 }
 
 impl RouteSecurityPolicy {
-    pub fn allow_tool_execution() -> Self {
+    /// Build the route policy from the independent operator and caller
+    /// authorities required for executable source adapters. Neither side may
+    /// enable tool execution on its own.
+    pub fn from_tool_execution_authority(
+        operator_allows_tool_execution: bool,
+        caller_allows_tool_execution: bool,
+    ) -> Self {
         Self {
-            allow_tool_execution: true,
+            allow_tool_execution: operator_allows_tool_execution && caller_allows_tool_execution,
         }
     }
 }

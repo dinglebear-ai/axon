@@ -104,11 +104,12 @@ impl AxonMcpServer {
                     "source detached=true requires a running job store; retry with detached=false",
                 ));
             };
-            let result = axon_services::source::enqueue::enqueue_source_with_allowed_roots(
+            let result = axon_services::source::enqueue::enqueue_source_with_access_policy(
                 api_request,
                 job_store.as_ref(),
                 caller_auth_snapshot,
                 Some(&service_context.cfg().source_local_allowed_roots),
+                service_context.cfg().allow_tool_execution,
             )
             .await
             .map_err(|e| logged_internal_error("source.enqueue", e.as_ref()))?;

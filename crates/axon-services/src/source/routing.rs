@@ -11,8 +11,8 @@ use axon_route::{
 };
 use std::sync::OnceLock;
 
+use super::authorize::SourceAccessDecision;
 use super::events::SourceEventEmitter;
-use super::security::authorize_local_source_policy;
 
 #[derive(Debug, Clone)]
 pub struct RoutedSource {
@@ -31,17 +31,18 @@ pub fn resolve_source_route(request: &SourceRequest) -> Result<RoutedSource, Api
     resolve_source_route_with_policy(request, RouteSecurityPolicy::default())
 }
 
-pub(crate) fn resolve_source_route_for_auth(
+pub(crate) fn resolve_source_route_for_access(
     request: &SourceRequest,
     auth_snapshot: Option<&AuthSnapshot>,
+    operator_allows_tool_execution: bool,
 ) -> Result<RoutedSource, ApiError> {
-    let policy = if auth_snapshot.is_some_and(|snapshot| {
+    let caller_allows_tool_execution = auth_snapshot.is_some_and(|snapshot| {
         super::authorize::snapshot_allows_scope(snapshot, axon_api::source::AuthScope::Execute)
-    }) {
-        RouteSecurityPolicy::allow_tool_execution()
-    } else {
-        RouteSecurityPolicy::default()
-    };
+    });
+    let policy = RouteSecurityPolicy::from_tool_execution_authority(
+        operator_allows_tool_execution,
+        caller_allows_tool_execution,
+    );
     resolve_source_route_with_policy(request, policy)
 }
 
@@ -64,12 +65,18 @@ pub(crate) async fn resolve_authorized_source_route(
     input: &str,
     auth_snapshot: Option<&AuthSnapshot>,
     affinity: ExecutionAffinity,
+    operator_allows_tool_execution: bool,
+    allowed_roots: Option<&[std::path::PathBuf]>,
     event_emitter: SourceEventEmitter,
 ) -> Result<AuthorizedSourceRoute, ApiError> {
     event_emitter
         .running(PipelinePhase::Resolving, "resolving source request")
         .await;
-    let routed = match resolve_source_route_for_auth(request, auth_snapshot) {
+    let routed = match resolve_source_route_for_access(
+        request,
+        auth_snapshot,
+        operator_allows_tool_execution,
+    ) {
         Ok(routed) => routed,
         Err(err) => {
             event_emitter
@@ -92,7 +99,16 @@ pub(crate) async fn resolve_authorized_source_route(
     event_emitter
         .running(PipelinePhase::Authorizing, "authorizing source request")
         .await;
-    authorize_route_plan(&route, input, kind, auth_snapshot, affinity, &event_emitter).await?;
+    authorize_route_plan(
+        &route,
+        input,
+        kind,
+        auth_snapshot,
+        affinity,
+        allowed_roots,
+        &event_emitter,
+    )
+    .await?;
     Ok(AuthorizedSourceRoute {
         kind,
         route,
@@ -107,47 +123,28 @@ async fn authorize_route_plan(
     kind: SourceKind,
     auth_snapshot: Option<&AuthSnapshot>,
     affinity: ExecutionAffinity,
+    allowed_roots: Option<&[std::path::PathBuf]>,
     event_emitter: &SourceEventEmitter,
 ) -> Result<(), ApiError> {
-    if let Err(err) = super::authorize::authorize_route(route) {
-        event_emitter
-            .failed(
-                PipelinePhase::Authorizing,
-                "source route authorization failed",
-            )
-            .await;
-        return Err(err);
-    }
-    if let Err(err) = super::authorize::authorize_safety_class(route.safety_class, auth_snapshot) {
-        event_emitter
-            .failed(
-                PipelinePhase::Authorizing,
-                "source safety authorization failed",
-            )
-            .await;
-        return Err(err);
-    }
-    if let Err(err) =
-        super::authorize::authorize_execution_affinity(route.safety_class, affinity, auth_snapshot)
+    match SourceAccessDecision::evaluate(route, input, kind, auth_snapshot, affinity, allowed_roots)
     {
-        event_emitter
-            .failed(
-                PipelinePhase::Authorizing,
-                "source execution affinity authorization failed",
-            )
-            .await;
-        return Err(err);
+        Ok(decision) => {
+            tracing::debug!(
+                source_kind = ?kind,
+                required_scope = decision.required_scope.as_scope_str(),
+                affinity = ?decision.affinity,
+                local_root_enforced = decision.local_root_enforced,
+                "source access decision allowed"
+            );
+            Ok(())
+        }
+        Err(err) => {
+            event_emitter
+                .failed(PipelinePhase::Authorizing, "source access decision denied")
+                .await;
+            Err(err)
+        }
     }
-    if let Err(err) = authorize_local_source_policy(input, kind, auth_snapshot) {
-        event_emitter
-            .failed(
-                PipelinePhase::Authorizing,
-                "local source authorization failed",
-            )
-            .await;
-        return Err(err);
-    }
-    Ok(())
 }
 
 struct RouteComponents {

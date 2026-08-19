@@ -51,6 +51,29 @@ fn router_requires_explicit_tool_execution_allowance() {
 }
 
 #[test]
+fn route_tool_execution_policy_requires_operator_and_caller_authority() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("mcp:context7/resolve-library-id");
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), json!("invoke"));
+
+    for (operator, caller) in [(false, false), (true, false), (false, true)] {
+        let resolved = resolver.resolve(&request).expect("mcp source resolves");
+        let err = router
+            .route_with_policy(
+                &request,
+                resolved,
+                RouteSecurityPolicy::from_tool_execution_authority(operator, caller),
+            )
+            .expect_err("one-sided tool authority must fail closed");
+        assert_eq!(err.code.0, "route.tool_execution.denied");
+    }
+}
+
+#[test]
 fn router_allows_metadata_only_tool_source_without_execution_policy() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
@@ -124,7 +147,7 @@ fn router_allows_tool_execution_with_trusted_policy() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::allow_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows cli route");
 
@@ -153,7 +176,7 @@ fn router_carries_tool_execution_options_with_trusted_policy() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::allow_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows cli execution route options");
 
@@ -179,7 +202,7 @@ fn router_emits_no_default_parser_hints_for_mcp_tools() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::allow_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows mcp route");
 

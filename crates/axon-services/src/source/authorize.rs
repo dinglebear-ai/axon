@@ -17,10 +17,64 @@
 
 use axon_api::source::{
     AuthMode, AuthScope, AuthSnapshot, CallerContext, CredentialKind, ExecutionAffinity, RoutePlan,
-    SafetyClass,
+    SafetyClass, SourceKind,
 };
 use axon_authz::{AffinityPolicy, required_scope_for_safety_class};
 use axon_error::{ApiError, ErrorStage};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceAccessDecision {
+    pub(crate) required_scope: AuthScope,
+    pub(crate) affinity: ExecutionAffinity,
+    pub(crate) local_root_enforced: bool,
+}
+
+impl SourceAccessDecision {
+    /// Evaluate the complete post-route source admission policy exactly once.
+    /// Credential presence, caller scope, execution affinity, local-source
+    /// authority, and server allowed-root containment are one atomic decision.
+    /// AffinityPolicy remains an internal component rather than a second
+    /// authorization authority.
+    pub(crate) fn evaluate(
+        route: &RoutePlan,
+        input: &str,
+        kind: SourceKind,
+        auth_snapshot: Option<&AuthSnapshot>,
+        affinity: ExecutionAffinity,
+        allowed_roots: Option<&[PathBuf]>,
+    ) -> Result<Self, ApiError> {
+        authorize_route(route)?;
+        authorize_safety_class(route.safety_class, auth_snapshot)?;
+        authorize_execution_affinity(route.safety_class, affinity, auth_snapshot)?;
+        super::security::authorize_local_source_policy(input, kind, auth_snapshot)?;
+        let local_root_enforced = kind == SourceKind::Local
+            && allowed_roots.is_some()
+            && !auth_snapshot.is_some_and(|snapshot| snapshot.auth_mode == AuthMode::TrustedLocal);
+        if let Some(allowed_roots) = allowed_roots {
+            super::security::authorize_local_source_allowed_roots(
+                input,
+                kind,
+                auth_snapshot,
+                allowed_roots,
+            )?;
+        }
+        let required_scope =
+            AuthScope::from_scope_str(required_scope_for_safety_class(route.safety_class))
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "auth.scope_unrecognized",
+                        ErrorStage::Authorizing,
+                        "source route has an unrecognized safety-class scope requirement",
+                    )
+                })?;
+        Ok(Self {
+            required_scope,
+            affinity,
+            local_root_enforced,
+        })
+    }
+}
 
 /// Authorize a routed source against its adapter's declared credential
 /// requirements. Returns `Ok(())` when every `required` credential is either

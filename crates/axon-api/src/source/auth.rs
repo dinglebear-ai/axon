@@ -61,6 +61,22 @@ impl AuthSnapshot {
         }
     }
 
+    /// Fixed browser-panel authority. Panel authentication never implies
+    /// administrator, local-filesystem, or tool-execution privileges.
+    pub fn panel(policy_version: impl Into<String>) -> Self {
+        Self {
+            caller_id: Some("axon-panel".to_string()),
+            transport: TransportKind::Rest,
+            granted_scopes: vec![AuthScope::Read, AuthScope::Write],
+            visibility_ceiling: Visibility::Internal,
+            request_time: Timestamp::from(Utc::now()),
+            policy_version: policy_version.into(),
+            auth_mode: AuthMode::StaticToken,
+            token_id: None,
+            display_name: Some("Axon panel".to_string()),
+        }
+    }
+
     pub fn trusted_system(policy_version: impl Into<String>) -> Self {
         Self {
             caller_id: Some("axon-system".to_string()),

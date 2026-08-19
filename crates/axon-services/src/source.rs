@@ -135,6 +135,8 @@ async fn index_source_inner(
         } else {
             ExecutionAffinity::Inline
         },
+        ctx.cfg().allow_tool_execution,
+        Some(&ctx.cfg().source_local_allowed_roots),
         events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id)
             .with_attempt(execution.attempt)
             .with_optional_foreground(execution.foreground.clone()),
@@ -148,18 +150,6 @@ async fn index_source_inner(
     let route = routed.route;
     let adapter = routed.adapter;
     let event_emitter = routed.event_emitter;
-
-    if let Some(denied) = local_root_denial_result(
-        &input,
-        kind,
-        execution.auth_snapshot.as_ref(),
-        &ctx.cfg().source_local_allowed_roots,
-        &event_emitter,
-    )
-    .await
-    {
-        return Ok(denied);
-    }
 
     let Some(runtime) = ctx.target_local_source_runtime() else {
         event_emitter
@@ -308,25 +298,6 @@ fn source_collection(request: &SourceRequest, ctx: &ServiceContext) -> String {
         .collection
         .clone()
         .unwrap_or_else(|| ctx.cfg().collection.clone())
-}
-
-async fn local_root_denial_result(
-    input: &str,
-    kind: SourceKind,
-    auth_snapshot: Option<&AuthSnapshot>,
-    allowed_roots: &[std::path::PathBuf],
-    event_emitter: &events::SourceEventEmitter,
-) -> Option<SourceResult> {
-    let err =
-        security::authorize_local_source_allowed_roots(input, kind, auth_snapshot, allowed_roots)
-            .err()?;
-    event_emitter
-        .failed(
-            PipelinePhase::Authorizing,
-            "local source allowed-root authorization failed",
-        )
-        .await;
-    Some(result_map::route_error_result(input, err))
 }
 
 async fn drain_source_cleanup_debt(

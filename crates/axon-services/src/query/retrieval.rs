@@ -9,7 +9,7 @@
 use std::error::Error;
 
 use axon_api::result::QueryHit;
-use axon_api::source::OperationKind;
+use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::Config;
 use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
@@ -42,6 +42,19 @@ pub async fn query_via_retrieval_with_cfg(
     text: &str,
     opts: Pagination,
 ) -> Result<QueryResult, Box<dyn Error>> {
+    query_via_retrieval_with_cfg_and_auth(ctx, cfg, text, opts, None).await
+}
+
+/// Auth-aware foreground query path used by authenticated transports. The
+/// exact immutable caller snapshot is copied onto the durable query job before
+/// provider capacity is reserved.
+pub async fn query_via_retrieval_with_cfg_and_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    text: &str,
+    opts: Pagination,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<QueryResult, Box<dyn Error>> {
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(
             "query requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
@@ -57,6 +70,7 @@ pub async fn query_via_retrieval_with_cfg(
             "query": text,
             "collection": cfg.collection,
         }),
+        auth_snapshot,
     )
     .await?;
     let store = execution.scheduled_vectors();

@@ -24,6 +24,7 @@ impl ReadExecution {
         cfg: &Config,
         operation: OperationKind,
         request: serde_json::Value,
+        auth_snapshot: Option<AuthSnapshot>,
     ) -> Result<Self, Box<dyn Error>> {
         let runtime = if let Some(runtime) = ctx.target_local_source_runtime() {
             Arc::new(runtime.clone())
@@ -41,24 +42,7 @@ impl ReadExecution {
             )
         };
 
-        let descriptor = if ctx.job_store().is_some() {
-            crate::jobs::enqueue_operation_with_context(
-                ctx,
-                operation,
-                JobExecutionMode::Foreground,
-                request,
-                JobPriority::Interactive,
-                AuthSnapshot::scheduler_bookkeeping("runtime"),
-            )
-            .await?
-        } else {
-            None
-        };
-        if let Some(descriptor) = &descriptor
-            && let Err(error) = crate::jobs::start_operation_job(ctx, descriptor).await
-        {
-            tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job running");
-        }
+        let descriptor = begin_read_descriptor(ctx, operation, request, auth_snapshot).await?;
         let job_id = descriptor
             .as_ref()
             .map(|descriptor| descriptor.job_id)
@@ -125,6 +109,32 @@ impl ReadExecution {
             tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job terminal");
         }
     }
+}
+
+async fn begin_read_descriptor(
+    ctx: &ServiceContext,
+    operation: OperationKind,
+    request: serde_json::Value,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<Option<JobDescriptor>, Box<dyn Error>> {
+    if ctx.job_store().is_none() {
+        return Ok(None);
+    }
+    let descriptor = crate::jobs::enqueue_operation_with_context(
+        ctx,
+        operation,
+        JobExecutionMode::Foreground,
+        request,
+        JobPriority::Interactive,
+        auth_snapshot.unwrap_or_else(|| AuthSnapshot::scheduler_bookkeeping("runtime")),
+    )
+    .await?;
+    if let Some(descriptor) = &descriptor
+        && let Err(error) = crate::jobs::start_operation_job(ctx, descriptor).await
+    {
+        tracing::warn!(job_id = %descriptor.job_id.0, %error, "failed to mark interactive read job running");
+    }
+    Ok(descriptor)
 }
 
 #[derive(Clone)]
@@ -243,5 +253,83 @@ impl VectorStore for ScheduledVectorStore {
 
     async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {
         self.runtime.vector_store.capabilities().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn foreground_read_descriptor_persists_exact_caller_snapshot() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut cfg = Config::default();
+        cfg.sqlite_path = temp.path().join("jobs.db");
+        let ctx = ServiceContext::new(Arc::new(cfg))
+            .await
+            .expect("enqueue-only service context");
+        let snapshot = AuthSnapshot::panel("panel-policy-v1");
+
+        let descriptor = begin_read_descriptor(
+            &ctx,
+            OperationKind::Query,
+            serde_json::json!({ "query": "snapshot proof" }),
+            Some(snapshot.clone()),
+        )
+        .await
+        .expect("begin foreground read")
+        .expect("foreground read job descriptor");
+
+        let pool = ctx.sqlite_pool().expect("sqlite pool");
+        let stored_json: String =
+            sqlx::query_scalar("SELECT auth_snapshot_json FROM jobs WHERE job_id = ?")
+                .bind(descriptor.job_id.0.to_string())
+                .fetch_one(pool.as_ref())
+                .await
+                .expect("stored auth snapshot");
+        let stored: AuthSnapshot =
+            serde_json::from_str(&stored_json).expect("deserialize stored auth snapshot");
+
+        assert_eq!(stored, snapshot);
+        assert_eq!(
+            stored.granted_scopes,
+            vec![AuthScope::Read, AuthScope::Write]
+        );
+        assert!(!stored.granted_scopes.contains(&AuthScope::Admin));
+        assert!(!stored.granted_scopes.contains(&AuthScope::Local));
+        assert!(!stored.granted_scopes.contains(&AuthScope::Execute));
+    }
+
+    #[tokio::test]
+    async fn foreground_read_descriptor_uses_bookkeeping_only_without_caller_snapshot() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut cfg = Config::default();
+        cfg.sqlite_path = temp.path().join("jobs.db");
+        let ctx = ServiceContext::new(Arc::new(cfg))
+            .await
+            .expect("enqueue-only service context");
+
+        let descriptor = begin_read_descriptor(
+            &ctx,
+            OperationKind::Retrieve,
+            serde_json::json!({ "url": "https://example.test/" }),
+            None,
+        )
+        .await
+        .expect("begin foreground retrieve")
+        .expect("foreground retrieve job descriptor");
+
+        let pool = ctx.sqlite_pool().expect("sqlite pool");
+        let stored_json: String =
+            sqlx::query_scalar("SELECT auth_snapshot_json FROM jobs WHERE job_id = ?")
+                .bind(descriptor.job_id.0.to_string())
+                .fetch_one(pool.as_ref())
+                .await
+                .expect("stored auth snapshot");
+        let stored: AuthSnapshot =
+            serde_json::from_str(&stored_json).expect("deserialize stored auth snapshot");
+
+        assert_eq!(stored.caller_id.as_deref(), Some("axon-scheduler"));
+        assert_eq!(stored.granted_scopes, vec![AuthScope::Read]);
     }
 }

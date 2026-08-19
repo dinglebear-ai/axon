@@ -202,7 +202,7 @@ async fn enqueue_source_tool_with_execute_scope_is_routable() {
     let mut auth = AuthSnapshot::default();
     auth.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Execute];
 
-    let result = enqueue_source(request, &store, Some(auth))
+    let result = enqueue_source_with_access_policy(request, &store, Some(auth), None, true)
         .await
         .expect("enqueue");
 
@@ -217,6 +217,33 @@ async fn enqueue_source_tool_with_execute_scope_is_routable() {
         "tool source should route to a live dispatch family: {:?}",
         result.warnings
     );
+}
+
+#[tokio::test]
+async fn enqueue_source_tool_requires_operator_and_caller_authority() {
+    let store = FakeJobWatchStore::new();
+    let request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let mut execute_auth = AuthSnapshot::default();
+    execute_auth.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Execute];
+
+    let operator_denied =
+        enqueue_source_with_access_policy(request.clone(), &store, Some(execute_auth), None, false)
+            .await
+            .expect("operator-disabled result");
+    assert!(operator_denied.job.is_none());
+    assert_eq!(operator_denied.status, LifecycleStatus::Failed);
+
+    let caller_denied = enqueue_source_with_access_policy(
+        request,
+        &store,
+        Some(AuthSnapshot::panel("panel-policy")),
+        None,
+        true,
+    )
+    .await
+    .expect("caller-disabled result");
+    assert!(caller_denied.job.is_none());
+    assert_eq!(caller_denied.status, LifecycleStatus::Failed);
 }
 
 #[test]

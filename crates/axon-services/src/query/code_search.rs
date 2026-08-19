@@ -99,6 +99,7 @@ async fn target_code_search(
             "generation": generation.0,
             "operation": "code_search",
         }),
+        None,
     )
     .await
     .map_err(|error| -> Box<dyn Error + Send + Sync> { error.to_string().into() })?;

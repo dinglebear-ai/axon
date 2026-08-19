@@ -259,6 +259,122 @@ async fn panel_artifact_requires_panel_token_and_serves_png() {
 
 #[tokio::test]
 #[serial]
+async fn panel_env_response_is_allowlisted_value_free_and_write_restricted() {
+    let temp = tempfile::tempdir().unwrap();
+    let env_path = temp.path().join("panel.env");
+    std::fs::write(
+        &env_path,
+        "QDRANT_URL=http://private-qdrant:6333\nTAVILY_API_KEY=super-secret\nAXON_SOURCE_LOCAL_ALLOWED_ROOTS=/etc\nSURPRISE_FLAG=hidden\n",
+    )
+    .unwrap();
+    let _env_path = EnvGuard::set_key("AXON_ENV_FILE", env_path.to_str());
+    let (base, shutdown, handle) = spawn_full_test_server(AuthPolicy::LoopbackDev).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{base}/api/panel/env"))
+        .header("x-axon-panel-token", "test-panel-token")
+        .send()
+        .await
+        .expect("panel env request");
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value = response.json().await.expect("panel env json");
+    let root = body.as_object().expect("panel env object");
+    assert_eq!(
+        root.len(),
+        1,
+        "panel env response must expose only the key inventory"
+    );
+    assert!(root.contains_key("keys"));
+    let keys = body["keys"].as_array().expect("panel env keys");
+    assert!(
+        keys.iter()
+            .any(|entry| { entry["key"] == "QDRANT_URL" && entry["configured"] == true })
+    );
+    for entry in keys {
+        let fields = entry.as_object().expect("panel env key state");
+        assert_eq!(
+            fields.len(),
+            2,
+            "panel env entry leaked extra metadata: {fields:?}"
+        );
+        assert!(fields.contains_key("key"));
+        assert!(fields.contains_key("configured"));
+    }
+    let encoded = body.to_string();
+    for forbidden in [
+        "private-qdrant",
+        "super-secret",
+        "TAVILY_API_KEY",
+        "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
+        "/etc",
+        "SURPRISE_FLAG",
+        "panel.env",
+    ] {
+        assert!(
+            !encoded.contains(forbidden),
+            "panel env leaked {forbidden:?}"
+        );
+    }
+
+    for forbidden_key in [
+        "TAVILY_API_KEY",
+        "AXON_SOURCE_LOCAL_ALLOWED_ROOTS",
+        "SURPRISE_FLAG",
+    ] {
+        let denied = client
+            .put(format!("{base}/api/panel/env"))
+            .header("x-axon-panel-token", "test-panel-token")
+            .json(&serde_json::json!({ "key": forbidden_key, "value": "replacement" }))
+            .send()
+            .await
+            .expect("forbidden panel env write");
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN, "{forbidden_key}");
+    }
+
+    let updated = client
+        .put(format!("{base}/api/panel/env"))
+        .header("x-axon-panel-token", "test-panel-token")
+        .json(&serde_json::json!({ "key": "QDRANT_URL", "value": "http://qdrant:6333" }))
+        .send()
+        .await
+        .expect("allowlisted panel env write");
+    assert_eq!(updated.status(), StatusCode::ACCEPTED);
+    let entries = axon_services::config::read_env_entries(&env_path).unwrap();
+    assert_eq!(
+        entries.get("QDRANT_URL").map(String::as_str),
+        Some("http://qdrant:6333")
+    );
+    assert_eq!(
+        entries.get("TAVILY_API_KEY").map(String::as_str),
+        Some("super-secret")
+    );
+    assert_eq!(
+        entries
+            .get("AXON_SOURCE_LOCAL_ALLOWED_ROOTS")
+            .map(String::as_str),
+        Some("/etc")
+    );
+
+    let cleared = client
+        .put(format!("{base}/api/panel/env"))
+        .header("x-axon-panel-token", "test-panel-token")
+        .json(&serde_json::json!({ "key": "QDRANT_URL", "value": null }))
+        .send()
+        .await
+        .expect("clear allowlisted panel env key");
+    assert_eq!(cleared.status(), StatusCode::ACCEPTED);
+    assert!(
+        !axon_services::config::read_env_entries(&env_path)
+            .unwrap()
+            .contains_key("QDRANT_URL")
+    );
+
+    stop(shutdown, handle).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn v1_artifacts_use_opaque_ids_and_reject_path_access() {
     let _env = EnvGuard::set(Some("secret"));
     let temp = tempfile::tempdir().unwrap();

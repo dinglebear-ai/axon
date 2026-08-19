@@ -248,8 +248,8 @@ authorizes the read.
 | `POST` | `/api/panel/login` | panel | Panel password login. |
 | `GET` | `/api/panel/config` | panel | Read editable config TOML. |
 | `PUT` | `/api/panel/config` | panel | Save editable config TOML. |
-| `GET` | `/api/panel/env` | panel | Read editable `.env`. |
-| `PUT` | `/api/panel/env` | panel | Save editable `.env`. |
+| `GET` | `/api/panel/env` | panel | List the fixed non-secret panel env allowlist with configured state only; never return values or env paths. |
+| `PUT` | `/api/panel/env` | panel | Set or clear one explicitly allowlisted non-secret env key without returning its prior value. |
 | `GET` | `/api/panel/status` | panel | Panel status projection. |
 | `GET` | `/api/panel/doctor` | panel | Panel doctor projection. |
 | `POST` | `/api/panel/command` | panel | Execute panel-approved command. |
@@ -1520,8 +1520,8 @@ panel control plane.
 | `POST /api/panel/login` | body `{ "password" }` | login/session result | sets panel session cookie |
 | `GET /api/panel/config` | panel cookie | config path, raw TOML, restart flag | none |
 | `PUT /api/panel/config` | body `{ "raw_toml" }` | save result and restart flag | writes config TOML |
-| `GET /api/panel/env` | panel cookie | env path, raw env text, restart flag | none |
-| `PUT /api/panel/env` | body `{ "raw_env" }` | save result and restart flag | writes `.env` |
+| `GET /api/panel/env` | panel cookie | fixed compile-time-allowlisted non-secret key names plus `configured: bool` only | none |
+| `PUT /api/panel/env` | body `{ "key", "value" }`; `null` clears | save result and restart flag | updates one explicitly allowlisted non-secret `.env` key; rejects all other keys |
 | `GET /api/panel/status` | panel cookie | panel status projection | none |
 | `GET /api/panel/doctor` | panel cookie | panel doctor projection | dependency probes only |
 | `POST /api/panel/command` | body approved command request | command result | executes allowlisted panel command |

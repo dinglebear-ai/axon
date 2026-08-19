@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::time::Duration;
 
-use axon_api::source::OperationKind;
+use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::{Config, ConfigOverrides, ScrapeFormat};
 use axon_retrieval::retrieve::{RetrievedDocument, retrieve_document};
 use axon_vectors::qdrant::QdrantVectorStore;
@@ -42,6 +42,17 @@ pub async fn retrieve(
     url: &str,
     opts: RetrieveOptions,
 ) -> Result<RetrieveResult, Box<dyn Error + Send + Sync>> {
+    retrieve_with_auth(ctx, cfg, url, opts, None).await
+}
+
+/// Auth-aware retrieve path for authenticated transports.
+pub async fn retrieve_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    url: &str,
+    opts: RetrieveOptions,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<RetrieveResult, Box<dyn Error + Send + Sync>> {
     if url.starts_with("local-code://") {
         return Err("local-code documents are only available through code_search".into());
     }
@@ -50,6 +61,7 @@ pub async fn retrieve(
         cfg,
         OperationKind::Retrieve,
         serde_json::json!({ "url": url, "collection": cfg.collection }),
+        auth_snapshot,
     )
     .await
     .map_err(|error| -> Box<dyn Error + Send + Sync> { error.to_string().into() })?;

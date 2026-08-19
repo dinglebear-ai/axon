@@ -238,3 +238,57 @@ fn trusted_cli_snapshot_still_allows_local_scope_implicitly() {
     assert!(!snapshot_allows_scope(&snapshot, AuthScope::Execute));
     assert!(!snapshot_allows_scope(&snapshot, AuthScope::Admin));
 }
+
+#[test]
+fn source_access_decision_records_scope_and_affinity() {
+    let request = SourceRequest::new("https://example.com/docs");
+    let routed = routing::resolve_source_route(&request).expect("web route");
+
+    let decision = SourceAccessDecision::evaluate(
+        &routed.route,
+        &request.source,
+        routed.kind,
+        None,
+        ExecutionAffinity::Inline,
+        None,
+    )
+    .expect("web source admission");
+
+    assert_eq!(decision.required_scope, AuthScope::Write);
+    assert_eq!(decision.affinity, ExecutionAffinity::Inline);
+    assert!(!decision.local_root_enforced);
+}
+
+#[test]
+fn source_access_decision_enforces_remote_local_allowed_roots() {
+    let root = crate::test_support::visible_tempdir().expect("local source root");
+    let request = SourceRequest::local_path(root.path().to_string_lossy(), true);
+    let routed = routing::resolve_source_route(&request).expect("local route");
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.auth_mode = AuthMode::Oauth;
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    let denied = SourceAccessDecision::evaluate(
+        &routed.route,
+        &request.source,
+        routed.kind,
+        Some(&snapshot),
+        ExecutionAffinity::Worker,
+        Some(&[]),
+    )
+    .expect_err("remote local source needs a configured server root");
+    assert_eq!(denied.code.to_string(), "security.local_root_denied");
+
+    let allowed_roots = [root.path().to_path_buf()];
+    let allowed = SourceAccessDecision::evaluate(
+        &routed.route,
+        &request.source,
+        routed.kind,
+        Some(&snapshot),
+        ExecutionAffinity::Worker,
+        Some(&allowed_roots),
+    )
+    .expect("configured local root should admit source");
+    assert_eq!(allowed.required_scope, AuthScope::Local);
+    assert!(allowed.local_root_enforced);
+}

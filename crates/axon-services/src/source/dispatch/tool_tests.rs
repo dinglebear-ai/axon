@@ -43,7 +43,7 @@ fn resolve_execution_route(
     message: &str,
 ) -> crate::source::routing::RoutedSource {
     let routing_auth = execute_snapshot();
-    crate::source::routing::resolve_source_route_for_auth(request, Some(&routing_auth))
+    crate::source::routing::resolve_source_route_for_access(request, Some(&routing_auth), true)
         .expect(message)
 }
 
