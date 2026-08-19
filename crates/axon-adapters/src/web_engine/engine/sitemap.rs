@@ -13,7 +13,7 @@ mod filter;
 pub use backfill::append_candidate_backfill;
 pub use backfill::{BackfillStats, append_sitemap_backfill};
 pub(crate) use discover::sitemap_url_limit;
-pub use discover::{SitemapDiscovery, discover_sitemap_urls};
+pub use discover::{SitemapDiscovery, discover_sitemap_urls, discover_sitemap_urls_with_metadata};
 #[cfg(test)]
 pub(crate) use discover::{insert_discovered_url, sitemap_fetch_limit};
 #[cfg(test)]
@@ -60,6 +60,15 @@ pub(crate) async fn fetch_text(
     url: &str,
     max_bytes: Option<u64>,
 ) -> Option<String> {
+    fetch_text_with_metadata(fetch, url, max_bytes, &MetadataMap::new()).await
+}
+
+pub(crate) async fn fetch_text_with_metadata(
+    fetch: &dyn FetchProvider,
+    url: &str,
+    max_bytes: Option<u64>,
+    metadata: &MetadataMap,
+) -> Option<String> {
     let request = FetchRequest {
         uri: url.to_string(),
         method: "GET".to_string(),
@@ -70,7 +79,7 @@ pub(crate) async fn fetch_text(
         timeout_ms: None,
         max_bytes,
         credential_refs: Vec::new(),
-        metadata: MetadataMap::new(),
+        metadata: metadata.clone(),
     };
     let resource = match fetch.fetch(request).await {
         Ok(resource) if (200..300).contains(&resource.status) => resource,

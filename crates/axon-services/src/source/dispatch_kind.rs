@@ -120,6 +120,7 @@ pub(super) async fn dispatch_kind(
             dispatch_virtual_kind(
                 kind,
                 adapter,
+                cfg,
                 runtime,
                 input,
                 collection,
@@ -214,6 +215,7 @@ async fn dispatch_local_or_git(
 async fn dispatch_virtual_kind(
     kind: SourceKind,
     adapter: Arc<dyn SourceAdapter>,
+    cfg: &axon_core::config::Config,
     runtime: &TargetLocalSourceRuntime,
     input: &str,
     collection: &str,
@@ -225,7 +227,7 @@ async fn dispatch_virtual_kind(
 ) -> anyhow::Result<IndexCounts> {
     match kind {
         SourceKind::CliTool => {
-            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
+            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_config(cfg);
             dispatch::dispatch_cli_tool(
                 adapter,
                 runtime,
@@ -241,7 +243,7 @@ async fn dispatch_virtual_kind(
             .await
         }
         SourceKind::McpTool => {
-            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_process();
+            let policy = dispatch::tool_auth::ToolExecutionPolicy::from_config(cfg);
             dispatch::dispatch_mcp_tool(
                 adapter,
                 runtime,

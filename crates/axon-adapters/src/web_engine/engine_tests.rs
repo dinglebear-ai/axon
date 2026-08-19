@@ -437,6 +437,77 @@ fn discovery_prefers_markdown_alternate_over_duplicate_html_url() {
 }
 
 #[test]
+fn advertised_markdown_dedupe_preserves_the_complete_semantic_route_set() {
+    let sitemap = vec![
+        "https://example.com/docs/en/overview".to_string(),
+        "https://example.com/docs/en/guide/".to_string(),
+        "https://example.com/docs/en/query?version=1".to_string(),
+        "https://example.com/docs/en/html-only".to_string(),
+    ];
+    let llms = vec![
+        "https://example.com/docs/en/overview.md".to_string(),
+        "https://example.com/docs/en/guide.md".to_string(),
+        "https://example.com/docs/en/query.md?version=1".to_string(),
+        "https://example.com/docs/en/markdown-only.md".to_string(),
+    ];
+    let semantic_route = |raw: &str| {
+        let mut url = url::Url::parse(raw).expect("test url");
+        let path = url.path().trim_end_matches('/');
+        let route = path
+            .strip_suffix(".md")
+            .or_else(|| path.strip_suffix(".markdown"))
+            .unwrap_or(path)
+            .to_string();
+        url.set_path(&route);
+        canonicalize_url_for_dedupe(url.as_ref()).expect("canonical route")
+    };
+    let before = sitemap
+        .iter()
+        .chain(llms.iter())
+        .map(|url| semantic_route(url))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let urls = map::merge_discovery_candidate_urls(sitemap, llms);
+    let after = urls
+        .iter()
+        .map(|url| semantic_route(url))
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(after, before);
+    assert_eq!(urls.len(), 5);
+    assert!(urls.iter().any(|url| url.ends_with("/overview.md")));
+    assert!(urls.iter().any(|url| url.ends_with("/guide.md")));
+    assert!(urls.iter().any(|url| url.ends_with("/query.md?version=1")));
+    assert!(urls.iter().any(|url| url.ends_with("/html-only")));
+    assert!(urls.iter().any(|url| url.ends_with("/markdown-only.md")));
+}
+
+#[test]
+fn root_anchors_cannot_reintroduce_html_for_an_advertised_markdown_alternate() {
+    let scope = derive_map_scope(
+        "https://example.com/docs/en/",
+        "https://example.com/docs/en/",
+    )
+    .expect("scope");
+    let llms = vec!["https://example.com/docs/en/overview.md".to_string()];
+    let discovery = vec!["https://example.com/docs/en/overview.md".to_string()];
+    let anchors = vec![
+        "https://example.com/docs/en/overview".to_string(),
+        "https://example.com/docs/en/anchor-only".to_string(),
+        "https://example.com/docs/en/independent".to_string(),
+        "https://example.com/docs/en/independent.md".to_string(),
+    ];
+
+    let urls = map::merge_discovery_and_anchor_urls(discovery, anchors, &llms, &scope);
+
+    assert!(urls.iter().any(|url| url.ends_with("/overview.md")));
+    assert!(!urls.iter().any(|url| url.ends_with("/overview")));
+    assert!(urls.iter().any(|url| url.ends_with("/anchor-only")));
+    assert!(urls.iter().any(|url| url.ends_with("/independent")));
+    assert!(urls.iter().any(|url| url.ends_with("/independent.md")));
+}
+
+#[test]
 fn technical_docs_sitemap_requires_llms_corroboration_before_skipping_anchors() {
     let sitemap = (0..182)
         .map(|index| format!("https://example.com/docs/page-{index}"))
@@ -460,8 +531,8 @@ fn technical_docs_sitemap_requires_llms_corroboration_before_skipping_anchors() 
         &sitemap,
         &partial_llms,
     ));
-    assert!(!map::discovery_is_sufficient("sitemap", 182, &sitemap, &[],));
-    assert!(map::discovery_is_sufficient("sitemap", 200, &sitemap, &[],));
+    assert!(!map::discovery_is_sufficient("sitemap", 182, &sitemap, &[]));
+    assert!(map::discovery_is_sufficient("sitemap", 200, &sitemap, &[]));
 }
 
 #[test]

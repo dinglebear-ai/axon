@@ -140,7 +140,7 @@ async fn enqueue_source_local_path_denied_without_local_scope() {
 #[tokio::test]
 async fn detached_server_local_source_requires_a_configured_allowed_root() {
     let store = FakeJobWatchStore::new();
-    let root = tempfile::tempdir().expect("local source");
+    let root = crate::test_support::visible_tempdir().expect("local source");
     let request = SourceRequest::local_path(root.path().to_string_lossy(), true);
     let mut auth = AuthSnapshot::default();
     auth.granted_scopes = vec![

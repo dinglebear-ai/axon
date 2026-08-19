@@ -199,6 +199,8 @@ pub(super) fn build_fetch_request(
             redacted: false,
         });
     }
+    let mut metadata = MetadataMap::new();
+    copy_provider_execution_metadata(&item.metadata, &mut metadata);
     FetchRequest {
         uri: item.canonical_uri.clone(),
         method: "GET".to_string(),
@@ -207,7 +209,7 @@ pub(super) fn build_fetch_request(
         timeout_ms: None,
         max_bytes: None,
         credential_refs: Vec::new(),
-        metadata: MetadataMap::new(),
+        metadata,
     }
 }
 

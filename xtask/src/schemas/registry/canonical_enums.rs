@@ -231,6 +231,7 @@ pub const CANONICAL_ENUMS: &[(&str, &[&str])] = &[
             "search",
             "fetch",
             "render",
+            "parser",
             "network_capture",
             "artifact",
             "ledger",

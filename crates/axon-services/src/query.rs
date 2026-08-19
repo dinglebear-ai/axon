@@ -24,6 +24,7 @@ use self::suggest::discover_crawl_suggestions;
 mod ask_retrieval;
 mod code_search;
 mod evaluate;
+mod provider_execution;
 mod retrieval;
 mod retrieve;
 mod suggest;

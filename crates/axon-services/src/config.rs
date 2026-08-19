@@ -416,6 +416,88 @@ pub fn write_env_text(path: &Path, raw_env: &str) -> io::Result<()> {
     write_private_file_atomic(path, raw_env)
 }
 
+pub const PANEL_REDACTED_ENV_VALUE: &str = "[redacted-secret]";
+
+/// Read the raw env editor surface without returning secret values to the
+/// browser. Comments and non-sensitive assignments are preserved.
+pub fn read_env_text_for_panel(path: &Path) -> io::Result<String> {
+    let raw = read_env_text(path)?;
+    Ok(redact_env_text_for_panel(&raw))
+}
+
+/// Save panel-edited env text while treating the redaction placeholder as
+/// "keep the current secret". This lets the editor round-trip an existing
+/// secret without ever receiving its value over REST.
+pub fn write_env_text_from_panel(path: &Path, raw_env: &str) -> io::Result<()> {
+    parse_env_pairs_from_str(raw_env)?;
+    let existing = read_env_text(path)?;
+    let merged = restore_redacted_panel_values(&existing, raw_env)?;
+    write_env_text(path, &merged)
+}
+
+fn redact_env_text_for_panel(raw: &str) -> String {
+    transform_env_lines(raw, |line| {
+        let Some((key, _value)) = env_assignment(line) else {
+            return Ok(line.to_string());
+        };
+        if axon_core::redact::is_secret_like(&key.to_ascii_lowercase()) {
+            Ok(format!("{key}={PANEL_REDACTED_ENV_VALUE}"))
+        } else {
+            Ok(line.to_string())
+        }
+    })
+    .expect("panel redaction is infallible")
+}
+
+fn restore_redacted_panel_values(existing: &str, submitted: &str) -> io::Result<String> {
+    let existing_lines = existing
+        .lines()
+        .filter_map(|line| env_assignment(line).map(|(key, _)| (key.to_string(), line.to_string())))
+        .collect::<BTreeMap<_, _>>();
+    transform_env_lines(submitted, |line| {
+        let Some((key, value)) = env_assignment(line) else {
+            return Ok(line.to_string());
+        };
+        if axon_core::redact::is_secret_like(&key.to_ascii_lowercase())
+            && value.trim() == PANEL_REDACTED_ENV_VALUE
+        {
+            return existing_lines.get(key).cloned().ok_or_else(|| {
+                io::Error::new(
+                    ErrorKind::InvalidInput,
+                    format!("{key} is redacted but has no existing value; enter a replacement"),
+                )
+            });
+        }
+        Ok(line.to_string())
+    })
+}
+
+fn transform_env_lines<F>(raw: &str, mut transform: F) -> io::Result<String>
+where
+    F: FnMut(&str) -> io::Result<String>,
+{
+    let had_trailing_newline = raw.ends_with('\n');
+    let mut lines = Vec::new();
+    for line in raw.lines() {
+        lines.push(transform(line.strip_suffix('\r').unwrap_or(line))?);
+    }
+    let mut output = lines.join("\n");
+    if had_trailing_newline {
+        output.push('\n');
+    }
+    Ok(output)
+}
+
+fn env_assignment(line: &str) -> Option<(&str, &str)> {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+    let (key, value) = trimmed.split_once('=')?;
+    let key = key.trim();
+    is_valid_env_key(key).then_some((key, value))
+}
+
 pub fn write_env_entries(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()

@@ -21,7 +21,7 @@ Current groups from `crates/axon-services/src/`:
 | Area | Owns |
 |---|---|
 | `lib.rs` · `context.rs` · `runtime.rs` | crate root + `ServiceContext` / dependency container + job runtime wiring |
-| `source.rs` · `source/` · `source_jobs.rs` · `web_source.rs` · `map.rs` · `scrape.rs` | unified SourceRequest orchestration, source jobs, web acquisition composition, map, and one-page scrape projection |
+| `source.rs` · `source/` · `source_jobs.rs` · `map.rs` · `scrape.rs` | unified `SourceRequest` orchestration, shared adapter/executor composition, source jobs, map, and the one-page adapter projection |
 | `search.rs` · `search/` · `search_crawl.rs` · `search_source_index.rs` | search/research plus bounded Source-job indexing for result URLs |
 | `query.rs` · `summarize.rs` · `document.rs` · `service_traits.rs` · `service_traits/` | retrieval/RAG, synthesis, and typed service boundaries |
 | `extract.rs` · `brand.rs` · `endpoints/` · `diff.rs` · `screenshot.rs` | structured extraction + derived-content actions |

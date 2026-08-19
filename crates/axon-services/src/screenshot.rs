@@ -4,7 +4,7 @@ use axon_api::source::{ArtifactKind, MetadataMap, Timestamp};
 use axon_core::artifacts::atomic_write_explicit;
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
 use axon_core::config::Config;
-use axon_core::http::{normalize_url, validate_url};
+use axon_core::http::{normalize_url, validate_url_with_dns};
 use std::error::Error;
 
 // --- Service functions ---
@@ -26,7 +26,7 @@ pub async fn screenshot_capture(
     }
 
     let normalized = normalize_url(url);
-    validate_url(&normalized)?;
+    validate_url_with_dns(&normalized).await?;
 
     let bytes = capture_screenshot_bytes(
         cfg.clone(),

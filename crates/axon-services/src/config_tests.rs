@@ -68,6 +68,63 @@ fn raw_env_text_validates_before_write() {
 }
 
 #[test]
+fn panel_env_redacts_secrets_and_preserves_masked_values_on_save() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join(".env");
+    write_env_text(
+        &path,
+        "# keep me
+QDRANT_URL=http://localhost:6333
+TAVILY_API_KEY='super secret'
+AXON_HTTP_TOKEN=token-value
+",
+    )
+    .unwrap();
+
+    let panel = read_env_text_for_panel(&path).unwrap();
+    assert!(panel.contains("# keep me"));
+    assert!(panel.contains("QDRANT_URL=http://localhost:6333"));
+    assert!(panel.contains(&format!("TAVILY_API_KEY={PANEL_REDACTED_ENV_VALUE}")));
+    assert!(panel.contains(&format!("AXON_HTTP_TOKEN={PANEL_REDACTED_ENV_VALUE}")));
+    assert!(!panel.contains("super secret"));
+    assert!(!panel.contains("token-value"));
+
+    let edited = panel.replace(
+        "QDRANT_URL=http://localhost:6333",
+        "QDRANT_URL=http://qdrant:6333",
+    );
+    write_env_text_from_panel(&path, &edited).unwrap();
+    let entries = read_env_entries(&path).unwrap();
+    assert_eq!(
+        entries.get("QDRANT_URL").map(String::as_str),
+        Some("http://qdrant:6333")
+    );
+    assert_eq!(
+        entries.get("TAVILY_API_KEY").map(String::as_str),
+        Some("super secret")
+    );
+    assert_eq!(
+        entries.get("AXON_HTTP_TOKEN").map(String::as_str),
+        Some("token-value")
+    );
+}
+
+#[test]
+fn panel_env_rejects_mask_for_missing_secret() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join(".env");
+    let error = write_env_text_from_panel(
+        &path,
+        &format!(
+            "TAVILY_API_KEY={PANEL_REDACTED_ENV_VALUE}
+"
+        ),
+    )
+    .unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::InvalidInput);
+}
+
+#[test]
 fn toml_set_get_unset_nested() {
     let mut doc = toml_edit::DocumentMut::new();
     set_toml_entry(&mut doc, "ask.cache.enabled", "true").unwrap();

@@ -5,9 +5,9 @@ mod query;
 
 use super::AxonMcpServer;
 use super::common::{
-    InlineHint, internal_error, invalid_params, logged_internal_error, map_render_mode,
-    respond_with_mode, slugify, to_map_options, to_retrieve_options, to_search_options,
-    validate_mcp_collection, validate_mcp_url,
+    CURRENT_CALLER_AUTH_SNAPSHOT, InlineHint, internal_error, invalid_params,
+    logged_internal_error, map_render_mode, respond_with_mode, slugify, to_map_options,
+    to_retrieve_options, to_search_options, validate_mcp_collection, validate_mcp_url,
 };
 use crate::schema::{
     AskRequest, AxonToolResponse, EndpointsRequest, EvaluateRequest, MapRequest, ResearchRequest,
@@ -42,7 +42,11 @@ impl AxonMcpServer {
             ..ConfigOverrides::default()
         });
 
-        let result = query_svc::retrieve(&cfg, &target, opts)
+        let ctx = self
+            .base_service_context()
+            .await
+            .map_err(|e| internal_error(format!("service context init failed: {e}")))?;
+        let result = query_svc::retrieve(ctx.as_ref(), &cfg, &target, opts)
             .await
             .map_err(|e| logged_internal_error(&format!("retrieve '{target}'"), e.as_ref()))?;
         respond_with_mode(
@@ -172,11 +176,15 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| logged_internal_error("search.context", e.as_ref()))?;
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
         let result = search_source_index_svc::search_and_index_sources(
             self.cfg.as_ref(),
             &service_context,
             &query,
             opts,
+            caller_auth_snapshot,
         )
         .await
         .map_err(|e| logged_internal_error(&format!("search '{query}'"), e.as_ref()))?;
@@ -322,12 +330,16 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| logged_internal_error("research.context", e.as_ref()))?;
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
         let result = search_svc::research_with_context(
             self.cfg.as_ref(),
             &service_context,
             &query,
             opts,
             None,
+            caller_auth_snapshot,
         )
         .await
         .map_err(|e| logged_internal_error(&format!("research '{query}'"), e.as_ref()))?;

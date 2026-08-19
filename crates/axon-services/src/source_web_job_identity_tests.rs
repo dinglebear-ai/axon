@@ -124,7 +124,7 @@ async fn inline_web_source_creates_one_source_job() {
 #[tokio::test]
 async fn detached_local_source_uses_claimed_source_job_id() {
     let harness = SourceRuntimeHarness::with_sqlite_ledger_and_fakes().await;
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = crate::test_support::visible_tempdir().expect("tempdir");
     std::fs::write(dir.path().join("lib.rs"), "pub fn f() {}\n").expect("write fixture file");
     let mut request = local_source_request(dir.path());
     request.execution.mode = ExecutionMode::Background;
@@ -150,7 +150,7 @@ async fn detached_local_source_uses_claimed_source_job_id() {
 #[tokio::test]
 async fn inline_local_source_creates_one_source_job() {
     let harness = SourceRuntimeHarness::with_sqlite_ledger_and_fakes().await;
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = crate::test_support::visible_tempdir().expect("tempdir");
     std::fs::write(dir.path().join("lib.rs"), "pub fn f() {}\n").expect("write fixture file");
     let request = local_source_request(dir.path());
 

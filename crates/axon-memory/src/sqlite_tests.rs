@@ -785,6 +785,63 @@ async fn compact_merges_sources_and_archives_them_when_requested() {
 }
 
 #[tokio::test]
+async fn compact_write_phase_rolls_back_when_source_archive_fails() {
+    let (store, clock) = store();
+    let a = store
+        .remember(request(MemoryType::Fact, "fact one", "axon"))
+        .await
+        .unwrap();
+    let b = store
+        .remember(request(MemoryType::Fact, "fact two", "axon"))
+        .await
+        .unwrap();
+
+    {
+        let conn = store.conn().lock().await;
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER fail_second_compaction_archive \
+             BEFORE UPDATE OF status ON memory_records \
+             WHEN OLD.memory_id = '{}' AND NEW.status = 'archived' \
+             BEGIN SELECT RAISE(ABORT, 'forced archive failure'); END;",
+            b.memory_id.0
+        ))
+        .expect("install failing archive trigger");
+    }
+
+    let err = store
+        .compact(MemoryCompactRequest {
+            memory_ids: vec![a.memory_id.clone(), b.memory_id.clone()],
+            strategy: "concatenate".to_string(),
+            result_type: MemoryType::Fact,
+            title: Some("combined".to_string()),
+            scope: MemoryScope {
+                kind: "project".to_string(),
+                value: "axon".to_string(),
+            },
+            archive_sources: true,
+            instructions: None,
+            timestamp: ts(&clock),
+        })
+        .await
+        .expect_err("archive failure must abort the whole compaction write phase");
+    assert!(err.message.contains("forced archive failure"), "{err:?}");
+
+    let a_after = store.get(a.memory_id).await.unwrap().unwrap();
+    let b_after = store.get(b.memory_id).await.unwrap().unwrap();
+    assert_eq!(a_after.status, MemoryStatus::Active);
+    assert_eq!(b_after.status, MemoryStatus::Active);
+
+    let conn = store.conn().lock().await;
+    let row_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM memory_records", [], |row| row.get(0))
+        .expect("count memory rows");
+    assert_eq!(
+        row_count, 2,
+        "the compacted record insert must roll back with the failed archive"
+    );
+}
+
+#[tokio::test]
 async fn compact_rejects_unsupported_strategy() {
     let (store, clock) = store();
     let a = store

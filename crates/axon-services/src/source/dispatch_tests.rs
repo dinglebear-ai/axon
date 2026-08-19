@@ -181,6 +181,15 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
         vectors.points("axon-test").await.is_empty(),
         "embed=false must not call vector_store.upsert"
     );
+    let vector_calls = vectors.calls().await;
+    assert!(
+        !vector_calls.contains(&"ensure_collection"),
+        "embed=false must not ensure or create a vector collection; calls={vector_calls:?}"
+    );
+    assert!(
+        !vector_calls.contains(&"upsert"),
+        "embed=false must not call vector_store.upsert; calls={vector_calls:?}"
+    );
     assert_eq!(
         ledger.committed_generation(&counts.source_id).await,
         Some(counts.generation.clone())
@@ -436,5 +445,34 @@ async fn dispatch_feed_max_items_caps_documents_prepared() {
     assert_eq!(
         counts.documents_prepared, 1,
         "max_items=Some(1) must cap the discovered manifest before diffing"
+    );
+}
+
+#[test]
+fn source_stage_plan_pins_the_complete_shared_phase_order() {
+    let phases = source_stage_plan(true)
+        .into_iter()
+        .map(|stage| stage.phase)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        phases,
+        vec![
+            PipelinePhase::Leasing,
+            PipelinePhase::Discovering,
+            PipelinePhase::Diffing,
+            PipelinePhase::Fetching,
+            PipelinePhase::Enriching,
+            PipelinePhase::Normalizing,
+            PipelinePhase::Parsing,
+            PipelinePhase::Preparing,
+            PipelinePhase::Batching,
+            PipelinePhase::Embedding,
+            PipelinePhase::Vectorizing,
+            PipelinePhase::Upserting,
+            PipelinePhase::Graphing,
+            PipelinePhase::Publishing,
+            PipelinePhase::Cleaning,
+        ],
+        "all source families must share one canonical stage plan"
     );
 }

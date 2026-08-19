@@ -2,7 +2,10 @@
 //! fetching of sitemap documents (following `<sitemapindex>` references).
 
 use super::filter::{lastmod_is_recent, loc_in_scope};
-use super::{DISCOVERY_MAX_BODY_BYTES, SITEMAP_MAX_BODY_BYTES, fetch_text, join_origin_path};
+use super::{
+    DISCOVERY_MAX_BODY_BYTES, SITEMAP_MAX_BODY_BYTES, fetch_text_with_metadata, join_origin_path,
+};
+use axon_api::source::MetadataMap;
 use axon_core::config::Config;
 use axon_core::content::{extract_loc_values, extract_loc_with_lastmod, extract_robots_sitemaps};
 use axon_core::logging::{log_info, log_warn};
@@ -144,13 +147,20 @@ async fn process_sitemap_batch(
     batch: Vec<String>,
     scope: &SitemapScope<'_>,
     output: &mut SitemapBatchOutput<'_>,
+    metadata: &MetadataMap,
 ) -> usize {
     let fetched = futures_util::future::join_all(batch.into_iter().map(|sitemap_url| {
         let fetch = fetch.clone();
+        let metadata = metadata.clone();
         async move {
-            fetch_text(fetch.as_ref(), &sitemap_url, Some(SITEMAP_MAX_BODY_BYTES))
-                .await
-                .map(|xml| (sitemap_url, xml))
+            fetch_text_with_metadata(
+                fetch.as_ref(),
+                &sitemap_url,
+                Some(SITEMAP_MAX_BODY_BYTES),
+                &metadata,
+            )
+            .await
+            .map(|xml| (sitemap_url, xml))
         }
     }))
     .await;
@@ -231,11 +241,14 @@ async fn enqueue_robots_sitemaps(
     parsed: &Url,
     queue: &mut VecDeque<String>,
     sitemap_fetch_limit: usize,
+    metadata: &MetadataMap,
 ) -> usize {
     let Ok(robots_url) = join_origin_path(parsed, "/robots.txt") else {
         return 0;
     };
-    let Some(robots_txt) = fetch_text(fetch, &robots_url, Some(DISCOVERY_MAX_BODY_BYTES)).await
+    let Some(robots_txt) =
+        fetch_text_with_metadata(fetch, &robots_url, Some(DISCOVERY_MAX_BODY_BYTES), metadata)
+            .await
     else {
         return 0;
     };
@@ -261,6 +274,15 @@ pub async fn discover_sitemap_urls(
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
 ) -> Result<SitemapDiscovery, Box<dyn Error>> {
+    discover_sitemap_urls_with_metadata(cfg, start_url, fetch, &MetadataMap::new()).await
+}
+
+pub async fn discover_sitemap_urls_with_metadata(
+    cfg: &Config,
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+    metadata: &MetadataMap,
+) -> Result<SitemapDiscovery, Box<dyn Error>> {
     let parsed = Url::parse(start_url)
         .map_err(|e| format!("invalid start URL for sitemap discovery {start_url}: {e}"))?;
     // Scheme/host/port (incl. correct IPv6 bracketing and non-standard ports) are derived
@@ -275,8 +297,14 @@ pub async fn discover_sitemap_urls(
     queue.truncate(sitemap_fetch_limit);
     let seeded_default_sitemaps = queue.len();
 
-    let robots_declared_sitemaps =
-        enqueue_robots_sitemaps(fetch.as_ref(), &parsed, &mut queue, sitemap_fetch_limit).await;
+    let robots_declared_sitemaps = enqueue_robots_sitemaps(
+        fetch.as_ref(),
+        &parsed,
+        &mut queue,
+        sitemap_fetch_limit,
+        metadata,
+    )
+    .await;
 
     let mut seen_sitemaps = HashSet::new();
     let mut out = HashSet::new();
@@ -327,7 +355,7 @@ pub async fn discover_sitemap_urls(
             failed_fetches: 0,
         };
         parsed_sitemaps +=
-            process_sitemap_batch(cfg, fetch.clone(), batch, &scope, &mut output).await;
+            process_sitemap_batch(cfg, fetch.clone(), batch, &scope, &mut output, metadata).await;
         failed_fetches += output.failed_fetches;
         if parsed_sitemaps.is_multiple_of(64) {
             log_info(&format!(

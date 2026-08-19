@@ -44,17 +44,19 @@ pub mod tool_policy;
 pub use batch::{SourcePipelineBatch, plan_source_pipeline_batches};
 pub use security::{
     SourceSecurityError, enforce_local_source_allowed_roots, enforce_local_source_policy,
-    enforce_network_source_policy, redact_local_path_for_public_payload,
+    redact_local_path_for_public_payload,
 };
 
 use std::sync::Arc;
 
 use axon_adapters::SourceAdapter;
 use axon_api::source::{
-    AuthSnapshot, PipelinePhase, SourceKind, SourceRequest, SourceResult, SourceScope,
+    AuthSnapshot, ExecutionAffinity, PipelinePhase, SourceKind, SourceRequest, SourceResult,
+    SourceScope,
 };
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
+use crate::reserved_call::{self, ProviderCallContext};
 pub(crate) use execution::SourceExecutionContext;
 use result_map::{IndexCounts, to_source_result_with_counts};
 
@@ -128,6 +130,11 @@ async fn index_source_inner(
         &request,
         &input,
         execution.auth_snapshot.as_ref(),
+        if execution.existing_job_id.is_some() {
+            ExecutionAffinity::Worker
+        } else {
+            ExecutionAffinity::Inline
+        },
         events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id)
             .with_attempt(execution.attempt)
             .with_optional_foreground(execution.foreground.clone()),
@@ -172,7 +179,7 @@ async fn index_source_inner(
     let collection = source_collection(&request, ctx);
     let owner_id = DEFAULT_OWNER_ID;
 
-    let counts = dispatch_kind::dispatch_kind(
+    let mut counts = dispatch_kind::dispatch_kind(
         kind,
         route.scope,
         ctx,
@@ -201,13 +208,32 @@ async fn index_source_inner(
     // (source-pipeline.md's `parsing` stage output feeding the `graphing`
     // stage). A missing pool or a graph-store error degrades to a zero-count
     // summary rather than failing the already-committed index.
-    let graph = graph::write_baseline_graph(
+    let graph_candidates = std::mem::take(&mut counts.graph_candidates);
+    let graph_manifest = counts.published_manifest.take();
+    let graph_pool = ctx.jobs.sqlite_pool();
+    // Clone only the small counters/ids after taking the corpus-sized manifest.
+    let graph_counts = counts.clone();
+    let graph_uri = route.source.canonical_uri.clone();
+    let graph_db_slots = Some(Arc::clone(&runtime.db_stage_slots));
+    let graph_ledger = Arc::clone(&runtime.ledger);
+    let graph_context = ProviderCallContext::for_phase(
+        counts.job_id,
+        execution.attempt,
+        PipelinePhase::Graphing,
+        execution.priority,
+        format!("graph:{}:{}", counts.source_id.0, counts.generation.0),
+    );
+    let graph = graph::write_baseline_graph_with_db_gate(
+        Some(runtime),
+        Some(graph_context),
         kind,
-        ctx.jobs.sqlite_pool(),
-        runtime.ledger.as_ref(),
-        &counts,
-        &route.source.canonical_uri,
-        counts.graph_candidates.clone(),
+        graph_pool,
+        graph_ledger.as_ref(),
+        &graph_counts,
+        &graph_uri,
+        graph_manifest,
+        graph_candidates,
+        graph_db_slots,
     )
     .await;
 

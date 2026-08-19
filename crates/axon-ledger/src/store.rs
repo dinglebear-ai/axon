@@ -20,6 +20,11 @@ pub trait LedgerStore: Send + Sync {
     /// once a source is ledger-registered (see `axon-services::refresh`).
     async fn list_sources(&self, request: SourceListRequest) -> Result<Page<SourceSummary>>;
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()>;
+    /// Persist a manifest without requiring the caller to deep-clone every
+    /// manifest item. Backends may override this with a borrowing write path.
+    async fn put_manifest_ref(&self, manifest: &SourceManifest) -> Result<()> {
+        self.put_manifest(manifest.clone()).await
+    }
     /// Read the stored manifest for a specific `(source_id, generation)`.
     ///
     /// Returns `None` when no manifest was written for that generation. Used by
@@ -30,7 +35,62 @@ pub trait LedgerStore: Send + Sync {
         source_id: SourceId,
         generation: SourceGenerationId,
     ) -> Result<Option<SourceManifest>>;
+    /// Read only manifest-level metadata without requiring callers to decode
+    /// the corpus-sized item list.
+    async fn get_manifest_metadata(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<MetadataMap>> {
+        Ok(self
+            .get_manifest(source_id, generation)
+            .await?
+            .map(|manifest| manifest.metadata))
+    }
+    /// Read only selected items from a stored manifest. Production backends can
+    /// override this to avoid decoding a corpus-sized manifest when reuse needs
+    /// a small changed/unchanged subset.
+    async fn get_manifest_items(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<ManifestItem>> {
+        if item_keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let Some(manifest) = self.get_manifest(source_id, generation).await? else {
+            return Ok(Vec::new());
+        };
+        let wanted = item_keys
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        Ok(manifest
+            .items
+            .into_iter()
+            .filter(|item| wanted.contains(&item.source_item_key))
+            .collect())
+    }
+    async fn get_manifest_items_with_metadata_key(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        item_keys: Vec<SourceItemKey>,
+        metadata_key: String,
+    ) -> Result<Vec<ManifestItem>> {
+        Ok(self
+            .get_manifest_items(source_id, generation, item_keys)
+            .await?
+            .into_iter()
+            .filter(|item| item.metadata.get(&metadata_key).is_some())
+            .collect())
+    }
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff>;
+    /// Diff a manifest by reference so production backends can avoid a full
+    /// pre-diff deep clone of every item.
+    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff> {
+        self.diff_manifest(manifest.clone()).await
+    }
     async fn create_generation(&self, source_id: SourceId) -> Result<SourceGeneration>;
     async fn committed_generation(&self, source_id: SourceId)
     -> Result<Option<SourceGenerationId>>;
@@ -50,6 +110,14 @@ pub trait LedgerStore: Send + Sync {
         }
         Ok(())
     }
+    /// Mark every durable document status for one source generation published
+    /// without materializing the generation's status rows in the caller.
+    async fn publish_document_statuses(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        updated_at: Timestamp,
+    ) -> Result<u64>;
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()>;
     /// List every not-yet-resolved cleanup-debt entry for a source, oldest
     /// first. Used by `axon-prune` to drain superseded-generation debt after a

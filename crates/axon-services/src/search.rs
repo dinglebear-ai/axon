@@ -245,7 +245,7 @@ pub async fn research_with_context_tracked(
         "offset": opts.offset,
     });
     job_tracking::track_research_job(service_context, request_json, || {
-        research_with_context(cfg, service_context, query, opts, tx)
+        research_with_context(cfg, service_context, query, opts, tx, None)
     })
     .await
 }

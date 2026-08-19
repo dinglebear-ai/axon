@@ -101,11 +101,15 @@ impl SourceAdapter for YoutubeSourceAdapter {
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
         let videos = dump_by_video_id(plan)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
             .map(|item| {
-                let video_id = video_id_for_item(item)?;
+                let video_id = video_id_for_item(&item)?;
                 let video = videos.get(&video_id).ok_or_else(|| {
                     ApiError::new(
                         "adapter.youtube.normalize.video_missing",
@@ -114,7 +118,7 @@ impl SourceAdapter for YoutubeSourceAdapter {
                     )
                     .with_context("video_id", video_id.clone())
                 })?;
-                Ok(youtube_source_document(plan, &acquisition, item, video))
+                Ok(youtube_source_document(plan, &source_id, item, video))
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(StageExecutionResult {

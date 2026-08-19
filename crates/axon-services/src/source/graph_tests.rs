@@ -20,6 +20,7 @@ fn counts(source_id: &str, generation: &str) -> IndexCounts {
         chunks_prepared: 0,
         vector_points_written: 0,
         removed: 0,
+        published_manifest: None,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
         artifacts: Vec::new(),
@@ -279,6 +280,46 @@ async fn write_baseline_graph_persists_nonempty_graph() {
         .expect("count edges");
     assert_eq!(node_count, 3);
     assert_eq!(edge_count, 2);
+}
+
+#[tokio::test]
+async fn baseline_graph_streams_across_512_item_boundary_without_count_drift() {
+    let uri = "https://example.com/docs";
+    let ledger = FakeLedgerStore::new();
+    let items = (0..513)
+        .map(|index| {
+            manifest_item(
+                "src_large",
+                &format!("item-{index:04}"),
+                &format!("https://example.com/docs/{index:04}"),
+                ItemKind::WebPage,
+            )
+        })
+        .collect();
+    let published_manifest = manifest("src_large", "gen_large", items);
+    let pool = Arc::new(graph_pool().await);
+
+    let summary = write_baseline_graph_with_db_gate(
+        SourceKind::Web,
+        Some(pool.clone()),
+        &ledger,
+        &counts("src_large", "gen_large"),
+        uri,
+        Some(published_manifest),
+        Vec::new(),
+        None,
+    )
+    .await;
+
+    assert!(!summary.degraded);
+    assert_eq!(summary.nodes_upserted, 514);
+    assert_eq!(summary.edges_upserted, 513);
+    assert_eq!(summary.evidence_records, 513);
+    let node_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_nodes")
+        .fetch_one(&*pool)
+        .await
+        .expect("count streamed nodes");
+    assert_eq!(node_count, 514);
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@ async fn bounded_blocking_map_runs_concurrently_and_preserves_input_order() {
     let observed_maximum = Arc::clone(&maximum);
 
     let output = bounded_blocking_map_in_order(
-        &(0_usize..8).collect::<Vec<_>>(),
+        (0_usize..8).collect::<Vec<_>>(),
         3,
         32,
         |_| 1,
@@ -35,7 +35,7 @@ async fn bounded_blocking_map_runs_concurrently_and_preserves_input_order() {
 async fn bounded_blocking_map_allows_one_oversized_item_to_make_progress() {
     let output = tokio::time::timeout(
         Duration::from_secs(1),
-        bounded_blocking_map_in_order(&[8_usize], 2, 4, |item| *item, Ok),
+        bounded_blocking_map_in_order(vec![8_usize], 2, 4, |item| *item, Ok),
     )
     .await
     .expect("oversized item must not deadlock")

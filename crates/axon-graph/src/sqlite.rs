@@ -57,6 +57,16 @@ impl SqliteGraphStore {
         &self.pool
     }
 
+    /// Upsert a lazy candidate stream in one transaction. This is used by
+    /// source-baseline graph publication so corpus-sized manifests can be
+    /// converted and persisted in bounded chunks without losing atomicity.
+    pub async fn upsert_candidate_iter<I>(&self, candidates: I) -> Result<GraphWriteResult>
+    where
+        I: IntoIterator<Item = GraphCandidate>,
+    {
+        upsert::upsert_candidate_iter(&self.pool, candidates).await
+    }
+
     /// Count conflict rows recorded for an edge (introspection/tests).
     pub async fn edge_conflict_count(&self, edge_id: &str) -> Result<u64> {
         conflict::conflict_count_for_edge(&self.pool, edge_id).await

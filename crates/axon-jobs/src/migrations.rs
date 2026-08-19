@@ -44,6 +44,21 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0002_provider_scheduler",
         sql: include_str!("migrations/0002_provider_scheduler.sql"),
     },
+    SqlMigration {
+        version: 3,
+        name: "0003_provider_scheduler_performance",
+        sql: include_str!("migrations/0003_provider_scheduler_performance.sql"),
+    },
+    SqlMigration {
+        version: 4,
+        name: "0004_provider_scheduler_parser_kind",
+        sql: include_str!("migrations/0004_provider_scheduler_parser_kind.sql"),
+    },
+    SqlMigration {
+        version: 5,
+        name: "0005_provider_identity_cache",
+        sql: include_str!("migrations/0005_provider_identity_cache.sql"),
+    },
 ];
 
 /// Namespace under which the composed runner tracks jobs migrations.

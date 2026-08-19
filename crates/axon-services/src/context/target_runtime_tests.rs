@@ -51,6 +51,27 @@ fn tei_max_attempts_reflects_configured_retry_count_not_a_hardcoded_default() {
 /// a closed loopback port so the derivation always fails fast and falls back to
 /// the configured defaults — proving the fallback path stamps the model/dims.
 #[tokio::test]
+async fn source_db_stage_capacity_reserves_one_control_connection() {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .expect("four-connection pool");
+    assert_eq!(super::source_db_stage_capacity(&pool), 3);
+
+    let single = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .expect("single-connection pool");
+    assert_eq!(
+        super::source_db_stage_capacity(&single),
+        1,
+        "single-connection test pools must retain one usable data-plane slot"
+    );
+}
+
+#[tokio::test]
 async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachable() {
     let mut cfg = Config::test_default();
     cfg.qdrant_url = "http://127.0.0.1:53333".to_string();
@@ -70,7 +91,7 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
         .await
         .expect("shared runtime migrations");
 
-    let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool)
+    let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
         .await
         .expect("build target local-source runtime");
 
@@ -81,6 +102,14 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     assert_eq!(runtime.embedding_dimensions, 1024);
     assert_eq!(runtime.document_prepare_concurrency, 3);
     assert_eq!(runtime.embed_pool_max_inputs, 640);
+    let persisted: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM provider_identity_cache")
+        .fetch_one(&pool)
+        .await
+        .expect("count durable identities");
+    assert_eq!(
+        persisted, 0,
+        "unverified fallback identity must never poison the durable cache"
+    );
 }
 
 #[tokio::test]
@@ -136,6 +165,66 @@ async fn embedding_identity_cache_singleflights_cold_probes_and_can_be_invalidat
     assert_eq!(refreshed.dimensions, 3);
     info.assert_calls_async(2).await;
     embed.assert_calls_async(2).await;
+}
+
+#[tokio::test]
+async fn from_config_reuses_verified_embedding_identity_after_process_cache_invalidation() {
+    let server = MockServer::start_async().await;
+    let info = server
+        .mock_async(|when, then| {
+            when.method("GET").path("/info");
+            then.status(200)
+                .json_body(serde_json::json!({ "model_id": "acme/durable-embedding" }));
+        })
+        .await;
+    let embed = server
+        .mock_async(|when, then| {
+            when.method("POST").path("/embed");
+            then.status(200)
+                .json_body(serde_json::json!([[0.1_f32, 0.2_f32, 0.3_f32]]));
+        })
+        .await;
+    let mut cfg = Config::test_default();
+    cfg.qdrant_url = "http://127.0.0.1:53333".to_string();
+    cfg.tei_url = server.base_url();
+    cfg.tei_request_timeout_ms = 1_000;
+    invalidate_embedding_identity_cache(&cfg);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect("sqlite::memory:")
+        .await
+        .expect("runtime pool");
+    axon_jobs::migrations::apply_all_migrations(&pool)
+        .await
+        .expect("shared runtime migrations");
+    let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
+
+    let first = TargetLocalSourceRuntime::from_config(&cfg, Arc::clone(&jobs), pool.clone())
+        .await
+        .expect("first runtime");
+    assert_eq!(first.embedding_model, "acme/durable-embedding");
+    assert_eq!(first.embedding_dimensions, 3);
+    info.assert_calls_async(1).await;
+    embed.assert_calls_async(1).await;
+
+    // Simulate a new short-lived CLI process: the process cache is gone, but
+    // the unified SQLite runtime survives. The second runtime must not probe
+    // TEI again.
+    invalidate_embedding_identity_cache(&cfg);
+    let second = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
+        .await
+        .expect("second runtime");
+    assert_eq!(second.embedding_model, "acme/durable-embedding");
+    assert_eq!(second.embedding_dimensions, 3);
+    info.assert_calls_async(1).await;
+    embed.assert_calls_async(1).await;
+
+    let persisted: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM provider_identity_cache")
+        .fetch_one(&pool)
+        .await
+        .expect("count durable identity");
+    assert_eq!(persisted, 1);
 }
 
 #[test]

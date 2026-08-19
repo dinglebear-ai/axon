@@ -81,7 +81,7 @@ pub async fn get_env_config(
         )
             .into_response();
     };
-    match config_service::read_env_text(&path) {
+    match config_service::read_env_text_for_panel(&path) {
         Ok(raw_env) => Json(EnvConfigResponse {
             path: path.display().to_string(),
             raw_env,
@@ -108,7 +108,7 @@ pub async fn save_env_config(
         )
             .into_response();
     };
-    match config_service::write_env_text(&path, &req.raw_env) {
+    match config_service::write_env_text_from_panel(&path, &req.raw_env) {
         Ok(()) => (
             StatusCode::ACCEPTED,
             Json(SaveConfigResponse {
@@ -315,6 +315,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     source: Some(normalize_url(url)),
                     scope: Some(SourceScope::Page),
                     collection: None,
+                    priority: None,
                     response_mode: Some(ResponseMode::Inline),
                     detached: None,
                 },
@@ -327,6 +328,7 @@ fn parse_panel_command(command: &str) -> Result<ParsedPanelCommand, String> {
                     source: Some(normalize_url(url)),
                     scope: Some(SourceScope::Site),
                     collection: None,
+                    priority: None,
                     response_mode: Some(ResponseMode::Inline),
                     detached: None,
                 },

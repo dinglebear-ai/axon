@@ -102,7 +102,16 @@ const TRANSPORT_FORBIDDEN_DEPS: &[&str] = &[
     "axon-vectors",
 ];
 
-const RESERVED_CALL_FACADE: &str = "crates/axon-services/src/reserved_call.rs";
+const PROVIDER_FACADE_FILES: &[&str] = &[
+    "crates/axon-services/src/reserved_call.rs",
+    // Production provider composition owns concrete providers but does not
+    // execute application operations directly.
+    "crates/axon-services/src/context/target_runtime.rs",
+    // These wrappers expose scheduler-enforced provider traits to adapters and
+    // foreground reads; raw handles stay encapsulated inside the wrapper.
+    "crates/axon-services/src/context/scheduled_web.rs",
+    "crates/axon-services/src/query/provider_execution.rs",
+];
 
 fn is_test_file(rel: &str) -> bool {
     let name = rel.rsplit('/').next().unwrap_or(rel);
@@ -334,7 +343,7 @@ fn collect_rust_findings(
                 continue;
             }
             let mut file_findings = syntax::scan(&file.syntax, &file.rel, reach_rules);
-            if file.rel == RESERVED_CALL_FACADE {
+            if PROVIDER_FACADE_FILES.contains(&file.rel.as_str()) {
                 file_findings.retain(|finding| !finding.rule.starts_with("provider-"));
             }
             findings.extend(file_findings);

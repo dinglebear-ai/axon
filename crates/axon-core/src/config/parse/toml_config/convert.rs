@@ -1,4 +1,4 @@
-//! Folds the [`super::raw::RawTomlConfig`] wire shape onto the legacy flat
+//! Folds the [`super::raw::RawTomlConfig`] wire shape onto the flat runtime
 //! [`super::TomlConfig`] so every existing consumer (`tuning.rs`,
 //! `config_literal.rs`, `build_config.rs`) keeps reading the same field
 //! paths it always has. This is the only place that knows both shapes.
@@ -133,204 +133,208 @@ pub(super) fn deprecated_section_error(contents: &str) -> Option<String> {
     ))
 }
 
-pub(super) fn into_legacy(raw: RawTomlConfig) -> TomlConfig {
-    let mut legacy = TomlConfig::default();
+pub(super) fn flatten(raw: RawTomlConfig) -> TomlConfig {
+    let mut flat = TomlConfig::default();
 
-    legacy.build.allow_fallback_web_assets = raw.server.allow_fallback_web_assets;
-    legacy.mcp.task_result_wait_timeout_secs = raw.server.mcp.task_result_wait_timeout_secs;
-    legacy.mcp.embed.max_local_bytes = raw.server.mcp.embed.max_local_bytes;
-    legacy.mcp.embed.max_local_depth = raw.server.mcp.embed.max_local_depth;
-    legacy.mcp.embed.max_local_entries = raw.server.mcp.embed.max_local_entries;
+    flat.build.allow_fallback_web_assets = raw.server.allow_fallback_web_assets;
+    flat.mcp.task_result_wait_timeout_secs = raw.server.mcp.task_result_wait_timeout_secs;
+    flat.mcp.embed.max_local_bytes = raw.server.mcp.embed.max_local_bytes;
+    flat.mcp.embed.max_local_depth = raw.server.mcp.embed.max_local_depth;
+    flat.mcp.embed.max_local_entries = raw.server.mcp.embed.max_local_entries;
 
-    legacy.code_search.freshness_ttl_secs = raw.sources.code_search.freshness_ttl_secs;
-    legacy.code_search.reindex_timeout_secs = raw.sources.code_search.reindex_timeout_secs;
-    legacy.code_search.max_file_bytes = raw.sources.code_search.max_file_bytes;
-    legacy.code_search.changed_file_batch_size = raw.sources.code_search.changed_file_batch_size;
+    flat.code_search.freshness_ttl_secs = raw.sources.code_search.freshness_ttl_secs;
+    flat.code_search.reindex_timeout_secs = raw.sources.code_search.reindex_timeout_secs;
+    flat.code_search.max_file_bytes = raw.sources.code_search.max_file_bytes;
+    flat.code_search.changed_file_batch_size = raw.sources.code_search.changed_file_batch_size;
 
-    apply_pipeline(&mut legacy, &raw);
-    apply_jobs(&mut legacy, &raw);
-    apply_providers(&mut legacy, &raw);
-    apply_retrieval(&mut legacy, &raw);
-    apply_ask(&mut legacy, &raw);
-    apply_crawl(&mut legacy, &raw);
+    apply_pipeline(&mut flat, &raw);
+    apply_jobs(&mut flat, &raw);
+    apply_providers(&mut flat, &raw);
+    apply_retrieval(&mut flat, &raw);
+    apply_ask(&mut flat, &raw);
+    apply_crawl(&mut flat, &raw);
 
-    legacy.watch.tick_secs = raw.watch.tick_secs;
-    legacy.watch.lease_secs = raw.watch.lease_secs;
+    flat.watch.tick_secs = raw.watch.tick_secs;
+    flat.watch.lease_secs = raw.watch.lease_secs;
+    flat.security.allow_tool_execution = raw.security.allow_tool_execution;
 
-    // memory/graph/artifacts/prune/observability/security are parsed
-    // (validated, unknown-field-checked) but have no legacy runtime field to
+    // memory/graph/artifacts/prune/observability are parsed
+    // (validated, unknown-field-checked) but have no flat runtime field to
     // land on yet — see raw.rs doc comment.
-    legacy
+    flat
 }
 
-fn apply_pipeline(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
+fn apply_pipeline(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     let p = &raw.pipeline;
-    legacy.workers.source_job_concurrency_limit = p.max_active_source_jobs;
-    legacy.workers.unified_worker_concurrency = p.unified_worker_concurrency;
-    legacy.workers.embed_doc_timeout_secs = p.embed_doc_timeout_secs;
-    legacy.workers.queue_summary_secs = p.queue_summary_secs;
-    legacy.workers.qdrant_point_buffer = p.qdrant_point_buffer;
-    legacy.workers.job_wait_timeout_secs = p.job_wait_timeout_secs;
-    legacy.chunking.markdown_min_chars = p.chunking.markdown_min_chars;
-    legacy.chunking.markdown_max_chars = p.chunking.markdown_max_chars;
-    legacy.chunking.overlap_chars = p.chunking.overlap_chars;
-    legacy.endpoints.bundle_concurrency = p.endpoints.bundle_concurrency;
-    legacy.endpoints.chrome_concurrency = p.endpoints.chrome_concurrency;
-    legacy.endpoints.verify_concurrency = p.endpoints.verify_concurrency;
-    legacy.endpoints.probe_concurrency = p.endpoints.probe_concurrency;
+    flat.workers.source_job_concurrency_limit = p.max_active_source_jobs;
+    flat.workers.unified_worker_concurrency = p.unified_worker_concurrency;
+    flat.workers.embed_doc_timeout_secs = p.embed_doc_timeout_secs;
+    flat.workers.queue_summary_secs = p.queue_summary_secs;
+    flat.workers.qdrant_point_buffer = p.qdrant_point_buffer;
+    flat.workers.job_wait_timeout_secs = p.job_wait_timeout_secs;
+    flat.chunking.markdown_min_chars = p.chunking.markdown_min_chars;
+    flat.chunking.markdown_max_chars = p.chunking.markdown_max_chars;
+    flat.chunking.overlap_chars = p.chunking.overlap_chars;
+    flat.endpoints.bundle_concurrency = p.endpoints.bundle_concurrency;
+    flat.endpoints.chrome_concurrency = p.endpoints.chrome_concurrency;
+    flat.endpoints.verify_concurrency = p.endpoints.verify_concurrency;
+    flat.endpoints.probe_concurrency = p.endpoints.probe_concurrency;
 }
 
-fn apply_jobs(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
+fn apply_jobs(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     let j = &raw.jobs;
-    legacy.workers.watchdog_stale_timeout_secs = j.stale_after_secs;
-    legacy.workers.watchdog_confirm_secs = j.stale_grace_secs;
-    legacy.workers.watchdog_sweep_secs = j.watchdog_sweep_secs;
-    legacy.workers.worker_starvation_secs = j.worker_starvation_secs;
-    legacy.workers.max_job_attempts = j.max_job_attempts;
-    legacy.workers.jobs_retention_terminal_days = j.terminal_retention_days.map(i64::from);
-    legacy.workers.jobs_retention_event_days = j.event_retention_days.map(i64::from);
-    legacy.workers.jobs_retention_failed_event_days = j.failed_event_retention_days.map(i64::from);
-    legacy.workers.jobs_retention_provider_health_days =
+    flat.workers.watchdog_stale_timeout_secs = j.stale_after_secs;
+    flat.workers.watchdog_confirm_secs = j.stale_grace_secs;
+    flat.workers.watchdog_sweep_secs = j.watchdog_sweep_secs;
+    flat.workers.worker_starvation_secs = j.worker_starvation_secs;
+    flat.workers.max_job_attempts = j.max_job_attempts;
+    flat.workers.jobs_retention_terminal_days = j.terminal_retention_days.map(i64::from);
+    flat.workers.jobs_retention_event_days = j.event_retention_days.map(i64::from);
+    flat.workers.jobs_retention_failed_event_days = j.failed_event_retention_days.map(i64::from);
+    flat.workers.jobs_retention_provider_health_days =
         j.provider_health_retention_days.map(i64::from);
-    legacy.workers.jobs_retention_artifact_days = j.artifact_retention_days.map(i64::from);
-    legacy.workers.jobs_retention_sweep_secs = j.retention_sweep_secs;
-    legacy.workers.jobs_interactive_starvation_slo_secs = j.interactive_starvation_slo_secs;
-    legacy.workers.jobs_auto_worker = j.auto_worker;
-    legacy.workers.jobs_worker_idle_exit_secs = j.worker_idle_exit_secs;
+    flat.workers.jobs_retention_artifact_days = j.artifact_retention_days.map(i64::from);
+    flat.workers.jobs_retention_sweep_secs = j.retention_sweep_secs;
+    flat.workers.jobs_interactive_starvation_slo_secs = j.interactive_starvation_slo_secs;
+    flat.workers.jobs_default_priority = j.default_priority.clone();
+    flat.workers.jobs_auto_worker = j.auto_worker;
+    flat.workers.jobs_worker_idle_exit_secs = j.worker_idle_exit_secs;
 }
 
-fn apply_providers(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
+fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     let e = &raw.providers.embedding;
-    legacy.tei.max_retries = e.max_retries;
-    legacy.tei.request_timeout_ms = e.request_timeout_ms;
-    legacy.tei.max_client_batch_size = e.batch_size;
-    legacy.embed.tei_max_concurrent = e.max_concurrent_requests;
-    legacy.embed.tei_max_in_flight_inputs = e.max_in_flight_inputs;
-    // Previously parsed (round-tripped) but never copied onto the legacy
+    flat.tei.max_retries = e.max_retries;
+    flat.tei.request_timeout_ms = e.request_timeout_ms;
+    flat.tei.max_client_batch_size = e.batch_size;
+    flat.embed.tei_max_concurrent = e.max_concurrent_requests;
+    flat.embed.tei_max_in_flight_inputs = e.max_in_flight_inputs;
+    // Previously parsed (round-tripped) but never copied onto the flat runtime
     // shape, so nothing downstream ever read them — see config-contract.md's
     // "Providers: Embedding" section and axon_rust-ldozg.
-    legacy.embed.tei_retry_backoff_ms = e.retry_backoff_ms;
-    legacy.embed.tei_cooldown_after_failures = e.cooldown_after_failures;
-    legacy.embed.tei_cooldown_secs = e.cooldown_secs;
-    legacy.embed.tei_interactive_reserved_requests = e.interactive_reserved_requests;
-    legacy.embed.tei_background_max_concurrent_requests = e.background_max_concurrent_requests;
-    legacy.embed.tei_maintenance_max_concurrent_requests = e.maintenance_max_concurrent_requests;
-    legacy.embed.tei_query_instruction_enabled = e.query_instruction_enabled;
-    legacy.embed.pool_max_inputs = e.pool_max_inputs;
-    legacy.embed.prep_concurrency = e.prep_concurrency;
-    legacy.embed.max_chunks_per_doc = e.max_chunks_per_doc;
-    legacy.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;
-    legacy.embed.dedupe_exact_chunks = e.dedupe_exact_chunks;
-    legacy.embed.openai_model = e.openai_model.clone();
-    legacy.embed.openai_max_client_batch_size = e.openai_max_client_batch_size;
-    legacy.embed.openai_max_concurrent = e.openai_max_concurrent;
-    legacy.embed.openai_max_in_flight_inputs = e.openai_max_in_flight_inputs;
-    legacy.embed.openai_pool_max_inputs = e.openai_pool_max_inputs;
+    flat.embed.tei_retry_backoff_ms = e.retry_backoff_ms;
+    flat.embed.tei_cooldown_after_failures = e.cooldown_after_failures;
+    flat.embed.tei_cooldown_secs = e.cooldown_secs;
+    flat.embed.tei_interactive_reserved_requests = e.interactive_reserved_requests;
+    flat.embed.tei_background_max_concurrent_requests = e.background_max_concurrent_requests;
+    flat.embed.tei_maintenance_max_concurrent_requests = e.maintenance_max_concurrent_requests;
+    flat.embed.tei_query_instruction_enabled = e.query_instruction_enabled;
+    flat.embed.pool_max_inputs = e.pool_max_inputs;
+    flat.embed.prep_concurrency = e.prep_concurrency;
+    flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;
+    flat.embed.max_source_chunks_per_doc = e.max_source_chunks_per_doc;
+    flat.embed.dedupe_exact_chunks = e.dedupe_exact_chunks;
+    flat.embed.openai_model = e.openai_model.clone();
+    flat.embed.openai_max_client_batch_size = e.openai_max_client_batch_size;
+    flat.embed.openai_max_concurrent = e.openai_max_concurrent;
+    flat.embed.openai_max_in_flight_inputs = e.openai_max_in_flight_inputs;
+    flat.embed.openai_pool_max_inputs = e.openai_pool_max_inputs;
 
     let v = &raw.providers.vector;
-    legacy.search.hybrid_enabled = v.hybrid_enabled;
-    legacy.search.hnsw_ef = v.hnsw_ef;
-    legacy.payload.structured_data_max_bytes = v.structured_data_max_bytes;
-    legacy.qdrant.upsert_batch_size = v.upsert_batch_points;
-    legacy.qdrant.upsert_parallelism = v.write_concurrency;
-    legacy.qdrant.bulk_load = v.bulk_load;
-    legacy.qdrant.bulk_indexing_threshold_kb = v.bulk_indexing_threshold_kb;
-    legacy.qdrant.indexing_threshold_kb = v.indexing_threshold_kb;
-    legacy.qdrant.hnsw_m = v.hnsw_m;
-    legacy.qdrant.hnsw_ef_construct = v.hnsw_ef_construct;
-    legacy.qdrant.payload_index_profile = v.payload_index_profile.clone();
-    legacy.qdrant.payload_index_parallelism = v.payload_index_parallelism;
-    legacy.qdrant.hnsw_on_disk = v.hnsw_on_disk;
-    legacy.qdrant.quantization_always_ram = v.quantization_always_ram;
+    flat.search.hybrid_enabled = v.hybrid_enabled;
+    flat.search.hnsw_ef = v.hnsw_ef;
+    flat.payload.structured_data_max_bytes = v.structured_data_max_bytes;
+    flat.qdrant.upsert_batch_size = v.upsert_batch_points;
+    flat.qdrant.upsert_parallelism = v.write_concurrency;
+    flat.qdrant.bulk_load = v.bulk_load;
+    flat.qdrant.bulk_indexing_threshold_kb = v.bulk_indexing_threshold_kb;
+    flat.qdrant.indexing_threshold_kb = v.indexing_threshold_kb;
+    flat.qdrant.hnsw_m = v.hnsw_m;
+    flat.qdrant.hnsw_ef_construct = v.hnsw_ef_construct;
+    flat.qdrant.payload_index_profile = v.payload_index_profile.clone();
+    flat.qdrant.payload_index_parallelism = v.payload_index_parallelism;
+    flat.qdrant.hnsw_on_disk = v.hnsw_on_disk;
+    flat.qdrant.quantization_always_ram = v.quantization_always_ram;
 
     let l = &raw.providers.llm;
-    legacy.llm.backend = l.backend.clone();
-    legacy.llm.completion_concurrency = l.completion_concurrency;
-    legacy.llm.completion_timeout_secs = l.completion_timeout_secs;
-    legacy.llm.codex_pool_idle_ttl_secs = l.codex_pool_idle_ttl_secs;
-    legacy.llm.synthesis_high_context = l.high_context;
-    legacy.llm.synthesis_gemini_model = l.synthesis_gemini_model.clone();
-    legacy.llm.chat_gemini_model = l.chat_gemini_model.clone();
-    legacy.llm.synthesis_openai_model = l.synthesis_openai_model.clone();
-    legacy.llm.chat_openai_model = l.chat_openai_model.clone();
+    flat.llm.backend = l.backend.clone();
+    flat.llm.completion_concurrency = l.completion_concurrency;
+    flat.llm.completion_timeout_secs = l.completion_timeout_secs;
+    flat.llm.codex_pool_idle_ttl_secs = l.codex_pool_idle_ttl_secs;
+    flat.llm.synthesis_high_context = l.high_context;
+    flat.llm.synthesis_gemini_model = l.synthesis_gemini_model.clone();
+    flat.llm.chat_gemini_model = l.chat_gemini_model.clone();
+    flat.llm.synthesis_openai_model = l.synthesis_openai_model.clone();
+    flat.llm.chat_openai_model = l.chat_openai_model.clone();
 
-    legacy.search.research_full_content = raw.providers.search.research_full_content;
+    flat.search.research_full_content = raw.providers.search.research_full_content;
 
     let f = &raw.providers.fetch;
-    legacy.scrape.request_timeout_ms = f.request_timeout_ms;
-    legacy.scrape.fetch_retries = f.retries;
-    legacy.scrape.retry_backoff_ms = f.retry_backoff_ms;
-    legacy.scrape.delay_ms = f.delay_ms;
-    legacy.scrape.batch_timeout_secs = f.batch_timeout_secs;
+    flat.scrape.fetch_concurrency = f.concurrency;
+    flat.scrape.request_timeout_ms = f.request_timeout_ms;
+    flat.scrape.fetch_retries = f.retries;
+    flat.scrape.retry_backoff_ms = f.retry_backoff_ms;
+    flat.scrape.delay_ms = f.delay_ms;
+    flat.scrape.batch_timeout_secs = f.batch_timeout_secs;
 
     let r = &raw.providers.render;
-    legacy.chrome.user_agent = r.user_agent.clone();
-    legacy.chrome.bypass_csp = r.bypass_csp;
-    legacy.chrome.accept_invalid_certs = r.accept_invalid_certs;
-    legacy.chrome.network_idle_timeout_secs = r.network_idle_timeout_secs;
-    legacy.chrome.bootstrap_timeout_ms = r.bootstrap_timeout_ms;
-    legacy.chrome.bootstrap_retries = r.bootstrap_retries;
-    legacy.chrome.remote_local_policy = r.remote_local_policy;
+    flat.chrome.max_concurrent_pages = r.max_concurrent_pages;
+    flat.chrome.user_agent = r.user_agent.clone();
+    flat.chrome.bypass_csp = r.bypass_csp;
+    flat.chrome.accept_invalid_certs = r.accept_invalid_certs;
+    flat.chrome.network_idle_timeout_secs = r.network_idle_timeout_secs;
+    flat.chrome.bootstrap_timeout_ms = r.bootstrap_timeout_ms;
+    flat.chrome.bootstrap_retries = r.bootstrap_retries;
+    flat.chrome.remote_local_policy = r.remote_local_policy;
 
-    legacy.search.collection = raw.server.default_collection.clone();
+    flat.search.collection = raw.server.default_collection.clone();
 }
 
-fn apply_retrieval(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
-    legacy.search.hybrid_candidates = raw.retrieval.hybrid_candidates;
-    legacy.search.ask_hybrid_candidates = raw.retrieval.ask_hybrid_candidates;
+fn apply_retrieval(flat: &mut TomlConfig, raw: &RawTomlConfig) {
+    flat.search.hybrid_candidates = raw.retrieval.hybrid_candidates;
+    flat.search.ask_hybrid_candidates = raw.retrieval.ask_hybrid_candidates;
 }
 
-fn apply_ask(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
+fn apply_ask(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     let a = &raw.ask;
-    legacy.ask.max_context_chars = a.max_context_chars;
-    legacy.ask.chunk_limit = a.chunk_limit;
-    legacy.ask.candidate_limit = a.candidate_limit;
-    legacy.ask.full_docs = a.full_docs;
-    legacy.ask.backfill_chunks = a.backfill_chunks;
-    legacy.ask.doc_fetch_concurrency = a.doc_fetch_concurrency;
-    legacy.ask.doc_chunk_limit = a.doc_chunk_limit;
-    legacy.ask.min_relevance_score = a.min_relevance_score;
-    legacy.ask.authoritative_domains = a.authoritative_domains.clone();
-    legacy.ask.authoritative_boost = a.authoritative_boost;
-    legacy.ask.min_citations_nontrivial = a.min_citations_nontrivial;
-    legacy.ask.cache.enabled = a.cache.enabled;
-    legacy.ask.cache.max_capacity_bytes = a.cache.max_capacity_bytes;
-    legacy.ask.cache.ttl_secs = a.cache.ttl_secs;
-    legacy.ask.adaptive.fulldoc_skip_enabled = a.adaptive.fulldoc_skip_enabled;
-    legacy.ask.adaptive.fulldoc_skip_min_urls = a.adaptive.fulldoc_skip_min_urls;
-    legacy.ask.adaptive.fulldoc_skip_min_chars = a.adaptive.fulldoc_skip_min_chars;
-    legacy.ask.adaptive.fulldoc_skip_score_delta = a.adaptive.fulldoc_skip_score_delta;
+    flat.ask.max_context_chars = a.max_context_chars;
+    flat.ask.chunk_limit = a.chunk_limit;
+    flat.ask.candidate_limit = a.candidate_limit;
+    flat.ask.full_docs = a.full_docs;
+    flat.ask.backfill_chunks = a.backfill_chunks;
+    flat.ask.doc_fetch_concurrency = a.doc_fetch_concurrency;
+    flat.ask.doc_chunk_limit = a.doc_chunk_limit;
+    flat.ask.min_relevance_score = a.min_relevance_score;
+    flat.ask.authoritative_domains = a.authoritative_domains.clone();
+    flat.ask.authoritative_boost = a.authoritative_boost;
+    flat.ask.min_citations_nontrivial = a.min_citations_nontrivial;
+    flat.ask.cache.enabled = a.cache.enabled;
+    flat.ask.cache.max_capacity_bytes = a.cache.max_capacity_bytes;
+    flat.ask.cache.ttl_secs = a.cache.ttl_secs;
+    flat.ask.adaptive.fulldoc_skip_enabled = a.adaptive.fulldoc_skip_enabled;
+    flat.ask.adaptive.fulldoc_skip_min_urls = a.adaptive.fulldoc_skip_min_urls;
+    flat.ask.adaptive.fulldoc_skip_min_chars = a.adaptive.fulldoc_skip_min_chars;
+    flat.ask.adaptive.fulldoc_skip_score_delta = a.adaptive.fulldoc_skip_score_delta;
 }
 
-fn apply_crawl(legacy: &mut TomlConfig, raw: &RawTomlConfig) {
+fn apply_crawl(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     let c = &raw.crawl;
-    legacy.scrape.respect_robots = c.respect_robots;
-    legacy.scrape.discover_sitemaps = c.discover_sitemaps;
-    legacy.scrape.min_markdown_chars = c.min_markdown_chars;
-    legacy.scrape.drop_thin_markdown = c.drop_thin_markdown;
-    legacy.scrape.crawl_memory_abort_percent = c.memory_abort_percent;
-    legacy.scrape.sitemap_since_days = c.sitemap_since_days;
-    legacy.scrape.max_sitemaps = c.max_sitemaps;
-    legacy.scrape.discover_llms_txt = c.discover_llms_txt;
-    legacy.scrape.max_llms_txt_urls = c.max_llms_txt_urls;
-    legacy.scrape.auto_switch_thin_ratio = c.auto_switch_thin_ratio;
-    legacy.scrape.auto_switch_min_pages = c.auto_switch_min_pages;
-    legacy.scrape.url_whitelist = c.url_whitelist.clone();
-    legacy.scrape.allow_unbounded_broad_crawl = c.allow_unbounded_broad_crawl;
-    legacy.scrape.max_page_bytes = c.max_page_bytes;
-    legacy.scrape.redirect_policy_strict = c.redirect_policy_strict;
-    legacy.scrape.ladder_strategy1_threshold = c.ladder_strategy1_threshold;
-    legacy.scrape.ladder_strategy2_threshold = c.ladder_strategy2_threshold;
-    legacy.scrape.ladder_body_multiplier = c.ladder_body_multiplier;
-    legacy.workers.concurrency_limit = c.concurrency_limit;
-    legacy.workers.crawl_concurrency_limit = c.crawl_concurrency_limit;
-    legacy.workers.backfill_concurrency_limit = c.backfill_concurrency_limit;
-    legacy.workers.adaptive_concurrency.enabled = c.adaptive_concurrency.enabled;
-    legacy.workers.adaptive_concurrency.min = c.adaptive_concurrency.min;
-    legacy.workers.adaptive_concurrency.max = c.adaptive_concurrency.max;
-    legacy.verticals.enabled = c.verticals.enabled;
-    legacy.verticals.auto_dispatch_skip = c.verticals.auto_dispatch_skip.clone();
-    legacy.verticals.cache_ttl_secs = c.verticals.cache_ttl_secs.clone();
-    legacy.antibot.cookie_warmup = c.antibot.cookie_warmup;
-    legacy.antibot.max_body_scan_bytes = c.antibot.max_body_scan_bytes;
+    flat.scrape.respect_robots = c.respect_robots;
+    flat.scrape.discover_sitemaps = c.discover_sitemaps;
+    flat.scrape.min_markdown_chars = c.min_markdown_chars;
+    flat.scrape.drop_thin_markdown = c.drop_thin_markdown;
+    flat.scrape.crawl_memory_abort_percent = c.memory_abort_percent;
+    flat.scrape.sitemap_since_days = c.sitemap_since_days;
+    flat.scrape.max_sitemaps = c.max_sitemaps;
+    flat.scrape.discover_llms_txt = c.discover_llms_txt;
+    flat.scrape.max_llms_txt_urls = c.max_llms_txt_urls;
+    flat.scrape.auto_switch_thin_ratio = c.auto_switch_thin_ratio;
+    flat.scrape.auto_switch_min_pages = c.auto_switch_min_pages;
+    flat.scrape.url_whitelist = c.url_whitelist.clone();
+    flat.scrape.allow_unbounded_broad_crawl = c.allow_unbounded_broad_crawl;
+    flat.scrape.max_page_bytes = c.max_page_bytes;
+    flat.scrape.redirect_policy_strict = c.redirect_policy_strict;
+    flat.scrape.ladder_strategy1_threshold = c.ladder_strategy1_threshold;
+    flat.scrape.ladder_strategy2_threshold = c.ladder_strategy2_threshold;
+    flat.scrape.ladder_body_multiplier = c.ladder_body_multiplier;
+    flat.workers.concurrency_limit = c.concurrency_limit;
+    flat.workers.crawl_concurrency_limit = c.crawl_concurrency_limit;
+    flat.workers.backfill_concurrency_limit = c.backfill_concurrency_limit;
+    flat.workers.adaptive_concurrency.enabled = c.adaptive_concurrency.enabled;
+    flat.workers.adaptive_concurrency.min = c.adaptive_concurrency.min;
+    flat.workers.adaptive_concurrency.max = c.adaptive_concurrency.max;
+    flat.verticals.enabled = c.verticals.enabled;
+    flat.verticals.auto_dispatch_skip = c.verticals.auto_dispatch_skip.clone();
+    flat.verticals.cache_ttl_secs = c.verticals.cache_ttl_secs.clone();
+    flat.antibot.cookie_warmup = c.antibot.cookie_warmup;
+    flat.antibot.max_body_scan_bytes = c.antibot.max_body_scan_bytes;
 }

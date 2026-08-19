@@ -1,14 +1,16 @@
 //! Shared source output and durable artifact publication.
 
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
+
 use axon_adapters::SourceAdapter;
 use axon_api::source::*;
 use axon_core::boundary::ArtifactBytesWriteRequest;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
-use std::collections::BTreeMap;
 
 use crate::context::TargetLocalSourceRuntime;
-use crate::reserved_call;
+use crate::reserved_call::{self, ProviderCallContext};
 
 pub(crate) const ARTIFACT_METADATA_KEY: &str = "_axon_artifacts";
 pub(crate) const CACHE_KEY_METADATA_KEY: &str = "_axon_document_cache_key";
@@ -102,9 +104,9 @@ pub(crate) async fn store_clean_outputs(
                 .mime_type
                 .clone()
                 .unwrap_or_else(|| "text/markdown".to_string()),
-            document.content.clone(),
+            &document.content,
             document.source_id.clone(),
-            plan.job_id,
+            plan,
             metadata,
         )
         .await?;
@@ -135,6 +137,7 @@ pub(crate) async fn store_adapter_archive(
     let size_bytes = archive.bytes.len() as u64;
     let handle = reserved_call::put_artifact_bytes(
         runtime,
+        artifact_call_context(plan, format!("archive:{}", archive.content_hash)),
         ArtifactBytesWriteRequest {
             kind: archive.kind,
             content_type: archive.content_type,
@@ -168,15 +171,17 @@ pub(crate) async fn record_artifacts_on_manifest(
     if artifact_index.is_empty() && manifest.items.is_empty() {
         return Ok(());
     }
-    let previous_items = previous_manifest_items(ledger, diff).await?;
+    let unchanged_keys = diff
+        .unchanged
+        .iter()
+        .map(|item| item.source_item_key.clone())
+        .collect::<BTreeSet<_>>();
+    let previous_items = previous_manifest_items(ledger, diff, &unchanged_keys).await?;
     put_artifacts(&mut manifest.metadata, &artifact_index.generation_artifacts);
     for item in &mut manifest.items {
         if let Some(artifacts) = artifact_index.item_artifacts.get(&item.source_item_key) {
             put_artifacts(&mut item.metadata, artifacts);
-        } else if diff
-            .unchanged
-            .iter()
-            .any(|unchanged| unchanged.source_item_key == item.source_item_key)
+        } else if unchanged_keys.contains(&item.source_item_key)
             && let Some(previous) = previous_items.get(&item.source_item_key)
             && let Some(artifacts) = artifacts_from_metadata(&previous.metadata)
         {
@@ -191,20 +196,36 @@ pub(crate) async fn record_artifacts_on_manifest(
             })?,
         );
     }
-    ledger.put_manifest(manifest.clone()).await?;
+    ledger.put_manifest_ref(manifest).await?;
     Ok(())
+}
+
+fn artifact_call_context(
+    plan: &SourcePlan,
+    operation_id: impl Into<String>,
+) -> ProviderCallContext {
+    let (attempt, priority) = read_provider_execution_metadata(&plan.request.metadata)
+        .map(|execution| (execution.attempt, execution.priority))
+        .unwrap_or((1, plan.request.execution.priority));
+    ProviderCallContext::for_phase(
+        plan.job_id,
+        attempt,
+        PipelinePhase::Publishing,
+        priority,
+        operation_id,
+    )
 }
 
 async fn store_artifact(
     runtime: &TargetLocalSourceRuntime,
     kind: ArtifactKind,
     content_type: String,
-    content: ContentRef,
+    content: &ContentRef,
     source_id: SourceId,
-    job_id: JobId,
+    plan: &SourcePlan,
     mut metadata: MetadataMap,
 ) -> anyhow::Result<ArtifactRef> {
-    let bytes = content_bytes(&content)?;
+    let bytes = content_bytes(content)?;
     let size_bytes = bytes.len() as u64;
     let content_hash = sha256_prefixed(&bytes);
     metadata.insert(
@@ -214,12 +235,13 @@ async fn store_artifact(
     metadata.insert("size_bytes".to_string(), serde_json::json!(size_bytes));
     let handle = reserved_call::put_artifact(
         runtime,
+        artifact_call_context(plan, format!("artifact:{content_hash}")),
         ArtifactWriteRequest {
             kind,
             content_type,
-            content,
+            content: (*content).clone(),
             source_id: Some(source_id),
-            job_id: Some(job_id),
+            job_id: Some(plan.job_id),
             metadata,
         },
     )
@@ -257,18 +279,22 @@ fn should_inline(policy: &OutputPolicy, size_bytes: u64) -> bool {
 async fn previous_manifest_items(
     ledger: &dyn axon_ledger::store::LedgerStore,
     diff: &SourceManifestDiff,
+    wanted: &BTreeSet<SourceItemKey>,
 ) -> anyhow::Result<BTreeMap<SourceItemKey, ManifestItem>> {
     let Some(previous_generation) = diff.previous_generation.clone() else {
         return Ok(BTreeMap::new());
     };
-    let Some(previous_manifest) = ledger
-        .get_manifest(diff.source_id.clone(), previous_generation)
-        .await?
-    else {
+    if wanted.is_empty() {
         return Ok(BTreeMap::new());
-    };
-    Ok(previous_manifest
-        .items
+    }
+    Ok(ledger
+        .get_manifest_items_with_metadata_key(
+            diff.source_id.clone(),
+            previous_generation,
+            wanted.iter().cloned().collect(),
+            ARTIFACT_METADATA_KEY.to_string(),
+        )
+        .await?
         .into_iter()
         .map(|item| (item.source_item_key.clone(), item))
         .collect())
@@ -289,18 +315,16 @@ fn put_artifacts(metadata: &mut MetadataMap, artifacts: &[ArtifactRef]) {
     }
 }
 
-fn content_bytes(content: &ContentRef) -> anyhow::Result<Vec<u8>> {
+fn content_bytes(content: &ContentRef) -> anyhow::Result<Cow<'_, [u8]>> {
     match content {
-        ContentRef::InlineText { text } => Ok(text.as_bytes().to_vec()),
-        ContentRef::InlineBytes { bytes_base64, .. } => {
-            Ok(base64::engine::general_purpose::STANDARD.decode(bytes_base64)?)
-        }
-        ContentRef::Artifact { artifact_id } => Ok(artifact_id.0.as_bytes().to_vec()),
-        ContentRef::External { uri, integrity } => Ok(integrity
-            .as_deref()
-            .unwrap_or(uri.as_str())
-            .as_bytes()
-            .to_vec()),
+        ContentRef::InlineText { text } => Ok(Cow::Borrowed(text.as_bytes())),
+        ContentRef::InlineBytes { bytes_base64, .. } => Ok(Cow::Owned(
+            base64::engine::general_purpose::STANDARD.decode(bytes_base64)?,
+        )),
+        ContentRef::Artifact { artifact_id } => Ok(Cow::Borrowed(artifact_id.0.as_bytes())),
+        ContentRef::External { uri, integrity } => Ok(Cow::Borrowed(
+            integrity.as_deref().unwrap_or(uri.as_str()).as_bytes(),
+        )),
     }
 }
 

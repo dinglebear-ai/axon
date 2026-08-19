@@ -74,6 +74,8 @@ impl Default for Config {
             yes: false,
             setup_method: None,
             source_scope: None,
+            source_priority: None,
+            allow_tool_execution: false,
             scrape_inline: false,
             reset_stores: Vec::new(),
             reset_dry_run: false,
@@ -88,6 +90,8 @@ impl Default for Config {
             performance_profile: PerformanceProfile::HighStable,
             crawl_concurrency_limit: None,
             backfill_concurrency_limit: None,
+            fetch_provider_concurrency: 16,
+            render_provider_concurrency: 8,
             adaptive_concurrency: AdaptiveConcurrencyConfig {
                 enabled: false,
                 min: 1,

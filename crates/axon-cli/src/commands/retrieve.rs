@@ -1,11 +1,15 @@
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use axon_core::ui::{muted, primary};
+use axon_services::context::ServiceContext;
 use axon_services::query as query_svc;
 use axon_services::types::RetrieveOptions;
 use std::error::Error;
 
-pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn run_retrieve(
+    cfg: &Config,
+    service_context: &ServiceContext,
+) -> Result<(), Box<dyn Error>> {
     let target = cfg.positional.first().ok_or("retrieve requires URL")?;
     // TODO: cfg.quiet — suppress progress log when quiet mode lands
     if !cfg.json_output {
@@ -17,7 +21,7 @@ pub async fn run_retrieve(cfg: &Config) -> Result<(), Box<dyn Error>> {
         cursor: None,
         token_budget: None,
     };
-    let result = query_svc::retrieve(cfg, target, opts)
+    let result = query_svc::retrieve(service_context, cfg, target, opts)
         .await
         .map_err(|e| -> Box<dyn Error> { e.to_string().into() })?;
 

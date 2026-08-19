@@ -22,6 +22,7 @@ mod vertical;
 mod warc;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -32,11 +33,15 @@ use crate::adapter::{
 };
 use crate::boundary::{FetchProvider, RenderProvider};
 use crate::capability::AdapterCapability;
+use crate::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
+use crate::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
+use axon_core::config::Config;
 
 use self::manifest_items::{map_urls_manifest_items, page_manifest_item};
 use self::metadata::{manifest_metadata, web_source_document};
 
 pub use self::warc::{WarcArchive, build_archive as build_warc_archive};
+pub use crate::web_engine::scrape::map_scrape_payload;
 
 pub const MODULE_NAME: &str = "web";
 
@@ -51,6 +56,76 @@ pub struct WebSourceAdapter {
 impl WebSourceAdapter {
     pub fn new(fetch: Arc<dyn FetchProvider>, render: Arc<dyn RenderProvider>) -> Self {
         Self { fetch, render }
+    }
+
+    /// Construct the standalone read-only web adapter from runtime config.
+    /// Production source indexing injects scheduler-wrapped providers from
+    /// `axon-services`; utility projections such as summarize/diff use this
+    /// constructor so their acquisition still crosses the adapter boundary.
+    pub fn from_config(cfg: &Config) -> Self {
+        let fetch: Arc<dyn FetchProvider> = Arc::new(HttpFetchProvider::new(HttpFetchConfig {
+            timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
+            max_bytes: cfg.max_page_bytes,
+            user_agent: cfg.user_agent.clone(),
+        }));
+        let render: Arc<dyn RenderProvider> =
+            Arc::new(ChromeRenderProvider::new(ChromeRenderConfig {
+                max_concurrent_pages: Some(cfg.render_provider_concurrency),
+                chrome_remote_url: cfg.chrome_remote_url.clone(),
+                default_timeout_ms: cfg.request_timeout_ms,
+            }));
+        Self::new(fetch, render)
+    }
+
+    /// Execute the canonical Page-scope acquisition prefix without publication.
+    /// This is the retained read-only `scrape` projection: no ledger, vectors,
+    /// graph, or artifacts are written by the adapter.
+    pub async fn scrape_document(&self, plan: &SourcePlan) -> Result<SourceDocument> {
+        if plan.route.scope != SourceScope::Page {
+            return Err(ApiError::new(
+                "adapter.web.scrape_scope",
+                ErrorStage::Planning,
+                "scrape projection requires web page scope",
+            ));
+        }
+        let manifest = self.discover(plan).await?;
+        let items = manifest.items;
+        let added = items.len() as u64;
+        let next_generation = SourceGenerationId::from(format!("gen_scrape_{}", Uuid::new_v4()));
+        let diff = SourceManifestDiff {
+            header: stage_header(
+                plan.job_id,
+                "web_scrape_diff",
+                PipelinePhase::Diffing,
+                items.len(),
+            ),
+            source_id: plan.route.source.source_id.clone(),
+            previous_generation: None,
+            next_generation,
+            added: items,
+            modified: Vec::new(),
+            removed: Vec::new(),
+            unchanged: Vec::new(),
+            skipped: Vec::new(),
+            failed: Vec::new(),
+            counts: DiffCounts {
+                added,
+                modified: 0,
+                removed: 0,
+                unchanged: 0,
+                skipped: 0,
+                failed: 0,
+            },
+        };
+        let acquisition = self.acquire(plan, &diff).await?;
+        let normalized = self.normalize(plan, acquisition).await?;
+        normalized.data.into_iter().next().ok_or_else(|| {
+            ApiError::new(
+                "adapter.web.scrape_empty",
+                ErrorStage::Normalizing,
+                "web page acquisition produced no document",
+            )
+        })
     }
 
     async fn acquire_internal(
@@ -233,10 +308,15 @@ impl SourceAdapter for WebSourceAdapter {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
-            .map(|item| web_source_document(plan, &acquisition, item))
+        let SourceAcquisition {
+            source_id,
+            generation,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
+            .map(|item| web_source_document(plan, &source_id, &generation, item))
             .collect::<Vec<_>>();
         Ok(StageExecutionResult {
             header: stage_header(

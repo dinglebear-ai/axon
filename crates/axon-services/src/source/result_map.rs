@@ -9,8 +9,8 @@
 
 use axon_api::source::{
     AdapterRef, GraphCandidate, GraphWriteSummary, JobDescriptor, JobId, LedgerSummary,
-    LifecycleStatus, SourceCounts, SourceGenerationId, SourceId, SourceKind, SourceResult,
-    SourceScope, SourceWarning,
+    LifecycleStatus, SourceCounts, SourceGenerationId, SourceId, SourceKind, SourceManifest,
+    SourceResult, SourceScope, SourceWarning,
 };
 use axon_error::ApiError;
 use uuid::Uuid;
@@ -20,7 +20,7 @@ use uuid::Uuid;
 /// The bridges name their removal count differently (`removed_files`,
 /// `removed_entries`, `removed_pages`, …); this collapses them to a single
 /// `removed` field so mapping is uniform.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IndexCounts {
     pub job_id: JobId,
     pub source_id: SourceId,
@@ -31,6 +31,10 @@ pub struct IndexCounts {
     pub chunks_prepared: u64,
     pub vector_points_written: u64,
     pub removed: u64,
+    /// The already-published manifest carried forward for graph construction.
+    /// Keeping ownership here avoids dropping it after publication only to
+    /// deserialize the same corpus from SQLite moments later.
+    pub published_manifest: Option<SourceManifest>,
     /// Parser-produced graph candidates carried up from every prepared
     /// document in this generation (`source-pipeline.md`'s `parsing` stage
     /// output), forwarded to the `graphing` stage instead of being dropped

@@ -10,8 +10,8 @@ use super::{GitTarget, hex_prefix};
 pub(super) fn git_source_document(
     plan: &SourcePlan,
     target: &GitTarget,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    item: AcquiredSourceItem,
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("code"));
@@ -27,28 +27,28 @@ pub(super) fn git_source_document(
     metadata.insert("git_web_url".to_string(), json!(target.web_url));
     metadata.insert(
         "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
+        json!(item.manifest_item.canonical_uri.clone()),
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("clean"));
     SourceDocument {
-        document_id: git_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: git_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: item
             .manifest_item
             .content_kind
             .unwrap_or(ContentKind::PlainText),
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title: item.manifest_item.display_path.clone(),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: None,
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     }

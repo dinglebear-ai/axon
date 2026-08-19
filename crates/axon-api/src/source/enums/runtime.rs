@@ -116,6 +116,7 @@ pub enum ProviderKind {
     Search,
     Fetch,
     Render,
+    Parser,
     NetworkCapture,
     Artifact,
     Ledger,

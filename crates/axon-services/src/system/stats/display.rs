@@ -165,18 +165,26 @@ fn avg_stat_text(stats: &serde_json::Value, key: &str, suffix: &str) -> String {
 
 fn print_pipeline_stats(stats: &serde_json::Value) {
     println!("{}", primary("Pipeline Stats"));
-    let avg_pages = avg_stat_text(stats, "avg_pages_crawled_per_second", "");
-    let avg_crawl = avg_stat_text(stats, "avg_crawl_duration_seconds", "s");
+    let avg_items = avg_stat_text(stats, "avg_items_per_second", "");
+    let avg_source = avg_stat_text(stats, "avg_source_duration_seconds", "s");
     let avg_embed = avg_stat_text(stats, "avg_embedding_duration_seconds", "s");
-    let avg_overall = avg_stat_text(stats, "avg_overall_crawl_duration_seconds", "s");
-    println!("  {} {}", muted("Avg Pages/sec:"), accent(&avg_pages));
-    println!("  {} {}", muted("Avg Crawl Duration:"), accent(&avg_crawl));
+    let avg_overall = avg_stat_text(stats, "avg_overall_source_duration_seconds", "s");
+    println!("  {} {}", muted("Avg Items/sec:"), accent(&avg_items));
+    println!(
+        "  {} {}",
+        muted("Avg Source Duration:"),
+        accent(&avg_source)
+    );
     println!(
         "  {} {}",
         muted("Avg Embedding Duration:"),
         accent(&avg_embed)
     );
-    println!("  {} {}", muted("Avg Overall Crawl:"), accent(&avg_overall));
+    println!(
+        "  {} {}",
+        muted("Avg Overall Source:"),
+        accent(&avg_overall)
+    );
     println!(
         "  {} {}",
         muted("Total Chunks:"),
@@ -192,10 +200,10 @@ fn print_pipeline_stats(stats: &serde_json::Value) {
         muted("Base URLs:"),
         fmt_count(&stats["base_urls_count"])
     );
-    if let Some(longest) = stats["longest_crawl"].as_object() {
+    if let Some(longest) = stats["longest_source"].as_object() {
         println!(
             "  {} {} ({:.2}s)",
-            muted("Longest Crawl:"),
+            muted("Longest Source:"),
             accent(longest.get("id").and_then(|v| v.as_str()).unwrap_or("n/a")),
             longest
                 .get("seconds")
@@ -253,13 +261,13 @@ fn print_freshness_stats(stats: &serde_json::Value) {
     println!("  {} {}", muted("Last Indexed:"), accent(&age_text));
     println!(
         "  {} {}",
-        muted("Crawls (24h):"),
-        fmt_count(&stats["freshness"]["crawls_last_24h"])
+        muted("Sources (24h):"),
+        fmt_count(&stats["freshness"]["sources_last_24h"])
     );
     println!(
         "  {} {}",
-        muted("Crawls (7d):"),
-        fmt_count(&stats["freshness"]["crawls_last_7d"])
+        muted("Sources (7d):"),
+        fmt_count(&stats["freshness"]["sources_last_7d"])
     );
 
     let Some(days) = stats["growth_7d"].as_array() else {
@@ -294,8 +302,8 @@ fn print_command_counts(stats: &serde_json::Value) {
     println!("{}", primary("Command Counts"));
     println!(
         "  {} {}",
-        muted("Crawls:"),
-        fmt_count(&stats["counts"]["crawls"])
+        muted("Sources:"),
+        fmt_count(&stats["counts"]["sources"])
     );
     println!(
         "  {} {}",

@@ -38,7 +38,8 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::boundary::{RenderProvider, Result};
 
-const PROVIDER_ID: &str = "chrome_render";
+pub const CHROME_RENDER_PROVIDER_ID: &str = "chrome_render";
+const PROVIDER_ID: &str = CHROME_RENDER_PROVIDER_ID;
 
 /// Self-tracked health/cooldown capacity — sized generously, purely to fold
 /// live outcomes into `capabilities()`, not to gate concurrency.
@@ -54,6 +55,8 @@ const REMOTE_CHROME_MAX_CONCURRENT_PAGES: u32 = 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct ChromeRenderConfig {
+    /// Maximum in-flight rendered pages for this provider instance.
+    pub max_concurrent_pages: Option<usize>,
     /// Overrides `Config::default().chrome_remote_url` (the CDP endpoint) for
     /// every render — e.g. `http://axon-chrome:6000`. `None` leaves axon-crawl
     /// to fall back to a locally-launched Chrome, matching CLI defaults.
@@ -80,10 +83,14 @@ impl ChromeRenderProvider {
             cooldown_after_failures: HEALTH_TRACKER_COOLDOWN_AFTER_FAILURES,
             cooldown_secs: HEALTH_TRACKER_COOLDOWN_SECS,
         });
+        let max_concurrent_pages = config
+            .max_concurrent_pages
+            .unwrap_or(REMOTE_CHROME_MAX_CONCURRENT_PAGES as usize)
+            .max(1);
         Self {
             config,
             health,
-            page_slots: Arc::new(Semaphore::new(REMOTE_CHROME_MAX_CONCURRENT_PAGES as usize)),
+            page_slots: Arc::new(Semaphore::new(max_concurrent_pages)),
         }
     }
 

@@ -104,13 +104,13 @@ fn stats_result_payload_field_is_forwarded_unchanged() {
 fn stats_result_payload_preserves_counts_key() {
     let raw = serde_json::json!({
         "counts": {
-            "crawls": 10,
+            "sources": 10,
             "embeds": 20,
             "queries": 5
         }
     });
     let result: StatsResult = map_stats_payload(raw);
-    assert_eq!(result.payload["counts"]["crawls"], 10);
+    assert_eq!(result.payload["counts"]["sources"], 10);
     assert_eq!(result.payload["counts"]["embeds"], 20);
 }
 

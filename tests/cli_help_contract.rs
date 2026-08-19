@@ -254,7 +254,7 @@ fn setup_split_help_surfaces_are_focused() {
     assert!(!preflight.contains("--max-depth"));
 
     let smoke = run_help(&["smoke", "--help"]);
-    assert!(smoke.contains("Run crawl/ask smoke checks against the running stack"));
+    assert!(smoke.contains("Run source/ask smoke checks against the running stack"));
     assert!(!smoke.contains("--render-mode"));
 
     let compose = run_help(&["compose", "--help"]);

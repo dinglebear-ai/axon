@@ -227,22 +227,31 @@ impl TeiEmbeddingProvider {
     }
 
     /// Build the ordered list of request texts, prepending the instruction to
-    /// each input when one is present and instruction support permits it.
-    fn request_texts(&self, batch: &EmbeddingBatch) -> Vec<String> {
-        match &batch.instruction {
+    /// each input when one is present and instruction support permits it. Move
+    /// the owned text out of the batch so the hot path does not clone every
+    /// chunk before issuing TEI requests.
+    fn take_request_texts(&self, batch: &mut EmbeddingBatch) -> Vec<String> {
+        match batch.instruction.as_deref() {
             Some(instruction) if self.instruction_enabled() && !instruction.is_empty() => batch
                 .items
-                .iter()
-                .map(|item| format!("{instruction}{}", item.text))
+                .iter_mut()
+                .map(|item| {
+                    let text = std::mem::take(&mut item.text);
+                    format!("{instruction}{text}")
+                })
                 .collect(),
-            _ => batch.items.iter().map(|item| item.text.clone()).collect(),
+            _ => batch
+                .items
+                .iter_mut()
+                .map(|item| std::mem::take(&mut item.text))
+                .collect(),
         }
     }
 }
 
 #[async_trait]
 impl EmbeddingProvider for TeiEmbeddingProvider {
-    async fn embed(&self, batch: EmbeddingBatch) -> Result<EmbeddingResult> {
+    async fn embed(&self, mut batch: EmbeddingBatch) -> Result<EmbeddingResult> {
         validate_batch(&batch)?;
 
         let dimensions = self.config.dimensions;
@@ -253,7 +262,7 @@ impl EmbeddingProvider for TeiEmbeddingProvider {
             ));
         }
 
-        let texts = self.request_texts(&batch);
+        let texts = self.take_request_texts(&mut batch);
         let client = self.build_client()?;
 
         let started = Instant::now();

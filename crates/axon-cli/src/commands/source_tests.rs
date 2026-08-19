@@ -128,3 +128,26 @@ fn source_inputs_reject_an_empty_source_surface() {
             .contains("--urls")
     );
 }
+
+#[test]
+fn source_request_projects_scheduler_priority() {
+    let cfg = Config {
+        source_priority: Some("high".to_string()),
+        ..Config::default()
+    };
+
+    let request = build_source_request(&cfg, "https://example.com".to_string()).unwrap();
+
+    assert_eq!(request.execution.priority, JobPriority::High);
+}
+
+#[test]
+fn source_request_rejects_unknown_scheduler_priority() {
+    let cfg = Config {
+        source_priority: Some("urgent-ish".to_string()),
+        ..Config::default()
+    };
+
+    let error = build_source_request(&cfg, "https://example.com".to_string()).unwrap_err();
+    assert!(error.to_string().contains("unknown --priority value"));
+}

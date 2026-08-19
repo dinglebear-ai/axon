@@ -44,6 +44,23 @@ pub struct AuthSnapshot {
 }
 
 impl AuthSnapshot {
+    /// Least-privilege synthetic snapshot for scheduler-only bookkeeping jobs.
+    /// This identity must never be used to authorize the underlying read; it
+    /// exists only because durable provider reservations reference a job row.
+    pub fn scheduler_bookkeeping(policy_version: impl Into<String>) -> Self {
+        Self {
+            caller_id: Some("axon-scheduler".to_string()),
+            transport: TransportKind::System,
+            granted_scopes: vec![AuthScope::Read],
+            visibility_ceiling: Visibility::Public,
+            request_time: Timestamp::from(Utc::now()),
+            policy_version: policy_version.into(),
+            auth_mode: AuthMode::None,
+            token_id: None,
+            display_name: Some("Axon scheduler".to_string()),
+        }
+    }
+
     pub fn trusted_system(policy_version: impl Into<String>) -> Self {
         Self {
             caller_id: Some("axon-system".to_string()),
@@ -117,6 +134,16 @@ impl Default for AuthSnapshot {
 }
 
 impl AuthScope {
+    pub fn as_scope_str(self) -> &'static str {
+        match self {
+            Self::Read => "axon:read",
+            Self::Write => "axon:write",
+            Self::Admin => "axon:admin",
+            Self::Execute => "axon:execute",
+            Self::Local => "axon:local",
+        }
+    }
+
     pub fn from_scope_str(scope: &str) -> Option<Self> {
         match scope {
             "axon:read" | "source:read" | "read" => Some(Self::Read),

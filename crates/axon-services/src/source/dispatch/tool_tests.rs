@@ -38,6 +38,15 @@ fn execute_snapshot() -> AuthSnapshot {
     snapshot
 }
 
+fn resolve_execution_route(
+    request: &SourceRequest,
+    message: &str,
+) -> crate::source::routing::RoutedSource {
+    let routing_auth = execute_snapshot();
+    crate::source::routing::resolve_source_route_for_auth(request, Some(&routing_auth))
+        .expect(message)
+}
+
 async fn run_cli_tool(
     runtime: &TargetLocalSourceRuntime,
     input: &str,
@@ -183,8 +192,7 @@ async fn dispatch_cli_tool_execute_mode_denies_without_execute_scope() {
         "command_allowlist".to_string(),
         serde_json::json!(["/bin/echo"]),
     );
-    let routed =
-        crate::source::routing::resolve_source_route(&request).expect("cli tool should route");
+    let routed = resolve_execution_route(&request, "cli tool should route");
     let snapshot = AuthSnapshot::default();
 
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("/bin/echo");
@@ -216,8 +224,7 @@ async fn dispatch_cli_tool_ignores_caller_owned_allowlist() {
         .options
         .values
         .insert("execution_mode".to_string(), serde_json::json!("execute"));
-    let routed =
-        crate::source::routing::resolve_source_route(&request).expect("cli tool should route");
+    let routed = resolve_execution_route(&request, "cli tool should route");
     let snapshot = execute_snapshot();
 
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("/bin/false");
@@ -254,7 +261,7 @@ fn tool_authorization_uses_server_owned_limits() {
         .options
         .values
         .insert("output_cap_bytes".to_string(), serde_json::json!(9_999_999));
-    let routed = crate::source::routing::resolve_source_route(&request).unwrap();
+    let routed = resolve_execution_route(&request, "cli tool should route");
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("/bin/echo");
     let authorized = super::tool_auth::authorize_cli_tool_execution(
         "cli:/bin/echo hello",
@@ -284,8 +291,7 @@ async fn dispatch_cli_tool_execute_captures_redacted_artifact() {
         "command_allowlist".to_string(),
         serde_json::json!(["/bin/echo"]),
     );
-    let routed =
-        crate::source::routing::resolve_source_route(&request).expect("cli tool should route");
+    let routed = resolve_execution_route(&request, "cli tool should route");
     let snapshot = execute_snapshot();
 
     let policy = super::tool_auth::ToolExecutionPolicy::test_cli("/bin/echo");
@@ -371,8 +377,7 @@ async fn dispatch_mcp_tool_call_requires_caller_command_policy() {
         "mcp_allowlist".to_string(),
         serde_json::json!(["labby/search"]),
     );
-    let routed =
-        crate::source::routing::resolve_source_route(&request).expect("mcp tool should route");
+    let routed = resolve_execution_route(&request, "mcp tool should route");
     let snapshot = execute_snapshot();
 
     let policy = super::tool_auth::ToolExecutionPolicy::test_mcp_without_caller("labby/search");
@@ -416,8 +421,7 @@ async fn dispatch_mcp_tool_call_captures_artifact() {
         "mcp_caller_allowlist".to_string(),
         serde_json::json!(["/bin/echo"]),
     );
-    let routed =
-        crate::source::routing::resolve_source_route(&request).expect("mcp tool should route");
+    let routed = resolve_execution_route(&request, "mcp tool should route");
     let snapshot = execute_snapshot();
 
     let policy = super::tool_auth::ToolExecutionPolicy::test_mcp("labby/search", "/bin/echo");

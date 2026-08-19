@@ -185,6 +185,31 @@ impl QdrantHttp {
         Err(self.status_error(stage, context, status))
     }
 
+    /// PUT an already encoded JSON body, tolerating 409. This is used by the
+    /// vector hot path after enforcing the exact encoded-byte ceiling, avoiding
+    /// a second serialization pass inside reqwest.
+    pub async fn put_json_bytes(
+        &self,
+        stage: axon_error::ErrorStage,
+        url: &str,
+        body: Vec<u8>,
+        context: &str,
+    ) -> Result<(), ApiError> {
+        let resp = self
+            .request(Method::PUT)
+            .put(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|err| self.transport(stage, context, &err))?;
+        let status = resp.status();
+        if status == StatusCode::CONFLICT || status.is_success() {
+            return Ok(());
+        }
+        Err(self.status_error(stage, context, status))
+    }
+
     /// POST a JSON body and parse the response, retrying on 429/5xx.
     pub async fn post_json<B, T>(
         &self,

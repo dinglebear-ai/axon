@@ -9,8 +9,8 @@
 //! MCP, and REST share one entrypoint.
 
 use axon_api::source::{
-    ArtifactKind, ArtifactMode, ContentRef, LifecycleStatus, ResponseMode, Severity, SourceIntent,
-    SourceLimits, SourceRequest, SourceResult, SourceScope, SourceWarning,
+    ArtifactKind, ArtifactMode, ContentRef, JobPriority, LifecycleStatus, ResponseMode, Severity,
+    SourceIntent, SourceLimits, SourceRequest, SourceResult, SourceScope, SourceWarning,
 };
 use axon_core::config::{CommandKind, Config};
 use axon_core::ui::{accent, muted, primary};
@@ -145,6 +145,17 @@ fn parse_scope(scope: &str) -> Result<SourceScope, Box<dyn Error>> {
         .map_err(|_| format!("unknown --scope value: {scope}").into())
 }
 
+fn parse_priority(priority: &str) -> Result<JobPriority, Box<dyn Error>> {
+    serde_json::from_value::<JobPriority>(serde_json::Value::String(priority.to_string())).map_err(
+        |_| {
+            format!(
+                "unknown --priority value: {priority}; expected interactive, high, normal, background, or maintenance"
+            )
+            .into()
+        },
+    )
+}
+
 pub(crate) fn build_source_request(
     cfg: &Config,
     input: String,
@@ -152,6 +163,9 @@ pub(crate) fn build_source_request(
     let mut request = SourceRequest::new(input);
     request.collection = Some(cfg.collection.clone());
     request.embed = cfg.embed;
+    if let Some(priority) = cfg.source_priority.as_deref() {
+        request.execution.priority = parse_priority(priority)?;
+    }
     if cfg.scrape_inline {
         request.output.response_mode = ResponseMode::Inline;
     }
@@ -195,25 +209,8 @@ fn resolve_source_inputs(cfg: &Config) -> Result<Vec<String>, Box<dyn Error>> {
     }
 }
 
-pub(crate) fn source_result_json(cfg: &Config, result: &SourceResult) -> serde_json::Value {
-    serde_json::json!({
-        "job_id": result.job_id.0.to_string(),
-        "source_id": result.source_id.0,
-        "canonical_uri": result.canonical_uri,
-        "source_kind": result.source_kind,
-        "adapter": result.adapter,
-        "scope": result.scope,
-        "status": result.status,
-        "generation": result.ledger.generation.0,
-        "documents_prepared": result.counts.documents_total,
-        "chunks_prepared": result.counts.chunks_total,
-        "vector_points_written": result.counts.vector_points_total,
-        "collection": cfg.collection,
-        "graph": result.graph,
-        "warnings": result.warnings,
-        "inline": &result.inline,
-        "job": &result.job,
-    })
+pub fn source_result_json(_cfg: &Config, result: &SourceResult) -> serde_json::Value {
+    serde_json::to_value(result).expect("SourceResult is a serializable transport contract")
 }
 
 /// True when the result represents a still-running detached job (a job
@@ -233,30 +230,12 @@ fn is_queued_descriptor(result: &SourceResult) -> bool {
         )
 }
 
-/// Lean job-descriptor JSON for a detached, not-yet-run source job — the
-/// contract's queued-descriptor shape, not the zero-filled full `SourceResult`.
-/// Poll/stream hints are CLI commands so `--json` callers get actionable
-/// next-steps too (`axon_rust-x4gxr.10`).
-fn queued_descriptor_json(result: &SourceResult) -> serde_json::Value {
-    let job_id = result.job_id.0.to_string();
-    serde_json::json!({
-        "job_id": job_id,
-        "kind": "source",
-        "status": result.status,
-        "canonical_uri": result.canonical_uri,
-        "poll": { "command": format!("axon jobs get {job_id}") },
-        "events": { "command": format!("axon jobs events {job_id}") },
-        "warnings": result.warnings,
-    })
-}
-
 pub(crate) fn render_source_result(cfg: &Config, result: &SourceResult) {
     if cfg.json_output {
-        if is_queued_descriptor(result) {
-            println!("{}", queued_descriptor_json(result));
-        } else {
-            println!("{}", source_result_json(cfg, result));
-        }
+        // JSON mode is the transport-neutral contract: CLI, MCP, and REST all
+        // serialize the same SourceResult DTO. Human mode may still render a
+        // lean queued descriptor with poll/event hints below.
+        println!("{}", source_result_json(cfg, result));
         return;
     }
 

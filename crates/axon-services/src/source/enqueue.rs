@@ -68,7 +68,7 @@ pub async fn enqueue_source_with_allowed_roots(
         ));
     }
 
-    let routed = match routing::resolve_source_route(&request) {
+    let routed = match routing::resolve_source_route_for_auth(&request, auth_snapshot.as_ref()) {
         Ok(routed) => routed,
         Err(err) => return Ok(result_map::route_error_result(&input, err)),
     };
@@ -78,6 +78,13 @@ pub async fn enqueue_source_with_allowed_roots(
     if let Err(err) =
         authorize::authorize_safety_class(routed.route.safety_class, auth_snapshot.as_ref())
     {
+        return Ok(result_map::route_error_result(&input, err));
+    }
+    if let Err(err) = authorize::authorize_execution_affinity(
+        routed.route.safety_class,
+        axon_api::source::ExecutionAffinity::Scheduler,
+        auth_snapshot.as_ref(),
+    ) {
         return Ok(result_map::route_error_result(&input, err));
     }
     if let Err(err) =

@@ -5,15 +5,19 @@
 //! module selects the provider, waits for scheduler capacity where applicable,
 //! and owns every raw provider handle.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use axon_api::source::*;
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore};
 use axon_error::ErrorStage;
+use axon_graph::sqlite::SqliteGraphStore;
+use axon_graph::store::GraphStore;
 use axon_jobs::scheduler::{
     ProviderScheduler, ReservationRequest, ReservedCallError, SchedulerError, call_reserved,
 };
 use axon_ledger::store::LedgerStore;
+use sqlx::SqlitePool;
 
 use crate::context::TargetLocalSourceRuntime;
 
@@ -93,6 +97,9 @@ impl ProviderCallContext {
 
 struct EmbeddingLane;
 struct VectorLane;
+struct ParseLane;
+struct GraphLane;
+struct ArtifactLane;
 
 pub struct ArtifactCleanupGuard {
     store: Arc<dyn ArtifactStore>,
@@ -303,6 +310,54 @@ pub async fn upsert(
     )
 }
 
+pub async fn search_vectors(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    request: VectorSearchRequest,
+) -> Result<VectorSearchResult, ApiError> {
+    let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
+        return runtime.vector_store.search(request).await;
+    };
+    let store = Arc::clone(&runtime.vector_store);
+    map_reserved(
+        call_reserved::<VectorLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.search(request).await },
+        )
+        .await,
+        ErrorStage::Retrieving,
+        "vector",
+    )
+}
+
+/// Run an arbitrary vector-capacity operation under the durable scheduler.
+/// This is used for Qdrant-specific read helpers whose API intentionally sits
+/// outside the generic `VectorStore` trait.
+pub async fn vector_operation<T, F, Fut>(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    operation: F,
+) -> Result<T, ApiError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T, ApiError>>,
+{
+    let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
+        return operation().await;
+    };
+    map_reserved(
+        call_reserved::<VectorLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| operation(),
+        )
+        .await,
+        ErrorStage::Retrieving,
+        "vector",
+    )
+}
+
 pub async fn mark_generation_committed(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
@@ -429,18 +484,121 @@ pub async fn retire_generation(
     )
 }
 
+pub async fn parse_operation<T, F, Fut>(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    operation: F,
+) -> anyhow::Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = anyhow::Result<T>>,
+{
+    let Some(scheduler) = runtime.parse_scheduler.as_deref() else {
+        return operation().await;
+    };
+    match call_reserved::<ParseLane, _, anyhow::Error, _, _>(
+        scheduler,
+        context.request(1),
+        move |_lease| operation(),
+    )
+    .await
+    {
+        Ok(value) => Ok(value),
+        Err(ReservedCallError::Provider(error)) => Err(error),
+        Err(ReservedCallError::Scheduler(error)) => Err(anyhow::Error::new(scheduler_error(
+            error,
+            ErrorStage::ParsingContent,
+            "parser",
+        ))),
+    }
+}
+
+pub async fn graph_operation<T, F, Fut>(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    operation: F,
+) -> Result<T, ApiError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = T>,
+{
+    let Some(scheduler) = runtime.graph_scheduler.as_deref() else {
+        return Ok(operation().await);
+    };
+    map_reserved(
+        call_reserved::<GraphLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { Ok(operation().await) },
+        )
+        .await,
+        ErrorStage::Graphing,
+        "graph",
+    )
+}
+
+pub async fn upsert_graph_candidates(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    pool: SqlitePool,
+    candidates: Vec<GraphCandidate>,
+) -> Result<GraphWriteResult, ApiError> {
+    graph_operation(runtime, context, move || async move {
+        let store = SqliteGraphStore::from_pool(pool);
+        store.upsert_candidate_iter(candidates).await
+    })
+    .await?
+}
+
+#[cfg(test)]
+pub async fn upsert_graph_candidates_for_test(
+    pool: SqlitePool,
+    candidates: Vec<GraphCandidate>,
+) -> Result<GraphWriteResult, ApiError> {
+    let store = SqliteGraphStore::from_pool(pool);
+    store.upsert_candidate_iter(candidates).await
+}
+
 pub async fn put_artifact(
     runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
     request: ArtifactWriteRequest,
 ) -> Result<ArtifactHandle, ApiError> {
-    runtime.artifact_store.put(request).await
+    let Some(scheduler) = runtime.artifact_scheduler.as_deref() else {
+        return runtime.artifact_store.put(request).await;
+    };
+    let store = Arc::clone(&runtime.artifact_store);
+    map_reserved(
+        call_reserved::<ArtifactLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.put(request).await },
+        )
+        .await,
+        ErrorStage::Publishing,
+        "artifact",
+    )
 }
 
 pub async fn put_artifact_bytes(
     runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
     request: ArtifactBytesWriteRequest,
 ) -> Result<ArtifactHandle, ApiError> {
-    runtime.artifact_store.put_bytes(request).await
+    let Some(scheduler) = runtime.artifact_scheduler.as_deref() else {
+        return runtime.artifact_store.put_bytes(request).await;
+    };
+    let store = Arc::clone(&runtime.artifact_store);
+    map_reserved(
+        call_reserved::<ArtifactLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.put_bytes(request).await },
+        )
+        .await,
+        ErrorStage::Publishing,
+        "artifact",
+    )
 }
 
 async fn record_provider_heartbeat(

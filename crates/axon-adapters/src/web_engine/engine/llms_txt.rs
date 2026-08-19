@@ -1,4 +1,7 @@
-use super::sitemap::{DISCOVERY_MAX_BODY_BYTES, fetch_text, join_origin_path, loc_in_scope};
+use super::sitemap::{
+    DISCOVERY_MAX_BODY_BYTES, fetch_text_with_metadata, join_origin_path, loc_in_scope,
+};
+use axon_api::source::MetadataMap;
 use axon_core::config::Config;
 use axon_core::logging::log_info;
 use pulldown_cmark::{Event, Parser, Tag};
@@ -58,6 +61,15 @@ pub async fn discover_llms_txt_urls(
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
+    discover_llms_txt_urls_with_metadata(cfg, start_url, fetch, &MetadataMap::new()).await
+}
+
+pub async fn discover_llms_txt_urls_with_metadata(
+    cfg: &Config,
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+    metadata: &MetadataMap,
+) -> Result<Vec<String>, Box<dyn Error>> {
     let parsed = Url::parse(start_url)
         .map_err(|e| format!("invalid start URL for llms.txt discovery {start_url}: {e}"))?;
     let bare_host = parsed
@@ -68,7 +80,13 @@ pub async fn discover_llms_txt_urls(
     // `format!("{host}:{port}")` would produce an invalid authority for IPv6 hosts.
     let llms_url = join_origin_path(&parsed, "/llms.txt")?;
 
-    let Some(body) = fetch_text(fetch.as_ref(), &llms_url, Some(DISCOVERY_MAX_BODY_BYTES)).await
+    let Some(body) = fetch_text_with_metadata(
+        fetch.as_ref(),
+        &llms_url,
+        Some(DISCOVERY_MAX_BODY_BYTES),
+        metadata,
+    )
+    .await
     else {
         return Ok(Vec::new());
     };

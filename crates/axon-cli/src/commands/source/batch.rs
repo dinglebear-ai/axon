@@ -139,13 +139,7 @@ fn render_json(
 ) {
     let mut rendered = indexed_results
         .iter()
-        .map(|(index, result)| {
-            if is_queued_descriptor(result) {
-                (*index, queued_descriptor_json(result))
-            } else {
-                (*index, source_result_json(cfg, result))
-            }
-        })
+        .map(|(index, result)| (*index, source_result_json(cfg, result)))
         .collect::<Vec<_>>();
     rendered.extend(batch_errors.iter().map(|(index, input, error)| {
         (

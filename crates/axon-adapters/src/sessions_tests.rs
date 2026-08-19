@@ -215,6 +215,31 @@ async fn discover_lists_claude_jsonl_files() {
 }
 
 #[tokio::test]
+async fn discover_applies_max_items_before_hashing_full_session_tree() {
+    let root = temp_dir("claude-max-items");
+    fs::create_dir_all(&root).unwrap();
+    for name in ["z-last.jsonl", "a-first.jsonl", "m-middle.jsonl"] {
+        fs::write(
+            root.join(name),
+            r#"{"type":"user","message":{"content":"hello"}}"#,
+        )
+        .unwrap();
+    }
+    let mut plan = session_plan(CLAUDE_TARGET, &root, SourceScope::Thread, true);
+    plan.limits.effective.max_items = Some(2);
+
+    let manifest = SessionSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect::<Vec<_>>();
+
+    assert_eq!(keys, vec!["a-first.jsonl", "m-middle.jsonl"]);
+    fs::remove_dir_all(&root).ok();
+}
+
+#[tokio::test]
 async fn discover_filters_session_extensions_by_provider() {
     let root = fixture_mixed_extension_dir();
     for (target, expected, rejected) in [

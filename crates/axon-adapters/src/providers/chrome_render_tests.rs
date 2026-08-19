@@ -342,6 +342,7 @@ async fn render_rate_limited_cools_the_provider_with_cooldown_until() {
 #[ignore = "requires a live Chrome/CDP endpoint, not available in this sandbox"]
 async fn render_chrome_mode_against_a_live_browser() {
     let provider = ChromeRenderProvider::new(ChromeRenderConfig {
+        max_concurrent_pages: None,
         chrome_remote_url: std::env::var("AXON_CHROME_REMOTE_URL").ok(),
         default_timeout_ms: Some(10_000),
     });
@@ -369,6 +370,7 @@ async fn render_chrome_mode_runs_automation_script_against_a_live_browser() {
         .expect("write automation script");
 
     let provider = ChromeRenderProvider::new(ChromeRenderConfig {
+        max_concurrent_pages: None,
         chrome_remote_url: std::env::var("AXON_CHROME_REMOTE_URL").ok(),
         default_timeout_ms: Some(10_000),
     });

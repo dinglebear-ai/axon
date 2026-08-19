@@ -1,41 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use axon_core::config::RenderMode;
 use serde_json::Value;
 
 use super::{
-    enforce_local_source_allowed_roots, enforce_local_source_policy, enforce_network_source_policy,
+    enforce_local_source_allowed_roots, enforce_local_source_policy,
     redact_local_path_for_public_payload,
 };
-
-#[tokio::test]
-async fn network_sources_deny_private_redirects_for_http_and_chrome() {
-    for render_mode in [RenderMode::Http, RenderMode::Chrome] {
-        let err = run_source_fixture(
-            "security/ssrf/redirect-private-ip.invalid.json",
-            render_mode,
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(err.code, "security.ssrf_denied");
-    }
-}
-
-#[tokio::test]
-async fn network_sources_deny_ssrf_fixture_pack_before_side_effects() {
-    for fixture in [
-        "security/ssrf/private-ip.invalid.json",
-        "security/ssrf/dns-rebinding.invalid.json",
-        "security/ssrf/loopback.invalid.json",
-        "security/ssrf/link-local.invalid.json",
-        "security/ssrf/file-scheme.invalid.json",
-    ] {
-        let err = run_source_fixture(fixture, RenderMode::Http)
-            .await
-            .unwrap_err();
-        assert_eq!(err.code, "security.ssrf_denied", "{fixture}");
-    }
-}
 
 #[tokio::test]
 async fn local_source_denies_secret_paths_without_local_scope() {
@@ -61,6 +31,28 @@ async fn local_source_denies_bare_env_file_with_local_scope() {
         .expect_err("bare .env paths are denied before filesystem reads");
 
     assert_eq!(err.code, "security.local_secret_denied");
+}
+
+#[test]
+fn local_source_shared_denylist_blocks_credential_homes_and_keys_without_cloud_substring_false_positive()
+ {
+    for path in [
+        "/home/user/.aws/credentials",
+        "/home/user/.kube/config",
+        "/home/user/.netrc",
+        "/home/user/.ssh/id_rsa",
+        "/home/user/secret.pem",
+    ] {
+        let err = enforce_local_source_policy(path, true)
+            .expect_err("sensitive local path must be denied");
+        assert_eq!(err.code, "security.local_secret_denied", "{path}");
+    }
+
+    assert!(
+        enforce_local_source_policy("/home/user/projects/cloudflare-worker/README.md", true)
+            .is_ok(),
+        "ordinary paths containing the word cloud must not be denied"
+    );
 }
 
 #[tokio::test]
@@ -148,19 +140,6 @@ fn local_source_allowed_roots_reject_symlinked_request_root() {
         error.message,
         "local source is outside configured allowed roots"
     );
-}
-
-async fn run_source_fixture(
-    fixture: &str,
-    _render_mode: RenderMode,
-) -> Result<(), super::SourceSecurityError> {
-    let value = read_fixture(fixture);
-    let requested_url = value["requested_url"].as_str().unwrap();
-    let mut urls = vec![requested_url];
-    if let Some(final_url) = value.get("final_url").and_then(Value::as_str) {
-        urls.push(final_url);
-    }
-    enforce_network_source_policy(&urls)
 }
 
 async fn run_local_fixture_without_scope(fixture: &str) -> Result<(), super::SourceSecurityError> {

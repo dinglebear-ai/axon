@@ -79,6 +79,8 @@ pub(super) struct DispatchOutput {
     pub setup_method: Option<String>,
     /// `--scope` override for `axon <source>` / `axon source <input>`.
     pub source_scope: Option<String>,
+    /// Source scheduler priority override.
+    pub source_priority: Option<String>,
     /// Retained `axon scrape --inline` request bit.
     pub scrape_inline: bool,
     /// Retained `axon scrape --no-embed` request bit.
@@ -145,6 +147,7 @@ impl DispatchOutput {
             domains_domain: None,
             setup_method: None,
             source_scope: None,
+            source_priority: None,
             scrape_inline: false,
             scrape_no_embed: false,
             reset_stores: Vec::new(),
@@ -573,6 +576,7 @@ fn apply_source(out: &mut DispatchOutput, args: SourceArgs) {
     out.command = CommandKind::Source;
     out.positional = args.path.into_iter().collect();
     out.source_scope = args.scope;
+    out.source_priority = args.priority;
 }
 
 fn apply_scrape(out: &mut DispatchOutput, args: ScrapeSourceArgs) {

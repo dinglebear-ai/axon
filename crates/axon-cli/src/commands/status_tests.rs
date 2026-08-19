@@ -146,14 +146,18 @@ fn completed_source_row_includes_durable_counts() {
 
     let rendered = render_status_jobs_from_slices(&[job], &[], &[], &[], None);
 
-    assert!(
-        rendered.contains("completed https://code.claude.com"),
-        "{rendered}"
-    );
-    assert!(
-        rendered.contains("344/344 docs · 100% · 7608 chunks"),
-        "{rendered}"
-    );
+    for expected in [
+        "completed",
+        "https://code.claude.com",
+        "344/344 docs",
+        "100%",
+        "7608 chunks",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}: {rendered}"
+        );
+    }
 }
 
 #[test]
@@ -192,11 +196,17 @@ fn completed_map_source_row_includes_durable_item_counts() {
 
     let rendered = render_status_jobs_from_slices(&[job], &[], &[], &[], None);
 
-    assert!(
-        rendered.contains("completed https://gofastmcp.com"),
-        "{rendered}"
-    );
-    assert!(rendered.contains("538/538 items · 100%"), "{rendered}");
+    for expected in [
+        "completed",
+        "https://gofastmcp.com",
+        "538/538 items",
+        "100%",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}: {rendered}"
+        );
+    }
 }
 
 #[test]

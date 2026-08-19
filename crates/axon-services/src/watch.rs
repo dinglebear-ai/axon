@@ -100,7 +100,11 @@ pub async fn exec_source_watch(
         .ok_or_else(|| format!("watch {} not found", watch_id.0))?;
     authorize_watch_request(&watch_request, auth_snapshot.as_ref())?;
     let source_request = source_request_for_watch_exec(watch_request, &request);
-    let run_auth = Some(stored_auth.unwrap_or_default());
+    let run_auth = Some(
+        stored_auth
+            .or(auth_snapshot)
+            .unwrap_or_else(|| AuthSnapshot::trusted_system("source-watch-exec-fallback")),
+    );
     let job_store = ctx
         .job_store()
         .ok_or("watch exec requires a unified source job store")?;

@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 
 use crate::observe::MemoryPhase;
 use crate::record::age_days;
@@ -83,14 +83,20 @@ pub async fn compact(
 
     let now_secs = store.clock().now_epoch_secs();
     let now = request.timestamp.0.clone();
-    let conn = store.conn().lock().await;
 
-    let mut sources = Vec::with_capacity(request.memory_ids.len());
-    for memory_id in &request.memory_ids {
-        let record = SqliteMemoryStore::load_record(&conn, &memory_id.0)?
-            .ok_or_else(|| not_found(&memory_id.0))?;
-        sources.push(record);
-    }
+    // Read the synthesis inputs without holding the store mutex across the
+    // potentially slow async synthesizer. The write phase below re-reads any
+    // sources it must archive inside one IMMEDIATE transaction.
+    let sources = {
+        let conn = store.conn().lock().await;
+        let mut sources = Vec::with_capacity(request.memory_ids.len());
+        for memory_id in &request.memory_ids {
+            let record = SqliteMemoryStore::load_record(&conn, &memory_id.0)?
+                .ok_or_else(|| not_found(&memory_id.0))?;
+            sources.push(record);
+        }
+        sources
+    };
 
     let body = compute_compacted_body(store, &request, &sources).await?;
 
@@ -139,24 +145,43 @@ pub async fn compact(
         superseded_by: None,
         contradicts: None,
     };
-    insert_record(&conn, &compacted, &now)?;
+    // Compaction is one logical mutation: reserve SQLite's single writer once
+    // and commit the new record plus all requested source archives atomically.
+    // BEGIN IMMEDIATE also avoids repeatedly losing the writer race to job
+    // heartbeats/status updates between independent autocommit statements.
+    {
+        let mut conn = store.conn().lock().await;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| store_error(format!("begin compaction transaction: {error}")))?;
 
-    if request.archive_sources {
-        for mut source in sources {
+        let mut archive_sources = Vec::new();
+        if request.archive_sources {
+            archive_sources.reserve(request.memory_ids.len());
+            for source_id in &request.memory_ids {
+                let source = SqliteMemoryStore::load_record(&tx, &source_id.0)?
+                    .ok_or_else(|| not_found(&source_id.0))?;
+                archive_sources.push(source);
+            }
+        }
+
+        insert_record(&tx, &compacted, &now)?;
+        for mut source in archive_sources {
             source.status = MemoryStatus::Archived;
             source.history.push(MemoryHistoryEvent {
                 status: MemoryStatus::Archived,
                 message: format!("archived: compacted into {}", memory_id.0),
                 timestamp: request.timestamp.clone(),
             });
-            update_record(&conn, &source, &now)?;
+            update_record(&tx, &source, &now)?;
         }
+        tx.commit()
+            .map_err(|error| store_error(format!("commit compaction transaction: {error}")))?;
     }
 
     let age = age_days(&compacted, now_secs);
     let score = crate::decay::score_record(&compacted, age, 0.0, 1.0, false);
     let (_, created, _) = age_and_bounds(&compacted, now_secs);
-    drop(conn);
     crate::observe::emit(
         store.sink(),
         JobId::from(uuid::Uuid::new_v4()),

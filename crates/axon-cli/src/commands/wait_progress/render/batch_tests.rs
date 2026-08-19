@@ -8,6 +8,7 @@ fn mixed_batch_failure_never_renders_a_success_terminal() {
         ..Config::default()
     };
     let mut session = BatchProgressSession::new(&cfg, 2, updates);
+    session.color = false;
     session.apply(BatchProgressUpdate::Started {
         index: 0,
         target: "ok".to_string(),
@@ -39,6 +40,7 @@ fn batch_target_terminal_controls_are_sanitized() {
         ..Config::default()
     };
     let mut session = BatchProgressSession::new(&cfg, 1, updates);
+    session.color = false;
     session.apply(BatchProgressUpdate::Started {
         index: 0,
         target: "safe\x1b]52;c;Y2xpcGJvYXJk\x07name".to_string(),

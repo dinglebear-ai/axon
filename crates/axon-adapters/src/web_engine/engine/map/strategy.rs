@@ -5,21 +5,22 @@ use std::time::{Duration, Instant};
 
 use url::Url;
 
-use axon_api::source::{MetadataMap, RenderMode, RenderRequest};
-use axon_core::config::Config;
+use axon_api::source::{MetadataMap, RenderMode as ProviderRenderMode, RenderRequest};
+use axon_core::config::{Config, RenderMode as CrawlRenderMode};
 use axon_core::content::extract_anchor_hrefs;
-use axon_core::http::{FetchWebOptions, fetch_web, normalize_url};
+use axon_core::http::normalize_url;
 use axon_core::logging::{log_info, log_warn};
 
 use super::super::sitemap::{
-    DISCOVERY_MAX_BODY_BYTES, SitemapDiscovery, discover_sitemap_urls, fetch_text,
-    sitemap_url_limit,
+    DISCOVERY_MAX_BODY_BYTES, SitemapDiscovery, discover_sitemap_urls_with_metadata,
+    fetch_text_with_metadata, sitemap_url_limit,
 };
 use super::super::url_utils::MapScope;
 use super::super::{CrawlSummary, is_excluded_url_path};
 use super::{
     MapDiscoveryOutcome, MapResult, derive_map_scope, derive_map_scope_url, is_excluded_map_url,
-    merge_discovery_candidate_urls, merge_map_candidate_urls, resolve_map_seed_url,
+    merge_discovery_and_anchor_urls, merge_discovery_candidate_urls, merge_map_candidate_urls,
+    resolve_map_seed_url_with_metadata,
 };
 use crate::boundary::{FetchProvider, RenderProvider};
 
@@ -82,8 +83,10 @@ async fn render_root_anchor_candidates(
     scope_start_url: &str,
     root_anchor_limit: usize,
     render: Arc<dyn RenderProvider>,
+    mode: ProviderRenderMode,
+    execution_metadata: &MetadataMap,
 ) -> Result<Vec<String>, String> {
-    let mut metadata = MetadataMap::new();
+    let mut metadata = execution_metadata.clone();
     metadata.insert("normalize".to_string(), serde_json::json!(cfg.normalize));
     metadata.insert("block_assets".to_string(), serde_json::json!(true));
     metadata.insert("exact_browser_timeout".to_string(), serde_json::json!(true));
@@ -99,7 +102,7 @@ async fn render_root_anchor_candidates(
         Duration::from_millis(render_timeout_ms),
         render.render(RenderRequest {
             uri: scope_start_url.to_string(),
-            mode: RenderMode::Chrome,
+            mode,
             timeout_ms: Some(render_timeout_ms),
             wait_ms: None,
             automation_script: None,
@@ -144,47 +147,45 @@ async fn discover_root_anchors(
     scope: &MapScope,
     fetch: Arc<dyn FetchProvider>,
     render: Arc<dyn RenderProvider>,
+    execution_metadata: &MetadataMap,
 ) -> (Vec<String>, Option<String>) {
     let root_anchor_limit = effective_root_anchor_limit(cfg);
-    let fast_fetch = if let Some(html) = fetch_text(
+    let mut fast_warning = None;
+    let anchor_urls = if let Some(html) = fetch_text_with_metadata(
         fetch.as_ref(),
         scope_start_url,
         Some(DISCOVERY_MAX_BODY_BYTES),
+        execution_metadata,
     )
     .await
     {
-        Ok((scope_start_url.to_string(), html))
-    } else {
-        // Preserve the provider boundary for deterministic tests and normal
-        // acquisition, then use the unified anti-bot ladder as the production
-        // fallback for sites that reject the plain provider request.
-        match fetch_web(
+        extract_anchor_hrefs(scope_start_url, &html, root_anchor_limit)
+    } else if matches!(cfg.render_mode, CrawlRenderMode::Http) {
+        // In HTTP-only mode the render provider is a useful second transport
+        // after the lightweight fetch provider fails. For Chrome/AutoSwitch,
+        // skip this duplicate HTTP render and fall through to the single
+        // bounded browser attempt below. Besides avoiding redundant work, this
+        // guarantees a slow root cannot consume two independent deadlines.
+        match render_root_anchor_candidates(
+            cfg,
             scope_start_url,
-            &FetchWebOptions::html().with_scan_bytes(cfg.antibot_max_body_scan_bytes),
+            root_anchor_limit,
+            render.clone(),
+            ProviderRenderMode::Http,
+            execution_metadata,
         )
         .await
         {
-            Ok(doc) => {
-                if doc.escalated {
-                    log_info(&format!(
-                        "bounded-structure: {scope_start_url} required browser TLS impersonation"
-                    ));
-                }
-                Ok((doc.final_url, doc.body))
+            Ok(candidates) => candidates,
+            Err(error) => {
+                fast_warning = Some(format!(
+                    "bounded-structure discovery failed for {scope_start_url}: {error}"
+                ));
+                Vec::new()
             }
-            Err(error) => Err(error.to_string()),
         }
-    };
-
-    let mut fast_warning = None;
-    let anchor_urls = match fast_fetch {
-        Ok((final_url, html)) => extract_anchor_hrefs(&final_url, &html, root_anchor_limit),
-        Err(error) => {
-            fast_warning = Some(format!(
-                "bounded-structure discovery failed to fetch {scope_start_url}: {error}"
-            ));
-            Vec::new()
-        }
+    } else {
+        Vec::new()
     };
 
     let filter_anchors = |candidates| {
@@ -201,13 +202,22 @@ async fn discover_root_anchors(
     if urls.is_empty()
         && matches!(
             cfg.render_mode,
-            axon_core::config::RenderMode::Chrome | axon_core::config::RenderMode::AutoSwitch
+            CrawlRenderMode::Chrome | CrawlRenderMode::AutoSwitch
         )
     {
         log_info(&format!(
             "bounded-structure: fast discovery empty; rendering root once for {scope_start_url}"
         ));
-        match render_root_anchor_candidates(cfg, scope_start_url, root_anchor_limit, render).await {
+        match render_root_anchor_candidates(
+            cfg,
+            scope_start_url,
+            root_anchor_limit,
+            render,
+            ProviderRenderMode::Chrome,
+            execution_metadata,
+        )
+        .await
+        {
             Ok(candidates) => {
                 urls = filter_anchors(candidates);
                 if urls.is_empty() {
@@ -223,9 +233,6 @@ async fn discover_root_anchors(
         }
     }
 
-    // Thinness is judged by the caller on the MERGED result — anchors may be
-    // sparse while the sitemap layer supplied plenty. Only hard failures (no
-    // client, no fetch) are reported from here.
     let empty = urls.is_empty();
     (urls, fast_warning.filter(|_| empty))
 }
@@ -287,18 +294,24 @@ async fn run_discovery_probes(
     cfg: &Config,
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
+    execution_metadata: &MetadataMap,
 ) -> DiscoveryProbes {
     let (seed_result, sitemap_result, llms_urls) = tokio::join!(
         async {
-            resolve_map_seed_url(start_url, fetch.clone())
+            resolve_map_seed_url_with_metadata(start_url, fetch.clone(), execution_metadata)
                 .await
                 .map_err(|e| e.to_string())
         },
         async {
             if cfg.discover_sitemaps {
-                discover_sitemap_urls(cfg, start_url, fetch.clone())
-                    .await
-                    .map_err(|e| e.to_string())
+                discover_sitemap_urls_with_metadata(
+                    cfg,
+                    start_url,
+                    fetch.clone(),
+                    execution_metadata,
+                )
+                .await
+                .map_err(|e| e.to_string())
             } else {
                 Ok(SitemapDiscovery::default())
             }
@@ -306,10 +319,11 @@ async fn run_discovery_probes(
         async {
             if cfg.discover_llms_txt {
                 // warn-and-continue: never fail the map call on llms.txt errors.
-                match crate::web_engine::engine::discover_llms_txt_urls(
+                match crate::web_engine::engine::discover_llms_txt_urls_with_metadata(
                     cfg,
                     start_url,
                     fetch.clone(),
+                    execution_metadata,
                 )
                 .await
                 {
@@ -359,13 +373,23 @@ pub async fn discover_site_urls(
     fetch: Arc<dyn FetchProvider>,
     render: Arc<dyn RenderProvider>,
 ) -> Result<MapResult, Box<dyn Error>> {
+    discover_site_urls_with_metadata(cfg, start_url, fetch, render, &MetadataMap::new()).await
+}
+
+pub async fn discover_site_urls_with_metadata(
+    cfg: &Config,
+    start_url: &str,
+    fetch: Arc<dyn FetchProvider>,
+    render: Arc<dyn RenderProvider>,
+    execution_metadata: &MetadataMap,
+) -> Result<MapResult, Box<dyn Error>> {
     let start = Instant::now();
 
     let DiscoveryProbes {
         resolved_start_url,
         sitemap: sitemap_discovery,
         llms_urls,
-    } = run_discovery_probes(cfg, start_url, fetch.clone()).await;
+    } = run_discovery_probes(cfg, start_url, fetch.clone(), execution_metadata).await;
 
     let scope_base = {
         let start_host = Url::parse(&normalize_url(start_url))
@@ -446,13 +470,21 @@ pub async fn discover_site_urls(
         ));
     }
 
-    let (anchor_urls, fetch_warning) =
-        discover_root_anchors(cfg, &scope_start_url, &scope, fetch, render).await;
+    let (anchor_urls, fetch_warning) = discover_root_anchors(
+        cfg,
+        &scope_start_url,
+        &scope,
+        fetch,
+        render,
+        execution_metadata,
+    )
+    .await;
     let anchors_found = !anchor_urls.is_empty();
 
     // Layers are additive: discovery entries keep priority, anchors fill in the
     // rest, deduplicated through the same normalization the map already uses.
-    let urls = merge_map_candidate_urls(discovery_urls, anchor_urls, &scope, true);
+    let urls =
+        merge_discovery_and_anchor_urls(discovery_urls, anchor_urls, &scoped_llms_urls, &scope);
 
     let map_source = match (discovery_source, anchors_found) {
         (Some(source), true) => format!("{source}+bounded-structure"),

@@ -7,17 +7,16 @@
 //! CONTEXT half through this same engine — see `ask_retrieval.rs`.
 
 use std::error::Error;
-use std::sync::Arc;
 
 use axon_api::result::QueryHit;
+use axon_api::source::OperationKind;
 use axon_core::config::Config;
 use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
-use axon_embedding::provider::EmbeddingProvider;
 use axon_retrieval::{QueryServiceRequest, run_query};
-use axon_vectors::store::VectorStore;
 
-use crate::context::{ServiceContext, build_read_stores_from_config};
+use super::provider_execution::ReadExecution;
+use crate::context::ServiceContext;
 use crate::types::{Pagination, QueryResult};
 
 /// Run semantic `query` through the retrieval engine and map hits to
@@ -50,7 +49,21 @@ pub async fn query_via_retrieval_with_cfg(
         )));
     }
 
-    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg).await;
+    let execution = ReadExecution::begin(
+        ctx,
+        cfg,
+        OperationKind::Query,
+        serde_json::json!({
+            "query": text,
+            "collection": cfg.collection,
+        }),
+    )
+    .await?;
+    let store = execution.scheduled_vectors();
+    let provider = execution.scheduled_embedding();
+    let provider_id = execution.embedding_provider_id();
+    let model = execution.embedding_model();
+    let dimensions = execution.embedding_dimensions();
 
     log_info("retrieval: axon-retrieval engine");
 
@@ -59,7 +72,7 @@ pub async fn query_via_retrieval_with_cfg(
     // cover the requested offset+limit window, then apply the window here.
     let fetch_limit = (opts.offset as u32).saturating_add(limit);
     let (since, before) = normalize_time_bounds(cfg, chrono::Utc::now())?;
-    let result = run_query(
+    let raw_result = run_query(
         store,
         provider,
         provider_id,
@@ -74,8 +87,9 @@ pub async fn query_via_retrieval_with_cfg(
             before,
         },
     )
-    .await
-    .map_err(|e| -> Box<dyn Error> {
+    .await;
+    execution.finish(ctx, &raw_result).await;
+    let result = raw_result.map_err(|e| -> Box<dyn Error> {
         // Diagnostics wiring lost in the #298 cutover from the legacy
         // `axon_vector` dispatch path (which built this via
         // `ServiceError::vector_dispatch_failure`) -- restore it here so
@@ -175,36 +189,6 @@ pub(super) fn normalize_time_bound(
             .with_timezone(&chrono::Utc)
     };
     Ok(Some(timestamp.to_rfc3339()))
-}
-
-type ResolvedStores = (
-    Arc<dyn VectorStore>,
-    Arc<dyn EmbeddingProvider>,
-    axon_api::source::ProviderId,
-    String,
-    u32,
-);
-
-/// Resolve the read-plane stores + provider identity, preferring the context's
-/// attached runtime.
-async fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
-    if let Some(target) = ctx.target_local_source_runtime() {
-        return (
-            Arc::clone(&target.vector_store),
-            Arc::clone(&target.embedding_provider),
-            target.embedding_provider_id.clone(),
-            target.embedding_model.clone(),
-            target.embedding_dimensions,
-        );
-    }
-    let stores = build_read_stores_from_config(cfg).await;
-    (
-        stores.vector_store,
-        stores.embedding_provider,
-        stores.embedding_provider_id,
-        stores.embedding_model,
-        stores.embedding_dimensions,
-    )
 }
 
 /// Derive a short display source (host, or the raw value) from a canonical URI.

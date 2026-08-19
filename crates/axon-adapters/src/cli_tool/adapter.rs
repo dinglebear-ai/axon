@@ -235,18 +235,26 @@ async fn normalize_plan(
 ) -> AdapterResult<StageExecutionResult<Vec<SourceDocument>>> {
     validate_adapter(plan)?;
     let resolved = resolve_metadata(plan).await?;
-    let documents = acquisition
-        .fetched_items
-        .iter()
+    let SourceAcquisition {
+        source_id,
+        fetched_items,
+        ..
+    } = acquisition;
+    let documents = fetched_items
+        .into_iter()
         .map(|item| {
-            let tool_action = item
+            let tool_action = if item
                 .metadata
                 .0
                 .get("tool_action")
                 .and_then(serde_json::Value::as_str)
-                .filter(|action| *action == "execute")
-                .unwrap_or("metadata");
-            cli_tool_source_document(plan, &acquisition, item, &resolved.source, tool_action)
+                .is_some_and(|action| action == "execute")
+            {
+                "execute"
+            } else {
+                "metadata"
+            };
+            cli_tool_source_document(plan, &source_id, item, &resolved.source, tool_action)
         })
         .collect::<Vec<_>>();
     Ok(StageExecutionResult {

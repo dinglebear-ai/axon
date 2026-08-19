@@ -29,6 +29,15 @@ use crate::runtime::{RuntimeResult, ServiceJobRuntime};
 #[derive(Default)]
 pub(crate) struct NoopServiceRuntime;
 
+/// Temp directory whose basename is intentionally not dot-prefixed.
+///
+/// Local-source admission treats hidden path components as secret-like, so
+/// `tempfile::tempdir()` (which uses a `.tmp…` basename) is the wrong fixture
+/// for tests that exercise normal local ingestion.
+pub(crate) fn visible_tempdir() -> std::io::Result<tempfile::TempDir> {
+    tempfile::Builder::new().prefix("axon-test-").tempdir()
+}
+
 pub(crate) struct SqliteTestRuntime {
     _tmp: tempfile::TempDir,
     pub(crate) runtime: Arc<dyn ServiceJobRuntime>,

@@ -19,7 +19,7 @@ pub struct RouteSecurityPolicy {
 }
 
 impl RouteSecurityPolicy {
-    pub fn trusted_tool_execution() -> Self {
+    pub fn allow_tool_execution() -> Self {
         Self {
             allow_tool_execution: true,
         }
@@ -192,7 +192,10 @@ impl SourceRouter {
             crate::web_options::validate(&request.options.values)?;
         }
 
-        if adapter.safety_class == SafetyClass::ToolExecution && !policy.allow_tool_execution {
+        if adapter.safety_class == SafetyClass::ToolExecution
+            && tool_execution_requested(request)
+            && !policy.allow_tool_execution
+        {
             return Err(ApiError::new(
                 "route.tool_execution.denied",
                 ErrorStage::Routing,
@@ -203,6 +206,28 @@ impl SourceRouter {
 
         Ok(())
     }
+}
+
+fn tool_execution_requested(request: &SourceRequest) -> bool {
+    let values = &request.options.values.0;
+    values
+        .get("execute")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+        || values
+            .get("call")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        || ["execution_mode", "tool_action"].iter().any(|key| {
+            values
+                .get(*key)
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|mode| {
+                    ["execute", "exec", "run", "invoke", "call"]
+                        .iter()
+                        .any(|allowed| mode.eq_ignore_ascii_case(allowed))
+                })
+        })
 }
 
 /// `boundary::SourceRouter` trait implementation for the concrete

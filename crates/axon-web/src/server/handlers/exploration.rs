@@ -1,4 +1,5 @@
-use axon_authz::has_explicit_scope;
+use axon_api::source::{AuthMode, AuthSnapshot, CallerContext, TransportKind, Visibility};
+use axon_authz::{VisibilityPolicy, has_explicit_scope};
 use axon_core::config::{Config, ConfigOverrides};
 use axon_core::http::{normalize_url, validate_url};
 use axon_services as services;
@@ -64,6 +65,26 @@ pub(super) fn require_mutates_if_write_scope(
             "requires scope: axon:write (this call enqueues a background job)",
         )),
     }
+}
+
+pub(super) fn auth_snapshot_from_context(auth: &AuthContext) -> AuthSnapshot {
+    let auth_mode = if auth.sub == "static-bearer" {
+        AuthMode::StaticToken
+    } else {
+        AuthMode::Oauth
+    };
+    let mut caller = CallerContext {
+        caller_id: Some(auth.sub.clone()),
+        transport: TransportKind::Rest,
+        trusted_local: false,
+        scopes: auth.scopes.clone(),
+        visibility_ceiling: Visibility::Public,
+        auth_mode,
+        token_id: None,
+        display_name: None,
+    };
+    caller.visibility_ceiling = VisibilityPolicy::new().ceiling_for(&caller);
+    AuthSnapshot::from_caller(&caller, caller.visibility_ceiling, "runtime")
 }
 
 #[path = "exploration_stream.rs"]
@@ -301,11 +322,15 @@ pub(crate) async fn search(
 ) -> Result<Json<serde_json::Value>, HttpError> {
     require_mutates_if_write_scope(auth.as_ref())?;
     let query = required_text(&req.query, "query")?;
+    let caller_auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
     let result = services::search_crawl::search_and_index_sources(
         &cfg,
         &state.service_context,
         query,
         search_options(&cfg, req.limit, req.offset, req.time_range.as_deref())?,
+        caller_auth_snapshot,
     )
     .await
     .map_err(HttpError::from_box_send_sync)?;
@@ -337,9 +362,19 @@ pub(crate) async fn research(
     let query = required_text(&req.query, "query")?.to_string();
     let opts = search_options(&cfg, req.limit, req.offset, req.time_range.as_deref())?;
     let service_context = Arc::clone(&state.service_context);
+    let caller_auth_snapshot = auth
+        .as_ref()
+        .map(|Extension(auth)| auth_snapshot_from_context(auth));
     tokio::time::timeout(
         Duration::from_secs(35),
-        services::search::research_with_context(&cfg, &service_context, &query, opts, None),
+        services::search::research_with_context(
+            &cfg,
+            &service_context,
+            &query,
+            opts,
+            None,
+            caller_auth_snapshot,
+        ),
     )
     .await
     .map_err(|_| HttpError::new(StatusCode::GATEWAY_TIMEOUT, "timeout", "research timed out"))?

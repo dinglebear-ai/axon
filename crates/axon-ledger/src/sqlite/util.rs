@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use axon_api::source::*;
 
 use crate::store::Result;
@@ -7,15 +5,6 @@ use crate::store::Result;
 pub(super) fn cleanup_selector_hash(selector: &CleanupSelector) -> Result<String> {
     let selector_json = serde_json::to_vec(selector).map_err(json_error)?;
     Ok(uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, &selector_json).to_string())
-}
-
-pub(super) fn keyed_manifest_items(
-    items: Vec<ManifestItem>,
-) -> BTreeMap<SourceItemKey, ManifestItem> {
-    items
-        .into_iter()
-        .map(|item| (item.source_item_key.clone(), item))
-        .collect()
 }
 
 pub(super) fn manifest_item_changed(old: &ManifestItem, next: &ManifestItem) -> bool {

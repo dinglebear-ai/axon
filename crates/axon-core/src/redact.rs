@@ -73,6 +73,42 @@ fn shannon_entropy_bits(s: &str) -> f64 {
         .sum()
 }
 
+/// Returns true when a local path component is sensitive enough that source
+/// ingestion must exclude it by default. This is the shared local-filesystem
+/// policy used by both service admission and adapter selection.
+pub fn is_sensitive_local_name(name: &str) -> bool {
+    if name == ".env.example" {
+        return false;
+    }
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with('.')
+        || lower == "id_rsa"
+        || lower == "id_ed25519"
+        || lower == "known_hosts"
+        || lower == "authorized_keys"
+        || lower.starts_with(".env")
+        || lower.ends_with(".pem")
+        || lower.ends_with(".key")
+        || lower.ends_with(".p12")
+        || lower.ends_with(".pfx")
+        || lower.contains("secret")
+        || lower.contains("credential")
+        || lower.contains("password")
+        || lower.contains("passwd")
+        || lower.contains("token")
+        || lower.contains("apikey")
+        || lower.contains("api-key")
+        || lower.contains("api_key")
+}
+
+/// Returns true when any component of a normalized local path is sensitive.
+pub fn is_sensitive_local_path(path: &str) -> bool {
+    path.replace('\\', "/")
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .any(is_sensitive_local_name)
+}
+
 /// Returns `true` when `lower_name` (already lowercased by caller) looks like
 /// a secret key, credential file, or sensitive header/field name. Single source
 /// of truth for both embed path validation and error-body redaction.
@@ -98,7 +134,9 @@ pub fn is_secret_like(lower_name: &str) -> bool {
     }
     // Token / API key patterns
     if lower_name.contains("api_key")
+        || lower_name.contains("api-key")
         || lower_name.contains("apikey")
+        || lower_name.contains("passwd")
         || lower_name == "authorization"
         || lower_name == "proxy-authorization"
         || lower_name == "access_token"

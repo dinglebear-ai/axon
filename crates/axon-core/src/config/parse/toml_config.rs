@@ -60,6 +60,14 @@ pub(super) struct TomlConfig {
     pub antibot: TomlAntibotSection,
     #[serde(default)]
     pub payload: TomlPayloadSection,
+    #[serde(default)]
+    pub security: TomlSecuritySection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(super) struct TomlSecuritySection {
+    pub allow_tool_execution: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -103,6 +111,8 @@ pub(super) struct TomlLlmSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlScrapeSection {
+    /// Global fetch provider concurrency. Canonical TOML: providers.fetch.concurrency.
+    pub fetch_concurrency: Option<usize>,
     /// Respect robots.txt directives. Default false.
     pub respect_robots: Option<bool>,
     /// Minimum content length; shorter pages are flagged thin. Default 200.
@@ -397,6 +407,8 @@ pub(super) struct TomlWorkersSection {
     pub jobs_retention_sweep_secs: Option<i64>,
     /// SLO in seconds for the priority-aware interactive-lane starvation watchdog.
     pub jobs_interactive_starvation_slo_secs: Option<i64>,
+    /// Default scheduler priority for source jobs. Canonical TOML spelling: jobs.default-priority.
+    pub jobs_default_priority: Option<String>,
     /// Auto-start a background worker after detached CLI enqueues.
     pub jobs_auto_worker: Option<bool>,
     /// Idle seconds before an auto-started worker exits (0 = run forever).
@@ -438,6 +450,8 @@ pub(super) struct TomlAdaptiveConcurrencySection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(super) struct TomlChromeSection {
+    /// Global render provider concurrency. Canonical TOML: providers.render.max-concurrent-pages.
+    pub max_concurrent_pages: Option<usize>,
     /// Custom `User-Agent` header sent by Chrome. Env: `AXON_CHROME_USER_AGENT`.
     pub user_agent: Option<String>,
     /// Bypass Content Security Policy in Chrome. Default false.
@@ -586,7 +600,7 @@ fn load_from_path(path: &Path, explicit: bool) -> Result<TomlConfig, String> {
 }
 
 /// Parse `config.toml` contents against the current 20-section contract
-/// shape ([`raw::RawTomlConfig`]), then fold the result onto the legacy flat
+/// shape ([`raw::RawTomlConfig`]), then flatten the result onto the runtime
 /// [`TomlConfig`] every downstream consumer already reads. Deprecated
 /// pre-contract section names (`[llm]`, `[tei]`, `[scrape]`, ...) are
 /// detected before the typed parse so the error names the offending
@@ -600,7 +614,7 @@ fn parse_toml_config_str(contents: &str, path: Option<&Path>) -> Result<TomlConf
     }
     let raw = toml::from_str::<raw::RawTomlConfig>(contents)
         .map_err(|e| format!("axon: error: config file{where_clause} has a parse error: {e}"))?;
-    Ok(convert::into_legacy(raw))
+    Ok(convert::flatten(raw))
 }
 
 #[cfg(unix)]

@@ -1,17 +1,5 @@
 use super::*;
 
-fn apply_vector_point_counts(
-    statuses: &mut [DocumentStatus],
-    points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
-) {
-    for status in statuses {
-        status.vector_point_count = points_by_document
-            .get(&status.document_id)
-            .copied()
-            .unwrap_or(0);
-    }
-}
-
 fn prepared_document(chunk_count: usize) -> PreparedDocument {
     let source_id = SourceId::new("src-window-test");
     let item_key = SourceItemKey::new("item-window-test");
@@ -138,27 +126,21 @@ fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
 }
 
 #[test]
-fn redaction_skips_reduce_document_vector_point_count() {
+fn redaction_failure_blocks_vector_point_batch() {
     let mut document = axon_vectors::testing::test_prepared_document();
     document.chunks[1].content = "API_KEY=abc123".to_string();
-    let document_id = document.document_id.clone();
-    let embeddings =
+    let mut embeddings =
         axon_vectors::testing::test_embedding_result_for(&document, "text-embedding-test", 3);
-    let build = point_batch(
+
+    let error = point_batch(
         axon_vectors::testing::test_collection_spec(3),
         std::slice::from_ref(&document),
-        &embeddings,
+        &mut embeddings,
     )
-    .expect("build vector points");
+    .err()
+    .expect("redaction failure must block the complete vector point batch");
 
-    assert_eq!(build.batch.points.len(), 1);
-    assert_eq!(build.skipped_redaction, 1);
-    assert_eq!(build.points_by_document.get(&document_id), Some(&1));
-
-    let mut result = statuses_only(vec![document], DocumentLifecycleStatus::Vectorized);
-    apply_vector_point_counts(&mut result.document_statuses, &build.points_by_document);
-    assert_eq!(result.document_statuses[0].chunk_count, 2);
-    assert_eq!(result.document_statuses[0].vector_point_count, 1);
+    assert!(error.to_string().contains("forbidden"));
 }
 
 #[test]
@@ -204,37 +186,20 @@ fn vector_write(points: u64) -> VectorStoreWriteResult {
 }
 
 #[test]
-fn vectorized_document_statuses_count_only_redaction_eligible_points() {
+fn vectorized_document_statuses_use_actual_point_counts() {
     let document = prepared_document(3);
-    let eligible = [ChunkId::new("chunk-0"), ChunkId::new("chunk-2")]
-        .into_iter()
-        .collect::<std::collections::BTreeSet<_>>();
-
-    let redaction_skips = [(SourceItemKey::new("item-window-test"), 1)]
-        .into_iter()
-        .collect();
+    let document_id = document.document_id.clone();
+    let points_by_document = [(document_id, 2)].into_iter().collect();
     let result = vectorize_result(
         vec![document],
         Vec::new(),
-        &eligible,
+        &points_by_document,
         vector_write(2),
-        1,
-        &redaction_skips,
     );
 
     assert_eq!(result.points_written, 2);
     assert_eq!(result.document_statuses.len(), 1);
     assert_eq!(result.document_statuses[0].chunk_count, 3);
     assert_eq!(result.document_statuses[0].vector_point_count, 2);
-    assert_eq!(
-        result.warnings.first().map(|warning| warning.code.as_str()),
-        Some("source.vectorize.redaction_skipped_chunks")
-    );
-    assert_eq!(
-        result
-            .warnings
-            .first()
-            .and_then(|warning| warning.source_item_key.as_ref()),
-        Some(&SourceItemKey::new("item-window-test"))
-    );
+    assert!(result.warnings.is_empty());
 }

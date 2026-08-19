@@ -1,6 +1,8 @@
 use super::*;
 use crate::source::routing;
-use axon_api::source::{AuthScope, AuthSnapshot, SafetyClass, SourceRequest, SourceScope};
+use axon_api::source::{
+    AuthMode, AuthScope, AuthSnapshot, ExecutionAffinity, SafetyClass, SourceRequest, SourceScope,
+};
 
 /// The router's declared reddit credential requirement (see
 /// `axon-route`'s `AdapterRegistry::target_defaults`) must survive into the
@@ -152,6 +154,60 @@ fn authorize_safety_class_uses_route_safety_for_execute_sources() {
 /// `snapshot_allows_scope`, `TrustedLocal` blanket-passed every scope and this
 /// tool-execution source would have been (incorrectly) authorized via the
 /// CLI's new default detached path.
+#[test]
+fn affinity_policy_denies_remote_inline_local_even_with_local_scope() {
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.auth_mode = AuthMode::Oauth;
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    let err = authorize_execution_affinity(
+        SafetyClass::LocalFilesystem,
+        ExecutionAffinity::Inline,
+        Some(&snapshot),
+    )
+    .expect_err("remote inline local filesystem access must require trusted-local affinity");
+
+    assert_eq!(err.code.to_string(), "auth.affinity_denied");
+}
+
+#[test]
+fn affinity_policy_allows_trusted_system_local_without_explicit_local_scope() {
+    let snapshot = AuthSnapshot::trusted_system("test");
+    assert!(
+        !snapshot.granted_scopes.contains(&AuthScope::Local),
+        "precondition: trusted_system relies on the TrustedLocal implicit Local grant"
+    );
+
+    authorize_execution_affinity(
+        SafetyClass::LocalFilesystem,
+        ExecutionAffinity::Scheduler,
+        Some(&snapshot),
+    )
+    .expect("trusted-system local scheduler work must honor the implicit Local grant");
+
+    let err = authorize_execution_affinity(
+        SafetyClass::ToolExecution,
+        ExecutionAffinity::Scheduler,
+        Some(&snapshot),
+    )
+    .expect_err("TrustedLocal must not imply Execute");
+    assert_eq!(err.code.to_string(), "auth.affinity_denied");
+}
+
+#[test]
+fn affinity_policy_allows_remote_worker_local_with_explicit_scope() {
+    let mut snapshot = AuthSnapshot::default();
+    snapshot.auth_mode = AuthMode::Oauth;
+    snapshot.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Local];
+
+    authorize_execution_affinity(
+        SafetyClass::LocalFilesystem,
+        ExecutionAffinity::Worker,
+        Some(&snapshot),
+    )
+    .expect("worker boundary plus explicit local scope should be sufficient");
+}
+
 #[test]
 fn trusted_cli_snapshot_is_denied_tool_execution() {
     let snapshot = AuthSnapshot::trusted_cli("test");

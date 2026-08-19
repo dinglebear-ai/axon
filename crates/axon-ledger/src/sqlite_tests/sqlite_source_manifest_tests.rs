@@ -233,6 +233,115 @@ async fn sqlite_source_manifest_requires_existing_generation() {
 }
 
 #[tokio::test]
+async fn sqlite_reads_only_requested_manifest_items() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let manifest = manifest_with_items(
+        &generation.generation.0,
+        vec![
+            manifest_item("README.md", "readme"),
+            manifest_item("src/lib.rs", "lib"),
+            manifest_item("src/main.rs", "main"),
+        ],
+    );
+    store.put_manifest(manifest).await.expect("put manifest");
+
+    let selected = store
+        .get_manifest_items(
+            SourceId::new("src_sqlite"),
+            generation.generation,
+            vec![
+                SourceItemKey::new("src/main.rs"),
+                SourceItemKey::new("README.md"),
+            ],
+        )
+        .await
+        .expect("read selected items");
+    let keys = selected
+        .iter()
+        .map(|item| item.source_item_key.0.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(keys, vec!["README.md", "src/main.rs"]);
+}
+
+#[tokio::test]
+async fn sqlite_filters_requested_manifest_items_by_metadata_key() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let mut marked = manifest_item("src/lib.rs", "lib");
+    marked
+        .metadata
+        .insert("artifact_marker".to_string(), serde_json::json!(true));
+    let manifest = manifest_with_items(
+        &generation.generation.0,
+        vec![
+            manifest_item("README.md", "readme"),
+            marked,
+            manifest_item("src/main.rs", "main"),
+        ],
+    );
+    store.put_manifest(manifest).await.expect("put manifest");
+
+    let selected = store
+        .get_manifest_items_with_metadata_key(
+            SourceId::new("src_sqlite"),
+            generation.generation,
+            vec![
+                SourceItemKey::new("README.md"),
+                SourceItemKey::new("src/lib.rs"),
+                SourceItemKey::new("src/main.rs"),
+            ],
+            "artifact_marker".to_string(),
+        )
+        .await
+        .expect("read metadata-filtered items");
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0].source_item_key,
+        SourceItemKey::new("src/lib.rs")
+    );
+}
+
+#[tokio::test]
+async fn sqlite_reads_manifest_metadata_without_materializing_items() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let mut manifest = manifest_with_items(
+        &generation.generation.0,
+        vec![manifest_item("src/lib.rs", "lib")],
+    );
+    manifest.metadata.insert(
+        "publication_config".to_string(),
+        serde_json::json!("cfg-123"),
+    );
+    store.put_manifest(manifest).await.expect("put manifest");
+
+    let metadata = store
+        .get_manifest_metadata(SourceId::new("src_sqlite"), generation.generation)
+        .await
+        .expect("read metadata")
+        .expect("metadata present");
+    assert_eq!(
+        metadata
+            .get("publication_config")
+            .and_then(serde_json::Value::as_str),
+        Some("cfg-123")
+    );
+}
+
+#[tokio::test]
 async fn sqlite_diff_manifest_against_committed_generation() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");

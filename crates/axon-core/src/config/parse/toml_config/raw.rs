@@ -1,13 +1,12 @@
 //! Wire-format `config.toml` shape: the 20-section contract from
 //! `docs/pipeline-unification/configuration/config-contract.md`.
 //!
-//! This is what `toml::from_str` actually parses. `convert::into_legacy`
-//! folds every field here onto the existing flat [`super::TomlConfig`]
-//! shape so the ~150 downstream consumers in `tuning.rs`, `config_literal.rs`,
+//! This is what `toml::from_str` actually parses. `convert::flatten` folds every field here onto the flat
+//! [`super::TomlConfig`] runtime shape so the ~150 downstream consumers in `tuning.rs`, `config_literal.rs`,
 //! and `build_config.rs` need zero changes. Fields with no current runtime
 //! consumer are still parsed (so real `config.toml` files round-trip
 //! cleanly) but are otherwise inert, matching the pre-existing precedent of
-//! several `#[allow(dead_code)]` sections in the legacy shape.
+//! several `#[allow(dead_code)]` sections in the flat runtime shape.
 //!
 //! All sections/subsections `deny_unknown_fields` so typos and stale
 //! section names fail loudly instead of being silently ignored.
@@ -179,7 +178,6 @@ pub(in crate::config) struct RawJobsSection {
     pub interactive_starvation_slo_secs: Option<i64>,
     #[allow(dead_code)]
     pub max_events_per_job: Option<u64>,
-    #[allow(dead_code)]
     pub default_priority: Option<String>,
     pub watchdog_sweep_secs: Option<i64>,
     pub worker_starvation_secs: Option<i64>,
@@ -297,7 +295,6 @@ pub(in crate::config) struct RawProviderSearchSection {
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub(in crate::config) struct RawFetchSection {
-    #[allow(dead_code)]
     pub concurrency: Option<usize>,
     pub request_timeout_ms: Option<u64>,
     pub retries: Option<usize>,
@@ -313,7 +310,6 @@ pub(in crate::config) struct RawFetchSection {
 pub(in crate::config) struct RawRenderSection {
     #[allow(dead_code)]
     pub enabled: Option<bool>,
-    #[allow(dead_code)]
     pub max_concurrent_pages: Option<usize>,
     #[allow(dead_code)]
     pub page_timeout_ms: Option<u64>,

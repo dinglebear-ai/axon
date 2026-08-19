@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::requests::{McpRenderMode, ResponseMode, SearchTimeRange};
-use crate::source::SourceScope;
+use crate::source::{JobPriority, SourceScope};
 
 /// Request parameters for the unified `source` action.
 ///
@@ -23,6 +23,8 @@ pub struct SourceRequest {
     pub scope: Option<SourceScope>,
     /// Qdrant collection to index into. Defaults to the server's configured collection.
     pub collection: Option<String>,
+    /// Scheduler priority for this source job. Defaults to normal.
+    pub priority: Option<JobPriority>,
     pub response_mode: Option<ResponseMode>,
     /// Run source indexing as a detached background `JobKind::Source` job
     /// instead of blocking until it completes. When `true`, the response

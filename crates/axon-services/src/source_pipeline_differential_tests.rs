@@ -6,10 +6,14 @@
 
 #![allow(unsafe_code)]
 
+use axon_adapters::SourceAdapter;
+use axon_adapters::acquisition::MaterializedSource;
+use axon_adapters::git::GitSourceAdapter;
 use axon_api::source::{
-    ArtifactHandle, ArtifactKind, ArtifactMode, AuthSnapshot, ContentRef, JobEvent,
-    JobEventListRequest, JobStageSnapshot, LifecycleStatus, OutputPolicy, PipelinePhase,
-    ResponseMode, SourceRequest, SourceResult, SourceScope, Visibility,
+    AdapterRef, ArtifactHandle, ArtifactKind, ArtifactMode, AuthSnapshot, ContentRef,
+    GraphWriteSummary, JobEvent, JobEventListRequest, JobStageSnapshot, LifecycleStatus,
+    OutputPolicy, PipelinePhase, ResponseMode, SourceKind, SourceRequest, SourceResult,
+    SourceScope, Visibility,
 };
 use axon_core::boundary::ArtifactStore;
 
@@ -66,6 +70,91 @@ async fn observe(
     Ok(PipelineObservation {
         request,
         progress: events,
+        durable_stages,
+        provider_calls,
+        result,
+    })
+}
+
+async fn observe_materialized_git(
+    repo_root: &std::path::Path,
+    harness: &crate::test_support::SourceWebJobIdentityHarness,
+) -> anyhow::Result<PipelineObservation> {
+    let input = "https://github.com/example/differential.git";
+    let request = SourceRequest::new(input);
+    let mut routed = crate::source::routing::resolve_source_route(&request)?;
+    assert_eq!(routed.kind, SourceKind::Git);
+
+    let adapter = GitSourceAdapter::new();
+    let adapter_ref = AdapterRef {
+        name: adapter.name().to_string(),
+        version: adapter.version().to_string(),
+    };
+    routed.route.adapter = adapter_ref.clone();
+    routed.route.source.adapter = adapter_ref.clone();
+    routed.route.validated_options.values.insert(
+        "repo_root".to_string(),
+        serde_json::json!(repo_root.to_string_lossy()),
+    );
+    let plan = crate::source::dispatch::family_source_plan(input, &routed.route, true, None, None);
+    let observed_request = plan.request.clone();
+    let auth = AuthSnapshot::trusted_system("differential-git-test");
+    let execution =
+        crate::source::SourceExecutionContext::inline(plan.request.clone(), Some(auth.clone()));
+    let runtime = harness
+        .ctx()
+        .target_local_source_runtime()
+        .expect("target runtime");
+    let collection = harness.ctx().cfg().collection.clone();
+    let materialized_path = repo_root.to_path_buf();
+    let counts = crate::source::dispatch::dispatch_materialized(
+        runtime,
+        &adapter,
+        plan,
+        &collection,
+        "differential-test",
+        Some(&auth),
+        &execution,
+        move |plan| async move { Ok(MaterializedSource::persistent(plan, materialized_path)) },
+    )
+    .await?;
+
+    let result = crate::source::result_map::to_source_result(
+        SourceKind::Git,
+        adapter_ref,
+        routed.route.scope,
+        routed.route.source.canonical_uri,
+        counts.clone(),
+        GraphWriteSummary {
+            nodes_upserted: 0,
+            edges_upserted: 0,
+            evidence_records: 0,
+            degraded: false,
+        },
+    );
+    let store = harness.ctx().job_store().expect("job store");
+    let progress = store
+        .events(JobEventListRequest {
+            job_id: counts.job_id,
+            after_sequence: None,
+            limit: Some(256),
+            severity: None,
+            visibility: Some(Visibility::Public),
+            phase: None,
+            since_sequence: None,
+            cursor: None,
+        })
+        .await?
+        .events;
+    let durable_stages = store.stages(counts.job_id).await?;
+    let provider_calls = FakeProviderCalls {
+        embedding_batches: harness.embedder().calls().await.len(),
+        vector_operations: harness.vectors().calls().await.len(),
+        vector_points: harness.vectors().points(&collection).await.len(),
+    };
+    Ok(PipelineObservation {
+        request: observed_request,
+        progress,
         durable_stages,
         provider_calls,
         result,
@@ -140,14 +229,14 @@ fn write_session_fixture(home: &std::path::Path) -> String {
 }
 
 #[tokio::test]
-async fn web_and_local_share_the_observable_source_contract() {
+async fn web_local_and_git_share_the_observable_source_contract() {
     let web = crate::test_support::source_context_with_fake_web()
         .await
         .unwrap();
     let web_request = SourceRequest::new("https://docs.example.test/differential");
     let web_observation = observe(web_request.clone(), &web).await.unwrap();
 
-    let local_dir = tempfile::tempdir().unwrap();
+    let local_dir = crate::test_support::visible_tempdir().unwrap();
     std::fs::write(
         local_dir.path().join("fixture.md"),
         "# differential fixture\n\nshared source body\n",
@@ -159,13 +248,23 @@ async fn web_and_local_share_the_observable_source_contract() {
     let local_request = SourceRequest::local_path(local_dir.path().to_string_lossy(), true);
     let local_observation = observe(local_request.clone(), &local).await.unwrap();
 
-    assert_one_job(&web_observation);
-    assert_one_job(&local_observation);
-    assert_eq!(phase_spine(&web_observation), expected_shared_phase_spine());
-    assert_eq!(
-        phase_spine(&local_observation),
-        expected_shared_phase_spine()
-    );
+    let git_dir = crate::test_support::visible_tempdir().unwrap();
+    std::fs::write(
+        git_dir.path().join("fixture.md"),
+        "# differential fixture\n\nshared source body\n",
+    )
+    .unwrap();
+    let git = crate::test_support::source_context_with_local_sqlite_ledger()
+        .await
+        .unwrap();
+    let git_observation = observe_materialized_git(git_dir.path(), &git)
+        .await
+        .unwrap();
+
+    for observation in [&web_observation, &local_observation, &git_observation] {
+        assert_one_job(observation);
+        assert_eq!(phase_spine(observation), expected_shared_phase_spine());
+    }
     assert_eq!(
         public_observation(&web_observation).0,
         public_observation(&local_observation).0,
@@ -174,12 +273,27 @@ async fn web_and_local_share_the_observable_source_contract() {
         phase_spine(&local_observation)
     );
     assert_eq!(
+        public_observation(&web_observation).0,
+        public_observation(&git_observation).0,
+        "web/git phase drift: web={:?} git={:?}",
+        phase_spine(&web_observation),
+        phase_spine(&git_observation)
+    );
+    assert_eq!(
         web_observation.result.counts.documents_total,
         local_observation.result.counts.documents_total
     );
     assert_eq!(
+        web_observation.result.counts.documents_total,
+        git_observation.result.counts.documents_total
+    );
+    assert_eq!(
         web_observation.provider_calls,
         local_observation.provider_calls
+    );
+    assert_eq!(
+        web_observation.provider_calls,
+        git_observation.provider_calls
     );
     assert!(
         web_observation
@@ -278,7 +392,7 @@ async fn shared_web_output_supports_inline_and_durable_archive_modes() {
 #[tokio::test]
 #[serial_test::serial]
 async fn session_source_joins_the_same_observable_source_contract() {
-    let home = tempfile::tempdir().unwrap();
+    let home = crate::test_support::visible_tempdir().unwrap();
     let previous_home = std::env::var_os("HOME");
     unsafe { std::env::set_var("HOME", home.path()) };
     let request = SourceRequest::new(write_session_fixture(home.path()));

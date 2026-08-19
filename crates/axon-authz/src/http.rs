@@ -39,6 +39,34 @@ use crate::{
 use axum::{body::Body, http::Request, middleware::Next, response::Response};
 use lab_auth::{AuthLayer, state::AuthState};
 
+const AXON_ISSUABLE_SCOPES: &[&str] = &[
+    AXON_READ_SCOPE,
+    AXON_WRITE_SCOPE,
+    AXON_ADMIN_SCOPE,
+    AXON_EXECUTE_SCOPE,
+    AXON_LOCAL_SCOPE,
+];
+
+pub(crate) fn issuable_scopes() -> Vec<String> {
+    AXON_ISSUABLE_SCOPES
+        .iter()
+        .map(|scope| (*scope).to_string())
+        .collect()
+}
+
+/// Scopes granted to the static operator bearer token.
+///
+/// Keep fine-grained local-filesystem and tool-execution capabilities out of
+/// the legacy static token. Those require explicit OAuth grants so possession
+/// of the broad operator token cannot silently become host-file or command
+/// execution authority.
+pub(crate) fn static_operator_scopes() -> Vec<String> {
+    [AXON_READ_SCOPE, AXON_WRITE_SCOPE, AXON_ADMIN_SCOPE]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 /// The scope required to reach a route/action, mapped to its OAuth scope string.
 ///
 /// `Admin`, `Execute`, and `Local` are fine-grained scopes that are NOT implied
@@ -178,11 +206,7 @@ pub fn build_auth_layer(
             // empty Vec and every scope check would fail even with a valid token.
             AuthLayer::new()
                 .with_static_token(static_token)
-                .with_static_token_scopes(vec![
-                    AXON_READ_SCOPE.into(),
-                    AXON_WRITE_SCOPE.into(),
-                    AXON_ADMIN_SCOPE.into(),
-                ])
+                .with_static_token_scopes(static_operator_scopes())
                 .with_resource_url(resource_url)
                 .with_allow_session_cookie(false),
         ),
@@ -385,18 +409,10 @@ fn build_oauth_auth_config_from_sources(
         .env_prefix("AXON_MCP")
         .default_data_dir(axon_core::paths::axon_data_base_dir())
         .session_cookie_name("axon_mcp_session")
-        .scopes_supported(vec![
-            AXON_READ_SCOPE.into(),
-            AXON_WRITE_SCOPE.into(),
-            AXON_ADMIN_SCOPE.into(),
-        ])
+        .scopes_supported(issuable_scopes())
         .default_scope(AXON_FULL_ACCESS_SCOPE)
         .resource_path("/mcp")
-        .static_token_scopes(vec![
-            AXON_READ_SCOPE.into(),
-            AXON_WRITE_SCOPE.into(),
-            AXON_ADMIN_SCOPE.into(),
-        ])
+        .static_token_scopes(static_operator_scopes())
         .enable_dynamic_registration(true)
         .disable_static_token_with_oauth(false) // static bearer keeps working alongside OAuth
         .build_from_sources(vars)

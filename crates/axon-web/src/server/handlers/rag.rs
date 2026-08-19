@@ -59,12 +59,13 @@ pub(crate) async fn query(
     tag = "rag"
 )]
 pub(crate) async fn retrieve(
-    State((_state, cfg)): State<WebState>,
+    State((state, cfg)): State<WebState>,
     Json(req): Json<RetrieveRequest>,
 ) -> Result<Json<axon_api::source::SuccessEnvelope<services::types::RetrieveResult>>, HttpError> {
     let url = required_text(&req.url, "url")?;
     let cfg = with_query_overrides(&cfg, req.collection, req.since, req.before, None)?;
     let result = services::query::retrieve(
+        &state.service_context,
         &cfg,
         url,
         transport::retrieve_options(req.max_points, req.cursor, req.token_budget),
