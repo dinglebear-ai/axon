@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { platform } from "@tauri-apps/plugin-os";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { PaletteShell } from "@/components/palette/PaletteShell";
@@ -9,7 +9,7 @@ import {
   confirmationFor,
   type PendingActionConfirmation,
 } from "@/lib/actionGuard";
-import { ACTIONS, MOBILE_ACTIONS, actionMatches, type PaletteAction } from "@/lib/actions";
+import { ACTIONS, actionMatches, MOBILE_ACTIONS, type PaletteAction } from "@/lib/actions";
 import { currentOutputTarget } from "@/lib/appHelpers";
 import { createAxonClient } from "@/lib/axonClient";
 import { outputKindFor } from "@/lib/format";
@@ -30,9 +30,10 @@ import {
 import type { RunState } from "@/lib/runState";
 import { hostLabel } from "@/lib/url";
 import { useActionRunner } from "@/lib/useActionRunner";
+import { useAndroidBackButton } from "@/lib/useAndroidBackButton";
 import { useAskHistoryRecorder } from "@/lib/useAskHistoryRecorder";
 import { useChatToolRunner } from "@/lib/useChatToolRunner";
-import { useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
+import { handlePaletteBack, useFocusReturn, usePaletteHotkeys } from "@/lib/useFocusReturn";
 import { useJobPoll } from "@/lib/useJobPoll";
 import { useLiveRefresh } from "@/lib/useLiveRefresh";
 import { useOpenJob } from "@/lib/useOpenJob";
@@ -49,7 +50,8 @@ import { useWindowChrome } from "@/lib/useWindowChrome";
 const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shift+Space"] as const;
 
 const runtimePlatform = isTauriRuntime ? platform() : null;
-const mobileRuntime = runtimePlatform === "android" || runtimePlatform === "ios";
+const androidRuntime = runtimePlatform === "android";
+const mobileRuntime = androidRuntime || runtimePlatform === "ios";
 const runtimeActions = mobileRuntime ? MOBILE_ACTIONS : ACTIONS;
 
 document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
@@ -91,16 +93,26 @@ export default function App() {
       window.setTimeout(() => setCopied(false), 1200);
     });
   }, []);
-  usePaletteHotkeys(keyStateRef, {
-    closeSettings: () => dispatchView({ type: "closeSettings" }),
-    toBrowseFromHistory: () => dispatchView({ type: "closeHistoryToBrowse" }),
-    closeBrowse: () => dispatchView({ type: "closeBrowse" }),
-    clearMode: () => dispatchView({ type: "clearMode" }),
+  const paletteBackActions = {
+    closeSettings: () => dispatchView({ type: "closeSettings" as const }),
+    toBrowseFromHistory: () => dispatchView({ type: "closeHistoryToBrowse" as const }),
+    closeBrowse: () => dispatchView({ type: "closeBrowse" as const }),
+    clearMode: () => dispatchView({ type: "clearMode" as const }),
     clearQuery: () => {
       setQuery("");
       dispatchView({ type: "clearMode" });
     },
-    copyOutput: (text) => void copyOutput(text),
+    closeRoot: () => void invoke("hide_palette"),
+    copyOutput: (text: string) => void copyOutput(text),
+  };
+  usePaletteHotkeys(keyStateRef, paletteBackActions);
+  useAndroidBackButton(androidRuntime, () => {
+    handlePaletteBack(keyStateRef.current, {
+      ...paletteBackActions,
+      closeRoot: () => {
+        void invoke("exit_palette");
+      },
+    });
   });
 
   const {

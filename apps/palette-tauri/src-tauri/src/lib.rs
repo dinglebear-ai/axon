@@ -165,6 +165,11 @@ fn show_palette(app: AppHandle) -> Result<(), String> {
     show_main_window(&app)
 }
 
+#[tauri::command]
+fn exit_palette(app: AppHandle) {
+    app.exit(0);
+}
+
 #[cfg(desktop)]
 #[tauri::command]
 fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
