@@ -50,7 +50,7 @@ pub(super) async fn dispatch_kind(
             )
             .await
         }
-        SourceKind::Feed | SourceKind::Youtube | SourceKind::Reddit => {
+        SourceKind::Feed | SourceKind::Youtube | SourceKind::Reddit | SourceKind::Registry => {
             dispatch_item_limited_kind(
                 kind,
                 adapter,
@@ -95,22 +95,6 @@ pub(super) async fn dispatch_kind(
                 embed,
                 limits.max_items,
                 project_filter,
-                route,
-                execution,
-            )
-            .await
-        }
-        SourceKind::Registry => {
-            dispatch_item_limited_kind(
-                kind,
-                adapter,
-                runtime,
-                input,
-                collection,
-                owner_id,
-                auth_snapshot,
-                embed,
-                limits.max_items,
                 route,
                 execution,
             )

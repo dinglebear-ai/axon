@@ -300,6 +300,8 @@ async fn baseline_graph_streams_across_512_item_boundary_without_count_drift() {
     let pool = Arc::new(graph_pool().await);
 
     let summary = write_baseline_graph_with_db_gate(
+        None,
+        None,
         SourceKind::Web,
         Some(pool.clone()),
         &ledger,

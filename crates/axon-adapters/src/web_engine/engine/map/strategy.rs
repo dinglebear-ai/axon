@@ -366,6 +366,20 @@ async fn run_discovery_probes(
     }
 }
 
+fn map_scope_base(start_url: &str, resolved_start_url: &str) -> String {
+    let start_host = Url::parse(&normalize_url(start_url))
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase));
+    let resolved_host = Url::parse(resolved_start_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase));
+    if start_host != resolved_host {
+        normalize_url(start_url).into_owned()
+    } else {
+        resolved_start_url.to_string()
+    }
+}
+
 /// Discover canonical in-scope URLs without crawling or writing page content.
 pub async fn discover_site_urls(
     cfg: &Config,
@@ -391,19 +405,7 @@ pub async fn discover_site_urls_with_metadata(
         llms_urls,
     } = run_discovery_probes(cfg, start_url, fetch.clone(), execution_metadata).await;
 
-    let scope_base = {
-        let start_host = Url::parse(&normalize_url(start_url))
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
-        let resolved_host = Url::parse(&resolved_start_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_ascii_lowercase));
-        if start_host != resolved_host {
-            normalize_url(start_url).into_owned()
-        } else {
-            resolved_start_url.clone()
-        }
-    };
+    let scope_base = map_scope_base(start_url, &resolved_start_url);
 
     let scope = derive_map_scope(start_url, &scope_base).ok_or("failed to derive map scope")?;
     let scope_start_url =

@@ -51,8 +51,8 @@ use std::sync::Arc;
 
 use axon_adapters::SourceAdapter;
 use axon_api::source::{
-    AuthSnapshot, ExecutionAffinity, PipelinePhase, SourceKind, SourceRequest, SourceResult,
-    SourceScope,
+    AuthSnapshot, ExecutionAffinity, PipelinePhase, RoutePlan, SourceKind, SourceRequest,
+    SourceResult, SourceScope,
 };
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
@@ -169,7 +169,7 @@ async fn index_source_inner(
     let collection = source_collection(&request, ctx);
     let owner_id = DEFAULT_OWNER_ID;
 
-    let mut counts = dispatch_kind::dispatch_kind(
+    let counts = dispatch_kind::dispatch_kind(
         kind,
         route.scope,
         ctx,
@@ -192,20 +192,35 @@ async fn index_source_inner(
     )
     .await?;
 
-    // Write the source graph: the baseline container + document + containment
-    // skeleton from the just-published manifest, plus every parser-produced
-    // `GraphCandidate` collected from this generation's prepared documents
-    // (source-pipeline.md's `parsing` stage output feeding the `graphing`
-    // stage). A missing pool or a graph-store error degrades to a zero-count
-    // summary rather than failing the already-committed index.
+    finalize_source_index(
+        ctx,
+        runtime,
+        &execution,
+        &collection,
+        kind,
+        route,
+        adapter,
+        counts,
+        &event_emitter,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn finalize_source_index(
+    ctx: &ServiceContext,
+    runtime: &TargetLocalSourceRuntime,
+    execution: &SourceExecutionContext,
+    collection: &str,
+    kind: SourceKind,
+    route: RoutePlan,
+    adapter: axon_api::source::AdapterRef,
+    mut counts: IndexCounts,
+    event_emitter: &events::SourceEventEmitter,
+) -> anyhow::Result<SourceResult> {
     let graph_candidates = std::mem::take(&mut counts.graph_candidates);
     let graph_manifest = counts.published_manifest.take();
-    let graph_pool = ctx.jobs.sqlite_pool();
-    // Clone only the small counters/ids after taking the corpus-sized manifest.
     let graph_counts = counts.clone();
-    let graph_uri = route.source.canonical_uri.clone();
-    let graph_db_slots = Some(Arc::clone(&runtime.db_stage_slots));
-    let graph_ledger = Arc::clone(&runtime.ledger);
     let graph_context = ProviderCallContext::for_phase(
         counts.job_id,
         execution.attempt,
@@ -217,19 +232,16 @@ async fn index_source_inner(
         Some(runtime),
         Some(graph_context),
         kind,
-        graph_pool,
-        graph_ledger.as_ref(),
+        ctx.jobs.sqlite_pool(),
+        runtime.ledger.as_ref(),
         &graph_counts,
-        &graph_uri,
+        &route.source.canonical_uri,
         graph_manifest,
         graph_candidates,
-        graph_db_slots,
+        Some(Arc::clone(&runtime.db_stage_slots)),
     )
     .await;
 
-    // Record the graph write as a child `graph` job of the parent source job,
-    // when it produced non-trivial output (see `job_tracking` module docs for
-    // why this is a child job rather than a standalone `axon graph` command).
     job_tracking::track_graph_mutation(
         ctx.job_store(),
         counts.job_id,
@@ -238,21 +250,10 @@ async fn index_source_inner(
     )
     .await;
 
-    // Drain cleanup debt: after the new generation is committed, the ledger has
-    // recorded superseded-item deletes (vector, ledger, graph, memory) for the
-    // prior generation. Run the prune executor against every store boundary we
-    // can open here so `GraphPrune`/`MemoryPrune` debt actually drains in
-    // production, not just vector/ledger. Failures degrade gracefully — the
-    // index is already published, so a cleanup problem must not fail
-    // acquisition; a store that fails to open just leaves its debt kind
-    // pending (see `open_cleanup_debt_stores`).
     event_emitter
         .running(PipelinePhase::Cleaning, "cleaning source generation debt")
         .await;
-    let drain = drain_source_cleanup_debt(ctx, runtime, &collection, &counts).await;
-
-    // Record the drain as a child `prune` job of the parent source job, when
-    // it touched at least one pending debt entry.
+    let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
     job_tracking::track_prune(
         ctx.job_store(),
         counts.job_id,
@@ -260,7 +261,6 @@ async fn index_source_inner(
         &drain,
     )
     .await;
-
     event_emitter
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;

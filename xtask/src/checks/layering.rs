@@ -104,9 +104,17 @@ const TRANSPORT_FORBIDDEN_DEPS: &[&str] = &[
 
 const PROVIDER_FACADE_FILES: &[&str] = &[
     "crates/axon-services/src/reserved_call.rs",
+    // Exact implementation submodule of the same scheduler facade. Keeping
+    // this explicit avoids turning the whole reserved_call/ tree into an
+    // unscanned provider escape hatch.
+    "crates/axon-services/src/reserved_call/vector.rs",
     // Production provider composition owns concrete providers but does not
     // execute application operations directly.
     "crates/axon-services/src/context/target_runtime.rs",
+    // Exact implementation submodules split out solely to satisfy the
+    // monolith guard while preserving target_runtime as the provider-composition facade.
+    "crates/axon-services/src/context/target_runtime/read_stores.rs",
+    "crates/axon-services/src/context/target_runtime/schedulers.rs",
     // These wrappers expose scheduler-enforced provider traits to adapters and
     // foreground reads; raw handles stay encapsulated inside the wrapper.
     "crates/axon-services/src/context/scheduled_web.rs",

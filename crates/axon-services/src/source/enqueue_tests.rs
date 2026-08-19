@@ -222,7 +222,12 @@ async fn enqueue_source_tool_with_execute_scope_is_routable() {
 #[tokio::test]
 async fn enqueue_source_tool_requires_operator_and_caller_authority() {
     let store = FakeJobWatchStore::new();
-    let request = SourceRequest::new("mcp:labby/search").without_embedding();
+    let mut request = SourceRequest::new("mcp:labby/search").without_embedding();
+    request.scope = Some(axon_api::source::SourceScope::Api);
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), serde_json::json!("call"));
     let mut execute_auth = AuthSnapshot::default();
     execute_auth.granted_scopes = vec![AuthScope::Read, AuthScope::Write, AuthScope::Execute];
 

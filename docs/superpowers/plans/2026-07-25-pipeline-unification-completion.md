@@ -35,6 +35,14 @@ production-ingress tests close the loop.
   bead `axon_rust-enbmu.2` owns this plan review only.
 - `marketplace-no-mcp` remains the intentional protected marketplace variant.
 
+## Current PR #570 Integration Status — 2026-08-19
+
+- Pushed integration checkpoint `ef51efc8b84305f9667db4eb434f47077c641b3f` contains the current `SourceAccessDecision`, authenticated query/ask/retrieve/research job snapshots, fixed panel Read+Write authority, value-free panel env inventory, retry snapshot preservation, and fail-closed watch snapshot handling.
+- W21 PR #569 depends on this lane. **Do not final-rebase W21 yet:** #570 still must finish the exact auth/SourceAccess gate matrix, changed-crate clippy, layering/crate/generated contracts, CI, sole scheduler-authority cutover, SSRF parity, and local-containment parity.
+- GitHub reported zero check runs immediately after the checkpoint push; the local required gate matrix is the current source of evidence until CI jobs attach to the new head.
+- The remaining scheduler-authority blocker is legacy in-memory `ProviderReservationManager` use inside provider implementations. The remaining security blockers are ambient HTTP proxy handling, Chrome subresource/WebSocket/service-worker SSRF parity, and non-Linux/hardlink local containment.
+- This ledger is intentionally integration-oriented: each green slice is committed and pushed separately so downstream W21 can rebase only after the conductor marker changes to ready.
+
 ## Execution Status — 2026-07-26
 
 This is an honest in-progress ledger, not a completion claim.

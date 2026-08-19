@@ -126,21 +126,26 @@ fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
 }
 
 #[test]
-fn redaction_failure_blocks_vector_point_batch() {
+fn redaction_failure_skips_only_the_forbidden_chunk() {
     let mut document = axon_vectors::testing::test_prepared_document();
     document.chunks[1].content = "API_KEY=abc123".to_string();
+    let source_item_key = document.source_item_key.clone();
     let mut embeddings =
         axon_vectors::testing::test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let error = point_batch(
+    let result = point_batch(
         axon_vectors::testing::test_collection_spec(3),
         std::slice::from_ref(&document),
         &mut embeddings,
     )
-    .err()
-    .expect("redaction failure must block the complete vector point batch");
+    .expect("a forbidden body value should skip its chunk, not fail the source");
 
-    assert!(error.to_string().contains("forbidden"));
+    assert_eq!(result.batch.points.len(), 1);
+    assert_eq!(result.skipped_redaction, 1);
+    assert_eq!(
+        result.redaction_skips_by_source_item.get(&source_item_key),
+        Some(&1)
+    );
 }
 
 #[test]
@@ -195,6 +200,8 @@ fn vectorized_document_statuses_use_actual_point_counts() {
         Vec::new(),
         &points_by_document,
         vector_write(2),
+        0,
+        &std::collections::BTreeMap::new(),
     );
 
     assert_eq!(result.points_written, 2);
@@ -202,4 +209,32 @@ fn vectorized_document_statuses_use_actual_point_counts() {
     assert_eq!(result.document_statuses[0].chunk_count, 3);
     assert_eq!(result.document_statuses[0].vector_point_count, 2);
     assert!(result.warnings.is_empty());
+}
+
+#[test]
+fn vectorize_result_reports_redaction_skips_per_source_item() {
+    let document = prepared_document(2);
+    let document_id = document.document_id.clone();
+    let source_item_key = document.source_item_key.clone();
+    let points_by_document = [(document_id, 1)].into_iter().collect();
+    let skips = [(source_item_key.clone(), 1)].into_iter().collect();
+
+    let result = vectorize_result(
+        vec![document],
+        Vec::new(),
+        &points_by_document,
+        vector_write(1),
+        1,
+        &skips,
+    );
+
+    assert_eq!(result.points_written, 1);
+    assert_eq!(result.document_statuses[0].vector_point_count, 1);
+    let warning = result
+        .warnings
+        .iter()
+        .find(|warning| warning.code == "source.vectorize.redaction_skipped_chunks")
+        .expect("redaction skip warning");
+    assert_eq!(warning.source_item_key.as_ref(), Some(&source_item_key));
+    assert!(warning.message.contains("skipped 1 chunk"));
 }

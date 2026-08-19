@@ -226,6 +226,8 @@ async fn vectorize_batch(
         embed_prepared_batch(runtime, input, &documents, emitter, coordinator, progress).await?;
     let VectorPointBuild {
         batch: point_batch,
+        skipped_redaction,
+        redaction_skips_by_source_item,
         points_by_document,
     } = point_batch(collection, &documents, &mut embeddings)?;
     coordinator
@@ -243,6 +245,8 @@ async fn vectorize_batch(
         embeddings.warnings,
         &points_by_document,
         write,
+        skipped_redaction,
+        &redaction_skips_by_source_item,
     ))
 }
 
@@ -342,10 +346,41 @@ fn vectorize_result(
     embedding_warnings: Vec<SourceWarning>,
     points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
     write: VectorStoreWriteResult,
+    skipped_redaction: u64,
+    redaction_skips_by_source_item: &std::collections::BTreeMap<SourceItemKey, u64>,
 ) -> VectorizeResult {
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embedding_warnings);
+    for (source_item_key, count) in redaction_skips_by_source_item {
+        result.warnings.push(SourceWarning {
+            code: "source.vectorize.redaction_skipped_chunks".to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "skipped {count} chunk(s) with secret-redaction-forbidden payload values \
+                 (not indexed; reduced vector point count accordingly)"
+            ),
+            source_item_key: Some(source_item_key.clone()),
+            retryable: false,
+        });
+    }
+    let attributed_skips = redaction_skips_by_source_item
+        .values()
+        .copied()
+        .sum::<u64>();
+    if skipped_redaction > attributed_skips {
+        result.warnings.push(SourceWarning {
+            code: "source.vectorize.redaction_skipped_chunks".to_string(),
+            severity: Severity::Warning,
+            message: format!(
+                "skipped {} unattributed chunk(s) with secret-redaction-forbidden payload values \
+                 (not indexed; reduced vector point count accordingly)",
+                skipped_redaction - attributed_skips
+            ),
+            source_item_key: None,
+            retryable: false,
+        });
+    }
     for status in &mut result.document_statuses {
         status.vector_point_count = points_by_document
             .get(&status.document_id)

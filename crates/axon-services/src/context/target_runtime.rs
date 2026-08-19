@@ -7,7 +7,6 @@
 //! local-source runtime.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -19,60 +18,31 @@ use axon_adapters::providers::http_fetch::{
     HTTP_FETCH_PROVIDER_ID, HttpFetchConfig, HttpFetchProvider,
 };
 use axon_adapters::{NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter};
-use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
+use axon_api::source::{InstructionSupport, ProviderId};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
-use axon_jobs::scheduler::{ProviderCapacityDomain, ProviderScheduler, SchedulerConfig};
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
 use tokio::sync::{Semaphore, watch};
 
+mod read_stores;
+mod schedulers;
+
+pub use read_stores::{TargetReadStores, build_read_stores_from_config};
+#[cfg(test)]
+use schedulers::scheduler_authority_id;
+use schedulers::{RuntimeSchedulers, build_runtime_schedulers, source_db_stage_capacity};
+
 use super::{
     TargetLocalSourceRuntime,
     db_limited_ledger::DbLimitedLedgerStore,
     scheduled_web::{ScheduledFetchProvider, ScheduledRenderProvider},
 };
-
-/// Read-plane stores plus their provider identity, built from [`Config`].
-///
-/// This is the minimal seam the read/RAG path (`query`) needs — a vector store
-/// and an embedding provider — without the write-plane jobs/ledger wiring. The
-/// full [`TargetLocalSourceRuntime::from_config`] reuses the same constructors.
-pub struct TargetReadStores {
-    pub vector_store: Arc<dyn VectorStore>,
-    pub embedding_provider: Arc<dyn EmbeddingProvider>,
-    pub embedding_provider_id: ProviderId,
-    pub embedding_model: String,
-    pub embedding_dimensions: u32,
-}
-
-/// Build the read-plane stores (vector store + embedding provider) from
-/// [`Config`]. Store constructors do not perform I/O; only the embedding
-/// identity is derived from the live TEI provider (with a config/default
-/// fallback when it is unreachable).
-pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
-    let identity = resolve_embedding_identity(cfg).await;
-    let embedding_provider = build_tei_provider(cfg, &identity);
-    let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
-    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
-    axon_vectors::qdrant::configure_parallelism(
-        &mut vector_store,
-        axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
-        axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
-    );
-    TargetReadStores {
-        vector_store: Arc::new(vector_store),
-        embedding_provider: Arc::new(embedding_provider),
-        embedding_provider_id: ProviderId::new(EMBEDDING_PROVIDER_ID),
-        embedding_model: identity.model,
-        embedding_dimensions: identity.dimensions,
-    }
-}
 
 /// Construct the TEI embedding provider seeded with the resolved embedding
 /// identity, so `EmbeddingResult.model`/`dimensions` (stamped into every vector
@@ -388,12 +358,6 @@ const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
 const MAX_BATCH_TOKENS: u32 = 65_536;
 
-/// Durable vector-scheduler capacity. `[providers.vector]` has no equivalent
-/// config-driven capacity/reserve knobs yet, so these remain explicit defaults
-/// for the shared SQLite vector lane.
-const VECTOR_RESERVATION_CAPACITY: u32 = 2;
-const VECTOR_RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
-
 impl TargetLocalSourceRuntime {
     /// Build the production target local-source runtime from [`Config`].
     ///
@@ -436,83 +400,16 @@ impl TargetLocalSourceRuntime {
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
-        let scheduler_authority_id = scheduler_authority_id(&cfg.sqlite_path);
-        let embedding_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Embedding,
-                instance_id: embedding_provider_id.0.clone(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(
-                cfg.embed_tei_max_concurrent as u32,
-                cfg.embed_tei_interactive_reserved_requests as u32,
-            ),
-        )?;
-        let vector_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Vector,
-                instance_id: vector_provider_id.0.clone(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(
-                VECTOR_RESERVATION_CAPACITY,
-                VECTOR_RESERVATION_INTERACTIVE_RESERVE,
-            ),
-        )?;
-        let fetch_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Fetch,
-                instance_id: HTTP_FETCH_PROVIDER_ID.to_string(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(cfg.fetch_provider_concurrency as u32, 1),
-        )?;
-        let render_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Render,
-                instance_id: CHROME_RENDER_PROVIDER_ID.to_string(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(cfg.render_provider_concurrency as u32, 1),
-        )?;
-        let parse_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Parser,
-                instance_id: "source-parse".to_string(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(cfg.embed_prep_concurrency.max(1) as u32, 1),
-        )?;
-        let graph_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Graph,
-                instance_id: "sqlite-graph".to_string(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(source_db_stage_capacity(&pool) as u32, 1),
-        )?;
-        let artifact_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Artifact,
-                instance_id: "file-artifact-store".to_string(),
-                authority_id: scheduler_authority_id,
-            },
-            scheduler_config(cfg.batch_concurrency.max(1) as u32, 1),
-        )?;
-        embedding_scheduler.reconcile().await?;
-        vector_scheduler.reconcile().await?;
-        fetch_scheduler.reconcile().await?;
-        render_scheduler.reconcile().await?;
-        parse_scheduler.reconcile().await?;
-        graph_scheduler.reconcile().await?;
-        artifact_scheduler.reconcile().await?;
+        let RuntimeSchedulers {
+            embedding: embedding_scheduler,
+            vector: vector_scheduler,
+            fetch: fetch_scheduler,
+            render: render_scheduler,
+            parse: parse_scheduler,
+            graph: graph_scheduler,
+            artifact: artifact_scheduler,
+        } = build_runtime_schedulers(cfg, &pool, &embedding_provider_id, &vector_provider_id)
+            .await?;
 
         let raw_fetch_provider: Arc<dyn FetchProvider> =
             Arc::new(HttpFetchProvider::new(HttpFetchConfig {
@@ -574,41 +471,6 @@ impl TargetLocalSourceRuntime {
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
-    }
-}
-
-fn source_db_stage_capacity(pool: &SqlitePool) -> usize {
-    // Preserve one pool connection for job heartbeats, provider scheduler
-    // control, and other liveness work. A single-connection test pool cannot
-    // reserve a spare lane, so it retains one data-plane permit.
-    usize::try_from(
-        pool.options()
-            .get_max_connections()
-            .saturating_sub(1)
-            .max(1),
-    )
-    .unwrap_or(1)
-}
-
-fn scheduler_authority_id(path: &Path) -> String {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(path)
-    };
-    let stable = std::fs::canonicalize(&absolute).unwrap_or(absolute);
-    format!("sqlite:{}", stable.display())
-}
-
-fn scheduler_config(capacity: u32, interactive_reserve: u32) -> SchedulerConfig {
-    let capacity = capacity.max(1);
-    SchedulerConfig {
-        capacity,
-        interactive_reserve: interactive_reserve.min(capacity),
-        max_entries: capacity.saturating_mul(256).max(256),
-        max_units: capacity.saturating_mul(256).max(256),
     }
 }
 

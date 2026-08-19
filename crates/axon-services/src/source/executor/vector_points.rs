@@ -7,6 +7,8 @@ use super::timestamp;
 
 pub(super) struct VectorPointBuild {
     pub(super) batch: VectorPointBatch,
+    pub(super) skipped_redaction: u64,
+    pub(super) redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64>,
     #[cfg_attr(not(test), allow(dead_code))]
     pub(super) points_by_document: std::collections::BTreeMap<DocumentId, u32>,
 }
@@ -27,6 +29,9 @@ pub(super) fn point_batch(
     let point_context = VectorPointBatchBuildContext {
         embedded_at: timestamp(),
     };
+    let mut skipped_redaction = 0u64;
+    let mut redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64> =
+        std::collections::BTreeMap::new();
     let mut points_by_document = std::collections::BTreeMap::new();
     for document in documents {
         let document_embeddings = EmbeddingResult {
@@ -48,8 +53,15 @@ pub(super) fn point_batch(
             },
             warnings: Vec::new(),
         };
-        let (document_points, _compatibility_skip_count) =
+        let (document_points, document_skipped) =
             build_points_for_document(&collection, document, document_embeddings, &point_context)?;
+        skipped_redaction = skipped_redaction.saturating_add(document_skipped);
+        if document_skipped > 0 {
+            redaction_skips_by_source_item
+                .entry(document.source_item_key.clone())
+                .and_modify(|count| *count = count.saturating_add(document_skipped))
+                .or_insert(document_skipped);
+        }
         let document_point_count = u32::try_from(document_points.len()).unwrap_or(u32::MAX);
         points_by_document.insert(document.document_id.clone(), document_point_count);
         points.extend(document_points);
@@ -64,6 +76,8 @@ pub(super) fn point_batch(
             sparse_vectors: None,
             payload_indexes: collection.payload_indexes,
         },
+        skipped_redaction,
+        redaction_skips_by_source_item,
         points_by_document,
     })
 }

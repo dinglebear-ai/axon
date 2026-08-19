@@ -20,6 +20,7 @@ pub fn check(root: &Path) -> Result<()> {
     check_route_security(&openapi_routes.operations, &android_routes)
 }
 
+#[cfg(feature = "openapi-drift")]
 pub fn check_against_openapi(root: &Path) -> Result<()> {
     check(root)
 }

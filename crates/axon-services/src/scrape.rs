@@ -182,9 +182,44 @@ fn scrape_result_from_document(
         ScrapeFormat::Llm => to_llm_text(&markdown, &url),
     };
 
-    let wrapper = document
-        .structured_payload
-        .map(redact_sensitive_structured_keys);
+    let (follow_crawl_urls, extra, structured, structured_for_embedding) =
+        structured_scrape_projection(
+            document.structured_payload,
+            extractor_name.as_deref(),
+            extractor_version.as_deref(),
+        );
+
+    Ok(ScrapeResult {
+        payload,
+        url,
+        markdown,
+        output,
+        artifact_handle: None,
+        truncated: false,
+        token_estimate: None,
+        next_cursor: None,
+        remaining_tokens_estimate: None,
+        backend: Some(DocumentBackend::LiveScrape),
+        follow_crawl_urls,
+        extra,
+        structured,
+        structured_for_embedding,
+        extractor_name,
+        title,
+    })
+}
+
+fn structured_scrape_projection(
+    structured_payload: Option<serde_json::Value>,
+    extractor_name: Option<&str>,
+    extractor_version: Option<&str>,
+) -> (
+    Vec<String>,
+    Option<serde_json::Value>,
+    Option<serde_json::Value>,
+    Option<serde_json::Value>,
+) {
+    let wrapper = structured_payload.map(redact_sensitive_structured_keys);
     let follow_crawl_urls = wrapper
         .as_ref()
         .and_then(|value| value.get("follow_crawl_urls"))
@@ -205,38 +240,23 @@ fn scrape_result_from_document(
     let structured = structured_for_embedding
         .clone()
         .and_then(capped_public_structured_summary);
-    let extra = extractor_name.as_ref().map(|_| {
+    let extra = extractor_name.map(|_| {
         let mut extra = wrapper
             .as_ref()
             .and_then(|value| value.get("extra"))
             .cloned()
             .unwrap_or_else(|| serde_json::json!({}));
-        if let (Some(version), serde_json::Value::Object(map)) =
-            (extractor_version.as_ref(), &mut extra)
-        {
-            map.insert("extractor_version".to_string(), version.clone().into());
+        if let (Some(version), serde_json::Value::Object(map)) = (extractor_version, &mut extra) {
+            map.insert("extractor_version".to_string(), version.into());
         }
         extra
     });
-
-    Ok(ScrapeResult {
-        payload,
-        url,
-        markdown,
-        output,
-        artifact_handle: None,
-        truncated: false,
-        token_estimate: None,
-        next_cursor: None,
-        remaining_tokens_estimate: None,
-        backend: Some(DocumentBackend::LiveScrape),
+    (
         follow_crawl_urls,
         extra,
         structured,
         structured_for_embedding,
-        extractor_name,
-        title,
-    })
+    )
 }
 
 pub fn extract_markdown_links(markdown: &str) -> Vec<serde_json::Value> {

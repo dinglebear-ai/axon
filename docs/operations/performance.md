@@ -4,13 +4,12 @@ created: 2026-02-25
 updated: 2026-08-18
 ---
 
-# Performance Tuning Guide
-Last Modified: 2026-08-18
+# Performance
 
-Version: 1.0.0
-Last Updated: 2026-08-18T13:09:00-04:00
-
-Axon throughput is bounded by source acquisition, document preparation, embedding capacity, Qdrant writes, provider reservations, and the durable job scheduler. Tune one constrained boundary at a time and keep correctness gates enabled.
+Axon throughput is bounded by source acquisition, document preparation,
+embedding capacity, Qdrant writes, provider reservations, and the durable job
+scheduler. Tune one constrained boundary at a time and keep correctness gates
+enabled.
 
 ## Table of Contents
 
