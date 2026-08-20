@@ -207,14 +207,27 @@ Focused proof:
 - consolidated C4 gate status `0`: format check, generated-contract check, layering, `git diff --check`, frozen Depot fixture hashes, and `cargo clippy -p axon-adapters -p axon-services --all-targets -- -D warnings` all passed using the normal kache path;
 - frozen Depot fixture hashes remain candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732` and interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`.
 
-### C5 Depot intake contract inspection - blocked on Depot C2
+### C5 Depot candidate intake checkpoint
 
-- live Depot MCP currently exposes durable ingest jobs and source-specific Skill ingestion, but no `artifact`/`candidate` intake operation;
-- `depot.ingest.start` accepts only `repo`, `well_known`, `ard_catalog`, `marketplace`, or `skills_sh`; `depot.skills.ingest_skills_sh` immediately resolves a skills.sh result into repository ingestion using `repoUrl`, `skillId`, optional `ref`, `subdir`, and namespace;
-- frozen Depot W20 commit `25de725` explicitly records `C2 hosted registry + candidate ledger` as `NOT_STARTED`, with the next action to implement the bounded candidate ledger;
-- `Depot.Artifact` at that commit exposes artifact model operations but no candidate intake operation;
-- therefore Axon deliberately does **not** implement C5 against `ingest.start` or `ingest_skills_sh`: either would turn evidence-only candidate delivery into authoritative repository/Skill ingestion and violate the cross-repo boundary;
-- C5 resumes only after Depot publishes a bounded versioned ArtifactCandidate intake operation/ledger. The frozen v1 candidate payload remains unchanged.
+- Depot W20 PR #37 is merged at `b76807cd59eb4546c00375ba66c2cc9428eb390a`; its C2 hosted registry + bounded candidate ledger is complete and the canonical write-scoped operation is `depot.artifacts.intake_candidate`;
+- JSON transport is `POST /api/operations/depot.artifacts.intake_candidate` with request `{candidate: <dinglebear.artifact-candidate/v1>}` and success `{result:{candidate:<canonical v1>}}`; Depot requires bearer scope `skills:write`;
+- pushed Axon checkpoint `3abf29c3b` implements `DepotArtifactCandidateSink` only in #570-clear `axon-adapters` files; no config/context/runtime production file was touched;
+- the sink advertises `max_batch_size=1` because Depot's canonical operation accepts one candidate, and a shared one-permit semaphore enforces max in-flight delivery = 1 across cloned sinks/source jobs;
+- the bearer is transport-only, redirects are disabled, ambient proxies are disabled, and operator-configured private/Tailscale Depot addresses remain valid; embedded URL credentials/query/fragment and non-HTTP(S) schemes fail closed;
+- successful responses must echo the exact submitted canonical candidate; a mismatched echo is rejected rather than treated as accepted;
+- 401/403/other 4xx become non-retryable rejection receipts; 429 and 5xx/network failures are provider-retryable, Retry-After is capped at 300 seconds, and the sink never performs a hidden local retry;
+- Axon's deterministic batch delivery/idempotency keys remain intact in the unified pipeline while Depot's candidate ledger makes identical candidate-ID/payload re-intake idempotent and rejects same-ID conflicting evidence;
+- the merged Depot candidate/interchange fixtures remain byte-identical to Axon's copies: candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732`, interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`.
+
+Focused/final C5 proof:
+
+- focused Depot sink suite: 10 passed, 0 failed, including exact frozen-fixture POST/echo, auth separation, 401/403/422, 429 Retry-After cap, 503 retry classification, redirect containment, cross-clone serialization, and invalid base URLs;
+- full ArtifactCandidate filter: 16 passed, 0 failed;
+- `cargo fmt --all -- --check`, generated-contracts, layering, `git diff --check`, explicit per-file and changed-file monolith policies, frozen fixture hashes, and `cargo clippy -p axon-adapters --all-targets -- -D warnings`: passed on the normal kache path;
+- adversarial cleanup split HTTP response classification out of `submit_candidate`, eliminating the only new monolith soft warning without changing behavior;
+- pushed C6 baseline CI had one unrelated `axon-services` memory-compaction failure after SQLite reported `database is locked`; local exact reproduction passed 1/1 in 15.76s, while all artifact/C5 gates remained green.
+
+Remaining C5 coordination gap: production config/context/target-runtime injection overlaps #570 and stays deferred until that PR settles. The sink implementation itself is ready.
 
 ### C6 semantic/graph evidence checkpoint
 
@@ -244,9 +257,9 @@ Remaining C6 coordination gap: `RegistrySourceAdapter::artifact_candidates` curr
 
 ## Next
 
-1. coordinate full watch-request limits/metadata persistence and C6 `SourceEnrichment` semantic-neighbor feed with #570 before touching overlapping production code;
-2. track Depot W20 C2 candidate-ledger/intake progress and implement C5 only after its versioned intake operation is frozen;
-3. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;
+1. wait for #570 to settle, then coordinate the remaining watch-request limits/metadata persistence, C6 `SourceEnrichment` semantic-neighbor feed, and C5 Depot sink config/context/runtime injection in one integration pass;
+2. once runtime injection is available, run a deliberately bounded authenticated skills.sh → Axon → Depot seed with intake/license/backpressure gates enabled and prove sink receipts plus no public byte mirroring for unknown rights;
+3. re-run the exact SQLite memory-compaction test if GitHub repeats the unrelated lock failure; do not pull that runtime/database fix into W21 unless it reproduces as a branch regression;
 4. keep draft PR evidence current and preserve the no-second-pipeline boundary.
 
 

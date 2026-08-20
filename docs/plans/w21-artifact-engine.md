@@ -88,13 +88,14 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 ### C5: Depot sink
 
 - [x] inspect current Depot intake/API operations before choosing endpoint shape;
-- [ ] wait for Depot's bounded ArtifactCandidate intake ledger/operation to be implemented and frozen; do not substitute existing authoritative Skill/repository ingest APIs;
-- [ ] implement versioned serialized HTTP sink using Axon's existing HTTP/provider infrastructure once that intake contract exists;
-- [ ] bounded batch size + max in-flight delivery;
-- [ ] idempotency/delivery keys;
-- [ ] auth kept out of candidate envelope;
-- [ ] classify 2xx/4xx/429/5xx with bounded retry/degradation semantics;
-- [ ] cross-repo JSON fixture contract with Depot once intake endpoint is frozen.
+- [x] consume Depot W20's merged bounded ArtifactCandidate ledger/operation at `b76807cd`; do not substitute authoritative Skill/repository ingest APIs;
+- [x] implement the versioned serialized HTTP sink against `POST /api/operations/depot.artifacts.intake_candidate`;
+- [x] bounded batch size + max in-flight delivery: one candidate/call and one shared in-flight permit;
+- [x] preserve Axon's deterministic delivery keys while relying on Depot's identical-candidate-ID/payload idempotency for the single-candidate operation;
+- [x] auth kept out of candidate envelope; Depot bearer requires `skills:write`;
+- [x] classify 2xx/4xx/429/5xx with bounded retry/degradation semantics and no hidden local retry;
+- [x] cross-repo JSON fixture contract remains byte-identical to merged Depot W20;
+- [ ] wire Depot sink configuration/runtime injection after #570 settles because `Config`, `ServiceContext`, and `target_runtime` overlap that lane.
 
 ### C6: semantic/graph enrichment hooks
 
