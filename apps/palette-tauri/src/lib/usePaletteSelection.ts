@@ -26,6 +26,7 @@ interface PaletteSelectionInput {
   history: HistoryItem[];
   historyOpen: boolean;
   modeAction: PaletteAction | null;
+  mobileRuntime?: boolean;
   pendingConfirmation: PendingActionConfirmation | null;
   query: string;
   run: RunState;
@@ -42,6 +43,7 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
     history,
     historyOpen,
     modeAction,
+    mobileRuntime = false,
     pendingConfirmation,
     query,
     run,
@@ -62,6 +64,7 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
   const filtered = useMemo(() => {
     if (unavailableInvocation) return [];
     if (invoked) return [invoked];
+    if (mobileRuntime && parsed.search.trim().length === 0) return sortActionsForDisplay(actions);
     if (looksLikeUrl(parsed.search)) return sortActionsForDisplay(actions).slice(0, 12);
     const matches = actions.filter((action) => actionMatches(action, parsed.search));
     if (parsed.search.trim().length > 0 && matches.length === 0) {
@@ -69,7 +72,7 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
       return ask ? [ask] : [];
     }
     return sortActionsByRelevance(matches, parsed.search).slice(0, 12);
-  }, [actions, invoked, parsed.search, unavailableInvocation]);
+  }, [actions, invoked, mobileRuntime, parsed.search, unavailableInvocation]);
   const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
   const previousSelectionKey = useRef(selectionKey);
   let selectedIndex = selected;
@@ -102,7 +105,12 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
       ? parsed.search
       : argumentFor(active, slashInvokedAction ? null : modeAction, parsed, query)
     : "";
-  const validation = active ? validationMessage(active, activeArgument) : "No matching action";
+  const validation =
+    mobileRuntime && !hasQuery && !modeAction
+      ? ""
+      : active
+        ? validationMessage(active, activeArgument)
+        : "No matching action";
   const confirmationArmed =
     active && !validation
       ? actionConfirmationArmed(pendingConfirmation, active, activeArgument)
@@ -118,6 +126,7 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
   const enteringArgument =
     Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen && !browserOpen;
   const showContent =
+    mobileRuntime ||
     settingsOpen ||
     historyOpen ||
     browserOpen ||

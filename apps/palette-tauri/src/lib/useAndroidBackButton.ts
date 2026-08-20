@@ -1,37 +1,36 @@
-import { onBackButtonPress } from "@tauri-apps/api/app";
 import { useEffect, useRef } from "react";
 
+declare global {
+  interface Window {
+    __AXON_ANDROID_BACK__?: () => boolean;
+  }
+}
+
 /**
- * Route Android's native Back button into Palette navigation.
+ * Expose Palette's Back-navigation decision to the app-owned Android Activity.
  *
- * Registering a Tauri back-button listener suppresses Android's default
- * Activity finish, so the caller is responsible for closing the root view.
+ * Tauri's Android app plugin owns the platform Back dispatcher. When no
+ * `back-button` plugin listener is registered it delegates to
+ * `Activity.onBackPressed()`, which our generated MainActivity overrides and
+ * forwards into this synchronous WebView callback.
+ *
+ * Return `true` when Palette consumed Back by unwinding a nested view. Return
+ * `false` at the root so MainActivity can finish the Activity natively.
  */
-export function useAndroidBackButton(enabled: boolean, onBack: () => void) {
+export function useAndroidBackButton(enabled: boolean, onBack: () => boolean) {
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
 
   useEffect(() => {
     if (!enabled) return;
 
-    let disposed = false;
-    let listener: Awaited<ReturnType<typeof onBackButtonPress>> | null = null;
-
-    void onBackButtonPress(() => onBackRef.current())
-      .then((registered) => {
-        if (disposed) {
-          void registered.unregister();
-        } else {
-          listener = registered;
-        }
-      })
-      .catch((error) => {
-        console.warn("failed to register Android back-button handler", error);
-      });
+    const handler = () => onBackRef.current();
+    window.__AXON_ANDROID_BACK__ = handler;
 
     return () => {
-      disposed = true;
-      if (listener) void listener.unregister();
+      if (window.__AXON_ANDROID_BACK__ === handler) {
+        delete window.__AXON_ANDROID_BACK__;
+      }
     };
   }, [enabled]);
 }

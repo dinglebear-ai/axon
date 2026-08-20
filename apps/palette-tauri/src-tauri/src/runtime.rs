@@ -91,7 +91,6 @@ pub(super) fn try_run() -> Result<(), Box<dyn std::error::Error>> {
             save_palette_settings,
             hide_palette,
             show_palette,
-            exit_palette,
             resize_palette,
             toggle_maximize,
             set_blur_dismiss,

@@ -78,8 +78,16 @@ describe("SettingsPanel", () => {
     renderPanel({ mobile: true });
     expect(screen.queryByText("Global shortcut")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Hide on blur/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument();
     expect(screen.getByText("Max results")).toBeInTheDocument();
     expect(screen.getByText("Open results inline")).toBeInTheDocument();
+  });
+
+  it("lets mobile users leave settings from the top app bar", async () => {
+    const user = userEvent.setup();
+    const { onClose } = renderPanel({ mobile: true });
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("calls onChange when the server URL is edited", async () => {

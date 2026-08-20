@@ -1,6 +1,7 @@
 import { ChevronRight, Workflow } from "lucide-react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
+import { ActionIcon } from "@/components/palette/ActionIcon";
 import { ActionList } from "@/components/palette/ActionList";
 import { AuthNotice } from "@/components/palette/AuthNotice";
 import { BrowserView } from "@/components/palette/BrowserView";
@@ -11,13 +12,14 @@ import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { PaletteFooter } from "@/components/palette/PaletteFooter";
 import { SettingsPanel } from "@/components/palette/SettingsPanel";
 import { Button } from "@/components/ui/aurora/button";
+import { actionDisplayMeta } from "@/lib/actionMeta";
 import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import type { Client, PaletteConfig } from "@/lib/axonClient";
 import { MIN_PROGRESS_PCT } from "@/lib/format";
 import { runStateFromHistory } from "@/lib/historyRun";
 import { invoke } from "@/lib/invoke";
 import { jobFamilyVerb } from "@/lib/jobProgress";
-import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
+import { argumentPlaceholder, looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
 import type { ViewIntent } from "@/lib/paletteViewState";
 import type { ChatSuggestion, RunState } from "@/lib/runState";
 import type { SourceSortMode } from "@/lib/sourcesModel";
@@ -25,6 +27,7 @@ import type { LiveRefreshState } from "@/lib/useLiveRefresh";
 
 interface PaletteShellProps {
   active?: PaletteAction;
+  actions: PaletteAction[];
   activeDescendantId?: string;
   browserFocusRef: RefObject<HTMLDivElement | null>;
   browserInitialTarget: string | null;
@@ -170,9 +173,10 @@ export function PaletteShell(props: PaletteShellProps) {
       onKeyDownCapture={onShellKeyDownCapture}
     >
       <AuthNotice />
-      {!props.hideCommandBar && (
+      {!props.hideCommandBar && !(props.mobileRuntime && props.settingsOpen) && (
         <PaletteCommandBar
           active={props.active}
+          actions={props.actions}
           activeDescendantId={props.activeDescendantId}
           config={props.config}
           endpointLabel={props.endpointLabel}
@@ -180,6 +184,7 @@ export function PaletteShell(props: PaletteShellProps) {
           hasQuery={props.hasQuery}
           listboxOpen={props.listboxOpen}
           modeAction={props.modeAction}
+          mobile={props.mobileRuntime}
           query={props.query}
           running={props.commandRunning}
           settingsOpen={props.settingsOpen}
@@ -287,6 +292,7 @@ function MainContent(props: PaletteShellProps) {
       {props.showActionPanel && (
         <ActionList
           filtered={props.filtered}
+          mobile={props.mobileRuntime}
           selected={props.selected}
           setSelected={props.setSelected}
           parsed={props.parsed}
@@ -295,6 +301,11 @@ function MainContent(props: PaletteShellProps) {
           onHelp={props.showHelpFor}
         />
       )}
+
+      {props.mobileRuntime &&
+        props.modeAction &&
+        !props.showActionPanel &&
+        !props.showResultsLayout && <MobileActionPrompt action={props.modeAction} />}
 
       {props.historyOpen && (
         <div ref={props.historyFocusRef} style={{ display: "contents" }}>
@@ -322,6 +333,28 @@ function MainContent(props: PaletteShellProps) {
       <JobRegion {...props} />
       <OutputRegion {...props} />
     </main>
+  );
+}
+
+function MobileActionPrompt({ action }: { action: PaletteAction }) {
+  const meta = actionDisplayMeta(action);
+  return (
+    <section className="mobile-action-context" aria-label={`${action.label} input`}>
+      <div className="mobile-action-context-hero">
+        <ActionIcon action={action} selected={false} />
+        <span>{meta.category}</span>
+      </div>
+      <h2>{action.label}</h2>
+      <p>{action.description}</p>
+      <div className="mobile-action-context-field">
+        <span>What to enter</span>
+        <strong>{argumentPlaceholder(action)}</strong>
+      </div>
+      <div className="mobile-action-context-example">
+        <span>Example</span>
+        <code>{action.example}</code>
+      </div>
+    </section>
   );
 }
 
@@ -394,6 +427,9 @@ function FooterRegion(props: PaletteShellProps) {
       }}
       onSettings={() => props.dispatchView({ type: "toggleSettings" })}
       onHide={() => void invoke("hide_palette")}
+      onHome={props.onReset}
+      mobile={props.mobileRuntime}
+      recentActive={props.historyOpen}
       showHide={!props.mobileRuntime}
     />
   );

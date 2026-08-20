@@ -51,10 +51,14 @@ const shortcutOptions = ["Ctrl+Shift+Space", "Alt+Space", "Ctrl+Space", "Cmd+Shi
 
 const runtimePlatform = isTauriRuntime ? platform() : null;
 const androidRuntime = runtimePlatform === "android";
-const mobileRuntime = androidRuntime || runtimePlatform === "ios";
+const mobilePreview =
+  !isTauriRuntime &&
+  (import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV === true &&
+  new URLSearchParams(window.location.search).get("mobile-preview") === "1";
+const mobileRuntime = androidRuntime || runtimePlatform === "ios" || mobilePreview;
 const runtimeActions = mobileRuntime ? MOBILE_ACTIONS : ACTIONS;
 
-document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime);
+document.documentElement.classList.toggle("tauri-runtime", isTauriRuntime || mobilePreview);
 document.documentElement.classList.toggle("tauri-mobile-runtime", mobileRuntime);
 
 export default function App() {
@@ -107,12 +111,14 @@ export default function App() {
   };
   usePaletteHotkeys(keyStateRef, paletteBackActions);
   useAndroidBackButton(androidRuntime, () => {
+    let handled = true;
     handlePaletteBack(keyStateRef.current, {
       ...paletteBackActions,
       closeRoot: () => {
-        void invoke("exit_palette");
+        handled = false;
       },
     });
+    return handled;
   });
 
   const {
@@ -142,6 +148,7 @@ export default function App() {
     history,
     historyOpen,
     modeAction,
+    mobileRuntime,
     pendingConfirmation,
     query,
     run,
@@ -416,6 +423,7 @@ export default function App() {
     <PaletteShell
       {...{
         active,
+        actions: runtimeActions,
         activeDescendantId,
         browserFocusRef,
         browserInitialTarget: browserInitialTargetValue,

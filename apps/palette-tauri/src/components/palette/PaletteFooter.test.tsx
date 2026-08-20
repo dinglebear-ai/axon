@@ -16,10 +16,15 @@ describe("PaletteFooter", () => {
         onRecent={vi.fn()}
         onSettings={vi.fn()}
         onHide={vi.fn()}
+        onHome={vi.fn()}
+        mobile
         showHide={false}
       />,
     );
 
+    expect(screen.getByRole("navigation", { name: "Palette navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Home" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recent" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Hide palette" })).not.toBeInTheDocument();
   });

@@ -1,4 +1,4 @@
-import { Activity } from "lucide-react";
+import { Activity, ArrowLeft } from "lucide-react";
 import { useState } from "react";
 
 import { SettingsAuthBlock } from "@/components/palette/SettingsAuthBlock";
@@ -121,7 +121,21 @@ export function SettingsPanel({
   return (
     <section className="settings-panel settings-panel-mock">
       <header className="settings-topline">
-        <span className="settings-eyebrow">Settings</span>
+        <div className="settings-heading">
+          {mobile && (
+            <Button
+              variant="plain"
+              size="unstyled"
+              className="settings-mobile-back"
+              type="button"
+              onClick={onClose}
+              aria-label="Back"
+            >
+              <ArrowLeft size={20} strokeWidth={1.9} />
+            </Button>
+          )}
+          <span className="settings-eyebrow">Settings</span>
+        </div>
         <span className="settings-health" data-status={connectionTest.status}>
           <span aria-hidden="true" />
           {connectionState.label.toLowerCase()}

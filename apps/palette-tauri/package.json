@@ -48,7 +48,8 @@
   "scripts": {
     "android:build": "tauri android build --apk",
     "android:dev": "tauri android dev",
-    "android:init": "tauri android init",
+    "android:init": "tauri android init && pnpm android:prepare",
+    "android:prepare": "node scripts/prepare-android.mjs",
     "build": "tauri build && node scripts/copy-artifacts.mjs",
     "check:api": "cd ../.. && cargo xtask check-openapi-drift",
     "coverage": "vitest run --coverage",

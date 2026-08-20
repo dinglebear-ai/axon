@@ -15,6 +15,7 @@ function selection(query: string) {
       history: [],
       historyOpen: false,
       modeAction: null,
+      mobileRuntime: true,
       pendingConfirmation: null,
       query,
       run: { kind: "idle" },
@@ -26,6 +27,16 @@ function selection(query: string) {
 }
 
 describe("usePaletteSelection mobile catalog", () => {
+  it("keeps the mobile launcher expanded without requiring a query", () => {
+    const rendered = selection("");
+    expect(rendered.result.current.compact).toBe(false);
+    expect(rendered.result.current.showContent).toBe(true);
+    expect(rendered.result.current.showActionPanel).toBe(true);
+    expect(rendered.result.current.listboxOpen).toBe(true);
+    expect(rendered.result.current.filtered).toHaveLength(MOBILE_ACTIONS.length);
+    expect(rendered.result.current.validation).toBe("");
+  });
+
   it("does not surface desktop-only actions in search results", () => {
     const rendered = selection("terminal");
     expect(

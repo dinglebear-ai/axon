@@ -6813,3 +6813,730 @@ textarea {
 .terminal-input:disabled {
   opacity: 0.6;
 }
+
+/* Mobile is a full application surface, not a stretched desktop launcher. */
+.tauri-mobile-runtime body {
+  min-width: 0;
+  overscroll-behavior: none;
+}
+
+.tauri-mobile-runtime #app {
+  place-items: stretch;
+  padding: 0;
+}
+
+.tauri-mobile-runtime .palette-shell,
+.tauri-mobile-runtime .palette-shell-results,
+.tauri-mobile-runtime .palette-shell-browse,
+.tauri-mobile-runtime .palette-shell-compact {
+  --ctl: 44px;
+  --r-ctl: 13px;
+  background: var(--aurora-page-bg);
+}
+
+/* Two-tier mobile header: app identity/actions above a large search field. */
+.tauri-mobile-runtime .command-bar {
+  z-index: 20;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 48px;
+  grid-template-rows: 44px 54px;
+  gap: 8px;
+  height: auto;
+  min-height: calc(114px + env(safe-area-inset-top));
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    10px
+    max(12px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--aurora-nav-bg) 92%, var(--aurora-page-bg));
+  border-bottom: 1px solid color-mix(in srgb, var(--aurora-border-default) 78%, transparent);
+}
+
+.tauri-mobile-runtime .command-back {
+  grid-column: 1;
+  grid-row: 1;
+  width: 44px;
+  height: 44px;
+}
+
+.tauri-mobile-runtime .axon-brand {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+  justify-self: start;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+}
+
+.tauri-mobile-runtime .command-bar:not(:has(.command-back)) .axon-brand {
+  grid-column: 1 / 3;
+}
+
+.tauri-mobile-runtime .axon-word {
+  display: inline;
+  font-size: 16px;
+}
+
+.tauri-mobile-runtime .axon-status-dot {
+  display: inline-flex;
+}
+
+.tauri-mobile-runtime .axon-divider {
+  display: none;
+}
+
+.tauri-mobile-runtime .command-menu-wrap {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+}
+
+.tauri-mobile-runtime .command-settings {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+}
+
+.tauri-mobile-runtime .command-input-wrap {
+  position: static;
+  grid-column: 1 / 3;
+  grid-row: 2;
+  height: 52px;
+  padding: 0 13px;
+  gap: 10px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 92%, var(--aurora-page-bg));
+  border-color: color-mix(in srgb, var(--aurora-border-strong) 64%, transparent);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--aurora-text-primary) 4%, transparent);
+}
+
+.tauri-mobile-runtime .command-input-wrap:focus-within {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 7%, var(--aurora-control-surface));
+}
+
+.tauri-mobile-runtime .command-input {
+  min-height: 44px;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tauri-mobile-runtime .command-submit {
+  grid-column: 3;
+  grid-row: 2;
+  width: 48px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.tauri-mobile-runtime .command-submit svg {
+  width: 19px;
+  height: 19px;
+}
+
+.tauri-mobile-runtime .command-action-trigger {
+  max-width: min(42vw, 156px);
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 9px;
+}
+
+.tauri-mobile-runtime .command-action-trigger span {
+  font-size: 12px;
+}
+
+/* Action switching and Ask history behave like wide touch disclosures. */
+.tauri-mobile-runtime .command-action-menu,
+.tauri-mobile-runtime .ask-session-menu {
+  top: calc(100% - 1px);
+  left: 0;
+  width: 100%;
+  max-height: min(62dvh, 520px);
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0 0 18px 18px;
+}
+
+.tauri-mobile-runtime .command-action-options,
+.tauri-mobile-runtime .ask-session-options {
+  padding: 10px 12px 16px;
+  gap: 4px;
+}
+
+.tauri-mobile-runtime .command-action-group + .command-action-group {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.tauri-mobile-runtime .command-action-group-heading {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+}
+
+.tauri-mobile-runtime .command-action-option,
+.tauri-mobile-runtime .ask-session-option {
+  min-height: 58px;
+  padding: 7px 10px;
+  border-radius: 12px;
+}
+
+.tauri-mobile-runtime .command-action-option {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.tauri-mobile-runtime .command-action-option kbd {
+  display: none;
+}
+
+.tauri-mobile-runtime .command-action-option strong,
+.tauri-mobile-runtime .ask-session-option strong {
+  font-size: 14px;
+}
+
+.tauri-mobile-runtime .command-action-option small,
+.tauri-mobile-runtime .ask-session-option small {
+  font-size: 11.5px;
+}
+
+/* The overflow menu is a bottom sheet on phones. */
+.tauri-mobile-runtime .command-menu {
+  position: fixed;
+  top: auto;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  min-width: 0;
+  padding: 8px;
+  border-radius: 18px;
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+.tauri-mobile-runtime .command-menu-item {
+  min-height: 58px;
+  padding: 7px 10px;
+  border-radius: 12px;
+}
+
+.tauri-mobile-runtime .command-menu-item strong {
+  font-size: 14px;
+}
+
+.tauri-mobile-runtime .command-menu-item small {
+  font-size: 11.5px;
+}
+
+/* Home is always useful on a phone, so the action catalog fills the body. */
+.tauri-mobile-runtime .palette-suggestions {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  background: var(--aurora-page-bg);
+}
+
+.tauri-mobile-runtime .palette-suggestions .action-panel {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: var(--aurora-page-bg);
+  border: 0;
+}
+
+.tauri-mobile-runtime .panel-heading {
+  min-height: 46px;
+  padding: 10px 16px 6px;
+  color: var(--aurora-text-primary);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.mobile-action-count {
+  margin-left: auto;
+  color: var(--aurora-text-muted);
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.tauri-mobile-runtime .action-scroll,
+.tauri-mobile-runtime .palette-suggestions .action-scroll {
+  height: 100%;
+  max-height: none;
+  flex: 1;
+  border-radius: 0;
+}
+
+.tauri-mobile-runtime .action-scroll-viewport,
+.tauri-mobile-runtime .palette-suggestions .action-scroll-viewport {
+  height: 100%;
+  max-height: 100%;
+  overscroll-behavior-y: contain;
+}
+
+.tauri-mobile-runtime .action-list {
+  padding: 0 10px 24px;
+}
+
+.tauri-mobile-runtime .action-section-heading {
+  height: auto;
+  min-height: 30px;
+  padding: 8px 8px 5px;
+  font-size: 10.5px;
+}
+
+.tauri-mobile-runtime .action-section-heading span + span {
+  display: none;
+}
+
+.tauri-mobile-runtime .action-group-item + .action-group-item .action-section-heading {
+  margin-top: 18px;
+}
+
+.tauri-mobile-runtime .action-row {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 72px;
+  margin: 2px 0;
+  border-radius: 14px;
+}
+
+.tauri-mobile-runtime .action-row-main {
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 70px;
+  padding: 9px 10px;
+  border-radius: 14px;
+}
+
+.tauri-mobile-runtime .action-row-selected {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 5%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-border-default) 72%, transparent);
+  box-shadow: none;
+}
+
+.tauri-mobile-runtime .action-row-selected::before {
+  display: none;
+}
+
+.tauri-mobile-runtime .action-row:has(.action-row-main:active) {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, var(--aurora-panel-strong));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 34%, var(--aurora-border-default));
+}
+
+.tauri-mobile-runtime .action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.tauri-mobile-runtime .action-label {
+  font-size: 15px;
+}
+
+.tauri-mobile-runtime .action-method,
+.tauri-mobile-runtime .action-endpoint,
+.tauri-mobile-runtime .action-meta {
+  display: none;
+}
+
+.tauri-mobile-runtime .action-description {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tauri-mobile-runtime .palette-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tauri-mobile-runtime .output-panel {
+  padding: 12px 12px 16px;
+}
+
+.tauri-mobile-runtime .output-tools button,
+.tauri-mobile-runtime .output-tool-menu summary {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+
+.tauri-mobile-runtime .mobile-action-context {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 30px 20px 24px;
+  overflow-y: auto;
+}
+
+.mobile-action-context-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--aurora-text-muted);
+  font-size: 10.5px;
+  font-weight: 760;
+  letter-spacing: var(--aurora-letter-eyebrow);
+  text-transform: uppercase;
+}
+
+.tauri-mobile-runtime .mobile-action-context-hero .action-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+}
+
+.mobile-action-context h2 {
+  margin: 20px 0 7px;
+  color: var(--aurora-text-primary);
+  font-family: var(--aurora-font-display);
+  font-size: 25px;
+  font-weight: 760;
+  letter-spacing: -0.035em;
+}
+
+.mobile-action-context > p {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--aurora-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.mobile-action-context-field,
+.mobile-action-context-example {
+  display: flex;
+  margin-top: 20px;
+  padding: 14px 15px;
+  flex-direction: column;
+  gap: 5px;
+  background: color-mix(in srgb, var(--aurora-control-surface) 82%, transparent);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 14px;
+}
+
+.mobile-action-context-field > span,
+.mobile-action-context-example > span {
+  color: var(--aurora-text-muted);
+  font-size: 10px;
+  font-weight: 760;
+  letter-spacing: var(--aurora-letter-eyebrow);
+  text-transform: uppercase;
+}
+
+.mobile-action-context-field strong {
+  color: var(--aurora-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.mobile-action-context-example code {
+  overflow-wrap: anywhere;
+  color: var(--aurora-accent-strong);
+  font-family: var(--aurora-font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Minimized jobs become one compact, tappable mobile status strip. */
+.tauri-mobile-runtime .idle-tray {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 9px;
+  height: auto;
+  min-height: 56px;
+  padding: 8px 14px;
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.tauri-mobile-runtime .idle-tray-bar {
+  display: none;
+}
+
+.tauri-mobile-runtime .idle-tray > span:nth-of-type(2) {
+  max-width: none;
+  font-size: 13px;
+}
+
+/* Bottom navigation replaces desktop keyboard hints. */
+.tauri-mobile-runtime .palette-footer-mobile {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  height: auto;
+  min-height: calc(64px + env(safe-area-inset-bottom));
+  padding:
+    6px
+    max(12px, env(safe-area-inset-right))
+    max(6px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--aurora-nav-bg) 94%, var(--aurora-page-bg));
+  border-top: 1px solid color-mix(in srgb, var(--aurora-border-default) 78%, transparent);
+}
+
+.mobile-nav-item {
+  all: unset;
+  display: flex;
+  min-width: 0;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--aurora-text-muted);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.mobile-nav-item span {
+  font-size: 10.5px;
+  font-weight: 680;
+}
+
+.mobile-nav-item:active,
+.mobile-nav-item-active {
+  color: var(--aurora-accent-strong);
+  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, transparent);
+}
+
+/* Recent is a touch list on phones, not the dense desktop activity table. */
+.tauri-mobile-runtime .history-panel {
+  padding: 0;
+  background: var(--aurora-page-bg);
+}
+
+.tauri-mobile-runtime .history-head {
+  min-height: 52px;
+  padding: 8px 14px 4px 16px;
+  color: var(--aurora-text-primary);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.tauri-mobile-runtime .history-head button {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: var(--aurora-text-muted);
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 12px;
+  font-family: var(--aurora-font-sans);
+  font-size: 11px;
+}
+
+.tauri-mobile-runtime .history-list {
+  gap: 4px;
+  padding: 4px 10px 22px;
+}
+
+.tauri-mobile-runtime .history-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 72px;
+  padding: 9px 10px;
+  border-radius: 14px;
+}
+
+.tauri-mobile-runtime .history-row:active {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 9%, transparent);
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 28%, transparent);
+}
+
+.tauri-mobile-runtime .history-main span:first-child {
+  font-size: 13.5px;
+}
+
+.tauri-mobile-runtime .history-main span:last-child {
+  font-size: 11.5px;
+}
+
+.tauri-mobile-runtime .history-duration,
+.tauri-mobile-runtime .history-live {
+  display: none;
+}
+
+.tauri-mobile-runtime .history-status {
+  min-width: 36px;
+  justify-content: flex-end;
+  font-size: 11px;
+}
+
+/* Settings owns the full phone surface and keeps primary actions thumb-sized. */
+.tauri-mobile-runtime .settings-panel-mock {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.tauri-mobile-runtime .settings-topline {
+  min-height: calc(60px + env(safe-area-inset-top));
+  padding:
+    max(8px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right))
+    8px
+    max(12px, env(safe-area-inset-left));
+}
+
+.settings-heading {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-mobile-back {
+  all: unset;
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  color: var(--aurora-text-muted);
+  background: var(--aurora-control-surface);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 13px;
+  cursor: pointer;
+}
+
+.tauri-mobile-runtime .settings-eyebrow {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+
+.tauri-mobile-runtime .settings-scroll {
+  padding: 14px 16px 24px;
+}
+
+.tauri-mobile-runtime .settings-connection-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+
+.tauri-mobile-runtime .settings-toggle-row {
+  min-height: 58px;
+}
+
+.tauri-mobile-runtime .settings-input,
+.tauri-mobile-runtime .settings-secret {
+  height: 44px;
+}
+
+.tauri-mobile-runtime .settings-input,
+.tauri-mobile-runtime .settings-secret input {
+  font-size: 16px;
+}
+
+.tauri-mobile-runtime .settings-secret input {
+  height: 44px;
+}
+
+.tauri-mobile-runtime .settings-secret {
+  padding-right: 0;
+}
+
+.tauri-mobile-runtime .settings-secret button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 11px;
+}
+
+.tauri-mobile-runtime .settings-stack > button {
+  min-height: 44px;
+}
+
+/* Preserve the compact switch visual while giving the button a real thumb target. */
+.tauri-mobile-runtime .settings-toggle {
+  width: 48px;
+  height: 44px;
+  flex: 0 0 48px;
+  background: transparent;
+  border: 0;
+}
+
+.tauri-mobile-runtime .settings-toggle::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 7px;
+  width: 34px;
+  height: 20px;
+  background: color-mix(in srgb, var(--aurora-panel-strong) 82%, black);
+  border: 1px solid var(--aurora-border-default);
+  border-radius: 999px;
+}
+
+.tauri-mobile-runtime .settings-toggle span {
+  top: 16px;
+  left: 11px;
+  z-index: 1;
+}
+
+.tauri-mobile-runtime .settings-toggle-on {
+  background: transparent;
+  border-color: transparent;
+}
+
+.tauri-mobile-runtime .settings-toggle-on::before {
+  background: color-mix(in srgb, var(--aurora-accent-primary) 16%, var(--aurora-control-surface));
+  border-color: color-mix(in srgb, var(--aurora-accent-primary) 42%, transparent);
+}
+
+.tauri-mobile-runtime .settings-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas:
+    "meta meta"
+    "test actions"
+    "error error";
+  column-gap: 8px;
+  row-gap: 8px;
+  min-height: 0;
+  flex: 0 0 auto;
+  padding:
+    8px
+    max(16px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom))
+    max(16px, env(safe-area-inset-left));
+}
+
+.tauri-mobile-runtime .settings-footer > button:first-child {
+  width: 100%;
+  min-height: 44px;
+}
+
+.tauri-mobile-runtime .settings-footer-meta,
+.tauri-mobile-runtime .settings-connection-result,
+.tauri-mobile-runtime .settings-error {
+  width: 100%;
+  max-width: none;
+}
+
+.tauri-mobile-runtime .settings-footer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+}
+
+.tauri-mobile-runtime .settings-footer-actions button {
+  min-height: 44px;
+}
