@@ -192,9 +192,24 @@ Focused C3 proof after adversarial hardening:
 
 C3 checkpoints are pushed to draft PR #569: core structured discovery `95122ed47`; bounded audit evidence and trust-boundary hardening `e44493acb`.
 
+### C4 changed-only refresh/watch proof - additive checkpoint
+
+- C4 changes tests only in `crates/axon-adapters/src/registry_sources/skills_sh_tests.rs` and `crates/axon-services/src/watch_tests.rs`; both files are clear of PR #570's current diff, and no W21 production file changed for this checkpoint.
+- the skills.sh adapter proves the existing `SourceManifestDiff` boundary fetches and normalizes only `added`/`modified` rows; `unchanged` rows produce no acquisition/candidate input, and `removed` rows remain reconciliation evidence instead of becoming authoritative delete commands;
+- the existing added-path vertical test plus the new modified/unchanged/removal tests cover the changed-only candidate matrix without a second ledger/watch/crawl path;
+- watch execution proves persisted `source`, `options`, `scope`, `embed`, and `collection` are replayed while execution-time `refresh`, `wait`, and `reason` are the tested overrides;
+- `WatchRequest` does not currently persist the full `SourceRequest` limits/metadata envelope, so W21 does not claim exact full-request replay. That remaining contract gap is intentionally left for coordination after #570 settles because `watch.rs` overlaps that lane.
+
+Focused proof:
+
+- `axon-adapters` skills.sh filter: 26 passed, 0 failed, including both new incremental changed-only tests;
+- `axon-services` watch replay filter: 1 passed, 0 failed;
+- consolidated C4 gate status `0`: format check, generated-contract check, layering, `git diff --check`, frozen Depot fixture hashes, and `cargo clippy -p axon-adapters -p axon-services --all-targets -- -D warnings` all passed using the normal kache path;
+- frozen Depot fixture hashes remain candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732` and interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`.
+
 ## Next
 
-1. prove incremental refresh/watch via the existing SourceManifest/SourceManifestDiff/SourceGeneration ledger lifecycle;
+1. coordinate full watch-request limits/metadata persistence with #570 before touching overlapping watch production code;
 2. inspect Depot's current intake API and add the versioned sink without changing frozen v1 candidate fields;
 3. add semantic/graph evidence hooks;
 4. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;

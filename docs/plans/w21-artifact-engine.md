@@ -77,12 +77,13 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 
 ### C4: incremental refresh/watch
 
-- [ ] use existing SourceManifest/SourceManifestDiff/SourceGeneration lifecycle;
-- [ ] unchanged entries avoid candidate resubmission;
-- [ ] added/modified entries generate candidates;
-- [ ] removed entries produce reconciliation evidence rather than authoritative deletion;
-- [ ] existing watch scheduler can rerun the exact SourceRequest;
-- [ ] differential refresh test proves changed-only work.
+- [x] use existing SourceManifest/SourceManifestDiff/SourceGeneration lifecycle;
+- [x] unchanged entries avoid candidate resubmission;
+- [x] added/modified entries generate candidates;
+- [x] removed entries produce reconciliation evidence rather than authoritative deletion;
+- [x] existing watch execution reconstructs the persisted source/options/scope/embed/collection selection and applies only execution-time refresh/wait/reason overrides;
+- [ ] persist/replay the remaining full SourceRequest fields, notably limits/metadata, after #570 settles rather than duplicating or conflicting with its watch/source hardening;
+- [x] differential refresh test proves changed-only work.
 
 ### C5: Depot sink
 
