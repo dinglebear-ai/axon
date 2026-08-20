@@ -201,40 +201,9 @@ pub async fn mark_unchanged_items_committed_rest(
         }
 
         attempted = attempted.saturating_add(carried.len() as u64);
-        if !carried.is_empty() {
-            let bodies = carried_upsert_chunks(carried, store.point_buffer())
-                .map(|points| serde_json::json!({ "points": points }))
-                .collect::<Vec<_>>();
-            requests = requests.saturating_add(bodies.len() as u64);
-            let write_slots = store.write_slots();
-            let provider_id = store.provider_id().0.clone();
-            stream::iter(bodies)
-                .map(|body| {
-                    let write_slots = Arc::clone(&write_slots);
-                    let provider_id = provider_id.clone();
-                    let upsert_url = &upsert_url;
-                    async move {
-                        let _permit = write_slots.acquire_owned().await.map_err(|_| {
-                            ApiError::new(
-                                "vector.qdrant.write_admission_closed",
-                                stage,
-                                "Qdrant write admission gate is closed",
-                            )
-                            .with_provider_id(provider_id)
-                        })?;
-                        http.put_json(
-                            stage,
-                            upsert_url,
-                            &body,
-                            "qdrant_mark_unchanged_items_committed",
-                        )
-                        .await
-                    }
-                })
-                .buffer_unordered(store.write_parallelism())
-                .try_collect::<Vec<_>>()
-                .await?;
-        }
+        let upsert_requests =
+            upsert_carried_points(store, http, &upsert_url, carried, stage).await?;
+        requests = requests.saturating_add(upsert_requests);
 
         match next_page_offset {
             Some(next) if !next.is_null() => offset = Some(next),
@@ -250,6 +219,51 @@ pub async fn mark_unchanged_items_committed_rest(
         payload_indexes_created: Vec::new(),
         usage: request_usage(requests),
     })
+}
+
+async fn upsert_carried_points(
+    store: &QdrantVectorStore,
+    http: &QdrantHttp,
+    upsert_url: &str,
+    carried: Vec<serde_json::Value>,
+    stage: ErrorStage,
+) -> Result<u64> {
+    if carried.is_empty() {
+        return Ok(0);
+    }
+
+    let bodies = carried_upsert_chunks(carried, store.point_buffer())
+        .map(|points| serde_json::json!({ "points": points }))
+        .collect::<Vec<_>>();
+    let requests = bodies.len() as u64;
+    let write_slots = store.write_slots();
+    let provider_id = store.provider_id().0.clone();
+    stream::iter(bodies)
+        .map(|body| {
+            let write_slots = Arc::clone(&write_slots);
+            let provider_id = provider_id.clone();
+            async move {
+                let _permit = write_slots.acquire_owned().await.map_err(|_| {
+                    ApiError::new(
+                        "vector.qdrant.write_admission_closed",
+                        stage,
+                        "Qdrant write admission gate is closed",
+                    )
+                    .with_provider_id(provider_id)
+                })?;
+                http.put_json(
+                    stage,
+                    upsert_url,
+                    &body,
+                    "qdrant_mark_unchanged_items_committed",
+                )
+                .await
+            }
+        })
+        .buffer_unordered(store.write_parallelism())
+        .try_collect::<Vec<_>>()
+        .await?;
+    Ok(requests)
 }
 
 fn empty_commit(collection: String) -> VectorStoreWriteResult {
