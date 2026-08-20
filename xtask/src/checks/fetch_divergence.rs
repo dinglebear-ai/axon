@@ -86,6 +86,19 @@ const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
          than arbitrary web pages, so a bot wall is not a failure mode here.",
     ),
     (
+        "crates/axon-adapters/src/registry_sources/skills_sh/fetch.rs",
+        "Authenticated skills.sh structured JSON API client on a fixed provider \
+         origin. Requires a short-lived Vercel OIDC bearer token plus provider- \
+         specific 429/auth/response-bound handling; browser-style web acquisition \
+         and impersonation are deliberately not appropriate for this surface.",
+    ),
+    (
+        "crates/axon-adapters/src/registry_sources/skills_sh/audit.rs",
+        "Authenticated skills.sh audit-metadata JSON API on the same fixed \
+         provider origin. Requires the Vercel OIDC bearer token and bounded, \
+         provider-specific status handling rather than arbitrary page fetching.",
+    ),
+    (
         "crates/axon-adapters/src/feed/acquire.rs",
         "RSS/Atom fetch. NOT a settled exception: it hits arbitrary \
          user-supplied hosts with the bot-identifying UA \"axon-feed\" and has \
