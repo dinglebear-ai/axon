@@ -6,6 +6,9 @@ use uuid::Uuid;
 #[derive(Clone, Copy)]
 enum SinkMode {
     Accepted,
+    Disabled,
+    Partial,
+    Rejected,
     Failed,
 }
 
@@ -36,6 +39,13 @@ impl RecordingSink {
     fn failed() -> Self {
         Self {
             mode: SinkMode::Failed,
+            ..Self::accepted(64)
+        }
+    }
+
+    fn with_mode(mode: SinkMode) -> Self {
+        Self {
+            mode,
             ..Self::accepted(64)
         }
     }
@@ -80,6 +90,10 @@ impl ArtifactCandidateSink for RecordingSink {
         batch: ArtifactCandidateBatch,
     ) -> Result<ArtifactCandidateSinkResult, ApiError> {
         if matches!(self.mode, SinkMode::Failed) {
+            self.batches
+                .lock()
+                .expect("batch mutex poisoned")
+                .push(batch);
             return Err(ApiError::new(
                 "test.artifact_candidate.sink_failed",
                 ErrorStage::Publishing,
@@ -96,11 +110,18 @@ impl ArtifactCandidateSink for RecordingSink {
             .lock()
             .expect("batch mutex poisoned")
             .push(batch);
+        let (status, accepted, rejected) = match self.mode {
+            SinkMode::Accepted => (ArtifactCandidateSinkStatus::Accepted, attempted, 0),
+            SinkMode::Disabled => (ArtifactCandidateSinkStatus::Disabled, 0, 0),
+            SinkMode::Partial => (ArtifactCandidateSinkStatus::Partial, attempted - 1, 1),
+            SinkMode::Rejected => (ArtifactCandidateSinkStatus::Rejected, 0, attempted),
+            SinkMode::Failed => unreachable!("failed mode returns before receipt construction"),
+        };
         Ok(ArtifactCandidateSinkResult {
-            status: ArtifactCandidateSinkStatus::Accepted,
+            status,
             attempted: reported_attempted,
-            accepted: attempted,
-            rejected: 0,
+            accepted,
+            rejected,
             warnings: Vec::new(),
         })
     }
@@ -393,6 +414,52 @@ async fn impossible_sink_receipt_is_rejected_as_degraded_evidence() {
 }
 
 #[tokio::test]
+async fn valid_disabled_receipt_does_not_synthesize_a_warning() {
+    let sink = RecordingSink::with_mode(SinkMode::Disabled);
+    let warnings = submit_committed_candidates(
+        &sink,
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(1)],
+    )
+    .await;
+    assert!(warnings.is_empty());
+}
+
+#[tokio::test]
+async fn valid_partial_receipt_is_non_retryable_degraded_evidence_without_an_outbox() {
+    let sink = RecordingSink::with_mode(SinkMode::Partial);
+    let warnings = submit_committed_candidates(
+        &sink,
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(1), candidate(2)],
+    )
+    .await;
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].code, "source.artifact_candidate.sink_partial");
+    assert!(!warnings[0].retryable);
+}
+
+#[tokio::test]
+async fn valid_rejected_receipt_is_non_retryable_degraded_evidence() {
+    let sink = RecordingSink::with_mode(SinkMode::Rejected);
+    let warnings = submit_committed_candidates(
+        &sink,
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(1)],
+    )
+    .await;
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].code, "source.artifact_candidate.sink_rejected");
+    assert!(!warnings[0].retryable);
+}
+
+#[tokio::test]
 async fn sink_failure_degrades_without_panicking_or_reclassifying_candidates() {
     let sink = RecordingSink::failed();
     let warnings = submit_committed_candidates(
@@ -405,7 +472,36 @@ async fn sink_failure_degrades_without_panicking_or_reclassifying_candidates() {
     .await;
     assert_eq!(warnings.len(), 1);
     assert_eq!(warnings[0].code, "source.artifact_candidate.sink_failed");
-    assert!(warnings[0].retryable);
+    assert!(!warnings[0].retryable);
+}
+
+#[tokio::test]
+async fn sink_failure_stops_and_reports_remaining_batch_delivery() {
+    let sink = RecordingSink {
+        max_batch_size: 1,
+        ..RecordingSink::failed()
+    };
+    let warnings = submit_committed_candidates(
+        &sink,
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(1), candidate(2), candidate(3)],
+    )
+    .await;
+
+    assert_eq!(warnings.len(), 2);
+    assert!(!warnings[0].retryable);
+    assert_eq!(
+        warnings[1].code,
+        "source.artifact_candidate.sink_delivery_skipped"
+    );
+    assert!(warnings[1].message.contains("2 candidates"));
+    assert_eq!(
+        sink.batches().len(),
+        1,
+        "provider backpressure must stop later candidate chunks"
+    );
 }
 
 #[tokio::test]

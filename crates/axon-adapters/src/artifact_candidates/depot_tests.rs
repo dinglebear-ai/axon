@@ -46,6 +46,8 @@ async fn depot_sink_posts_exact_frozen_v1_candidate_with_transport_only_auth() {
         when.method(POST)
             .path("/api/operations/depot.artifacts.intake_candidate")
             .header("authorization", "Bearer test-write-token")
+            .header("idempotency-key", "idem-test")
+            .header("x-axon-delivery-id", "delivery-test")
             .json_body(json!({"candidate": fixture.clone()}));
         then.status(200)
             .header("content-type", "application/json")

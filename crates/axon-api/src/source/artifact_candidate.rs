@@ -270,19 +270,28 @@ fn validate_digest(value: &str) -> Result<(), String> {
 
 fn validate_source_uri(value: &str) -> Result<(), String> {
     validate_string(value, 4_096, "canonicalSourceUri", false)?;
-    let Some((scheme, rest)) = value.split_once("://") else {
-        return Err("canonicalSourceUri must have a URI scheme".to_string());
+    if value.chars().any(char::is_control) {
+        return Err("canonicalSourceUri contains control characters".to_string());
+    }
+    let Some((_, authority_and_path)) = value.split_once("://") else {
+        return Err("canonicalSourceUri must be an absolute hierarchical URI".to_string());
     };
-    if scheme.is_empty()
-        || matches!(
-            scheme.to_ascii_lowercase().as_str(),
-            "file" | "data" | "javascript"
-        )
+    if authority_and_path
+        .split(['/', '?', '#'])
+        .next()
+        .is_none_or(str::is_empty)
     {
+        return Err("canonicalSourceUri must include a non-empty authority host".to_string());
+    }
+    let parsed = url::Url::parse(value)
+        .map_err(|_| "canonicalSourceUri must be an absolute hierarchical URI".to_string())?;
+    if matches!(parsed.scheme(), "file" | "data" | "javascript") {
         return Err("canonicalSourceUri uses an invalid or blocked scheme".to_string());
     }
-    let authority = rest.split('/').next().unwrap_or_default();
-    if authority.contains('@') {
+    if parsed.cannot_be_a_base() || parsed.host_str().is_none() {
+        return Err("canonicalSourceUri must include a non-empty authority host".to_string());
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
         return Err("canonicalSourceUri must not contain credentials".to_string());
     }
     Ok(())

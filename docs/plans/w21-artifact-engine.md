@@ -95,7 +95,10 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 - [x] auth kept out of candidate envelope; Depot bearer requires `skills:write`;
 - [x] classify 2xx/4xx/429/5xx with bounded retry/degradation semantics and no hidden local retry;
 - [x] cross-repo JSON fixture contract remains byte-identical to merged Depot W20;
-- [ ] wire Depot sink configuration/runtime injection after #570 settles because `Config`, `ServiceContext`, and `target_runtime` overlap that lane.
+- [x] wire optional Depot sink runtime injection through the paired
+  `AXON_ARTIFACT_CANDIDATE_DEPOT_URL` / `AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN`
+  environment contract; partial configuration fails startup and an unconfigured
+  runtime retains the explicit no-op sink.
 
 ### C6: semantic/graph enrichment hooks
 

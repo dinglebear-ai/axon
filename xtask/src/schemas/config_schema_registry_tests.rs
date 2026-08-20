@@ -67,6 +67,8 @@ fn env_var_registry_has_all_contract_vars() {
         "QDRANT_URL",
         "TEI_URL",
         "AXON_CHROME_REMOTE_URL",
+        "AXON_ARTIFACT_CANDIDATE_DEPOT_URL",
+        "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN",
         "AXON_HTTP_HOST",
         "AXON_HTTP_PORT",
         "AXON_PUBLIC_URL",

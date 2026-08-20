@@ -210,7 +210,7 @@ Focused proof:
 ### C5 Depot candidate intake checkpoint
 
 - Depot W20 PR #37 is merged at `b76807cd59eb4546c00375ba66c2cc9428eb390a`; its C2 hosted registry + bounded candidate ledger is complete and the canonical write-scoped operation is `depot.artifacts.intake_candidate`;
-- JSON transport is `POST /api/operations/depot.artifacts.intake_candidate` with request `{candidate: <dinglebear.artifact-candidate/v1>}` and success `{result:{candidate:<canonical v1>}}`; Depot requires bearer scope `skills:write`;
+- JSON transport is `POST /api/operations/depot.artifacts.intake_candidate` with request `{candidate: <dinglebear.artifact-candidate/v1>}`, Axon's `Idempotency-Key` and `X-Axon-Delivery-Id` headers, and success `{result:{candidate:<canonical v1>}}`; Depot requires bearer scope `skills:write`;
 - pushed Axon checkpoint `3abf29c3b` implements `DepotArtifactCandidateSink` only in #570-clear `axon-adapters` files; no config/context/runtime production file was touched;
 - the sink advertises `max_batch_size=1` because Depot's canonical operation accepts one candidate, and a shared one-permit semaphore enforces max in-flight delivery = 1 across cloned sinks/source jobs;
 - the bearer is transport-only, redirects are disabled, ambient proxies are disabled, and operator-configured private/Tailscale Depot addresses remain valid; embedded URL credentials/query/fragment and non-HTTP(S) schemes fail closed;
@@ -227,7 +227,10 @@ Focused/final C5 proof:
 - adversarial cleanup split HTTP response classification out of `submit_candidate`, eliminating the only new monolith soft warning without changing behavior;
 - pushed C6 baseline CI had one unrelated `axon-services` memory-compaction failure after SQLite reported `database is locked`; local exact reproduction passed 1/1 in 15.76s, while all artifact/C5 gates remained green.
 
-Remaining C5 coordination gap: production config/context/target-runtime injection overlaps #570 and stays deferred until that PR settles. The sink implementation itself is ready.
+The review follow-up wires production target-runtime injection through the paired
+`AXON_ARTIFACT_CANDIDATE_DEPOT_URL` / `AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN`
+environment contract. Partial configuration fails startup; leaving both unset
+retains the explicit no-op sink.
 
 ### C6 semantic/graph evidence checkpoint
 

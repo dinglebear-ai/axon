@@ -192,6 +192,25 @@ fn shared_candidate_bounds_match_w20_g0_contract() {
 }
 
 #[test]
+fn canonical_source_uri_rejects_malformed_hostless_and_credentialed_values() {
+    for uri in [
+        "https://",
+        "https:///relative",
+        "https://user@example.com/private",
+        "data:text/plain,artifact",
+        "urn:artifact:candidate",
+        "https://example.com/line\nbreak",
+    ] {
+        let mut value = candidate();
+        value.canonical_source_uri = uri.to_string();
+        assert!(
+            value.validate_shared_contract().is_err(),
+            "invalid canonicalSourceUri accepted: {uri:?}"
+        );
+    }
+}
+
+#[test]
 fn unknown_and_index_only_license_evidence_fail_closed_for_public_bytes() {
     for state in ["unknown", "restricted", "metadata_only", "cache_for_index"] {
         let mut value = candidate();

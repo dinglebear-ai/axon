@@ -17,6 +17,11 @@ pub(super) struct CandidateCollection {
     pub(super) warnings: Vec<SourceWarning>,
 }
 
+struct CandidateDeliveryResult {
+    warnings: Vec<SourceWarning>,
+    stop_delivery: bool,
+}
+
 /// Ask the current source adapter for typed candidates beside this normalized
 /// changed-document batch. Producer errors/malformed correlation degrade the
 /// optional artifact path but never replace SourceDocument/RAG processing.
@@ -174,18 +179,33 @@ pub(super) async fn submit_committed_candidates(
     let mut candidates = candidates;
     candidates.sort_by(|left, right| left.id.cmp(&right.id));
     let mut warnings = Vec::new();
-    for chunk in candidates.chunks(batch_size) {
-        warnings.extend(
-            submit_candidate_chunk(
-                sink,
-                &capability.name,
-                job_id,
-                &source_id,
-                generation,
-                chunk,
-            )
-            .await,
-        );
+    for (chunk_index, chunk) in candidates.chunks(batch_size).enumerate() {
+        let delivery = submit_candidate_chunk(
+            sink,
+            &capability.name,
+            job_id,
+            &source_id,
+            generation,
+            chunk,
+        )
+        .await;
+        warnings.extend(delivery.warnings);
+        if delivery.stop_delivery {
+            let visited = (chunk_index + 1)
+                .saturating_mul(batch_size)
+                .min(candidates.len());
+            let skipped = candidates.len().saturating_sub(visited);
+            if skipped > 0 {
+                warnings.push(warning(
+                    "source.artifact_candidate.sink_delivery_skipped",
+                    format!(
+                        "artifact candidate sink delivery stopped after provider backpressure; {skipped} candidates were not attempted"
+                    ),
+                    false,
+                ));
+            }
+            break;
+        }
     }
     warnings
 }
@@ -197,7 +217,7 @@ async fn candidate_sink_capability(
         warning(
             "source.artifact_candidate.sink_capability_failed",
             format!("artifact candidate sink capability probe failed: {error}"),
-            true,
+            false,
         )
     })?;
     let batch_size = validate_sink_capability(&capability)?;
@@ -254,7 +274,7 @@ async fn submit_candidate_chunk(
     source_id: &SourceId,
     generation: &SourceGenerationId,
     candidates: &[ArtifactCandidate],
-) -> Vec<SourceWarning> {
+) -> CandidateDeliveryResult {
     let idempotency_key =
         artifact_candidate_batch_idempotency_key(&job_id, source_id, generation, candidates);
     let batch = ArtifactCandidateBatch {
@@ -269,11 +289,14 @@ async fn submit_candidate_chunk(
     };
     match sink.submit(batch).await {
         Ok(receipt) => receipt_warnings(sink_name, receipt, candidates.len() as u64),
-        Err(error) => vec![warning(
-            "source.artifact_candidate.sink_failed",
-            format!("artifact candidate sink delivery failed: {error}"),
-            true,
-        )],
+        Err(error) => CandidateDeliveryResult {
+            warnings: vec![warning(
+                "source.artifact_candidate.sink_failed",
+                format!("artifact candidate sink delivery failed: {error}"),
+                false,
+            )],
+            stop_delivery: true,
+        },
     }
 }
 
@@ -281,7 +304,7 @@ fn receipt_warnings(
     sink_name: &str,
     mut receipt: ArtifactCandidateSinkResult,
     expected_attempted: u64,
-) -> Vec<SourceWarning> {
+) -> CandidateDeliveryResult {
     let mut warnings = std::mem::take(&mut receipt.warnings);
     if !valid_receipt(&receipt, expected_attempted) {
         warnings.push(warning(
@@ -292,8 +315,12 @@ fn receipt_warnings(
             ),
             false,
         ));
-        return warnings;
+        return CandidateDeliveryResult {
+            warnings,
+            stop_delivery: false,
+        };
     }
+    let stop_delivery = receipt.status == ArtifactCandidateSinkStatus::Partial;
     match receipt.status {
         ArtifactCandidateSinkStatus::Disabled | ArtifactCandidateSinkStatus::Accepted => {}
         ArtifactCandidateSinkStatus::Partial => warnings.push(warning(
@@ -302,7 +329,7 @@ fn receipt_warnings(
                 "artifact candidate sink accepted {} of {} attempted candidates",
                 receipt.accepted, receipt.attempted
             ),
-            true,
+            false,
         )),
         ArtifactCandidateSinkStatus::Rejected => warnings.push(warning(
             "source.artifact_candidate.sink_rejected",
@@ -313,7 +340,10 @@ fn receipt_warnings(
             false,
         )),
     }
-    warnings
+    CandidateDeliveryResult {
+        warnings,
+        stop_delivery,
+    }
 }
 
 fn valid_receipt(receipt: &ArtifactCandidateSinkResult, expected_attempted: u64) -> bool {

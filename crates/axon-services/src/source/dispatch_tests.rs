@@ -671,3 +671,50 @@ async fn artifact_candidates_are_delivered_after_commit_and_not_replayed_when_un
         "unchanged refresh must not replay ArtifactCandidate delivery"
     );
 }
+
+#[tokio::test]
+async fn failed_generation_never_delivers_artifact_candidates() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new().with_publish_generation_failure());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let sink = Arc::new(CommitAwareCandidateSink::new(ledger.clone()));
+    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs)
+        .with_artifact_candidate_sink(sink.clone());
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    let result = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "generation publication failure must surface"
+    );
+    assert!(
+        ledger
+            .committed_generation(&route.source.source_id)
+            .await
+            .is_none(),
+        "failed generation must not commit"
+    );
+    assert!(
+        sink.deliveries().is_empty(),
+        "failed generation leaked a ghost candidate to the sink"
+    );
+}

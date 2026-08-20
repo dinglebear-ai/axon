@@ -36,11 +36,11 @@ SourceRequest
   -> acquire changed items
   -> source enrichment
   -> SourceDocument[]
-  -> shared ArtifactCandidate[]   (sibling evidence output)
+  |  -> shared ArtifactCandidate[]   (buffered sibling evidence output)
+  -> parse / prepare / embed
+  -> vector publish + commit source generation
   -> Axon ArtifactCandidateBatch  (optional bounded transport wrapper)
   -> ArtifactCandidateSink
-  -> parse / prepare / embed
-  -> vector publish
   -> graph
   -> cleanup
   -> SourceResult
@@ -187,7 +187,8 @@ The sink must:
 
 - negotiate/advertise supported Axon batch versions;
 - enforce a finite max batch size;
-- use delivery/idempotency keys;
+- transmit delivery/idempotency keys as `X-Axon-Delivery-Id` and
+  `Idempotency-Key` headers;
 - keep network retry/backoff bounded;
 - surface partial/rejected receipts without manufacturing publication state;
 - never send credentials inside candidate metadata/evidence.

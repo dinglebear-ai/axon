@@ -91,6 +91,8 @@ impl DepotArtifactCandidateSink {
     async fn submit_candidate(
         &self,
         candidate: &ArtifactCandidate,
+        delivery_id: &str,
+        idempotency_key: &str,
     ) -> Result<ArtifactCandidateSinkResult> {
         let _permit = self.in_flight.acquire().await.map_err(|_| {
             retryable_error(
@@ -102,6 +104,8 @@ impl DepotArtifactCandidateSink {
             .client
             .post(self.endpoint.clone())
             .bearer_auth(self.bearer_token.as_ref())
+            .header("Idempotency-Key", idempotency_key)
+            .header("X-Axon-Delivery-Id", delivery_id)
             .json(&serde_json::json!({"candidate": candidate}))
             .send()
             .await
@@ -226,7 +230,8 @@ impl ArtifactCandidateSink for DepotArtifactCandidateSink {
                 ),
             ));
         }
-        self.submit_candidate(candidate).await
+        self.submit_candidate(candidate, &batch.delivery_id, &batch.idempotency_key)
+            .await
     }
 
     async fn capabilities(&self) -> Result<ArtifactCandidateSinkCapability> {
