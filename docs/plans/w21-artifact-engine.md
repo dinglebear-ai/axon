@@ -98,10 +98,11 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 
 ### C6: semantic/graph enrichment hooks
 
-- [ ] attach exact/near-duplicate evidence without redefining exact dedupe identity;
-- [ ] add graph candidates for source/repo/artifact relationships;
-- [ ] semantic and graph signals remain non-authoritative evidence;
-- [ ] no graph/enrichment failure may grant publication or rights.
+- [x] attach exact/provider duplicate evidence plus a deterministic bounded near-duplicate evidence hook without redefining exact dedupe identity;
+- [ ] feed semantic near-neighbor ids from `SourceEnrichment` after #570 settles; the Registry adapter candidate bridge overlaps that lane;
+- [x] add graph candidates for source/repo/artifact relationships through the existing GraphCandidate metadata bridge;
+- [x] semantic and graph signals remain non-authoritative evidence;
+- [x] no graph/enrichment failure may grant publication or rights.
 
 ### C7: bounded seed and hardening
 

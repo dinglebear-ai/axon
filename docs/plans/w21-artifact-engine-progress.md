@@ -216,13 +216,38 @@ Focused proof:
 - therefore Axon deliberately does **not** implement C5 against `ingest.start` or `ingest_skills_sh`: either would turn evidence-only candidate delivery into authoritative repository/Skill ingestion and violate the cross-repo boundary;
 - C5 resumes only after Depot publishes a bounded versioned ArtifactCandidate intake operation/ledger. The frozen v1 candidate payload remains unchanged.
 
+### C6 semantic/graph evidence checkpoint
+
+- pushed implementation checkpoint `e4ae82ab0` keeps all C6 production changes outside PR #570-owned source/graph/watch service files;
+- `artifact_candidate_duplicate_evidence` preserves Axon exact identity/content keys as the authoritative producer-side dedupe seam while carrying provider duplicate observations and semantic near-neighbor candidate ids as sibling evidence only;
+- semantic neighbor ids are sorted, deduplicated, capped at 32, and report truncation deterministically; no semantic signal changes `ArtifactCandidate.id`;
+- skills.sh candidates now carry `discoveryEvidence.axonDuplicateEvidence` with the provider `isDuplicate` signal and `authorityScope = evidence-only`; the frozen shared v1 top-level field set is unchanged;
+- structured skills.sh documents emit typed `GraphCandidate` values through the existing `_axon_vertical_graph_candidates` metadata bridge consumed by the normal document-preparation/graph path, without adding a second graph writer;
+- graph evidence links the Registry API source to the observed artifact with `source_indexed_as` and, when a validated GitHub repository pointer exists, the artifact to the repo with `derived_from`;
+- graph evidence uses the existing closed `text_mention` evidence kind, which Axon ranks as `Inferred`, and every C6 node/edge/candidate metadata map is explicitly `authorityScope = evidence-only`;
+- graph evidence quotes only the already validated/canonicalized source pointer, never the raw provider-controlled `installUrl`/`url`;
+- the graph helpers were split into `skills_sh/map/graph.rs` after adversarial monolith review; `scripts/enforce_monoliths.py --base b3195957 --head HEAD` passes with no allowlist addition.
+
+Focused proof on the final split tree:
+
+- `axon-adapters` ArtifactCandidate filter: 6 passed, 0 failed;
+- `axon-adapters` skills.sh filter: 26 passed, 0 failed;
+- `cargo fmt --all -- --check`: passed;
+- `xtask generated-contracts check`: passed, including 504 doc-link checks, 127 removed-surface contract checks, and docs inventory;
+- `xtask check-layering`: passed;
+- changed-file monolith policy: passed;
+- `git diff --check`: passed;
+- frozen Depot fixture hashes remain candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732` and interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`;
+- `cargo clippy -p axon-adapters --all-targets -- -D warnings`: passed on the normal kache path.
+
+Remaining C6 coordination gap: `RegistrySourceAdapter::artifact_candidates` currently ignores its `SourceEnrichment` map. That bridge overlaps #570, so W21 deliberately does not modify it yet. The bounded semantic-neighbor evidence hook is ready for those ids once #570 settles.
+
 ## Next
 
-1. coordinate full watch-request limits/metadata persistence with #570 before touching overlapping watch production code;
+1. coordinate full watch-request limits/metadata persistence and C6 `SourceEnrichment` semantic-neighbor feed with #570 before touching overlapping production code;
 2. track Depot W20 C2 candidate-ledger/intake progress and implement C5 only after its versioned intake operation is frozen;
-3. continue C6 semantic/graph evidence hooks that do not depend on Depot intake;
-4. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;
-5. keep draft PR evidence current and preserve the no-second-pipeline boundary.
+3. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;
+4. keep draft PR evidence current and preserve the no-second-pipeline boundary.
 
 
 ## Do not do yet
