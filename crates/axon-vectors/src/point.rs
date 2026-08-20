@@ -224,8 +224,6 @@ pub fn build_points_for_document(
     let model = embeddings.model;
     let mut vectors = vectors_by_chunk_id(embeddings.vectors, &chunks, expected_dimensions)?;
     let mut points = Vec::with_capacity(document.chunks.len());
-    let mut skipped_redaction = 0u64;
-
     for chunk in &document.chunks {
         let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
             VectorPointBatchBuildError::MissingEmbeddingChunk {
@@ -239,7 +237,7 @@ pub fn build_points_for_document(
             &chunk.chunk_id,
             &document.generation,
         );
-        let payload = match build_payload(
+        let payload = build_payload(
             collection,
             document,
             chunk,
@@ -249,22 +247,7 @@ pub fn build_points_for_document(
             &provider_id,
             &model,
             context,
-        ) {
-            Ok(payload) => payload,
-            Err(VectorPointBatchBuildError::Payload {
-                chunk_id,
-                source: VectorPayloadValidationError::ForbiddenValue { detector, .. },
-            }) => {
-                skipped_redaction = skipped_redaction.saturating_add(1);
-                tracing::warn!(
-                    chunk_id = %chunk_id.0,
-                    detector,
-                    "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
-                );
-                continue;
-            }
-            Err(error) => return Err(error),
-        };
+        )?;
         let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
         let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
         points.push(VectorPoint {
@@ -276,7 +259,7 @@ pub fn build_points_for_document(
         });
     }
 
-    Ok((points, skipped_redaction))
+    Ok((points, 0))
 }
 
 fn validate_embedding_provenance(

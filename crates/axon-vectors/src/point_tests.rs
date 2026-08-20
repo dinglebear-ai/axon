@@ -460,21 +460,6 @@ fn public_authentication_documentation_is_indexed() {
 }
 
 #[test]
-fn document_body_secret_examples_skip_only_the_forbidden_chunk() {
-    let mut document = test_prepared_document();
-    document.chunks[0].content = "TOKEN=value".to_string();
-    let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
-
-    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
-        .build_with_skipped_count()
-        .unwrap();
-
-    assert_eq!(skipped_redaction, 1);
-    assert_eq!(batch.points.len(), 1);
-    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
-}
-
-#[test]
 fn clean_document_stamps_redaction_status_clean() {
     let document = test_prepared_document();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
