@@ -126,26 +126,28 @@ fn split_windows_merge_back_to_one_document_status_and_total_chunk_count() {
 }
 
 #[test]
-fn redaction_failure_skips_only_the_forbidden_chunk() {
+fn redaction_failure_blocks_the_whole_point_batch() {
     let mut document = axon_vectors::testing::test_prepared_document();
     document.chunks[1].content = "API_KEY=abc123".to_string();
-    let source_item_key = document.source_item_key.clone();
     let mut embeddings =
         axon_vectors::testing::test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let result = point_batch(
+    let error = match point_batch(
         axon_vectors::testing::test_collection_spec(3),
         std::slice::from_ref(&document),
         &mut embeddings,
-    )
-    .expect("a forbidden body value should skip its chunk, not fail the source");
+    ) {
+        Ok(_) => panic!("a forbidden body value must fail the whole point batch"),
+        Err(error) => error,
+    };
 
-    assert_eq!(result.batch.points.len(), 1);
-    assert_eq!(result.skipped_redaction, 1);
-    assert_eq!(
-        result.redaction_skips_by_source_item.get(&source_item_key),
-        Some(&1)
-    );
+    assert!(matches!(
+        error.downcast_ref::<axon_vectors::point::VectorPointBatchBuildError>(),
+        Some(axon_vectors::point::VectorPointBatchBuildError::Payload {
+            source: axon_vectors::payload::VectorPayloadValidationError::ForbiddenValue { .. },
+            ..
+        })
+    ));
 }
 
 #[test]
