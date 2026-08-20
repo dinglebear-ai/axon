@@ -278,12 +278,35 @@ async fn depot_sink_serializes_concurrent_submissions_across_clones() {
 }
 
 #[test]
+fn depot_sink_rejects_missing_or_whitespace_padded_bearer_tokens() {
+    for token in ["", "   "] {
+        let error = DepotArtifactCandidateSink::new("https://depot.example.test", token)
+            .err()
+            .expect("missing Depot bearer token rejected");
+        assert_eq!(
+            error.code.0,
+            "adapter.artifact_candidate.depot.token_missing"
+        );
+    }
+    for token in [" token", "token ", "\ttoken"] {
+        let error = DepotArtifactCandidateSink::new("https://depot.example.test", token)
+            .err()
+            .expect("whitespace-padded Depot bearer token rejected");
+        assert_eq!(
+            error.code.0,
+            "adapter.artifact_candidate.depot.token_invalid"
+        );
+    }
+}
+
+#[test]
 fn depot_sink_base_url_rejects_embedded_credentials_query_and_fragment() {
     for url in [
         "https://user:pass@example.test",
         "https://example.test?token=secret",
         "https://example.test#fragment",
         "file:///tmp/depot",
+        "https://",
     ] {
         let error = DepotArtifactCandidateSink::new(url, "token")
             .err()

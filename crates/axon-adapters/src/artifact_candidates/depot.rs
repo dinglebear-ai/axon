@@ -35,7 +35,7 @@ pub(super) const DEPOT_MAX_IN_FLIGHT: usize = 1;
 pub struct DepotArtifactCandidateSink {
     client: reqwest::Client,
     endpoint: Url,
-    bearer_token: String,
+    bearer_token: Arc<str>,
     pub(super) in_flight: Arc<tokio::sync::Semaphore>,
 }
 
@@ -53,6 +53,14 @@ impl DepotArtifactCandidateSink {
                 "Depot ArtifactCandidate sink requires a non-empty write-scoped bearer token",
             ));
         }
+        if bearer_token.trim() != bearer_token {
+            return Err(ApiError::new(
+                "adapter.artifact_candidate.depot.token_invalid",
+                ErrorStage::Enriching,
+                "Depot ArtifactCandidate sink bearer token must not contain surrounding whitespace",
+            ));
+        }
+        let bearer_token: Arc<str> = Arc::from(bearer_token);
         // Depot is operator-configured infrastructure, not a discovered crawl URL.
         // Connect directly so private/Tailscale addresses remain valid, disable
         // redirects so the bearer cannot move to another origin, and ignore
@@ -93,7 +101,7 @@ impl DepotArtifactCandidateSink {
         let response = self
             .client
             .post(self.endpoint.clone())
-            .bearer_auth(&self.bearer_token)
+            .bearer_auth(self.bearer_token.as_ref())
             .json(&serde_json::json!({"candidate": candidate}))
             .send()
             .await
@@ -250,6 +258,7 @@ fn operation_endpoint(base_url: &str) -> Result<Url> {
         )
     })?;
     if !matches!(url.scheme(), "http" | "https")
+        || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
         || url.query().is_some()
