@@ -298,10 +298,40 @@ async fn qdrant_upsert_splits_on_actual_encoded_byte_limit() {
     let url = http
         .endpoint()
         .collection_path("axon-test", "points?wait=true");
+    let batch_sparse = chunk
+        .sparse_vectors
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .map(|sparse| (sparse.chunk_id.0.as_str(), sparse))
+        .collect::<HashMap<_, _>>();
+    let single_bytes = serde_json::to_vec(&UpsertPointsBody::new(
+        &spec,
+        &chunk.points[..1],
+        &batch_sparse,
+    ))
+    .expect("encode one point")
+    .len();
+    let pair_bytes =
+        serde_json::to_vec(&UpsertPointsBody::new(&spec, &chunk.points, &batch_sparse))
+            .expect("encode two points")
+            .len();
+    assert!(
+        single_bytes < pair_bytes,
+        "second point must increase encoded size"
+    );
+    let max_request_bytes = single_bytes + (pair_bytes - single_bytes) / 2;
 
-    let requests = upsert_chunk_rest(&http, &spec, &chunk, &url, ErrorStage::Upserting, 2_500)
-        .await
-        .expect("byte-bounded upsert");
+    let requests = upsert_chunk_rest(
+        &http,
+        &spec,
+        &chunk,
+        &url,
+        ErrorStage::Upserting,
+        max_request_bytes,
+    )
+    .await
+    .expect("byte-bounded upsert");
 
     assert_eq!(
         requests, 2,

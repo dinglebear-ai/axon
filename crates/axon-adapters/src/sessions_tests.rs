@@ -1,3 +1,4 @@
+use super::project_filter::matches_project_filter;
 use super::*;
 
 use std::fs;

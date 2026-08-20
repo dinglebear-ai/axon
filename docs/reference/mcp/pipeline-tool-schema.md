@@ -80,8 +80,8 @@ Every response uses `AxonToolResponse` (see `$defs.AxonToolResponse` in the gene
 | `crates/axon-api/src/mcp_schema/requests/watch.rs` | `sha256:3eccef765e6779a4991e2affe31e51ec3e8836de3e815057a68a3abe82946a4a` |
 | `crates/axon-api/src/mcp_schema/utility.rs` | `sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56` |
 | `crates/axon-mcp/src/schema_registry.rs` | `sha256:f525fb9c6b14755f9cc86b02f5604f242dbbd5a80ceb6e6918332c57e6bf976b` |
-| `crates/axon-mcp/src/server.rs` | `sha256:219beed9ec72cc5a9bb1816339c3a435ff293b2f592b3f70e8648eb8ac20b895` |
-| `crates/axon-mcp/src/server/authz.rs` | `sha256:fca993bad9e5de047226bc3853cdc8cd3d20f9f53ab49111270c8aecc20d5ae9` |
+| `crates/axon-mcp/src/server.rs` | `sha256:2b3d11ad120bb2aedca2afe81d5208f09efcc1214a4f1bbd5b8617993adf1179` |
+| `crates/axon-mcp/src/server/authz.rs` | `sha256:6fab7996dbda20241bda6296f0e6420ef6eb216ce4af889e0a79f48dd1c318e1` |
 | `docs/pipeline-unification/schemas/mcp-tool-schema.md` | `sha256:c61ddbabef21a169659db09300125b7e7c6af83e2065ab3ee5003cf5b54d3024` |
 | `xtask/src/schemas/mcp_action_registry.rs` | `sha256:9bae988dc73fc33eccbaa4638805c229af0556b67bfa8eca743eb966ab87b1b1` |
 

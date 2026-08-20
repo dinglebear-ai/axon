@@ -321,3 +321,15 @@ fn point_id_string(id: &serde_json::Value) -> String {
         other => other.to_string(),
     }
 }
+
+fn carried_upsert_chunks(
+    points: Vec<serde_json::Value>,
+    point_buffer: usize,
+) -> impl Iterator<Item = Vec<serde_json::Value>> {
+    let mut points = points.into_iter();
+    let chunk_size = point_buffer.max(1);
+    std::iter::from_fn(move || {
+        let chunk = points.by_ref().take(chunk_size).collect::<Vec<_>>();
+        (!chunk.is_empty()).then_some(chunk)
+    })
+}
