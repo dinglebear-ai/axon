@@ -3,6 +3,7 @@
   "identifier": "default",
   "description": "Default permissions for the Axon Palette main window",
   "windows": ["main"],
+  "platforms": ["linux", "macOS", "windows"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -12,6 +13,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "core:event:default",
+    "os:allow-platform",
     "global-shortcut:default"
   ]
 }

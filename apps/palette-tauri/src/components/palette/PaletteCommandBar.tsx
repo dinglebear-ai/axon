@@ -15,6 +15,7 @@ import { argumentPlaceholder, focusInput, sortActionsForDisplay } from "@/lib/pa
 
 interface PaletteCommandBarProps {
   active?: PaletteAction;
+  actions?: PaletteAction[];
   activeDescendantId?: string;
   config: PaletteConfig | null;
   endpointLabel: string;
@@ -22,6 +23,7 @@ interface PaletteCommandBarProps {
   hasQuery: boolean;
   listboxOpen: boolean;
   modeAction: PaletteAction | null;
+  mobile?: boolean;
   query: string;
   running: boolean;
   settingsOpen: boolean;
@@ -70,6 +72,7 @@ const SWITCHER_GROUPS = [
 
 export function PaletteCommandBar({
   active,
+  actions = ACTIONS,
   activeDescendantId,
   config,
   endpointLabel,
@@ -77,6 +80,7 @@ export function PaletteCommandBar({
   hasQuery,
   listboxOpen,
   modeAction,
+  mobile = false,
   query,
   running,
   settingsOpen,
@@ -109,10 +113,10 @@ export function PaletteCommandBar({
   const [selectedAskSession, setSelectedAskSession] = useState(0);
   const switcherActions = useMemo(
     () =>
-      sortActionsForDisplay(ACTIONS).filter(
+      sortActionsForDisplay(actions).filter(
         (action) => action.subcommand !== modeAction?.subcommand,
       ),
-    [modeAction?.subcommand],
+    [actions, modeAction?.subcommand],
   );
   const groupedSwitcherActions = useMemo(() => {
     const groups = new Map<string, PaletteAction[]>();
@@ -333,7 +337,9 @@ export function PaletteCommandBar({
               ? argumentPlaceholder(modeAction)
               : hasQuery
                 ? (active?.example ?? "Search commands")
-                : "Search or run an operation — scrape, index site, map, ask…"
+                : mobile
+                  ? "Search actions or ask Axon…"
+                  : "Search or run an operation — scrape, index site, map, ask…"
           }
           className="command-input"
           role="combobox"

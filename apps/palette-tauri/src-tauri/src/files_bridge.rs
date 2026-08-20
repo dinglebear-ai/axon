@@ -204,6 +204,7 @@ fn to_entry(root: &Path, entry: &fs::DirEntry) -> Option<FileEntry> {
 
 #[tauri::command]
 pub(crate) fn files_list_dir(app: AppHandle, path: Option<String>) -> Result<DirListing, String> {
+    crate::require_desktop_feature("Files")?;
     let root = files_root(&app)?;
     let target = match path.as_deref().filter(|value| !value.trim().is_empty()) {
         Some(requested) => resolve_within_root(&root, requested)?,
@@ -240,6 +241,7 @@ pub(crate) fn files_list_dir(app: AppHandle, path: Option<String>) -> Result<Dir
 
 #[tauri::command]
 pub(crate) fn files_read_file(app: AppHandle, path: String) -> Result<FileContents, String> {
+    crate::require_desktop_feature("Files")?;
     let root = files_root(&app)?;
     let target = resolve_within_root(&root, &path)?;
     let metadata = fs::metadata(&target).map_err(|err| err.to_string())?;
@@ -269,6 +271,7 @@ pub(crate) fn files_write_file(
     path: String,
     content: String,
 ) -> Result<FileContents, String> {
+    crate::require_desktop_feature("Files")?;
     let root = files_root(&app)?;
     if content.len() as u64 > MAX_TEXT_FILE_BYTES {
         return Err(format!(
@@ -292,6 +295,7 @@ pub(crate) fn files_write_file(
 
 #[tauri::command]
 pub(crate) fn files_get_root(app: AppHandle) -> Result<String, String> {
+    crate::require_desktop_feature("Files")?;
     Ok(files_root(&app)?.to_string_lossy().into_owned())
 }
 

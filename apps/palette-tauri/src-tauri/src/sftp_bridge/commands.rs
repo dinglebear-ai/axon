@@ -236,6 +236,7 @@ pub(crate) async fn sftp_connect(
     connections: tauri::State<'_, SftpConnections>,
     profile: SftpConnectionInput,
 ) -> Result<SftpConnectResult, String> {
+    crate::require_desktop_feature("SFTP")?;
     // v1 is single-active-connection by design (see sftp_bridge.rs's module
     // doc): reject a new connect attempt outright while one is already open,
     // rather than silently accumulating sessions the frontend never surfaces
@@ -270,6 +271,7 @@ pub(crate) async fn sftp_list_dir(
     connection_id: String,
     path: Option<String>,
 ) -> Result<SftpDirListing, String> {
+    crate::require_desktop_feature("SFTP")?;
     let target = path.unwrap_or_default();
     let normalized = normalize_remote_path(&target)?;
     let guard = connections.0.lock().await;
@@ -319,6 +321,7 @@ pub(crate) async fn sftp_read_file(
     connection_id: String,
     path: String,
 ) -> Result<SftpFileContents, String> {
+    crate::require_desktop_feature("SFTP")?;
     let normalized = normalize_remote_path(&path)?;
     let guard = connections.0.lock().await;
     let sftp = guard
@@ -364,6 +367,7 @@ pub(crate) async fn sftp_disconnect(
     connections: tauri::State<'_, SftpConnections>,
     connection_id: String,
 ) -> Result<(), String> {
+    crate::require_desktop_feature("SFTP")?;
     let mut guard = connections.0.lock().await;
     if let Some(sftp) = guard.remove(&connection_id) {
         let _ = sftp.close().await;
@@ -373,6 +377,7 @@ pub(crate) async fn sftp_disconnect(
 
 #[tauri::command]
 pub(crate) fn sftp_list_known_hosts(app: AppHandle) -> Result<Vec<KnownHostEntry>, String> {
+    crate::require_desktop_feature("SFTP")?;
     Ok(load_known_hosts(&app)?.0)
 }
 
@@ -382,6 +387,7 @@ pub(crate) fn sftp_revoke_known_host(
     host: String,
     port: u16,
 ) -> Result<(), String> {
+    crate::require_desktop_feature("SFTP")?;
     let mut store = load_known_hosts(&app)?;
     revoke_host_key(&mut store, &host, port);
     save_known_hosts(&app, &store)

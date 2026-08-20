@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTIONS } from "./actions";
+import { ACTIONS, MOBILE_ACTIONS } from "./actions";
 import { buildActionHelp, buildHelpRun, findHelpTarget, isHelpRequest } from "./actionHelp";
 
 function action(subcommand: string) {
@@ -25,12 +25,27 @@ describe("action help", () => {
     expect(findHelpTarget("missing")).toBeUndefined();
   });
 
+  it("uses the mobile catalog for discovery and help", () => {
+    expect(findHelpTarget("terminal", MOBILE_ACTIONS)).toBeUndefined();
+    const run = buildHelpRun(undefined, undefined, MOBILE_ACTIONS);
+    expect(run.text).not.toContain("`terminal`");
+    expect(run.text).not.toContain("`browser`");
+    expect(run.text).not.toContain("`files`");
+    expect(run.text).toContain("`ask`");
+    expect(run.text).toContain("`github`");
+  });
+
   it("builds target help from neutral action metadata", () => {
     const help = buildActionHelp(action("scrape"));
     expect(help.title).toBe("Scrape URL");
     expect(help.route).toEqual({ method: "POST", path: "/v1/sources" });
     expect(help.usage).toBe("scrape https://docs.rs/serde");
-    expect(help.parameters).toEqual(expect.arrayContaining(["url from input", "collection from palette settings when configured"]));
+    expect(help.parameters).toEqual(
+      expect.arrayContaining([
+        "url from input",
+        "collection from palette settings when configured",
+      ]),
+    );
   });
 
   it("builds catalog run state with structured local payload", () => {

@@ -2,12 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { buildHelpRun, helpAction } from "@/lib/actionHelp";
-import type { PaletteAction } from "@/lib/actions";
+import { ACTIONS, type PaletteAction } from "@/lib/actions";
 import type { ViewIntent } from "@/lib/paletteViewState";
 import type { RunState } from "@/lib/runState";
 import { capHistory } from "@/lib/useActionRunner";
 
 interface PaletteHelpInput {
+  actions?: readonly PaletteAction[];
   dispatchView: Dispatch<ViewIntent>;
   setHistory: Dispatch<SetStateAction<HistoryItem[]>>;
   setQuery: Dispatch<SetStateAction<string>>;
@@ -15,10 +16,11 @@ interface PaletteHelpInput {
 }
 
 export function usePaletteHelp(input: PaletteHelpInput) {
+  const actions = input.actions ?? ACTIONS;
   return (action?: PaletteAction, unknownTarget?: string) => {
     const cleanUnknownTarget = !action && unknownTarget?.trim() ? unknownTarget.trim() : undefined;
-    const helpRun = buildHelpRun(action, cleanUnknownTarget);
-    const localHelpAction = helpAction();
+    const helpRun = buildHelpRun(action, cleanUnknownTarget, actions);
+    const localHelpAction = helpAction(actions);
     const historyItem: HistoryItem = {
       action: localHelpAction,
       target: action?.subcommand ?? cleanUnknownTarget ?? "catalog",

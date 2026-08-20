@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "node scripts/prepare-android.mjs && pnpm vite:build",
+    "beforeDevCommand": "node scripts/prepare-android.mjs && pnpm vite:dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Axon Palette",
+        "visible": true
+      }
+    ]
+  }
+}

@@ -17,6 +17,7 @@ pub(crate) mod store;
 use std::time::Duration;
 
 use tauri::AppHandle;
+use tauri_plugin_opener::OpenerExt;
 
 use crate::axon_bridge::BridgeClient;
 use crate::oauth::status::{OauthStatus, status_for};
@@ -84,7 +85,7 @@ pub(crate) async fn axon_oauth_login(
     let server_url = validate_saved_server_url(&settings.server_url)?;
     let client = bridge.client().clone();
 
-    let creds = run_login(&client, &server_url).await?;
+    let creds = run_login(&app, &client, &server_url).await?;
     let path = store::credentials_path(&app)?;
     store::save(&path, &creds)?;
     *oauth_state.creds.lock().await = CredCache::Loaded(Some(creds.clone()));
@@ -363,6 +364,7 @@ where
 
 /// Run the browser-based authorization-code flow and return fresh credentials.
 async fn run_login(
+    app: &AppHandle,
     client: &reqwest::Client,
     server_url: &str,
 ) -> Result<StoredCredentials, String> {
@@ -404,7 +406,7 @@ async fn run_login(
         &challenge,
     )?;
 
-    if let Err(err) = open::that(&authorize_url) {
+    if let Err(err) = app.opener().open_url(&authorize_url, None::<&str>) {
         return Err(format!(
             "failed to open the system browser — open this URL manually to sign in:\n{authorize_url}\n({err})"
         ));

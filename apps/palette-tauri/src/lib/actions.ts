@@ -77,7 +77,7 @@ const STATIC_ACTIONS = [
     kind: "local",
     argMode: "optionalSingle",
     aliases: ["browser", "web", "browse-url"],
-    description: "Open a real in-app browser window — navigate to a URL or search the web.",
+    description: "Open a real in-app browser window — navigate to a URL or search the web. Desktop app only.",
     example: "browser docs.rs/serde",
     tone: "info",
   },
@@ -87,7 +87,7 @@ const STATIC_ACTIONS = [
     kind: "local",
     argMode: "none",
     aliases: ["files", "browse-files", "filesystem", "explorer"],
-    description: "Browse the local filesystem, preview or edit a file, and index it into the collection.",
+    description: "Browse the local filesystem, preview or edit a file, and index it into the collection. Desktop app only.",
     example: "files",
     tone: "orange",
   },
@@ -379,6 +379,15 @@ export const ACTIONS: PaletteAction[] = [
   ...STATIC_ACTIONS,
   ...jobLifecycleActions(),
 ];
+
+const MOBILE_UNAVAILABLE_SUBCOMMANDS = new Set<PaletteSubcommand>(["browser", "files", "terminal"]);
+
+/** Palette actions that have meaningful mobile semantics. Desktop-local tools
+ * stay compiled behind IPC guards, but never enter Android/iOS discovery, slash
+ * dispatch, or help catalogs. */
+export const MOBILE_ACTIONS: PaletteAction[] = ACTIONS.filter(
+  (action) => !MOBILE_UNAVAILABLE_SUBCOMMANDS.has(action.subcommand),
+);
 
 function jobLifecycleActions(): PaletteAction[] {
   return [
