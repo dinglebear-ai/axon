@@ -609,6 +609,39 @@
         "watch_supported": false
       },
       {
+        "allowed_option_keys": [
+          "view",
+          "query",
+          "owner",
+          "page",
+          "per_page",
+          "max_pages",
+          "audit_limit"
+        ],
+        "chunking_hints": [],
+        "credential_requirements": [
+          {
+            "credential_kind": "bearer_token",
+            "reason": "skills.sh structured API requires a short-lived Vercel OIDC bearer token",
+            "required": true
+          }
+        ],
+        "default_scope": "api",
+        "execution_affinity": "worker",
+        "name": "skills_sh",
+        "option_schema_id": "adapter:skills_sh:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "authenticated_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "api"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
         "allowed_option_keys": [],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -1361,6 +1394,11 @@
             "notes": "version metadata",
             "required": true,
             "scope": "version"
+          },
+          {
+            "notes": "structured artifact catalog metadata (skills.sh first provider)",
+            "required": true,
+            "scope": "api"
           }
         ],
         "shorthand_patterns": [
