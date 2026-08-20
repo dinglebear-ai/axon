@@ -224,6 +224,30 @@ async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candid
         .expect("normalize catalog listing");
     assert_eq!(normalized.data.len(), 1);
     assert_eq!(normalized.data[0].content_kind, ContentKind::Structured);
+    let mut graph_metadata = normalized.data[0].metadata.clone();
+    let graph_artifacts = axon_parse::vertical::take_metadata_artifacts(&mut graph_metadata);
+    assert_eq!(graph_artifacts.graph_candidates.len(), 1);
+    let graph = &graph_artifacts.graph_candidates[0];
+    assert!(graph.nodes.iter().any(|node| node.node_kind == "source"));
+    assert!(graph.nodes.iter().any(|node| node.node_kind == "artifact"));
+    assert!(graph.nodes.iter().any(|node| node.node_kind == "repo"));
+    assert!(
+        graph
+            .edges
+            .iter()
+            .any(|edge| edge.edge_kind == "source_indexed_as")
+    );
+    assert!(
+        graph
+            .edges
+            .iter()
+            .any(|edge| edge.edge_kind == "derived_from")
+    );
+    assert_eq!(graph.metadata["authorityScope"], "evidence-only");
+    assert_eq!(
+        graph.evidence[0].metadata["authorityScope"],
+        "evidence-only"
+    );
     let candidates = adapter
         .artifact_candidates(
             &plan,
@@ -259,6 +283,19 @@ async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candid
     assert_eq!(
         candidate.discovery_evidence["skillsSh"]["audits"][0]["status"],
         "pass"
+    );
+    assert_eq!(
+        candidate.discovery_evidence["axonDuplicateEvidence"]["providerSignals"][0]["value"],
+        false
+    );
+    assert_eq!(
+        candidate.discovery_evidence["axonDuplicateEvidence"]["authorityScope"],
+        "evidence-only"
+    );
+    assert!(
+        candidate.discovery_evidence["axonDuplicateEvidence"]["nearDuplicateCandidateIds"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
     );
     assert!(candidate.observed_files.is_empty());
     assert!(candidate.content_digests.is_empty());

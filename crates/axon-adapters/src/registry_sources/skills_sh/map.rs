@@ -7,10 +7,16 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::adapter::Result;
-use crate::artifact_candidates::{artifact_candidate_dedupe, artifact_candidate_id};
+use crate::artifact_candidates::{
+    artifact_candidate_dedupe, artifact_candidate_duplicate_evidence, artifact_candidate_id,
+};
 use crate::manifest::item_identity;
 
 use super::{SkillsShDump, SkillsShSkill};
+
+mod graph;
+
+use graph::attach_catalog_graph_candidates;
 
 pub(crate) fn discover(plan: &SourcePlan, dump: &SkillsShDump) -> Result<SourceManifest> {
     let mut items = Vec::with_capacity(dump.skills.len());
@@ -170,8 +176,17 @@ pub(crate) fn normalize(
                 "audit_count".to_string(),
                 serde_json::json!(skill.audits.len()),
             );
+            let document_id = DocumentId::from(format!("doc_skills_sh_{}", digest_id(&skill.id)));
+            attach_catalog_graph_candidates(
+                &mut metadata,
+                plan,
+                &acquisition.source_id,
+                &item.manifest_item,
+                &document_id,
+                skill,
+            );
             Ok(SourceDocument {
-                document_id: DocumentId::from(format!("doc_skills_sh_{}", digest_id(&skill.id))),
+                document_id,
                 source_id: acquisition.source_id.clone(),
                 source_item_key: item.manifest_item.source_item_key.clone(),
                 canonical_uri: item.manifest_item.canonical_uri.clone(),
@@ -264,6 +279,14 @@ fn candidate_from_document(
             "auditStatus": skill.audit_status,
             "audits": skill.audits,
         }),
+    );
+    discovery_evidence.insert(
+        "axonDuplicateEvidence".to_string(),
+        artifact_candidate_duplicate_evidence(
+            &dedupe,
+            skill.is_duplicate.map(|duplicate| ("skills.sh", duplicate)),
+            &[],
+        ),
     );
     let mut popularity_signals = MetadataMap::new();
     popularity_signals.insert(

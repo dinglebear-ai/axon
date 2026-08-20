@@ -37,6 +37,55 @@ fn dedupe_keys_are_stable_and_content_sensitive() {
 }
 
 #[test]
+fn duplicate_evidence_keeps_exact_and_semantic_signals_separate() {
+    let dedupe = artifact_candidate_dedupe(
+        "https://github.com/acme/repo",
+        Some("main"),
+        Some("skills/demo"),
+        Some("sha256:one"),
+    );
+    let mut neighbors = (0..40)
+        .rev()
+        .map(|index| ArtifactCandidateId::from(format!("cand_neighbor_{index:02}")))
+        .collect::<Vec<_>>();
+    neighbors.push(ArtifactCandidateId::from("cand_neighbor_00"));
+    let evidence =
+        artifact_candidate_duplicate_evidence(&dedupe, Some(("skills.sh", true)), &neighbors);
+
+    assert_eq!(evidence["exact"]["identityKey"], dedupe.identity_key);
+    assert_eq!(
+        evidence["exact"]["contentKey"].as_str(),
+        dedupe.content_key.as_deref()
+    );
+    let near = evidence["nearDuplicateCandidateIds"]
+        .as_array()
+        .expect("near duplicate ids");
+    assert_eq!(near.len(), ARTIFACT_CANDIDATE_MAX_NEAR_DUPLICATES);
+    assert_eq!(
+        near.first().and_then(serde_json::Value::as_str),
+        Some("cand_neighbor_00")
+    );
+    assert_eq!(
+        near.last().and_then(serde_json::Value::as_str),
+        Some("cand_neighbor_31")
+    );
+    assert_eq!(evidence["nearDuplicateTruncated"], true);
+    assert_eq!(evidence["providerSignals"][0]["value"], true);
+    assert_eq!(evidence["authorityScope"], "evidence-only");
+    assert_eq!(
+        artifact_candidate_id(&dedupe).0,
+        format!(
+            "cand_{}",
+            dedupe
+                .content_key
+                .as_deref()
+                .expect("content key")
+                .trim_start_matches("sha256:")
+        )
+    );
+}
+
+#[test]
 fn length_prefixing_prevents_delimiter_style_identity_aliases() {
     let left = artifact_candidate_dedupe("https://example.test/a", Some("b/c"), None, None);
     let right = artifact_candidate_dedupe("https://example.test/a/b", Some("c"), None, None);

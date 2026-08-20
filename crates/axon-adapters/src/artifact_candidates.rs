@@ -102,6 +102,49 @@ pub fn artifact_candidate_id(dedupe: &ArtifactCandidateDedupe) -> ArtifactCandid
     ArtifactCandidateId::from(format!("cand_{digest}"))
 }
 
+const ARTIFACT_CANDIDATE_MAX_NEAR_DUPLICATES: usize = 32;
+
+/// Build bounded duplicate/similarity evidence without changing exact Axon identity.
+///
+/// Exact identity/content keys remain the producer-side de-duplication contract.
+/// Provider duplicate flags and semantic near-neighbor candidate ids are sibling
+/// observations only; neither can replace the exact keys or grant authority.
+pub fn artifact_candidate_duplicate_evidence(
+    dedupe: &ArtifactCandidateDedupe,
+    provider_signal: Option<(&str, bool)>,
+    near_duplicate_candidate_ids: &[ArtifactCandidateId],
+) -> serde_json::Value {
+    let provider_signals = provider_signal
+        .map(|(provider, duplicate)| {
+            vec![serde_json::json!({
+                "provider": provider,
+                "kind": "duplicate",
+                "value": duplicate,
+            })]
+        })
+        .unwrap_or_default();
+    let mut near_duplicates = std::collections::BTreeSet::new();
+    let mut near_duplicates_truncated = false;
+    for candidate_id in near_duplicate_candidate_ids {
+        near_duplicates.insert(candidate_id.0.clone());
+        if near_duplicates.len() > ARTIFACT_CANDIDATE_MAX_NEAR_DUPLICATES {
+            near_duplicates_truncated = true;
+            near_duplicates.pop_last();
+        }
+    }
+    serde_json::json!({
+        "exact": {
+            "identityKey": dedupe.identity_key,
+            "contentKey": dedupe.content_key,
+            "contentHash": dedupe.content_hash,
+        },
+        "nearDuplicateCandidateIds": near_duplicates.into_iter().collect::<Vec<_>>(),
+        "nearDuplicateTruncated": near_duplicates_truncated,
+        "providerSignals": provider_signals,
+        "authorityScope": "evidence-only",
+    })
+}
+
 /// Build a deterministic idempotency key for one bounded candidate delivery.
 /// Replaying the same source generation and candidate partition produces the
 /// same key, while any candidate identity change produces a different key.
