@@ -87,8 +87,9 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 
 ### C5: Depot sink
 
-- [ ] inspect current Depot intake/API operations before choosing endpoint shape;
-- [ ] implement versioned serialized HTTP sink using Axon's existing HTTP/provider infrastructure;
+- [x] inspect current Depot intake/API operations before choosing endpoint shape;
+- [ ] wait for Depot's bounded ArtifactCandidate intake ledger/operation to be implemented and frozen; do not substitute existing authoritative Skill/repository ingest APIs;
+- [ ] implement versioned serialized HTTP sink using Axon's existing HTTP/provider infrastructure once that intake contract exists;
 - [ ] bounded batch size + max in-flight delivery;
 - [ ] idempotency/delivery keys;
 - [ ] auth kept out of candidate envelope;

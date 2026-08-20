@@ -207,11 +207,20 @@ Focused proof:
 - consolidated C4 gate status `0`: format check, generated-contract check, layering, `git diff --check`, frozen Depot fixture hashes, and `cargo clippy -p axon-adapters -p axon-services --all-targets -- -D warnings` all passed using the normal kache path;
 - frozen Depot fixture hashes remain candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732` and interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`.
 
+### C5 Depot intake contract inspection - blocked on Depot C2
+
+- live Depot MCP currently exposes durable ingest jobs and source-specific Skill ingestion, but no `artifact`/`candidate` intake operation;
+- `depot.ingest.start` accepts only `repo`, `well_known`, `ard_catalog`, `marketplace`, or `skills_sh`; `depot.skills.ingest_skills_sh` immediately resolves a skills.sh result into repository ingestion using `repoUrl`, `skillId`, optional `ref`, `subdir`, and namespace;
+- frozen Depot W20 commit `25de725` explicitly records `C2 hosted registry + candidate ledger` as `NOT_STARTED`, with the next action to implement the bounded candidate ledger;
+- `Depot.Artifact` at that commit exposes artifact model operations but no candidate intake operation;
+- therefore Axon deliberately does **not** implement C5 against `ingest.start` or `ingest_skills_sh`: either would turn evidence-only candidate delivery into authoritative repository/Skill ingestion and violate the cross-repo boundary;
+- C5 resumes only after Depot publishes a bounded versioned ArtifactCandidate intake operation/ledger. The frozen v1 candidate payload remains unchanged.
+
 ## Next
 
 1. coordinate full watch-request limits/metadata persistence with #570 before touching overlapping watch production code;
-2. inspect Depot's current intake API and add the versioned sink without changing frozen v1 candidate fields;
-3. add semantic/graph evidence hooks;
+2. track Depot W20 C2 candidate-ledger/intake progress and implement C5 only after its versioned intake operation is frozen;
+3. continue C6 semantic/graph evidence hooks that do not depend on Depot intake;
 4. run a deliberately bounded authenticated seed only after intake/license/backpressure gates are proven;
 5. keep draft PR evidence current and preserve the no-second-pipeline boundary.
 
