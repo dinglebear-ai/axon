@@ -337,3 +337,149 @@ fn search_requires_a_real_query_and_uses_search_limit_ceiling() {
     assert_eq!(options.owner.as_deref(), Some("dinglebear-ai"));
     assert_eq!(options.per_page, 200);
 }
+
+#[test]
+fn incremental_diff_fetches_only_modified_and_keeps_removed_as_reconciliation() {
+    let plan = plan_with_options(MetadataMap::new(), Some(10));
+    let mut previous = dump_with_skill(10);
+    let mut removed_skill = previous.skills[0].clone();
+    removed_skill.id = "acme/skills/retired-skill".to_string();
+    removed_skill.slug = "retired-skill".to_string();
+    removed_skill.name = "retired-skill".to_string();
+    removed_skill.source = "acme/skills".to_string();
+    removed_skill.install_url = Some("https://github.com/acme/skills".to_string());
+    removed_skill.url = Some("https://skills.sh/acme/skills/retired-skill".to_string());
+    previous.skills.push(removed_skill);
+
+    let previous_manifest = discover(&plan, &previous).expect("previous manifest");
+    let mut current = dump_with_skill(11);
+    current.observed_at = Timestamp("2026-08-19T13:05:00Z".to_string());
+    let current_manifest = discover(&plan, &current).expect("current manifest");
+    let modified = current_manifest.items[0].clone();
+    let removed = previous_manifest
+        .items
+        .iter()
+        .find(|item| item.source_item_key != modified.source_item_key)
+        .expect("removed prior item")
+        .clone();
+    let diff = SourceManifestDiff {
+        header: StageResultHeader {
+            job_id: plan.job_id,
+            stage_id: StageId::for_job_stage(plan.job_id, "skills-sh-incremental-diff", 0),
+            phase: PipelinePhase::Diffing,
+            status: LifecycleStatus::Completed,
+            started_at: current.observed_at.clone(),
+            completed_at: Some(current.observed_at.clone()),
+            counts: StageCounts {
+                items_total: Some(2),
+                items_done: 2,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            warnings: Vec::new(),
+            error: None,
+        },
+        source_id: current_manifest.source_id.clone(),
+        previous_generation: Some(previous_manifest.generation.clone()),
+        next_generation: SourceGenerationId::from("2"),
+        added: Vec::new(),
+        modified: vec![modified.clone()],
+        removed: vec![removed.clone()],
+        unchanged: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
+        counts: DiffCounts {
+            added: 0,
+            modified: 1,
+            removed: 1,
+            unchanged: 0,
+            skipped: 0,
+            failed: 0,
+        },
+    };
+
+    let acquisition = acquire(&plan, &diff, &current).expect("acquire changed rows");
+    assert_eq!(acquisition.fetched_items.len(), 1);
+    assert_eq!(
+        acquisition.fetched_items[0].manifest_item.source_item_key,
+        modified.source_item_key
+    );
+    assert!(
+        acquisition
+            .manifest
+            .items
+            .iter()
+            .all(|item| item.source_item_key != removed.source_item_key),
+        "removed rows are reconciliation evidence, not acquisition/deletion work"
+    );
+    assert_eq!(diff.removed, vec![removed]);
+
+    let normalized = normalize(&plan, &acquisition, &current).expect("normalize modified row");
+    assert_eq!(normalized.data.len(), 1);
+    let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
+        .expect("candidate from modified row");
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(
+        candidates[0].manifest_metadata["axonSourceItemKey"],
+        serde_json::json!(modified.source_item_key.0)
+    );
+}
+
+#[test]
+fn unchanged_diff_produces_no_acquisition_or_candidate_input() {
+    let plan = plan_with_options(MetadataMap::new(), Some(10));
+    let dump = dump_with_skill(10);
+    let manifest = discover(&plan, &dump).expect("manifest");
+    let diff = SourceManifestDiff {
+        header: StageResultHeader {
+            job_id: plan.job_id,
+            stage_id: StageId::for_job_stage(plan.job_id, "skills-sh-unchanged-diff", 0),
+            phase: PipelinePhase::Diffing,
+            status: LifecycleStatus::Completed,
+            started_at: dump.observed_at.clone(),
+            completed_at: Some(dump.observed_at.clone()),
+            counts: StageCounts {
+                items_total: Some(1),
+                items_done: 1,
+                documents_total: None,
+                documents_done: 0,
+                chunks_total: None,
+                chunks_done: 0,
+                bytes_total: None,
+                bytes_done: 0,
+            },
+            warnings: Vec::new(),
+            error: None,
+        },
+        source_id: manifest.source_id.clone(),
+        previous_generation: Some(manifest.generation.clone()),
+        next_generation: SourceGenerationId::from("2"),
+        added: Vec::new(),
+        modified: Vec::new(),
+        removed: Vec::new(),
+        unchanged: manifest.items.clone(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
+        counts: DiffCounts {
+            added: 0,
+            modified: 0,
+            removed: 0,
+            unchanged: 1,
+            skipped: 0,
+            failed: 0,
+        },
+    };
+
+    let acquisition = acquire(&plan, &diff, &dump).expect("unchanged acquisition");
+    assert!(acquisition.fetched_items.is_empty());
+    assert!(acquisition.manifest.items.is_empty());
+    let normalized = normalize(&plan, &acquisition, &dump).expect("unchanged normalize");
+    assert!(normalized.data.is_empty());
+    let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
+        .expect("unchanged candidate projection");
+    assert!(candidates.is_empty());
+}
