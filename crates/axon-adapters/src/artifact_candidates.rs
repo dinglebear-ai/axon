@@ -12,6 +12,9 @@ use axon_api::source::{
 };
 use sha2::{Digest, Sha256};
 
+mod depot;
+pub use depot::DepotArtifactCandidateSink;
+
 pub type Result<T> = std::result::Result<T, ApiError>;
 
 /// A version-negotiated output sink for Axon artifact observations.
@@ -189,3 +192,7 @@ fn hash_part(hasher: &mut Sha256, part: Option<&str>) {
 #[cfg(test)]
 #[path = "artifact_candidates_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "artifact_candidates/depot_tests.rs"]
+mod depot_tests;
