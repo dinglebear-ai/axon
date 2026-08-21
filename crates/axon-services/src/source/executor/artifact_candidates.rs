@@ -24,12 +24,14 @@ struct CandidateDeliveryResult {
     warnings: Vec<SourceWarning>,
     stop_delivery: bool,
     retryable: bool,
+    disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CandidateDeliveryDisposition {
     Terminal,
     Retryable,
+    Disabled,
 }
 
 pub(super) struct CandidateDeliveryOutcome {
@@ -241,12 +243,15 @@ pub(super) async fn submit_committed_candidates_with_outcome(
         if delivery.retryable {
             disposition = CandidateDeliveryDisposition::Retryable;
         }
+        if delivery.disabled {
+            disposition = CandidateDeliveryDisposition::Disabled;
+        }
         if delivery.stop_delivery {
             let visited = (chunk_index + 1)
                 .saturating_mul(batch_size)
                 .min(candidates.len());
             let skipped = candidates.len().saturating_sub(visited);
-            if skipped > 0 {
+            if skipped > 0 && delivery.retryable {
                 warnings.push(warning(
                     "source.artifact_candidate.sink_delivery_skipped",
                     format!(
@@ -399,7 +404,8 @@ async fn submit_candidate_chunk(
                 format!("artifact candidate sink delivery failed: {error}"),
                 error.retryable,
             )],
-            stop_delivery: true,
+            stop_delivery: error.retryable,
+            disabled: false,
         },
     }
 }
@@ -421,14 +427,12 @@ fn receipt_warnings(
         ));
         return CandidateDeliveryResult {
             warnings,
-            stop_delivery: true,
+            stop_delivery: false,
             retryable: false,
+            disabled: false,
         };
     }
-    let stop_delivery = matches!(
-        receipt.status,
-        ArtifactCandidateSinkStatus::Partial | ArtifactCandidateSinkStatus::Rejected
-    );
+    let disabled = receipt.status == ArtifactCandidateSinkStatus::Disabled;
     match receipt.status {
         ArtifactCandidateSinkStatus::Disabled => warnings.push(warning(
             "source.artifact_candidate.sink_disabled",
@@ -465,8 +469,9 @@ fn receipt_warnings(
     }
     CandidateDeliveryResult {
         warnings,
-        stop_delivery,
+        stop_delivery: disabled,
         retryable: false,
+        disabled,
     }
 }
 

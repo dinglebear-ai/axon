@@ -771,6 +771,48 @@ async fn durable_candidate_outbox_retries_autonomously_then_deletes_on_acceptanc
 }
 
 #[tokio::test]
+async fn disabled_candidate_sink_preserves_durable_outbox_delivery() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
+    );
+    let mut runtime = test_runtime_with_jobs(vectors, ledger, jobs);
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("source generation succeeds while candidate sink is disabled");
+
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert_eq!(
+        outbox.pending().await.expect("read outbox").len(),
+        1,
+        "disabled delivery must remain durable for a later configured sink"
+    );
+}
+
+#[tokio::test]
 async fn failed_generation_never_delivers_artifact_candidates() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().to_string_lossy().to_string();
