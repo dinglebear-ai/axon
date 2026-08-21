@@ -10558,7 +10558,10 @@
         "ghr_",
         "xoxb-",
         "xoxp-",
-        "glpat-"
+        "glpat-",
+        "tvly-",
+        "rk_test_",
+        "rk_live_"
       ],
       "body_text_field_policy": {
         "allowed_without_metadata_rejection": [

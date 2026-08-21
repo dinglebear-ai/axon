@@ -803,10 +803,13 @@ fn request(
 /// preparation with "quote outside source range".
 #[test]
 fn redacted_content_parses_and_validates_after_scrub() {
-    let text = "# Title\n\n```bash\ncurl --header \"Authorization: Bearer secret-token-value\"\n```\n\n## After the secret\n\nBody text.\n";
+    let fake_secret = format!("sk-{}", "a".repeat(28));
+    let text = format!(
+        "# Title\n\n```bash\ncurl --header \"Authorization: Bearer {fake_secret}\"\n```\n\n## After the secret\n\nBody text.\n"
+    );
     let mut request = request(
         ContentKind::Markdown,
-        text,
+        &text,
         "gen-1",
         ChunkingProfile::MarkdownSections,
     );
@@ -824,7 +827,7 @@ fn redacted_content_parses_and_validates_after_scrub() {
         prepared
             .chunks
             .iter()
-            .all(|chunk| !chunk.content.contains("secret-token-value")),
+            .all(|chunk| !chunk.content.contains(&fake_secret)),
         "pre-chunk redaction must scrub the bearer token"
     );
     // ...and the self-parsed heading candidates (produced from the redacted
@@ -841,5 +844,49 @@ fn redacted_content_parses_and_validates_after_scrub() {
             .iter()
             .map(|candidate| candidate.merge_key.clone())
             .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn tutorial_credential_examples_are_preserved_before_chunking() {
+    let text = concat!(
+        "Authorization: Bearer abc123\n",
+        "TOKEN=abc123\n",
+        "passwd=hunter2\n",
+        "postgres://user:password@localhost/app\n",
+    );
+    let result = DocumentPreparer::default()
+        .prepare(request(
+            ContentKind::PlainText,
+            text,
+            "gen-tutorial",
+            ChunkingProfile::PlainTextWindows,
+        ))
+        .expect("tutorial credential syntax must remain preparable");
+    let prepared = result.document;
+    let joined = prepared
+        .chunks
+        .iter()
+        .map(|chunk| chunk.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    for example in [
+        "Authorization: Bearer abc123",
+        "TOKEN=abc123",
+        "passwd=hunter2",
+        "postgres://user:password@localhost/app",
+    ] {
+        assert!(
+            joined.contains(example),
+            "tutorial example was redacted: {example}"
+        );
+    }
+    assert!(
+        prepared
+            .warnings
+            .iter()
+            .all(|warning| warning.code != "document.content.pre_chunk_redacted"),
+        "low-confidence tutorial syntax must not trigger pre-chunk redaction"
     );
 }

@@ -79,20 +79,26 @@ fn redacts_github_token_with_long_body_without_leaking_tail() {
 }
 
 #[test]
-fn redacts_short_prefixed_tokens() {
-    // Token-anchored prefix rules catch short/malformed tokens too (a truncated
-    // token in an error tail must not leak), matching the prior heuristics.
+fn preserves_short_prefixed_documentation_examples() {
     for token in ["sk-short", "ghp_short", "atk_x"] {
-        let out = redact_secrets(&format!("oops {token} here"));
-        assert_eq!(out, "oops [REDACTED] here", "leaked {token}: {out}");
+        let input = format!("example {token} here");
+        assert_eq!(redact_secrets(&input), input);
     }
 }
 
 #[test]
 fn redacts_authorization_header_value() {
-    let out = redact_secrets("request failed Authorization:Bearer sk-secret-value normal");
+    let token = format!("sk-{}", "a".repeat(28));
+    let input = format!("request failed Authorization:Bearer {token} normal");
+    let out = redact_secrets(&input);
     assert_eq!(out, "request failed Authorization:Bearer [REDACTED] normal");
-    assert!(!out.contains("sk-secret-value"), "leaked token: {out}");
+    assert!(!out.contains(&token), "leaked token: {out}");
+}
+
+#[test]
+fn preserves_short_authorization_examples() {
+    let input = "request example Authorization: Bearer abc123";
+    assert_eq!(redact_secrets(input), input);
 }
 
 #[test]
@@ -183,6 +189,44 @@ fn redacts_key_value_assignment_rules() {
     // Case-insensitive marker matching.
     let mixed = redact_secrets("Api_Key=deadbeef"); // gitleaks:allow — synthetic test fixture
     assert_eq!(mixed, "Api_Key=[REDACTED]");
+}
+
+#[test]
+fn local_path_name_policy_preserves_repository_metadata_but_blocks_credentials() {
+    for name in [
+        ".github",
+        ".gitignore",
+        ".editorconfig",
+        ".cargo",
+        ".vscode",
+        "password.md",
+        "secrets.md",
+        "credentials.md",
+        "token-guide.md",
+    ] {
+        assert!(
+            !is_sensitive_local_name(name),
+            "repo metadata was hidden: {name}"
+        );
+    }
+    for name in [
+        ".ssh",
+        ".aws",
+        ".env",
+        ".env.local",
+        ".netrc",
+        ".git-credentials",
+        "id_ed25519",
+        "deploy.key",
+        "credentials.json",
+        "secrets.yaml",
+        "token.json",
+    ] {
+        assert!(
+            is_sensitive_local_name(name),
+            "credential path was allowed: {name}"
+        );
+    }
 }
 
 #[test]

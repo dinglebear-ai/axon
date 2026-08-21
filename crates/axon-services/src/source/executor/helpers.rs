@@ -381,8 +381,8 @@ pub(super) fn take_enrichment_graph_candidates(
 /// chain via `{error:#}`, and only when it actually adds something beyond
 /// `message`, so a single-frame error doesn't get a pointless duplicate.
 pub(super) fn terminal_source_error(error: &anyhow::Error) -> SourceError {
-    let message = axon_core::redact::redact_secrets(&error.to_string());
-    let full_chain = axon_core::redact::redact_secrets(&format!("{error:#}"));
+    let message = axon_core::redact::redact_operational_secrets(&error.to_string());
+    let full_chain = axon_core::redact::redact_operational_secrets(&format!("{error:#}"));
     let cause = (full_chain != message).then_some(full_chain);
     SourceError {
         code: "source.index_failed".to_string(),

@@ -55,14 +55,14 @@ fn map_research_payload_wraps_payload() {
 fn query_log_summary_redacts_token_like_substrings() {
     let cfg = Config::default();
     let summary = query_log_summary(
-        "find docs for sk-testsecret1234567890 and github_pat_1234567890abcdef",
+        "find docs for sk-testsecret1234567890 and github_pat_1234567890abcdefghijkl",
         &cfg,
     );
     assert!(summary.contains("len="));
     assert!(summary.contains("hash="));
-    assert!(summary.contains(REDACTED_TOKEN));
+    assert!(summary.contains(axon_core::redact::REDACTION_PLACEHOLDER));
     assert!(!summary.contains("sk-testsecret1234567890"));
-    assert!(!summary.contains("github_pat_1234567890abcdef"));
+    assert!(!summary.contains("github_pat_1234567890abcdefghijkl"));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn redact_handles_kv_style_tokens() {
     let fake_key = ["sk-", "livekey1234567890abc"].concat();
     let summary = query_log_summary(&format!("debug request ?api_key={fake_key} done"), &cfg);
     assert!(
-        summary.contains(REDACTED_TOKEN),
+        summary.contains(axon_core::redact::REDACTION_PLACEHOLDER),
         "expected redaction: {summary}"
     );
     assert!(!summary.contains(&fake_key));
@@ -82,7 +82,7 @@ fn redact_handles_kv_style_tokens() {
 #[test]
 fn redact_recognizes_aws_and_jwt_shapes() {
     let cfg = Config::default();
-    let fake_aws = ["AKIA", "IOSFODNN7EXAMPLE"].concat();
+    let fake_aws = ["AKIA", "0123456789ABCDEF"].concat();
     let aws = query_log_summary(&format!("{fake_aws} configured"), &cfg);
     assert!(
         aws.contains(REDACTED_TOKEN),
@@ -93,6 +93,31 @@ fn redact_recognizes_aws_and_jwt_shapes() {
         jwt.contains(REDACTED_TOKEN),
         "expected JWT redaction: {jwt}"
     );
+}
+
+#[test]
+fn query_log_summary_preserves_publishable_keys_and_long_identifiers() {
+    let cfg = Config::default();
+    let publishable = "pk_test_1234567890abcdefghijklmnopqrst";
+    let identifier = "artifact0123456789abcdef0123456789abcdef";
+    let summary = query_log_summary(&format!("{publishable} {identifier}"), &cfg);
+
+    assert!(summary.contains(publishable));
+    assert!(summary.contains(identifier));
+}
+
+#[test]
+fn debug_query_logging_still_redacts_secrets() {
+    let cfg = Config {
+        log_level: Some("debug".to_string()),
+        ..Config::default()
+    };
+    let secret = ["sk-", "livekey1234567890abc"].concat();
+    let summary = query_log_summary(&format!("full query {secret} trailing context"), &cfg);
+
+    assert!(!summary.contains(&secret));
+    assert!(summary.contains(axon_core::redact::REDACTION_PLACEHOLDER));
+    assert!(summary.contains("trailing context"));
 }
 
 #[test]

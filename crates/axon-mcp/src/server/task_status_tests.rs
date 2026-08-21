@@ -68,7 +68,10 @@ fn task_result_payload_includes_sanitized_result_json() {
     assert_eq!(value["completed"], true);
     assert_eq!(value["result_json"]["raw"], "result");
     assert_eq!(value["result_json"]["access_token"], "[redacted]");
-    assert_eq!(value["result_json"]["repo"], "[redacted-url]");
+    assert_eq!(
+        value["result_json"]["repo"],
+        "https://[REDACTED]@example.com/private/repo"
+    );
     assert!(value.get("config_json").is_none());
     assert!(value.get("error_text").is_none());
     assert!(value.get("target").is_none());
@@ -150,4 +153,35 @@ fn source_task_result_preserves_structured_progress_without_leaking_sensitive_va
     assert!(!encoded.contains("/home/jmagar"));
     assert!(!encoded.contains("top-secret-value"));
     assert!(!encoded.contains("secret-value"));
+}
+
+#[test]
+fn task_status_preserves_benign_security_metadata_fields() {
+    let sanitized = sanitize_value(&json!({
+        "token_count": 4096,
+        "page_token": "next-42",
+        "authorization_status": "required",
+        "authorizationStatus": "required-camel",
+        "access_token": "must-not-survive",
+        "accessToken": "must-not-survive-camel",
+    }));
+
+    assert_eq!(sanitized["token_count"], 4096);
+    assert_eq!(sanitized["page_token"], "next-42");
+    assert_eq!(sanitized["authorization_status"], "required");
+    assert_eq!(sanitized["authorizationStatus"], "required-camel");
+    assert_eq!(sanitized["access_token"], "[redacted]");
+    assert_eq!(sanitized["accessToken"], "[redacted]");
+}
+
+#[test]
+fn task_status_preserves_benign_url_and_email_prose() {
+    let benign = "docs https://example.com and contact dev@example.com";
+    assert_eq!(sanitize_string(benign), benign);
+
+    let credential = "connect via postgres://user:pass@db.internal:5432/app";
+    assert_eq!(
+        sanitize_string(credential),
+        "connect via postgres://[REDACTED]@db.internal:5432/app"
+    );
 }

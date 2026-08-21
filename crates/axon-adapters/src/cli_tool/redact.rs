@@ -9,7 +9,7 @@
 /// Returns `(redacted_text, was_redacted)`; the flag records whether shared
 /// redaction changed the text.
 pub(super) fn redact_text(text: &str) -> (String, bool) {
-    let redacted = axon_core::redact::redact_secrets(text);
+    let redacted = axon_core::redact::redact_retrievable_body_secrets(text);
     let changed = redacted != text;
     (redacted, changed)
 }

@@ -28,34 +28,11 @@ pub struct DecodedSession {
     pub malformed_lines: u32,
 }
 
-/// Redact secret-shaped tokens from transcript text before it is embedded.
-/// Ported verbatim (behaviorally) from `axon-ingest::sessions::redact_session_text`.
+/// Redact detector-confirmed secret spans from transcript text before it is
+/// embedded. Long UUIDs, hashes, and opaque identifiers are preserved unless
+/// they carry actual credential evidence.
 pub fn redact_session_text(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(redact_session_token)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn redact_session_token(token: &str) -> String {
-    let trimmed = token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-');
-    let lower = trimmed.to_ascii_lowercase();
-    let secret_like = lower.starts_with("sk-")
-        || lower.starts_with("ghp_")
-        || lower.starts_with("github_pat_")
-        || lower.starts_with("atk_")
-        || lower.contains("api_key")
-        || lower.contains("apikey")
-        || lower.contains("access_token")
-        || (trimmed.len() >= 24
-            && trimmed.chars().any(|c| c.is_ascii_alphabetic())
-            && trimmed.chars().any(|c| c.is_ascii_digit()));
-    if secret_like {
-        token.replace(trimmed, "[redacted-secret]")
-    } else {
-        token.to_string()
-    }
+    axon_core::redact::redact_retrievable_body_secrets(input)
 }
 
 /// Decode a Claude Code session export (JSONL, one turn per line).
@@ -239,10 +216,11 @@ fn append_turn(out: &mut DecodedSession, role: &str, text: &str) {
     if text.trim().is_empty() {
         return;
     }
+    let redacted = redact_session_text(text);
     out.text.push_str(&format!(
         "\n\n### {}:\n{}",
         role.to_uppercase(),
-        redact_session_text(text)
+        redacted.trim_end()
     ));
     if role == "user" {
         out.turn_count += 1;

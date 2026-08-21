@@ -140,19 +140,10 @@ fn sanitize_value(value: &Value) -> Value {
 }
 
 fn is_sensitive_key(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    lower.contains("token")
-        || lower.contains("secret")
-        || lower.contains("credential")
-        || lower.contains("password")
-        || lower == "authorization"
-        || lower == "api_key"
+    axon_core::redact::is_secret_like(key)
 }
 
 fn sanitize_string(value: &str) -> String {
-    if value.contains("://") && value.contains('@') {
-        return "[redacted-url]".to_string();
-    }
     let redacted =
         DefaultRedactor::new().redact_text(value, &RedactionContext::transport_response());
     if redacted != value {

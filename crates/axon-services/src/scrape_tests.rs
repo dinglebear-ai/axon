@@ -1,6 +1,7 @@
 use super::map_scrape_payload;
 use super::{
-    run_with_scrape_batch_timeout, scrape, scrape_batch, validate_and_normalize_scrape_url,
+    redact_sensitive_structured_keys, run_with_scrape_batch_timeout, scrape, scrape_batch,
+    validate_and_normalize_scrape_url,
 };
 use crate::events::{LogLevel, ServiceEvent};
 use axon_core::config::Config;
@@ -17,6 +18,27 @@ fn map_scrape_payload_initializes_without_artifact_handle() {
 
     assert_eq!(result.url, "https://example.com");
     assert!(result.artifact_handle.is_none());
+}
+
+#[test]
+fn structured_summary_redaction_uses_semantic_secret_keys() {
+    let value = serde_json::json!({
+        "token_count": 4096,
+        "password_policy": "required",
+        "authorizationStatus": "required",
+        "accessToken": "must-not-survive",
+        "cookie": "session=must-not-survive",
+        "nested": {"clientSecret": "must-not-survive", "tokenizer": "qwen"}
+    });
+
+    let redacted = redact_sensitive_structured_keys(value);
+    assert_eq!(redacted["token_count"], 4096);
+    assert_eq!(redacted["password_policy"], "required");
+    assert_eq!(redacted["authorizationStatus"], "required");
+    assert_eq!(redacted["nested"]["tokenizer"], "qwen");
+    assert!(redacted.get("accessToken").is_none());
+    assert!(redacted.get("cookie").is_none());
+    assert!(redacted["nested"].get("clientSecret").is_none());
 }
 
 #[tokio::test]

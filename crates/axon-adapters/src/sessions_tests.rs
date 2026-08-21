@@ -1,5 +1,6 @@
 use super::project_filter::matches_project_filter;
 use super::*;
+use crate::sessions::project_filter::matches_project_filter;
 
 use std::fs;
 use std::path::{Path, PathBuf};
