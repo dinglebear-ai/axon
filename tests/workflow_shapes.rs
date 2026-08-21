@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -128,21 +127,29 @@ fn ci_uses_guard_for_named_cargo_test_filters() {
         !workflow.contains(forbidden),
         "CI must not run stale cargo test filters that match zero tests"
     );
+}
 
-    let mut named_filters: HashMap<&str, &str> = HashMap::new();
-    named_filters.insert(
-        "rest_route_contracts_match_openapi_request_schemas",
-        "scripts/cargo_test_filter_guard.py",
+#[test]
+fn rest_api_contracts_reuse_workspace_nextest_instead_of_recompiling() {
+    let workflow = include_str!("../.github/workflows/ci.yml");
+    let openapi_step = workflow
+        .split("      - name: OpenAPI drift contract")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("      - name: Changed-file monolith policy")
+                .next()
+        })
+        .expect("OpenAPI drift contract step");
+
+    assert!(
+        !openapi_step.contains("cargo test"),
+        "the serial contract gate must not compile the parity integration target"
     );
-
-    for (filter, guard) in named_filters {
-        if workflow.contains(filter) {
-            assert!(
-                workflow.contains(&format!("python3 {guard} -- cargo test")),
-                "named cargo test filter {filter} must be run through {guard}"
-            );
-        }
-    }
+    assert!(openapi_step.contains("./target/debug/xtask check-openapi-drift"));
+    assert!(
+        workflow.contains("cargo nextest run --workspace --locked --features test-helpers"),
+        "workspace nextest must retain the parity integration-test coverage"
+    );
 }
 
 #[test]
