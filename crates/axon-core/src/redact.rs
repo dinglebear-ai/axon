@@ -128,7 +128,7 @@ pub fn is_sensitive_local_name(name: &str) -> bool {
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or(&lower);
-    if secret_like_field_name(stem) {
+    if (stem.contains('-') || stem.contains('_')) && secret_like_field_name(stem) {
         return true;
     }
     matches!(
