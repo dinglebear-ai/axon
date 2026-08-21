@@ -29,7 +29,8 @@ SourceRequest
     ↘ ArtifactCandidate[]      (optional evidence sibling; axon-api/axon-adapters)
   → embed                      (axon-embedding)
   → publish / vector write     (axon-vectors, axon-ledger)
-    ↘ candidate sink delivery  (optional, bounded, only after generation commit)
+    ↘ durable candidate outbox (optional, staged before commit)
+      → background sink drain  (bounded, only after generation commit)
   → graph                      (axon-graph)
   → cleanup debt               (axon-prune)
   → SourceResult

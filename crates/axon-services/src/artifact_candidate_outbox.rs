@@ -31,6 +31,7 @@ pub(crate) struct ArtifactCandidateOutbox {
     gate: Mutex<()>,
     draining: AtomicBool,
     drain_requested: AtomicBool,
+    scan_cursor: std::sync::atomic::AtomicUsize,
 }
 
 impl ArtifactCandidateOutbox {
@@ -40,6 +41,7 @@ impl ArtifactCandidateOutbox {
             gate: Mutex::new(()),
             draining: AtomicBool::new(false),
             drain_requested: AtomicBool::new(false),
+            scan_cursor: std::sync::atomic::AtomicUsize::new(0),
         }
     }
 
@@ -106,11 +108,16 @@ impl ArtifactCandidateOutbox {
             }
         }
         paths.sort();
+        if paths.len() > MAX_PENDING_DELIVERIES {
+            let start = self
+                .scan_cursor
+                .fetch_add(MAX_PENDING_DELIVERIES, Ordering::AcqRel)
+                % paths.len();
+            paths.rotate_left(start);
+            paths.truncate(MAX_PENDING_DELIVERIES);
+        }
         let mut pending: Vec<PendingArtifactCandidateDelivery> = Vec::new();
         for path in paths {
-            if pending.len() >= MAX_PENDING_DELIVERIES {
-                break;
-            }
             let Some(file_key) = path.file_stem().and_then(|value| value.to_str()) else {
                 quarantine(&path).await;
                 continue;

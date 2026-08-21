@@ -39,8 +39,9 @@ SourceRequest
   |  -> shared ArtifactCandidate[]   (buffered sibling evidence output)
   -> parse / prepare / embed
   -> vector publish + commit source generation
+  -> durable candidate outbox     (staged before commit, eligible after commit)
   -> Axon ArtifactCandidateBatch  (optional bounded transport wrapper)
-  -> ArtifactCandidateSink
+  -> background ArtifactCandidateSink drain
   -> graph
   -> cleanup
   -> SourceResult
@@ -48,7 +49,7 @@ SourceRequest
 
 The candidate path is an output branch from the same source generation. It uses the same existing job/source/generation lifecycle and must not bypass discovery, diffing, leases, cancellation, or publication gates. Candidate sink failures are optional/degraded evidence failures and must not silently change existing RAG publication semantics.
 
-Candidates are buffered during changed-item processing and are not delivered to Depot until their Axon source generation commits. A failed generation therefore cannot leak ghost candidates into the hosted registry.
+Candidates are buffered during changed-item processing and durably staged before publication. They become eligible for the background Depot drain only after their Axon source generation commits; failed generations remove their staged intent. Accepted/disabled deliveries are retired idempotently, while failed deliveries remain available for a later drain. A failed generation therefore cannot leak ghost candidates into the hosted registry, and a process interruption after commit does not erase delivery intent.
 
 ## Shared neutral candidate payload
 
