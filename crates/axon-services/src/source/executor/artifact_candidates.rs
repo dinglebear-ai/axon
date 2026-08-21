@@ -22,14 +22,14 @@ pub(super) struct CandidateCollection {
 
 struct CandidateDeliveryResult {
     warnings: Vec<SourceWarning>,
-    stop_delivery: bool,
-    retryable: bool,
+    disposition: CandidateDeliveryDisposition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum CandidateDeliveryDisposition {
     Terminal,
     Retryable,
+    Disabled,
 }
 
 pub(super) struct CandidateDeliveryOutcome {
@@ -238,15 +238,13 @@ pub(super) async fn submit_committed_candidates_with_outcome(
         )
         .await;
         warnings.extend(delivery.warnings);
-        if delivery.retryable {
-            disposition = CandidateDeliveryDisposition::Retryable;
-        }
-        if delivery.stop_delivery {
+        if delivery.disposition != CandidateDeliveryDisposition::Terminal {
+            disposition = delivery.disposition;
             let visited = (chunk_index + 1)
                 .saturating_mul(batch_size)
                 .min(candidates.len());
             let skipped = candidates.len().saturating_sub(visited);
-            if skipped > 0 {
+            if skipped > 0 && delivery.disposition == CandidateDeliveryDisposition::Retryable {
                 warnings.push(warning(
                     "source.artifact_candidate.sink_delivery_skipped",
                     format!(
@@ -393,13 +391,16 @@ async fn submit_candidate_chunk(
     match sink.submit(batch).await {
         Ok(receipt) => receipt_warnings(sink_name, receipt, candidates.len() as u64),
         Err(error) => CandidateDeliveryResult {
-            retryable: error.retryable,
             warnings: vec![warning(
                 "source.artifact_candidate.sink_failed",
                 format!("artifact candidate sink delivery failed: {error}"),
                 error.retryable,
             )],
-            stop_delivery: true,
+            disposition: if error.retryable {
+                CandidateDeliveryDisposition::Retryable
+            } else {
+                CandidateDeliveryDisposition::Terminal
+            },
         },
     }
 }
@@ -421,14 +422,10 @@ fn receipt_warnings(
         ));
         return CandidateDeliveryResult {
             warnings,
-            stop_delivery: true,
-            retryable: false,
+            disposition: CandidateDeliveryDisposition::Terminal,
         };
     }
-    let stop_delivery = matches!(
-        receipt.status,
-        ArtifactCandidateSinkStatus::Partial | ArtifactCandidateSinkStatus::Rejected
-    );
+    let disabled = receipt.status == ArtifactCandidateSinkStatus::Disabled;
     match receipt.status {
         ArtifactCandidateSinkStatus::Disabled => warnings.push(warning(
             "source.artifact_candidate.sink_disabled",
@@ -465,8 +462,11 @@ fn receipt_warnings(
     }
     CandidateDeliveryResult {
         warnings,
-        stop_delivery,
-        retryable: false,
+        disposition: if disabled {
+            CandidateDeliveryDisposition::Disabled
+        } else {
+            CandidateDeliveryDisposition::Terminal
+        },
     }
 }
 

@@ -60,10 +60,17 @@ pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
                             )
                             .await;
                     }
-                    if outcome.disposition == CandidateDeliveryDisposition::Terminal {
-                        outbox.complete(&pending.delivery_key).await?;
-                    } else {
-                        retryable_remaining = true;
+                    match outcome.disposition {
+                        CandidateDeliveryDisposition::Terminal => {
+                            outbox.complete(&pending.delivery_key).await?;
+                        }
+                        CandidateDeliveryDisposition::Retryable => {
+                            retryable_remaining = true;
+                        }
+                        CandidateDeliveryDisposition::Disabled => {
+                            // Configuration can be restored later. Preserve the durable
+                            // delivery intent without spinning a retry loop while disabled.
+                        }
                     }
                 }
                 Ok::<bool, anyhow::Error>(retryable_remaining)
