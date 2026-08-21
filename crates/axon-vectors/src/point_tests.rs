@@ -462,7 +462,7 @@ fn public_authentication_documentation_is_indexed() {
 #[test]
 fn document_body_secret_examples_skip_only_the_forbidden_chunk() {
     let mut document = test_prepared_document();
-    document.chunks[0].content = "TOKEN=value".to_string();
+    document.chunks[0].content = "TOKEN=abcdef0123456789abcdef0123".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
     let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
@@ -545,22 +545,17 @@ fn payload_redaction_stamps_proof_fields() {
 }
 
 #[test]
-fn document_body_secret_examples_fail_closed() {
+fn build_omits_a_forbidden_document_body_chunk() {
     let mut document = test_prepared_document();
-    document.chunks[0].content = "TOKEN=value".to_string();
+    document.chunks[0].content = "TOKEN=abcdef0123456789abcdef0123".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let err = builder(test_collection_spec(3), document, embeddings)
+    let batch = builder(test_collection_spec(3), document, embeddings)
         .build()
-        .expect_err("secret-bearing vector payload must block the whole write batch");
+        .expect("the clean chunk remains eligible for vectorization");
 
-    assert!(matches!(
-        err,
-        VectorPointBatchBuildError::Payload {
-            source: VectorPayloadValidationError::ForbiddenValue { .. },
-            ..
-        }
-    ));
+    assert_eq!(batch.points.len(), 1);
+    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
 }
 
 #[test]
@@ -597,22 +592,18 @@ fn embedding_provider_provenance_is_checked_without_batch_id() {
 }
 
 #[test]
-fn build_with_skipped_count_fails_before_returning_a_partial_batch() {
+fn build_with_skipped_count_returns_the_clean_partial_batch() {
     let mut document = test_prepared_document();
-    document.chunks[1].content = "API_KEY=abc123".to_string();
+    document.chunks[1].content = "API_KEY=abcdef0123456789abcdef0123".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let err = builder(test_collection_spec(3), document, embeddings)
+    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
         .build_with_skipped_count()
-        .expect_err("redaction failure must block the whole vector write");
+        .expect("the clean chunk remains eligible for vectorization");
 
-    assert!(matches!(
-        err,
-        VectorPointBatchBuildError::Payload {
-            source: VectorPayloadValidationError::ForbiddenValue { .. },
-            ..
-        }
-    ));
+    assert_eq!(skipped_redaction, 1);
+    assert_eq!(batch.points.len(), 1);
+    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-1"));
 }
 
 #[test]

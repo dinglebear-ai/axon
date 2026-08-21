@@ -93,7 +93,8 @@ pub fn is_sensitive_local_name(name: &str) -> bool {
     }
     if matches!(
         lower.as_str(),
-        ".ssh"
+        ".config"
+            | ".ssh"
             | ".aws"
             | ".azure"
             | ".gcloud"
@@ -121,6 +122,13 @@ pub fn is_sensitive_local_name(name: &str) -> bool {
         || lower.ends_with(".p12")
         || lower.ends_with(".pfx")
     {
+        return true;
+    }
+    let stem = std::path::Path::new(&lower)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(&lower);
+    if secret_like_field_name(stem) {
         return true;
     }
     matches!(

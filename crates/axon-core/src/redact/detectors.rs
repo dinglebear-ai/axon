@@ -109,6 +109,7 @@ pub fn forbidden_field_name(field: &str) -> bool {
         normalized.as_str(),
         "raw_auth"
             | "raw_auth_header"
+            | "raw_auth_headers"
             | "auth_header"
             | "authorization"
             | "authorization_header"
@@ -214,7 +215,13 @@ fn secret_assignment_is_high_confidence(key: &str, raw_value: &str) -> bool {
         || looks_like_jwt(candidate)
         || value_is_high_entropy_token(candidate)
         || contains_high_confidence_url_credentials(candidate)
-        || (normalize_field_name(key).contains("password") && candidate.len() >= 12)
+        || ({
+            let normalized = normalize_field_name(key);
+            (matches!(normalized.as_str(), "password" | "passwd")
+                || normalized.ends_with("_password")
+                || normalized.ends_with("_passwd"))
+                && candidate.len() >= 12
+        })
 }
 
 fn assignment_candidate(value: &str) -> &str {

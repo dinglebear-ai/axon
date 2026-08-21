@@ -97,7 +97,10 @@ fn redact_recognizes_aws_and_jwt_shapes() {
 
 #[test]
 fn query_log_summary_preserves_publishable_keys_and_long_identifiers() {
-    let cfg = Config::default();
+    let cfg = Config {
+        log_level: Some("debug".to_string()),
+        ..Config::default()
+    };
     let publishable = "pk_test_1234567890abcdefghijklmnopqrst";
     let identifier = "artifact0123456789abcdef0123456789abcdef";
     let summary = query_log_summary(&format!("{publishable} {identifier}"), &cfg);
