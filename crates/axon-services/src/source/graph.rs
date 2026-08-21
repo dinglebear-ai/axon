@@ -479,7 +479,7 @@ fn document_node_kind(item: &ManifestItem) -> &'static str {
 /// returned name is a closed [`axon_graph::edge::GraphEdgeKind`] variant.
 fn containment_edge_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
     if kind == SourceKind::Registry && scope == SourceScope::Api {
-        return "contains_artifact";
+        return "source_indexed_as";
     }
     match kind {
         SourceKind::Web => "docs_site_contains_page",
