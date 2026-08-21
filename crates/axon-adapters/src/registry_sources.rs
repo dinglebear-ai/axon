@@ -160,10 +160,10 @@ impl SourceAdapter for RegistrySourceAdapter {
         plan: &SourcePlan,
         generation: &SourceGenerationId,
         documents: &[SourceDocument],
-        _enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+        enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
     ) -> Result<Vec<ArtifactCandidate>> {
         if skills_sh::is_plan(plan) {
-            return skills_sh::artifact_candidates(plan, generation, documents);
+            return skills_sh::artifact_candidates(plan, generation, documents, enrichments);
         }
         Ok(Vec::new())
     }

@@ -1,6 +1,5 @@
 //! Pure skills.sh dump -> SourceManifest/SourceDocument/ArtifactCandidate mapping.
 
-#[cfg(test)]
 use std::collections::BTreeMap;
 
 use axon_api::source::*;
@@ -313,10 +312,18 @@ pub(crate) fn artifact_candidates(
     plan: &SourcePlan,
     generation: &SourceGenerationId,
     documents: &[SourceDocument],
+    enrichments: &BTreeMap<SourceItemKey, SourceEnrichment>,
 ) -> Result<Vec<ArtifactCandidate>> {
     documents
         .iter()
-        .map(|document| candidate_from_document(plan, generation, document))
+        .map(|document| {
+            candidate_from_document(
+                plan,
+                generation,
+                document,
+                semantic_neighbor_ids(enrichments.get(&document.source_item_key)),
+            )
+        })
         .collect()
 }
 
@@ -324,6 +331,7 @@ fn candidate_from_document(
     plan: &SourcePlan,
     generation: &SourceGenerationId,
     document: &SourceDocument,
+    semantic_neighbor_ids: Vec<ArtifactCandidateId>,
 ) -> Result<ArtifactCandidate> {
     let payload = document.structured_payload.as_ref().ok_or_else(|| {
         ApiError::new(
@@ -379,7 +387,7 @@ fn candidate_from_document(
         artifact_candidate_duplicate_evidence(
             &dedupe,
             skill.is_duplicate.map(|duplicate| ("skills.sh", duplicate)),
-            &[],
+            &semantic_neighbor_ids,
         ),
     );
     let mut popularity_signals = MetadataMap::new();
@@ -414,6 +422,20 @@ fn candidate_from_document(
         crawl_job_id: Some(plan.job_id.0.to_string()),
         warnings,
     })
+}
+
+pub(super) const SEMANTIC_NEIGHBOR_IDS_METADATA_KEY: &str =
+    "artifact_candidate_semantic_neighbor_ids";
+
+fn semantic_neighbor_ids(enrichment: Option<&SourceEnrichment>) -> Vec<ArtifactCandidateId> {
+    enrichment
+        .and_then(|enrichment| enrichment.metadata.get(SEMANTIC_NEIGHBOR_IDS_METADATA_KEY))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .map(ArtifactCandidateId::from)
+        .collect()
 }
 
 fn catalog_observed_at(document: &SourceDocument) -> Result<Timestamp> {

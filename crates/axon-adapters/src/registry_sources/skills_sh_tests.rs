@@ -311,6 +311,71 @@ async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candid
     assert!(!candidate.permits_public_byte_mirroring());
 }
 
+#[tokio::test]
+async fn registry_adapter_attaches_item_scoped_semantic_neighbors_as_evidence_only() {
+    let dump = dump_with_skill(24_531);
+    let (_temp, path) = write_dump(&dump);
+    let mut plan = plan_with_options(MetadataMap::new(), Some(10));
+    set_dump_path(&mut plan, &path);
+    let adapter = RegistrySourceAdapter::new();
+    let manifest = adapter.discover(&plan).await.expect("discover catalog");
+    let acquisition =
+        acquire(&plan, &added_diff(&plan, &manifest), &dump).expect("acquire catalog");
+    let normalized = adapter
+        .normalize(&plan, acquisition)
+        .await
+        .expect("normalize catalog");
+    let document = &normalized.data[0];
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        map::SEMANTIC_NEIGHBOR_IDS_METADATA_KEY.to_string(),
+        serde_json::json!([
+            "cand_semantic_b",
+            "cand_semantic_a",
+            "cand_semantic_a",
+            42,
+            null
+        ]),
+    );
+    let enrichment = SourceEnrichment {
+        header: crate::registry_sources::stage_header(
+            plan.job_id,
+            "test_semantic_neighbors",
+            PipelinePhase::Enriching,
+            1,
+        ),
+        source_id: plan.route.source.source_id.clone(),
+        source_item_key: document.source_item_key.clone(),
+        enrichment_kind: EnrichmentKind::Metadata,
+        status: EnrichmentStatus::Completed,
+        metadata,
+        parse_hints: Vec::new(),
+        chunk_hints: Vec::new(),
+        graph_candidates: Vec::new(),
+        artifacts: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let enrichments =
+        std::collections::BTreeMap::from([(document.source_item_key.clone(), enrichment)]);
+
+    let candidates = adapter
+        .artifact_candidates(
+            &plan,
+            &SourceGenerationId::from("1"),
+            &normalized.data,
+            &enrichments,
+        )
+        .await
+        .expect("build enriched candidate evidence");
+    let evidence = &candidates[0].discovery_evidence["axonDuplicateEvidence"];
+    assert_eq!(
+        evidence["nearDuplicateCandidateIds"],
+        serde_json::json!(["cand_semantic_a", "cand_semantic_b"])
+    );
+    assert_eq!(evidence["nearDuplicateTruncated"], false);
+    assert_eq!(evidence["authorityScope"], "evidence-only");
+}
+
 #[test]
 fn listing_digest_changes_when_catalog_evidence_changes() {
     let first = dump_with_skill(10);
@@ -466,8 +531,13 @@ fn incremental_diff_fetches_only_modified_and_keeps_removed_as_reconciliation() 
 
     let normalized = normalize(&plan, &acquisition).expect("normalize modified row");
     assert_eq!(normalized.data.len(), 1);
-    let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
-        .expect("candidate from modified row");
+    let candidates = artifact_candidates(
+        &plan,
+        &diff.next_generation,
+        &normalized.data,
+        &std::collections::BTreeMap::new(),
+    )
+    .expect("candidate from modified row");
     assert_eq!(candidates.len(), 1);
     assert_eq!(
         candidates[0].manifest_metadata["axonSourceItemKey"],
@@ -525,8 +595,13 @@ fn unchanged_diff_produces_no_acquisition_or_candidate_input() {
     assert!(acquisition.manifest.items.is_empty());
     let normalized = normalize(&plan, &acquisition).expect("unchanged normalize");
     assert!(normalized.data.is_empty());
-    let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
-        .expect("unchanged candidate projection");
+    let candidates = artifact_candidates(
+        &plan,
+        &diff.next_generation,
+        &normalized.data,
+        &std::collections::BTreeMap::new(),
+    )
+    .expect("unchanged candidate projection");
     assert!(candidates.is_empty());
 }
 
