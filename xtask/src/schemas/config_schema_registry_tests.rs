@@ -69,6 +69,8 @@ fn env_var_registry_has_all_contract_vars() {
         "AXON_CHROME_REMOTE_URL",
         "AXON_ARTIFACT_CANDIDATE_DEPOT_URL",
         "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN",
+        "SKILLS_SH_OIDC_TOKEN",
+        "VERCEL_OIDC_TOKEN",
         "AXON_HTTP_HOST",
         "AXON_HTTP_PORT",
         "AXON_PUBLIC_URL",

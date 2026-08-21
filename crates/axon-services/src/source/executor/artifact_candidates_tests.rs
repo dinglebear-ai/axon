@@ -294,7 +294,13 @@ async fn committed_delivery_honors_hard_batch_ceiling_and_is_idempotent() {
         candidates.clone(),
     )
     .await;
-    assert!(warnings.is_empty());
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|warning| warning.code == "source.artifact_candidate.sink_accepted")
+            .count(),
+        3
+    );
     let first = sink.batches();
     assert_eq!(first.len(), 3);
     assert_eq!(first[0].candidates.len(), 64);
@@ -325,7 +331,13 @@ async fn committed_delivery_honors_hard_batch_ceiling_and_is_idempotent() {
         replay_candidates,
     )
     .await;
-    assert!(warnings.is_empty());
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|warning| warning.code == "source.artifact_candidate.sink_accepted")
+            .count(),
+        3
+    );
     let all = sink.batches();
     let replay_keys = all[3..]
         .iter()
@@ -345,7 +357,13 @@ async fn sink_smaller_batch_limit_is_respected() {
         (0..5).map(candidate).collect(),
     )
     .await;
-    assert!(warnings.is_empty());
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|warning| warning.code == "source.artifact_candidate.sink_accepted")
+            .count(),
+        3
+    );
     assert_eq!(
         sink.batches()
             .iter()
@@ -396,25 +414,31 @@ async fn sink_without_idempotency_support_never_submits() {
 
 #[tokio::test]
 async fn impossible_sink_receipt_is_rejected_as_degraded_evidence() {
-    let sink = RecordingSink::with_invalid_receipt();
+    let mut sink = RecordingSink::with_invalid_receipt();
+    sink.max_batch_size = 1;
     let warnings = submit_committed_candidates(
         &sink,
         job_id(),
         source_id(),
         &generation(),
-        vec![candidate(1)],
+        vec![candidate(1), candidate(2)],
     )
     .await;
     assert_eq!(sink.batches().len(), 1);
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(
-        warnings[0].code,
-        "source.artifact_candidate.sink_receipt_invalid"
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| { warning.code == "source.artifact_candidate.sink_receipt_invalid" })
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| { warning.code == "source.artifact_candidate.sink_delivery_skipped" })
     );
 }
 
 #[tokio::test]
-async fn valid_disabled_receipt_does_not_synthesize_a_warning() {
+async fn valid_disabled_receipt_is_operator_visible() {
     let sink = RecordingSink::with_mode(SinkMode::Disabled);
     let warnings = submit_committed_candidates(
         &sink,
@@ -424,7 +448,8 @@ async fn valid_disabled_receipt_does_not_synthesize_a_warning() {
         vec![candidate(1)],
     )
     .await;
-    assert!(warnings.is_empty());
+    assert_eq!(warnings.len(), 1);
+    assert_eq!(warnings[0].code, "source.artifact_candidate.sink_disabled");
 }
 
 #[tokio::test]
@@ -445,18 +470,53 @@ async fn valid_partial_receipt_is_non_retryable_degraded_evidence_without_an_out
 
 #[tokio::test]
 async fn valid_rejected_receipt_is_non_retryable_degraded_evidence() {
-    let sink = RecordingSink::with_mode(SinkMode::Rejected);
+    let mut sink = RecordingSink::with_mode(SinkMode::Rejected);
+    sink.max_batch_size = 1;
     let warnings = submit_committed_candidates(
         &sink,
         job_id(),
         source_id(),
         &generation(),
-        vec![candidate(1)],
+        vec![candidate(1), candidate(2)],
     )
     .await;
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].code, "source.artifact_candidate.sink_rejected");
-    assert!(!warnings[0].retryable);
+    assert_eq!(sink.batches().len(), 1);
+    assert!(warnings.iter().any(|warning| {
+        warning.code == "source.artifact_candidate.sink_rejected" && !warning.retryable
+    }));
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| { warning.code == "source.artifact_candidate.sink_delivery_skipped" })
+    );
+}
+
+#[tokio::test]
+async fn generation_wide_duplicates_are_suppressed_and_id_collisions_are_rejected() {
+    let sink = RecordingSink::accepted(64);
+    let duplicate = candidate(1);
+    let mut collision = duplicate.clone();
+    collision.canonical_source_uri = "https://github.com/acme/other".to_string();
+
+    let warnings = submit_committed_candidates(
+        &sink,
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![duplicate.clone(), duplicate, collision, candidate(2)],
+    )
+    .await;
+
+    assert_eq!(sink.batches().len(), 1);
+    assert_eq!(sink.batches()[0].candidates, vec![candidate(2)]);
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| { warning.code == "source.artifact_candidate.duplicate_suppressed" })
+    );
+    assert!(warnings.iter().any(|warning| {
+        warning.code == "source.artifact_candidate.identity_collision_rejected"
+    }));
 }
 
 #[tokio::test]

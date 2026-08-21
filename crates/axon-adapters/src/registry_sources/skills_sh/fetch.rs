@@ -170,7 +170,12 @@ impl SkillsShPageProvider for HttpSkillsShPageProvider {
 
 pub(crate) async fn fetch_dump_to_temporary_file(
     plan: &SourcePlan,
-) -> Result<(tempfile::TempDir, std::path::PathBuf)> {
+) -> Result<(
+    tempfile::TempDir,
+    std::path::PathBuf,
+    std::path::PathBuf,
+    Timestamp,
+)> {
     let options = options(plan)?;
     let provider = HttpSkillsShPageProvider::production()?;
     let mut dump = fetch_dump(&provider, &options).await?;
@@ -185,6 +190,7 @@ pub(crate) async fn fetch_dump_to_temporary_file(
         )
     })?;
     let path = temporary.path().join("skills-sh.json");
+    let item_store = temporary.path().join("items");
     let bytes = serde_json::to_vec(&dump).map_err(|error| {
         ApiError::new(
             "adapter.skills_sh.dump_serialize_failed",
@@ -192,14 +198,39 @@ pub(crate) async fn fetch_dump_to_temporary_file(
             error.to_string(),
         )
     })?;
-    std::fs::write(&path, bytes).map_err(|error| {
+    tokio::fs::write(&path, bytes).await.map_err(|error| {
         ApiError::new(
             "adapter.skills_sh.dump_write_failed",
             ErrorStage::Fetching,
             error.to_string(),
         )
     })?;
-    Ok((temporary, path))
+    tokio::fs::create_dir(&item_store).await.map_err(|error| {
+        ApiError::new(
+            "adapter.skills_sh.item_store_create_failed",
+            ErrorStage::Fetching,
+            error.to_string(),
+        )
+    })?;
+    for skill in &dump.skills {
+        let item_path = item_store.join(super::map::materialized_item_filename(plan, skill)?);
+        let bytes = serde_json::to_vec(skill).map_err(|error| {
+            ApiError::new(
+                "adapter.skills_sh.item_serialize_failed",
+                ErrorStage::Fetching,
+                error.to_string(),
+            )
+        })?;
+        tokio::fs::write(item_path, bytes).await.map_err(|error| {
+            ApiError::new(
+                "adapter.skills_sh.item_store_write_failed",
+                ErrorStage::Fetching,
+                error.to_string(),
+            )
+        })?;
+    }
+    let observed_at = dump.observed_at.clone();
+    Ok((temporary, path, item_store, observed_at))
 }
 
 pub(crate) async fn fetch_dump(
@@ -207,8 +238,6 @@ pub(crate) async fn fetch_dump(
     options: &SkillsShOptions,
 ) -> Result<SkillsShDump> {
     let mut skills = BTreeMap::new();
-    let mut pages_fetched = 0_u32;
-    let mut total_reported = None;
     match options.mode {
         SkillsShMode::Search => {
             let page = provider
@@ -222,7 +251,6 @@ pub(crate) async fn fetch_dump(
                 })
                 .await?;
             extend_unique(&mut skills, page.data, options.total_limit)?;
-            pages_fetched = 1;
         }
         SkillsShMode::Leaderboard => {
             for offset in 0..options.max_pages {
@@ -240,10 +268,8 @@ pub(crate) async fn fetch_dump(
                         limit: options.per_page,
                     })
                     .await?;
-                pages_fetched = pages_fetched.saturating_add(1);
                 if let Some(pagination) = &page.pagination {
                     validate_pagination(pagination, page_number, options.per_page)?;
-                    total_reported = Some(pagination.total);
                 }
                 let has_more = page
                     .pagination
@@ -258,15 +284,8 @@ pub(crate) async fn fetch_dump(
     }
     Ok(SkillsShDump {
         provider: "skills.sh".to_string(),
-        mode: match options.mode {
-            SkillsShMode::Leaderboard => "leaderboard",
-            SkillsShMode::Search => "search",
-        }
-        .to_string(),
         observed_at: Timestamp(chrono::Utc::now().to_rfc3339()),
         skills: skills.into_values().collect(),
-        pages_fetched,
-        total_reported,
     })
 }
 

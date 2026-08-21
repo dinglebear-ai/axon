@@ -91,17 +91,11 @@ pub fn artifact_candidate_dedupe(
 /// Candidate identity is content-aware when a content hash is available and
 /// otherwise falls back to the stable canonical source identity.
 pub fn artifact_candidate_id(dedupe: &ArtifactCandidateDedupe) -> ArtifactCandidateId {
-    let digest = dedupe
+    let selected_key = dedupe
         .content_key
         .as_deref()
-        .unwrap_or(&dedupe.identity_key)
-        .strip_prefix("sha256:")
-        .unwrap_or_else(|| {
-            dedupe
-                .content_key
-                .as_deref()
-                .unwrap_or(&dedupe.identity_key)
-        });
+        .unwrap_or(&dedupe.identity_key);
+    let digest = selected_key.strip_prefix("sha256:").unwrap_or(selected_key);
     ArtifactCandidateId::from(format!("cand_{digest}"))
 }
 

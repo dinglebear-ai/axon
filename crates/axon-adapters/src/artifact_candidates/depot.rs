@@ -27,7 +27,6 @@ const USER_AGENT: &str =
     "axon-artifact-candidate-sink/1.0 (+https://github.com/dinglebear-ai/axon)";
 const REQUEST_TIMEOUT_SECS: u64 = 20;
 const MAX_RESPONSE_BYTES: usize = ARTIFACT_CANDIDATE_MAX_BYTES + 65_536;
-const MAX_ERROR_BODY_BYTES: usize = 16_384;
 const MAX_RETRY_AFTER_SECS: u64 = 300;
 pub(super) const DEPOT_MAX_IN_FLIGHT: usize = 1;
 
@@ -73,11 +72,11 @@ impl DepotArtifactCandidateSink {
             .no_proxy()
             .user_agent(USER_AGENT)
             .build()
-            .map_err(|error| {
+            .map_err(|_| {
                 ApiError::new(
                     "adapter.artifact_candidate.depot.client_init_failed",
                     ErrorStage::Enriching,
-                    error.to_string(),
+                    "failed to initialize the Depot candidate intake client",
                 )
             })?;
         Ok(Self {
@@ -109,10 +108,10 @@ impl DepotArtifactCandidateSink {
             .json(&serde_json::json!({"candidate": candidate}))
             .send()
             .await
-            .map_err(|error| {
+            .map_err(|_| {
                 retryable_error(
                     "adapter.artifact_candidate.depot.request_failed",
-                    format!("Depot candidate intake request failed: {error}"),
+                    "Depot candidate intake request failed".to_string(),
                 )
             })?;
 
@@ -146,7 +145,10 @@ async fn classify_response(
         ));
     }
     if status.is_client_error() {
-        let detail = bounded_error_detail(response).await;
+        // Never project an upstream response body into Axon warnings. Depot
+        // error text can contain request echoes, internal details, or secrets.
+        // The stable status/code pair is sufficient for operator diagnosis.
+        drop(response);
         let (code, message) = match status {
             reqwest::StatusCode::UNAUTHORIZED => (
                 "source.artifact_candidate.depot.unauthorized",
@@ -158,9 +160,7 @@ async fn classify_response(
             ),
             _ => (
                 "source.artifact_candidate.depot.rejected",
-                detail.unwrap_or_else(|| {
-                    format!("Depot candidate intake returned HTTP {}", status.as_u16())
-                }),
+                format!("Depot candidate intake returned HTTP {}", status.as_u16()),
             ),
         };
         return Ok(rejected_result(code, message));
@@ -255,11 +255,11 @@ struct DepotOperationResult {
 }
 
 fn operation_endpoint(base_url: &str) -> Result<Url> {
-    let mut url = Url::parse(base_url).map_err(|error| {
+    let mut url = Url::parse(base_url).map_err(|_| {
         ApiError::new(
             "adapter.artifact_candidate.depot.url_invalid",
             ErrorStage::Enriching,
-            format!("invalid Depot base URL: {error}"),
+            "invalid Depot base URL",
         )
     })?;
     if !matches!(url.scheme(), "http" | "https")
@@ -276,6 +276,13 @@ fn operation_endpoint(base_url: &str) -> Result<Url> {
             "Depot base URL must be an HTTP(S) base URL without userinfo, query, or fragment",
         ));
     }
+    if url.scheme() == "http" && !is_loopback_host(&url) {
+        return Err(ApiError::new(
+            "adapter.artifact_candidate.depot.url_insecure",
+            ErrorStage::Enriching,
+            "Depot base URL must use HTTPS unless it targets loopback",
+        ));
+    }
     {
         let mut segments = url.path_segments_mut().map_err(|_| {
             ApiError::new(
@@ -290,6 +297,18 @@ fn operation_endpoint(base_url: &str) -> Result<Url> {
         }
     }
     Ok(url)
+}
+
+fn is_loopback_host(url: &Url) -> bool {
+    match url.host() {
+        Some(url::Host::Ipv4(address)) => address.is_loopback(),
+        Some(url::Host::Ipv6(address)) => address.is_loopback(),
+        Some(url::Host::Domain(domain)) => {
+            domain.eq_ignore_ascii_case("localhost")
+                || domain.to_ascii_lowercase().ends_with(".localhost")
+        }
+        None => false,
+    }
 }
 
 fn retry_after_seconds(response: &reqwest::Response) -> Option<u64> {
@@ -314,10 +333,10 @@ async fn read_bounded_body(response: reqwest::Response, max_bytes: usize) -> Res
     let mut bytes = Vec::new();
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|error| {
+        let chunk = chunk.map_err(|_| {
             retryable_error(
                 "adapter.artifact_candidate.depot.response_read_failed",
-                format!("failed reading Depot candidate intake response: {error}"),
+                "failed reading Depot candidate intake response".to_string(),
             )
         })?;
         if bytes.len().saturating_add(chunk.len()) > max_bytes {
@@ -329,35 +348,6 @@ async fn read_bounded_body(response: reqwest::Response, max_bytes: usize) -> Res
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes)
-}
-
-async fn bounded_error_detail(response: reqwest::Response) -> Option<String> {
-    let bytes = read_bounded_error_body(response).await?;
-    let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    let message = value.get("error")?.as_str()?.trim();
-    if message.is_empty() {
-        return None;
-    }
-    Some(message.chars().take(1_024).collect())
-}
-
-async fn read_bounded_error_body(response: reqwest::Response) -> Option<Vec<u8>> {
-    if response
-        .content_length()
-        .is_some_and(|size| size > MAX_ERROR_BODY_BYTES as u64)
-    {
-        return None;
-    }
-    let mut bytes = Vec::new();
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.ok()?;
-        if bytes.len().saturating_add(chunk.len()) > MAX_ERROR_BODY_BYTES {
-            return None;
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Some(bytes)
 }
 
 fn rejected_result(code: &str, message: String) -> ArtifactCandidateSinkResult {

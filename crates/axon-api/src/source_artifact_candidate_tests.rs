@@ -192,6 +192,20 @@ fn shared_candidate_bounds_match_w20_g0_contract() {
 }
 
 #[test]
+fn content_digests_uses_its_contract_specific_two_thousand_entry_limit() {
+    let digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let mut value = candidate();
+    value.content_digests = vec![digest.to_string(); ARTIFACT_CANDIDATE_MAX_CONTENT_DIGESTS];
+    assert!(value.validate_shared_contract().is_ok());
+
+    value.content_digests.push(digest.to_string());
+    assert_eq!(
+        value.validate_shared_contract().unwrap_err(),
+        "contentDigests exceeds 2000 entries"
+    );
+}
+
+#[test]
 fn canonical_source_uri_rejects_malformed_hostless_and_credentialed_values() {
     for uri in [
         "https://",

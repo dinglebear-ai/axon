@@ -8,6 +8,9 @@ use axon_core::redact::{DefaultRedactor, RedactionContext, redact_public_write};
 
 use super::SourcePipelineInput;
 use super::helpers::timestamp;
+mod outbox;
+
+pub(super) use outbox::spawn_outbox_drain;
 
 /// Hard Axon-side batch ceiling even when a sink advertises a larger limit.
 const MAX_CANDIDATE_SINK_BATCH_SIZE: usize = 64;
@@ -172,13 +175,19 @@ pub(super) async fn submit_committed_candidates(
         return Vec::new();
     }
 
+    let (mut candidates, mut warnings) = dedupe_generation_candidates(candidates, generation);
+    if candidates.is_empty() {
+        return warnings;
+    }
+
     let (capability, batch_size) = match candidate_sink_capability(sink).await {
         Ok(value) => value,
-        Err(warning) => return vec![warning],
+        Err(warning) => {
+            warnings.push(warning);
+            return warnings;
+        }
     };
-    let mut candidates = candidates;
     candidates.sort_by(|left, right| left.id.cmp(&right.id));
-    let mut warnings = Vec::new();
     for (chunk_index, chunk) in candidates.chunks(batch_size).enumerate() {
         let delivery = submit_candidate_chunk(
             sink,
@@ -208,6 +217,54 @@ pub(super) async fn submit_committed_candidates(
         }
     }
     warnings
+}
+
+/// Apply the candidate identity invariant once over the fully accumulated
+/// generation. Collection happens per changed-document chunk, so chunk-local
+/// checks alone cannot detect duplicates or conflicting reuse of an id.
+fn dedupe_generation_candidates(
+    candidates: Vec<ArtifactCandidate>,
+    generation: &SourceGenerationId,
+) -> (Vec<ArtifactCandidate>, Vec<SourceWarning>) {
+    let mut by_id = BTreeMap::new();
+    let mut collided = BTreeSet::new();
+    let mut warnings = Vec::new();
+
+    for candidate in candidates {
+        if collided.contains(&candidate.id) {
+            continue;
+        }
+        match by_id.entry(candidate.id.clone()) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(candidate);
+            }
+            std::collections::btree_map::Entry::Occupied(entry) if entry.get() == &candidate => {
+                warnings.push(warning(
+                    "source.artifact_candidate.duplicate_suppressed",
+                    format!(
+                        "duplicate artifact candidate {} was suppressed across generation {}",
+                        candidate.id.0, generation.0
+                    ),
+                    false,
+                ));
+            }
+            std::collections::btree_map::Entry::Occupied(entry) => {
+                let id = entry.key().clone();
+                entry.remove();
+                collided.insert(id.clone());
+                warnings.push(warning(
+                    "source.artifact_candidate.identity_collision_rejected",
+                    format!(
+                        "conflicting artifact candidates reused id {} in generation {}; all candidates with that id were rejected",
+                        id.0, generation.0
+                    ),
+                    false,
+                ));
+            }
+        }
+    }
+
+    (by_id.into_values().collect(), warnings)
 }
 
 async fn candidate_sink_capability(
@@ -317,12 +374,30 @@ fn receipt_warnings(
         ));
         return CandidateDeliveryResult {
             warnings,
-            stop_delivery: false,
+            stop_delivery: true,
         };
     }
-    let stop_delivery = receipt.status == ArtifactCandidateSinkStatus::Partial;
+    let stop_delivery = matches!(
+        receipt.status,
+        ArtifactCandidateSinkStatus::Partial | ArtifactCandidateSinkStatus::Rejected
+    );
     match receipt.status {
-        ArtifactCandidateSinkStatus::Disabled | ArtifactCandidateSinkStatus::Accepted => {}
+        ArtifactCandidateSinkStatus::Disabled => warnings.push(warning(
+            "source.artifact_candidate.sink_disabled",
+            format!(
+                "artifact candidate sink {sink_name} is disabled; {} candidates were not accepted",
+                receipt.attempted
+            ),
+            false,
+        )),
+        ArtifactCandidateSinkStatus::Accepted => warnings.push(warning(
+            "source.artifact_candidate.sink_accepted",
+            format!(
+                "artifact candidate sink {sink_name} accepted all {} attempted candidates",
+                receipt.accepted
+            ),
+            false,
+        )),
         ArtifactCandidateSinkStatus::Partial => warnings.push(warning(
             "source.artifact_candidate.sink_partial",
             format!(

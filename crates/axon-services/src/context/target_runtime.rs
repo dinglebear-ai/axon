@@ -396,6 +396,11 @@ impl TargetLocalSourceRuntime {
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
         let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
         let artifact_candidate_sink = artifact_candidate_sink_from_env()?;
+        let artifact_candidate_outbox = Arc::new(
+            crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(
+                cfg.output_dir.join("artifact-candidate-outbox"),
+            ),
+        );
 
         Ok(Self {
             jobs,
@@ -419,6 +424,7 @@ impl TargetLocalSourceRuntime {
             artifact_store: Arc::new(artifact_store),
             document_cache: Arc::new(document_cache),
             artifact_candidate_sink,
+            artifact_candidate_outbox: Some(artifact_candidate_outbox),
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
@@ -427,10 +433,29 @@ impl TargetLocalSourceRuntime {
 
 fn artifact_candidate_sink_from_env()
 -> Result<Arc<dyn ArtifactCandidateSink>, Box<dyn std::error::Error + Send + Sync>> {
-    artifact_candidate_sink_from_values(
+    Ok(artifact_candidate_sink_for_runtime_from_values(
         std::env::var(DEPOT_URL_ENV).ok(),
         std::env::var(DEPOT_TOKEN_ENV).ok(),
-    )
+    ))
+}
+
+fn artifact_candidate_sink_for_runtime_from_values(
+    depot_url: Option<String>,
+    depot_token: Option<String>,
+) -> Arc<dyn ArtifactCandidateSink> {
+    match artifact_candidate_sink_from_values(depot_url, depot_token) {
+        Ok(sink) => sink,
+        Err(error) => {
+            // Depot delivery is optional. A malformed optional sink must not
+            // tear down the complete source data plane; retain the runtime
+            // with an explicit no-op sink and a visible configuration error.
+            tracing::error!(
+                error = %error,
+                "invalid optional Depot candidate sink configuration; candidate delivery is disabled"
+            );
+            Arc::new(NoopArtifactCandidateSink)
+        }
+    }
 }
 
 fn artifact_candidate_sink_from_values(

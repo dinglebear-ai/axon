@@ -94,11 +94,8 @@ fn audit_response(id: &str, status: &str) -> SkillsShAuditResponse {
 fn dump(ids: &[&str]) -> SkillsShDump {
     SkillsShDump {
         provider: "skills.sh".to_string(),
-        mode: "leaderboard".to_string(),
         observed_at: axon_api::source::Timestamp("2026-08-19T14:00:00Z".to_string()),
         skills: ids.iter().map(|id| skill(id)).collect(),
-        pages_fetched: 1,
-        total_reported: Some(ids.len() as u64),
     }
 }
 

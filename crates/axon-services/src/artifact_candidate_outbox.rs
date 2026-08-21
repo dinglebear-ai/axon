@@ -1,0 +1,246 @@
+//! Durable post-commit delivery intent for artifact candidates.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use axon_adapters::artifact_candidate_batch_idempotency_key;
+use axon_api::source::{ArtifactCandidate, JobId, SourceGenerationId, SourceId};
+use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
+
+const MAX_PENDING_DELIVERIES: usize = 1_024;
+const MAX_OUTBOX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PendingArtifactCandidateDelivery {
+    pub(crate) delivery_key: String,
+    pub(crate) job_id: JobId,
+    pub(crate) source_id: SourceId,
+    pub(crate) generation: SourceGenerationId,
+    pub(crate) candidates: Vec<ArtifactCandidate>,
+    pub(crate) staged_at_unix_ms: u64,
+}
+
+#[derive(Debug)]
+pub(crate) struct ArtifactCandidateOutbox {
+    root: PathBuf,
+    gate: Mutex<()>,
+    draining: AtomicBool,
+    drain_requested: AtomicBool,
+}
+
+impl ArtifactCandidateOutbox {
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            gate: Mutex::new(()),
+            draining: AtomicBool::new(false),
+            drain_requested: AtomicBool::new(false),
+        }
+    }
+
+    pub(crate) async fn stage(
+        &self,
+        job_id: JobId,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        mut candidates: Vec<ArtifactCandidate>,
+    ) -> anyhow::Result<Option<PendingArtifactCandidateDelivery>> {
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        candidates.sort_by(|left, right| left.id.cmp(&right.id));
+        let delivery_key =
+            artifact_candidate_batch_idempotency_key(&job_id, &source_id, &generation, &candidates);
+        let pending = PendingArtifactCandidateDelivery {
+            delivery_key,
+            job_id,
+            source_id,
+            generation,
+            candidates,
+            staged_at_unix_ms: now_unix_ms()?,
+        };
+        let _guard = self.gate.lock().await;
+        create_private_directory(&self.root).await?;
+        let path = self.path(&pending.delivery_key);
+        if tokio::fs::try_exists(&path).await? {
+            return Ok(Some(pending));
+        }
+        let bytes = serde_json::to_vec(&pending)?;
+        let temporary = self.root.join(format!(
+            ".{}.{}.tmp",
+            file_key_for(&pending.delivery_key).expect("generated delivery key"),
+            uuid::Uuid::new_v4()
+        ));
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary).await?;
+        file.write_all(&bytes).await?;
+        file.sync_all().await?;
+        drop(file);
+        tokio::fs::rename(&temporary, &path).await?;
+        sync_directory(self.root.clone()).await?;
+        Ok(Some(pending))
+    }
+
+    pub(crate) async fn pending(&self) -> anyhow::Result<Vec<PendingArtifactCandidateDelivery>> {
+        let _guard = self.gate.lock().await;
+        if !tokio::fs::try_exists(&self.root).await? {
+            return Ok(Vec::new());
+        }
+        let mut entries = tokio::fs::read_dir(&self.root).await?;
+        let mut paths = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if path.extension().and_then(|value| value.to_str()) == Some("json") {
+                paths.push(path);
+            }
+        }
+        paths.sort();
+        let mut pending: Vec<PendingArtifactCandidateDelivery> = Vec::new();
+        for path in paths {
+            if pending.len() >= MAX_PENDING_DELIVERIES {
+                break;
+            }
+            let Some(file_key) = path.file_stem().and_then(|value| value.to_str()) else {
+                quarantine(&path).await;
+                continue;
+            };
+            if !valid_file_key(file_key) {
+                quarantine(&path).await;
+                continue;
+            }
+            let Ok(metadata) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if metadata.len() > MAX_OUTBOX_FILE_BYTES {
+                quarantine(&path).await;
+                continue;
+            }
+            let Ok(bytes) = tokio::fs::read(&path).await else {
+                continue;
+            };
+            let Ok(record) = serde_json::from_slice::<PendingArtifactCandidateDelivery>(&bytes)
+            else {
+                quarantine(&path).await;
+                continue;
+            };
+            let recomputed = artifact_candidate_batch_idempotency_key(
+                &record.job_id,
+                &record.source_id,
+                &record.generation,
+                &record.candidates,
+            );
+            if file_key_for(&record.delivery_key) != Some(file_key)
+                || record.delivery_key != recomputed
+            {
+                quarantine(&path).await;
+                continue;
+            }
+            pending.push(record);
+        }
+        pending.sort_by(|left, right| left.delivery_key.cmp(&right.delivery_key));
+        Ok(pending)
+    }
+
+    pub(crate) async fn complete(&self, delivery_key: &str) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            file_key_for(delivery_key).is_some(),
+            "invalid artifact candidate delivery key"
+        );
+        let _guard = self.gate.lock().await;
+        let path = self.path(delivery_key);
+        match tokio::fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub(crate) fn begin_drain(&self) -> bool {
+        self.drain_requested.store(true, Ordering::Release);
+        self.draining
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    pub(crate) fn start_drain_pass(&self) {
+        self.drain_requested.store(false, Ordering::Release);
+    }
+
+    pub(crate) fn continue_or_finish_drain(&self) -> bool {
+        if self.drain_requested.swap(false, Ordering::AcqRel) {
+            return true;
+        }
+        self.draining.store(false, Ordering::Release);
+        if self.drain_requested.load(Ordering::Acquire)
+            && self
+                .draining
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            self.drain_requested.store(false, Ordering::Release);
+            return true;
+        }
+        false
+    }
+
+    fn path(&self, delivery_key: &str) -> PathBuf {
+        let file_key = file_key_for(delivery_key).expect("validated delivery key");
+        self.root.join(format!("{file_key}.json"))
+    }
+}
+
+fn valid_file_key(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn file_key_for(value: &str) -> Option<&str> {
+    value
+        .strip_prefix("sha256:")
+        .filter(|key| valid_file_key(key))
+}
+
+fn now_unix_ms() -> anyhow::Result<u64> {
+    Ok(u64::try_from(
+        SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis(),
+    )?)
+}
+
+async fn quarantine(path: &PathBuf) {
+    let quarantine = path.with_extension(format!("invalid.{}", uuid::Uuid::new_v4()));
+    let _ = tokio::fs::rename(path, quarantine).await;
+}
+
+async fn create_private_directory(path: &PathBuf) -> anyhow::Result<()> {
+    tokio::fs::create_dir_all(path).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).await?;
+    }
+    Ok(())
+}
+
+async fn sync_directory(path: PathBuf) -> anyhow::Result<()> {
+    tokio::task::spawn_blocking(move || std::fs::File::open(path)?.sync_all()).await??;
+    Ok(())
+}
+
+pub(crate) type SharedArtifactCandidateOutbox = Arc<ArtifactCandidateOutbox>;
+
+#[cfg(test)]
+#[path = "artifact_candidate_outbox_tests.rs"]
+mod tests;

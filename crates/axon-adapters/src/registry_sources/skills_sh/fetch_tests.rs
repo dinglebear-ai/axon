@@ -98,7 +98,6 @@ async fn leaderboard_pagination_is_sequential_bounded_sorted_and_deduped() {
             pagination: Some(super::super::SkillsShPagination {
                 page: 0,
                 per_page: 2,
-                total: 4,
                 has_more: true,
             }),
         },
@@ -107,7 +106,6 @@ async fn leaderboard_pagination_is_sequential_bounded_sorted_and_deduped() {
             pagination: Some(super::super::SkillsShPagination {
                 page: 1,
                 per_page: 2,
-                total: 4,
                 has_more: false,
             }),
         },
@@ -117,8 +115,6 @@ async fn leaderboard_pagination_is_sequential_bounded_sorted_and_deduped() {
         .await
         .expect("bounded leaderboard succeeds");
 
-    assert_eq!(dump.pages_fetched, 2);
-    assert_eq!(dump.total_reported, Some(4));
     assert_eq!(
         dump.skills
             .iter()
@@ -142,7 +138,6 @@ async fn listing_identity_mismatch_is_rejected_before_ledger_materialization() {
         pagination: Some(super::super::SkillsShPagination {
             page: 0,
             per_page: 2,
-            total: 1,
             has_more: false,
         }),
     }]);
@@ -174,7 +169,6 @@ async fn listing_response_cannot_inject_audit_enrichment_fields() {
         pagination: Some(super::super::SkillsShPagination {
             page: 0,
             per_page: 2,
-            total: 1,
             has_more: false,
         }),
     }]);
@@ -209,7 +203,6 @@ async fn search_is_one_request_and_never_fans_out_pages() {
     let dump = fetch_dump(&provider, &options)
         .await
         .expect("bounded search succeeds");
-    assert_eq!(dump.pages_fetched, 1);
     assert_eq!(dump.skills.len(), 1);
     let calls = provider.calls();
     assert_eq!(calls.len(), 1);

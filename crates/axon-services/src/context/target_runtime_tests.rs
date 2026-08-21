@@ -8,8 +8,8 @@ use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Barrier;
 
 use super::{
-    artifact_candidate_sink_from_values, invalidate_embedding_identity_cache,
-    resolve_embedding_identity, tei_max_attempts,
+    artifact_candidate_sink_for_runtime_from_values, artifact_candidate_sink_from_values,
+    invalidate_embedding_identity_cache, resolve_embedding_identity, tei_max_attempts,
 };
 use crate::context::TargetLocalSourceRuntime;
 
@@ -41,6 +41,18 @@ async fn artifact_candidate_sink_configuration_is_all_or_nothing() {
     )
     .expect("valid Depot sink");
     assert_eq!(configured.capabilities().await.unwrap().name, "depot-http");
+}
+
+#[tokio::test]
+async fn invalid_optional_depot_configuration_preserves_source_runtime_with_noop_sink() {
+    for (url, token) in [
+        (Some("not a URL".to_string()), Some("token".to_string())),
+        (Some("https://depot.example".to_string()), None),
+        (None, Some("token".to_string())),
+    ] {
+        let sink = artifact_candidate_sink_for_runtime_from_values(url, token);
+        assert_eq!(sink.capabilities().await.unwrap().name, "noop");
+    }
 }
 
 /// `tei_max_attempts` is the one place `cfg.tei_max_retries` becomes the real

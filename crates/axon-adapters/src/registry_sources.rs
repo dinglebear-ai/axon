@@ -51,8 +51,11 @@ impl SourceAdapter for RegistrySourceAdapter {
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_adapter(&plan)?;
         if skills_sh::is_plan(&plan) {
-            let (temporary, path) = skills_sh::fetch_dump_to_temporary_file(&plan).await?;
+            let (temporary, path, item_store, observed_at) =
+                skills_sh::fetch_dump_to_temporary_file(&plan).await?;
             skills_sh::set_dump_path(&mut plan, &path);
+            skills_sh::set_item_store_path(&mut plan, &item_store);
+            skills_sh::set_observed_at(&mut plan, &observed_at);
             return Ok(crate::acquisition::MaterializedSource::temporary_at(
                 plan, temporary, path,
             ));
@@ -85,8 +88,13 @@ impl SourceAdapter for RegistrySourceAdapter {
         if skills_sh::is_plan(plan) {
             validate_adapter(plan)?;
             registry_capability(self.version()).validate_scope(plan.route.scope)?;
-            let dump = skills_sh::load_dump(plan)?;
-            return skills_sh::discover(plan, &dump);
+            let plan = plan.clone();
+            return tokio::task::spawn_blocking(move || {
+                let dump = skills_sh::load_dump(&plan)?;
+                skills_sh::discover(&plan, &dump)
+            })
+            .await
+            .map_err(blocking_join_error)?;
         }
         let plan = plan.clone();
         tokio::task::spawn_blocking(move || discover_sync(&plan))
@@ -101,8 +109,13 @@ impl SourceAdapter for RegistrySourceAdapter {
     ) -> Result<SourceAcquisition> {
         if skills_sh::is_plan(plan) {
             validate_adapter(plan)?;
-            let dump = skills_sh::load_dump(plan)?;
-            return skills_sh::acquire(plan, diff, &dump);
+            let plan = plan.clone();
+            let diff = diff.clone();
+            return tokio::task::spawn_blocking(move || {
+                skills_sh::acquire_materialized(&plan, &diff)
+            })
+            .await
+            .map_err(blocking_join_error)?;
         }
         let plan = plan.clone();
         let diff = diff.clone();
@@ -118,8 +131,7 @@ impl SourceAdapter for RegistrySourceAdapter {
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
         if skills_sh::is_plan(plan) {
-            let dump = skills_sh::load_dump(plan)?;
-            return skills_sh::normalize(plan, &acquisition, &dump);
+            return skills_sh::normalize(plan, &acquisition);
         }
         let options = validate_options(&plan.route.validated_options)?;
         let dump = RegistryDump::load(&options.dump_path)?;

@@ -110,7 +110,6 @@ fn explicit_limits_are_clamped_to_hard_provider_bounds() {
 fn dump_with_skill(installs: u64) -> SkillsShDump {
     SkillsShDump {
         provider: "skills.sh".to_string(),
-        mode: "leaderboard".to_string(),
         observed_at: Timestamp("2026-08-19T13:00:00Z".to_string()),
         skills: vec![SkillsShSkill {
             id: "vercel-labs/skills/find-skills".to_string(),
@@ -126,8 +125,6 @@ fn dump_with_skill(installs: u64) -> SkillsShDump {
             audit_status: None,
             audit_warnings: Vec::new(),
         }],
-        pages_fetched: 1,
-        total_reported: Some(1),
     }
 }
 
@@ -196,6 +193,18 @@ async fn registry_adapter_maps_structured_catalog_to_documents_and_shared_candid
     let (_temp, path) = write_dump(&dump);
     let mut plan = plan_with_options(MetadataMap::new(), Some(10));
     set_dump_path(&mut plan, &path);
+    let item_store = path.parent().expect("dump parent").join("items");
+    std::fs::create_dir(&item_store).expect("item store");
+    for skill in &dump.skills {
+        let filename = map::materialized_item_filename(&plan, skill).expect("item filename");
+        std::fs::write(
+            item_store.join(filename),
+            serde_json::to_vec(skill).expect("serialize skill"),
+        )
+        .expect("write keyed skill");
+    }
+    set_item_store_path(&mut plan, &item_store);
+    set_observed_at(&mut plan, &dump.observed_at);
     let adapter = RegistrySourceAdapter::new();
 
     let manifest = adapter.discover(&plan).await.expect("discover catalog");
@@ -455,7 +464,7 @@ fn incremental_diff_fetches_only_modified_and_keeps_removed_as_reconciliation() 
     );
     assert_eq!(diff.removed, vec![removed]);
 
-    let normalized = normalize(&plan, &acquisition, &current).expect("normalize modified row");
+    let normalized = normalize(&plan, &acquisition).expect("normalize modified row");
     assert_eq!(normalized.data.len(), 1);
     let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
         .expect("candidate from modified row");
@@ -514,9 +523,86 @@ fn unchanged_diff_produces_no_acquisition_or_candidate_input() {
     let acquisition = acquire(&plan, &diff, &dump).expect("unchanged acquisition");
     assert!(acquisition.fetched_items.is_empty());
     assert!(acquisition.manifest.items.is_empty());
-    let normalized = normalize(&plan, &acquisition, &dump).expect("unchanged normalize");
+    let normalized = normalize(&plan, &acquisition).expect("unchanged normalize");
     assert!(normalized.data.is_empty());
     let candidates = artifact_candidates(&plan, &diff.next_generation, &normalized.data)
         .expect("unchanged candidate projection");
     assert!(candidates.is_empty());
+}
+
+#[test]
+fn keyed_materialization_supports_multiple_batches_without_reloading_dump() {
+    let mut plan = plan_with_options(MetadataMap::new(), Some(10));
+    let mut dump = dump_with_skill(10);
+    let mut second = dump.skills[0].clone();
+    second.id = "acme/skills/second".to_string();
+    second.slug = "second".to_string();
+    second.name = "second".to_string();
+    second.source = "acme/skills".to_string();
+    second.install_url = Some("https://github.com/acme/skills".to_string());
+    second.url = Some("https://skills.sh/acme/skills/second".to_string());
+    dump.skills.push(second);
+
+    let temporary = tempfile::tempdir().expect("tempdir");
+    let item_store = temporary.path().join("items");
+    std::fs::create_dir(&item_store).expect("item store");
+    for skill in &dump.skills {
+        let filename = map::materialized_item_filename(&plan, skill).expect("item filename");
+        std::fs::write(
+            item_store.join(filename),
+            serde_json::to_vec(skill).expect("serialize skill"),
+        )
+        .expect("write keyed skill");
+    }
+    set_item_store_path(&mut plan, &item_store);
+    set_observed_at(&mut plan, &dump.observed_at);
+
+    let manifest = discover(&plan, &dump).expect("discover once");
+    for (index, item) in manifest.items.iter().cloned().enumerate() {
+        let diff = SourceManifestDiff {
+            header: StageResultHeader {
+                job_id: plan.job_id,
+                stage_id: StageId::for_job_stage(plan.job_id, "skills-sh-keyed-batch", index),
+                phase: PipelinePhase::Diffing,
+                status: LifecycleStatus::Completed,
+                started_at: dump.observed_at.clone(),
+                completed_at: Some(dump.observed_at.clone()),
+                counts: StageCounts {
+                    items_total: Some(1),
+                    items_done: 1,
+                    documents_total: None,
+                    documents_done: 0,
+                    chunks_total: None,
+                    chunks_done: 0,
+                    bytes_total: None,
+                    bytes_done: 0,
+                },
+                warnings: Vec::new(),
+                error: None,
+            },
+            source_id: manifest.source_id.clone(),
+            previous_generation: None,
+            next_generation: SourceGenerationId::from("keyed"),
+            added: vec![item.clone()],
+            modified: Vec::new(),
+            removed: Vec::new(),
+            unchanged: Vec::new(),
+            skipped: Vec::new(),
+            failed: Vec::new(),
+            counts: DiffCounts {
+                added: 1,
+                modified: 0,
+                removed: 0,
+                unchanged: 0,
+                skipped: 0,
+                failed: 0,
+            },
+        };
+        let acquisition = acquire_materialized(&plan, &diff).expect("keyed batch acquisition");
+        assert_eq!(acquisition.fetched_items.len(), 1);
+        assert_eq!(acquisition.fetched_items[0].fetched_at, dump.observed_at);
+        let normalized = normalize(&plan, &acquisition).expect("normalize inline item");
+        assert_eq!(normalized.data.len(), 1);
+        assert_eq!(normalized.data[0].source_item_key, item.source_item_key);
+    }
 }

@@ -15,10 +15,16 @@ use super::{
     artifact_candidates, metadata, publish, reuse, vectorize,
 };
 use crate::context::TargetLocalSourceRuntime;
-use crate::reserved_call::{self, ArtifactCleanupGuard, ProviderCallContext};
+use crate::reserved_call::ArtifactCleanupGuard;
 use crate::source::output;
 use crate::source::progress as source_progress;
 use crate::source::result_map::IndexCounts;
+
+mod candidate_delivery;
+mod setup;
+
+use candidate_delivery::{finish_candidate_delivery, stage_candidate_delivery};
+use setup::ensure_generation_collection;
 
 /// Acquire/normalize/prepare/embed/publish the diff's added+modified items in
 /// bounded batches (`ACQUIRE_BATCH_SIZE`) rather than a single
@@ -105,8 +111,16 @@ pub(super) async fn run_created_generation(
             "publishing source generation",
         )
         .await;
-    let candidates = finalized.artifact_candidates;
+    let mut candidates = finalized.artifact_candidates;
     let candidate_generation = generation.generation.clone();
+    let staged_delivery = stage_candidate_delivery(
+        runtime,
+        input.plan.job_id,
+        input.plan.route.source.source_id.clone(),
+        candidate_generation.clone(),
+        &mut candidates,
+    )
+    .await?;
     let mut result = publish_created_generation(
         runtime,
         input,
@@ -122,54 +136,18 @@ pub(super) async fn run_created_generation(
         finalized.inline,
     )
     .await;
-    if result.is_ok() {
-        coordinator
-            .checkpoint(
-                PipelinePhase::Publishing,
-                stage_counts(Some(1), 1, None, 0, None, 0),
-                "published source generation",
-            )
-            .await;
-        artifact_cleanup.disarm();
-        if let Ok(output) = &mut result {
-            let candidate_warnings = artifact_candidates::submit_committed_candidates(
-                runtime.artifact_candidate_sink.as_ref(),
-                input.plan.job_id,
-                input.plan.route.source.source_id.clone(),
-                &candidate_generation,
-                candidates,
-            )
-            .await;
-            if !candidate_warnings.is_empty() {
-                output.warnings.extend(candidate_warnings);
-                super::persist_degraded_summary(runtime, output).await;
-            }
-        }
-    }
-    result
-}
-
-async fn ensure_generation_collection(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    collection: &CollectionSpec,
-) -> anyhow::Result<()> {
-    if !input.plan.request.embed {
-        return Ok(());
-    }
-    reserved_call::ensure_collection(
+    finish_candidate_delivery(
         runtime,
-        ProviderCallContext::for_phase(
-            input.plan.job_id,
-            input.execution.attempt,
-            PipelinePhase::Upserting,
-            input.execution.priority,
-            format!("ensure-collection:{}", collection.collection),
-        ),
-        collection.clone(),
+        input,
+        coordinator,
+        &mut artifact_cleanup,
+        &candidate_generation,
+        candidates,
+        staged_delivery,
+        &mut result,
     )
     .await?;
-    Ok(())
+    result
 }
 
 #[allow(clippy::too_many_arguments)]

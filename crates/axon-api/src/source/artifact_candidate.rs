@@ -162,7 +162,14 @@ impl ArtifactCandidate {
         }
 
         let value = serde_json::to_value(self).map_err(|error| error.to_string())?;
-        validate_json_shape(&value, 0)?;
+        // `contentDigests` has a contract-specific 2,000-entry ceiling and is
+        // validated above. Exclude it from the generic metadata-list ceiling,
+        // which intentionally remains 256 for every other JSON array.
+        let mut shape_value = value.clone();
+        if let Some(object) = shape_value.as_object_mut() {
+            object.remove("contentDigests");
+        }
+        validate_json_shape(&shape_value, 0)?;
         let encoded = serde_json::to_vec(&value).map_err(|error| error.to_string())?;
         if encoded.len() > ARTIFACT_CANDIDATE_MAX_BYTES {
             return Err("ArtifactCandidate exceeds 262144 bytes".to_string());

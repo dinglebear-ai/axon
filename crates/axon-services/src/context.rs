@@ -24,6 +24,8 @@ use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
 use tokio::sync::OnceCell;
 
+use crate::artifact_candidate_outbox::SharedArtifactCandidateOutbox;
+
 mod target_runtime;
 
 pub use target_runtime::{
@@ -70,6 +72,7 @@ pub struct TargetLocalSourceRuntime {
     /// production default is a no-op sink so existing SourceRequest/RAG behavior
     /// is unchanged unless a sink (for example Depot) is explicitly configured.
     pub artifact_candidate_sink: Arc<dyn ArtifactCandidateSink>,
+    pub(crate) artifact_candidate_outbox: Option<SharedArtifactCandidateOutbox>,
     source_adapters: Arc<OnceCell<SourceAdapterRegistry>>,
     pub(crate) web_source_adapter: Arc<dyn SourceAdapter>,
     /// Real acquisition boundaries injected into the canonical web adapter.
@@ -145,6 +148,7 @@ impl TargetLocalSourceRuntime {
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             artifact_candidate_sink: Arc::new(NoopArtifactCandidateSink),
+            artifact_candidate_outbox: None,
             source_adapters: Arc::new(OnceCell::new()),
             web_source_adapter,
             fetch_provider,

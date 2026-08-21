@@ -48,6 +48,7 @@ where
     F: FnOnce(SourcePlan) -> Fut + Send + 'a,
     Fut: Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
 {
+    artifact_candidates::spawn_outbox_drain(runtime);
     input.plan.config_snapshot_id = crate::config_snapshot_hash::config_snapshot_id(
         &crate::config_snapshot_hash::JobConfigSnapshot {
             source_kind: input.adapter.name(),

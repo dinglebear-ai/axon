@@ -29185,7 +29185,7 @@
         "path": "crates/axon-api/src/source.rs"
       },
       {
-        "checksum": "sha256:f4031b2d9ecdeccf3a7cf22662ff6ce15024473d967e0bbb290e05dc7c0247e7",
+        "checksum": "sha256:1f88986cd41b60ca97afb730c5223bbb19ada9597489f76018429fbcf6e487bf",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/artifact_candidate.rs"
       },

@@ -15,10 +15,14 @@ use serde::{Deserialize, Serialize};
 use crate::adapter::Result;
 
 pub(crate) use fetch::fetch_dump_to_temporary_file;
-pub(crate) use map::{acquire, artifact_candidates, discover, normalize};
+#[cfg(test)]
+pub(crate) use map::acquire;
+pub(crate) use map::{acquire_materialized, artifact_candidates, discover, normalize};
 
 pub(crate) const CATALOG_URI_PREFIX: &str = "catalog://skills.sh/";
 pub(crate) const DUMP_OPTION: &str = "skills_sh_dump_path";
+pub(crate) const ITEM_STORE_OPTION: &str = "skills_sh_item_store_path";
+pub(crate) const OBSERVED_AT_OPTION: &str = "skills_sh_observed_at";
 pub(crate) const VIEW_OPTION: &str = "view";
 pub(crate) const QUERY_OPTION: &str = "query";
 pub(crate) const OWNER_OPTION: &str = "owner";
@@ -77,13 +81,8 @@ pub(crate) struct SkillsShOptions {
 #[serde(deny_unknown_fields)]
 pub(crate) struct SkillsShDump {
     pub(crate) provider: String,
-    pub(crate) mode: String,
     pub(crate) observed_at: Timestamp,
     pub(crate) skills: Vec<SkillsShSkill>,
-    #[serde(default)]
-    pub(crate) pages_fetched: u32,
-    #[serde(default)]
-    pub(crate) total_reported: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -148,7 +147,6 @@ pub(crate) struct SkillsShPagination {
     pub(crate) page: u32,
     #[serde(rename = "perPage")]
     pub(crate) per_page: u32,
-    pub(crate) total: u64,
     #[serde(rename = "hasMore")]
     pub(crate) has_more: bool,
 }
@@ -231,6 +229,50 @@ pub(crate) fn set_dump_path(plan: &mut SourcePlan, path: &Path) {
         DUMP_OPTION.to_string(),
         serde_json::json!(path.to_string_lossy()),
     );
+}
+
+pub(crate) fn set_item_store_path(plan: &mut SourcePlan, path: &Path) {
+    plan.route.validated_options.values.insert(
+        ITEM_STORE_OPTION.to_string(),
+        serde_json::json!(path.to_string_lossy()),
+    );
+}
+
+pub(crate) fn set_observed_at(plan: &mut SourcePlan, observed_at: &Timestamp) {
+    plan.route.validated_options.values.insert(
+        OBSERVED_AT_OPTION.to_string(),
+        serde_json::json!(observed_at.0),
+    );
+}
+
+pub(crate) fn observed_at(plan: &SourcePlan) -> Result<Timestamp> {
+    plan.route
+        .validated_options
+        .values
+        .get(OBSERVED_AT_OPTION)
+        .and_then(serde_json::Value::as_str)
+        .map(|value| Timestamp(value.to_string()))
+        .ok_or_else(|| {
+            option_error(
+                OBSERVED_AT_OPTION,
+                "skills.sh materialization is missing its observation timestamp",
+            )
+        })
+}
+
+pub(crate) fn item_store_path(plan: &SourcePlan) -> Result<PathBuf> {
+    plan.route
+        .validated_options
+        .values
+        .get(ITEM_STORE_OPTION)
+        .and_then(serde_json::Value::as_str)
+        .map(PathBuf::from)
+        .ok_or_else(|| {
+            option_error(
+                ITEM_STORE_OPTION,
+                "skills.sh materialization is missing its keyed item store",
+            )
+        })
 }
 
 fn dump_path(plan: &SourcePlan) -> Result<PathBuf> {

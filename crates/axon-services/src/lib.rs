@@ -18,6 +18,7 @@
 )]
 
 pub mod action_api;
+mod artifact_candidate_outbox;
 pub mod artifacts;
 pub mod brand;
 pub mod client_contract;

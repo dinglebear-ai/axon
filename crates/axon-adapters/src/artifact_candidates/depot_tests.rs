@@ -140,6 +140,18 @@ async fn depot_sink_classifies_auth_scope_and_candidate_4xx_as_non_retryable_rej
 }
 
 #[tokio::test]
+async fn depot_sink_does_not_expose_upstream_rejection_detail() {
+    let secret = "upstream-secret-that-must-not-escape";
+    let result = rejected_http_status(422, secret).await;
+    assert_eq!(result.warnings.len(), 1);
+    assert!(!result.warnings[0].message.contains(secret));
+    assert_eq!(
+        result.warnings[0].message,
+        "Depot candidate intake returned HTTP 422"
+    );
+}
+
+#[tokio::test]
 async fn depot_sink_429_is_retryable_and_caps_retry_after_without_local_retry() {
     let _loopback = LoopbackGuard::allow();
     let server = MockServer::start();
@@ -314,5 +326,33 @@ fn depot_sink_base_url_rejects_embedded_credentials_query_and_fragment() {
             .err()
             .expect("unsafe Depot base URL rejected");
         assert_eq!(error.code.0, "adapter.artifact_candidate.depot.url_invalid");
+    }
+}
+
+#[test]
+fn depot_sink_requires_https_except_for_loopback_development() {
+    for url in [
+        "http://depot.example.test",
+        "http://10.0.0.8:4000",
+        "http://100.80.57.104:4000",
+    ] {
+        let error = DepotArtifactCandidateSink::new(url, "token")
+            .err()
+            .expect("non-loopback HTTP Depot URL rejected");
+        assert_eq!(
+            error.code.0,
+            "adapter.artifact_candidate.depot.url_insecure"
+        );
+    }
+
+    for url in [
+        "http://127.0.0.1:4000",
+        "http://[::1]:4000",
+        "http://localhost:4000",
+        "http://depot.localhost:4000",
+        "https://depot.example.test",
+    ] {
+        DepotArtifactCandidateSink::new(url, "token")
+            .unwrap_or_else(|error| panic!("safe Depot URL {url} rejected: {error}"));
     }
 }

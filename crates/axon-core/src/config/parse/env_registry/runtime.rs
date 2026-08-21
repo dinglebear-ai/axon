@@ -97,6 +97,8 @@ pub(crate) const RUNTIME_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec("TAVILY_API_KEY", KeepEnv, Both, None, Canonical, true),
+    spec("SKILLS_SH_OIDC_TOKEN", KeepEnv, Both, None, Canonical, true),
+    spec("VERCEL_OIDC_TOKEN", KeepEnv, Both, None, Canonical, true),
     spec("AXON_SEARXNG_URL", KeepEnv, Both, None, Canonical, false),
     spec(
         "AXON_ARTIFACT_CANDIDATE_DEPOT_URL",
