@@ -10,6 +10,27 @@
 use crate::chunk::DocumentChunk;
 use crate::text::{plain_text_windows, source_range};
 
+#[derive(Debug, Clone, Copy)]
+struct MarkdownChunkLimits {
+    max_chars: usize,
+    min_chars: usize,
+}
+
+const CURRENT_STRUCTURAL_DEFAULTS: MarkdownChunkLimits = MarkdownChunkLimits {
+    max_chars: 2_000,
+    min_chars: 500,
+};
+
+impl MarkdownChunkLimits {
+    fn configured() -> Self {
+        let max_chars = axon_core::config::parse::tuning::chunking_markdown_max_chars();
+        Self {
+            max_chars,
+            min_chars: axon_core::config::parse::tuning::chunking_markdown_min_chars(max_chars),
+        }
+    }
+}
+
 /// One ATX heading line: byte offset of its `#` run, its level (1-6), and
 /// its title text.
 struct Heading {
@@ -19,6 +40,10 @@ struct Heading {
 }
 
 pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
+    markdown_sections_with_limits(text, MarkdownChunkLimits::configured())
+}
+
+fn markdown_sections_with_limits(text: &str, limits: MarkdownChunkLimits) -> Vec<DocumentChunk> {
     let (frontmatter, body_start) = extract_frontmatter(text);
     let mut chunks = Vec::new();
     if frontmatter.is_some() {
@@ -77,7 +102,129 @@ pub(crate) fn markdown_sections(text: &str) -> Vec<DocumentChunk> {
         chunks.push(chunk);
     }
 
-    chunks
+    let chunks = split_oversized_sections(text, chunks, limits.max_chars);
+    pack_small_sections(chunks, limits)
+}
+
+fn split_oversized_sections(
+    source: &str,
+    chunks: Vec<DocumentChunk>,
+    max_chars: usize,
+) -> Vec<DocumentChunk> {
+    let max_chars = max_chars.max(1);
+    let mut split = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        if chunk.content.chars().count() <= max_chars
+            || chunk.metadata.contains_key("code_fence_language")
+        {
+            split.push(chunk);
+            continue;
+        }
+        let Some(range_start) = chunk.range.byte_start.map(|value| value as usize) else {
+            split.push(chunk);
+            continue;
+        };
+        let range_end = chunk
+            .range
+            .byte_end
+            .map(|value| value as usize)
+            .unwrap_or(source.len())
+            .min(source.len());
+        let Some(relative_content_start) = source[range_start..range_end].find(&chunk.content)
+        else {
+            split.push(chunk);
+            continue;
+        };
+        let content_start = range_start + relative_content_start;
+        for (relative_start, relative_end) in bounded_content_windows(&chunk.content, max_chars) {
+            let mut window = chunk.clone();
+            window.content = chunk.content[relative_start..relative_end]
+                .trim()
+                .to_string();
+            if window.content.is_empty() {
+                continue;
+            }
+            let leading_trim = chunk.content[relative_start..relative_end]
+                .find(&window.content)
+                .unwrap_or(0);
+            let absolute_start = content_start + relative_start + leading_trim;
+            let absolute_end = absolute_start + window.content.len();
+            window.range = source_range(source, absolute_start, absolute_end);
+            split.push(window);
+        }
+    }
+    split
+}
+
+fn bounded_content_windows(content: &str, max_chars: usize) -> Vec<(usize, usize)> {
+    let mut windows = Vec::new();
+    let mut start = 0usize;
+    while content[start..].chars().count() > max_chars {
+        let tentative_end = content[start..]
+            .char_indices()
+            .nth(max_chars)
+            .map(|(relative, _)| start + relative)
+            .unwrap_or(content.len());
+        let end = content[start..tentative_end]
+            .rfind('\n')
+            .map(|relative| start + relative + 1)
+            .filter(|end| *end > start)
+            .unwrap_or(tentative_end);
+        windows.push((start, end));
+        start = end;
+    }
+    if start < content.len() {
+        windows.push((start, content.len()));
+    }
+    windows
+}
+
+fn pack_small_sections(
+    chunks: Vec<DocumentChunk>,
+    limits: MarkdownChunkLimits,
+) -> Vec<DocumentChunk> {
+    // Preserve the established heading-per-chunk behavior unless an operator
+    // explicitly tunes the advertised Markdown limits. This avoids silently
+    // changing retrieval granularity for existing installations while making
+    // the tuning surface effective again after the unified-pipeline cutover.
+    if limits.max_chars == CURRENT_STRUCTURAL_DEFAULTS.max_chars
+        && limits.min_chars == CURRENT_STRUCTURAL_DEFAULTS.min_chars
+    {
+        return chunks;
+    }
+    let max_chars = limits.max_chars.max(1);
+    let min_chars = limits.min_chars.clamp(1, max_chars);
+    let mut packed: Vec<DocumentChunk> = Vec::with_capacity(chunks.len());
+
+    for chunk in chunks {
+        let chunk_chars = chunk.content.chars().count();
+        let Some(previous) = packed.last_mut() else {
+            packed.push(chunk);
+            continue;
+        };
+        let previous_chars = previous.content.chars().count();
+        let separator_chars = usize::from(!previous.content.is_empty()) * 2;
+        let combined_chars = previous_chars
+            .saturating_add(separator_chars)
+            .saturating_add(chunk_chars);
+        let should_pack =
+            combined_chars <= max_chars && (previous_chars < min_chars || chunk_chars < min_chars);
+        if !should_pack {
+            packed.push(chunk);
+            continue;
+        }
+
+        if !previous.content.is_empty() {
+            previous.content.push_str("\n\n");
+        }
+        previous.content.push_str(&chunk.content);
+        previous.range.line_end = chunk.range.line_end;
+        previous.range.byte_end = chunk.range.byte_end;
+        previous.range.char_end = chunk.range.char_end;
+        previous.range.time_end_ms = chunk.range.time_end_ms;
+    }
+
+    packed
 }
 
 pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {

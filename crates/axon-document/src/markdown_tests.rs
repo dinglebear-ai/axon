@@ -56,6 +56,57 @@ fn markdown_sections_stamps_code_fence_language() {
 }
 
 #[test]
+fn markdown_sections_packs_adjacent_small_sections_within_configured_limits() {
+    let text = "# A\nsmall\n## B\nsmall too\n## C\nthis section stays separate\n";
+    let chunks = markdown_sections_with_limits(
+        text,
+        MarkdownChunkLimits {
+            max_chars: 40,
+            min_chars: 20,
+        },
+    );
+
+    assert_eq!(chunks.len(), 2);
+    assert!(chunks[0].content.contains("# A"));
+    assert!(chunks[0].content.contains("## B"));
+    assert_eq!(chunks[0].range.byte_start, Some(0));
+    assert_eq!(chunks[0].range.byte_end, Some(25));
+    assert!(
+        chunks
+            .iter()
+            .all(|chunk| chunk.content.chars().count() <= 40)
+    );
+}
+
+#[test]
+fn markdown_sections_splits_oversized_sections_at_the_configured_max() {
+    let body = (0..40)
+        .map(|index| format!("row {index}: {}", "value ".repeat(8)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = format!("# Large table\n{body}\n");
+    let chunks = markdown_sections_with_limits(
+        &text,
+        MarkdownChunkLimits {
+            max_chars: 160,
+            min_chars: 40,
+        },
+    );
+
+    assert!(chunks.len() > 1);
+    assert!(
+        chunks
+            .iter()
+            .all(|chunk| chunk.content.chars().count() <= 160)
+    );
+    assert_eq!(chunks.first().unwrap().range.byte_start, Some(0));
+    assert_eq!(
+        chunks.last().unwrap().range.byte_end,
+        Some(text.trim_end().len() as u64)
+    );
+}
+
+#[test]
 fn html_article_excludes_non_content_payloads_before_chunking() {
     let hydration =
         "window.__next_f.push(['<script data-template>', 'secret-looking-auth-token']);"
