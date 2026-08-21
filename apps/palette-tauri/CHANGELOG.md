@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0](https://github.com/dinglebear-ai/axon/compare/palette-v6.0.0...palette-v6.1.0) (2026-08-21)
+
+
+### Added
+
+* add artifact candidate crawl and enrichment pipeline ([#569](https://github.com/dinglebear-ai/axon/issues/569)) ([4d3d9a4](https://github.com/dinglebear-ai/axon/commit/4d3d9a4d895695e4280cb81ad0177545e5f19ea2))
+* **palette:** ship Tauri Android support ([#571](https://github.com/dinglebear-ai/axon/issues/571)) ([ba2ba27](https://github.com/dinglebear-ai/axon/commit/ba2ba27d4354c1d484eb2f6a437ae95a35210ade))
+
+
+### Changed
+
+* harden and accelerate unified source pipeline ([#570](https://github.com/dinglebear-ai/axon/issues/570)) ([ec8ef7f](https://github.com/dinglebear-ai/axon/commit/ec8ef7fa463de019f285e50fce8d22c9df19b376))
+
 ## [6.0.0](https://github.com/dinglebear-ai/axon/compare/palette-v5.14.5...palette-v6.0.0) (2026-08-09)
 
 
