@@ -15593,6 +15593,12 @@
               "null"
             ]
           },
+          "limits": {
+            "$ref": "#/components/schemas/SourceLimits"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataMap"
+          },
           "options": {
             "$ref": "#/components/schemas/AdapterOptions"
           },
@@ -15723,6 +15729,26 @@
             "type": [
               "boolean",
               "null"
+            ]
+          },
+          "limits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SourceLimits"
+              }
+            ]
+          },
+          "metadata": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/MetadataMap"
+              }
             ]
           },
           "options": {
