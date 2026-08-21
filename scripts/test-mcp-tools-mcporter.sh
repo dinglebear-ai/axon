@@ -374,10 +374,10 @@ run_suite() {
   run_json_case "${prefix}_source_detached" '.ok == true and .action == "source" and .subaction == "source" and (((.data.inline.job.id | type) == "string") or ((.data.inline.job_id | type) == "string") or ((.data.data.job.job_id | type) == "string"))' call_tool action:source source:"$REAL_PAGE_URL" scope:page detached:true response_mode:inline
   run_json_case "${prefix}_map" "(.ok == true and .action == \"map\" and .subaction == \"map\" and (.data.data.urls | type == \"array\") and .data.data.url == \"$MAP_URL\" and .data.data.mapped_urls > 0)" call_tool action:map url:"$MAP_URL" limit:5 offset:0
   run_json_case "${prefix}_retrieve" ".ok == true and .action == \"retrieve\" and .subaction == \"retrieve\" and (((.data.data.url == \"$REAL_PAGE_URL\") and ((.data.data.content | type) == \"string\" or (.data.data.chunks | type) == \"array\")) or ((.data.shape.url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")) or ((.data.inline.requested_url == \"$REAL_PAGE_URL\") and (.data.artifact.artifact_id | type == \"string\")))" call_tool action:retrieve url:"$REAL_PAGE_URL"
-  run_json_case "${prefix}_search" '.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language"' call_tool action:search query:'rust programming language' limit:3 offset:0
-  run_json_case "${prefix}_research" '.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))' call_tool action:research query:'rust async best practices' limit:3 offset:0
+  run_envelope_case "${prefix}_search" '(.ok == true and .action == "search" and .subaction == "search" and (.data.data.results | type == "array") and .data.data.query == "rust programming language") or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:search query:'rust programming language' limit:3 offset:0
+  run_envelope_case "${prefix}_research" '(.ok == true and .action == "research" and .subaction == "research" and (((.data.data.search_results | type) == "array" and (.data.data.summary | type) == "string") or (.data.response_mode == "path" and ((.data.shape.search_results | type) == "string" or (.data.shape.search_results | type) == "object") and (.data.shape.summary | type) == "string"))) or ((.error | type) == "string" and (.error | contains("requires AXON_SEARXNG_URL or TAVILY_API_KEY")))' call_tool action:research query:'rust async best practices' limit:3 offset:0
   run_json_case "${prefix}_ask" '(.ok == true and .action == "ask" and .subaction == "ask" and (((.data.data.answer | type) == "string" and .data.data.query == "What is this repository?") or (.data.shape.query == "What is this repository?" and .data.shape.explain.llm_skipped == true))) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool action:ask query:'What is this repository?' explain:true response_mode:inline
-  run_json_case "${prefix}_screenshot" '.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
+  run_envelope_case "${prefix}_screenshot" '(.ok == true and .action == "screenshot" and (((.data.data.path | type) == "string") or ((.data.path | type) == "string") or ((.data.artifact.artifact_id | type) == "string" and .data.artifact.artifact_kind == "screenshot"))) or ((.error | type) == "string" and (.error | contains("screenshot requires Chrome")))' call_tool_with_timeout 180000 action:screenshot url:"$REAL_PAGE_URL"
   echo "== $mode removed action guards ==" | tee -a "$SUMMARY"
   run_error_case "${prefix}_removed_crawl" "\`crawl\`" call_tool action:crawl subaction:start url:"$REAL_PAGE_URL"
   run_error_case "${prefix}_removed_scrape" "\`scrape\`" call_tool action:scrape url:"$REAL_PAGE_URL"
@@ -387,15 +387,9 @@ run_suite() {
   run_error_case "${prefix}_removed_vertical_scrape" "\`vertical_scrape\`" call_tool action:vertical_scrape subaction:list
   run_error_case "${prefix}_removed_purge" "\`purge\`" call_tool action:purge target:"$REAL_PAGE_URL"
   run_error_case "${prefix}_removed_dedupe" "\`dedupe\`" call_tool action:dedupe
-  if [[ "$URL_MODE" == "1" ]]; then
-    run_error_case "${prefix}_removed_stats" "\`stats\`" call_tool action:stats
-    run_error_case "${prefix}_removed_domains" "\`domains\`" call_tool action:domains
-    run_error_case "${prefix}_removed_sources" "\`sources\`" call_tool action:sources
-  else
-    run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
-    run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
-    run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
-  fi
+  run_error_case "${prefix}_removed_stats" "this action was removed from MCP" call_tool action:stats
+  run_error_case "${prefix}_removed_domains" "this action was removed from MCP" call_tool action:domains
+  run_error_case "${prefix}_removed_sources" "this action was removed from MCP" call_tool action:sources
   run_json_case "${prefix}_memory_remember" '(.ok == true and .action == "memory" and (.data.memory.id | type == "string")) or ((.error | type) == "string" and (.error | contains("TEI transport error")))' call_tool_json '{"action":"memory","subaction":"remember","body":"mcporter smoke memory content lives in Qdrant","project":"axon"}'
   local memory_id
   if memory_id="$(extract_json_field "$OUTDIR/${prefix}_memory_remember.log" '.data.memory.id' 2>/dev/null)"; then

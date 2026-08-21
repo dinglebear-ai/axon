@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [7.2.20] - 2026-08-21
+
+### Changed
+
+- Accelerate unified source ingestion with bounded provider fanout, batched persistence, and substantially lower web-discovery and graph-write overhead.
+- Prefer direct Markdown representations advertised by `llms.txt` over equivalent extensionless HTML routes, avoiding duplicate document ingestion.
+- Improve source reuse, embedding admission control, Qdrant publication, and durable pipeline progress under concurrent workloads.
+
+### Fixed
+
+- Preserve diverse document identities and citations throughout session retrieval and Ask synthesis.
+- Narrow secret redaction while keeping sensitive output fail-closed, and make foreground source progress and cleanup failures visible.
+- Make live CLI and MCP validation deterministic when optional Search or Chrome providers are not configured.
+
 ## [7.2.19] - 2026-08-11
 
 ## [7.2.18] - 2026-08-11
