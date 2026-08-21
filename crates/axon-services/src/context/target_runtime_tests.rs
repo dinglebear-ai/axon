@@ -8,8 +8,8 @@ use sqlx::sqlite::SqlitePoolOptions;
 use tokio::sync::Barrier;
 
 use super::{
-    artifact_candidate_sink_for_runtime_from_values, artifact_candidate_sink_from_values,
-    invalidate_embedding_identity_cache, resolve_embedding_identity, tei_max_attempts,
+    artifact_candidate_sink_from_values, invalidate_embedding_identity_cache,
+    resolve_embedding_identity, tei_max_attempts,
 };
 use crate::context::TargetLocalSourceRuntime;
 
@@ -18,15 +18,24 @@ async fn artifact_candidate_sink_configuration_is_all_or_nothing() {
     let disabled = artifact_candidate_sink_from_values(None, None).expect("disabled sink");
     assert_eq!(disabled.capabilities().await.unwrap().name, "noop");
 
-    let empty = artifact_candidate_sink_from_values(Some(String::new()), Some(String::new()))
-        .expect("empty values disable the optional sink");
-    assert_eq!(empty.capabilities().await.unwrap().name, "noop");
-
     assert!(
         artifact_candidate_sink_from_values(Some("https://depot.example".to_string()), None,)
             .is_err()
     );
     assert!(artifact_candidate_sink_from_values(None, Some("write-token".to_string())).is_err());
+    for (url, token) in [
+        (Some(String::new()), Some(String::new())),
+        (Some("   ".to_string()), Some("write-token".to_string())),
+        (
+            Some("https://depot.example".to_string()),
+            Some("   ".to_string()),
+        ),
+    ] {
+        assert!(
+            artifact_candidate_sink_from_values(url, token).is_err(),
+            "present but blank Depot configuration must fail construction"
+        );
+    }
     assert!(
         artifact_candidate_sink_from_values(
             Some("not a URL".to_string()),
@@ -44,14 +53,13 @@ async fn artifact_candidate_sink_configuration_is_all_or_nothing() {
 }
 
 #[tokio::test]
-async fn invalid_optional_depot_configuration_preserves_source_runtime_with_noop_sink() {
+async fn invalid_explicit_depot_configuration_fails_runtime_construction() {
     for (url, token) in [
         (Some("not a URL".to_string()), Some("token".to_string())),
         (Some("https://depot.example".to_string()), None),
         (None, Some("token".to_string())),
     ] {
-        let sink = artifact_candidate_sink_for_runtime_from_values(url, token);
-        assert_eq!(sink.capabilities().await.unwrap().name, "noop");
+        assert!(artifact_candidate_sink_from_values(url, token).is_err());
     }
 }
 

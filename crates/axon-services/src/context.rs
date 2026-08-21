@@ -171,7 +171,8 @@ impl ServiceContext {
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
         }
         let jobs = resolve_runtime_with_workers(Arc::clone(&cfg), spawn_workers).await?;
-        let target_local_source = Self::build_target_local_source(&cfg, &jobs, spawn_workers).await;
+        let target_local_source =
+            Self::build_target_local_source(&cfg, &jobs, spawn_workers).await?;
         // A long-lived schedulers context (serve / HTTP mcp) owns the queue for
         // its whole lifetime, so it holds the drain lock to advertise that —
         // otherwise every detached CLI enqueue would auto-spawn a redundant
@@ -229,12 +230,13 @@ impl ServiceContext {
         cfg: &Config,
         jobs: &Arc<dyn ServiceJobRuntime>,
         spawn_workers: bool,
-    ) -> Option<Arc<TargetLocalSourceRuntime>> {
+    ) -> Result<Option<Arc<TargetLocalSourceRuntime>>, Box<dyn std::error::Error + Send + Sync>>
+    {
         if !spawn_workers {
-            return None;
+            return Ok(None);
         }
         let Some(pool) = jobs.sqlite_pool() else {
-            return None;
+            return Ok(None);
         };
         // Bind the durable observability sink to the SAME shared pool. Its
         // tables are created by the composed migration runner
@@ -253,16 +255,8 @@ impl ServiceContext {
                 observe_sink,
             ),
         );
-        match TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await {
-            Ok(runtime) => Some(Arc::new(runtime)),
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    "failed to construct target local-source runtime; continuing without it"
-                );
-                None
-            }
-        }
+        let runtime = TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await?;
+        Ok(Some(Arc::new(runtime)))
     }
 
     /// Create a ServiceContext without in-process workers (enqueue-only in the SQLite runtime).
