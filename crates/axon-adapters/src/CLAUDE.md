@@ -2,8 +2,11 @@
 
 `axon-adapters` owns **source acquisition**. Each adapter turns a `ResolvedSource`
 (from `axon-route`) into an `AcquisitionManifest` and `SourceDocument` values —
-without bypassing the shared pipeline. It answers "how do I fetch this source
-family, at what declared scope, and what did the fetch return." Full contract
+without bypassing the shared pipeline. Artifact-aware adapters may additionally
+emit neutral `ArtifactCandidate` evidence beside normalized changed documents;
+that evidence never replaces `SourceDocument` or grants publication authority. It
+answers "how do I fetch this source family, at what declared scope, and what did
+the fetch return." Full contract
 (owns / API / deps / tests):
 [../../../docs/pipeline-unification/crates/axon-adapters/README.md](../../../docs/pipeline-unification/crates/axon-adapters/README.md)
 · behavior spec:
@@ -20,14 +23,15 @@ normalize; they don't own storage.
 ## Module map
 | File | Owns |
 |---|---|
-| `adapter.rs` | `SourceAdapter` trait |
+| `adapter.rs` | `SourceAdapter` trait, including additive `artifact_candidates` evidence hook |
+| `artifact_candidates.rs` | `ArtifactCandidateSink` boundary, no-op sink, deterministic Axon dedupe/idempotency helpers |
 | `registry.rs` | `AdapterRegistry` — registration + lookup |
 | `capability.rs` | `AdapterCapability`, `AdapterVersion`, declared scopes |
 | `acquisition.rs` | `AcquiredItem`, `FetchStatus`, `MaterializedSource` (`SourceAcquisition` is an `axon-api::source::stage` DTO) |
 | `memory.rs` / `upload.rs` | `MemorySourceAdapter` / `UploadSourceAdapter` — memory + upload source families |
 | `manifest.rs` | `AcquisitionManifest` (added/changed/removed) |
 | `web.rs` / `local.rs` / `git.rs` | web page/site, local file/dir, git repo adapters |
-| `registry_sources.rs` / `feed.rs` | package-registry, RSS/Atom/JSON feed adapters |
+| `registry_sources.rs` / `feed.rs` | package registries plus bounded `skills.sh` catalog API, RSS/Atom/JSON feed adapters |
 | `youtube.rs` / `reddit.rs` / `sessions.rs` | media/social/session-export adapters |
 | `cli_tool.rs` / `mcp_tool.rs` | CLI-tool and MCP-tool call adapters |
 | `testing.rs` | `FakeSourceAdapter` + happy/auth/degraded/failure fixtures |
@@ -44,15 +48,19 @@ normalize; they don't own storage.
 
 ## Invariants (review checklist)
 - **Every adapter emits `SourceDocument`, never `PreparedDocument`** or vector points.
-- **Every adapter declares scopes and required auth/secrets.**
+- `artifact_candidates` is additive and defaults empty; candidates are bounded evidence tied to the same changed documents/job/generation, never a second crawl path.
+- Candidate/sink types cannot claim Depot publication/revision authority; the individual payload stays `dinglebear.artifact-candidate/v1`.
+- **Every adapter declares scopes and required auth/secrets.** `skills.sh` is `registry + api`, uses only its bounded structured API with a short-lived bearer token, and must not persist or log that token.
+- `skills.sh` catalog acquisition is metadata-only: do not call detail/file endpoints or mirror third-party skill bytes before explicit license/right gates exist. Audit enrichment is separately authenticated, defaults off (`audit_limit = 0`), is hard-capped at 25 sequential lookups, and may add evidence only after strict identity/shape validation.
 - **Acquisition never writes to ledger or vector store directly** — all acquired content re-enters the shared pipeline afterward.
 - Adapter failures carry `FetchStatus` plus a retry/degradation policy.
 - Bringing a new source online = register adapter + scope + parser + metadata + tests + docs per `sources/new-source-contract.md`.
 
 ## DTO ownership
 Wire DTOs (`SourceDocument`, `AcquisitionManifest`, `AcquiredItem`,
-`FetchStatus`, `AdapterCapability`, `AdapterVersion`) are defined in **`axon-api`**;
-this crate emits them — it does not redefine transport-facing shapes.
+`FetchStatus`, `AdapterCapability`, `AdapterVersion`, neutral `ArtifactCandidate`,
+and the Axon candidate batch/sink receipts) are defined in **`axon-api`**; this
+crate emits/consumes them — it does not redefine transport-facing shapes.
 
 ## Keep in sync when shapes change
 `README.md` (crate contract) · `sources/new-source-contract.md` ·

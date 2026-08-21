@@ -1,5 +1,6 @@
 //! Generic adapter-owned pipeline for sources.
 
+pub(super) mod artifact_candidates;
 mod created_generation;
 mod generation_state;
 mod helpers;
@@ -47,6 +48,7 @@ where
     F: FnOnce(SourcePlan) -> Fut + Send + 'a,
     Fut: Future<Output = anyhow::Result<MaterializedSource>> + Send + 'a,
 {
+    artifact_candidates::spawn_outbox_drain(runtime);
     input.plan.config_snapshot_id = crate::config_snapshot_hash::config_snapshot_id(
         &crate::config_snapshot_hash::JobConfigSnapshot {
             source_kind: input.adapter.name(),

@@ -30,6 +30,12 @@ pub mod enqueue;
 pub(crate) mod events;
 pub(crate) mod execution;
 mod executor;
+
+pub(crate) fn spawn_artifact_candidate_outbox_drain(
+    runtime: &crate::context::TargetLocalSourceRuntime,
+) {
+    executor::artifact_candidates::spawn_outbox_drain(runtime);
+}
 pub mod foreground_progress;
 pub mod graph;
 pub mod job_tracking;

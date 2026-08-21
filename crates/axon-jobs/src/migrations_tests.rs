@@ -248,6 +248,132 @@ async fn canonical_epoch_one_store_applies_missing_tail_migrations() {
 }
 
 #[tokio::test]
+async fn version_five_watch_store_upgrades_with_replay_defaults_and_reopens_idempotently() {
+    static JOBS_THROUGH_FIVE: &[SqlMigration] = &[
+        SqlMigration {
+            version: 1,
+            name: "0001_canonical_jobs",
+            sql: include_str!("migrations/0001_canonical_jobs.sql"),
+        },
+        SqlMigration {
+            version: 2,
+            name: "0002_provider_scheduler",
+            sql: include_str!("migrations/0002_provider_scheduler.sql"),
+        },
+        SqlMigration {
+            version: 3,
+            name: "0003_provider_scheduler_performance",
+            sql: include_str!("migrations/0003_provider_scheduler_performance.sql"),
+        },
+        SqlMigration {
+            version: 4,
+            name: "0004_provider_scheduler_parser_kind",
+            sql: include_str!("migrations/0004_provider_scheduler_parser_kind.sql"),
+        },
+        SqlMigration {
+            version: 5,
+            name: "0005_provider_identity_cache",
+            sql: include_str!("migrations/0005_provider_identity_cache.sql"),
+        },
+    ];
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("version-five-watch.db");
+    let url = format!("sqlite://{}?mode=rwc", path.display());
+    let pool = SqlitePool::connect(&url).await.expect("open fixture pool");
+    let old_sets = [
+        axon_ledger::migration::migration_set(),
+        MigrationSet::new(JOBS_NAMESPACE, JOBS_THROUGH_FIVE),
+        axon_observe::migration::migration_set(),
+        axon_graph::migration::migration_set(),
+        axon_memory::migration::migration_set(),
+    ];
+    let mut tx = pool.begin().await.expect("begin version-five fixture");
+    ensure_applied_table(&mut tx)
+        .await
+        .expect("create receipt table");
+    for set in old_sets {
+        apply_set(&mut tx, set)
+            .await
+            .expect("apply version-five fixture set");
+    }
+    identity::stamp_schema_epoch(&mut tx)
+        .await
+        .expect("stamp epoch");
+    sqlx::query(
+        "INSERT INTO axon_source_watches (
+            watch_id, source, source_id, canonical_uri, adapter_name, adapter_version,
+            scope, embed, options_json, collection, enabled, every_seconds, next_run_at,
+            created_at, updated_at, auth_snapshot_json
+         ) VALUES (
+            'watch-v5', 'file:///repo', 'source-v5', 'local://repo', 'local', '1',
+            'directory', 1, '{\"render\":true}', 'axon', 1, 60, 1700000000000,
+            1699999999000, 1699999999000, '{\"transport\":\"panel\",\"principal\":\"operator\"}'
+         )",
+    )
+    .execute(&mut *tx)
+    .await
+    .expect("populate version-five watch");
+    tx.commit().await.expect("commit version-five fixture");
+    pool.close().await;
+
+    let pool = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("upgrade version-five database");
+    let row: (String, String, String, String) = sqlx::query_as(
+        "SELECT source, options_json, limits_json, metadata_json
+         FROM axon_source_watches WHERE watch_id = 'watch-v5'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read upgraded watch");
+    assert_eq!(row.0, "file:///repo");
+    assert_eq!(row.1, r#"{"render":true}"#);
+    assert_eq!(row.2, "{}");
+    assert_eq!(row.3, "{}");
+    let receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations
+         WHERE namespace = 'jobs' AND version = 6 AND name = '0006_watch_request_replay'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read version-six receipt");
+    assert_eq!(receipt_count, 1);
+    assert!(
+        sqlx::query(
+            "UPDATE axon_source_watches SET limits_json = 'not-json' WHERE watch_id = 'watch-v5'"
+        )
+        .execute(&pool)
+        .await
+        .is_err(),
+        "upgraded replay JSON columns must reject malformed values"
+    );
+
+    apply_all_migrations(&pool)
+        .await
+        .expect("repeat migration is a no-op");
+    let receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations
+         WHERE namespace = 'jobs' AND version = 6",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("count idempotent receipt");
+    assert_eq!(receipt_count, 1);
+    pool.close().await;
+
+    let reopened = open_sqlite_pool(path.to_str().unwrap())
+        .await
+        .expect("reopen upgraded database");
+    let defaults: (String, String) = sqlx::query_as(
+        "SELECT limits_json, metadata_json FROM axon_source_watches WHERE watch_id = 'watch-v5'",
+    )
+    .fetch_one(&reopened)
+    .await
+    .expect("read replay defaults after reopen");
+    assert_eq!(defaults, ("{}".to_string(), "{}".to_string()));
+}
+
+#[tokio::test]
 async fn parser_capacity_domain_is_accepted_after_migration() {
     let pool = open_sqlite_pool(":memory:").await.expect("migrations");
     sqlx::query(

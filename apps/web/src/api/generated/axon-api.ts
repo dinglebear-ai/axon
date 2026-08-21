@@ -1403,6 +1403,8 @@ export type components = {
             "collection"?: string | null;
             "embed"?: boolean;
             "enabled"?: boolean | null;
+            "limits"?: components['schemas']['SourceLimits'];
+            "metadata"?: components['schemas']['MetadataMap'];
             "options": components['schemas']['AdapterOptions'];
             "schedule": components['schemas']['WatchSchedule'];
             "scope"?: null | components['schemas']['SourceScope'];
@@ -1429,6 +1431,8 @@ export type components = {
             "collection"?: string | null;
             "embed"?: boolean | null;
             "enabled"?: boolean | null;
+            "limits"?: null | components['schemas']['SourceLimits'];
+            "metadata"?: null | components['schemas']['MetadataMap'];
             "options"?: null | components['schemas']['AdapterOptions'];
             "schedule"?: null | components['schemas']['WatchSchedule'];
         };

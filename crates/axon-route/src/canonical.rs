@@ -27,6 +27,7 @@ pub fn canonicalize(raw: &str, requested_scope: Option<SourceScope>) -> Option<C
         .or_else(|| canonical_feed(source))
         .or_else(|| canonical_reddit(source))
         .or_else(|| canonical_youtube(source))
+        .or_else(|| canonical_skills_sh(source))
         .or_else(|| canonical_registry(source))
         .or_else(|| canonical_gitlab(source))
         .or_else(|| canonical_gitea(source))
@@ -253,6 +254,22 @@ fn youtube_video(id: &str) -> CanonicalSource {
         id,
         "resolved as YouTube video source",
     )
+}
+
+fn canonical_skills_sh(raw: &str) -> Option<CanonicalSource> {
+    let mode = match raw.trim() {
+        "skills.sh" | "skills.sh:" | "skills.sh:leaderboard" => "leaderboard",
+        "skills.sh:search" => "search",
+        _ => return None,
+    };
+    Some(basic(
+        format!("catalog://skills.sh/{mode}"),
+        SourceKind::Registry,
+        SourceScope::Api,
+        "skills_sh",
+        "skills.sh",
+        "resolved as structured skills.sh artifact catalog source",
+    ))
 }
 
 fn canonical_registry(raw: &str) -> Option<CanonicalSource> {

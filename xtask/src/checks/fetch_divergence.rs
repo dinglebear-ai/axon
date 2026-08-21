@@ -57,6 +57,12 @@ const CLIENT_CONSTRUCTORS: &[&str] = &[
 /// not one.
 const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
     (
+        "crates/axon-adapters/src/artifact_candidates/depot.rs",
+        "Authenticated Depot write API client on one configured provider origin. \
+         It posts typed candidate JSON with bearer auth, disables redirects, and \
+         must not use the browser-impersonating public-page acquisition ladder.",
+    ),
+    (
         "crates/axon-adapters/src/providers/http_fetch.rs",
         "FetchProvider: the acquire-lane provider boundary. Owns per-request \
          header/proxy configuration the shared ladder deliberately does not \
@@ -84,6 +90,19 @@ const APPROVED_EXCEPTIONS: &[(&str, &str)] = &[
         "Package-registry API client (crates.io, npm, PyPI, …). crates.io policy \
          requires bot identification, and these are fixed JSON endpoints rather \
          than arbitrary web pages, so a bot wall is not a failure mode here.",
+    ),
+    (
+        "crates/axon-adapters/src/registry_sources/skills_sh/fetch.rs",
+        "Authenticated skills.sh structured JSON API client on a fixed provider \
+         origin. Requires a short-lived Vercel OIDC bearer token plus provider- \
+         specific 429/auth/response-bound handling; browser-style web acquisition \
+         and impersonation are deliberately not appropriate for this surface.",
+    ),
+    (
+        "crates/axon-adapters/src/registry_sources/skills_sh/audit.rs",
+        "Authenticated skills.sh audit-metadata JSON API on the same fixed \
+         provider origin. Requires the Vercel OIDC bearer token and bounded, \
+         provider-specific status handling rather than arbitrary page fetching.",
     ),
     (
         "crates/axon-adapters/src/feed/acquire.rs",

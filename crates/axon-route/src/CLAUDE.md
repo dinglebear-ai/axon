@@ -49,6 +49,7 @@ behavior here.
 - **Adapter selection is deterministic** when multiple adapters match, via declared capability.
 - Every source request passes through route **before** acquisition; scopes are declared and validated before execution.
 - Web `SourceRequest` inputs normalize from bare domains and known aliases; `map` stays a first-class route.
+- `skills.sh`, `skills.sh:leaderboard`, and `skills.sh:search` canonicalize deterministically to `catalog://skills.sh/...` as `registry + api`; route-time code declares bearer auth but never reads or logs the credential. The canonical URI is the sole mode identity; `audit_limit` is an optional bounded acquisition knob, not an identity override.
 
 ## DTO ownership
 Wire DTOs (`ResolvedSource`, `RouteDecision`, `CanonicalUri`, `SourceId`,

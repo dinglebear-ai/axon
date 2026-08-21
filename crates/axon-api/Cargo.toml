@@ -21,6 +21,7 @@ schemars = { version = "=1.2.1", features = ["chrono04", "uuid1"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tracing = "0.1"
+url = "2"
 
 [package.metadata.docs.rs]
 all-features = true

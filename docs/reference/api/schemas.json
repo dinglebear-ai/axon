@@ -316,6 +316,422 @@
         }
       ]
     },
+    "ArtifactCandidate": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Shared neutral ArtifactCandidate payload.\nField names intentionally mirror the Depot-owned G0 fixture exactly.",
+      "properties": {
+        "canonicalSourceUri": {
+          "type": "string"
+        },
+        "contentDigests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "crawlGenerationId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crawlJobId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discoveryEvidence": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/$defs/ArtifactCandidate_ArtifactCandidateId"
+        },
+        "kindHints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "licenseEvidence": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "manifestMetadata": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "observedAt": {
+          "type": "string"
+        },
+        "observedFiles": {
+          "default": [],
+          "items": true,
+          "type": "array"
+        },
+        "popularitySignals": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "ref": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repository": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "sourcePath": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceProvider": {
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "canonicalSourceUri",
+        "sourceProvider",
+        "observedAt"
+      ],
+      "title": "ArtifactCandidate",
+      "type": "object"
+    },
+    "ArtifactCandidateBatch": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Versioned Axon delivery envelope sent to a candidate sink such as Depot.\nThis is a transport wrapper only; each candidate has its own neutral schemaVersion.",
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/ArtifactCandidateBatch_ArtifactCandidate"
+          },
+          "type": "array"
+        },
+        "contract_version": {
+          "type": "string"
+        },
+        "delivery_id": {
+          "type": "string"
+        },
+        "generation": {
+          "$ref": "#/$defs/ArtifactCandidateBatch_SourceGenerationId"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "job_id": {
+          "$ref": "#/$defs/ArtifactCandidateBatch_JobId"
+        },
+        "produced_at": {
+          "type": "string"
+        },
+        "source_id": {
+          "$ref": "#/$defs/ArtifactCandidateBatch_SourceId"
+        }
+      },
+      "required": [
+        "contract_version",
+        "delivery_id",
+        "idempotency_key",
+        "job_id",
+        "source_id",
+        "generation",
+        "produced_at",
+        "candidates"
+      ],
+      "title": "ArtifactCandidateBatch",
+      "type": "object"
+    },
+    "ArtifactCandidateBatch_ArtifactCandidate": {
+      "additionalProperties": false,
+      "description": "Shared neutral ArtifactCandidate payload.\nField names intentionally mirror the Depot-owned G0 fixture exactly.",
+      "properties": {
+        "canonicalSourceUri": {
+          "type": "string"
+        },
+        "contentDigests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "crawlGenerationId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "crawlJobId": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "discoveryEvidence": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "id": {
+          "$ref": "#/$defs/ArtifactCandidateBatch_ArtifactCandidateId"
+        },
+        "kindHints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "licenseEvidence": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "manifestMetadata": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "observedAt": {
+          "type": "string"
+        },
+        "observedFiles": {
+          "default": [],
+          "items": true,
+          "type": "array"
+        },
+        "popularitySignals": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
+        "ref": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repository": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaVersion": {
+          "type": "string"
+        },
+        "sourcePath": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceProvider": {
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "canonicalSourceUri",
+        "sourceProvider",
+        "observedAt"
+      ],
+      "type": "object"
+    },
+    "ArtifactCandidateBatch_ArtifactCandidateId": {
+      "type": "string"
+    },
+    "ArtifactCandidateBatch_JobId": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "ArtifactCandidateBatch_SourceGenerationId": {
+      "type": "string"
+    },
+    "ArtifactCandidateBatch_SourceId": {
+      "type": "string"
+    },
+    "ArtifactCandidateSinkCapability": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "Capability for the Axon batch wrapper, not the neutral candidate schema.",
+      "properties": {
+        "contract_versions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "max_batch_size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "supports_idempotency": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "contract_versions",
+        "max_batch_size",
+        "supports_idempotency"
+      ],
+      "title": "ArtifactCandidateSinkCapability",
+      "type": "object"
+    },
+    "ArtifactCandidateSinkResult": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "attempted": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rejected": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/ArtifactCandidateSinkResult_ArtifactCandidateSinkStatus"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/$defs/ArtifactCandidateSinkResult_SourceWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "attempted",
+        "accepted",
+        "rejected",
+        "warnings"
+      ],
+      "title": "ArtifactCandidateSinkResult",
+      "type": "object"
+    },
+    "ArtifactCandidateSinkResult_ArtifactCandidateSinkStatus": {
+      "enum": [
+        "disabled",
+        "accepted",
+        "partial",
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "ArtifactCandidateSinkResult_Severity": {
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "degraded",
+        "failed",
+        "fatal"
+      ],
+      "type": "string"
+    },
+    "ArtifactCandidateSinkResult_SourceItemKey": {
+      "type": "string"
+    },
+    "ArtifactCandidateSinkResult_SourceWarning": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "severity": {
+          "$ref": "#/$defs/ArtifactCandidateSinkResult_Severity"
+        },
+        "source_item_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactCandidateSinkResult_SourceItemKey"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message",
+        "retryable"
+      ],
+      "type": "object"
+    },
+    "ArtifactCandidate_ArtifactCandidateId": {
+      "type": "string"
+    },
     "ArtifactListRequest": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -27767,6 +28183,15 @@
             "null"
           ]
         },
+        "limits": {
+          "$ref": "#/$defs/WatchRequest_SourceLimits",
+          "default": {}
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
         "options": {
           "$ref": "#/$defs/WatchRequest_AdapterOptions"
         },
@@ -27806,6 +28231,68 @@
       "required": [
         "values"
       ],
+      "type": "object"
+    },
+    "WatchRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "WatchRequest_SourceScope": {
@@ -28149,6 +28636,23 @@
             "null"
           ]
         },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchUpdateRequest_SourceLimits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "options": {
           "anyOf": [
             {
@@ -28184,6 +28688,68 @@
       "required": [
         "values"
       ],
+      "type": "object"
+    },
+    "WatchUpdateRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "WatchUpdateRequest_WatchSchedule": {
@@ -28773,9 +29339,14 @@
         "path": "crates/axon-api/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:672c3884bb3d0635676b0a0593a753398259c10b602f83f5a489eb8278f86632",
+        "checksum": "sha256:55aed9857c3350b4b53d06d8d08036da81de12df8dc8d4d4dfded2971a17697f",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source.rs"
+      },
+      {
+        "checksum": "sha256:1f88986cd41b60ca97afb730c5223bbb19ada9597489f76018429fbcf6e487bf",
+        "kind": "rust_module",
+        "path": "crates/axon-api/src/source/artifact_candidate.rs"
       },
       {
         "checksum": "sha256:530f987e2f0f3a7b67c66728e0fded729fc6868f257fd0a858b880b1b7d035a3",
@@ -28828,7 +29399,7 @@
         "path": "crates/axon-api/src/source/graph.rs"
       },
       {
-        "checksum": "sha256:8e169aaadba8eb5c90020b0f1ea18945e11084d165f4aee5b21f722957b6814a",
+        "checksum": "sha256:6b9941efef55a15d92195beb6c2b3e782020c4e01c960419633ed4f181d39b36",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/ids.rs"
       },
@@ -28838,7 +29409,7 @@
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230",
+        "checksum": "sha256:a7a9af3c5bdf0ed69fbb219a6fe830e987778f51fc2300779e3f38e6c151572e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
@@ -28978,7 +29549,7 @@
         "path": "docs/pipeline-unification/schemas/api-dto-schema.md"
       },
       {
-        "checksum": "sha256:72f433cbcaa5df4d2d072288af00fe77dcd2c8c18ef10f010f85dac2dc29a118",
+        "checksum": "sha256:88ff9a81eb6b8ada7e3c2be67254488b3c0de2a956eb2f7943d4edb8b9ed7319",
         "kind": "rust_module",
         "path": "xtask/src/schemas/api_defs.rs"
       },

@@ -4,6 +4,7 @@
 //! stores, providers, and future adapters without pulling runtime crates into
 //! `axon-api`.
 
+pub mod artifact_candidate;
 pub mod audit;
 pub mod auth;
 pub mod boundary;
@@ -30,6 +31,7 @@ pub mod status;
 pub mod vector;
 pub mod waf_diagnostics;
 
+pub use artifact_candidate::*;
 pub use audit::*;
 pub use auth::*;
 pub use boundary::*;
@@ -91,6 +93,10 @@ mod graph_tests;
 #[cfg(test)]
 #[path = "source_stage_fixture_tests.rs"]
 mod stage_fixture_tests;
+
+#[cfg(test)]
+#[path = "source_artifact_candidate_tests.rs"]
+mod artifact_candidate_tests;
 
 #[cfg(test)]
 #[path = "source_audit_tests.rs"]

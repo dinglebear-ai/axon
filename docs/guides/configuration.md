@@ -178,6 +178,19 @@ machines should keep the value in `~/.axon/config.toml`.
 |----------|---------|-------------|
 | `AXON_DATA_DIR` | `~/.axon` | Root directory for all persistent data (flat — no `axon/` subdir nesting) |
 
+### ArtifactCandidate delivery (optional, fail-fast pair)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AXON_ARTIFACT_CANDIDATE_DEPOT_URL` | unset | Trusted Depot HTTP(S) base URL for committed candidate intake. HTTP is accepted only for loopback. |
+| `AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN` | unset | Depot bearer token with `skills:write` scope. |
+
+Leave both variables absent to use the disabled no-op sink. Setting either
+variable opts into Depot delivery: both values must then be present, non-empty,
+free of surrounding whitespace, and valid. Partial or invalid explicit
+configuration aborts worker/server runtime construction so staged delivery is
+not accidentally treated as disabled.
+
 ### Server ports
 
 | Variable | Default | Description |

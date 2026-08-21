@@ -21,6 +21,8 @@ fn watch_request(source: &str, every_seconds: u64) -> WatchRequest {
         },
         embed: false,
         options: AdapterOptions::default(),
+        limits: Default::default(),
+        metadata: Default::default(),
         scope: None,
         collection: None,
         enabled: Some(true),
@@ -161,4 +163,56 @@ async fn source_watch_denies_local_session_scope_without_local_auth() {
         err.to_string().contains("axon:local"),
         "unexpected exec error: {err}"
     );
+}
+
+#[test]
+fn watch_exec_replays_source_request_and_only_applies_execution_overrides() {
+    let mut watch = watch_request("skills.sh:search", 300);
+    watch.embed = true;
+    watch.scope = Some(SourceScope::Api);
+    watch.collection = Some("artifact-catalog".to_string());
+    watch.limits.max_items = Some(12);
+    watch.limits.max_total_bytes = Some(1_048_576);
+    watch.metadata.insert(
+        "artifact_candidate_mode".to_string(),
+        serde_json::json!("refresh"),
+    );
+    watch
+        .options
+        .values
+        .insert("query".to_string(), serde_json::json!("mcp servers"));
+    watch
+        .options
+        .values
+        .insert("owner".to_string(), serde_json::json!("dinglebear-ai"));
+
+    let created = source_request_for_watch_create(&watch);
+    let exec = source_request_for_watch_exec(
+        watch,
+        &WatchExecRequest {
+            reason: Some("scheduled refresh".to_string()),
+            refresh: Some(SourceRefreshPolicy::Force),
+            wait: Some(true),
+        },
+    );
+
+    assert_eq!(exec.source, created.source);
+    assert_eq!(exec.options, created.options);
+    assert_eq!(exec.limits, created.limits);
+    assert_eq!(exec.scope, created.scope);
+    assert_eq!(exec.collection, created.collection);
+    assert_eq!(exec.embed, created.embed);
+    assert_eq!(exec.intent, SourceIntent::Watch);
+    assert_eq!(exec.watch, SourceWatchPolicy::Enabled);
+    assert_eq!(exec.refresh, SourceRefreshPolicy::Force);
+    assert_eq!(exec.execution.mode, ExecutionMode::Wait);
+    assert_eq!(
+        exec.metadata.get("artifact_candidate_mode"),
+        Some(&serde_json::json!("refresh"))
+    );
+    assert_eq!(
+        exec.metadata.get("watch_exec_reason"),
+        Some(&serde_json::json!("scheduled refresh"))
+    );
+    assert_eq!(created.refresh, SourceRefreshPolicy::IfStale);
 }

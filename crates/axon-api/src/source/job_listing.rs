@@ -193,6 +193,10 @@ pub struct WatchRequest {
     #[serde(default = "default_true")]
     pub embed: bool,
     pub options: AdapterOptions,
+    #[serde(default)]
+    pub limits: SourceLimits,
+    #[serde(default)]
+    pub metadata: MetadataMap,
     pub scope: Option<SourceScope>,
     pub collection: Option<String>,
     pub enabled: Option<bool>,
@@ -236,6 +240,8 @@ pub struct WatchUpdateRequest {
     pub enabled: Option<bool>,
     pub schedule: Option<WatchSchedule>,
     pub options: Option<AdapterOptions>,
+    pub limits: Option<SourceLimits>,
+    pub metadata: Option<MetadataMap>,
     pub embed: Option<bool>,
     pub collection: Option<String>,
     #[serde(skip)]

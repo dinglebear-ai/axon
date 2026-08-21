@@ -142,8 +142,10 @@ fn source_request_for_scheduled_watch(
     source.refresh = SourceRefreshPolicy::IfStale;
     source.embed = watch.request.embed;
     source.options = watch.request.options.clone();
+    source.limits = watch.request.limits.clone();
     source.scope = watch.request.scope;
     source.collection = watch.request.collection.clone();
+    source.metadata = watch.request.metadata.clone();
     source.metadata.insert(
         "source_watch_id".to_string(),
         serde_json::json!(watch.watch_id.0.clone()),

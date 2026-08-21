@@ -127,6 +127,15 @@ const WEB_ADAPTER_OPTION_KEYS: &[&str] = &[
     "map_urls",
 ];
 const SESSION_ADAPTER_OPTION_KEYS: &[&str] = &["project_filter"];
+const SKILLS_SH_OPTION_KEYS: &[&str] = &[
+    "view",
+    "query",
+    "owner",
+    "page",
+    "per_page",
+    "max_pages",
+    "audit_limit",
+];
 const CLI_TOOL_OPTION_KEYS: &[&str] = &[
     "execution_mode",
     "tool_action",
@@ -244,6 +253,13 @@ impl AdapterRegistry {
                 ),
             AdapterDefinition::new("session", "1", SourceKind::Session, SourceScope::Thread)
                 .with_options(SESSION_ADAPTER_OPTION_KEYS),
+            AdapterDefinition::new("skills_sh", "1", SourceKind::Registry, SourceScope::Api)
+                .with_safety_class(SafetyClass::AuthenticatedNetwork)
+                .with_credential(
+                    CredentialKind::BearerToken,
+                    "skills.sh structured API requires a short-lived Vercel OIDC bearer token",
+                )
+                .with_options(SKILLS_SH_OPTION_KEYS),
             AdapterDefinition::new("upload", "1", SourceKind::Upload, SourceScope::File)
                 .with_safety_class(SafetyClass::AuthenticatedNetwork),
             AdapterDefinition::new("web", "1", SourceKind::Web, SourceScope::Site)

@@ -95,6 +95,7 @@ string_id!(DocumentId);
 string_id!(ChunkId);
 string_id!(VectorPointId);
 string_id!(ProviderId);
+string_id!(ArtifactCandidateId);
 string_id!(ArtifactId);
 string_id!(UploadId);
 string_id!(CleanupDebtId);

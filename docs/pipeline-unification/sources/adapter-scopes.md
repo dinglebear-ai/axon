@@ -137,6 +137,7 @@ metadata fields.
 | `terraform_registry` | `registry` | `provider`, `module`, `version`, `namespace`, `map` | detected |
 | `helm` | `registry` | `chart`, `version`, `repository`, `dependencies`, `map` | `chart` |
 | `huggingface` | `registry` | `model`, `dataset`, `space`, `org`, `map` | detected |
+| `skills_sh` | `registry` | `api` | `api` |
 | `reddit` | `reddit` | `subreddit`, `thread`, `user`, `search`, `map` | detected |
 | `youtube` | `youtube` | `video`, `playlist`, `channel`, `captions`, `map` | detected |
 | `feed` | `feed` | `feed`, `entry`, `site`, `map` | `feed` |
@@ -168,6 +169,7 @@ general-purpose memory ingestion surface.
 | `package` | registry package latest/default |
 | `version` | specific package version |
 | `dependencies` | dependency metadata |
+| `api` | bounded structured provider/API metadata acquisition |
 | `file` | one local/uploaded file |
 | `directory`/`workspace` | local tree |
 | `video`/`playlist`/`channel` | YouTube scopes |

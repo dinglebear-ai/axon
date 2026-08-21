@@ -7,6 +7,7 @@ mod acquire;
 pub mod dump;
 mod metadata;
 mod options;
+mod skills_sh;
 
 use async_trait::async_trait;
 use axon_api::source::*;
@@ -49,6 +50,16 @@ impl SourceAdapter for RegistrySourceAdapter {
         mut plan: SourcePlan,
     ) -> Result<crate::acquisition::MaterializedSource> {
         validate_adapter(&plan)?;
+        if skills_sh::is_plan(&plan) {
+            let (temporary, path, item_store, observed_at) =
+                skills_sh::fetch_dump_to_temporary_file(&plan).await?;
+            skills_sh::set_dump_path(&mut plan, &path);
+            skills_sh::set_item_store_path(&mut plan, &item_store);
+            skills_sh::set_observed_at(&mut plan, &observed_at);
+            return Ok(crate::acquisition::MaterializedSource::temporary_at(
+                plan, temporary, path,
+            ));
+        }
         let (registry, package) = parse_registry_target(&plan.request.source).map_err(|err| {
             crate::acquisition::materialization_error("adapter.registry.target_invalid", err)
         })?;
@@ -74,6 +85,17 @@ impl SourceAdapter for RegistrySourceAdapter {
     }
 
     async fn discover(&self, plan: &SourcePlan) -> Result<SourceManifest> {
+        if skills_sh::is_plan(plan) {
+            validate_adapter(plan)?;
+            registry_capability(self.version()).validate_scope(plan.route.scope)?;
+            let plan = plan.clone();
+            return tokio::task::spawn_blocking(move || {
+                let dump = skills_sh::load_dump(&plan)?;
+                skills_sh::discover(&plan, &dump)
+            })
+            .await
+            .map_err(blocking_join_error)?;
+        }
         let plan = plan.clone();
         tokio::task::spawn_blocking(move || discover_sync(&plan))
             .await
@@ -85,6 +107,16 @@ impl SourceAdapter for RegistrySourceAdapter {
         plan: &SourcePlan,
         diff: &SourceManifestDiff,
     ) -> Result<SourceAcquisition> {
+        if skills_sh::is_plan(plan) {
+            validate_adapter(plan)?;
+            let plan = plan.clone();
+            let diff = diff.clone();
+            return tokio::task::spawn_blocking(move || {
+                skills_sh::acquire_materialized(&plan, &diff)
+            })
+            .await
+            .map_err(blocking_join_error)?;
+        }
         let plan = plan.clone();
         let diff = diff.clone();
         tokio::task::spawn_blocking(move || acquire_sync(&plan, &diff))
@@ -98,6 +130,9 @@ impl SourceAdapter for RegistrySourceAdapter {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
+        if skills_sh::is_plan(plan) {
+            return skills_sh::normalize(plan, &acquisition);
+        }
         let options = validate_options(&plan.route.validated_options)?;
         let dump = RegistryDump::load(&options.dump_path)?;
         let SourceAcquisition {
@@ -119,6 +154,19 @@ impl SourceAdapter for RegistrySourceAdapter {
             data: documents,
         })
     }
+
+    async fn artifact_candidates(
+        &self,
+        plan: &SourcePlan,
+        generation: &SourceGenerationId,
+        documents: &[SourceDocument],
+        enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    ) -> Result<Vec<ArtifactCandidate>> {
+        if skills_sh::is_plan(plan) {
+            return skills_sh::artifact_candidates(plan, generation, documents, enrichments);
+        }
+        Ok(Vec::new())
+    }
 }
 
 fn registry_capability(version: &str) -> AdapterCapability {
@@ -131,6 +179,7 @@ fn registry_capability(version: &str) -> AdapterCapability {
         SourceScope::Package,
     )
     .with_scope(SourceScope::Version)
+    .with_scope(SourceScope::Api)
 }
 
 fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
