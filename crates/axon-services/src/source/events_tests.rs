@@ -184,7 +184,7 @@ async fn foreground_events_cross_the_same_redaction_boundary_as_persistence() {
         )
         .with_source(
             SourceId::new("src_test"),
-            "https://user:password@example.com/private",
+            "https://alice:s3cr3t@example.com/private",
         )
         .with_optional_foreground(Some(tx));
     emitter
@@ -206,7 +206,7 @@ async fn foreground_events_cross_the_same_redaction_boundary_as_persistence() {
     for event in [&foreground, &persisted] {
         let encoded = serde_json::to_string(event).expect("serialize event");
         assert!(!encoded.contains("correct horse"));
-        assert!(!encoded.contains("user:password"));
+        assert!(!encoded.contains("alice:s3cr3t"));
     }
     assert_eq!(foreground.message, persisted.message);
     assert_eq!(foreground.warning, persisted.warning);
