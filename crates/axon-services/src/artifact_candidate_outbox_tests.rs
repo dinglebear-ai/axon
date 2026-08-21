@@ -110,6 +110,27 @@ async fn corrupt_entry_is_quarantined_without_blocking_valid_delivery() {
     assert!(names.iter().any(|name| name.contains(".invalid.")));
 }
 
+#[tokio::test]
+async fn scan_cap_rotates_so_later_entries_are_not_starved() {
+    let directory = tempdir().expect("tempdir");
+    for index in 0..=MAX_PENDING_DELIVERIES {
+        let name = format!("{index:064x}.json");
+        tokio::fs::write(directory.path().join(name), b"not-json")
+            .await
+            .expect("write entry");
+    }
+    let outbox = ArtifactCandidateOutbox::new(directory.path());
+    assert!(outbox.pending().await.expect("first page").is_empty());
+    assert!(outbox.pending().await.expect("second page").is_empty());
+
+    let json_entries = std::fs::read_dir(directory.path())
+        .expect("read directory")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().and_then(|value| value.to_str()) == Some("json"))
+        .count();
+    assert_eq!(json_entries, 0);
+}
+
 #[test]
 fn drain_request_is_not_lost_during_an_active_pass() {
     let outbox = ArtifactCandidateOutbox::new("unused");
