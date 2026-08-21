@@ -303,12 +303,12 @@ jobs:
       - name: Install web dependencies for API parity
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
         run: npm ci --prefix apps/web
-      - name: REST API contracts
+      # The workspace nextest job runs tests/http_api_parity_inventory.rs. Do
+      # not compile that integration target a second time in this serial gate:
+      # doing so delayed clippy/nextest fanout by 18-25 minutes on release CI.
+      - name: OpenAPI drift contract
         if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.openapi == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.android == 'true' || needs.changes.outputs.palette == 'true' }}
-        run: |
-          cargo test --locked --test http_api_parity_inventory
-          python3 scripts/cargo_test_filter_guard.py -- cargo test --locked --test http_api_parity_inventory rest_route_contracts_match_openapi_request_schemas -- --nocapture
-          ./target/debug/xtask check-openapi-drift
+        run: ./target/debug/xtask check-openapi-drift
       - name: Changed-file monolith policy
         if: ${{ needs.changes.outputs.rust == 'true' }}
         env:
