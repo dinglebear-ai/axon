@@ -59,6 +59,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0005_provider_identity_cache",
         sql: include_str!("migrations/0005_provider_identity_cache.sql"),
     },
+    SqlMigration {
+        version: 6,
+        name: "0006_watch_request_replay",
+        sql: include_str!("migrations/0006_watch_request_replay.sql"),
+    },
 ];
 
 /// Namespace under which the composed runner tracks jobs migrations.

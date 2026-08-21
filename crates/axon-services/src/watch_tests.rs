@@ -21,6 +21,8 @@ fn watch_request(source: &str, every_seconds: u64) -> WatchRequest {
         },
         embed: false,
         options: AdapterOptions::default(),
+        limits: Default::default(),
+        metadata: Default::default(),
         scope: None,
         collection: None,
         enabled: Some(true),
@@ -169,6 +171,12 @@ fn watch_exec_replays_source_request_and_only_applies_execution_overrides() {
     watch.embed = true;
     watch.scope = Some(SourceScope::Api);
     watch.collection = Some("artifact-catalog".to_string());
+    watch.limits.max_items = Some(12);
+    watch.limits.max_total_bytes = Some(1_048_576);
+    watch.metadata.insert(
+        "artifact_candidate_mode".to_string(),
+        serde_json::json!("refresh"),
+    );
     watch
         .options
         .values
@@ -190,6 +198,7 @@ fn watch_exec_replays_source_request_and_only_applies_execution_overrides() {
 
     assert_eq!(exec.source, created.source);
     assert_eq!(exec.options, created.options);
+    assert_eq!(exec.limits, created.limits);
     assert_eq!(exec.scope, created.scope);
     assert_eq!(exec.collection, created.collection);
     assert_eq!(exec.embed, created.embed);
@@ -197,6 +206,10 @@ fn watch_exec_replays_source_request_and_only_applies_execution_overrides() {
     assert_eq!(exec.watch, SourceWatchPolicy::Enabled);
     assert_eq!(exec.refresh, SourceRefreshPolicy::Force);
     assert_eq!(exec.execution.mode, ExecutionMode::Wait);
+    assert_eq!(
+        exec.metadata.get("artifact_candidate_mode"),
+        Some(&serde_json::json!("refresh"))
+    );
     assert_eq!(
         exec.metadata.get("watch_exec_reason"),
         Some(&serde_json::json!("scheduled refresh"))

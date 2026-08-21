@@ -62,6 +62,8 @@ pub async fn create_source_watch(
                 enabled: Some(request.enabled.unwrap_or(true)),
                 schedule: Some(request.schedule),
                 options: Some(request.options),
+                limits: Some(request.limits),
+                metadata: Some(request.metadata),
                 embed: Some(request.embed),
                 collection: request.collection,
                 scope: Some(routed.route.scope),
@@ -216,6 +218,8 @@ fn source_request_for_watch_create(watch: &WatchRequest) -> SourceRequest {
     source.refresh = SourceRefreshPolicy::IfStale;
     source.embed = watch.embed;
     source.options = watch.options.clone();
+    source.limits = watch.limits.clone();
+    source.metadata = watch.metadata.clone();
     source.scope = watch.scope;
     source.collection = watch.collection.clone();
     source
@@ -228,6 +232,8 @@ fn source_request_for_watch_exec(watch: WatchRequest, request: &WatchExecRequest
     source.refresh = request.refresh.unwrap_or(SourceRefreshPolicy::IfStale);
     source.embed = watch.embed;
     source.options = watch.options;
+    source.limits = watch.limits;
+    source.metadata = watch.metadata;
     source.scope = watch.scope;
     source.collection = watch.collection;
     if request.wait.unwrap_or(false) {

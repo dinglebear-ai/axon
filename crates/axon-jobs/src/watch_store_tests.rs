@@ -11,6 +11,11 @@ async fn store() -> (SqliteWatchStore, SqlitePool, NamedTempFile) {
 }
 
 fn watch_request() -> WatchRequest {
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "artifact_candidate_mode".to_string(),
+        serde_json::json!("refresh"),
+    );
     WatchRequest {
         source: "file:///repo".to_string(),
         schedule: WatchSchedule {
@@ -20,6 +25,12 @@ fn watch_request() -> WatchRequest {
         },
         embed: true,
         options: AdapterOptions::default(),
+        limits: SourceLimits {
+            max_items: Some(7),
+            max_total_bytes: Some(65_536),
+            ..SourceLimits::default()
+        },
+        metadata,
         scope: Some(SourceScope::Directory),
         collection: Some("watch-test".to_string()),
         enabled: Some(true),
@@ -71,6 +82,8 @@ async fn sqlite_watch_store_creates_gets_updates_and_lists() {
             enabled: Some(false),
             schedule: None,
             options: None,
+            limits: None,
+            metadata: None,
             embed: None,
             collection: None,
             scope: Some(SourceScope::Repo),
@@ -127,6 +140,9 @@ async fn sqlite_watch_store_reconstructs_stored_request() {
     assert!(request.embed);
     assert_eq!(request.scope, Some(SourceScope::Directory));
     assert_eq!(request.collection.as_deref(), Some("watch-test"));
+    assert_eq!(request.limits.max_items, Some(7));
+    assert_eq!(request.limits.max_total_bytes, Some(65_536));
+    assert_eq!(request.metadata["artifact_candidate_mode"], "refresh");
     assert_eq!(
         store.request(WatchId::new("missing")).await.unwrap(),
         None,
@@ -208,6 +224,8 @@ async fn sqlite_watch_store_schedule_update_recomputes_next_run_at() {
                 timezone: None,
             }),
             options: None,
+            limits: None,
+            metadata: None,
             embed: None,
             collection: None,
             scope: None,
@@ -287,6 +305,8 @@ async fn sqlite_watch_store_rejects_zero_interval_on_update() {
                 timezone: None,
             }),
             options: None,
+            limits: None,
+            metadata: None,
             embed: None,
             collection: None,
             scope: None,
@@ -315,6 +335,8 @@ async fn sqlite_watch_store_update_rejects_missing_watch() {
             enabled: Some(false),
             schedule: None,
             options: None,
+            limits: None,
+            metadata: None,
             embed: None,
             collection: None,
             scope: None,

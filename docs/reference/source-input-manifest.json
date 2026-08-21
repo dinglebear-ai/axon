@@ -129,7 +129,7 @@
         {
           "path": "crates/axon-api/src/source/job_listing.rs",
           "kind": "rust_module",
-          "checksum": "sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230"
+          "checksum": "sha256:a7a9af3c5bdf0ed69fbb219a6fe830e987778f51fc2300779e3f38e6c151572e"
         },
         {
           "path": "crates/axon-api/src/source/job_policy.rs",
@@ -302,7 +302,7 @@
           "checksum": "sha256:b0339bb9e4bb6f0f311777386dc2dc27b5b1820d485b94522bbd008d247bb4da"
         }
       ],
-      "manifest_checksum": "2fd17802cf8586fd3297cd269bbeb87302da9dfd94b2649eb5a7c884dfbcd5ca"
+      "manifest_checksum": "4494326c541f84e029d695d86491914bc4131ca720e0fe5f8b3aabbb3f854b4e"
     },
     {
       "family": "cli",
@@ -400,7 +400,7 @@
         {
           "path": "crates/axon-jobs/src/migrations",
           "kind": "sql_migration_directory",
-          "checksum": "sha256:c4a5890b29d353667d742c24e26533adf8ebc64932d5240403fbd38800dbd668"
+          "checksum": "sha256:9c222ab8681b13a694887acb401f679a098f2adda81ad0a2188e5273642fcb85"
         },
         {
           "path": "crates/axon-ledger/src/migrations",
@@ -433,7 +433,7 @@
           "checksum": "sha256:68d293e40ac7acca84311b2072d118f4ba06ee95c9b216e02b5278e49b27218b"
         }
       ],
-      "manifest_checksum": "24dc17a574f184a7308e03facec82aa6991be654a9c8691f09a487badd02ee7d"
+      "manifest_checksum": "ffe3baff228a12a8149bac89bd4a70c98fb8e08d74f615c8cf1e1cd1b8b3bf87"
     },
     {
       "family": "errors",

@@ -28183,6 +28183,15 @@
             "null"
           ]
         },
+        "limits": {
+          "$ref": "#/$defs/WatchRequest_SourceLimits",
+          "default": {}
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "default": {},
+          "type": "object"
+        },
         "options": {
           "$ref": "#/$defs/WatchRequest_AdapterOptions"
         },
@@ -28222,6 +28231,68 @@
       "required": [
         "values"
       ],
+      "type": "object"
+    },
+    "WatchRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "WatchRequest_SourceScope": {
@@ -28565,6 +28636,23 @@
             "null"
           ]
         },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WatchUpdateRequest_SourceLimits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "options": {
           "anyOf": [
             {
@@ -28600,6 +28688,68 @@
       "required": [
         "values"
       ],
+      "type": "object"
+    },
+    "WatchUpdateRequest_SourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_bytes_per_item": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_chunks": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_depth": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_items": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_pages": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_total_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "provider_timeout_ms": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
       "type": "object"
     },
     "WatchUpdateRequest_WatchSchedule": {
@@ -29259,7 +29409,7 @@
         "path": "crates/axon-api/src/source/job.rs"
       },
       {
-        "checksum": "sha256:83fb57f16b1b5b4c659c1ec1eea9538d59927bd026e6d6537f458abf10068230",
+        "checksum": "sha256:a7a9af3c5bdf0ed69fbb219a6fe830e987778f51fc2300779e3f38e6c151572e",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
