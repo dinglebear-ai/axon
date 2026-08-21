@@ -33,6 +33,8 @@ fn watch_request(subaction: WatchSubaction) -> WatchMcpRequest {
         embed: None,
         scope: None,
         options: None,
+        limits: None,
+        metadata: None,
         reason: None,
         refresh: None,
         wait: None,
