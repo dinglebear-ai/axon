@@ -393,7 +393,7 @@ or absent in JSON; required fields must be present. Request DTOs use
 | `JobRecoverResult` | `recovered`, `job_ids` | `warnings` |
 | `JobClearRequest` | `status`, `confirm` | `kind`, `older_than` |
 | `JobClearResult` | `deleted`, `status` | `warnings` |
-| `WatchRequest` | `source`, `schedule`, `embed`, `options` | `scope`, `collection`, `enabled` |
+| `WatchRequest` | `source`, `schedule`, `embed`, `options` | `limits` (default empty), `metadata` (default empty), `scope`, `collection`, `enabled` |
 | `WatchResult` | `watch_id`, `source_id`, `canonical_uri`, `adapter`, `scope`, `enabled`, `schedule` | `job`, `latest_job`, `warnings` |
 | `WatchSummary` | `watch_id`, `source_id`, `enabled`, `schedule`, `next_run_at` | `last_job_id`, `last_status` |
 | `WatchUpdateRequest` | none | `enabled`, `schedule`, `options`, `embed`, `collection` |
