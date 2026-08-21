@@ -45,6 +45,7 @@ pub(crate) struct HttpSkillsShPageProvider {
 
 impl HttpSkillsShPageProvider {
     fn new(base_url: String, token: String) -> Result<Self> {
+        validate_token(&token)?;
         let client = build_client(REQUEST_TIMEOUT_SECS, Some(USER_AGENT)).map_err(|error| {
             ApiError::new(
                 "adapter.skills_sh.client_init_failed",
@@ -465,6 +466,24 @@ pub(super) fn oidc_token() -> Result<String> {
             )
         })?;
     Ok(token)
+}
+
+pub(super) fn validate_token(token: &str) -> Result<()> {
+    if token.trim().is_empty() {
+        return Err(ApiError::new(
+            "adapter.skills_sh.credentials_missing",
+            ErrorStage::Authorizing,
+            "skills.sh API requires a non-empty Vercel OIDC bearer token",
+        ));
+    }
+    if token.trim() != token {
+        return Err(ApiError::new(
+            "adapter.skills_sh.credentials_invalid",
+            ErrorStage::Authorizing,
+            "skills.sh API bearer token must not contain surrounding whitespace",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ struct HttpSkillsShAuditProvider {
 
 impl HttpSkillsShAuditProvider {
     fn new(base_url: String, token: String) -> Result<Self> {
+        super::fetch::validate_token(&token)?;
         let client = build_client(REQUEST_TIMEOUT_SECS, Some(USER_AGENT)).map_err(|error| {
             ApiError::new(
                 "adapter.skills_sh.audit_client_init_failed",

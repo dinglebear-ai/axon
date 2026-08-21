@@ -280,6 +280,15 @@ PR #570 merged on 2026-08-21 as `ec8ef7fa463de019f285e50fce8d22c9df19b376`. W21 
 
 Conductor checkpoint 2026-08-21: #570 is no longer a blocker. PR #569 is ready for review and mergeable; the remaining substantive W21 product evidence is the bounded live C7 seed proof below.
 
+Final integration checkpoint 2026-08-21:
+
+- merged current `origin/main` (`4152b40c69b41e617a12cb8d83069d4aba9dfed6`) normally after PR #574 landed at W21 head `994b6df70714a1f5322982fb56cab88e17a7fe22`;
+- corrected the pinned SHA-384 for the still-unmerged `0006_watch_request_replay.sql` after its JSON validity constraints changed, and `xtask check-sqlite-migrations` now passes for all eight migrations;
+- focused ArtifactCandidate contract/sink/outbox, skills.sh, watch/store/scheduler, graph, and routing suites pass after integration;
+- format, generated contracts, layering, changed-file monolith policy, diff hygiene, full-workspace warnings-as-errors Clippy, and the 5,293-test workspace nextest suite pass;
+- final apply-fixes review rejected missing or whitespace-padded skills.sh bearer tokens before request construction and added regression coverage;
+- the bounded live C7 seed remains deliberately unrun: this worktree has neither the required skills.sh credential nor a production-equivalent authenticated Depot sink target. Code-gate readiness does not claim that runtime proof.
+
 1. run a deliberately bounded authenticated skills.sh → Axon → Depot seed with intake/license/backpressure gates enabled and prove sink receipts plus no public byte mirroring for unknown rights;
 2. obtain the required live skills.sh authentication and deployed Axon/Depot sink configuration before that proof; neither credential material nor a production-equivalent deployed target is present in this worktree, so no live seed or C7 runtime claim has been made;
 3. re-run the exact SQLite memory-compaction test if GitHub repeats the unrelated lock failure; do not pull that runtime/database fix into W21 unless it reproduces as a branch regression;

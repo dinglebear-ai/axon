@@ -414,6 +414,30 @@ async fn http_401_and_403_are_non_retryable_and_do_not_expose_the_token() {
     }
 }
 
+#[test]
+fn provider_rejects_missing_and_whitespace_padded_bearer_tokens() {
+    let base_url = Url::parse("http://127.0.0.1:1").expect("loopback URL");
+    for token in ["", "   "] {
+        let error = http_provider_for_test(base_url.clone(), token)
+            .err()
+            .expect("missing token rejected");
+        assert_eq!(error.code.0, "adapter.skills_sh.credentials_missing");
+    }
+
+    for token in [
+        " secret-value",
+        "secret-value ",
+        "secret-value\n",
+        "\tsecret-value",
+    ] {
+        let error = http_provider_for_test(base_url.clone(), token)
+            .err()
+            .expect("whitespace-padded token rejected");
+        assert_eq!(error.code.0, "adapter.skills_sh.credentials_invalid");
+        assert!(!error.to_string().contains("secret-value"));
+    }
+}
+
 #[tokio::test]
 async fn oversized_declared_content_length_is_rejected_before_body_read() {
     let _loopback = LoopbackGuard::allow();
