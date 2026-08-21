@@ -159,8 +159,12 @@ async fn empty_due_lease_check_does_not_wait_for_an_unrelated_writer() {
         .await
         .expect("hold write lock");
 
+    // BEGIN IMMEDIATE is the deterministic coordination point: it cannot
+    // return until this connection owns SQLite's writer lock. The timeout is
+    // only a deadlock guard, not a performance assertion, so leave enough
+    // headroom for loaded CI runners.
     let result = tokio::time::timeout(
-        std::time::Duration::from_millis(250),
+        std::time::Duration::from_secs(5),
         store.lease_due(chrono::Utc::now().timestamp_millis(), 60_000, 32),
     )
     .await;

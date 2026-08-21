@@ -490,31 +490,16 @@ impl TargetLocalSourceRuntime {
 
 fn artifact_candidate_sink_from_env()
 -> Result<Arc<dyn ArtifactCandidateSink>, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(artifact_candidate_sink_for_runtime_from_values(
+    artifact_candidate_sink_from_values(
         std::env::var(DEPOT_URL_ENV).ok(),
         std::env::var(DEPOT_TOKEN_ENV).ok(),
-    ))
-}
-
-fn artifact_candidate_sink_for_runtime_from_values(
-    depot_url: Option<String>,
-    depot_token: Option<String>,
-) -> Arc<dyn ArtifactCandidateSink> {
-    match artifact_candidate_sink_from_values(depot_url, depot_token) {
-        Ok(sink) => sink,
-        Err(error) => {
-            tracing::error!(error = %error, "invalid optional Depot candidate sink configuration; candidate delivery is disabled");
-            Arc::new(NoopArtifactCandidateSink)
-        }
-    }
+    )
 }
 
 fn artifact_candidate_sink_from_values(
     depot_url: Option<String>,
     depot_token: Option<String>,
 ) -> Result<Arc<dyn ArtifactCandidateSink>, Box<dyn std::error::Error + Send + Sync>> {
-    let depot_url = depot_url.filter(|value| !value.trim().is_empty());
-    let depot_token = depot_token.filter(|value| !value.trim().is_empty());
     match (depot_url, depot_token) {
         (None, None) => Ok(Arc::new(NoopArtifactCandidateSink)),
         (Some(url), Some(token)) => Ok(Arc::new(DepotArtifactCandidateSink::new(&url, token)?)),
