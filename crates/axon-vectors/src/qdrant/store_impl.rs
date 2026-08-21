@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use axon_api::source::*;
+use futures_util::{StreamExt, stream};
 
 use super::QdrantVectorStore;
 use super::convert::{
@@ -132,17 +133,12 @@ impl QdrantVectorStore {
         let url = http
             .endpoint()
             .collection_path(&spec.collection, "index?wait=true");
-        use futures_util::stream::{self, StreamExt, TryStreamExt};
-        let bodies = spec
-            .payload_indexes
-            .iter()
-            .map(payload_index_json)
-            .collect::<Vec<_>>();
         let payload_index_slots = self.payload_index_slots();
         let provider_id = self.provider_id().0.clone();
-        stream::iter(bodies)
-            .map(|body| {
-                let url = &url;
+        let mut pending = stream::iter(spec.payload_indexes.clone())
+            .map(|index| {
+                let body = payload_index_json(&index);
+                let url = url.clone();
                 let payload_index_slots = Arc::clone(&payload_index_slots);
                 let provider_id = provider_id.clone();
                 async move {
@@ -154,13 +150,14 @@ impl QdrantVectorStore {
                         )
                         .with_provider_id(provider_id)
                     })?;
-                    http.put_json(stage, url, &body, "qdrant_payload_index")
+                    http.put_json(stage, &url, &body, "qdrant_payload_index")
                         .await
                 }
             })
-            .buffer_unordered(self.payload_index_parallelism)
-            .try_collect::<Vec<_>>()
-            .await?;
+            .buffer_unordered(self.payload_index_parallelism());
+        while let Some(result) = pending.next().await {
+            result?;
+        }
         Ok(())
     }
 }

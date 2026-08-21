@@ -1,7 +1,7 @@
 //! SourceGraph write for `index_source` — the `graphing` stage.
 //!
 //! After a source is acquired and indexed, this module upserts two kinds of
-//! [`GraphCandidate`] into the durable [`SqliteGraphStore`]:
+//! [`GraphCandidate`] into the durable `axon-graph` SQLite store:
 //!
 //! 1. the **baseline skeleton**: one container node for the source itself
 //!    (kind chosen per family from the closed registry, keyed by the source's
@@ -19,40 +19,42 @@
 //! Every candidate — baseline or parser-produced — is individually
 //! re-validated against `axon-graph`'s closed kind registry
 //! ([`axon_graph::candidate::validate_candidate`]) before the batch write:
-//! `SqliteGraphStore::upsert_candidates` fails the *whole* transaction on the
-//! first invalid candidate, so a single malformed candidate from a parser must
+//! The graph store fails the *whole* transaction on the first invalid
+//! candidate, so a single malformed candidate from a parser must
 //! not be allowed to also block a source's valid baseline skeleton from
 //! landing. Invalid candidates are dropped with a warning (fail-closed at the
 //! candidate level), not published.
 //!
 //! Per the crate-ownership rule, `axon-graph` owns the store, the closed kind
 //! registry, and candidate/merge-key/authority validation; this module only
-//! assembles and filters [`GraphCandidate`] values and calls
-//! `upsert_candidates` once per index. When no target pool is available (no
+//! assembles and filters [`GraphCandidate`] values and sends one candidate
+//! batch through the scheduler-owned reserved-call facade per index. When no target pool is available (no
 //! unified SQLite runtime), the write is skipped and a degraded
 //! [`GraphWriteSummary`] with zero counts is returned — acquisition never
 //! crashes because of the graph write.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use axon_api::source::{
     EnrichmentKind, EnrichmentStatus, GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate,
     GraphEvidence, GraphNodeCandidate, GraphWriteSummary, ItemKind, ManifestItem, MetadataMap,
-    ParserHint, PipelinePhase, SourceEnrichment, SourceId, SourceItemKey, SourceKind,
-    SourceManifest, SourceScope, StageCounts, StageId, StageResultHeader, Timestamp,
+    SourceId, SourceItemKey, SourceKind, SourceManifest, SourceScope,
 };
 use axon_graph::candidate::validate_candidate;
-use axon_graph::sqlite::SqliteGraphStore;
-use axon_graph::store::GraphStore;
 use axon_ledger::store::LedgerStore;
 use sqlx::SqlitePool;
+use tokio::sync::Semaphore;
 
 use super::result_map::IndexCounts;
+use crate::context::TargetLocalSourceRuntime;
+use crate::reserved_call::{self, ProviderCallContext};
 
 /// Confidence stamped on baseline skeleton nodes/edges. These are structural
 /// containment facts derived directly from the acquired manifest, not inferred
 /// text mentions, so they carry high confidence.
 const BASELINE_CONFIDENCE: f32 = 0.95;
+const BASELINE_GRAPH_BATCH_SIZE: usize = 512;
 
 /// Producer version reported on every baseline candidate.
 const PRODUCER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -70,6 +72,7 @@ const PRODUCER_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A missing pool, a missing manifest, or a store error degrades to a zero-count
 /// summary (with `degraded = true`) rather than failing the index — the source
 /// is already acquired and published by the time this runs.
+#[cfg(test)]
 pub async fn write_baseline_graph(
     kind: SourceKind,
     pool: Option<Arc<SqlitePool>>,
@@ -78,57 +81,134 @@ pub async fn write_baseline_graph(
     canonical_uri: &str,
     extra_candidates: Vec<GraphCandidate>,
 ) -> GraphWriteSummary {
+    write_baseline_graph_with_db_gate(
+        None,
+        None,
+        kind,
+        pool,
+        ledger,
+        counts,
+        canonical_uri,
+        None,
+        extra_candidates,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn write_baseline_graph_with_db_gate(
+    runtime: Option<&TargetLocalSourceRuntime>,
+    graph_context: Option<ProviderCallContext>,
+    kind: SourceKind,
+    pool: Option<Arc<SqlitePool>>,
+    ledger: &dyn LedgerStore,
+    counts: &IndexCounts,
+    canonical_uri: &str,
+    published_manifest: Option<SourceManifest>,
+    extra_candidates: Vec<GraphCandidate>,
+    db_stage_slots: Option<Arc<Semaphore>>,
+) -> GraphWriteSummary {
     let Some(pool) = pool else {
         tracing::debug!("no unified sqlite pool; skipping baseline graph write");
         return degraded_summary();
     };
 
-    let manifest = match ledger
-        .get_manifest(counts.source_id.clone(), counts.generation.clone())
-        .await
-    {
-        Ok(Some(manifest)) => manifest,
-        Ok(None) => {
-            tracing::debug!(
-                source_id = %counts.source_id.0,
-                generation = %counts.generation.0,
-                "no manifest for indexed generation; skipping baseline graph write"
-            );
-            return degraded_summary();
+    let manifest = if let Some(manifest) = published_manifest {
+        manifest
+    } else {
+        match ledger
+            .get_manifest(counts.source_id.clone(), counts.generation.clone())
+            .await
+        {
+            Ok(Some(manifest)) => manifest,
+            Ok(None) => {
+                tracing::debug!(
+                    source_id = %counts.source_id.0,
+                    generation = %counts.generation.0,
+                    "no manifest for indexed generation; skipping baseline graph write"
+                );
+                return degraded_summary();
+            }
+            Err(err) => {
+                tracing::warn!(
+                    error = %err.message,
+                    source_id = %counts.source_id.0,
+                    "failed to read manifest for baseline graph; skipping"
+                );
+                return degraded_summary();
+            }
         }
-        Err(err) => {
+    };
+
+    // Enriching-stage observability is derived directly from the borrowed
+    // candidates. Do not clone the generation's graph payload into a temporary
+    // SourceEnrichment merely to count it before the real graph write.
+    let valid_extras = filter_valid_candidates(extra_candidates, &counts.source_id);
+    let parse_hint_count = valid_extras
+        .iter()
+        .filter_map(|candidate| candidate.producer.parser.as_deref())
+        .collect::<HashSet<_>>()
+        .len();
+    let (enrichment_kind, enrichment_status) = if valid_extras.is_empty() {
+        (EnrichmentKind::None, EnrichmentStatus::NotNeeded)
+    } else {
+        (EnrichmentKind::Extraction, EnrichmentStatus::Completed)
+    };
+    tracing::info!(
+        source_id = %counts.source_id.0,
+        enrichment_kind = ?enrichment_kind,
+        enrichment_status = ?enrichment_status,
+        parse_hints = parse_hint_count,
+        graph_candidates = valid_extras.len(),
+        "enriching stage validated parser-produced graph candidates"
+    );
+
+    let baseline_batch_count = manifest
+        .items
+        .len()
+        .max(1)
+        .div_ceil(BASELINE_GRAPH_BATCH_SIZE);
+    let baseline = baseline_candidates(kind, counts, canonical_uri, &manifest);
+    let candidates = baseline.chain(valid_extras).collect::<Vec<_>>();
+
+    let _db_permit = match db_stage_slots {
+        Some(slots) => match slots.acquire_owned().await {
+            Ok(permit) => Some(permit),
+            Err(_) => {
+                tracing::warn!(
+                    source_id = %counts.source_id.0,
+                    "source database-stage admission gate closed before graph upsert"
+                );
+                return degraded_summary();
+            }
+        },
+        None => None,
+    };
+    let write = match (runtime, graph_context) {
+        (Some(runtime), Some(context)) => {
+            reserved_call::upsert_graph_candidates(runtime, context, (*pool).clone(), candidates)
+                .await
+        }
+        #[cfg(test)]
+        (None, None) => {
+            reserved_call::upsert_graph_candidates_for_test((*pool).clone(), candidates).await
+        }
+        _ => {
             tracing::warn!(
-                error = %err.message,
                 source_id = %counts.source_id.0,
-                "failed to read manifest for baseline graph; skipping"
+                "graph write is missing scheduler runtime/context; returning degraded summary"
             );
             return degraded_summary();
         }
     };
-
-    // Enriching stage (source-pipeline.md: "fetched/acquired items + source
-    // metadata" -> `SourceEnrichment[]`). This is a minimal but real
-    // producer: it derives an enrichment record from the parser-produced
-    // candidates actually extracted for this generation (not a stub), and
-    // must not itself persist graph data — only the store write below does.
-    let valid_extras = filter_valid_candidates(extra_candidates, &counts.source_id);
-    let enrichment = build_enrichment(counts, canonical_uri, &valid_extras);
-    tracing::info!(
-        source_id = %counts.source_id.0,
-        enrichment_kind = ?enrichment.enrichment_kind,
-        enrichment_status = ?enrichment.status,
-        parse_hints = enrichment.parse_hints.len(),
-        graph_candidates = enrichment.graph_candidates.len(),
-        "enriching stage produced source enrichment record"
-    );
-
-    let mut candidates = vec![build_candidate(kind, counts, canonical_uri, &manifest)];
-    candidates.extend(valid_extras);
-
-    let store = SqliteGraphStore::from_pool((*pool).clone());
-    match store.upsert_candidates(candidates).await {
+    match write {
         Ok(result) => GraphWriteSummary {
-            nodes_upserted: result.nodes_upserted,
+            // Every baseline chunk repeats the container node so its edges can
+            // resolve locally. Hide those implementation-only repeat upserts
+            // from the public summary.
+            nodes_upserted: result
+                .nodes_upserted
+                .saturating_sub(baseline_batch_count.saturating_sub(1) as u64),
             edges_upserted: result.edges_upserted,
             evidence_records: result.evidence_records,
             degraded: false,
@@ -173,72 +253,6 @@ fn filter_valid_candidates(
         .collect()
 }
 
-/// Build the minimal `enriching`-stage output for this generation.
-/// `EnrichmentKind::Extraction`/`Completed` when the generation produced at
-/// least one validated graph candidate; `EnrichmentKind::None`/`NotNeeded`
-/// when it produced none. Parse hints are derived from the real parser ids
-/// recorded on each candidate's producer, not fabricated.
-fn build_enrichment(
-    counts: &IndexCounts,
-    canonical_uri: &str,
-    candidates: &[GraphCandidate],
-) -> SourceEnrichment {
-    let now = Timestamp(chrono::Utc::now().to_rfc3339());
-    let mut parser_ids: Vec<String> = candidates
-        .iter()
-        .filter_map(|candidate| candidate.producer.parser.clone())
-        .collect();
-    parser_ids.sort();
-    parser_ids.dedup();
-    let parse_hints = parser_ids
-        .into_iter()
-        .map(|parser_id| ParserHint {
-            parser_id,
-            reason: "graph candidate producer observed during parsing".to_string(),
-            options: MetadataMap::new(),
-        })
-        .collect();
-
-    let (enrichment_kind, status) = if candidates.is_empty() {
-        (EnrichmentKind::None, EnrichmentStatus::NotNeeded)
-    } else {
-        (EnrichmentKind::Extraction, EnrichmentStatus::Completed)
-    };
-
-    SourceEnrichment {
-        header: StageResultHeader {
-            job_id: counts.job_id,
-            stage_id: StageId::new(counts.job_id.0),
-            phase: PipelinePhase::Preparing,
-            status: axon_api::source::LifecycleStatus::Completed,
-            started_at: now.clone(),
-            completed_at: Some(now),
-            counts: StageCounts {
-                items_total: Some(candidates.len() as u64),
-                items_done: candidates.len() as u64,
-                documents_total: None,
-                documents_done: 0,
-                chunks_total: None,
-                chunks_done: 0,
-                bytes_total: None,
-                bytes_done: 0,
-            },
-            warnings: Vec::new(),
-            error: None,
-        },
-        source_id: counts.source_id.clone(),
-        source_item_key: SourceItemKey::new(canonical_uri),
-        enrichment_kind,
-        status,
-        metadata: MetadataMap::new(),
-        parse_hints,
-        chunk_hints: Vec::new(),
-        graph_candidates: candidates.to_vec(),
-        artifacts: Vec::new(),
-        warnings: Vec::new(),
-    }
-}
-
 /// A degraded, no-write summary. Used whenever the graph write is skipped or
 /// fails so the source result still reports a truthful `degraded` flag.
 fn degraded_summary() -> GraphWriteSummary {
@@ -250,12 +264,57 @@ fn degraded_summary() -> GraphWriteSummary {
     }
 }
 
-/// Assemble the baseline container + document skeleton for one source.
+/// Lazily assemble bounded baseline graph candidates. Every chunk repeats the
+/// source container node so containment edges resolve locally, while the graph
+/// store consumes the iterator inside one transaction for atomic publication.
+fn baseline_candidates<'a>(
+    kind: SourceKind,
+    counts: &'a IndexCounts,
+    canonical_uri: &'a str,
+    manifest: &'a SourceManifest,
+) -> impl Iterator<Item = GraphCandidate> + 'a {
+    let empty = manifest.items.is_empty().then_some(&manifest.items[..]);
+    empty
+        .into_iter()
+        .chain(manifest.items.chunks(BASELINE_GRAPH_BATCH_SIZE))
+        .enumerate()
+        .map(move |(batch_index, items)| {
+            build_candidate_batch(
+                kind.clone(),
+                manifest.scope,
+                counts,
+                canonical_uri,
+                items,
+                batch_index,
+            )
+        })
+}
+
+/// Assemble the full baseline candidate for tests and small direct callers.
+#[cfg(test)]
 fn build_candidate(
     kind: SourceKind,
     counts: &IndexCounts,
     canonical_uri: &str,
     manifest: &SourceManifest,
+) -> GraphCandidate {
+    build_candidate_batch(
+        kind,
+        manifest.scope,
+        counts,
+        canonical_uri,
+        &manifest.items,
+        0,
+    )
+}
+
+fn build_candidate_batch(
+    kind: SourceKind,
+    scope: SourceScope,
+    counts: &IndexCounts,
+    canonical_uri: &str,
+    items: &[ManifestItem],
+    batch_index: usize,
 ) -> GraphCandidate {
     let source_id = counts.source_id.clone();
     let source_item_key = SourceItemKey::new(canonical_uri);
@@ -266,7 +325,7 @@ fn build_candidate(
     // `graph query <uri>` can never match a plain URI (seen live on the
     // reset 7.0 stores).
     let container = GraphNodeCandidate {
-        node_kind: container_node_kind(kind, manifest.scope).to_string(),
+        node_kind: container_node_kind(kind, scope).to_string(),
         stable_key: container_key.clone(),
         label: canonical_uri.to_string(),
         properties: uri_properties(canonical_uri),
@@ -275,9 +334,9 @@ fn build_candidate(
     let mut nodes = vec![container];
     let mut edges = Vec::new();
     let mut evidence = Vec::new();
-    let edge_kind = containment_edge_kind(kind, manifest.scope);
+    let edge_kind = containment_edge_kind(kind, scope);
 
-    for item in &manifest.items {
+    for item in items {
         let doc_key = document_stable_key(item);
         let item_evidence = containment_evidence(&source_id, &source_item_key, item);
         nodes.push(GraphNodeCandidate {
@@ -296,8 +355,16 @@ fn build_candidate(
         evidence.push(item_evidence);
     }
 
+    let candidate_id = if batch_index == 0 {
+        format!("source-baseline:{}:{}", source_id.0, counts.generation.0)
+    } else {
+        format!(
+            "source-baseline:{}:{}:{batch_index}",
+            source_id.0, counts.generation.0
+        )
+    };
     GraphCandidate {
-        candidate_id: format!("source-baseline:{}:{}", source_id.0, counts.generation.0),
+        candidate_id,
         job_id: counts.job_id.clone(),
         source_id: source_id.clone(),
         source_item_key,
@@ -411,18 +478,20 @@ fn document_node_kind(item: &ManifestItem) -> &'static str {
 /// Registry containment edge kind (container → document) per family. Every
 /// returned name is a closed [`axon_graph::edge::GraphEdgeKind`] variant.
 fn containment_edge_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
-    match (kind, scope) {
-        (SourceKind::Registry, SourceScope::Api) => "source_indexed_as",
-        (SourceKind::Web, _) => "docs_site_contains_page",
-        (SourceKind::Git, _) => "commit_contains_file",
-        (SourceKind::Local, _) => "commit_contains_file",
-        (SourceKind::Feed, _) => "feed_contains_entry",
-        (SourceKind::Reddit, _) => "subreddit_has_thread",
-        (SourceKind::Youtube, _) => "youtube_channel_has_video",
-        (SourceKind::Session, _) => "session_has_turn",
-        (SourceKind::Registry, _) => "package_has_version",
-        (SourceKind::CliTool | SourceKind::McpTool, _) => "source_produced_artifact",
-        (SourceKind::Memory | SourceKind::Upload, _) => "source_indexed_as",
+    if kind == SourceKind::Registry && scope == SourceScope::Api {
+        return "contains_artifact";
+    }
+    match kind {
+        SourceKind::Web => "docs_site_contains_page",
+        SourceKind::Git => "commit_contains_file",
+        SourceKind::Local => "commit_contains_file",
+        SourceKind::Feed => "feed_contains_entry",
+        SourceKind::Reddit => "subreddit_has_thread",
+        SourceKind::Youtube => "youtube_channel_has_video",
+        SourceKind::Session => "session_has_turn",
+        SourceKind::Registry => "package_has_version",
+        SourceKind::CliTool | SourceKind::McpTool => "source_produced_artifact",
+        SourceKind::Memory | SourceKind::Upload => "source_indexed_as",
     }
 }
 

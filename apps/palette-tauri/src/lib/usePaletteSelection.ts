@@ -20,11 +20,13 @@ import {
 import type { RunState } from "@/lib/runState";
 
 interface PaletteSelectionInput {
+  actions?: PaletteAction[];
   browseOpen: boolean;
   browserOpen: boolean;
   history: HistoryItem[];
   historyOpen: boolean;
   modeAction: PaletteAction | null;
+  mobileRuntime?: boolean;
   pendingConfirmation: PendingActionConfirmation | null;
   query: string;
   run: RunState;
@@ -35,11 +37,13 @@ interface PaletteSelectionInput {
 
 export function usePaletteSelection(input: PaletteSelectionInput) {
   const {
+    actions = ACTIONS,
     browseOpen,
     browserOpen,
     history,
     historyOpen,
     modeAction,
+    mobileRuntime = false,
     pendingConfirmation,
     query,
     run,
@@ -48,17 +52,27 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
     settingsOpen,
   } = input;
   const parsed = useMemo(() => parseCommand(query), [query]);
+  const invoked = useMemo(
+    () =>
+      parsed.invoked
+        ? actions.find((action) => action.subcommand === parsed.invoked?.subcommand)
+        : undefined,
+    [actions, parsed.invoked],
+  );
+  const unavailableInvocation = Boolean(parsed.invoked && !invoked);
   const hasQuery = query.trim().length > 0;
   const filtered = useMemo(() => {
-    if (parsed.invoked) return [parsed.invoked];
-    if (looksLikeUrl(parsed.search)) return sortActionsForDisplay(ACTIONS).slice(0, 12);
-    const matches = ACTIONS.filter((action) => actionMatches(action, parsed.search));
+    if (unavailableInvocation) return [];
+    if (invoked) return [invoked];
+    if (mobileRuntime && parsed.search.trim().length === 0) return sortActionsForDisplay(actions);
+    if (looksLikeUrl(parsed.search)) return sortActionsForDisplay(actions).slice(0, 12);
+    const matches = actions.filter((action) => actionMatches(action, parsed.search));
     if (parsed.search.trim().length > 0 && matches.length === 0) {
-      const ask = ACTIONS.find((action) => action.subcommand === "ask");
+      const ask = actions.find((action) => action.subcommand === "ask");
       return ask ? [ask] : [];
     }
     return sortActionsByRelevance(matches, parsed.search).slice(0, 12);
-  }, [parsed.invoked, parsed.search]);
+  }, [actions, invoked, mobileRuntime, parsed.search, unavailableInvocation]);
   const selectionKey = `${parsed.search} ${modeAction?.subcommand ?? ""}`;
   const previousSelectionKey = useRef(selectionKey);
   let selectedIndex = selected;
@@ -69,8 +83,10 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
   }
   selectedIndex = Math.min(selectedIndex, Math.max(filtered.length - 1, 0));
   const suggestedAction = filtered[selectedIndex];
-  const slashInvokedAction = query.trimStart().startsWith("/") ? parsed.invoked : undefined;
-  const active = slashInvokedAction ?? modeAction ?? suggestedAction;
+  const slashInvokedAction = query.trimStart().startsWith("/") ? invoked : undefined;
+  const active = unavailableInvocation
+    ? undefined
+    : (slashInvokedAction ?? modeAction ?? suggestedAction);
   const askSessions = useMemo(
     () =>
       history.filter(
@@ -89,7 +105,12 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
       ? parsed.search
       : argumentFor(active, slashInvokedAction ? null : modeAction, parsed, query)
     : "";
-  const validation = active ? validationMessage(active, activeArgument) : "No matching action";
+  const validation =
+    mobileRuntime && !hasQuery && !modeAction
+      ? ""
+      : active
+        ? validationMessage(active, activeArgument)
+        : "No matching action";
   const confirmationArmed =
     active && !validation
       ? actionConfirmationArmed(pendingConfirmation, active, activeArgument)
@@ -105,6 +126,7 @@ export function usePaletteSelection(input: PaletteSelectionInput) {
   const enteringArgument =
     Boolean(modeAction) && !showOutput && !settingsOpen && !historyOpen && !browserOpen;
   const showContent =
+    mobileRuntime ||
     settingsOpen ||
     historyOpen ||
     browserOpen ||

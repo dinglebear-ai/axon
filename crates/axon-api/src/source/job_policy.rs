@@ -40,7 +40,7 @@ pub enum JobPolicy {
     Synchronous,
 }
 
-pub fn job_policy_for_operation(operation: OperationKind, mode: JobExecutionMode) -> JobPolicy {
+pub fn job_policy_for_operation(operation: OperationKind, _mode: JobExecutionMode) -> JobPolicy {
     match operation {
         OperationKind::Source
         | OperationKind::Watch
@@ -52,11 +52,11 @@ pub fn job_policy_for_operation(operation: OperationKind, mode: JobExecutionMode
         | OperationKind::Prune
         | OperationKind::ProviderProbe
         | OperationKind::Reset => JobPolicy::JobBacked,
-        OperationKind::Query | OperationKind::Retrieve => match mode {
-            JobExecutionMode::Foreground => JobPolicy::Synchronous,
-            JobExecutionMode::Detached
-            | JobExecutionMode::LongRunningProvider
-            | JobExecutionMode::ArtifactBacked => JobPolicy::JobBacked,
-        },
+        // Foreground reads are still executed synchronously by the caller, but
+        // they are job-backed so provider reservations have a durable FK target
+        // and can participate in the same cross-process scheduler as ingestion.
+        // The transport still returns the read result directly; JobBacked here
+        // is an observability/scheduling contract, not a detach requirement.
+        OperationKind::Query | OperationKind::Retrieve => JobPolicy::JobBacked,
     }
 }

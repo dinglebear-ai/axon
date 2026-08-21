@@ -62,8 +62,8 @@ pub(super) fn reddit_item_metadata(item: &RedditDumpItem) -> MetadataMap {
 
 pub(super) fn reddit_source_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    item: AcquiredSourceItem,
     dump_item: &RedditDumpItem,
 ) -> SourceDocument {
     let mut metadata = reddit_item_metadata(dump_item);
@@ -73,32 +73,29 @@ pub(super) fn reddit_source_document(
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
     metadata.insert(
         "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
+        json!(item.manifest_item.canonical_uri.clone()),
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("clean"));
 
     SourceDocument {
-        document_id: reddit_document_id(
-            &acquisition.source_id,
-            &item.manifest_item.source_item_key,
-        ),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: reddit_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: item
             .manifest_item
             .content_kind
             .unwrap_or(ContentKind::PlainText),
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title: dump_item.title.clone(),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: None,
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     }

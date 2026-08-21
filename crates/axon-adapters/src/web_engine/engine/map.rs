@@ -1,8 +1,8 @@
 mod strategy;
 
-pub use strategy::discover_site_urls;
 #[cfg(test)]
 pub(crate) use strategy::discovery_is_sufficient;
+pub use strategy::{discover_site_urls, discover_site_urls_with_metadata};
 
 use std::collections::HashSet;
 use std::error::Error;
@@ -108,29 +108,66 @@ pub fn merge_map_candidate_urls(
 
 /// Merge sitemap and llms.txt candidates while preferring a direct Markdown
 /// representation over the equivalent extensionless HTML page.
+fn advertised_markdown_alternates(llms_urls: &[String]) -> HashSet<String> {
+    llms_urls
+        .iter()
+        .filter_map(|raw| {
+            let mut url = Url::parse(raw).ok()?;
+            let path = url.path();
+            let route = path
+                .strip_suffix(".md")
+                .or_else(|| path.strip_suffix(".markdown"))?
+                .to_string();
+            url.set_path(&route);
+            canonicalize_url_for_dedupe(url.as_ref())
+        })
+        .collect()
+}
+
+fn is_advertised_markdown_alternate(url: &str, markdown_alternates: &HashSet<String>) -> bool {
+    canonicalize_url_for_dedupe(url)
+        .is_some_and(|canonical| markdown_alternates.contains(&canonical))
+}
+
+/// Merge sitemap and llms.txt candidates while preferring only Markdown
+/// alternates that were explicitly advertised by llms.txt.
+///
+/// This provenance requirement is deliberate: merely discovering both
+/// `/guide` and `/guide.md` somewhere on a site is not enough evidence
+/// that they are interchangeable documents.
 pub(crate) fn merge_discovery_candidate_urls(
     sitemap_urls: Vec<String>,
     llms_urls: Vec<String>,
 ) -> Vec<String> {
-    let markdown_alternates: HashSet<String> = llms_urls
-        .iter()
-        .filter_map(|url| {
-            url.strip_suffix(".md")
-                .or_else(|| url.strip_suffix(".markdown"))
-        })
-        .map(str::to_string)
-        .collect();
+    let markdown_alternates = advertised_markdown_alternates(&llms_urls);
 
     sitemap_urls
         .into_iter()
-        .filter(|url| !markdown_alternates.contains(url.as_str()))
+        .filter(|url| !is_advertised_markdown_alternate(url, &markdown_alternates))
         .chain(llms_urls)
         .collect()
 }
 
-pub(crate) async fn resolve_map_seed_url(
+/// Merge bounded root anchors without reintroducing an HTML route that an
+/// explicitly advertised llms.txt Markdown representation already replaced.
+pub(crate) fn merge_discovery_and_anchor_urls(
+    discovery_urls: Vec<String>,
+    anchor_urls: Vec<String>,
+    llms_urls: &[String],
+    scope: &MapScope,
+) -> Vec<String> {
+    let markdown_alternates = advertised_markdown_alternates(llms_urls);
+    let anchor_urls = anchor_urls
+        .into_iter()
+        .filter(|url| !is_advertised_markdown_alternate(url, &markdown_alternates))
+        .collect();
+    merge_map_candidate_urls(discovery_urls, anchor_urls, scope, true)
+}
+
+pub(crate) async fn resolve_map_seed_url_with_metadata(
     start_url: &str,
     fetch: Arc<dyn FetchProvider>,
+    metadata: &MetadataMap,
 ) -> Result<String, Box<dyn Error>> {
     let normalized = normalize_url(start_url);
     let response = fetch
@@ -144,7 +181,7 @@ pub(crate) async fn resolve_map_seed_url(
             timeout_ms: None,
             max_bytes: Some(512 * 1024),
             credential_refs: Vec::new(),
-            metadata: MetadataMap::new(),
+            metadata: metadata.clone(),
         })
         .await
         .map_err(|error| format!("GET failed resolving map seed {start_url}: {error}"))?;

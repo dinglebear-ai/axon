@@ -88,6 +88,175 @@ fn repo_docs_candidate(id: &str, source: &str, mut evidence: Vec<GraphEvidence>)
     }
 }
 
+fn large_repo_candidate(item_count: usize) -> GraphCandidate {
+    let mut nodes = vec![node("repo", "repo:root", "repo")];
+    let mut edges = Vec::with_capacity(item_count);
+    let mut evidence = Vec::with_capacity(item_count);
+    for index in 0..item_count {
+        let key = format!("src/file-{index:04}.rs");
+        let evidence_id = format!("ev-{index:04}");
+        nodes.push(node("repo_file", &key, &key));
+        edges.push(GraphEdgeCandidate {
+            edge_kind: "commit_contains_file".to_string(),
+            from_stable_key: "repo:root".to_string(),
+            to_stable_key: key,
+            evidence_ids: vec![evidence_id.clone()],
+            properties: MetadataMap::new(),
+        });
+        evidence.push(ev(&evidence_id, "text_mention", 0.95));
+    }
+    GraphCandidate {
+        candidate_id: "gc-large".to_string(),
+        job_id: JobId::new(Uuid::from_u128(9)),
+        source_id: SourceId::new("src"),
+        source_item_key: SourceItemKey::new("item"),
+        item_canonical_uri: "https://github.com/x/large".to_string(),
+        document_id: None,
+        kind: "source_baseline".to_string(),
+        merge_key: None,
+        producer: GraphCandidateProducer {
+            adapter: "github".to_string(),
+            parser: None,
+            version: "1".to_string(),
+        },
+        nodes,
+        edges,
+        evidence,
+        confidence: 0.95,
+        metadata: MetadataMap::new(),
+    }
+}
+
+#[tokio::test]
+async fn large_upsert_crosses_alias_and_evidence_batch_boundaries() {
+    let graph = store().await;
+    let candidate = large_repo_candidate(121);
+    let first = graph
+        .upsert_candidates(vec![candidate.clone()])
+        .await
+        .expect("large graph upsert");
+    assert_eq!(first.nodes_upserted, 122);
+    assert_eq!(first.edges_upserted, 121);
+    assert_eq!(first.evidence_records, 121);
+
+    let aliases: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_aliases")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count aliases");
+    let evidence: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_evidence")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count evidence");
+    assert_eq!(aliases, 122 * 3);
+    assert_eq!(evidence, 121);
+
+    graph
+        .upsert_candidates(vec![candidate])
+        .await
+        .expect("idempotent large graph upsert");
+    let evidence_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_evidence")
+        .fetch_one(graph.pool())
+        .await
+        .expect("count evidence after replay");
+    assert_eq!(evidence_after, 121);
+}
+
+fn repo_file_candidate(
+    candidate_id: &str,
+    candidate_kind: &str,
+    source: &str,
+    evidence_kind: &str,
+) -> GraphCandidate {
+    let mut evidence = ev("file-evidence", evidence_kind, 0.95);
+    evidence.source_id = SourceId::new(source);
+    GraphCandidate {
+        candidate_id: candidate_id.to_string(),
+        job_id: JobId::new(Uuid::from_u128(10)),
+        source_id: SourceId::new(source),
+        source_item_key: SourceItemKey::new("item"),
+        item_canonical_uri: "https://github.com/x/y".to_string(),
+        document_id: None,
+        kind: candidate_kind.to_string(),
+        merge_key: None,
+        producer: GraphCandidateProducer {
+            adapter: "github".to_string(),
+            parser: None,
+            version: "1".to_string(),
+        },
+        nodes: vec![
+            node("repo", "repo:root", "repo"),
+            node("repo_file", "src/lib.rs", "src/lib.rs"),
+        ],
+        edges: vec![GraphEdgeCandidate {
+            edge_kind: "commit_contains_file".to_string(),
+            from_stable_key: "repo:root".to_string(),
+            to_stable_key: "src/lib.rs".to_string(),
+            evidence_ids: vec![evidence.evidence_id.clone()],
+            properties: MetadataMap::new(),
+        }],
+        evidence: vec![evidence],
+        confidence: 0.95,
+        metadata: MetadataMap::new(),
+    }
+}
+
+#[tokio::test]
+async fn baseline_batch_preserves_higher_edge_authority_and_unions_node_sources() {
+    let graph = store().await;
+    let mut official = repo_file_candidate(
+        "official",
+        "repo_file_relation",
+        "src-official",
+        "github_homepage",
+    );
+    official.edges[0]
+        .properties
+        .insert("rank".to_string(), serde_json::json!("official"));
+    graph
+        .upsert_candidates(vec![official])
+        .await
+        .expect("official seed");
+
+    let mut baseline = repo_file_candidate(
+        "baseline",
+        "source_baseline",
+        "src-baseline",
+        "text_mention",
+    );
+    baseline.edges[0]
+        .properties
+        .insert("rank".to_string(), serde_json::json!("baseline"));
+    baseline.edges[0]
+        .properties
+        .insert("baseline_only".to_string(), serde_json::json!(true));
+    graph
+        .upsert_candidates(vec![baseline])
+        .await
+        .expect("batched baseline merge");
+
+    let repo_id = node_id_for("repo", "repo:root");
+    let file_id = node_id_for("repo_file", "src/lib.rs");
+    let repo = graph.get_node(repo_id.clone()).await.unwrap().unwrap();
+    assert!(repo.source_ids.contains(&SourceId::new("src-official")));
+    assert!(repo.source_ids.contains(&SourceId::new("src-baseline")));
+
+    let edge_id = edge_id_for("commit_contains_file", &repo_id, &file_id);
+    let edge = graph.get_edge(edge_id).await.unwrap().unwrap();
+    assert_eq!(edge.authority, AuthorityLevel::Official);
+    assert_eq!(
+        edge.metadata
+            .get("rank")
+            .and_then(serde_json::Value::as_str),
+        Some("official")
+    );
+    assert_eq!(
+        edge.metadata
+            .get("baseline_only")
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+}
+
 #[tokio::test]
 async fn upsert_then_get_node_and_edge_roundtrip() {
     let graph = store().await;

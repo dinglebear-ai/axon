@@ -43,6 +43,10 @@ use axon_authz::required_scope_for_safety_class;
 use axon_services::source::routing::resolve_source_route;
 use rmcp::ErrorData;
 
+pub fn source_result_payload(result: &axon_api::source::SourceResult) -> serde_json::Value {
+    serde_json::to_value(result).expect("SourceResult is a serializable transport contract")
+}
+
 impl AxonMcpServer {
     pub(super) async fn handle_source(
         &self,
@@ -67,6 +71,9 @@ impl AxonMcpServer {
         let mut api_request = ApiSourceRequest::new(source.clone());
         api_request.scope = req.scope;
         api_request.collection = collection;
+        if let Some(priority) = req.priority {
+            api_request.execution.priority = priority;
+        }
 
         // Real caller-derived AuthSnapshot, resolved once in `call_tool`'s
         // scope gate and threaded through via task-local (see
@@ -97,16 +104,16 @@ impl AxonMcpServer {
                     "source detached=true requires a running job store; retry with detached=false",
                 ));
             };
-            let result = axon_services::source::enqueue::enqueue_source_with_allowed_roots(
+            let result = axon_services::source::enqueue::enqueue_source_with_access_policy(
                 api_request,
                 job_store.as_ref(),
                 caller_auth_snapshot,
                 Some(&service_context.cfg().source_local_allowed_roots),
+                service_context.cfg().allow_tool_execution,
             )
             .await
             .map_err(|e| logged_internal_error("source.enqueue", e.as_ref()))?;
-            let payload = serde_json::to_value(&result)
-                .map_err(|e| internal_error(format!("serialize source result: {e}")))?;
+            let payload = source_result_payload(&result);
             return respond_with_mode(
                 "source",
                 "source",
@@ -148,8 +155,7 @@ impl AxonMcpServer {
             internal_error(message)
         })?;
 
-        let payload = serde_json::to_value(&result)
-            .map_err(|e| internal_error(format!("serialize source result: {e}")))?;
+        let payload = source_result_payload(&result);
 
         respond_with_mode(
             "source",

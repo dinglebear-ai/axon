@@ -1,14 +1,17 @@
-use std::sync::{
-    Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(desktop)]
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, Size,
+    LogicalSize, Size,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
+#[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 mod axon_bridge;
@@ -20,10 +23,12 @@ mod github_bridge;
 mod github_feed;
 mod oauth;
 mod persistence;
+mod runtime;
 mod sftp_bridge;
 mod sftp_known_hosts;
 mod stream;
 mod terminal;
+#[cfg(desktop)]
 mod window_events;
 
 use axon_bridge::{BridgeClient, StreamClient};
@@ -82,6 +87,14 @@ const DEFAULT_SERVER_URL: &str = "https://axon.example.internal";
 const DEFAULT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const SETTINGS_FILE: &str = "settings.json";
 
+pub(crate) fn require_desktop_feature(feature: &str) -> Result<(), String> {
+    if cfg!(mobile) {
+        Err(format!("{feature} is only available in the desktop app"))
+    } else {
+        Ok(())
+    }
+}
+
 // Runtime gate for hide-on-blur, toggled by the frontend. The launcher hides on
 // blur (click-away dismiss), but while a result/settings view is open we keep it
 // up so resizing or copying from another window doesn't make it vanish.
@@ -92,6 +105,7 @@ struct BlurDismiss(AtomicBool);
 /// Tracks the shortcut label currently registered so we can unregister only
 /// that specific shortcut (rather than calling `unregister_all`) when the user
 /// changes the keybinding.
+#[cfg(desktop)]
 struct ActiveShortcut(Mutex<Option<String>>);
 
 #[tauri::command]
@@ -121,10 +135,17 @@ fn save_palette_prefs(app: &AppHandle, settings: &PaletteSettings) -> Result<(),
     write_settings(app, settings).map_err(|err| err.to_string())
 }
 
+#[cfg(desktop)]
 fn update_shortcut(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
     register_configured_shortcut(app, settings)
 }
 
+#[cfg(mobile)]
+fn update_shortcut(_app: &AppHandle, _settings: &PaletteSettings) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 fn hide_palette(app: AppHandle) -> Result<(), String> {
     app.get_webview_window("main")
@@ -133,11 +154,18 @@ fn hide_palette(app: AppHandle) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+fn hide_palette(_app: AppHandle) -> Result<(), String> {
+    Ok(())
+}
+
 #[tauri::command]
 fn show_palette(app: AppHandle) -> Result<(), String> {
     show_main_window(&app)
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Result<(), String> {
     let window = app
@@ -156,6 +184,13 @@ fn resize_palette(app: AppHandle, width: f64, height: f64, shadow: bool) -> Resu
     window.center().map_err(|err| err.to_string())
 }
 
+#[cfg(mobile)]
+#[tauri::command]
+fn resize_palette(_app: AppHandle, _width: f64, _height: f64, _shadow: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 fn toggle_maximize(app: AppHandle) -> Result<(), String> {
     let window = app
@@ -166,6 +201,12 @@ fn toggle_maximize(app: AppHandle) -> Result<(), String> {
     } else {
         window.maximize().map_err(|err| err.to_string())
     }
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn toggle_maximize(_app: AppHandle) -> Result<(), String> {
+    Ok(())
 }
 
 #[tauri::command]
@@ -180,6 +221,7 @@ fn merged_settings(app: &AppHandle) -> Result<PaletteSettings, String> {
     Ok(merge_settings(persisted, defaults))
 }
 
+#[cfg(desktop)]
 fn merged_settings_or_default(app: &AppHandle) -> PaletteSettings {
     match merged_settings(app) {
         Ok(settings) => settings,
@@ -303,6 +345,7 @@ pub(crate) fn validate_saved_server_url(server_url: &str) -> Result<String, Stri
     Ok(server_url.trim_end_matches('/').to_string())
 }
 
+#[cfg(desktop)]
 fn shortcut_for_label(label: &str) -> Shortcut {
     match normalize_shortcut_label(label).as_str() {
         "Alt+Space" => Shortcut::new(Some(Modifiers::ALT), Code::Space),
@@ -312,6 +355,7 @@ fn shortcut_for_label(label: &str) -> Shortcut {
     }
 }
 
+#[cfg(desktop)]
 fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> Result<(), String> {
     let new_label = normalize_shortcut_label(&settings.shortcut);
     let new_shortcut = shortcut_for_label(&new_label);
@@ -344,6 +388,7 @@ fn register_configured_shortcut(app: &AppHandle, settings: &PaletteSettings) -> 
     Ok(())
 }
 
+#[cfg(desktop)]
 fn show_main_window(app: &AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -369,6 +414,19 @@ fn show_main_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(mobile)]
+fn show_main_window(app: &AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    window.show().map_err(|err| err.to_string())?;
+    if let Err(err) = window.emit("palette://shown", ()) {
+        diag::warn_with_context("failed to emit shown event", err);
+    }
+    Ok(())
+}
+
+#[cfg(desktop)]
 fn toggle_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -387,159 +445,17 @@ fn toggle_main_window(app: &AppHandle) {
     }
 }
 
-fn install_tray(app: &tauri::App) -> tauri::Result<()> {
-    let show = MenuItem::with_id(app, "show", "Show Palette", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Axon Palette", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &settings, &quit])?;
-
-    let icon = app.default_window_icon().cloned();
-    let mut tray = TrayIconBuilder::new()
-        .tooltip("Axon Palette")
-        .menu(&menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => {
-                if let Err(err) = show_main_window(app) {
-                    diag::warn_with_context("failed to show main window from tray", err);
-                }
-            }
-            "settings" => {
-                if let Err(err) = show_main_window(app) {
-                    diag::warn_with_context("failed to show main window for settings", err);
-                }
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Err(err) = window.emit("palette://open-settings", ()) {
-                        diag::warn_with_context("failed to emit open settings event", err);
-                    }
-                } else {
-                    diag::warn_with_context("failed to open settings", "main window not found");
-                }
-            }
-            "quit" => {
-                if let Err(err) = app.global_shortcut().unregister_all() {
-                    diag::warn_with_context("failed to unregister global shortcuts on quit", err);
-                }
-                app.exit(0);
-            }
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                toggle_main_window(tray.app_handle());
-            }
-        });
-
-    if let Some(icon) = icon {
-        tray = tray.icon(icon);
-    }
-    tray.build(app)?;
-    Ok(())
-}
-
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
 
-pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let bridge_client = BridgeClient::new()
-        .map_err(|err| format!("failed to build HTTP client for Axon bridge: {err}"))?;
-    let stream_client = StreamClient::new()
-        .map_err(|err| format!("failed to build HTTP client for streaming: {err}"))?;
-    let github_client = GitHubClient::new()
-        .map_err(|err| format!("failed to build HTTP client for GitHub bridge: {err}"))?;
+#[cfg(mobile)]
+#[tauri::mobile_entry_point]
+pub fn run() {
+    runtime::try_run().expect("error while running Axon Palette");
+}
 
-    tauri::Builder::default()
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == ShortcutState::Pressed {
-                        toggle_main_window(app);
-                    }
-                })
-                .build(),
-        )
-        .invoke_handler(tauri::generate_handler![
-            load_palette_config,
-            load_palette_default_config,
-            save_palette_settings,
-            hide_palette,
-            show_palette,
-            resize_palette,
-            toggle_maximize,
-            set_blur_dismiss,
-            axon_bridge::axon_http_request,
-            axon_bridge::axon_artifact_request,
-            axon_http_stream_request,
-            browser::browser_open,
-            browser::browser_navigate,
-            browser::browser_back,
-            browser::browser_forward,
-            browser::browser_reload,
-            browser::browser_close,
-            github_bridge::github_browse,
-            oauth::axon_oauth_login,
-            oauth::axon_oauth_logout,
-            oauth::axon_oauth_status,
-            files_bridge::files_list_dir,
-            files_bridge::files_read_file,
-            files_bridge::files_write_file,
-            files_bridge::files_get_root,
-            sftp_bridge::commands::sftp_connect,
-            sftp_bridge::commands::sftp_list_dir,
-            sftp_bridge::commands::sftp_read_file,
-            sftp_bridge::commands::sftp_disconnect,
-            sftp_bridge::commands::sftp_list_known_hosts,
-            sftp_bridge::commands::sftp_revoke_known_host,
-            terminal::terminal_run,
-            terminal::terminal_cwd
-        ])
-        .manage(BlurDismiss(AtomicBool::new(true)))
-        .manage(ActiveShortcut(Mutex::new(None)))
-        .manage(bridge_client)
-        .manage(stream_client)
-        .manage(github_client)
-        .manage(oauth::OauthState::new())
-        .manage(sftp_bridge::SftpConnections::new())
-        .manage(TerminalState::new())
-        .setup(|app| {
-            if let Err(err) = install_tray(app) {
-                diag::warn_with_context("failed to install tray icon", err);
-            }
-            let settings = merged_settings_or_default(app.handle());
-            register_configured_shortcut(app.handle(), &settings).map_err(anyhow::Error::msg)?;
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                let window_handle = handle.clone();
-                if let Err(err) = handle.run_on_main_thread(move || {
-                    if let Err(err) = show_main_window(&window_handle) {
-                        diag::warn_with_context("failed to show main window on launch", err);
-                    }
-                }) {
-                    diag::warn_with_context("failed to schedule launch window show", err);
-                }
-            });
-            Ok(())
-        })
-        .on_window_event(window_events::handle_window_event)
-        .build(tauri::generate_context!())
-        .map_err(|err| format!("error while building Axon Palette: {err}"))?
-        .run(|app_handle, event| {
-            // Close any still-open SFTP sessions on app exit rather than
-            // leaking them (and their underlying SSH channels/sockets) —
-            // there is otherwise no cleanup path once the process exits, and
-            // relying on OS socket teardown alone skips the SFTP subsystem's
-            // own close handshake.
-            if let tauri::RunEvent::Exit = event {
-                let connections = app_handle.state::<sftp_bridge::SftpConnections>();
-                tauri::async_runtime::block_on(connections.close_all());
-            }
-        });
-    Ok(())
+#[cfg(desktop)]
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    runtime::try_run()
 }

@@ -166,6 +166,26 @@ pub async fn enqueue_operation(
     mode: JobExecutionMode,
     request: serde_json::Value,
 ) -> Result<Option<JobDescriptor>, Box<dyn Error>> {
+    enqueue_operation_with_context(
+        service_context,
+        operation,
+        mode,
+        request,
+        JobPriority::Normal,
+        AuthSnapshot::trusted_system("runtime"),
+    )
+    .await
+}
+
+/// Enqueue a job-backed operation with explicit scheduling and auth context.
+pub async fn enqueue_operation_with_context(
+    service_context: &ServiceContext,
+    operation: OperationKind,
+    mode: JobExecutionMode,
+    request: serde_json::Value,
+    priority: JobPriority,
+    auth_snapshot: AuthSnapshot,
+) -> Result<Option<JobDescriptor>, Box<dyn Error>> {
     if job_policy_for_operation(operation, mode) == JobPolicy::Synchronous {
         return Ok(None);
     }
@@ -182,23 +202,14 @@ pub async fn enqueue_operation(
             parent_job_id: None,
             root_job_id: None,
             attempt: 1,
-            priority: JobPriority::Normal,
+            priority,
             idempotency_key: request
                 .get("idempotency_key")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_string),
             stage_plan: stage_plan_for_operation(operation),
             request: Some(request),
-            // No caller identity is available at this call site — every real
-            // caller (search/system/memory job-tracking helpers, see
-            // `crate::search::job_tracking`, `crate::system::job_tracking`,
-            // `crate::memory::job_tracking`) invokes `enqueue_operation`
-            // through a generic signature carrying only an `OperationKind` +
-            // JSON payload, with no `AuthSnapshot`/`CallerContext` threaded
-            // through. This is a genuinely internal/system-triggered
-            // bookkeeping path, not an oversight — see
-            // docs/pipeline-unification/runtime/auth-contract.md.
-            auth_snapshot: AuthSnapshot::trusted_system("runtime"),
+            auth_snapshot,
             config_snapshot_id: Some(ConfigSnapshotId::new("runtime")),
             requirements: MetadataMap::new(),
             result_schema: Some(result_schema_for_operation(operation).to_string()),

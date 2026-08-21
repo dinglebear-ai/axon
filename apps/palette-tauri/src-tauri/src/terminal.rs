@@ -164,6 +164,7 @@ pub(crate) async fn terminal_run(
     state: tauri::State<'_, TerminalState>,
     command: String,
 ) -> Result<TerminalRunResult, String> {
+    crate::require_desktop_feature("Terminal")?;
     if command.trim().is_empty() {
         let cwd = current_cwd(&state);
         return Ok(TerminalRunResult {

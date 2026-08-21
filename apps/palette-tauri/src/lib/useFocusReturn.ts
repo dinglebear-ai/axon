@@ -1,9 +1,9 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 
 import type { PaletteAction } from "@/lib/actions";
+import { invoke } from "@/lib/invoke";
 import { focusInput } from "@/lib/paletteView";
 import type { RunState } from "@/lib/runState";
-import { invoke } from "@/lib/invoke";
 
 // R-M1/H3/P-H2 — global palette keydown handler bound ONCE. Volatile state is
 // read through `stateRef` (updated each render by the caller) so the listener
@@ -24,7 +24,18 @@ export interface PaletteHotkeyActions {
   closeBrowse: () => void;
   clearMode: () => void;
   clearQuery: () => void;
+  closeRoot: () => void;
   copyOutput: (text: string) => void;
+}
+
+export function handlePaletteBack(state: PaletteHotkeyState, actions: PaletteHotkeyActions) {
+  if (state.settingsOpen) actions.closeSettings();
+  else if (state.historyOpen) actions.toBrowseFromHistory();
+  else if (state.browseOpen && !state.query && !state.modeAction && state.run.kind === "idle")
+    actions.closeBrowse();
+  else if (state.modeAction && !state.query) actions.clearMode();
+  else if (state.query) actions.clearQuery();
+  else actions.closeRoot();
 }
 
 export function usePaletteHotkeys(
@@ -41,13 +52,7 @@ export function usePaletteHotkeys(
       const act = actionsRef.current;
       if (event.key === "Escape") {
         event.preventDefault();
-        if (state.settingsOpen) act.closeSettings();
-        else if (state.historyOpen) act.toBrowseFromHistory();
-        else if (state.browseOpen && !state.query && !state.modeAction && state.run.kind === "idle")
-          act.closeBrowse();
-        else if (state.modeAction && !state.query) act.clearMode();
-        else if (state.query) act.clearQuery();
-        else void invoke("hide_palette");
+        handlePaletteBack(state, act);
       } else if (modifier && event.key.toLowerCase() === "l") {
         event.preventDefault();
         focusInput(true);

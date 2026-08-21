@@ -9,6 +9,70 @@
 use super::*;
 
 #[test]
+fn upsert_points_body_serializes_dense_sparse_and_payload_without_shape_drift() {
+    let spec = CollectionSpec {
+        collection: "axon-test".to_string(),
+        dense: VectorConfig {
+            name: "dense".to_string(),
+            dimensions: 2,
+            distance: VectorDistance::Cosine,
+        },
+        payload_indexes: Vec::new(),
+        sparse: Some(SparseVectorConfig {
+            name: "bm42".to_string(),
+            modifier: SparseVectorModifier::Idf,
+        }),
+        aliases: Vec::new(),
+        distance: Some(VectorDistance::Cosine),
+        metadata: MetadataMap::new(),
+    };
+    let sparse = SparseVector {
+        chunk_id: ChunkId::new("chunk-1"),
+        indices: vec![7, 11],
+        values: vec![0.5, 1.25],
+    };
+    let point = VectorPoint {
+        point_id: VectorPointId::new("point-1"),
+        chunk_id: ChunkId::new("chunk-1"),
+        vector: vec![0.1, 0.2],
+        sparse_vector: None,
+        payload: MetadataMap(
+            [("source_id".to_string(), serde_json::json!("src-1"))]
+                .into_iter()
+                .collect(),
+        ),
+    };
+    let sparse_by_chunk = [("chunk-1", &sparse)].into_iter().collect();
+
+    // Exercise the production wire path. serde_json::to_value widens f32 to
+    // f64 in its intermediate Value representation, which creates misleading
+    // precision drift even though to_writer emits the compact f32 JSON sent
+    // to Qdrant.
+    let encoded = serde_json::to_vec(&UpsertPointsBody::new(
+        &spec,
+        std::slice::from_ref(&point),
+        &sparse_by_chunk,
+    ))
+    .expect("encode borrowing upsert body");
+    let value: serde_json::Value =
+        serde_json::from_slice(&encoded).expect("parse encoded qdrant upsert body");
+
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "points": [{
+                "id": "point-1",
+                "vector": {
+                    "dense": [0.1, 0.2],
+                    "bm42": {"indices": [7, 11], "values": [0.5, 1.25]}
+                },
+                "payload": {"source_id": "src-1"}
+            }]
+        })
+    );
+}
+
+#[test]
 fn canonical_uri_filter_has_bare_should_without_min_should() {
     let filter = canonical_uri_filter_json("https://example.com/docs", false);
     let should = filter

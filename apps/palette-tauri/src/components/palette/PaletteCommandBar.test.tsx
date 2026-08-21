@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PaletteCommandBar } from "@/components/palette/PaletteCommandBar";
 import { actionDisplayMeta } from "@/lib/actionMeta";
-import { ACTIONS, type PaletteAction } from "@/lib/actions";
+import { ACTIONS, MOBILE_ACTIONS, type PaletteAction } from "@/lib/actions";
 
 const config = {
   serverUrl: "http://127.0.0.1:9999",
@@ -125,6 +125,22 @@ describe("PaletteCommandBar action switcher disclosure (A11Y-H1 / T-M4)", () => 
     expect(onSwitchAction).toHaveBeenCalledTimes(1);
     expect(onSwitchAction.mock.calls[0][0].subcommand).toBe("ask");
     expect(props.onSwitcherOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("restricts the switcher to the supplied mobile runtime catalog", async () => {
+    const user = userEvent.setup();
+    renderBar({ actions: MOBILE_ACTIONS, modeAction: ask, mobile: true });
+
+    await user.click(screen.getByRole("button", { name: /Switch from/ }));
+
+    const switcherLabels = screen
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "")
+      .join(" ");
+    expect(switcherLabels).not.toContain("Browser");
+    expect(switcherLabels).not.toContain("Files");
+    expect(switcherLabels).not.toContain("Terminal");
+    expect(switcherLabels).toContain("Scrape");
   });
 
   it("uses sentence casing for action descriptors", async () => {

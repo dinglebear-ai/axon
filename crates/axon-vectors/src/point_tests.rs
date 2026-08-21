@@ -1,6 +1,7 @@
 use axon_api::source::*;
 use serde_json::json;
 
+use crate::payload::VectorPayloadValidationError;
 use crate::point::{VectorPointBatchBuildError, VectorPointBatchBuilder};
 use crate::testing::{
     test_collection_spec, test_embedding_result_for, test_embedding_result_with_vectors,
@@ -413,7 +414,7 @@ fn payload_validation_runs_before_returning_batch() {
         err,
         VectorPointBatchBuildError::Payload {
             chunk_id,
-            source: crate::payload::VectorPayloadValidationError::ForbiddenField { field }
+            source: VectorPayloadValidationError::ForbiddenField { field }
         } if chunk_id == ChunkId::new("chunk-web-1") && field == "raw_auth_headers"
     ));
 }
@@ -529,21 +530,22 @@ fn payload_redaction_stamps_proof_fields() {
 }
 
 #[test]
-fn document_body_secret_examples_skip_the_chunk() {
+fn document_body_secret_examples_fail_closed() {
     let mut document = test_prepared_document();
     document.chunks[0].content = "TOKEN=value".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    // A secret in the retrievable body (`chunk_text`) trips the `ForbiddenValue`
-    // validator. The Redactor deliberately does NOT mask the body, so the chunk
-    // is skipped (not indexed) rather than laundered — the sibling chunk still
-    // builds. This is the secret-skip guarantee the redaction work preserves.
-    let batch = builder(test_collection_spec(3), document, embeddings)
+    let err = builder(test_collection_spec(3), document, embeddings)
         .build()
-        .unwrap();
+        .expect_err("secret-bearing vector payload must block the whole write batch");
 
-    assert_eq!(batch.points.len(), 1);
-    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-2"));
+    assert!(matches!(
+        err,
+        VectorPointBatchBuildError::Payload {
+            source: VectorPayloadValidationError::ForbiddenValue { .. },
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -580,25 +582,22 @@ fn embedding_provider_provenance_is_checked_without_batch_id() {
 }
 
 #[test]
-fn build_with_skipped_count_reports_redaction_skips_and_drops_those_points() {
-    // A `chunk_text` body containing a dotenv-style secret assignment trips
-    // the secret-redaction `ForbiddenValue` validator. Such a chunk must be
-    // skipped (not indexed), and `build_with_skipped_count` must surface the
-    // skip count so callers can report it instead of silently swallowing it
-    // (the production scenario behind the publish-invariant mismatch bug).
+fn build_with_skipped_count_fails_before_returning_a_partial_batch() {
     let mut document = test_prepared_document();
     document.chunks[1].content = "API_KEY=abc123".to_string();
     let embeddings = test_embedding_result_for(&document, "text-embedding-test", 3);
 
-    let (batch, skipped_redaction) = builder(test_collection_spec(3), document, embeddings)
+    let err = builder(test_collection_spec(3), document, embeddings)
         .build_with_skipped_count()
-        .unwrap();
+        .expect_err("redaction failure must block the whole vector write");
 
-    // The forbidden chunk is dropped; only the clean chunk becomes a point.
-    assert_eq!(batch.points.len(), 1);
-    assert_eq!(batch.points[0].chunk_id, ChunkId::new("chunk-web-1"));
-    // The skip is reported.
-    assert_eq!(skipped_redaction, 1);
+    assert!(matches!(
+        err,
+        VectorPointBatchBuildError::Payload {
+            source: VectorPayloadValidationError::ForbiddenValue { .. },
+            ..
+        }
+    ));
 }
 
 #[test]

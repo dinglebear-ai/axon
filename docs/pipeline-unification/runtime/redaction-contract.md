@@ -122,8 +122,16 @@ Every public payload write records:
 - `visibility`
 - `redacted_fields` count
 
-If a payload cannot be safely redacted, the write is blocked and the job becomes
-degraded or failed according to stage policy.
+If the redaction engine cannot safely inspect or transform a public payload, the
+write is blocked and the job becomes degraded or failed according to stage policy.
+
+Vector payload construction is fail-closed for arbitrary source content. If any
+chunk is positively classified as containing a forbidden secret-bearing payload
+value, vector point construction returns an error before a partial batch can be
+upserted. The source job therefore fails/degrades according to stage policy; it
+does not silently omit a chunk and publish a generation with fewer vector points.
+Detector errors, panics, oversized uninspectable public writes, and any other
+condition where a safe public payload cannot be proven likewise block the write.
 
 ## Testing Requirements
 
@@ -131,5 +139,6 @@ degraded or failed according to stage policy.
 - redaction is applied before vector writes
 - redaction is applied before job event visibility
 - unknown metadata defaults non-public
-- failure blocks public payload writes
+- redaction-engine failure blocks public payload writes
+- a secret-bearing vector chunk blocks the complete vector point batch before write
 - same input/context produces deterministic output

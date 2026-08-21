@@ -2,19 +2,16 @@
 //! (job-contract.md's `config_snapshot_id`: "Immutable config/provider
 //! snapshot used by the job").
 //!
-//! Before this module, most source-family job builders
-//! (`web_source/web_source_job.rs` and its seven siblings) passed a static
-//! per-family literal (e.g. `"cfg_web_source"`) — every web-source job shared
-//! the same id regardless of collection, embedding model, or provider, so the
-//! id carried no reproducibility signal. `embed.rs` passed `None` even though
-//! it already serializes the effective config to JSON for its job payload.
+//! Before the unified executor owned this value, the retired per-family source
+//! runners passed static family literals, so jobs could share an id despite
+//! differing collection, embedding model, or provider configuration. The
+//! canonical executor now derives this id from the effective routed inputs.
 //!
 //! `config_snapshot_id_from_json` is for callers that already hold a
 //! serialized config string (e.g. `axon_jobs::config_snapshot::config_snapshot_json`
-//! output). `config_snapshot_id` is for the source-family job builders, which
-//! have no `axon_core::config::Config` in scope — only their per-family
-//! `*IndexInput` struct — so it hashes the job-relevant subset of that input
-//! instead ([`JobConfigSnapshot`]).
+//! output). `config_snapshot_id` is for the unified source executor, which
+//! hashes the job-relevant subset already carried by the routed plan instead
+//! ([`JobConfigSnapshot`]).
 //!
 //! Same effective config in -> same id out: this is a pure content hash
 //! (SHA-256, truncated to 12 hex chars, `cfg_` prefixed), not a random or
@@ -24,11 +21,9 @@
 use axon_api::source::ConfigSnapshotId;
 use sha2::{Digest, Sha256};
 
-/// The job-relevant config subset used to derive one source-family job's
-/// `config_snapshot_id`. Fields shared by every `*SourceIndexInput` struct
-/// (`web_source.rs`, `git_source.rs`, `feed_source.rs`, `local_source.rs`,
-/// `reddit_source.rs`, `registry_source.rs`, `sessions_source.rs`,
-/// `youtube_source.rs`).
+/// The job-relevant config subset used to derive one unified source job's
+/// `config_snapshot_id` from the canonical routed request and active provider
+/// identities.
 #[derive(Debug, Clone, Copy)]
 pub struct JobConfigSnapshot<'a> {
     pub source_kind: &'a str,

@@ -17,8 +17,8 @@
 use std::future::Future;
 
 use axon_api::source::{
-    JobDescriptor, JobExecutionMode, JobStatusUpdate, LifecycleStatus, OperationKind,
-    PipelinePhase, Severity, SourceError,
+    AuthSnapshot, JobDescriptor, JobExecutionMode, JobPriority, JobStatusUpdate, LifecycleStatus,
+    OperationKind, PipelinePhase, Severity, SourceError,
 };
 
 use crate::context::ServiceContext;
@@ -30,17 +30,20 @@ use crate::context::ServiceContext;
 pub(super) async fn track_research_job<T, E, Fut>(
     ctx: &ServiceContext,
     request_json: serde_json::Value,
+    auth_snapshot: Option<AuthSnapshot>,
     op: impl FnOnce() -> Fut,
 ) -> Result<T, E>
 where
     E: std::fmt::Display,
     Fut: Future<Output = Result<T, E>>,
 {
-    let descriptor = crate::jobs::enqueue_operation(
+    let descriptor = crate::jobs::enqueue_operation_with_context(
         ctx,
         OperationKind::Research,
         JobExecutionMode::Foreground,
         request_json,
+        JobPriority::Normal,
+        auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("runtime")),
     )
     .await
     .ok()

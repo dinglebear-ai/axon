@@ -9,7 +9,7 @@ import {
 
 import type { HistoryItem } from "@/components/palette/HistoryPanel";
 import { buildHelpRun, findHelpTarget, helpAction } from "@/lib/actionHelp";
-import type { PaletteAction, RemotePaletteAction } from "@/lib/actions";
+import { ACTIONS, type PaletteAction, type RemotePaletteAction } from "@/lib/actions";
 import { newRequestId, normalizeSubmitArgument } from "@/lib/appHelpers";
 import { appendAskPendingTurn } from "@/lib/askTranscript";
 import {
@@ -50,6 +50,7 @@ export function capHistory(items: HistoryItem[]): HistoryItem[] {
 }
 
 interface UseActionRunnerArgs {
+  actions?: readonly PaletteAction[];
   client: Client | null;
   config: PaletteConfig | null;
   run: RunState;
@@ -75,6 +76,7 @@ interface UseActionRunnerArgs {
 // everything else → one-shot request, while recording each run into history.
 // `run`/`history` state stays owned by App; this hook holds the logic only.
 export function useActionRunner({
+  actions = ACTIONS,
   client,
   config,
   run,
@@ -273,11 +275,11 @@ export function useActionRunner({
 
   // ── Local help branch ────────────────────────────────────────────────────
   function submitHelp(rawArgument: string) {
-    const localHelpAction = helpAction();
+    const localHelpAction = helpAction(actions);
     const targetToken = rawArgument;
-    const target = findHelpTarget(targetToken);
+    const target = findHelpTarget(targetToken, actions);
     const unknownTarget = targetToken.trim() && !target ? targetToken.trim() : undefined;
-    const helpRun = buildHelpRun(target, unknownTarget);
+    const helpRun = buildHelpRun(target, unknownTarget, actions);
     setRun(helpRun);
     showHelpRun(localHelpAction, rawArgument.trim());
     pushHistory(localHelpAction, target?.subcommand ?? unknownTarget ?? "catalog", {

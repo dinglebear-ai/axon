@@ -197,7 +197,7 @@ async fn acquire_concurrent(
     opts: &AcquireOptions,
     progress: Option<&dyn AcquisitionProgressSink>,
 ) -> (Vec<AcquiredSourceItem>, Vec<SourceWarning>) {
-    let mut pending = stream::iter(manifest_items.to_vec())
+    let mut pending = stream::iter(manifest_items.iter().cloned())
         .map(|item| {
             let source_item_key = item.source_item_key.clone();
             let canonical_uri = item.canonical_uri.clone();

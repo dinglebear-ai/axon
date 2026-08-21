@@ -98,6 +98,30 @@ async fn panicking_runner_marks_job_failed_not_stuck_running() {
 }
 
 #[tokio::test]
+async fn empty_queue_claim_does_not_wait_for_an_unrelated_writer_lock() {
+    let (pool, _temp) = test_pool().await;
+    let writer = axon_core::sqlite::ImmediateTx::begin(&pool)
+        .await
+        .expect("hold writer lock");
+
+    let started = std::time::Instant::now();
+    let claimed = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        claim_next_unified_job(&pool),
+    )
+    .await
+    .expect("an empty-queue poll must not wait on the SQLite writer lock")
+    .expect("empty-queue claim succeeds");
+
+    assert!(claimed.is_none());
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(500),
+        "empty queue should be decided by a read-only eligibility probe"
+    );
+    writer.rollback().await;
+}
+
+#[tokio::test]
 async fn healthy_runner_still_marks_job_completed() {
     let (pool, _temp) = test_pool().await;
     let job_id = enqueue_test_job(&pool, UnifiedJobKind::Memory).await;

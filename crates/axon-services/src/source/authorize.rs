@@ -15,9 +15,66 @@
 //! credentials"). A [`axon_api::source::CredentialRequirement`] with an explicit `secret_ref`
 //! is assumed pre-resolved by the caller and is not re-checked here.
 
-use axon_api::source::{AuthMode, AuthScope, AuthSnapshot, CredentialKind, RoutePlan, SafetyClass};
-use axon_authz::required_scope_for_safety_class;
+use axon_api::source::{
+    AuthMode, AuthScope, AuthSnapshot, CallerContext, CredentialKind, ExecutionAffinity, RoutePlan,
+    SafetyClass, SourceKind,
+};
+use axon_authz::{AffinityPolicy, required_scope_for_safety_class};
 use axon_error::{ApiError, ErrorStage};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceAccessDecision {
+    pub(crate) required_scope: AuthScope,
+    pub(crate) affinity: ExecutionAffinity,
+    pub(crate) local_root_enforced: bool,
+}
+
+impl SourceAccessDecision {
+    /// Evaluate the complete post-route source admission policy exactly once.
+    /// Credential presence, caller scope, execution affinity, local-source
+    /// authority, and server allowed-root containment are one atomic decision.
+    /// AffinityPolicy remains an internal component rather than a second
+    /// authorization authority.
+    pub(crate) fn evaluate(
+        route: &RoutePlan,
+        input: &str,
+        kind: SourceKind,
+        auth_snapshot: Option<&AuthSnapshot>,
+        affinity: ExecutionAffinity,
+        allowed_roots: Option<&[PathBuf]>,
+    ) -> Result<Self, ApiError> {
+        authorize_route(route)?;
+        authorize_safety_class(route.safety_class, auth_snapshot)?;
+        authorize_execution_affinity(route.safety_class, affinity, auth_snapshot)?;
+        super::security::authorize_local_source_policy(input, kind, auth_snapshot)?;
+        let local_root_enforced = kind == SourceKind::Local
+            && allowed_roots.is_some()
+            && !auth_snapshot.is_some_and(|snapshot| snapshot.auth_mode == AuthMode::TrustedLocal);
+        if let Some(allowed_roots) = allowed_roots {
+            super::security::authorize_local_source_allowed_roots(
+                input,
+                kind,
+                auth_snapshot,
+                allowed_roots,
+            )?;
+        }
+        let required_scope =
+            AuthScope::from_scope_str(required_scope_for_safety_class(route.safety_class))
+                .ok_or_else(|| {
+                    ApiError::new(
+                        "auth.scope_unrecognized",
+                        ErrorStage::Authorizing,
+                        "source route has an unrecognized safety-class scope requirement",
+                    )
+                })?;
+        Ok(Self {
+            required_scope,
+            affinity,
+            local_root_enforced,
+        })
+    }
+}
 
 /// Authorize a routed source against its adapter's declared credential
 /// requirements. Returns `Ok(())` when every `required` credential is either
@@ -120,6 +177,59 @@ pub fn authorize_safety_class(
 /// the elevated scopes explicit-only means the granted-scope list is the single
 /// source of truth for `Execute`/`Admin` even on trusted local callers. See
 /// the auth contract's "Trusted CLI Context" and bead `axon_rust-x4gxr.8`.
+pub fn authorize_execution_affinity(
+    safety_class: SafetyClass,
+    affinity: ExecutionAffinity,
+    auth_snapshot: Option<&AuthSnapshot>,
+) -> Result<(), ApiError> {
+    let Some(snapshot) = auth_snapshot else {
+        // Internal trusted-local callers are represented by None at a handful
+        // of legacy in-process test seams. Production transports persist an
+        // explicit snapshot before reaching this boundary.
+        return Ok(());
+    };
+    let mut scopes = snapshot
+        .granted_scopes
+        .iter()
+        .map(|scope| scope.clone().as_scope_str().to_string())
+        .collect::<Vec<_>>();
+    if matches!(snapshot.auth_mode, AuthMode::TrustedLocal) {
+        // Keep affinity checks aligned with `snapshot_allows_scope`: trusted
+        // local callers implicitly hold only the local-data scopes. Elevated
+        // Execute/Admin grants remain explicit-only. Without this projection,
+        // a persisted trusted-system snapshot passed safety authorization but
+        // then failed the affinity policy for the same local source.
+        for scope in [AuthScope::Read, AuthScope::Write, AuthScope::Local] {
+            let scope = scope.as_scope_str().to_string();
+            if !scopes.contains(&scope) {
+                scopes.push(scope);
+            }
+        }
+    }
+    let caller = CallerContext {
+        caller_id: snapshot.caller_id.clone(),
+        transport: snapshot.transport,
+        trusted_local: matches!(snapshot.auth_mode, AuthMode::TrustedLocal),
+        scopes,
+        visibility_ceiling: snapshot.visibility_ceiling,
+        auth_mode: snapshot.auth_mode.clone(),
+        token_id: snapshot.token_id.clone(),
+        display_name: snapshot.display_name.clone(),
+    };
+    let decision = AffinityPolicy::new().evaluate(&caller, safety_class, affinity);
+    if decision.allowed {
+        return Ok(());
+    }
+    Err(ApiError::new(
+        "auth.affinity_denied",
+        ErrorStage::Authorizing,
+        decision.reason,
+    )
+    .with_context("required_scope", decision.scope)
+    .with_context("affinity", format!("{affinity:?}"))
+    .with_context("safety_class", format!("{safety_class:?}")))
+}
+
 pub(crate) fn snapshot_allows_scope(snapshot: &AuthSnapshot, required: AuthScope) -> bool {
     if snapshot.granted_scopes.contains(&required) {
         return true;

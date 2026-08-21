@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use axon_adapters::{cli_tool::parse_cli_tool_source, mcp_tool::parse_mcp_target};
 use axon_api::source::{AuthScope, AuthSnapshot, SourceKind, SourceScope};
+use axon_core::config::Config;
 
 use crate::source::tool_policy::{
     ToolExecutionAuditSnapshot, ToolSourceExecutionRequest, validate_tool_source_execution,
@@ -35,9 +36,9 @@ pub(super) struct AuthorizedToolExecution {
 }
 
 impl ToolExecutionPolicy {
-    pub(crate) fn from_process() -> Self {
+    pub(crate) fn from_config(cfg: &Config) -> Self {
         Self {
-            enabled: env_bool("AXON_ALLOW_TOOL_EXECUTION"),
+            enabled: cfg.allow_tool_execution,
             command_allowlist: env_list("AXON_TOOL_COMMAND_ALLOWLIST"),
             mcp_allowlist: env_list("AXON_MCP_TOOL_ALLOWLIST"),
             mcp_caller_command: std::env::var("AXON_MCP_CALLER_COMMAND")
@@ -236,12 +237,6 @@ fn bool_option(route: &axon_api::source::RoutePlan, key: &str) -> Option<bool> {
         .0
         .get(key)
         .and_then(serde_json::Value::as_bool)
-}
-
-fn env_bool(key: &str) -> bool {
-    std::env::var(key)
-        .ok()
-        .is_some_and(|value| matches!(value.trim(), "1" | "true" | "yes" | "on"))
 }
 
 fn env_list(key: &str) -> Vec<String> {

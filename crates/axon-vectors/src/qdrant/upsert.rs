@@ -1,19 +1,22 @@
 //! Bounded Qdrant upsert batching.
 
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::sync::Arc;
 use std::vec::IntoIter;
 
 use axon_api::source::*;
-use futures_util::stream::{self, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, stream};
 
 use super::QdrantVectorStore;
-use super::convert::upsert_points_json;
+use super::convert::UpsertPointsBody;
 use super::http::QdrantHttp;
 use super::store_impl::request_usage;
 use crate::store::Result;
 use crate::store_helpers::stage_header;
 use crate::validation::validate_upsert_batch;
+
+const MAX_UPSERT_REQUEST_BYTES: usize = 16 * 1024 * 1024;
 
 pub(super) async fn upsert_batches_rest(
     store: &QdrantVectorStore,
@@ -35,14 +38,10 @@ pub(super) async fn upsert_batches_rest(
         .endpoint()
         .collection_path(&batch.collection, "points?wait=true");
 
-    let bodies = ChunkedUpsertBatches::new(batch, store.point_buffer())
-        .map(|chunk| upsert_points_json(spec, &chunk))
-        .collect::<Result<Vec<_>>>()?;
-    let requests = bodies.len() as u64;
     let write_slots = store.write_slots();
     let provider_id = store.provider_id().0.clone();
-    stream::iter(bodies)
-        .map(|body| {
+    let mut pending = stream::iter(ChunkedUpsertBatches::new(batch, store.point_buffer()))
+        .map(|chunk| {
             let url = &url;
             let write_slots = Arc::clone(&write_slots);
             let provider_id = provider_id.clone();
@@ -55,12 +54,14 @@ pub(super) async fn upsert_batches_rest(
                     )
                     .with_provider_id(provider_id)
                 })?;
-                http.put_json(stage, url, &body, "qdrant_upsert").await
+                upsert_chunk_rest(http, spec, &chunk, url, stage, MAX_UPSERT_REQUEST_BYTES).await
             }
         })
-        .buffer_unordered(store.write_parallelism())
-        .try_collect::<Vec<_>>()
-        .await?;
+        .buffer_unordered(store.write_parallelism());
+    let mut requests = 0u64;
+    while let Some(result) = pending.next().await {
+        requests = requests.saturating_add(result?);
+    }
 
     Ok(VectorStoreWriteResult {
         header: stage_header(PipelinePhase::Upserting),
@@ -70,6 +71,112 @@ pub(super) async fn upsert_batches_rest(
         payload_indexes_created,
         usage: request_usage(requests),
     })
+}
+async fn upsert_chunk_rest(
+    http: &QdrantHttp,
+    spec: &CollectionSpec,
+    chunk: &VectorPointBatch,
+    url: &str,
+    stage: ErrorStage,
+    max_request_bytes: usize,
+) -> Result<u64> {
+    let batch_sparse = chunk
+        .sparse_vectors
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .map(|sparse| (sparse.chunk_id.0.as_str(), sparse))
+        .collect::<HashMap<_, _>>();
+    let max_request_bytes = max_request_bytes.max(1);
+    let mut ranges = Vec::with_capacity(1);
+    ranges.push(0..chunk.points.len());
+    let mut requests = 0u64;
+
+    while let Some(range) = ranges.pop() {
+        let body = encode_upsert_body(
+            &UpsertPointsBody::new(spec, &chunk.points[range.clone()], &batch_sparse),
+            max_request_bytes,
+            stage,
+        )?;
+
+        let Some(body) = body else {
+            if range.len() == 1 {
+                let point = &chunk.points[range.start];
+                return Err(ApiError::new(
+                    "vector.qdrant.upsert_point_oversized",
+                    stage,
+                    "a single vector point exceeds the encoded qdrant request limit",
+                )
+                .with_context("chunk_id", point.chunk_id.0.clone())
+                .with_context(
+                    "encoded_bytes_min",
+                    max_request_bytes.saturating_add(1).to_string(),
+                )
+                .with_context("limit_bytes", max_request_bytes.to_string()));
+            }
+
+            let midpoint = range.start + range.len() / 2;
+            // Push right first so the left half is sent first, preserving the
+            // deterministic input order while guaranteeing forward progress.
+            ranges.push(midpoint..range.end);
+            ranges.push(range.start..midpoint);
+            continue;
+        };
+
+        http.put_json_bytes(stage, url, body, "qdrant_upsert")
+            .await?;
+        requests = requests.saturating_add(1);
+    }
+
+    Ok(requests)
+}
+
+fn encode_upsert_body(
+    body: &UpsertPointsBody<'_>,
+    max_request_bytes: usize,
+    stage: ErrorStage,
+) -> Result<Option<Vec<u8>>> {
+    let mut buffer = CappedJsonBuffer::new(max_request_bytes);
+    match serde_json::to_writer(&mut buffer, body) {
+        Ok(()) => Ok(Some(buffer.bytes)),
+        Err(_) if buffer.overflowed => Ok(None),
+        Err(error) => Err(ApiError::new(
+            "vector.qdrant.encode_failed",
+            stage,
+            format!("failed to encode qdrant upsert request: {error}"),
+        )),
+    }
+}
+
+struct CappedJsonBuffer {
+    bytes: Vec<u8>,
+    limit: usize,
+    overflowed: bool,
+}
+
+impl CappedJsonBuffer {
+    fn new(limit: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(limit.min(1024 * 1024)),
+            limit,
+            overflowed: false,
+        }
+    }
+}
+
+impl Write for CappedJsonBuffer {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.bytes.len().saturating_add(buf.len()) > self.limit {
+            self.overflowed = true;
+            return Err(io::Error::other("qdrant upsert body exceeds byte limit"));
+        }
+        self.bytes.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 struct ChunkedUpsertBatches {

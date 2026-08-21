@@ -266,7 +266,7 @@ impl WaitViewModel {
         let Some((code, category, retryable, safe_message)) = notice_parts(event) else {
             return false;
         };
-        let increment = notice_increment(&code, category, &safe_message);
+        let increment = 1;
         let key = NoticeKey {
             phase: operator_phase(event.phase),
             code,
@@ -459,18 +459,6 @@ fn notice_message(category: NoticeCategory, count: u64, safe_message: &str) -> S
     } else {
         format!("{safe_message} · {count} occurrences")
     }
-}
-
-fn notice_increment(code: &str, category: NoticeCategory, safe_message: &str) -> u64 {
-    if category != NoticeCategory::PolicyHeld || code != "source.vectorize.redaction_skipped_chunks"
-    {
-        return 1;
-    }
-    safe_message
-        .strip_prefix("skipped ")
-        .and_then(|message| message.split_whitespace().next())
-        .and_then(|count| count.parse().ok())
-        .unwrap_or(1)
 }
 
 #[cfg(test)]

@@ -84,11 +84,12 @@ fn migration_records_match_runtime_identity_and_order() {
     assert_eq!(
         namespaces,
         [
-            // ledger/jobs/graph each gained a 0002 migration in the
-            // publication-state + provider-scheduler work; memory has carried
-            // three since 0003_add_memory_visibility.
-            "ledger", "ledger", "jobs", "jobs", "observe", "graph", "graph", "memory", "memory",
-            "memory"
+            // Ledger/graph each carry the publication-state 0002 migration.
+            // Jobs now has five ordered migrations: canonical jobs, durable
+            // provider scheduling, scheduler performance indexes, parser-kind
+            // capacity, and provider identity cache. Memory carries three.
+            "ledger", "ledger", "jobs", "jobs", "jobs", "jobs", "jobs", "observe", "graph", "graph",
+            "memory", "memory", "memory"
         ]
     );
     for migration in &schema.migrations {

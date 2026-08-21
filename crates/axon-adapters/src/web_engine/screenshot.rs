@@ -1,7 +1,9 @@
 use crate::web_engine::engine::resolve_cdp_ws_url;
 use axon_core::config::Config;
 use axon_core::http::parse_custom_headers;
-use axon_core::http::{axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url};
+use axon_core::http::{
+    axon_ua, cdp_discovery_url, ssrf_blacklist_compact_strings, validate_url_with_dns,
+};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use futures_util::{SinkExt, StreamExt};
 use spider::configuration::Viewport;
@@ -31,7 +33,9 @@ pub async fn spider_screenshot_with_options(
     // Validate the URL through the SSRF guard before passing it to Chrome.
     // Without this, an attacker-controlled URL could reach internal services
     // via the Chrome rendering path.
-    validate_url(url).map_err(|e| format!("screenshot blocked — SSRF guard: {e}"))?;
+    validate_url_with_dns(url)
+        .await
+        .map_err(|e| format!("screenshot blocked — SSRF guard: {e}"))?;
 
     let remote_url = cfg
         .chrome_remote_url

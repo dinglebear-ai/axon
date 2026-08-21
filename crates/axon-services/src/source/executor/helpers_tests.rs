@@ -88,6 +88,7 @@ fn terminal_stage_counts_use_discovered_items() {
         chunks_prepared: 6,
         vector_points_written: 5,
         removed: 2,
+        published_manifest: None,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
         artifacts: Vec::new(),

@@ -68,9 +68,10 @@ pub(super) async fn run_created_generation(
         )
         .await;
 
-    let batches = batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE);
-    let batch_count = batches.len();
-    for (batch_index, batch_diff) in batches.into_iter().enumerate() {
+    let batch_count = usize::try_from(changed_total)
+        .unwrap_or(usize::MAX)
+        .div_ceil(ACQUIRE_BATCH_SIZE);
+    for (batch_index, batch_diff) in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE).enumerate() {
         let is_final_batch = batch_index + 1 == batch_count;
         let batch_items = batch_diff
             .added
@@ -100,7 +101,7 @@ pub(super) async fn run_created_generation(
     }
 
     let finalized = accumulated
-        .finalize(runtime, input, &mut artifact_cleanup, &mut manifest, &diff)
+        .finalize(runtime, input, &mut artifact_cleanup, &mut manifest, diff)
         .await?;
 
     coordinator
@@ -187,7 +188,7 @@ async fn process_changed_batch(
         Vec::new()
     };
 
-    let enrichments = enrich_changed_items(
+    let mut enrichments = enrich_changed_items(
         runtime,
         input,
         emitter,
@@ -244,7 +245,7 @@ async fn process_changed_batch(
     let (candidate_collection, clean_output) =
         finalize_normalized_batch(runtime, input, generation, &mut documents, &enrichments).await?;
     warnings.extend(candidate_collection.warnings);
-    let enrichment_graph = enrichment_graph_candidates(&enrichments);
+    let enrichment_graph = take_enrichment_graph_candidates(&mut enrichments);
     let vectorized = vectorize::prepare_embed_publish(
         runtime,
         input,
@@ -259,7 +260,7 @@ async fn process_changed_batch(
     )
     .await?;
 
-    let enrichment_artifacts = collect_enrichment_outputs(&enrichments, &mut warnings);
+    let enrichment_artifacts = collect_enrichment_outputs(enrichments, &mut warnings);
     Ok(ProcessedBatch {
         vectorized,
         acquisition_artifacts,
@@ -292,13 +293,13 @@ async fn finalize_normalized_batch(
 }
 
 fn collect_enrichment_outputs(
-    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    enrichments: std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
     warnings: &mut Vec<SourceWarning>,
 ) -> Vec<ArtifactRef> {
     let mut artifacts = Vec::new();
-    for enrichment in enrichments.values() {
-        warnings.extend(enrichment.warnings.clone());
-        artifacts.extend(enrichment.artifacts.clone());
+    for enrichment in enrichments.into_values() {
+        warnings.extend(enrichment.warnings);
+        artifacts.extend(enrichment.artifacts);
     }
     artifacts
 }
@@ -429,13 +430,14 @@ async fn publish_created_generation_under_finalizer(
     .await?;
     vectorized.warnings.extend(publish_outcome.warnings);
     let published = publish_outcome.generation;
-    let published_statuses = vectorized
-        .document_statuses
-        .iter()
-        .map(publish::published_status)
-        .collect::<Vec<_>>();
-    if let Err(error) =
-        vectorize::write_document_statuses(runtime.ledger.as_ref(), &published_statuses).await
+    if let Err(error) = runtime
+        .ledger
+        .publish_document_statuses(
+            manifest.source_id.clone(),
+            published.generation.clone(),
+            timestamp(),
+        )
+        .await
     {
         vectorized.warnings.push(post_publish_warning(
             "source.publish.document_status_deferred",
@@ -473,15 +475,18 @@ async fn publish_created_generation_under_finalizer(
         vectorized.chunks_prepared,
     )
     .await;
+    let items_discovered = manifest.items.len() as u64;
+    let source_id = manifest.source_id.clone();
     Ok(IndexCounts {
         job_id: input.plan.job_id,
-        source_id: manifest.source_id,
+        source_id,
         generation: published.generation,
-        items_discovered: manifest.items.len() as u64,
+        items_discovered,
         documents_prepared: vectorized.documents_prepared,
         chunks_prepared: vectorized.chunks_prepared,
         vector_points_written: vectorized.points_written,
         removed: diff.counts.removed,
+        published_manifest: Some(manifest),
         graph_candidates: vectorized.graph_candidates,
         warnings: vectorized.warnings,
         artifacts,

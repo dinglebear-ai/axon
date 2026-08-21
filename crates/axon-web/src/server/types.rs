@@ -41,9 +41,13 @@ pub(super) struct ConfigResponse {
 
 #[derive(Serialize)]
 pub(super) struct EnvConfigResponse {
-    pub(super) path: String,
-    pub(super) raw_env: String,
-    pub(super) restart_required: bool,
+    pub(super) keys: Vec<EnvConfigKeyState>,
+}
+
+#[derive(Serialize)]
+pub(super) struct EnvConfigKeyState {
+    pub(super) key: &'static str,
+    pub(super) configured: bool,
 }
 
 #[derive(Serialize)]
@@ -60,7 +64,8 @@ pub(super) struct SaveConfigRequest {
 
 #[derive(Deserialize)]
 pub(super) struct SaveEnvConfigRequest {
-    pub(super) raw_env: String,
+    pub(super) key: String,
+    pub(super) value: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -168,118 +168,98 @@ impl VectorPointBatchBuilder {
         Ok(batch)
     }
 
-    /// Like [`build`](Self::build), but also returns the count of chunks
-    /// skipped because their payload tripped the secret-redaction
-    /// `ForbiddenValue` check (see `point.rs`'s `Payload`-skip branch).
-    ///
-    /// Callers that surface per-source statistics should use this variant so
-    /// redaction-skipped chunks are observable as a count (and, where the
-    /// caller has a `SourceWarning` channel, as a warning) rather than only
-    /// as a `tracing::warn!` line. The skip count is a publish-stage concern
-    /// (it reduces the number of vector points actually upserted) and is
-    /// distinct from the preparation-stage `chunks_prepared` count — see
-    /// `docs/pipeline-unification/runtime/observability-contract.md`'s
-    /// `axon_chunks_prepared_total` vs `axon_vector_points_written_total`.
+    /// Compatibility variant that returns a second count field. Redaction
+    /// failures are fail-closed, so successful builds always return zero here;
+    /// a forbidden payload is returned as [`VectorPointBatchBuildError::Payload`]
+    /// before any partial vector batch can escape.
     pub fn build_with_skipped_count(
         self,
     ) -> Result<(VectorPointBatch, u64), VectorPointBatchBuildError> {
-        let expected_dimensions = self.collection.dense.dimensions;
-        if self.embeddings.dimensions != expected_dimensions {
-            return Err(VectorPointBatchBuildError::DimensionMismatch {
-                chunk_id: None,
-                expected: expected_dimensions,
-                actual: self.embeddings.dimensions,
-            });
-        }
-
-        validate_embedding_provenance(&self.document, &self.embeddings)?;
-        let chunks = chunks_by_id(&self.document)?;
         let batch_id = self.embeddings.batch_id;
-        let job_id = self.embeddings.job_id;
-        let provider_id = self.embeddings.provider_id.clone();
         let model = self.embeddings.model.clone();
-        let mut vectors =
-            vectors_by_chunk_id(self.embeddings.vectors, &chunks, expected_dimensions)?;
-        let mut points = Vec::with_capacity(self.document.chunks.len());
-        let mut skipped_redaction = 0u64;
-
-        for chunk in &self.document.chunks {
-            let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
-                VectorPointBatchBuildError::MissingEmbeddingChunk {
-                    chunk_id: chunk.chunk_id.clone(),
-                }
-            })?;
-            let point_id = stable_point_id(
-                &self.collection.collection,
-                &self.collection.dense.name,
-                &self.document.document_id,
-                &chunk.chunk_id,
-                &self.document.generation,
-            );
-            let payload = match build_payload(
-                &self.collection,
-                &self.document,
-                chunk,
-                &point_id,
-                &batch_id,
-                &job_id,
-                &provider_id,
-                &model,
-                &self.context,
-            ) {
-                Ok(payload) => payload,
-                // Secret-redaction rejection is a per-chunk concern, not fatal:
-                // skip the secret-bearing chunk (do NOT index secrets, per the
-                // redaction contract) and continue, rather than aborting the
-                // whole source. Arbitrary-content sources (reddit posts, AI
-                // session transcripts, crawled pages) legitimately contain
-                // dotenv-style lines or token-shaped strings; one such chunk
-                // must not fail the entire index. Every other payload validation
-                // error is a real defect and still propagates. Count the skip so
-                // callers can surface it as a stat/warning instead of only a
-                // `tracing::warn!` line that no programmatic consumer sees.
-                Err(VectorPointBatchBuildError::Payload {
-                    chunk_id,
-                    source: VectorPayloadValidationError::ForbiddenValue { field: _, detector },
-                }) => {
-                    skipped_redaction += 1;
-                    tracing::warn!(
-                        chunk_id = %chunk_id.0,
-                        detector,
-                        "skipping chunk with secret-redaction-forbidden payload value (not indexed)"
-                    );
-                    continue;
-                }
-                Err(err) => return Err(err),
-            };
-            // Compute the bm42 sparse vector for hybrid (dense + sparse RRF)
-            // retrieval. An all-stopword/tiny chunk yields no indexable terms →
-            // a dense-only point (None), which hybrid RRF tolerates. Buckets are
-            // FNV-1a-stable and must match the query-side computation.
-            let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
-            let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
-            points.push(VectorPoint {
-                point_id,
-                chunk_id: chunk.chunk_id.clone(),
-                vector: vector.values,
-                sparse_vector,
-                payload,
-            });
-        }
-
+        let dimensions = self.collection.dense.dimensions;
+        let (points, skipped_redaction) = build_points_for_document(
+            &self.collection,
+            &self.document,
+            self.embeddings,
+            &self.context,
+        )?;
         Ok((
             VectorPointBatch {
                 batch_id,
                 collection: self.collection.collection,
                 points,
                 model,
-                dimensions: expected_dimensions,
+                dimensions,
                 sparse_vectors: None,
                 payload_indexes: self.collection.payload_indexes,
             },
             skipped_redaction,
         ))
     }
+}
+/// Build points for one prepared document while borrowing its chunk/payload
+/// data and consuming only the embedding vectors. This avoids cloning the
+/// prepared document on the source-pipeline hot path.
+pub fn build_points_for_document(
+    collection: &CollectionSpec,
+    document: &PreparedDocument,
+    embeddings: EmbeddingResult,
+    context: &VectorPointBatchBuildContext,
+) -> Result<(Vec<VectorPoint>, u64), VectorPointBatchBuildError> {
+    let expected_dimensions = collection.dense.dimensions;
+    if embeddings.dimensions != expected_dimensions {
+        return Err(VectorPointBatchBuildError::DimensionMismatch {
+            chunk_id: None,
+            expected: expected_dimensions,
+            actual: embeddings.dimensions,
+        });
+    }
+
+    validate_embedding_provenance(document, &embeddings)?;
+    let chunks = chunks_by_id(document)?;
+    let batch_id = embeddings.batch_id;
+    let job_id = embeddings.job_id;
+    let provider_id = embeddings.provider_id;
+    let model = embeddings.model;
+    let mut vectors = vectors_by_chunk_id(embeddings.vectors, &chunks, expected_dimensions)?;
+    let mut points = Vec::with_capacity(document.chunks.len());
+    for chunk in &document.chunks {
+        let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
+            VectorPointBatchBuildError::MissingEmbeddingChunk {
+                chunk_id: chunk.chunk_id.clone(),
+            }
+        })?;
+        let point_id = stable_point_id(
+            &collection.collection,
+            &collection.dense.name,
+            &document.document_id,
+            &chunk.chunk_id,
+            &document.generation,
+        );
+        let payload = build_payload(
+            collection,
+            document,
+            chunk,
+            &point_id,
+            &batch_id,
+            &job_id,
+            &provider_id,
+            &model,
+            context,
+        )?;
+        let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
+        let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
+        points.push(VectorPoint {
+            point_id,
+            chunk_id: chunk.chunk_id.clone(),
+            vector: vector.values,
+            sparse_vector,
+            payload,
+        });
+    }
+
+    Ok((points, 0))
 }
 
 fn validate_embedding_provenance(

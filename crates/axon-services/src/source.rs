@@ -44,17 +44,19 @@ pub mod tool_policy;
 pub use batch::{SourcePipelineBatch, plan_source_pipeline_batches};
 pub use security::{
     SourceSecurityError, enforce_local_source_allowed_roots, enforce_local_source_policy,
-    enforce_network_source_policy, redact_local_path_for_public_payload,
+    redact_local_path_for_public_payload,
 };
 
 use std::sync::Arc;
 
 use axon_adapters::SourceAdapter;
 use axon_api::source::{
-    AuthSnapshot, PipelinePhase, SourceKind, SourceRequest, SourceResult, SourceScope,
+    AuthSnapshot, ExecutionAffinity, PipelinePhase, RoutePlan, SourceKind, SourceRequest,
+    SourceResult, SourceScope,
 };
 
 use crate::context::{ServiceContext, TargetLocalSourceRuntime};
+use crate::reserved_call::{self, ProviderCallContext};
 pub(crate) use execution::SourceExecutionContext;
 use result_map::{IndexCounts, to_source_result_with_counts};
 
@@ -128,6 +130,13 @@ async fn index_source_inner(
         &request,
         &input,
         execution.auth_snapshot.as_ref(),
+        if execution.existing_job_id.is_some() {
+            ExecutionAffinity::Worker
+        } else {
+            ExecutionAffinity::Inline
+        },
+        ctx.cfg().allow_tool_execution,
+        Some(&ctx.cfg().source_local_allowed_roots),
         events::SourceEventEmitter::new(ctx.job_store(), execution.existing_job_id)
             .with_attempt(execution.attempt)
             .with_optional_foreground(execution.foreground.clone()),
@@ -141,18 +150,6 @@ async fn index_source_inner(
     let route = routed.route;
     let adapter = routed.adapter;
     let event_emitter = routed.event_emitter;
-
-    if let Some(denied) = local_root_denial_result(
-        &input,
-        kind,
-        execution.auth_snapshot.as_ref(),
-        &ctx.cfg().source_local_allowed_roots,
-        &event_emitter,
-    )
-    .await
-    {
-        return Ok(denied);
-    }
 
     let Some(runtime) = ctx.target_local_source_runtime() else {
         event_emitter
@@ -195,25 +192,56 @@ async fn index_source_inner(
     )
     .await?;
 
-    // Write the source graph: the baseline container + document + containment
-    // skeleton from the just-published manifest, plus every parser-produced
-    // `GraphCandidate` collected from this generation's prepared documents
-    // (source-pipeline.md's `parsing` stage output feeding the `graphing`
-    // stage). A missing pool or a graph-store error degrades to a zero-count
-    // summary rather than failing the already-committed index.
-    let graph = graph::write_baseline_graph(
+    finalize_source_index(
+        ctx,
+        runtime,
+        &execution,
+        &collection,
+        kind,
+        route,
+        adapter,
+        counts,
+        &event_emitter,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn finalize_source_index(
+    ctx: &ServiceContext,
+    runtime: &TargetLocalSourceRuntime,
+    execution: &SourceExecutionContext,
+    collection: &str,
+    kind: SourceKind,
+    route: RoutePlan,
+    adapter: axon_api::source::AdapterRef,
+    mut counts: IndexCounts,
+    event_emitter: &events::SourceEventEmitter,
+) -> anyhow::Result<SourceResult> {
+    let graph_candidates = std::mem::take(&mut counts.graph_candidates);
+    let graph_manifest = counts.published_manifest.take();
+    let graph_counts = counts.clone();
+    let graph_context = ProviderCallContext::for_phase(
+        counts.job_id,
+        execution.attempt,
+        PipelinePhase::Graphing,
+        execution.priority,
+        format!("graph:{}:{}", counts.source_id.0, counts.generation.0),
+    );
+    let graph = graph::write_baseline_graph_with_db_gate(
+        Some(runtime),
+        Some(graph_context),
         kind,
         ctx.jobs.sqlite_pool(),
         runtime.ledger.as_ref(),
-        &counts,
+        &graph_counts,
         &route.source.canonical_uri,
-        counts.graph_candidates.clone(),
+        graph_manifest,
+        graph_candidates,
+        Some(Arc::clone(&runtime.db_stage_slots)),
     )
     .await;
 
-    // Record the graph write as a child `graph` job of the parent source job,
-    // when it produced non-trivial output (see `job_tracking` module docs for
-    // why this is a child job rather than a standalone `axon graph` command).
     job_tracking::track_graph_mutation(
         ctx.job_store(),
         counts.job_id,
@@ -222,21 +250,10 @@ async fn index_source_inner(
     )
     .await;
 
-    // Drain cleanup debt: after the new generation is committed, the ledger has
-    // recorded superseded-item deletes (vector, ledger, graph, memory) for the
-    // prior generation. Run the prune executor against every store boundary we
-    // can open here so `GraphPrune`/`MemoryPrune` debt actually drains in
-    // production, not just vector/ledger. Failures degrade gracefully — the
-    // index is already published, so a cleanup problem must not fail
-    // acquisition; a store that fails to open just leaves its debt kind
-    // pending (see `open_cleanup_debt_stores`).
     event_emitter
         .running(PipelinePhase::Cleaning, "cleaning source generation debt")
         .await;
-    let drain = drain_source_cleanup_debt(ctx, runtime, &collection, &counts).await;
-
-    // Record the drain as a child `prune` job of the parent source job, when
-    // it touched at least one pending debt entry.
+    let drain = drain_source_cleanup_debt(ctx, runtime, collection, &counts).await;
     job_tracking::track_prune(
         ctx.job_store(),
         counts.job_id,
@@ -244,7 +261,6 @@ async fn index_source_inner(
         &drain,
     )
     .await;
-
     event_emitter
         .completed(PipelinePhase::Complete, "source indexing complete")
         .await;
@@ -282,25 +298,6 @@ fn source_collection(request: &SourceRequest, ctx: &ServiceContext) -> String {
         .collection
         .clone()
         .unwrap_or_else(|| ctx.cfg().collection.clone())
-}
-
-async fn local_root_denial_result(
-    input: &str,
-    kind: SourceKind,
-    auth_snapshot: Option<&AuthSnapshot>,
-    allowed_roots: &[std::path::PathBuf],
-    event_emitter: &events::SourceEventEmitter,
-) -> Option<SourceResult> {
-    let err =
-        security::authorize_local_source_allowed_roots(input, kind, auth_snapshot, allowed_roots)
-            .err()?;
-    event_emitter
-        .failed(
-            PipelinePhase::Authorizing,
-            "local source allowed-root authorization failed",
-        )
-        .await;
-    Some(result_map::route_error_result(input, err))
 }
 
 async fn drain_source_cleanup_debt(

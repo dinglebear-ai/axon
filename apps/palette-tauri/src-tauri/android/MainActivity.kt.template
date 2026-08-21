@@ -1,0 +1,53 @@
+package __ANDROID_PACKAGE__
+
+import android.os.Bundle
+import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.enableEdgeToEdge
+
+private const val AXON_ANDROID_BACK_SCRIPT = """
+(() => {
+  try {
+    const handler = window.__AXON_ANDROID_BACK__;
+    return typeof handler === "function" && handler() === true;
+  } catch (error) {
+    console.error("Axon Android Back bridge failed", error);
+    return false;
+  }
+})()
+"""
+
+class MainActivity : TauriActivity() {
+  private var axonWebView: WebView? = null
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    enableEdgeToEdge()
+    super.onCreate(savedInstanceState)
+    onBackPressedDispatcher.addCallback(
+      this,
+      object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+          handleAxonBack()
+        }
+      },
+    )
+  }
+
+  override fun onWebViewCreate(webView: WebView) {
+    axonWebView = webView
+  }
+
+  private fun handleAxonBack() {
+    val webView = axonWebView
+    if (webView == null) {
+      finish()
+      return
+    }
+
+    webView.evaluateJavascript(AXON_ANDROID_BACK_SCRIPT) { handled ->
+      if (handled != "true") {
+        finish()
+      }
+    }
+  }
+}

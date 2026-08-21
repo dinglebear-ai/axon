@@ -13,8 +13,10 @@ use super::error::HttpError;
 use super::normalize::normalize_url;
 
 // Test-only thread-local flag: when set, `validate_url` permits loopback
-// addresses so httpmock servers on 127.0.0.1 can be reached by code under
-// test. Production builds never see this — the flag is `#[cfg(test)]`-gated.
+// addresses so httpmock servers on 127.0.0.1 can be reached by tests. The
+// `test-util` feature exposes the helpers to dependent integration tests, but
+// `loopback_bypass_enabled` requires `debug_assertions`; a release build with
+// `test-util` therefore cannot enable the SSRF bypass.
 //
 // Thread-local avoids cross-thread races with SSRF tests that assert
 // loopback is blocked. Code that spawns tokio tasks (e.g. JoinSet) must
@@ -89,9 +91,9 @@ impl Drop for LoopbackGuard {
 /// established — the same instant reqwest would connect. This means even a TTL-0 DNS
 /// record that flips to `127.0.0.1` after `validate_url()` is caught at connection time.
 ///
-/// Test builds skip the custom resolver (see `SsrfBlockingResolver`) so that httpmock
-/// servers on `127.0.0.1` remain reachable. `validate_url()` still blocks loopback
-/// in tests unless `set_allow_loopback(true)` is called.
+/// Test profiles may explicitly allow loopback with `LoopbackGuard` for local
+/// mock servers. The real resolver remains installed in tests, and release
+/// builds ignore the test-util loopback flag even if that feature is enabled.
 ///
 /// As defence-in-depth, `ssrf_blacklist_patterns()` is also applied to
 /// discovered URLs during crawl via spider's `with_blacklist_url()`.
@@ -187,11 +189,23 @@ pub fn validate_resolved_ips(
 /// Extracted as a named function (not a closure) so the IPv4-mapped branch can
 /// recurse into the IPv4 checks.
 fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
-    #[cfg(any(test, feature = "test-util"))]
+    check_ip_with_loopback_policy(ip, loopback_bypass_enabled())
+}
+
+fn loopback_bypass_enabled() -> bool {
+    #[cfg(any(test, all(feature = "test-util", debug_assertions)))]
     {
-        if ip.is_loopback() && ALLOW_LOOPBACK.with(|c| c.get()) {
-            return Ok(());
-        }
+        ALLOW_LOOPBACK.with(|c| c.get())
+    }
+    #[cfg(not(any(test, all(feature = "test-util", debug_assertions))))]
+    {
+        false
+    }
+}
+
+fn check_ip_with_loopback_policy(ip: IpAddr, allow_loopback: bool) -> Result<(), HttpError> {
+    if ip.is_loopback() && allow_loopback {
+        return Ok(());
     }
     if ip.is_loopback() || ip.is_unspecified() {
         return Err(HttpError::BlockedIpRange(ip));
@@ -212,7 +226,7 @@ fn check_ip(ip: IpAddr) -> Result<(), HttpError> {
             // and apply the same private/loopback/link-local checks. Without this,
             // ::ffff:127.0.0.1 bypasses the V4 branch entirely.
             if let Some(mapped_v4) = v6.to_ipv4_mapped() {
-                return check_ip(IpAddr::V4(mapped_v4));
+                return check_ip_with_loopback_policy(IpAddr::V4(mapped_v4), allow_loopback);
             }
 
             // Block unique-local (fc00::/7) and link-local (fe80::/10)
@@ -261,15 +275,25 @@ pub fn ssrf_blacklist_patterns() -> &'static [&'static str] {
 /// any `R: Resolve + 'static` via the `IntoResolve` blanket impl, so wrapping in
 /// `Arc` is no longer required.
 ///
-/// Only compiled for non-test builds. Tests use reqwest's default resolver so
-/// httpmock servers on `127.0.0.1` remain reachable.
-#[cfg(not(test))]
-pub(crate) struct SsrfBlockingResolver;
+/// Test builds use this same resolver. When a test explicitly enables the
+/// loopback test utility, the allowance is captured when the client is built so
+/// the asynchronous resolver task does not depend on thread-local execution.
+pub(crate) struct SsrfBlockingResolver {
+    allow_loopback: bool,
+}
 
-#[cfg(not(test))]
+impl SsrfBlockingResolver {
+    pub(crate) fn for_current_policy() -> Self {
+        Self {
+            allow_loopback: loopback_bypass_enabled(),
+        }
+    }
+}
+
 impl reqwest::dns::Resolve for SsrfBlockingResolver {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_owned();
+        let allow_loopback = self.allow_loopback;
         Box::pin(async move {
             type DnsError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -280,7 +304,7 @@ impl reqwest::dns::Resolve for SsrfBlockingResolver {
 
             let (allowed, blocked): (Vec<_>, Vec<_>) = addrs
                 .into_iter()
-                .partition(|addr| check_ip(addr.ip()).is_ok());
+                .partition(|addr| check_ip_with_loopback_policy(addr.ip(), allow_loopback).is_ok());
 
             if !blocked.is_empty() || allowed.is_empty() {
                 // This is the connect-time SSRF enforcement point for every

@@ -1,6 +1,7 @@
 use super::*;
 use crate::types::RetrieveOptions;
 use axon_core::config::Config;
+use std::sync::Arc;
 
 // ── map_retrieve_result ───────────────────────────────────────────────────
 
@@ -43,8 +44,14 @@ fn map_retrieve_result_serializes_legacy_shape_when_metadata_absent() {
 
 #[tokio::test]
 async fn retrieve_rejects_local_code_urls() {
+    let cfg = Arc::new(Config::test_default());
+    let ctx = ServiceContext::from_runtime(
+        Arc::clone(&cfg),
+        Arc::new(crate::test_support::NoopServiceRuntime),
+    );
     let err = retrieve(
-        &Config::test_default(),
+        &ctx,
+        cfg.as_ref(),
         "local-code://project/g/1/src%2Flib.rs",
         RetrieveOptions {
             max_points: None,

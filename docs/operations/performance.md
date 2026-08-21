@@ -1,7 +1,7 @@
 ---
 title: "Performance"
 created: 2026-02-25
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Performance
@@ -102,6 +102,37 @@ Defaults are unchanged when it is disabled. Adaptive mode applies to the main Sp
 
 Shrinking the target limits future admission and does not cancel already in-flight requests. Use adaptive mode with polite crawl settings such as robots, delay, max pages, path budgets, or a URL whitelist.
 
+### Docs Markdown-alternate dedupe proof
+
+For docs discovery, Axon prefers an extensionless HTML route's Markdown
+representation **only when that Markdown URL was explicitly advertised by
+`llms.txt`**. Independently discovered `/guide` and `/guide.md` routes are
+not assumed to be equivalent. The same canonical URL key is used for both the
+advertised-alternate lookup and the map dedupe, including trailing-slash and
+query handling.
+
+The preserved 2026-08-12 `code.claude.com` baseline manifest provides an
+exact coverage proof for the 370 -> 187 document reduction:
+
+- 370 original manifest items = 185 Markdown + 185 non-Markdown routes
+- 183 exact extensionless/Markdown route pairs
+- 2 Markdown-only routes: `/docs/en/settings.md` and
+  `/docs/en/whats-new/index.md`
+- 2 HTML-only routes: the site root and `/docs/en/whats-new`
+- removing only the 183 paired HTML representations therefore leaves exactly
+  185 Markdown + 2 HTML-only = **187 semantic document routes**
+
+A fresh 2026-08-18 live audit independently fetched all 187 Markdown URLs
+advertised by `code.claude.com/llms.txt` and all 187 extensionless
+counterparts: 187/187 pairs returned HTTP 200 with zero fetch errors. The
+current sitemap explicitly lists 186 of those HTML counterparts; the remaining
+counterpart is live but omitted from the sitemap. This proves route coverage,
+not byte-for-byte identity between the HTML and Markdown representations.
+
+Unit tests additionally assert that advertised alternate replacement preserves
+the complete semantic route set, while unadvertised HTML/Markdown siblings are
+kept independently.
+
 ## Worker and Queue Tuning
 
 Worker controls:
@@ -132,9 +163,12 @@ Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
   if TEI fails warmup with CUDA OOM
 - use `TEI_MAX_BATCH_REQUESTS=512` to avoid false overloads when multiple real
   docs batches are in flight
-- keep Axon's client batch around `TEI_MAX_CLIENT_BATCH_SIZE=96`; on the
-  `code.claude.com` docs corpus 96 was the best measured region, while 128
-  was close but slightly slower
+- keep Axon's client batch at `TEI_MAX_CLIENT_BATCH_SIZE=96` for this
+  profile. The preserved 370-document provider-concurrency candidate ran in
+  92.1 s at 96/8/320, while a later 128-input cold smoke on the same corpus
+  ran in 110.2 s. The deduplicated 187-document run also used 96 and completed
+  in 68.3 s with 47 TEI requests. Treat those as hardware-profile evidence,
+  not a universal batch-size rule; re-benchmark before changing the default
 - keep `AXON_EMBED_POOL_MAX_INPUTS=512` for docs-style corpora so small files
   are pooled before TEI client-side sub-batching
 - `AXON_TEI_MAX_CONCURRENT=8` is a reasonable single-process ceiling when the
@@ -142,6 +176,16 @@ Measured RTX 4070 + `Qwen/Qwen3-Embedding-0.6B` docs-chunk profile:
 - `AXON_TEI_MAX_IN_FLIGHT_INPUTS=320` caps `batch_size * request_concurrency`,
   so small batches can use more request concurrency without large batches
   stampeding into TEI overload
+- the 2026-08-18 live RTX 4070 validation at `TEI_MAX_BATCH_TOKENS=196608`
+  ran six repeated realistic 96+96+96+32 input waves, exactly 320 simultaneous
+  inputs, with 24/24 HTTP 200 responses, zero TEI restarts, and a 3,086 MiB
+  observed VRAM peak. A separate deliberately long-chunk 96+96+96+32 wave also
+  returned 4/4 HTTP 200 and peaked at 11,086 MiB of the 12,282 MiB GPU with no
+  OOM or admission rejection. A deliberately **out-of-envelope** 8x96-input
+  long-chunk stress wave reached TEI admission backpressure (HTTP 429) rather
+  than CUDA OOM. Keep the 320-input client gate: it is part of this 196608
+  safety profile, especially because the long-chunk case uses most available
+  VRAM
 
 Embed pipeline controls:
 

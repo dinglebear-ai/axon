@@ -160,6 +160,7 @@ fn index_counts(committed: &SourceGenerationId) -> IndexCounts {
         chunks_prepared: 1,
         vector_points_written: 1,
         removed: 1,
+        published_manifest: None,
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
         artifacts: Vec::new(),

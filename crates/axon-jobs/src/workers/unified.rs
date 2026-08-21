@@ -18,7 +18,7 @@ mod helpers;
 mod claim;
 #[allow(unused_imports)] // only used by #[cfg(test)] call sites in sibling test files
 pub(crate) use claim::claim_next_unified_job;
-use claim::claim_next_unified_job_unchecked;
+use claim::claim_next_unified_job_with_source_policy;
 
 mod runner_registry;
 pub use runner_registry::{JobRunnerRegistry, UnifiedJobOutcome, UnifiedJobRunner};
@@ -197,7 +197,7 @@ pub(crate) async fn unified_worker_loop_with_concurrency_limits_and_activity(
                     },
                 };
 
-                match claim_next_unified_job_unchecked(&pool, allow_source).await {
+                match claim_next_unified_job_with_source_policy(&pool, allow_source).await {
                     Ok(Some(claimed)) => {
                         // We may be holding a speculative source permit for
                         // a job that, in the end, wasn't the one claimed

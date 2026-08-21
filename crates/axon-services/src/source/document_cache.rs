@@ -8,15 +8,21 @@ use axon_core::boundary::{DocumentCache, Result as BoundaryResult};
 const MAX_CACHED_DOCUMENTS: usize = 1024;
 const MAX_CACHED_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 
+#[derive(Debug, Default)]
+struct DocumentCacheState {
+    entries: BTreeMap<DocumentCacheKey, CachedDocument>,
+    total_bytes: usize,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct InProcessDocumentCache {
-    entries: Arc<Mutex<BTreeMap<DocumentCacheKey, CachedDocument>>>,
+    state: Arc<Mutex<DocumentCacheState>>,
 }
 
 impl InProcessDocumentCache {
     pub(crate) fn new() -> Self {
         Self {
-            entries: Arc::new(Mutex::new(BTreeMap::new())),
+            state: Arc::new(Mutex::new(DocumentCacheState::default())),
         }
     }
 }
@@ -25,48 +31,77 @@ impl InProcessDocumentCache {
 impl DocumentCache for InProcessDocumentCache {
     async fn get(&self, key: DocumentCacheKey) -> BoundaryResult<Option<CachedDocument>> {
         Ok(self
-            .entries
+            .state
             .lock()
             .expect("source document cache mutex poisoned")
+            .entries
             .get(&key)
             .cloned())
     }
 
     async fn put(&self, key: DocumentCacheKey, value: CachedDocument) -> BoundaryResult<()> {
-        let mut entries = self
-            .entries
+        let value_bytes = estimated_cached_document_bytes(&value);
+        let mut state = self
+            .state
             .lock()
             .expect("source document cache mutex poisoned");
-        entries.insert(key, value);
-        enforce_cache_limits(&mut entries);
+        if let Some(previous) = state.entries.insert(key, value) {
+            state.total_bytes = state
+                .total_bytes
+                .saturating_sub(estimated_cached_document_bytes(&previous));
+        }
+        state.total_bytes = state.total_bytes.saturating_add(value_bytes);
+        enforce_cache_limits(&mut state);
         Ok(())
     }
 
     async fn invalidate(&self, selector: DocumentCacheInvalidation) -> BoundaryResult<()> {
-        let mut entries = self
-            .entries
+        let mut state = self
+            .state
             .lock()
             .expect("source document cache mutex poisoned");
-        match selector {
+        let recalculate = match selector {
             DocumentCacheInvalidation::Key { key } => {
-                entries.remove(&key);
+                if let Some(previous) = state.entries.remove(&key) {
+                    state.total_bytes = state
+                        .total_bytes
+                        .saturating_sub(estimated_cached_document_bytes(&previous));
+                }
+                false
             }
             DocumentCacheInvalidation::Source { source_id } => {
-                entries.retain(|key, _| key.source_id != source_id);
+                state.entries.retain(|key, _| key.source_id != source_id);
+                true
             }
             DocumentCacheInvalidation::Generation { generation } => {
-                entries.retain(|key, _| key.generation.as_ref() != Some(&generation));
+                state
+                    .entries
+                    .retain(|key, _| key.generation.as_ref() != Some(&generation));
+                true
             }
-            DocumentCacheInvalidation::All => entries.clear(),
+            DocumentCacheInvalidation::All => {
+                state.entries.clear();
+                state.total_bytes = 0;
+                false
+            }
+        };
+        if recalculate {
+            state.total_bytes = state
+                .entries
+                .values()
+                .map(estimated_cached_document_bytes)
+                .sum();
         }
         Ok(())
     }
 
     async fn reset(&self) -> BoundaryResult<()> {
-        self.entries
+        let mut state = self
+            .state
             .lock()
-            .expect("source document cache mutex poisoned")
-            .clear();
+            .expect("source document cache mutex poisoned");
+        state.entries.clear();
+        state.total_bytes = 0;
         Ok(())
     }
 
@@ -92,13 +127,13 @@ impl DocumentCache for InProcessDocumentCache {
     }
 }
 
-fn enforce_cache_limits(cache: &mut BTreeMap<DocumentCacheKey, CachedDocument>) {
-    if cache.len() <= MAX_CACHED_DOCUMENTS
-        && estimated_cache_bytes(cache) <= MAX_CACHED_DOCUMENT_BYTES
+fn enforce_cache_limits(state: &mut DocumentCacheState) {
+    if state.entries.len() <= MAX_CACHED_DOCUMENTS && state.total_bytes <= MAX_CACHED_DOCUMENT_BYTES
     {
         return;
     }
-    let mut entries = cache
+    let mut entries = state
+        .entries
         .iter()
         .map(|(key, value)| {
             (
@@ -109,21 +144,16 @@ fn enforce_cache_limits(cache: &mut BTreeMap<DocumentCacheKey, CachedDocument>) 
         })
         .collect::<Vec<_>>();
     entries.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
-    let mut total_bytes = entries.iter().map(|(_, _, bytes)| *bytes).sum::<usize>();
-    let mut total_entries = cache.len();
     for (_, key, bytes) in entries {
-        if total_entries <= MAX_CACHED_DOCUMENTS && total_bytes <= MAX_CACHED_DOCUMENT_BYTES {
+        if state.entries.len() <= MAX_CACHED_DOCUMENTS
+            && state.total_bytes <= MAX_CACHED_DOCUMENT_BYTES
+        {
             break;
         }
-        if cache.remove(&key).is_some() {
-            total_entries = total_entries.saturating_sub(1);
-            total_bytes = total_bytes.saturating_sub(bytes);
+        if state.entries.remove(&key).is_some() {
+            state.total_bytes = state.total_bytes.saturating_sub(bytes);
         }
     }
-}
-
-fn estimated_cache_bytes(cache: &BTreeMap<DocumentCacheKey, CachedDocument>) -> usize {
-    cache.values().map(estimated_cached_document_bytes).sum()
 }
 
 fn estimated_cached_document_bytes(value: &CachedDocument) -> usize {

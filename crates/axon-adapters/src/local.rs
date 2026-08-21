@@ -1,32 +1,34 @@
 //! Local filesystem source adapter.
 
+mod discovery;
 pub(crate) mod local_io;
 mod root_state;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use ignore::{DirEntry, WalkBuilder};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
-use crate::local_select::{LocalOptions, is_binary_path, validate_options};
-use crate::manifest::item_identity;
+use crate::local_select::validate_options;
 
-use self::local_io::{
-    LocalRootHandle, content_fingerprint_from_file, fs_error, read_content_ref_from_file,
+use self::discovery::{
+    collect_capped_file_candidates, collect_manifest_items_parallel, hash_file_candidates_parallel,
+    manifest_item_from_path, public_base_uri, root_for_item_keys,
 };
+use self::local_io::{LocalRootHandle, read_content_ref_from_file};
 pub use self::root_state::LocalSourceAdapter;
 
 pub const MODULE_NAME: &str = "local";
 
 const ADAPTER_NAME: &str = "local";
+const LOCAL_DISCOVERY_HASH_MAX_THREADS: usize = 8;
 #[async_trait]
 impl SourceAdapter for LocalSourceAdapter {
     fn name(&self) -> &'static str {
@@ -71,10 +73,14 @@ impl SourceAdapter for LocalSourceAdapter {
         plan: &SourcePlan,
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
-        let documents = acquisition
-            .fetched_items
-            .iter()
-            .map(|item| local_source_document(plan, &acquisition, item))
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
+            .map(|item| local_source_document(plan, &source_id, item))
             .collect::<Vec<_>>();
         Ok(StageExecutionResult {
             header: stage_header(
@@ -121,11 +127,52 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
     }
 
     let root = PathBuf::from(&plan.request.source);
-    let mut files = Vec::new();
-    match plan.route.scope {
-        SourceScope::File => files.push(root.clone()),
+    let base_uri = public_base_uri(&plan.route.source.canonical_uri);
+    let root_for_keys = root_for_item_keys(&root, plan.route.scope);
+    let max_items = plan
+        .limits
+        .effective
+        .max_items
+        .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+
+    let mut items = match plan.route.scope {
+        SourceScope::File => {
+            if max_items == Some(0) {
+                Vec::new()
+            } else {
+                manifest_item_from_path(
+                    plan,
+                    root_handle,
+                    &options,
+                    &base_uri,
+                    root_for_keys,
+                    root.clone(),
+                )?
+                .into_iter()
+                .collect()
+            }
+        }
         SourceScope::Directory | SourceScope::Workspace | SourceScope::Repo | SourceScope::Map => {
-            files = collect_files(&root, &options)?;
+            if let Some(limit) = max_items {
+                let candidates = collect_capped_file_candidates(
+                    &root,
+                    root_for_keys,
+                    plan.route.scope,
+                    &options,
+                    root_handle,
+                    limit,
+                )?;
+                hash_file_candidates_parallel(plan, root_handle, &options, &base_uri, &candidates)?
+            } else {
+                collect_manifest_items_parallel(
+                    plan,
+                    root_handle,
+                    &options,
+                    &base_uri,
+                    root_for_keys,
+                    &root,
+                )?
+            }
         }
         _ => {
             return Err(ApiError::new(
@@ -135,48 +182,7 @@ fn discover_sync(plan: &SourcePlan, root_handle: &LocalRootHandle) -> Result<Sou
             )
             .with_context("scope", format!("{:?}", plan.route.scope)));
         }
-    }
-    files.sort();
-
-    let base_uri = public_base_uri(&plan.route.source.canonical_uri);
-    let root_for_keys = root_for_item_keys(&root, plan.route.scope);
-    let mut items = Vec::new();
-    for file in files {
-        let key = relative_key(root_for_keys, &file)?;
-        if !options.should_include_file(plan.route.scope, &key, &file) {
-            continue;
-        }
-        let file_handle = root_handle.open_file(&key)?;
-        let metadata = file_handle
-            .metadata()
-            .map_err(|err| fs_error("adapter.local.stat_failed", &file, err))?;
-        if let Some(max_file_bytes) = options.max_file_bytes
-            && metadata.len() > max_file_bytes
-        {
-            continue;
-        }
-        if !metadata.is_file() {
-            continue;
-        }
-        let content_hash = content_fingerprint_from_file(file_handle, &file)?;
-        let identity = item_identity(SourceKind::Local, &base_uri, &key)?;
-        items.push(ManifestItem {
-            source_id: plan.route.source.source_id.clone(),
-            source_item_key: identity.source_item_key,
-            canonical_uri: identity.canonical_uri,
-            item_kind: ItemKind::LocalFile,
-            content_kind: Some(content_kind_for(&file)),
-            display_path: Some(key),
-            parent_key: None,
-            size_bytes: Some(metadata.len()),
-            content_hash: Some(content_hash),
-            mtime: modified_at(metadata.modified().ok()),
-            version: None,
-            fetch_plan: None,
-            metadata: MetadataMap::new(),
-            graph_hints: Vec::new(),
-        });
-    }
+    };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
     Ok(SourceManifest {
@@ -301,104 +307,10 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     .with_context("adapter", plan.route.adapter.name.clone()))
 }
 
-fn collect_files(root: &Path, options: &LocalOptions) -> Result<Vec<PathBuf>> {
-    let mut builder = WalkBuilder::new(root);
-    builder
-        .follow_links(options.follow_symlinks)
-        .hidden(false)
-        .ignore(options.respect_gitignore)
-        .git_ignore(options.respect_gitignore)
-        .git_exclude(options.respect_gitignore)
-        .git_global(options.respect_gitignore)
-        .parents(options.respect_gitignore);
-    if options.should_prune_default_dirs() {
-        builder.filter_entry(should_descend_entry);
-    }
-    let mut files = Vec::new();
-    for entry in builder.build() {
-        let entry = entry.map_err(|err| {
-            ApiError::new(
-                "adapter.local.walk_failed",
-                ErrorStage::Discovering,
-                err.to_string(),
-            )
-        })?;
-        if entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            files.push(entry.into_path());
-        }
-    }
-    Ok(files)
-}
-
-fn should_descend_entry(entry: &DirEntry) -> bool {
-    let Some(name) = entry.file_name().to_str() else {
-        return true;
-    };
-    !crate::local_select::is_pruned_dir(name)
-}
-
-fn relative_key(root: &Path, file: &Path) -> Result<String> {
-    let relative = file.strip_prefix(root).unwrap_or(file);
-    let key = relative
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("/");
-    if key.is_empty() {
-        return Err(ApiError::new(
-            "adapter.local.item_key.invalid",
-            ErrorStage::Normalizing,
-            "local item key must not be empty",
-        ));
-    }
-    Ok(key)
-}
-
-fn root_for_item_keys(root: &Path, scope: SourceScope) -> &Path {
-    if scope == SourceScope::File {
-        return root.parent().unwrap_or_else(|| Path::new(""));
-    }
-    if root.is_file() {
-        root.parent().unwrap_or_else(|| Path::new(""))
-    } else {
-        root
-    }
-}
-
-fn public_base_uri(canonical_uri: &str) -> String {
-    if let Some((scheme, rest)) = canonical_uri.split_once("://")
-        && scheme == "local"
-    {
-        return format!("local://{}", rest.trim_matches('/'));
-    }
-    "local://source".to_string()
-}
-
-fn content_kind_for(path: &Path) -> ContentKind {
-    if is_binary_path(path) {
-        return ContentKind::BinaryMetadata;
-    }
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
-        "md" | "markdown" => ContentKind::Markdown,
-        "html" | "htm" => ContentKind::Html,
-        "json" => ContentKind::Json,
-        "yaml" | "yml" => ContentKind::Yaml,
-        "toml" => ContentKind::Toml,
-        "xml" => ContentKind::Xml,
-        "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "py" | "java" | "kt" | "swift" | "c" | "cc"
-        | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh" | "zsh" | "fish" => ContentKind::Code,
-        _ => ContentKind::PlainText,
-    }
-}
-
 fn local_source_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    item: AcquiredSourceItem,
 ) -> SourceDocument {
     let mut metadata = MetadataMap::new();
     metadata.insert("source_family".to_string(), json!("code"));
@@ -407,28 +319,28 @@ fn local_source_document(
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
     metadata.insert(
         "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
+        json!(item.manifest_item.canonical_uri.clone()),
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     metadata.insert("redaction_status".to_string(), json!("clean"));
     SourceDocument {
-        document_id: local_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: local_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: item
             .manifest_item
             .content_kind
             .unwrap_or(ContentKind::PlainText),
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title: item.manifest_item.display_path.clone(),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: None,
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     }

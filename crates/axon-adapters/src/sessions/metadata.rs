@@ -12,12 +12,12 @@ use super::target::SessionTarget;
 pub(super) fn session_source_document(
     plan: &SourcePlan,
     target: &SessionTarget,
-    decoded: &DecodedSession,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    decoded: DecodedSession,
+    source_id: &SourceId,
+    manifest_item: ManifestItem,
+    raw_artifact_id: Option<ArtifactId>,
 ) -> SourceDocument {
-    let document_id =
-        session_document_id(&acquisition.source_id, &item.manifest_item.source_item_key);
+    let document_id = session_document_id(source_id, &manifest_item.source_item_key);
     let provider = target.provider.as_str();
     let safe_session_id = opaque_session_id(provider, &target.session_id);
     let canonical_uri = format!("session://{provider}/{}", document_id.0);
@@ -56,10 +56,6 @@ pub(super) fn session_source_document(
             json!(last_message_at),
         );
     }
-    metadata.insert(
-        "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
-    );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
     // Provider decoders project only semantic turn text and run every turn
@@ -103,24 +99,22 @@ pub(super) fn session_source_document(
 
     SourceDocument {
         document_id,
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
+        source_id: source_id.clone(),
+        source_item_key: manifest_item.source_item_key,
         canonical_uri,
         // The acquired artifact is JSONL/JSON transcript transport, but the
         // normalized body below is semantic plain text. Keeping the raw
         // Transcript kind/path here re-selected the JSONL parser and emitted
         // an invalid-line warning for every decoded turn.
         content_kind: ContentKind::PlainText,
-        content: ContentRef::InlineText {
-            text: decoded.text.clone(),
-        },
+        content: ContentRef::InlineText { text: decoded.text },
         metadata,
         title: Some(format!("{provider} AI session")),
         language: None,
         path: None,
         mime_type: None,
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: raw_artifact_id,
         chunk_hints,
         parser_hints: Vec::new(),
     }

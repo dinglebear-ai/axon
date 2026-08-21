@@ -1,16 +1,17 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useRef } from "react";
 
 import { ActionIcon } from "@/components/palette/ActionIcon";
 import { Button } from "@/components/ui/aurora/button";
 import { Kbd } from "@/components/ui/aurora/kbd";
 import { ScrollArea } from "@/components/ui/aurora/scroll-area";
-import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import { isAsyncAction } from "@/lib/actionHelp";
 import { actionDisplayMeta } from "@/lib/actionMeta";
+import { acceptsDirectUrl, actionMatches, type PaletteAction } from "@/lib/actions";
 import { looksLikeUrl, type ParsedCommand } from "@/lib/paletteView";
 
 interface ActionListProps {
   filtered: PaletteAction[];
+  mobile?: boolean;
   selected: number;
   setSelected: Dispatch<SetStateAction<number>>;
   parsed: ParsedCommand;
@@ -34,7 +35,16 @@ export function actionOptionId(action: PaletteAction): string {
 // `role="group"` with an `aria-label`, so the section headings live inside a
 // labelled group rather than as bare listbox children. The command-bar input
 // owns the `aria-activedescendant` pointer at the selected option.
-export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, onEnterMode, onHelp }: ActionListProps) {
+export function ActionList({
+  filtered,
+  mobile = false,
+  selected,
+  setSelected,
+  parsed,
+  onSubmit,
+  onEnterMode,
+  onHelp,
+}: ActionListProps) {
   // Keyboard nav moves the selection; keep the selected row in view by scrolling
   // the list viewport the minimum amount needed (so arrowing past the fold works).
   // L3 — track the selected row with a ref instead of a `.action-row-selected`
@@ -60,11 +70,19 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
   return (
     <section className="action-panel">
       <div className="panel-heading">
-        <span>Actions</span>
-        <span className="panel-shortcuts">
-          <span><Kbd unstyled>tab</Kbd> switch</span>
-          <span><Kbd unstyled>↵</Kbd> run</span>
-        </span>
+        <span>{mobile ? "Explore Axon" : "Actions"}</span>
+        {mobile ? (
+          <span className="mobile-action-count">{filtered.length} actions</span>
+        ) : (
+          <span className="panel-shortcuts">
+            <span>
+              <Kbd unstyled>tab</Kbd> switch
+            </span>
+            <span>
+              <Kbd unstyled>↵</Kbd> run
+            </span>
+          </span>
+        )}
       </div>
       <ScrollArea className="action-scroll" viewportClassName="action-scroll-viewport">
         <div id="palette-action-list" role="listbox" aria-label="Actions" className="action-list">
@@ -80,7 +98,9 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
               >
                 <div className="action-section-heading" aria-hidden="true">
                   <span>{group.category}</span>
-                  <span>{headingMeta.input} → {headingMeta.output}</span>
+                  <span>
+                    {headingMeta.input} → {headingMeta.output}
+                  </span>
                 </div>
                 {group.items.map(({ action, index }) => {
                   const meta = actionDisplayMeta(action);
@@ -162,7 +182,9 @@ export function ActionList({ filtered, selected, setSelected, parsed, onSubmit, 
                               >
                                 ?
                               </Button>
-                              <span className="action-run-pill">Run <Kbd unstyled>↵</Kbd></span>
+                              <span className="action-run-pill">
+                                Run <Kbd unstyled>↵</Kbd>
+                              </span>
                             </>
                           ) : (
                             <Kbd unstyled>{action.subcommand}</Kbd>

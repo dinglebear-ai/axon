@@ -14,7 +14,7 @@ pub(super) use setup_args::{ComposeArgs, ComposeSubcommand, SetupAuthMode, Setup
 #[derive(Debug, Parser)]
 #[command(
     name = "axon",
-    about = "Web crawl, scrape, extract, embed, and query — self-hosted RAG in one binary",
+    about = "Unified source acquisition, extraction, embedding, and retrieval — self-hosted RAG in one binary",
     version = env!("CARGO_PKG_VERSION")
 )]
 pub(super) struct Cli {
@@ -96,7 +96,7 @@ pub(super) enum CliCommand {
     Prune(PruneArgs),
     /// Check host prerequisites and service readiness
     Preflight(PreflightArgs),
-    /// Run crawl/ask smoke checks against the running stack
+    /// Run source/ask smoke checks against the running stack
     Smoke,
     /// Manage the local Docker Compose service stack
     Compose(ComposeArgs),
@@ -355,6 +355,10 @@ pub(super) struct SourceArgs {
     /// omitted the adapter's default scope is used.
     #[arg(long, value_name = "SCOPE")]
     pub(super) scope: Option<String>,
+
+    /// Scheduler priority for the source job: interactive, high, normal, background, or maintenance.
+    #[arg(long, value_name = "PRIORITY")]
+    pub(super) priority: Option<String>,
 }
 
 #[derive(Debug, Args)]

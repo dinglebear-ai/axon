@@ -35,6 +35,11 @@ struct SqliteRuntimeHealth {
 
 static SQLITE_RUNTIME_HEALTH: OnceLock<Mutex<SqliteRuntimeHealth>> = OnceLock::new();
 
+// Match the default unified worker fan-out. Source data-plane work is further
+// bounded by `axon-services` so one slot remains available for scheduler and
+// heartbeat/control-plane traffic under load.
+const DEFAULT_SQLITE_POOL_CONNECTIONS: u32 = 8;
+
 pub type ActiveDbLock = Option<(PathBuf, File)>;
 
 /// Scrub any dangling transaction from a connection before it re-enters the
@@ -457,7 +462,7 @@ pub async fn open_pool_unlocked(path: &str) -> Result<SqlitePool, sqlx::Error> {
 
     let persist_wal = path != ":memory:";
     SqlitePoolOptions::new()
-        .max_connections(4)
+        .max_connections(DEFAULT_SQLITE_POOL_CONNECTIONS)
         .min_connections(1)
         .acquire_timeout(std::time::Duration::from_secs(60))
         .after_connect(move |conn, _meta| {

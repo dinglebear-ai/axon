@@ -111,15 +111,19 @@ impl SourceAdapter for FeedSourceAdapter {
             .get("feed_link")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        let documents = acquisition
-            .fetched_items
-            .iter()
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
             .map(|item| {
                 feed_source_document(
                     plan,
                     feed_title.as_deref(),
                     feed_link.as_deref(),
-                    &acquisition,
+                    &source_id,
                     item,
                 )
             })

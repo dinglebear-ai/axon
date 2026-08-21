@@ -12,10 +12,10 @@
 use axon_api::source::*;
 use tokio_util::sync::CancellationToken;
 
-use super::unified;
 use crate::boundary::JobStore;
 use crate::store::open_sqlite_pool;
 use crate::unified::SqliteUnifiedJobStore;
+use crate::workers::unified::{claim_next_unified_job, run_unified_claimed};
 
 async fn seed_source(pool: &sqlx::SqlitePool) {
     sqlx::query(
@@ -40,8 +40,9 @@ fn reset_job_request() -> JobCreateRequest {
         attempt: 1,
         priority: JobPriority::Normal,
         idempotency_key: Some("idem-e2e-reset".to_string()),
-        stage_plan: vec![JobStagePlan::required(PipelinePhase::Planning)
-            .with_estimated_items(Some(1))],
+        stage_plan: vec![
+            JobStagePlan::required(PipelinePhase::Planning).with_estimated_items(Some(1)),
+        ],
         request: Some(serde_json::json!({"operation": "reset"})),
         // Default snapshot grants nothing — a Reset job requires
         // `axon:admin` (see `auth_enforcement::required_scope_for_kind`).
@@ -68,7 +69,7 @@ async fn recovered_job_uses_original_auth_snapshot() {
         .create(reset_job_request())
         .await
         .expect("create reset job");
-    let first_claim = unified::claim_next_unified_job(&pool)
+    let first_claim = claim_next_unified_job(&pool)
         .await
         .expect("claim query")
         .expect("job should be claimable");
@@ -102,7 +103,7 @@ async fn recovered_job_uses_original_auth_snapshot() {
     // Re-claim the reclaimed job and run it through the real unified runner —
     // it must still be blocked on the *original* snapshot, not upgraded by
     // going through recovery.
-    let reclaimed_claim = unified::claim_next_unified_job(&pool)
+    let reclaimed_claim = claim_next_unified_job(&pool)
         .await
         .expect("claim query")
         .expect("reclaimed job should be claimable again");
@@ -112,7 +113,7 @@ async fn recovered_job_uses_original_auth_snapshot() {
         "reclaim must not alter the recorded auth snapshot"
     );
 
-    unified::run_unified_claimed(&pool, &reclaimed_claim, &CancellationToken::new(), None).await;
+    run_unified_claimed(&pool, &reclaimed_claim, &CancellationToken::new(), None).await;
 
     let summary = store.get(job.job_id).await.unwrap().unwrap();
     assert_eq!(summary.status, LifecycleStatus::Failed);

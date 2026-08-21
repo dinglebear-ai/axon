@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunState } from "@/lib/runState";
 import {
-  usePaletteHotkeys,
-  useFocusReturn,
   type PaletteHotkeyActions,
   type PaletteHotkeyState,
+  useFocusReturn,
+  usePaletteHotkeys,
 } from "@/lib/useFocusReturn";
 
 const { invokeMock } = vi.hoisted(() => ({
@@ -47,6 +47,7 @@ function makeActions(): PaletteHotkeyActions & Record<string, ReturnType<typeof 
     closeBrowse: vi.fn(),
     clearMode: vi.fn(),
     clearQuery: vi.fn(),
+    closeRoot: vi.fn(),
     copyOutput: vi.fn(),
   };
 }
@@ -83,7 +84,9 @@ describe("usePaletteHotkeys — Escape precedence ladder (I2)", () => {
   });
 
   it("clears mode before query when a mode action is active and query empty", () => {
-    stateRef.current = baseState({ modeAction: { kind: "remote", label: "Scrape", subcommand: "scrape" } as never });
+    stateRef.current = baseState({
+      modeAction: { kind: "remote", label: "Scrape", subcommand: "scrape" } as never,
+    });
     pressEscape();
     expect(actions.clearMode).toHaveBeenCalledTimes(1);
     expect(actions.clearQuery).not.toHaveBeenCalled();
@@ -95,10 +98,10 @@ describe("usePaletteHotkeys — Escape precedence ladder (I2)", () => {
     expect(actions.clearQuery).toHaveBeenCalledTimes(1);
   });
 
-  it("hides the palette when nothing else is open", () => {
+  it("runs the root-close action when nothing else is open", () => {
     stateRef.current = baseState();
     pressEscape();
-    expect(invokeMock).toHaveBeenCalledWith("hide_palette");
+    expect(actions.closeRoot).toHaveBeenCalledTimes(1);
   });
 
   it("re-binding fix: ladder still resolves after the state object identity changes", () => {

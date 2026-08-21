@@ -15,17 +15,17 @@ use axon_api::source::{JobKind, ProviderId};
 use axon_core::boundary::{ArtifactStore, DocumentCache};
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
-#[cfg(test)]
-use axon_embedding::reservation::ProviderReservationConfig;
-use axon_embedding::reservation::ProviderReservationManager;
 use axon_jobs::boundary::JobStore;
 use axon_jobs::scheduler::ProviderScheduler;
 use axon_ledger::store::LedgerStore;
 use axon_vectors::store::VectorStore;
-use tokio::sync::OnceCell;
+use tokio::sync::{OnceCell, Semaphore};
 
+use self::db_limited_ledger::DbLimitedLedgerStore;
 use crate::artifact_candidate_outbox::SharedArtifactCandidateOutbox;
 
+mod db_limited_ledger;
+mod scheduled_web;
 mod target_runtime;
 
 pub use target_runtime::{
@@ -63,9 +63,12 @@ pub struct TargetLocalSourceRuntime {
     pub embedding_dimensions: u32,
     pub document_prepare_concurrency: usize,
     pub embed_pool_max_inputs: usize,
-    pub embedding_reservations: Arc<ProviderReservationManager>,
+    pub(crate) db_stage_slots: Arc<Semaphore>,
     pub embedding_scheduler: Option<Arc<ProviderScheduler>>,
     pub vector_scheduler: Option<Arc<ProviderScheduler>>,
+    pub parse_scheduler: Option<Arc<ProviderScheduler>>,
+    pub graph_scheduler: Option<Arc<ProviderScheduler>>,
+    pub artifact_scheduler: Option<Arc<ProviderScheduler>>,
     pub artifact_store: Arc<dyn ArtifactStore>,
     pub document_cache: Arc<dyn DocumentCache>,
     /// Optional evidence delivery boundary for ArtifactCandidate batches. The
@@ -122,29 +125,27 @@ impl TargetLocalSourceRuntime {
             Arc::clone(&fetch_provider),
             Arc::clone(&render_provider),
         ));
+        let db_stage_slots = Arc::new(Semaphore::new(1));
         Self {
             jobs,
-            ledger,
+            ledger: Arc::new(DbLimitedLedgerStore::new(
+                ledger,
+                Arc::clone(&db_stage_slots),
+            )),
             embedding_provider,
             vector_store,
-            embedding_reservations: Arc::new(ProviderReservationManager::new(
-                ProviderReservationConfig {
-                    provider_id: embedding_provider_id.clone(),
-                    provider_kind: axon_api::source::ProviderKind::Embedding,
-                    capacity: 2,
-                    interactive_reserve: 1,
-                    cooldown_after_failures: 1,
-                    cooldown_secs: 30,
-                },
-            )),
             vector_provider_id: ProviderId::new("target-local-vector"),
             embedding_scheduler: None,
             vector_scheduler: None,
+            parse_scheduler: None,
+            graph_scheduler: None,
+            artifact_scheduler: None,
             embedding_provider_id,
             embedding_model: embedding_model.into(),
             embedding_dimensions,
             document_prepare_concurrency: 1,
             embed_pool_max_inputs: 512,
+            db_stage_slots,
             artifact_store: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             document_cache: Arc::new(axon_core::boundary::FakeCoreBoundaries::new()),
             artifact_candidate_sink: Arc::new(NoopArtifactCandidateSink),
@@ -326,6 +327,11 @@ impl ServiceContext {
 
     pub fn job_store(&self) -> Option<Arc<dyn JobStore>> {
         self.jobs.unified_job_store()
+    }
+
+    /// Shared SQLite scheduler/job pool for durable provider reservations.
+    pub fn sqlite_pool(&self) -> Option<Arc<sqlx::SqlitePool>> {
+        self.jobs.sqlite_pool()
     }
 
     pub fn foreground_event_store(

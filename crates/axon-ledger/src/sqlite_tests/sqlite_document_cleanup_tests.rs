@@ -121,6 +121,47 @@ async fn sqlite_records_document_status_and_cleanup_debt_idempotently() {
 }
 
 #[tokio::test]
+async fn sqlite_publishes_generation_document_statuses_in_place() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = seed_item_generation(&store, "src/lib.rs").await;
+    let document_id = DocumentId::new("doc-publish-bulk");
+    store
+        .update_document_status(DocumentStatus {
+            document_id: document_id.clone(),
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new("src/lib.rs"),
+            generation: Some(generation.clone()),
+            status: DocumentLifecycleStatus::Vectorized,
+            updated_at: ts(),
+            chunk_count: 0,
+            vector_point_count: 0,
+            error: None,
+            cleanup_status: None,
+        })
+        .await
+        .expect("record document status");
+
+    let published_at = ts_at(9);
+    let updated = store
+        .publish_document_statuses(
+            SourceId::new("src_sqlite"),
+            generation,
+            published_at.clone(),
+        )
+        .await
+        .expect("publish generation document statuses");
+    assert_eq!(updated, 1);
+    let status = store
+        .document_status(&document_id)
+        .await
+        .expect("read published document status")
+        .expect("document status");
+    assert_eq!(status.status, DocumentLifecycleStatus::Published);
+    assert_eq!(status.updated_at, published_at);
+}
+
+#[tokio::test]
 async fn sqlite_document_status_batch_rolls_back_the_entire_invalid_transaction() {
     let store = SqliteLedgerStore::in_memory().await.expect("store");
     store.upsert_source(source()).await.expect("upsert source");
@@ -155,6 +196,48 @@ async fn sqlite_document_status_batch_rolls_back_the_entire_invalid_transaction(
             .expect("read status")
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn sqlite_document_status_batch_handles_one_hundred_rows_setwise() {
+    let store = SqliteLedgerStore::in_memory().await.expect("store");
+    store.upsert_source(source()).await.expect("upsert source");
+    let generation = store
+        .create_generation(SourceId::new("src_sqlite"))
+        .await
+        .expect("create generation");
+    let items = (0..100)
+        .map(|index| manifest_item(&format!("src/file-{index:03}.rs"), "hash"))
+        .collect::<Vec<_>>();
+    store
+        .put_manifest(manifest_with_items(&generation.generation.0, items))
+        .await
+        .expect("put batch manifest");
+    let statuses = (0..100)
+        .map(|index| DocumentStatus {
+            document_id: DocumentId::new(format!("doc-batch-{index:03}")),
+            source_id: SourceId::new("src_sqlite"),
+            source_item_key: SourceItemKey::new(format!("src/file-{index:03}.rs")),
+            generation: Some(generation.generation.clone()),
+            status: DocumentLifecycleStatus::Prepared,
+            updated_at: ts(),
+            chunk_count: 0,
+            vector_point_count: 0,
+            error: None,
+            cleanup_status: None,
+        })
+        .collect::<Vec<_>>();
+
+    store
+        .update_document_statuses(statuses)
+        .await
+        .expect("set-wise status batch");
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM document_status")
+        .fetch_one(&store.pool)
+        .await
+        .expect("count document statuses");
+    assert_eq!(count, 100);
 }
 
 #[tokio::test]

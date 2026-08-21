@@ -42,7 +42,7 @@ pub async fn run_search(
     };
 
     let search_start = std::time::Instant::now();
-    let result = search_and_index_sources(cfg, service_context, &query, opts)
+    let result = search_and_index_sources(cfg, service_context, &query, opts, None)
         .await
         .map_err(|err| -> Box<dyn Error> { err.to_string().into() })?;
     let duration_ms = search_start.elapsed().as_millis();

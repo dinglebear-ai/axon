@@ -35,7 +35,11 @@ fn router_rejects_unknown_route_options() {
 fn router_requires_explicit_tool_execution_allowance() {
     let resolver = resolver();
     let router = SourceRouter::new(AdapterRegistry::target_defaults());
-    let request = SourceRequest::new("mcp:context7/resolve-library-id");
+    let mut request = SourceRequest::new("mcp:context7/resolve-library-id");
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), json!("invoke"));
     let resolved = resolver.resolve(&request).expect("mcp source resolves");
 
     let err = router
@@ -44,6 +48,42 @@ fn router_requires_explicit_tool_execution_allowance() {
 
     assert_eq!(err.code.0, "route.tool_execution.denied");
     assert_eq!(err.stage, axon_error::ErrorStage::Routing);
+}
+
+#[test]
+fn route_tool_execution_policy_requires_operator_and_caller_authority() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("mcp:context7/resolve-library-id");
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), json!("invoke"));
+
+    for (operator, caller) in [(false, false), (true, false), (false, true)] {
+        let resolved = resolver.resolve(&request).expect("mcp source resolves");
+        let err = router
+            .route_with_policy(
+                &request,
+                resolved,
+                RouteSecurityPolicy::from_tool_execution_authority(operator, caller),
+            )
+            .expect_err("one-sided tool authority must fail closed");
+        assert_eq!(err.code.0, "route.tool_execution.denied");
+    }
+}
+
+#[test]
+fn router_allows_metadata_only_tool_source_without_execution_policy() {
+    let resolver = resolver();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let request = SourceRequest::new("mcp:context7/resolve-library-id");
+    let resolved = resolver.resolve(&request).expect("mcp source resolves");
+
+    let route = router
+        .route(&request, resolved)
+        .expect("metadata-only tool source should route without execution policy");
+    assert_eq!(route.safety_class, SafetyClass::ToolExecution);
 }
 
 #[test]
@@ -107,7 +147,7 @@ fn router_allows_tool_execution_with_trusted_policy() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::trusted_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows cli route");
 
@@ -136,7 +176,7 @@ fn router_carries_tool_execution_options_with_trusted_policy() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::trusted_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows cli execution route options");
 
@@ -162,7 +202,7 @@ fn router_emits_no_default_parser_hints_for_mcp_tools() {
         .route_with_policy(
             &request,
             resolved,
-            RouteSecurityPolicy::trusted_tool_execution(),
+            RouteSecurityPolicy::from_tool_execution_authority(true, true),
         )
         .expect("trusted policy allows mcp route");
 
@@ -188,11 +228,16 @@ fn router_rejects_forged_resolved_source_identity() {
 fn router_enforces_minimum_tool_safety_class_from_registry() {
     let registry = AdapterRegistry::from_adapters(vec![
         crate::AdapterDefinition::new("cli", "1", SourceKind::CliTool, SourceScope::Tool)
-            .with_safety_class(SafetyClass::PublicNetwork),
+            .with_safety_class(SafetyClass::PublicNetwork)
+            .with_options(&["execution_mode"]),
     ]);
     let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
     let router = SourceRouter::new(registry);
-    let request = SourceRequest::new("cli:repomix --help");
+    let mut request = SourceRequest::new("cli:repomix --help");
+    request
+        .options
+        .values
+        .insert("execution_mode".to_string(), json!("execute"));
     let resolved = resolver.resolve(&request).expect("cli resolves");
 
     let err = router
@@ -206,11 +251,16 @@ fn router_enforces_minimum_tool_safety_class_from_registry() {
 fn router_preserves_stricter_safety_class_than_source_minimum() {
     let registry = AdapterRegistry::from_adapters(vec![
         crate::AdapterDefinition::new("local", "1", SourceKind::Local, SourceScope::Directory)
-            .with_safety_class(SafetyClass::ToolExecution),
+            .with_safety_class(SafetyClass::ToolExecution)
+            .with_options(&["execute"]),
     ]);
     let resolver = SourceResolver::new(InMemoryAuthorityRegistry::default(), registry.clone());
     let router = SourceRouter::new(registry);
-    let request = SourceRequest::local_path("/tmp/axon-route-local-tool", true);
+    let mut request = SourceRequest::local_path("/tmp/axon-route-local-tool", true);
+    request
+        .options
+        .values
+        .insert("execute".to_string(), json!(true));
     let resolved = resolver.resolve(&request).expect("local resolves");
 
     let err = router

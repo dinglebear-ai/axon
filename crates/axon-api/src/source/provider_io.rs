@@ -3,8 +3,77 @@ use serde::{Deserialize, Serialize};
 
 use super::capability::RenderMode;
 use super::common::*;
-use super::enums::CredentialKind;
+use super::enums::{CredentialKind, JobPriority};
 use super::ids::*;
+
+pub const PROVIDER_EXECUTION_JOB_ID_KEY: &str = "__axon_provider_job_id";
+pub const PROVIDER_EXECUTION_ATTEMPT_KEY: &str = "__axon_provider_attempt";
+pub const PROVIDER_EXECUTION_PRIORITY_KEY: &str = "__axon_provider_priority";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProviderExecutionMetadata {
+    pub job_id: JobId,
+    pub attempt: u32,
+    pub priority: JobPriority,
+}
+
+pub fn stamp_provider_execution_metadata(
+    metadata: &mut MetadataMap,
+    execution: ProviderExecutionMetadata,
+) {
+    metadata.insert(
+        PROVIDER_EXECUTION_JOB_ID_KEY.to_string(),
+        serde_json::json!(execution.job_id.0),
+    );
+    metadata.insert(
+        PROVIDER_EXECUTION_ATTEMPT_KEY.to_string(),
+        serde_json::json!(execution.attempt),
+    );
+    metadata.insert(
+        PROVIDER_EXECUTION_PRIORITY_KEY.to_string(),
+        serde_json::json!(execution.priority),
+    );
+}
+
+pub fn read_provider_execution_metadata(
+    metadata: &MetadataMap,
+) -> Option<ProviderExecutionMetadata> {
+    let job_id = metadata
+        .get(PROVIDER_EXECUTION_JOB_ID_KEY)?
+        .as_str()?
+        .parse::<uuid::Uuid>()
+        .ok()
+        .map(JobId::new)?;
+    let attempt = metadata
+        .get(PROVIDER_EXECUTION_ATTEMPT_KEY)?
+        .as_u64()
+        .and_then(|value| u32::try_from(value).ok())?;
+    let priority =
+        serde_json::from_value(metadata.get(PROVIDER_EXECUTION_PRIORITY_KEY)?.clone()).ok()?;
+    Some(ProviderExecutionMetadata {
+        job_id,
+        attempt,
+        priority,
+    })
+}
+
+pub fn copy_provider_execution_metadata(source: &MetadataMap, target: &mut MetadataMap) {
+    for key in [
+        PROVIDER_EXECUTION_JOB_ID_KEY,
+        PROVIDER_EXECUTION_ATTEMPT_KEY,
+        PROVIDER_EXECUTION_PRIORITY_KEY,
+    ] {
+        if let Some(value) = source.get(key) {
+            target.insert(key.to_string(), value.clone());
+        }
+    }
+}
+
+pub fn strip_provider_execution_metadata(metadata: &mut MetadataMap) {
+    metadata.remove(PROVIDER_EXECUTION_JOB_ID_KEY);
+    metadata.remove(PROVIDER_EXECUTION_ATTEMPT_KEY);
+    metadata.remove(PROVIDER_EXECUTION_PRIORITY_KEY);
+}
 
 /// Result recency filter for [`SearchRequest`]. Mirrors `spider_agent::TimeRange`'s
 /// four named variants (its `Custom { start, end }` range is not exposed here —

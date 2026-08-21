@@ -194,10 +194,14 @@ impl SourceAdapter for MemorySourceAdapter {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_plan(plan)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
-            .map(|item| memory_document(plan, &acquisition, item))
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
+            .map(|item| memory_document(plan, &source_id, item))
             .collect::<Result<Vec<_>>>()?;
         Ok(StageExecutionResult {
             header: stage_header(
@@ -292,10 +296,10 @@ fn manifest_item(plan: &SourcePlan, record: &MemoryRecord) -> Result<ManifestIte
 
 fn memory_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    item: AcquiredSourceItem,
 ) -> Result<SourceDocument> {
-    let metadata = item.metadata.clone();
+    let metadata = item.metadata;
     let title = metadata
         .get("memory_title")
         .cloned()
@@ -311,11 +315,11 @@ fn memory_document(
         .flatten();
     Ok(SourceDocument {
         document_id: DocumentId::new(item.manifest_item.source_item_key.0.clone()),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: ContentKind::PlainText,
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title,
         language: None,

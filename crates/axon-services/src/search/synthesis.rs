@@ -14,6 +14,7 @@ use crate::types::{
     ResearchExtraction, ResearchHit, ResearchPayload, ResearchResult, ResearchSourceJob,
     ResearchSourceRejection, ResearchTiming, ResearchUsage, SearchOptions, SummarySource,
 };
+use axon_api::source::AuthSnapshot;
 use axon_core::config::Config;
 use axon_core::logging::log_warn;
 use axon_llm::{self as llm, CompletionRequest};
@@ -326,12 +327,14 @@ pub async fn research_with_context(
     query: &str,
     opts: SearchOptions,
     tx: Option<mpsc::Sender<ServiceEvent>>,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<ResearchResult, SearchError> {
     let mut result = research(cfg, query, opts, tx).await?;
     let source_output = search_crawl::enqueue_research_sources(
         cfg,
         service_context,
         &result.payload.search_results,
+        auth_snapshot,
     )
     .await;
     result.payload.source_index_status = search_crawl::source_index_status_for_output(

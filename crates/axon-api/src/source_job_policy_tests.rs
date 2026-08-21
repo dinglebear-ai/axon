@@ -20,21 +20,19 @@ fn source_watch_extract_research_memory_graph_prune_provider_reset_are_job_backe
 }
 
 #[test]
-fn normal_query_and_retrieve_remain_jobless_until_long_running_work_is_requested() {
-    assert_eq!(
-        job_policy_for_operation(OperationKind::Query, JobExecutionMode::Foreground),
-        JobPolicy::Synchronous
-    );
-    assert_eq!(
-        job_policy_for_operation(OperationKind::Retrieve, JobExecutionMode::Foreground),
-        JobPolicy::Synchronous
-    );
-    assert_eq!(
-        job_policy_for_operation(OperationKind::Query, JobExecutionMode::LongRunningProvider),
-        JobPolicy::JobBacked
-    );
-    assert_eq!(
-        job_policy_for_operation(OperationKind::Retrieve, JobExecutionMode::ArtifactBacked),
-        JobPolicy::JobBacked
-    );
+fn query_and_retrieve_are_job_backed_in_every_execution_mode() {
+    for operation in [OperationKind::Query, OperationKind::Retrieve] {
+        for mode in [
+            JobExecutionMode::Foreground,
+            JobExecutionMode::Detached,
+            JobExecutionMode::LongRunningProvider,
+            JobExecutionMode::ArtifactBacked,
+        ] {
+            assert_eq!(
+                job_policy_for_operation(operation, mode),
+                JobPolicy::JobBacked,
+                "{operation:?} should be job-backed in {mode:?}"
+            );
+        }
+    }
 }

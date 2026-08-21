@@ -666,7 +666,7 @@ export type components = {
         };
         "PipelinePhase": "queued" | "requested" | "resolving" | "routing" | "authorizing" | "planning" | "leasing" | "discovering" | "diffing" | "fetching" | "rendering" | "enriching" | "normalizing" | "parsing" | "graphing" | "preparing" | "batching" | "embedding" | "vectorizing" | "upserting" | "retrieving" | "synthesizing" | "evaluating" | "publishing" | "cleaning" | "complete" | "canceled";
         "ProviderId": string;
-        "ProviderKind": "llm" | "embedding" | "vector" | "search" | "fetch" | "render" | "network_capture" | "artifact" | "ledger" | "graph" | "memory" | "job" | "watch" | "config" | "credential" | "cache" | "security" | "rate_limiter" | "health_probe";
+        "ProviderKind": "llm" | "embedding" | "vector" | "search" | "fetch" | "render" | "parser" | "network_capture" | "artifact" | "ledger" | "graph" | "memory" | "job" | "watch" | "config" | "credential" | "cache" | "security" | "rate_limiter" | "health_probe";
         "ProviderListResponse": {
             "providers": components['schemas']['ProviderSummary'][];
         };

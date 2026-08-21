@@ -8,20 +8,15 @@
 //!   `axon-retrieval`, `axon-route`, `axon-vectors`) were built to the
 //!   contract's minimal module list, so `modules` is non-empty and enforced
 //!   against that target list.
-//! - Five pre-existing production crates (`axon-api`, `axon-cli`, `axon-mcp`,
-//!   `axon-services`, `axon-web`) keep their full current-behavior module
-//!   surface until the #298 cutover — the target contract's minimal module
-//!   list (`docs/pipeline-unification/foundation/crate-structure.md`) does not
-//!   apply to them yet. Their `modules` entries below instead list the
-//!   crate's actual, shipped `pub mod` surface (synced 2026-07-12 from
-//!   `crates/<name>/src/lib.rs`), so the check still has teeth: it fails if a
-//!   documented module is renamed/removed without updating the docs, without
-//!   falsely flagging the unfinished #298 refactor as drift.
-//! - The remaining pre-existing crates (`axon-authz`, `axon-core`,
-//!   `axon-jobs`) still carry `modules: &[]` — see
-//!   `docs/pipeline-unification/README.md`'s "Current Implementation
-//!   Snapshot" framing. Only the dependency-direction rule is enforced for
-//!   these until they're similarly reconciled.
+//! - The production transport/orchestration crates (`axon-api`, `axon-cli`,
+//!   `axon-mcp`, `axon-services`, `axon-web`) are checked against their shipped
+//!   public module surfaces. The pipeline cutover intentionally did not require
+//!   collapsing unrelated transport modules to the illustrative minimal list in
+//!   `foundation/crate-structure.md`; this table therefore records the live
+//!   contract and fails on unreviewed public-surface drift.
+//! - `axon-authz`, `axon-core`, and `axon-jobs` carry `modules: &[]` because
+//!   their pipeline contract is expressed through dependency direction and
+//!   focused boundary checks rather than a closed public-module allowlist.
 //! - `axon-extract` is a restored transitional crate (removed from the
 //!   clean-break list, then intentionally restored 2026-07-15 as the
 //!   vertical-extractor implementation catalog — see the "Restored-Crate

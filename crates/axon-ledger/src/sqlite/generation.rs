@@ -32,7 +32,7 @@ pub(super) async fn create_generation(
     ensure_source_exists_in_tx(&mut tx, &source_id).await?;
     let previous_generation = current_committed_generation_in_tx(&mut tx, &source_id).await?;
     #[cfg(test)]
-    super::snapshot_test_hook::pause_once_after_read().await;
+    super::snapshot_test_hook::pause_once_after_read(&source_id).await;
     let next_sequence: i64 = sqlx::query_scalar(
         r#"
         SELECT COALESCE(MAX(sequence), 0) + 1

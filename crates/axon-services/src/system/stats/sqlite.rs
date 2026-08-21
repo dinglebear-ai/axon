@@ -11,8 +11,8 @@ const ESTIMATED_CHARS_PER_TOKEN: f64 = 4.0;
 pub(super) struct JobMetrics {
     pub(super) source_count: Option<i64>,
     pub(super) extract_count: Option<i64>,
-    pub(super) average_pages_per_second: Option<f64>,
-    pub(super) average_crawl_duration_seconds: Option<f64>,
+    pub(super) average_items_per_second: Option<f64>,
+    pub(super) average_source_duration_seconds: Option<f64>,
     pub(super) average_embedding_duration_seconds: Option<f64>,
     pub(super) average_overall_source_duration_seconds: Option<f64>,
     pub(super) longest_source: Option<serde_json::Value>,
@@ -63,14 +63,14 @@ async fn collect_sqlite_metrics(pool: &SqlitePool) -> JobMetrics {
     let mut m = JobMetrics::default();
 
     m.source_count = count_completed_kind(pool, "source").await;
-    m.embed_count = m.source_count;
+    m.embed_count = count_completed_source_embeds(pool).await;
     m.extract_count = count_completed_kind(pool, "extract").await;
 
-    m.average_crawl_duration_seconds = avg_duration_secs_for_kind(pool, "source").await;
-    m.average_embedding_duration_seconds = m.average_crawl_duration_seconds;
-    m.average_overall_source_duration_seconds = m.average_crawl_duration_seconds;
+    m.average_source_duration_seconds = avg_duration_secs_for_kind(pool, "source").await;
+    m.average_embedding_duration_seconds = m.average_source_duration_seconds;
+    m.average_overall_source_duration_seconds = m.average_source_duration_seconds;
 
-    m.average_pages_per_second = avg_pages_per_second(pool).await;
+    m.average_items_per_second = avg_items_per_second(pool).await;
 
     m.last_indexed_secs_ago = last_indexed_secs_ago(pool).await;
     m.sources_last_24h = recent_completed_kind(pool, "source", 86_400_000).await;
@@ -111,6 +111,17 @@ async fn count_completed_kind(pool: &SqlitePool, kind: &str) -> Option<i64> {
         .ok()
 }
 
+async fn count_completed_source_embeds(pool: &SqlitePool) -> Option<i64> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM jobs \
+         WHERE kind = 'source' AND status = 'completed' \
+           AND COALESCE(json_extract(request_json, '$.source_request.embed'), 0) = 1",
+    )
+    .fetch_one(pool)
+    .await
+    .ok()
+}
+
 async fn avg_duration_secs_for_kind(pool: &SqlitePool, kind: &str) -> Option<f64> {
     let q = "SELECT AVG((julianday(finished_at) - julianday(started_at)) * 86400.0) \
              FROM jobs \
@@ -124,7 +135,7 @@ async fn avg_duration_secs_for_kind(pool: &SqlitePool, kind: &str) -> Option<f64
         .flatten()
 }
 
-async fn avg_pages_per_second(pool: &SqlitePool) -> Option<f64> {
+async fn avg_items_per_second(pool: &SqlitePool) -> Option<f64> {
     // counts_json is a TEXT column; SQLite ships json_extract for parsing it.
     let q = "SELECT AVG( \
                 CAST(json_extract(counts_json, '$.items_done') AS REAL) \

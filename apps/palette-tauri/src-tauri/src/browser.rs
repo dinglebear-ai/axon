@@ -30,7 +30,9 @@ use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 pub(crate) const BROWSER_WINDOW_LABEL: &str = "browser";
 
 const BROWSER_WINDOW_TITLE: &str = "Axon Browser";
+#[cfg(desktop)]
 const DEFAULT_WIDTH: f64 = 1100.0;
+#[cfg(desktop)]
 const DEFAULT_HEIGHT: f64 = 760.0;
 
 /// Validate and normalize a URL for the browser window. Rejects anything
@@ -70,6 +72,7 @@ fn webview_url_for(raw: &str) -> Result<WebviewUrl, String> {
 /// is `async` (Tauri runs async commands on a separate thread pool).
 #[tauri::command]
 pub(crate) async fn browser_open(app: AppHandle, url: String) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
     let validated = validate_browser_url(&url)?;
     if let Some(window) = app.get_webview_window(BROWSER_WINDOW_LABEL) {
         window
@@ -83,13 +86,14 @@ pub(crate) async fn browser_open(app: AppHandle, url: String) -> Result<(), Stri
     }
 
     let webview_url = webview_url_for(&validated)?;
-    WebviewWindowBuilder::new(&app, BROWSER_WINDOW_LABEL, webview_url)
-        .title(BROWSER_WINDOW_TITLE)
+    let builder = WebviewWindowBuilder::new(&app, BROWSER_WINDOW_LABEL, webview_url)
+        .title(BROWSER_WINDOW_TITLE);
+    #[cfg(desktop)]
+    let builder = builder
         .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
         .center()
-        .resizable(true)
-        .build()
-        .map_err(|err| err.to_string())?;
+        .resizable(true);
+    builder.build().map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -104,6 +108,7 @@ pub(crate) async fn browser_navigate(app: AppHandle, url: String) -> Result<(), 
 /// the browser window isn't currently open.
 #[tauri::command]
 pub(crate) fn browser_back(app: AppHandle) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
     with_browser_window(&app, |window| {
         window.eval("history.back()").map_err(|err| err.to_string())
     })
@@ -112,6 +117,7 @@ pub(crate) fn browser_back(app: AppHandle) -> Result<(), String> {
 /// Drive the loaded page's own forward-navigation.
 #[tauri::command]
 pub(crate) fn browser_forward(app: AppHandle) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
     with_browser_window(&app, |window| {
         window
             .eval("history.forward()")
@@ -122,6 +128,7 @@ pub(crate) fn browser_forward(app: AppHandle) -> Result<(), String> {
 /// Reload the currently loaded page.
 #[tauri::command]
 pub(crate) fn browser_reload(app: AppHandle) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
     with_browser_window(&app, |window| {
         window
             .eval("location.reload()")
@@ -132,6 +139,7 @@ pub(crate) fn browser_reload(app: AppHandle) -> Result<(), String> {
 /// Close (destroy) the browser window if it exists.
 #[tauri::command]
 pub(crate) fn browser_close(app: AppHandle) -> Result<(), String> {
+    crate::require_desktop_feature("Browser")?;
     if let Some(window) = app.get_webview_window(BROWSER_WINDOW_LABEL) {
         window.close().map_err(|err| err.to_string())?;
     }

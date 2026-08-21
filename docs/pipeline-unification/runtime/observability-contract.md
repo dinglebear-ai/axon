@@ -446,33 +446,19 @@ Redaction events include:
 - count of redactions
 - warning if content was omitted
 
-### Vector point redaction skips
+### Vector point redaction failures
 
 When a prepared chunk's payload trips the secret-redaction `ForbiddenValue`
 validator (`axon_vectors::payload::VectorPayloadValidationError::ForbiddenValue`),
-the chunk is **skipped, not indexed** — do-not-index-secrets is a hard
-contract. A skip reduces the publish-stage vector point count relative to the
-preparation-stage chunk count for the same generation.
+vector point construction fails before the caller receives a partial batch. No
+points from that batch are upserted. The error is surfaced through the normal
+source-stage failure/event path, so CLI, MCP, REST, logs, and durable job events
+all observe the same failure rather than a family-specific skip warning.
 
-Skips are observable through two channels:
-
-- a per-chunk `tracing::warn!` (`skipping chunk with secret-redaction-forbidden
-  payload value`) with the chunk id, for logs/traces
-- a per-batch `SourceWarning` with a stable code, surfaced to job events and
-  the source result for CLI/MCP/REST visibility:
-  - `web.vectorize.redaction_skipped_chunks` — web-page sources
-  - `source.vectorize.redaction_skipped_chunks` — git/feed/youtube/reddit/
-    session/registry sources (the `non_web` pipeline)
-
-The warning message names the skipped count so an operator can reconcile
-`chunks_prepared` against `points_written` without reading logs. Local
-filesystem sources (`local_source`) surface the skip count as an aggregated
-`tracing::warn!` only; they have no `SourceWarning` channel on their
-vectorize result.
-
-Publish-write invariants must not compare `chunks_prepared` (preparation)
-against `points_written` (publish) — that conflation previously failed entire
-web-source jobs whenever any chunk was redaction-skipped.
+Publish-write invariants still compare publish-stage values
+(`points_attempted` versus `points_written`) rather than conflating them with
+preparation-stage `chunks_prepared`; redaction failure simply prevents the
+publish write from starting.
 
 ## Validation Checklist
 

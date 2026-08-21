@@ -5,6 +5,7 @@
 //! the plan, and retains the temporary checkout through the service bridge.
 
 mod acquire;
+mod discovery;
 mod metadata;
 mod target;
 mod vertical;
@@ -14,22 +15,24 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use ignore::{DirEntry, WalkBuilder};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
-use crate::manifest::item_identity;
 
 pub use self::acquire::{clone_git_repo, is_git_target};
+use self::discovery::{
+    collect_capped_git_keys, collect_git_manifest_items_parallel, hash_git_keys_parallel,
+    safe_item_path,
+};
 use self::metadata::git_source_document;
 pub use self::target::{GitTarget, parse_git_target};
 
 pub const MODULE_NAME: &str = "git";
 
 const ADAPTER_NAME: &str = "git";
+const GIT_DISCOVERY_HASH_MAX_THREADS: usize = 8;
 
 #[derive(Debug, Clone, Default)]
 pub struct GitSourceAdapter;
@@ -113,10 +116,14 @@ impl SourceAdapter for GitSourceAdapter {
             return vertical::normalize(plan, acquisition);
         }
         let target = git_target(plan)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
-            .map(|item| git_source_document(plan, &target, &acquisition, item))
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
+            .map(|item| git_source_document(plan, &target, &source_id, item))
             .collect::<Vec<_>>();
         Ok(StageExecutionResult {
             header: stage_header(
@@ -155,43 +162,19 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let target = git_target(plan)?;
     let root = repo_root(plan)?;
 
-    let mut files = collect_files(&root)?;
-    files.sort();
-
     let base_uri = target.web_url.trim_end_matches('/').to_string();
-    let mut items = Vec::new();
     let exclude_paths = option_string_array(&plan.request.options, "exclude_paths")?;
-    for file in files {
-        let key = relative_key(&root, &file)?;
-        if exclude_paths.iter().any(|excluded| key.contains(excluded)) {
-            continue;
-        }
-        let path = safe_item_path(&root, &key)?;
-        let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
-        if !meta.is_file() {
-            continue;
-        }
-        let content_hash = content_fingerprint(&path)?;
-        let identity = item_identity(SourceKind::Git, &base_uri, &key)?;
-        let mut item_metadata = MetadataMap::new();
-        item_metadata.insert("git_relative_path".to_string(), json!(key));
-        items.push(ManifestItem {
-            source_id: plan.route.source.source_id.clone(),
-            source_item_key: identity.source_item_key,
-            canonical_uri: identity.canonical_uri,
-            item_kind: ItemKind::RepoFile,
-            content_kind: Some(content_kind_for(&file)),
-            display_path: Some(key),
-            parent_key: None,
-            size_bytes: Some(meta.len()),
-            content_hash: Some(content_hash),
-            mtime: None,
-            version: None,
-            fetch_plan: None,
-            metadata: item_metadata,
-            graph_hints: Vec::new(),
-        });
-    }
+    let max_items = plan
+        .limits
+        .effective
+        .max_items
+        .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+    let mut items = if let Some(limit) = max_items {
+        let keys = collect_capped_git_keys(&root, &exclude_paths, limit)?;
+        hash_git_keys_parallel(plan, &root, &base_uri, &keys)?
+    } else {
+        collect_git_manifest_items_parallel(plan, &root, &base_uri, &exclude_paths)?
+    };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
     Ok(SourceManifest {
@@ -340,89 +323,6 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
         "source_kind",
         format!("{:?}", plan.route.source.source_kind),
     ))
-}
-
-fn collect_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut builder = WalkBuilder::new(root);
-    builder
-        .follow_links(false)
-        .hidden(false)
-        .git_ignore(true)
-        .git_exclude(true)
-        .parents(false)
-        .filter_entry(should_descend_entry);
-    let mut files = Vec::new();
-    for entry in builder.build() {
-        let entry = entry.map_err(|err| {
-            ApiError::new(
-                "adapter.git.walk_failed",
-                ErrorStage::Discovering,
-                err.to_string(),
-            )
-        })?;
-        if entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            files.push(entry.into_path());
-        }
-    }
-    Ok(files)
-}
-
-fn should_descend_entry(entry: &DirEntry) -> bool {
-    entry.file_name().to_str() != Some(".git")
-}
-
-fn relative_key(root: &Path, file: &Path) -> Result<String> {
-    let relative = file.strip_prefix(root).unwrap_or(file);
-    let key = relative
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("/");
-    if key.is_empty() {
-        return Err(ApiError::new(
-            "adapter.git.item_key.invalid",
-            ErrorStage::Normalizing,
-            "git item key must not be empty",
-        ));
-    }
-    Ok(key)
-}
-
-fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
-    if Path::new(key).is_absolute() || key.split('/').any(|part| part == "..") {
-        return Err(ApiError::new(
-            "adapter.git.path.escape",
-            ErrorStage::Fetching,
-            "git item key must stay inside the repo root",
-        )
-        .with_context("key", key.to_string()));
-    }
-    Ok(root.join(key))
-}
-
-fn content_fingerprint(path: &Path) -> Result<String> {
-    let bytes = fs::read(path).map_err(|err| fs_error("read_failed", path, err))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    Ok(hex_prefix(&hasher.finalize(), 16))
-}
-
-fn content_kind_for(path: &Path) -> ContentKind {
-    match path.extension().and_then(|ext| ext.to_str()).unwrap_or("") {
-        "md" | "markdown" => ContentKind::Markdown,
-        "html" | "htm" => ContentKind::Html,
-        "json" => ContentKind::Json,
-        "yaml" | "yml" => ContentKind::Yaml,
-        "toml" => ContentKind::Toml,
-        "xml" => ContentKind::Xml,
-        "rs" | "go" | "js" | "jsx" | "ts" | "tsx" | "py" | "java" | "kt" | "swift" | "c" | "cc"
-        | "cpp" | "h" | "hpp" | "cs" | "rb" | "php" | "sh" | "zsh" | "fish" => ContentKind::Code,
-        _ => ContentKind::PlainText,
-    }
 }
 
 fn fs_error(code: &str, path: &Path, err: std::io::Error) -> ApiError {

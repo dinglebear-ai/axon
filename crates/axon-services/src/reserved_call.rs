@@ -5,17 +5,30 @@
 //! module selects the provider, waits for scheduler capacity where applicable,
 //! and owns every raw provider handle.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use axon_api::source::*;
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore};
 use axon_error::ErrorStage;
+use axon_graph::sqlite::SqliteGraphStore;
+use axon_graph::store::GraphStore;
 use axon_jobs::scheduler::{
     ProviderScheduler, ReservationRequest, ReservedCallError, SchedulerError, call_reserved,
 };
 use axon_ledger::store::LedgerStore;
+use sqlx::SqlitePool;
 
 use crate::context::TargetLocalSourceRuntime;
+
+mod support;
+mod vector;
+
+use support::{map_reserved, record_provider_heartbeat, scheduler_error};
+pub use vector::{
+    delete_vectors, mark_generation_committed, mark_unchanged_items_committed, retire_generation,
+    vector_operation,
+};
 
 #[derive(Debug, Clone)]
 pub struct ProviderCallContext {
@@ -93,6 +106,9 @@ impl ProviderCallContext {
 
 struct EmbeddingLane;
 struct VectorLane;
+struct ParseLane;
+struct GraphLane;
+struct ArtifactLane;
 
 pub struct ArtifactCleanupGuard {
     store: Arc<dyn ArtifactStore>,
@@ -303,202 +319,140 @@ pub async fn upsert(
     )
 }
 
-pub async fn mark_generation_committed(
+pub async fn search_vectors(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
-    collection: String,
-    source_id: SourceId,
-    generation: SourceGenerationId,
-) -> Result<VectorStoreWriteResult, ApiError> {
+    request: VectorSearchRequest,
+) -> Result<VectorSearchResult, ApiError> {
     let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
-        return runtime
-            .vector_store
-            .mark_generation_committed(collection, source_id, generation)
-            .await;
+        return runtime.vector_store.search(request).await;
     };
     let store = Arc::clone(&runtime.vector_store);
     map_reserved(
         call_reserved::<VectorLane, _, ApiError, _, _>(
             scheduler,
             context.request(1),
-            move |_lease| async move {
-                store
-                    .mark_generation_committed(collection, source_id, generation)
-                    .await
-            },
+            move |_lease| async move { store.search(request).await },
         )
         .await,
-        ErrorStage::Publishing,
+        ErrorStage::Retrieving,
         "vector",
     )
 }
 
-pub async fn mark_unchanged_items_committed(
+pub async fn parse_operation<T, F, Fut>(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
-    collection: String,
-    source_id: SourceId,
-    previous_generation: SourceGenerationId,
-    committed_generation: SourceGenerationId,
-    source_item_keys: Vec<SourceItemKey>,
-) -> Result<VectorStoreWriteResult, ApiError> {
-    let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
-        return runtime
-            .vector_store
-            .mark_unchanged_items_committed(
-                collection,
-                source_id,
-                previous_generation,
-                committed_generation,
-                source_item_keys,
-            )
-            .await;
+    operation: F,
+) -> anyhow::Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = anyhow::Result<T>>,
+{
+    let Some(scheduler) = runtime.parse_scheduler.as_deref() else {
+        return operation().await;
     };
-    let store = Arc::clone(&runtime.vector_store);
+    match call_reserved::<ParseLane, _, anyhow::Error, _, _>(
+        scheduler,
+        context.request(1),
+        move |_lease| operation(),
+    )
+    .await
+    {
+        Ok(value) => Ok(value),
+        Err(ReservedCallError::Provider(error)) => Err(error),
+        Err(ReservedCallError::Scheduler(error)) => Err(anyhow::Error::new(scheduler_error(
+            error,
+            ErrorStage::ParsingContent,
+            "parser",
+        ))),
+    }
+}
+
+pub async fn graph_operation<T, F, Fut>(
+    runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
+    operation: F,
+) -> Result<T, ApiError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = T>,
+{
+    let Some(scheduler) = runtime.graph_scheduler.as_deref() else {
+        return Ok(operation().await);
+    };
     map_reserved(
-        call_reserved::<VectorLane, _, ApiError, _, _>(
+        call_reserved::<GraphLane, _, ApiError, _, _>(
             scheduler,
             context.request(1),
-            move |_lease| async move {
-                store
-                    .mark_unchanged_items_committed(
-                        collection,
-                        source_id,
-                        previous_generation,
-                        committed_generation,
-                        source_item_keys,
-                    )
-                    .await
-            },
+            move |_lease| async move { Ok(operation().await) },
         )
         .await,
-        ErrorStage::Publishing,
-        "vector",
+        ErrorStage::Graphing,
+        "graph",
     )
 }
 
-pub async fn delete_vectors(
+pub async fn upsert_graph_candidates(
     runtime: &TargetLocalSourceRuntime,
     context: ProviderCallContext,
-    selector: VectorDeleteSelector,
-) -> Result<VectorStoreDeleteResult, ApiError> {
-    let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
-        return runtime.vector_store.delete(selector).await;
-    };
-    let store = Arc::clone(&runtime.vector_store);
-    map_reserved(
-        call_reserved::<VectorLane, _, ApiError, _, _>(
-            scheduler,
-            context.request(1),
-            move |_lease| async move { store.delete(selector).await },
-        )
-        .await,
-        ErrorStage::Cleaning,
-        "vector",
-    )
+    pool: SqlitePool,
+    candidates: Vec<GraphCandidate>,
+) -> Result<GraphWriteResult, ApiError> {
+    graph_operation(runtime, context, move || async move {
+        let store = SqliteGraphStore::from_pool(pool);
+        store.upsert_candidate_iter(candidates).await
+    })
+    .await?
 }
 
-pub async fn retire_generation(
-    runtime: &TargetLocalSourceRuntime,
-    context: ProviderCallContext,
-    collection: String,
-    source_id: SourceId,
-    generation: SourceGenerationId,
-    retired_epoch: SourceGenerationId,
-) -> Result<VectorStoreWriteResult, ApiError> {
-    let Some(scheduler) = runtime.vector_scheduler.as_deref() else {
-        return runtime
-            .vector_store
-            .retire_generation(collection, source_id, generation, retired_epoch)
-            .await;
-    };
-    let store = Arc::clone(&runtime.vector_store);
-    map_reserved(
-        call_reserved::<VectorLane, _, ApiError, _, _>(
-            scheduler,
-            context.request(1),
-            move |_lease| async move {
-                store
-                    .retire_generation(collection, source_id, generation, retired_epoch)
-                    .await
-            },
-        )
-        .await,
-        ErrorStage::Publishing,
-        "vector",
-    )
+#[cfg(test)]
+pub async fn upsert_graph_candidates_for_test(
+    pool: SqlitePool,
+    candidates: Vec<GraphCandidate>,
+) -> Result<GraphWriteResult, ApiError> {
+    let store = SqliteGraphStore::from_pool(pool);
+    store.upsert_candidate_iter(candidates).await
 }
 
 pub async fn put_artifact(
     runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
     request: ArtifactWriteRequest,
 ) -> Result<ArtifactHandle, ApiError> {
-    runtime.artifact_store.put(request).await
+    let Some(scheduler) = runtime.artifact_scheduler.as_deref() else {
+        return runtime.artifact_store.put(request).await;
+    };
+    let store = Arc::clone(&runtime.artifact_store);
+    map_reserved(
+        call_reserved::<ArtifactLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.put(request).await },
+        )
+        .await,
+        ErrorStage::Publishing,
+        "artifact",
+    )
 }
 
 pub async fn put_artifact_bytes(
     runtime: &TargetLocalSourceRuntime,
+    context: ProviderCallContext,
     request: ArtifactBytesWriteRequest,
 ) -> Result<ArtifactHandle, ApiError> {
-    runtime.artifact_store.put_bytes(request).await
-}
-
-async fn record_provider_heartbeat(
-    runtime: &TargetLocalSourceRuntime,
-    context: &ProviderCallContext,
-    reservation: Option<ProviderReservationSnapshot>,
-) {
-    let (Some(phase), Some(counts)) = (context.phase, context.counts.clone()) else {
-        return;
+    let Some(scheduler) = runtime.artifact_scheduler.as_deref() else {
+        return runtime.artifact_store.put_bytes(request).await;
     };
-    let now = Timestamp::from(chrono::Utc::now());
-    if let Err(error) = runtime
-        .jobs
-        .heartbeat(JobHeartbeat {
-            job_id: context.job_id,
-            attempt: context.attempt,
-            worker_id: Some("source-pipeline".to_string()),
-            phase,
-            status: LifecycleStatus::Running,
-            stage_id: context.stage_id,
-            heartbeat_at: now.clone(),
-            sequence: 0,
-            last_progress_at: Some(now),
-            last_event_sequence: None,
-            counts: Some(counts),
-            provider_reservations: reservation.into_iter().collect(),
-        })
-        .await
-    {
-        tracing::warn!(
-            job_id = %context.job_id.0,
-            phase = ?phase,
-            error = %error,
-            "failed to persist provider progress heartbeat"
-        );
-    }
-}
-
-fn map_reserved<T>(
-    result: Result<T, ReservedCallError<ApiError>>,
-    stage: ErrorStage,
-    provider_id: &str,
-) -> Result<T, ApiError> {
-    match result {
-        Ok(value) => Ok(value),
-        Err(ReservedCallError::Provider(error)) => Err(error),
-        Err(ReservedCallError::Scheduler(error)) => Err(scheduler_error(error, stage, provider_id)),
-    }
-}
-
-fn scheduler_error(error: SchedulerError, stage: ErrorStage, provider_id: &str) -> ApiError {
-    let code = match error {
-        SchedulerError::RequestTooLarge => "provider.scheduler.request_too_large",
-        SchedulerError::QueueFull => "provider.scheduler.queue_full",
-        SchedulerError::WaitTimeout => "provider.scheduler.wait_timeout",
-        SchedulerError::StaleFence => "provider.scheduler.stale_fence",
-        SchedulerError::Queued => "provider.scheduler.queued",
-        SchedulerError::Database(_) => "provider.scheduler.database",
-    };
-    ApiError::new(code, stage, error.to_string()).with_provider_id(provider_id)
+    let store = Arc::clone(&runtime.artifact_store);
+    map_reserved(
+        call_reserved::<ArtifactLane, _, ApiError, _, _>(
+            scheduler,
+            context.request(1),
+            move |_lease| async move { store.put_bytes(request).await },
+        )
+        .await,
+        ErrorStage::Publishing,
+        "artifact",
+    )
 }

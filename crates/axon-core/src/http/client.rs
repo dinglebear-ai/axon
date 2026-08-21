@@ -130,9 +130,6 @@ fn build_client_with_options(
 }
 
 fn base_client_builder(timeout: Option<Duration>, ssrf_dns_guard: bool) -> reqwest::ClientBuilder {
-    #[cfg(test)]
-    let _ = ssrf_dns_guard;
-
     // Explicit connection pool sizing. reqwest defaults `pool_max_idle_per_host`
     // to `usize::MAX`, which under sustained dual-Qdrant + TEI load on a single
     // host can drift toward ephemeral-port pressure (Linux default range ~28K).
@@ -144,15 +141,11 @@ fn base_client_builder(timeout: Option<Duration>, ssrf_dns_guard: bool) -> reqwe
     if let Some(timeout) = timeout {
         builder = builder.timeout(timeout);
     }
-    // Wire the SSRF-blocking DNS resolver in production builds to close the
-    // DNS rebinding TOCTOU window at connect time. Test builds skip only the
-    // custom resolver so httpmock servers on 127.0.0.1 remain reachable;
-    // validate_url() still guards parse-time SSRF checks in tests.
-    #[cfg(not(test))]
-    {
-        if ssrf_dns_guard {
-            builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver);
-        }
+    // Wire the SSRF-blocking DNS resolver in every build so connect-time
+    // enforcement is exercised by tests too. Explicit test loopback allowance
+    // is captured by the resolver when this client is constructed.
+    if ssrf_dns_guard {
+        builder = builder.dns_resolver(super::ssrf::SsrfBlockingResolver::for_current_policy());
     }
     builder
 }

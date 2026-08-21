@@ -33,3 +33,7 @@ mod provider_cooling_tests;
 #[cfg(test)]
 #[path = "tx_tests.rs"]
 mod tx_tests;
+
+#[cfg(test)]
+#[path = "security_error_memory_e2e_tests.rs"]
+mod security_error_memory_e2e_tests;

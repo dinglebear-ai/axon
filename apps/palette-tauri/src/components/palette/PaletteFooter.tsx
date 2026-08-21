@@ -1,4 +1,4 @@
-import { Settings, X } from "lucide-react";
+import { Clock3, Home, Settings, X } from "lucide-react";
 
 import { Button } from "@/components/ui/aurora/button";
 import { Kbd } from "@/components/ui/aurora/kbd";
@@ -12,6 +12,10 @@ interface PaletteFooterProps {
   onRecent: () => void;
   onSettings: () => void;
   onHide: () => void;
+  onHome?: () => void;
+  mobile?: boolean;
+  recentActive?: boolean;
+  showHide?: boolean;
 }
 
 // Footer row: keyboard hint legend on the left, endpoint status + settings/hide
@@ -22,8 +26,53 @@ export function PaletteFooter({
   onRecent,
   onSettings,
   onHide,
+  onHome,
+  mobile = false,
+  recentActive = false,
+  showHide = true,
 }: PaletteFooterProps) {
   const showHints = config?.showFooterHints ?? false;
+
+  if (mobile) {
+    return (
+      <nav className="palette-footer palette-footer-mobile" aria-label="Palette navigation">
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="mobile-nav-item"
+          type="button"
+          onClick={onHome}
+          aria-label="Home"
+        >
+          <Home size={19} strokeWidth={1.9} />
+          <span>Home</span>
+        </Button>
+        <Button
+          variant="plain"
+          size="unstyled"
+          className={recentActive ? "mobile-nav-item mobile-nav-item-active" : "mobile-nav-item"}
+          type="button"
+          onClick={onRecent}
+          aria-label="Recent"
+        >
+          <Clock3 size={19} strokeWidth={1.9} />
+          <span>Recent</span>
+        </Button>
+        <Button
+          variant="plain"
+          size="unstyled"
+          className="mobile-nav-item"
+          type="button"
+          onClick={onSettings}
+          aria-label="Settings"
+        >
+          <Settings size={19} strokeWidth={1.9} />
+          <span>Settings</span>
+        </Button>
+      </nav>
+    );
+  }
+
   return (
     <footer className="palette-footer">
       {showHints ? (
@@ -76,16 +125,18 @@ export function PaletteFooter({
         >
           <Settings size={14} />
         </Button>
-        <Button
-          variant="plain"
-          size="unstyled"
-          className="titlebar-button"
-          type="button"
-          onClick={onHide}
-          aria-label="Hide palette"
-        >
-          <X size={14} />
-        </Button>
+        {showHide && (
+          <Button
+            variant="plain"
+            size="unstyled"
+            className="titlebar-button"
+            type="button"
+            onClick={onHide}
+            aria-label="Hide palette"
+          >
+            <X size={14} />
+          </Button>
+        )}
       </span>
     </footer>
   );

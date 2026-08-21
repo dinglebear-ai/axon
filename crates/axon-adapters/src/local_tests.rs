@@ -86,6 +86,22 @@ async fn local_file_discovery_uses_public_stable_identity() {
 }
 
 #[tokio::test]
+async fn local_file_scope_does_not_bypass_sensitive_path_policy() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    let file_path = root.join(".env");
+    fs::write(&file_path, "AXON_TOKEN=secret").unwrap();
+
+    let plan = source_plan(file_path, SourceScope::File);
+    let manifest = adapter.discover(&plan).await.unwrap();
+
+    assert!(
+        manifest.items.is_empty(),
+        "File scope must still deny sensitive files"
+    );
+}
+
+#[tokio::test]
 async fn local_directory_discovery_emits_sorted_relative_file_items() {
     let adapter = LocalSourceAdapter::new();
     let root = temp_source_dir();
@@ -107,6 +123,40 @@ async fn local_directory_discovery_emits_sorted_relative_file_items() {
         assert!(!item.canonical_uri.contains("/home/"));
         assert!(!item.source_item_key.0.starts_with('/'));
     }
+}
+
+#[tokio::test]
+async fn local_directory_discovery_applies_max_items_before_hashing_the_full_tree() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    fs::write(root.join("z-last.rs"), "pub fn z() {}").unwrap();
+    fs::write(root.join("a-first.rs"), "pub fn a() {}").unwrap();
+    fs::write(root.join("m-middle.rs"), "pub fn m() {}").unwrap();
+    let mut plan = source_plan(root, SourceScope::Directory);
+    plan.limits.effective.max_items = Some(2);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    let keys = manifest
+        .items
+        .iter()
+        .map(|item| item.source_item_key.0.as_str())
+        .collect::<Vec<_>>();
+
+    // This must match the historical sort-then-truncate result regardless of
+    // filesystem walk order, while discovery retains only the first N candidates.
+    assert_eq!(keys, vec!["a-first.rs", "m-middle.rs"]);
+}
+
+#[tokio::test]
+async fn local_directory_discovery_short_circuits_zero_max_items() {
+    let adapter = LocalSourceAdapter::new();
+    let root = temp_source_dir();
+    fs::write(root.join("ignored.rs"), "pub fn ignored() {}").unwrap();
+    let mut plan = source_plan(root, SourceScope::Directory);
+    plan.limits.effective.max_items = Some(0);
+
+    let manifest = adapter.discover(&plan).await.unwrap();
+    assert!(manifest.items.is_empty());
 }
 
 #[tokio::test]

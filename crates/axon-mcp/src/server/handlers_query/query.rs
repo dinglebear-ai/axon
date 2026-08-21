@@ -3,8 +3,8 @@
 use crate::schema::{AxonToolResponse, QueryRequest};
 use crate::server::AxonMcpServer;
 use crate::server::common::{
-    InlineHint, internal_error, invalid_params, logged_internal_error, respond_with_mode, slugify,
-    to_pagination, validate_mcp_collection,
+    CURRENT_CALLER_AUTH_SNAPSHOT, InlineHint, internal_error, invalid_params,
+    logged_internal_error, respond_with_mode, slugify, to_pagination, validate_mcp_collection,
 };
 use axon_core::config::ConfigOverrides;
 use axon_services::query as query_svc;
@@ -38,9 +38,13 @@ impl AxonMcpServer {
             .base_service_context()
             .await
             .map_err(|e| internal_error(format!("service context: {e}")))?;
-        let result = query_svc::query(&ctx, &cfg, &query, pagination)
-            .await
-            .map_err(|e| logged_internal_error(&format!("query '{query}'"), e.as_ref()))?;
+        let caller_auth_snapshot = CURRENT_CALLER_AUTH_SNAPSHOT
+            .try_with(Clone::clone)
+            .unwrap_or_default();
+        let result =
+            query_svc::query_with_auth(&ctx, &cfg, &query, pagination, caller_auth_snapshot)
+                .await
+                .map_err(|e| logged_internal_error(&format!("query '{query}'"), e.as_ref()))?;
 
         respond_with_mode(
             "query",

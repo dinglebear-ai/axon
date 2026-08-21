@@ -7,67 +7,48 @@
 //! local-source runtime.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use axon_adapters::providers::chrome_render::{ChromeRenderConfig, ChromeRenderProvider};
-use axon_adapters::providers::http_fetch::{HttpFetchConfig, HttpFetchProvider};
+use axon_adapters::boundary::{FetchProvider, RenderProvider};
+use axon_adapters::providers::chrome_render::{
+    CHROME_RENDER_PROVIDER_ID, ChromeRenderConfig, ChromeRenderProvider,
+};
+use axon_adapters::providers::http_fetch::{
+    HTTP_FETCH_PROVIDER_ID, HttpFetchConfig, HttpFetchProvider,
+};
 use axon_adapters::{
     ArtifactCandidateSink, DepotArtifactCandidateSink, NoopArtifactCandidateSink,
     NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter,
 };
-use axon_api::source::{InstructionSupport, ProviderId, ProviderKind};
+use axon_api::source::{InstructionSupport, ProviderId};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
 use axon_embedding::provider::EmbeddingProvider;
-use axon_embedding::reservation::{ProviderReservationConfig, ProviderReservationManager};
 use axon_embedding::tei::{TeiEmbeddingConfig, TeiEmbeddingProvider};
 use axon_jobs::boundary::JobStore;
-use axon_jobs::scheduler::{ProviderCapacityDomain, ProviderScheduler, SchedulerConfig};
 use axon_ledger::sqlite::SqliteLedgerStore;
 use axon_vectors::qdrant::QdrantVectorStore;
 use axon_vectors::store::VectorStore;
 use sqlx::SqlitePool;
-use tokio::sync::watch;
+use tokio::sync::{Semaphore, watch};
 
-use super::TargetLocalSourceRuntime;
+mod read_stores;
+mod schedulers;
 
-/// Read-plane stores plus their provider identity, built from [`Config`].
-///
-/// This is the minimal seam the read/RAG path (`query`) needs — a vector store
-/// and an embedding provider — without the write-plane jobs/ledger wiring. The
-/// full [`TargetLocalSourceRuntime::from_config`] reuses the same constructors.
-pub struct TargetReadStores {
-    pub vector_store: Arc<dyn VectorStore>,
-    pub embedding_provider: Arc<dyn EmbeddingProvider>,
-    pub embedding_provider_id: ProviderId,
-    pub embedding_model: String,
-    pub embedding_dimensions: u32,
-}
+pub use read_stores::{TargetReadStores, build_read_stores_from_config};
+#[cfg(test)]
+use schedulers::scheduler_authority_id;
+use schedulers::{RuntimeSchedulers, build_runtime_schedulers, source_db_stage_capacity};
 
-/// Build the read-plane stores (vector store + embedding provider) from
-/// [`Config`]. Store constructors do not perform I/O; only the embedding
-/// identity is derived from the live TEI provider (with a config/default
-/// fallback when it is unreachable).
-pub async fn build_read_stores_from_config(cfg: &Config) -> TargetReadStores {
-    let identity = resolve_embedding_identity(cfg).await;
-    let embedding_provider = build_tei_provider(cfg, &identity);
-    let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
-    axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
-    axon_vectors::qdrant::configure_parallelism(
-        &mut vector_store,
-        axon_core::config::parse::tuning::qdrant_upsert_parallelism(),
-        axon_core::config::parse::tuning::qdrant_payload_index_parallelism(),
-    );
-    TargetReadStores {
-        vector_store: Arc::new(vector_store),
-        embedding_provider: Arc::new(embedding_provider),
-        embedding_provider_id: ProviderId::new(EMBEDDING_PROVIDER_ID),
-        embedding_model: identity.model,
-        embedding_dimensions: identity.dimensions,
-    }
-}
+use super::{
+    TargetLocalSourceRuntime,
+    db_limited_ledger::DbLimitedLedgerStore,
+    scheduled_web::{ScheduledFetchProvider, ScheduledRenderProvider},
+};
+
+const DEPOT_URL_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_URL";
+const DEPOT_TOKEN_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN";
 
 /// Construct the TEI embedding provider seeded with the resolved embedding
 /// identity, so `EmbeddingResult.model`/`dimensions` (stamped into every vector
@@ -115,6 +96,7 @@ fn query_instruction_support(cfg: &Config) -> InstructionSupport {
 struct EmbeddingIdentity {
     model: String,
     dimensions: u32,
+    verified: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +114,7 @@ struct EmbeddingIdentityCache {
 static EMBEDDING_IDENTITY_CACHE: OnceLock<Mutex<EmbeddingIdentityCache>> = OnceLock::new();
 const EMBEDDING_IDENTITY_CACHE_TTL: Duration = Duration::from_secs(30);
 const EMBEDDING_IDENTITY_FALLBACK_TTL: Duration = Duration::from_secs(5);
+const EMBEDDING_IDENTITY_DURABLE_TTL: Duration = Duration::from_secs(30 * 60);
 
 /// Resolve the embedding model + dimensions from the live TEI endpoint (`/info`
 /// for `model_id`, a probe embed for dimensions). Builds a probe provider seeded
@@ -145,6 +128,87 @@ async fn resolve_embedding_identity(cfg: &Config) -> EmbeddingIdentity {
         IdentityResolutionClaim::Wait(receiver) => receiver,
     };
     wait_for_embedding_identity(receiver).await
+}
+
+/// Resolve TEI identity with a process-independent SQLite cache. Short-lived
+/// CLI reads therefore pay the `/info` + probe-embed cost only when the cache
+/// is cold, while long-lived processes retain the faster in-memory singleflight
+/// above. Fallback identities are deliberately never persisted.
+async fn resolve_embedding_identity_with_pool(
+    cfg: &Config,
+    pool: &SqlitePool,
+) -> EmbeddingIdentity {
+    let cache_key = embedding_identity_cache_key(cfg);
+    if let Some(identity) = load_durable_embedding_identity(pool, &cache_key).await {
+        return identity;
+    }
+
+    let identity = resolve_embedding_identity(cfg).await;
+    if identity.verified
+        && let Err(error) = persist_durable_embedding_identity(pool, &cache_key, &identity).await
+    {
+        tracing::warn!(%error, "failed to persist verified embedding identity cache");
+    }
+    identity
+}
+
+async fn load_durable_embedding_identity(
+    pool: &SqlitePool,
+    cache_key: &str,
+) -> Option<EmbeddingIdentity> {
+    let ttl_ms = i64::try_from(EMBEDDING_IDENTITY_DURABLE_TTL.as_millis()).unwrap_or(i64::MAX);
+    let cutoff = chrono::Utc::now().timestamp_millis().saturating_sub(ttl_ms);
+    let row = sqlx::query_as::<_, (String, i64)>(
+        "SELECT model, dimensions FROM provider_identity_cache \
+         WHERE cache_key = ? AND provider_kind = 'embedding' AND updated_at >= ?",
+    )
+    .bind(cache_key)
+    .bind(cutoff)
+    .fetch_optional(pool)
+    .await;
+
+    match row {
+        Ok(Some((model, dimensions))) => {
+            let dimensions = u32::try_from(dimensions).ok()?;
+            (!model.trim().is_empty() && dimensions > 0).then_some(EmbeddingIdentity {
+                model,
+                dimensions,
+                verified: true,
+            })
+        }
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(%error, "failed to read durable embedding identity cache");
+            None
+        }
+    }
+}
+
+async fn persist_durable_embedding_identity(
+    pool: &SqlitePool,
+    cache_key: &str,
+    identity: &EmbeddingIdentity,
+) -> Result<(), sqlx::Error> {
+    debug_assert!(identity.verified);
+    sqlx::query(
+        "INSERT INTO provider_identity_cache \
+         (cache_key, provider_kind, provider_id, model, dimensions, updated_at) \
+         VALUES (?, 'embedding', ?, ?, ?, ?) \
+         ON CONFLICT(cache_key) DO UPDATE SET \
+           provider_kind = excluded.provider_kind, \
+           provider_id = excluded.provider_id, \
+           model = excluded.model, \
+           dimensions = excluded.dimensions, \
+           updated_at = excluded.updated_at",
+    )
+    .bind(cache_key)
+    .bind(EMBEDDING_PROVIDER_ID)
+    .bind(&identity.model)
+    .bind(i64::from(identity.dimensions))
+    .bind(chrono::Utc::now().timestamp_millis())
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// Invalidate the cached identity and any negative result for this exact TEI
@@ -246,6 +310,7 @@ async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration
             let identity = EmbeddingIdentity {
                 model: derived.model,
                 dimensions: derived.dimensions,
+                verified: true,
             };
             (identity, EMBEDDING_IDENTITY_CACHE_TTL)
         }
@@ -259,6 +324,7 @@ async fn derive_embedding_identity(cfg: &Config) -> (EmbeddingIdentity, Duration
             let identity = EmbeddingIdentity {
                 model: EMBEDDING_MODEL_FALLBACK.to_string(),
                 dimensions: EMBEDDING_DIMENSIONS_FALLBACK,
+                verified: false,
             };
             (identity, EMBEDDING_IDENTITY_FALLBACK_TTL)
         }
@@ -298,14 +364,6 @@ const MAX_INPUT_TOKENS: u32 = 8192;
 /// Max tokens pooled into one TEI embed batch.
 const MAX_BATCH_TOKENS: u32 = 65_536;
 
-/// Durable vector-scheduler capacity. `[providers.vector]` has no equivalent
-/// config-driven capacity/reserve knobs yet, so these remain explicit defaults
-/// for the shared SQLite vector lane.
-const VECTOR_RESERVATION_CAPACITY: u32 = 2;
-const VECTOR_RESERVATION_INTERACTIVE_RESERVE: u32 = 1;
-const DEPOT_URL_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_URL";
-const DEPOT_TOKEN_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN";
-
 impl TargetLocalSourceRuntime {
     /// Build the production target local-source runtime from [`Config`].
     ///
@@ -329,9 +387,13 @@ impl TargetLocalSourceRuntime {
         // (`axon_jobs::migrations::apply_all_migrations`), which applies
         // axon-ledger's own migration set FIRST against this pool; no separate
         // migration here.
-        let ledger = SqliteLedgerStore::from_pool(pool.clone());
+        let db_stage_slots = Arc::new(Semaphore::new(source_db_stage_capacity(&pool)));
+        let ledger: Arc<dyn axon_ledger::store::LedgerStore> = Arc::new(DbLimitedLedgerStore::new(
+            Arc::new(SqliteLedgerStore::from_pool(pool.clone())),
+            Arc::clone(&db_stage_slots),
+        ));
 
-        let identity = resolve_embedding_identity(cfg).await;
+        let identity = resolve_embedding_identity_with_pool(cfg, &pool).await;
         let embedding_provider = build_tei_provider(cfg, &identity);
 
         let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
@@ -344,49 +406,43 @@ impl TargetLocalSourceRuntime {
 
         let embedding_provider_id = ProviderId::new(EMBEDDING_PROVIDER_ID);
         let vector_provider_id = ProviderId::new(VECTOR_PROVIDER_ID);
-        let scheduler_authority_id = scheduler_authority_id(&cfg.sqlite_path);
-        let embedding_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Embedding,
-                instance_id: embedding_provider_id.0.clone(),
-                authority_id: scheduler_authority_id.clone(),
-            },
-            scheduler_config(
-                cfg.embed_tei_max_concurrent as u32,
-                cfg.embed_tei_interactive_reserved_requests as u32,
-            ),
-        )?;
-        let vector_scheduler = ProviderScheduler::new(
-            pool.clone(),
-            ProviderCapacityDomain {
-                kind: ProviderKind::Vector,
-                instance_id: vector_provider_id.0.clone(),
-                authority_id: scheduler_authority_id,
-            },
-            scheduler_config(
-                VECTOR_RESERVATION_CAPACITY,
-                VECTOR_RESERVATION_INTERACTIVE_RESERVE,
-            ),
-        )?;
-        embedding_scheduler.reconcile().await?;
-        vector_scheduler.reconcile().await?;
+        let RuntimeSchedulers {
+            embedding: embedding_scheduler,
+            vector: vector_scheduler,
+            fetch: fetch_scheduler,
+            render: render_scheduler,
+            parse: parse_scheduler,
+            graph: graph_scheduler,
+            artifact: artifact_scheduler,
+        } = build_runtime_schedulers(cfg, &pool, &embedding_provider_id, &vector_provider_id)
+            .await?;
 
-        let fetch_provider = HttpFetchProvider::new(HttpFetchConfig {
-            timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
-            max_bytes: cfg.max_page_bytes,
-            // General-purpose HTTP fetch boundary — use the general `user_agent`,
-            // not the Chrome-specific `chrome_user_agent` (which itself falls
-            // back to `user_agent`, not the other way around; see doc comments
-            // on both fields in `axon-core/src/config/types/config.rs`).
-            user_agent: cfg.user_agent.clone(),
-        });
-        let render_provider = ChromeRenderProvider::new(ChromeRenderConfig {
-            chrome_remote_url: cfg.chrome_remote_url.clone(),
-            default_timeout_ms: cfg.request_timeout_ms,
-        });
-        let fetch_provider = Arc::new(fetch_provider);
-        let render_provider = Arc::new(render_provider);
+        let raw_fetch_provider: Arc<dyn FetchProvider> =
+            Arc::new(HttpFetchProvider::new(HttpFetchConfig {
+                timeout: Duration::from_millis(cfg.request_timeout_ms.unwrap_or(30_000)),
+                max_bytes: cfg.max_page_bytes,
+                // General-purpose HTTP fetch boundary — use the general `user_agent`,
+                // not the Chrome-specific `chrome_user_agent` (which itself falls
+                // back to `user_agent`, not the other way around; see doc comments
+                // on both fields in `axon-core/src/config/types/config.rs`).
+                user_agent: cfg.user_agent.clone(),
+            }));
+        let raw_render_provider: Arc<dyn RenderProvider> =
+            Arc::new(ChromeRenderProvider::new(ChromeRenderConfig {
+                max_concurrent_pages: Some(cfg.render_provider_concurrency),
+                chrome_remote_url: cfg.chrome_remote_url.clone(),
+                default_timeout_ms: cfg.request_timeout_ms,
+            }));
+        let fetch_provider: Arc<dyn FetchProvider> = Arc::new(ScheduledFetchProvider::new(
+            raw_fetch_provider,
+            Arc::new(fetch_scheduler),
+            HTTP_FETCH_PROVIDER_ID,
+        ));
+        let render_provider: Arc<dyn RenderProvider> = Arc::new(ScheduledRenderProvider::new(
+            raw_render_provider,
+            Arc::new(render_scheduler),
+            CHROME_RENDER_PROVIDER_ID,
+        ));
         let web_fetch_provider = Arc::clone(&fetch_provider);
         let web_render_provider = Arc::clone(&render_provider);
         let web_source_adapter: Arc<dyn SourceAdapter> = Arc::new(WebSourceAdapter::new(
@@ -404,20 +460,21 @@ impl TargetLocalSourceRuntime {
 
         Ok(Self {
             jobs,
-            ledger: Arc::new(ledger),
+            ledger,
             embedding_provider: Arc::new(embedding_provider),
             vector_store: Arc::new(vector_store),
-            embedding_reservations: Arc::new(ProviderReservationManager::new(
-                embedding_reservation_config(cfg, embedding_provider_id.clone()),
-            )),
             embedding_scheduler: Some(Arc::new(embedding_scheduler)),
             vector_scheduler: Some(Arc::new(vector_scheduler)),
+            parse_scheduler: Some(Arc::new(parse_scheduler)),
+            graph_scheduler: Some(Arc::new(graph_scheduler)),
+            artifact_scheduler: Some(Arc::new(artifact_scheduler)),
             embedding_provider_id,
             vector_provider_id,
             embedding_model: identity.model,
             embedding_dimensions: identity.dimensions,
             document_prepare_concurrency: cfg.embed_prep_concurrency.max(1),
             embed_pool_max_inputs: cfg.embed_pool_max_inputs.max(1),
+            db_stage_slots,
             fetch_provider,
             render_provider,
             web_source_adapter,
@@ -446,13 +503,7 @@ fn artifact_candidate_sink_for_runtime_from_values(
     match artifact_candidate_sink_from_values(depot_url, depot_token) {
         Ok(sink) => sink,
         Err(error) => {
-            // Depot delivery is optional. A malformed optional sink must not
-            // tear down the complete source data plane; retain the runtime
-            // with an explicit no-op sink and a visible configuration error.
-            tracing::error!(
-                error = %error,
-                "invalid optional Depot candidate sink configuration; candidate delivery is disabled"
-            );
+            tracing::error!(error = %error, "invalid optional Depot candidate sink configuration; candidate delivery is disabled");
             Arc::new(NoopArtifactCandidateSink)
         }
     }
@@ -473,56 +524,6 @@ fn artifact_candidate_sink_from_values(
         (None, Some(_)) => {
             Err(format!("{DEPOT_URL_ENV} is required when {DEPOT_TOKEN_ENV} is configured").into())
         }
-    }
-}
-
-fn scheduler_authority_id(path: &Path) -> String {
-    let absolute = if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(path)
-    };
-    let stable = std::fs::canonicalize(&absolute).unwrap_or(absolute);
-    format!("sqlite:{}", stable.display())
-}
-
-fn scheduler_config(capacity: u32, interactive_reserve: u32) -> SchedulerConfig {
-    let capacity = capacity.max(1);
-    SchedulerConfig {
-        capacity,
-        interactive_reserve: interactive_reserve.min(capacity),
-        max_entries: capacity.saturating_mul(256).max(256),
-        max_units: capacity.saturating_mul(256).max(256),
-    }
-}
-
-/// Embedding reservation gate config, driven end-to-end by
-/// `[providers.embedding]`: `capacity` from `max-concurrent-requests`
-/// (`cfg.embed_tei_max_concurrent`) and `interactive_reserve` from
-/// `interactive-reserved-requests` (`cfg.embed_tei_interactive_reserved_requests`).
-/// Previously both were hardcoded constants (`capacity: 2, interactive_reserve:
-/// 1`) copied from the `#[cfg(test)]` fixture default and completely
-/// disconnected from config — see axon_rust-ldozg.
-///
-/// `background-max-concurrent-requests`/`maintenance-max-concurrent-requests`
-/// are NOT separately enforced here: `ProviderReservationManager` only
-/// implements a two-tier interactive/non-interactive gate (this `capacity`
-/// minus this `interactive_reserve`), so background and maintenance
-/// priorities currently share one combined non-interactive ceiling. See the
-/// doc comment on `Config::embed_tei_background_max_concurrent_requests`.
-fn embedding_reservation_config(
-    cfg: &Config,
-    provider_id: ProviderId,
-) -> ProviderReservationConfig {
-    ProviderReservationConfig {
-        provider_id,
-        provider_kind: ProviderKind::Embedding,
-        capacity: cfg.embed_tei_max_concurrent as u32,
-        interactive_reserve: cfg.embed_tei_interactive_reserved_requests as u32,
-        cooldown_after_failures: cfg.embed_tei_cooldown_after_failures as u32,
-        cooldown_secs: cfg.embed_tei_cooldown_secs,
     }
 }
 

@@ -6,6 +6,7 @@ import {
   type ConfigFile,
   type ConfigResponse,
   type CommandResultView,
+  type EnvConfigKeyState,
   type EnvConfigResponse,
   type PanelCommandResponse,
   type PanelDoctorResponse,
@@ -28,9 +29,8 @@ export function usePanelData() {
   const [panelState, setPanelState] = useState<PanelState | null>(null);
   const [config, setConfig] = useState('');
   const [loadedConfig, setLoadedConfig] = useState('');
-  const [envConfig, setEnvConfig] = useState('');
-  const [loadedEnvConfig, setLoadedEnvConfig] = useState('');
-  const [envPath, setEnvPath] = useState('');
+  const [envKeys, setEnvKeys] = useState<EnvConfigKeyState[]>([]);
+  const [envSaveBusy, setEnvSaveBusy] = useState<string | null>(null);
   const [activeConfigFile, setActiveConfigFile] = useState<ConfigFile>('toml');
   const [stack, setStack] = useState<StackResponse | null>(null);
   const [stackLoading, setStackLoading] = useState(false);
@@ -83,13 +83,15 @@ export function usePanelData() {
     [urlSummary, runtimeChecks]
   );
   const configMeta = useMemo(() => summarizeConfig(config), [config]);
-  const envMeta = useMemo(() => summarizeConfig(envConfig), [envConfig]);
   const configDirty = config !== loadedConfig;
-  const envDirty = envConfig !== loadedEnvConfig;
-  const activeDirty = activeConfigFile === 'toml' ? configDirty : envDirty;
-  const activeConfigPath = activeConfigFile === 'toml' ? panelState?.config_path : envPath;
-  const activeConfigMeta = activeConfigFile === 'toml' ? configMeta : envMeta;
-  const activeConfigValue = activeConfigFile === 'toml' ? config : envConfig;
+  const envDirty = false;
+  const activeDirty = activeConfigFile === 'toml' && configDirty;
+  const activeConfigPath = activeConfigFile === 'toml' ? panelState?.config_path : undefined;
+  const activeConfigMeta =
+    activeConfigFile === 'toml'
+      ? configMeta
+      : { lines: envKeys.length, characters: 0 };
+  const activeConfigValue = activeConfigFile === 'toml' ? config : '';
   const liveJobs = useMemo(() => collectJobs(axonStatus), [axonStatus]);
   const activeJobs = useMemo(
     () => liveJobs.filter((job) => ['pending', 'running'].includes(job.status)),
@@ -135,9 +137,7 @@ export function usePanelData() {
         return res.json();
       })
       .then((envData: EnvConfigResponse) => {
-        setEnvConfig(envData.raw_env);
-        setLoadedEnvConfig(envData.raw_env);
-        setEnvPath(envData.path);
+        setEnvKeys(envData.keys);
       })
       .catch((error) => setMessage(String(error)));
 
@@ -297,13 +297,11 @@ export function usePanelData() {
   }
 
   async function saveConfig() {
-    const res = await fetch(activeConfigFile === 'toml' ? '/api/panel/config' : '/api/panel/env', {
+    if (activeConfigFile !== 'toml') return;
+    const res = await fetch('/api/panel/config', {
       method: 'PUT',
       headers: authedHeaders,
-      body:
-        activeConfigFile === 'toml'
-          ? JSON.stringify({ raw_toml: config })
-          : JSON.stringify({ raw_env: envConfig })
+      body: JSON.stringify({ raw_toml: config })
     });
     if (!res.ok) {
       setMessage(await res.text());
@@ -311,18 +309,40 @@ export function usePanelData() {
     }
     const body = (await res.json()) as SaveConfigResponse;
     setMessage(body.message);
-    if (activeConfigFile === 'toml') setLoadedConfig(config);
-    else setLoadedEnvConfig(envConfig);
+    setLoadedConfig(config);
+  }
+
+  async function saveEnvKey(key: string, value: string | null): Promise<boolean> {
+    setEnvSaveBusy(key);
+    try {
+      const res = await fetch('/api/panel/env', {
+        method: 'PUT',
+        headers: authedHeaders,
+        body: JSON.stringify({ key, value })
+      });
+      if (!res.ok) {
+        setMessage(await res.text());
+        return false;
+      }
+      const body = (await res.json()) as SaveConfigResponse;
+      setMessage(body.message);
+      setEnvKeys((entries) =>
+        entries.map((entry) =>
+          entry.key === key ? { ...entry, configured: value !== null } : entry
+        )
+      );
+      return true;
+    } finally {
+      setEnvSaveBusy(null);
+    }
   }
 
   function revertConfig() {
     if (activeConfigFile === 'toml') setConfig(loadedConfig);
-    else setEnvConfig(loadedEnvConfig);
   }
 
   function updateActiveConfig(value: string) {
     if (activeConfigFile === 'toml') setConfig(value);
-    else setEnvConfig(value);
   }
 
   async function runCommand(command = commandInput) {
@@ -409,7 +429,9 @@ export function usePanelData() {
     statusMessage,
     statusUpdatedAt,
     // config
-    config, envConfig,
+    config,
+    envKeys,
+    envSaveBusy,
     activeConfigFile, setActiveConfigFile,
     activeConfigPath,
     activeConfigMeta,
@@ -420,6 +442,7 @@ export function usePanelData() {
     updateActiveConfig,
     revertConfig,
     saveConfig,
+    saveEnvKey,
     // command palette
     paletteOpen, setPaletteOpen,
     commandInput, setCommandInput,

@@ -1212,7 +1212,14 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     assert_eq!(queued_cancel.status, LifecycleStatus::Canceled);
     assert!(queued_cancel.canceled_at.is_some());
 
-    let job = store.create(create_request()).await.expect("create job");
+    let retry_auth_snapshot = AuthSnapshot::panel("retry-policy-v1");
+    let job = store
+        .create(JobCreateRequest {
+            auth_snapshot: retry_auth_snapshot.clone(),
+            ..create_request()
+        })
+        .await
+        .expect("create job");
     let original_stage_id = store.stages(job.job_id).await.expect("original stages")[0].stage_id;
     store
         .update_status(JobStatusUpdate {
@@ -1289,6 +1296,18 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
     assert_eq!(
         retry_request.as_deref(),
         Some("{\"source\":\"/tmp/project\"}")
+    );
+    let retry_auth_json: String =
+        sqlx::query_scalar("SELECT auth_snapshot_json FROM jobs WHERE job_id = ?")
+            .bind(retry.retry_job.job_id.0.to_string())
+            .fetch_one(&store.pool)
+            .await
+            .expect("retry auth snapshot");
+    let retry_auth: AuthSnapshot =
+        serde_json::from_str(&retry_auth_json).expect("deserialize retry auth snapshot");
+    assert_eq!(
+        retry_auth, retry_auth_snapshot,
+        "retry must preserve the exact caller auth snapshot"
     );
 
     sqlx::query(

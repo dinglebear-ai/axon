@@ -21,7 +21,7 @@ const JOB_ID: &str = "00000000-0000-0000-0000-000000000099";
 
 #[tokio::test]
 async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -154,7 +154,7 @@ async fn target_code_search_carries_unchanged_results_into_the_current_epoch() {
 
 #[tokio::test]
 async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -384,7 +384,7 @@ async fn target_code_search_excludes_uncommitted_and_redacted_vectors() {
 
 #[tokio::test]
 async fn target_code_search_fails_refresh_but_can_query_last_committed_generation_when_skipped() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())

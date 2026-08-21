@@ -104,6 +104,13 @@ openai-pool-max-inputs = 768
 }
 
 #[test]
+fn valid_toml_parses_tool_execution_security_gate() {
+    let cfg = load_toml_config_from_str("[security]\nallow-tool-execution = true")
+        .expect("security tool-execution gate should parse");
+    assert_eq!(cfg.security.allow_tool_execution, Some(true));
+}
+
+#[test]
 fn valid_toml_parses_chrome_bootstrap_section() {
     let mut f = NamedTempFile::new().unwrap();
     writeln!(

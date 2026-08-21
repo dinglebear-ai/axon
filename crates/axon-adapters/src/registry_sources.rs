@@ -135,10 +135,14 @@ impl SourceAdapter for RegistrySourceAdapter {
         }
         let options = validate_options(&plan.route.validated_options)?;
         let dump = RegistryDump::load(&options.dump_path)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
-            .map(|item| registry_source_document(plan, &acquisition, &dump, item))
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
+            .map(|item| registry_source_document(plan, &source_id, &dump, item))
             .collect::<Result<Vec<_>>>()?;
         Ok(StageExecutionResult {
             header: stage_header(
@@ -314,46 +318,43 @@ fn selected_versions<'a>(
 
 fn registry_source_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
+    source_id: &SourceId,
     dump: &RegistryDump,
-    item: &AcquiredSourceItem,
+    item: AcquiredSourceItem,
 ) -> Result<SourceDocument> {
-    let version = item.manifest_item.version.as_deref().ok_or_else(|| {
+    let version = item.manifest_item.version.clone().ok_or_else(|| {
         ApiError::new(
             "adapter.registry.item_version.missing",
             ErrorStage::Normalizing,
             "registry manifest item is missing its version",
         )
     })?;
-    let dump_version = dump.version(version).ok_or_else(|| {
+    let dump_version = dump.version(&version).ok_or_else(|| {
         ApiError::new(
             "adapter.registry.version.not_found",
             ErrorStage::Normalizing,
             "registry dump does not contain the requested version",
         )
-        .with_context("version", version.to_string())
+        .with_context("version", version.clone())
     })?;
     let metadata = package_metadata(plan, dump, dump_version);
     Ok(SourceDocument {
-        document_id: registry_document_id(
-            &acquisition.source_id,
-            &item.manifest_item.source_item_key,
-        ),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: registry_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: item
             .manifest_item
             .content_kind
             .unwrap_or(ContentKind::Markdown),
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title: Some(format!("{}@{}", dump.package, dump_version.version)),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: Some("text/markdown".to_string()),
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     })

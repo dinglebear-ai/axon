@@ -14,6 +14,7 @@ fn counts(warnings: Vec<SourceWarning>) -> IndexCounts {
         chunks_prepared: 1,
         vector_points_written: 1,
         removed: 0,
+        published_manifest: None,
         graph_candidates: Vec::new(),
         warnings,
         artifacts: Vec::new(),

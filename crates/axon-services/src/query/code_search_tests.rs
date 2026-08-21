@@ -25,7 +25,7 @@ impl ReindexProgressSink for RecordingReindexProgress {
 
 #[tokio::test]
 async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -96,7 +96,7 @@ async fn target_code_search_refresh_uses_local_source_runtime_when_available() {
 
 #[tokio::test]
 async fn target_code_search_refresh_emits_progress_events_when_sink_is_present() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -154,7 +154,7 @@ async fn target_code_search_refresh_emits_progress_events_when_sink_is_present()
 
 #[tokio::test]
 async fn target_code_search_queries_committed_target_vectors_with_path_prefix() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -297,7 +297,7 @@ async fn target_code_search_queries_committed_target_vectors_with_path_prefix() 
 
 #[tokio::test]
 async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_state_when_skipped() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -391,7 +391,7 @@ async fn target_code_search_errors_on_failed_refresh_but_can_query_committed_sta
 
 #[tokio::test]
 async fn target_code_search_refresh_reports_stale_when_runtime_missing() {
-    let repo = tempfile::tempdir().expect("repo");
+    let repo = crate::test_support::visible_tempdir().expect("repo");
     Command::new("git")
         .arg("-C")
         .arg(repo.path())
@@ -494,7 +494,7 @@ fn code_search_allowed_roots_error_does_not_leak_absolute_path() {
 
 #[tokio::test]
 async fn code_search_resolution_errors_do_not_echo_probe_paths() {
-    let dir = tempfile::tempdir().expect("tempdir");
+    let dir = crate::test_support::visible_tempdir().expect("tempdir");
     let missing = dir.path().join("secret-checkout");
     let err = resolve_code_search_root(Some(&missing), CodeSearchCaller::Cli)
         .await
@@ -506,8 +506,8 @@ async fn code_search_resolution_errors_do_not_echo_probe_paths() {
 
 #[tokio::test]
 async fn code_search_project_origin_is_checkout_scoped() {
-    let a = tempfile::tempdir().expect("tempdir a");
-    let b = tempfile::tempdir().expect("tempdir b");
+    let a = crate::test_support::visible_tempdir().expect("tempdir a");
+    let b = crate::test_support::visible_tempdir().expect("tempdir b");
     let origin_a = code_search_project_origin(a.path()).await;
     let origin_b = code_search_project_origin(b.path()).await;
     assert_ne!(origin_a, origin_b);
