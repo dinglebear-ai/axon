@@ -28,7 +28,8 @@ use reqwest::Method;
 
 use crate::boundary::{FetchProvider, Result};
 
-const PROVIDER_ID: &str = "http_fetch";
+pub const HTTP_FETCH_PROVIDER_ID: &str = "http_fetch";
+const PROVIDER_ID: &str = HTTP_FETCH_PROVIDER_ID;
 
 /// Header names whose value is replaced with a fixed marker in the
 /// [`RedactedHeaders`] attached to a [`FetchedResource`]. Case-insensitive.

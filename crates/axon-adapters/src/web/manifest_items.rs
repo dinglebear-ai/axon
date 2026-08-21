@@ -67,6 +67,7 @@ pub(super) async fn page_manifest_item(
         .fetch(build_discover_fetch_request(
             &web,
             headers(&plan.route.validated_options.values),
+            &plan.request.metadata,
         ))
         .await?;
     let content_hash = Some(content_ref_hash(&fetched.content));
@@ -76,7 +77,13 @@ pub(super) async fn page_manifest_item(
     Ok(item)
 }
 
-fn build_discover_fetch_request(web: &WebUrlParts, headers: Vec<RedactedHeader>) -> FetchRequest {
+fn build_discover_fetch_request(
+    web: &WebUrlParts,
+    headers: Vec<RedactedHeader>,
+    execution_metadata: &MetadataMap,
+) -> FetchRequest {
+    let mut metadata = MetadataMap::new();
+    copy_provider_execution_metadata(execution_metadata, &mut metadata);
     FetchRequest {
         uri: web.normalized_url.clone(),
         method: "GET".to_string(),
@@ -85,7 +92,7 @@ fn build_discover_fetch_request(web: &WebUrlParts, headers: Vec<RedactedHeader>)
         timeout_ms: None,
         max_bytes: None,
         credential_refs: Vec::new(),
-        metadata: MetadataMap::new(),
+        metadata,
     }
 }
 

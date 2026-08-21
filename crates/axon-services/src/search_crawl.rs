@@ -2,7 +2,7 @@ use crate::context::ServiceContext;
 use crate::search::search_batch;
 use crate::search_source_index::enqueue_web_source_auto_index;
 use crate::types::{ResearchHit, SearchOptions};
-use axon_api::source::{LifecycleStatus, SourceScope};
+use axon_api::source::{AuthSnapshot, LifecycleStatus, SourceScope};
 use axon_core::config::Config;
 use axon_core::http::{normalize_url, validate_url_with_dns};
 use serde::Serialize;
@@ -59,9 +59,10 @@ pub async fn search_and_index_sources(
     service_context: &ServiceContext,
     query: &str,
     opts: SearchOptions,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<SearchAndSourceIndexResult, SearchError> {
     let results = search_batch(cfg, &[query], opts, None).await?.results;
-    let source_output = enqueue_search_sources(cfg, service_context, &results).await;
+    let source_output = enqueue_search_sources(cfg, service_context, &results, auth_snapshot).await;
     let source_index_status = source_index_status(&results, &source_output);
     Ok(SearchAndSourceIndexResult {
         results,
@@ -99,8 +100,9 @@ async fn enqueue_search_sources(
     cfg: &Config,
     service_context: &ServiceContext,
     results: &[Value],
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> SourceIndexOutput {
-    enqueue_search_sources_with_reason(cfg, service_context, results, "search").await
+    enqueue_search_sources_with_reason(cfg, service_context, results, "search", auth_snapshot).await
 }
 
 async fn enqueue_search_sources_with_reason(
@@ -108,6 +110,7 @@ async fn enqueue_search_sources_with_reason(
     service_context: &ServiceContext,
     results: &[Value],
     reason: &str,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> SourceIndexOutput {
     let auto_index_cfg = auto_index_config(cfg);
     let mut output = SourceIndexOutput::default();
@@ -133,7 +136,15 @@ async fn enqueue_search_sources_with_reason(
             ));
             continue;
         }
-        match enqueue_one(&auto_index_cfg, service_context, &normalized, reason).await {
+        match enqueue_one(
+            &auto_index_cfg,
+            service_context,
+            &normalized,
+            reason,
+            auth_snapshot.clone(),
+        )
+        .await
+        {
             Ok(job) => output.jobs.push(job),
             Err(r) => output.rejected.push(r),
         }
@@ -150,6 +161,7 @@ pub(crate) async fn enqueue_research_sources(
     cfg: &Config,
     service_context: &ServiceContext,
     hits: &[ResearchHit],
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> SourceIndexOutput {
     let results: Vec<Value> = hits
         .iter()
@@ -162,7 +174,8 @@ pub(crate) async fn enqueue_research_sources(
             })
         })
         .collect();
-    enqueue_search_sources_with_reason(cfg, service_context, &results, "research").await
+    enqueue_search_sources_with_reason(cfg, service_context, &results, "research", auth_snapshot)
+        .await
 }
 
 async fn enqueue_one(
@@ -170,6 +183,7 @@ async fn enqueue_one(
     service_context: &ServiceContext,
     url: &str,
     reason: &str,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<SearchSourceJob, SearchSourceRejection> {
     if let Err(e) = validate_url_with_dns(url).await {
         return Err(rejection(
@@ -191,6 +205,7 @@ async fn enqueue_one(
         0,
         auto_index_cfg.embed,
         reason,
+        auth_snapshot,
     )
     .await
     {

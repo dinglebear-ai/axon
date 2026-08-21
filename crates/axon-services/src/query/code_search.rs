@@ -4,14 +4,15 @@ use std::process::Command;
 
 use axon_api::source::{
     BatchId, ChunkId, ContentKind, EmbeddingBatch, EmbeddingInput, JobId, JobPriority, MetadataMap,
-    RedactionMetadata, SourceGenerationId, SourceId, SourceRange, VectorSearchRequest,
+    OperationKind, RedactionMetadata, SourceGenerationId, SourceId, SourceRange,
+    VectorSearchRequest,
 };
 use axon_api::{CanonicalCitation, QueryHit};
 use axon_core::config::Config;
-use axon_embedding::reservation::ProviderReservationContext;
 use axon_vectors::payload::generation_payload_i64;
 use serde_json::json;
 
+use super::provider_execution::ReadExecution;
 use crate::context::ServiceContext;
 use crate::query::wrap_service_error;
 use crate::types::{CodeSearchCaller, CodeSearchFreshness, CodeSearchOptions, CodeSearchResult};
@@ -84,85 +85,90 @@ async fn target_code_search(
     let Some(generation) = refresh.target_source_generation.clone() else {
         return Ok(code_search_missing_index_result(text, refresh.freshness));
     };
-    let Some(target) = ctx.target_local_source_runtime() else {
+    if ctx.target_local_source_runtime().is_none() {
         return Ok(code_search_missing_index_result(text, refresh.freshness));
-    };
-    let _reservation = target
-        .embedding_reservations
-        .reserve_with_context(ProviderReservationContext {
-            job_id: JobId::new(uuid::Uuid::new_v4()),
-            stage_id: None,
-            provider_id: Some(target.embedding_provider_id.clone()),
-            priority: JobPriority::Interactive,
-            units: 1,
-            ttl_seconds: Some(60),
-        })
-        .await
-        .map_err(|e| -> Box<dyn Error + Send + Sync> {
-            wrap_service_error(
-                "target code_search query embedding reservation failed".to_string(),
-                &e,
-            )
-        })?;
-    let embedding = target
-        .embedding_provider
-        .embed(EmbeddingBatch {
-            batch_id: BatchId::new(uuid::Uuid::new_v4()),
-            job_id: JobId::new(uuid::Uuid::new_v4()),
-            provider_id: target.embedding_provider_id.clone(),
-            model: target.embedding_model.clone(),
-            items: vec![EmbeddingInput {
-                chunk_id: ChunkId::new("code-search-query"),
-                text: text.to_string(),
-                content_kind: ContentKind::Code,
-                metadata: MetadataMap::new(),
-            }],
-            instruction: None,
-            priority: JobPriority::Interactive,
-            metadata: MetadataMap::new(),
-        })
-        .await
-        .map_err(|e| -> Box<dyn Error + Send + Sync> {
-            wrap_service_error("target code_search query embedding failed".to_string(), &e)
-        })?;
-    let dense_vector = embedding
-        .vectors
-        .first()
-        .map(|vector| vector.values.clone())
-        .ok_or("target code_search query embedding returned no vector")?;
+    }
+    let execution = ReadExecution::begin(
+        ctx,
+        ctx.cfg(),
+        OperationKind::Query,
+        serde_json::json!({
+            "query": text,
+            "collection": ctx.cfg().collection,
+            "source_id": source_id.0,
+            "generation": generation.0,
+            "operation": "code_search",
+        }),
+        None,
+    )
+    .await
+    .map_err(|error| -> Box<dyn Error + Send + Sync> { error.to_string().into() })?;
+    let provider = execution.scheduled_embedding();
+    let store = execution.scheduled_vectors();
+    let provider_id = execution.embedding_provider_id();
+    let model = execution.embedding_model();
 
-    let request = target_code_search_request(
-        ctx.cfg().collection.clone(),
-        text,
-        opts.limit.saturating_add(opts.offset).max(1),
-        dense_vector,
-        &source_id,
-        &generation,
-        path_prefix,
-    )?;
-    let matches =
-        target
-            .vector_store
+    let result: Result<CodeSearchResult, Box<dyn Error + Send + Sync>> = async {
+        let embedding = provider
+            .embed(EmbeddingBatch {
+                batch_id: BatchId::new(uuid::Uuid::new_v4()),
+                job_id: JobId::new(uuid::Uuid::new_v4()),
+                provider_id,
+                model,
+                items: vec![EmbeddingInput {
+                    chunk_id: ChunkId::new("code-search-query"),
+                    text: text.to_string(),
+                    content_kind: ContentKind::Code,
+                    metadata: MetadataMap::new(),
+                }],
+                instruction: None,
+                priority: JobPriority::Interactive,
+                metadata: MetadataMap::new(),
+            })
+            .await
+            .map_err(|e| -> Box<dyn Error + Send + Sync> {
+                wrap_service_error("target code_search query embedding failed".to_string(), &e)
+            })?;
+        let dense_vector = embedding
+            .vectors
+            .first()
+            .map(|vector| vector.values.clone())
+            .ok_or("target code_search query embedding returned no vector")?;
+
+        let request = target_code_search_request(
+            ctx.cfg().collection.clone(),
+            text,
+            opts.limit.saturating_add(opts.offset).max(1),
+            dense_vector,
+            &source_id,
+            &generation,
+            path_prefix,
+        )?;
+        let matches = store
             .search(request)
             .await
             .map_err(|e| -> Box<dyn Error + Send + Sync> {
                 wrap_service_error("target code_search vector query failed".to_string(), &e)
             })?;
-    let results = matches
-        .results
-        .into_iter()
-        .skip(opts.offset)
-        .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
-        .enumerate()
-        .map(|(index, hit)| target_vector_match_to_query_hit(index as u64 + 1, hit))
-        .collect::<Result<Vec<_>, _>>()?;
+        let results = matches
+            .results
+            .into_iter()
+            .skip(opts.offset)
+            .take(opts.limit.clamp(1, axon_api::MAX_CANONICAL_CITATIONS))
+            .enumerate()
+            .map(|(index, hit)| target_vector_match_to_query_hit(index as u64 + 1, hit))
+            .collect::<Result<Vec<_>, _>>()?;
 
-    Ok(CodeSearchResult {
-        query: text.to_string(),
-        content_trust: "untrusted_local_code".to_string(),
-        results,
-        freshness: refresh.freshness,
-    })
+        Ok(CodeSearchResult {
+            query: text.to_string(),
+            content_trust: "untrusted_local_code".to_string(),
+            results,
+            freshness: refresh.freshness,
+        })
+    }
+    .await;
+    execution.finish(ctx, &result).await;
+    result
 }
 
 fn target_code_search_request(

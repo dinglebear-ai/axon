@@ -63,8 +63,7 @@ impl LocalOptions {
         {
             return false;
         }
-        if scope != SourceScope::File
-            && is_sensitive_local_path(relative_key)
+        if axon_core::redact::is_sensitive_local_path(relative_key)
             && !explicitly_sensitive_included
         {
             return false;
@@ -327,46 +326,14 @@ fn is_known_config(name: &str) -> bool {
     )
 }
 
-fn is_sensitive_local_path(relative_key: &str) -> bool {
-    relative_key
-        .split('/')
-        .filter(|component| !component.is_empty())
-        .any(is_sensitive_local_name)
-}
-
 fn is_sensitive_include_pattern(pattern: &str) -> bool {
     pattern
         .split('/')
         .filter(|component| !component.is_empty() && *component != "**" && *component != "*")
         .any(|component| {
             let concrete = component.trim_matches('*');
-            !concrete.is_empty() && is_sensitive_local_name(concrete)
+            !concrete.is_empty() && axon_core::redact::is_sensitive_local_name(concrete)
         })
-}
-
-fn is_sensitive_local_name(name: &str) -> bool {
-    if name == ".env.example" {
-        return false;
-    }
-    let lower = name.to_ascii_lowercase();
-    lower.starts_with('.')
-        || lower == "id_rsa"
-        || lower == "id_ed25519"
-        || lower == "known_hosts"
-        || lower == "authorized_keys"
-        || lower.starts_with(".env")
-        || lower.ends_with(".pem")
-        || lower.ends_with(".key")
-        || lower.ends_with(".p12")
-        || lower.ends_with(".pfx")
-        || lower.contains("secret")
-        || lower.contains("credential")
-        || lower.contains("password")
-        || lower.contains("passwd")
-        || lower.contains("token")
-        || lower.contains("apikey")
-        || lower.contains("api-key")
-        || lower.contains("api_key")
 }
 
 fn is_lockfile(name: &str) -> bool {

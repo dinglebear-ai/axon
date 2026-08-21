@@ -47,17 +47,7 @@ fn redact_json_value(value: &mut serde_json::Value, changed: &mut bool) {
 }
 
 fn key_is_sensitive(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
-    [
-        "authorization",
-        "apikey",
-        "password",
-        "passwd",
-        "secret",
-        "token",
-    ]
-    .iter()
-    .any(|name| normalized.contains(name))
+    axon_core::redact::is_secret_like(&key.to_ascii_lowercase())
 }
 
 #[cfg(test)]

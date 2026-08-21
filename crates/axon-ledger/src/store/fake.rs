@@ -315,6 +315,27 @@ impl LedgerStore for FakeLedgerStore {
         Ok(())
     }
 
+    async fn publish_document_statuses(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        updated_at: Timestamp,
+    ) -> Result<u64> {
+        let mut state = self.state.lock().await;
+        if !state.sources.contains_key(&source_id) {
+            return Err(source_missing_error(&source_id));
+        }
+        let mut updated = 0u64;
+        for status in state.document_statuses.values_mut() {
+            if status.source_id == source_id && status.generation.as_ref() == Some(&generation) {
+                status.status = DocumentLifecycleStatus::Published;
+                status.updated_at = updated_at.clone();
+                updated = updated.saturating_add(1);
+            }
+        }
+        Ok(updated)
+    }
+
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {
         validate_cleanup_debt(&debt)?;
         let mut state = self.state.lock().await;

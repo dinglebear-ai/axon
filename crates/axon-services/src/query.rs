@@ -3,6 +3,7 @@ use crate::types::{
     AskResult, EvaluateResult, Pagination, QueryHit, QueryResult, RetrieveResult, SuggestResult,
     Suggestion,
 };
+use axon_api::source::AuthSnapshot;
 use axon_core::config::Config;
 use axon_core::error::{ServiceError, diagnostics_from_error};
 use std::error::Error;
@@ -10,20 +11,23 @@ use tokio::sync::mpsc;
 
 use crate::context::ServiceContext;
 
-pub use self::ask_retrieval::ask_via_retrieval;
 pub(crate) use self::ask_retrieval::retrieval_ask_context;
+pub use self::ask_retrieval::{ask_via_retrieval, ask_via_retrieval_with_auth};
 pub use self::code_search::{
     CodeSearchProjectResult, CodeSearchRefreshResult, ReindexProgress, ReindexProgressSink,
     code_search, code_search_with_progress, refresh_code_search_index,
     refresh_code_search_index_with_progress, resolve_code_search_project,
 };
-pub use self::retrieval::{query_via_retrieval, query_via_retrieval_with_cfg};
-pub use self::retrieve::retrieve;
+pub use self::retrieval::{
+    query_via_retrieval, query_via_retrieval_with_cfg, query_via_retrieval_with_cfg_and_auth,
+};
+pub use self::retrieve::{retrieve, retrieve_with_auth};
 use self::suggest::discover_crawl_suggestions;
 
 mod ask_retrieval;
 mod code_search;
 mod evaluate;
+mod provider_execution;
 mod retrieval;
 mod retrieve;
 mod suggest;
@@ -125,7 +129,18 @@ pub async fn query(
     text: &str,
     opts: Pagination,
 ) -> Result<QueryResult, Box<dyn Error>> {
-    query_via_retrieval_with_cfg(ctx, cfg, text, opts).await
+    query_with_auth(ctx, cfg, text, opts, None).await
+}
+
+/// Auth-aware semantic query entrypoint for authenticated transports.
+pub async fn query_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    text: &str,
+    opts: Pagination,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<QueryResult, Box<dyn Error>> {
+    query_via_retrieval_with_cfg_and_auth(ctx, cfg, text, opts, auth_snapshot).await
 }
 /// RAG ask: retrieve relevant context, then answer with LLM.
 ///
@@ -145,6 +160,17 @@ pub async fn ask(
     cfg: &Config,
     question: &str,
     tx: Option<mpsc::Sender<ServiceEvent>>,
+) -> Result<AskResult, Box<dyn Error>> {
+    ask_with_auth(ctx, cfg, question, tx, None).await
+}
+
+/// Auth-aware RAG ask entrypoint for authenticated transports.
+pub async fn ask_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    tx: Option<mpsc::Sender<ServiceEvent>>,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<AskResult, Box<dyn Error>> {
     emit(
         &tx,
@@ -185,9 +211,17 @@ pub async fn ask(
     )
     .await;
     let result = if cfg.ask_stream && tx.is_some() {
-        ask_via_retrieval(ctx, cfg, question, Some(ask_delta_handler(tx.clone()))).await?
+        ask_via_retrieval_with_auth(
+            ctx,
+            cfg,
+            question,
+            Some(ask_delta_handler(tx.clone())),
+            auth_snapshot.clone(),
+        )
+        .await?
     } else {
-        ask_via_retrieval(ctx, cfg, question, Option::<fn(&str)>::None).await?
+        ask_via_retrieval_with_auth(ctx, cfg, question, Option::<fn(&str)>::None, auth_snapshot)
+            .await?
     };
     if let Some(diagnostics) = &result.diagnostics {
         emit(

@@ -3490,6 +3490,17 @@
             "null"
           ]
         },
+        "priority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceRequest_JobPriority"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Scheduler priority for this source job. Defaults to normal."
+        },
         "response_mode": {
           "anyOf": [
             {
@@ -3521,6 +3532,16 @@
       },
       "title": "SourceRequest",
       "type": "object"
+    },
+    "SourceRequest_JobPriority": {
+      "enum": [
+        "interactive",
+        "high",
+        "normal",
+        "background",
+        "maintenance"
+      ],
+      "type": "string"
     },
     "SourceRequest_ResponseMode": {
       "enum": [
@@ -4049,7 +4070,7 @@
         "path": "crates/axon-api/src/mcp_schema/requests/watch.rs"
       },
       {
-        "checksum": "sha256:df13036a5056567904ea8a9de7fe5ce08aab9a79e068e8cb865a3d57c00b6396",
+        "checksum": "sha256:87986a79e3cf49b28af6bd41672e2395ddbb41dbbf9c8b791c85cc0515a16a56",
         "kind": "rust_module",
         "path": "crates/axon-api/src/mcp_schema/utility.rs"
       },
@@ -4059,7 +4080,7 @@
         "path": "crates/axon-mcp/src/schema_registry.rs"
       },
       {
-        "checksum": "sha256:99aaea6d8f5352a67a5d1247bad2c5b31b6a38cae2a117c3866cbad2e59c3edc",
+        "checksum": "sha256:2b3d11ad120bb2aedca2afe81d5208f09efcc1214a4f1bbd5b8617993adf1179",
         "kind": "rust_module",
         "path": "crates/axon-mcp/src/server.rs"
       },

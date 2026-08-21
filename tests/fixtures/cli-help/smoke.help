@@ -1,4 +1,4 @@
-Run crawl/ask smoke checks against the running stack
+Run source/ask smoke checks against the running stack
 
 Usage
   axon smoke [OPTIONS]

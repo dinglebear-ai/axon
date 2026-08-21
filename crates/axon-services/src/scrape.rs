@@ -1,21 +1,27 @@
 use crate::events::{LogLevel, ServiceEvent, emit};
+use crate::source::dispatch::{family_source_plan, web_crawl_options};
 use crate::types::ScrapeResult;
-use axon_adapters::vertical_registry::dispatch_by_url;
+use axon_adapters::web::WebSourceAdapter;
 use axon_api::result::DocumentBackend;
-use axon_api::source::{ArtifactKind, MetadataMap};
+use axon_api::source::{
+    AdapterOptions, ArtifactKind, ContentKind, ContentRef, MetadataMap, SourceDocument, SourceKind,
+    SourceRequest, SourceScope,
+};
 use axon_core::boundary::{ArtifactBytesWriteRequest, ArtifactStore, FileArtifactStore};
-use axon_core::config::Config;
+use axon_core::config::{Config, ScrapeFormat};
+use axon_core::content::{
+    build_selector_config, extract_anchor_hrefs, extract_meta_description, find_between,
+    to_llm_text, to_markdown,
+};
 use axon_core::http::normalize_url;
-use axon_extract::VerticalContext;
 use futures_util::stream::{self, StreamExt};
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-pub use axon_adapters::web_engine::scrape::map_scrape_payload;
+pub use axon_adapters::web::map_scrape_payload;
 
 pub const MAX_PUBLIC_STRUCTURED_BYTES: usize = 16 * 1024;
 
@@ -37,11 +43,8 @@ pub async fn scrape(
     tx: Option<mpsc::Sender<ServiceEvent>>,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
     let normalized = validate_and_normalize_scrape_url(url, &tx).await?;
-    let mut result = if let Some(result) = try_vertical_scrape(cfg, &normalized, &tx).await? {
-        result
-    } else {
-        axon_adapters::web_engine::scrape::scrape_to_result(cfg, &normalized).await?
-    };
+    let document = scrape_document_via_adapter(cfg, &normalized).await?;
+    let mut result = scrape_result_from_document(cfg, document)?;
     emit(
         &tx,
         ServiceEvent::Log {
@@ -80,89 +83,180 @@ pub async fn scrape(
     Ok(result)
 }
 
-async fn try_vertical_scrape(
+async fn scrape_document_via_adapter(
     cfg: &Config,
     normalized: &str,
-    tx: &Option<mpsc::Sender<ServiceEvent>>,
-) -> Result<Option<ScrapeResult>, Box<dyn Error>> {
-    if !cfg.enable_verticals {
-        return Ok(None);
+) -> Result<SourceDocument, Box<dyn Error>> {
+    let mut request = SourceRequest::new(normalized.to_string());
+    request.scope = Some(SourceScope::Page);
+    request.embed = false;
+    let mut routed = crate::source::routing::resolve_source_route(&request)
+        .map_err(|error| -> Box<dyn Error> { Box::new(error) })?;
+    if routed.kind != SourceKind::Web {
+        return Err(format!(
+            "scrape requires a web source; routed {:?} for {normalized}",
+            routed.kind
+        )
+        .into());
     }
-    let ctx = VerticalContext::new(Arc::new(cfg.clone()));
-    match tokio::time::timeout(Duration::from_secs(120), dispatch_by_url(normalized, &ctx)).await {
-        Ok(Some(Ok(doc))) => {
-            let result = vertical_doc_to_scrape_result(doc)?;
-            emit(
-                tx,
-                ServiceEvent::Log {
-                    level: LogLevel::Info,
-                    message: format!(
-                        "scrape vertical extractor complete: {}",
-                        result.extractor_name.as_deref().unwrap_or("unknown")
-                    ),
-                },
-            )
-            .await;
-            Ok(Some(result))
-        }
-        Ok(Some(Err(err))) => {
-            emit(
-                tx,
-                ServiceEvent::Log {
-                    level: LogLevel::Warn,
-                    message: format!(
-                        "vertical extractor failed for {normalized}; falling back to generic scrape: {err}"
-                    ),
-                },
-            )
-            .await;
-            Ok(None)
-        }
-        Ok(None) => Ok(None),
-        Err(_) => {
-            emit(
-                tx,
-                ServiceEvent::Log {
-                    level: LogLevel::Warn,
-                    message: format!(
-                        "vertical extractor timed out for {normalized}; falling back to generic scrape"
-                    ),
-                },
-            )
-            .await;
-            Ok(None)
-        }
-    }
+    routed.route.validated_options = AdapterOptions {
+        values: web_crawl_options(cfg, Some(1), Some(0)),
+    };
+    let mut plan = family_source_plan(normalized, &routed.route, false, None, None);
+    plan.job_id = axon_api::source::JobId::new(uuid::Uuid::new_v4());
+    WebSourceAdapter::from_config(cfg)
+        .scrape_document(&plan)
+        .await
+        .map_err(|error| -> Box<dyn Error> { Box::new(error) })
 }
 
-pub fn vertical_doc_to_scrape_result(
-    doc: axon_extract::ScrapedDoc,
+fn scrape_result_from_document(
+    cfg: &Config,
+    document: SourceDocument,
 ) -> Result<ScrapeResult, Box<dyn Error>> {
-    let links = extract_markdown_links(&doc.markdown);
-    let payload = serde_json::json!({
-        "url": doc.url,
-        "markdown": doc.markdown,
-        "links": links
+    let status_code = document
+        .metadata
+        .get("web_status")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .unwrap_or(200);
+    let extractor_name = document
+        .metadata
+        .get("extractor_name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let extractor_version = document
+        .metadata
+        .get("extractor_version")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    let mut title = document.title.clone().or_else(|| {
+        document
+            .metadata
+            .get("web_title")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
     });
-    let mut scrape_result = map_scrape_payload(payload)?;
-    scrape_result.backend = Some(DocumentBackend::LiveScrape);
-    scrape_result.follow_crawl_urls = doc.follow_crawl_urls;
-    let mut extra = doc.extra.unwrap_or_else(|| serde_json::json!({}));
-    if let serde_json::Value::Object(map) = &mut extra {
-        map.insert(
-            "extractor_version".to_string(),
-            doc.extractor_version.into(),
+    let url = document.canonical_uri.clone();
+    let content_kind = document.content_kind;
+    let text = match document.content {
+        ContentRef::InlineText { text } => text,
+        ContentRef::InlineBytes { .. } => {
+            return Err("scrape projection cannot expose binary page content".into());
+        }
+        ContentRef::Artifact { .. } | ContentRef::External { .. } => {
+            return Err("scrape projection requires inline page content".into());
+        }
+    };
+
+    let selector = build_selector_config(cfg);
+    let (markdown, description, links) = if content_kind == ContentKind::Html {
+        if title.is_none() {
+            title = find_between(&text, "<title>", "</title>").map(str::to_string);
+        }
+        let links = extract_anchor_hrefs(&url, &text, 512)
+            .into_iter()
+            .map(|href| serde_json::json!({ "href": href, "text": "" }))
+            .collect::<Vec<_>>();
+        (
+            to_markdown(&text, selector.as_ref()),
+            extract_meta_description(&text),
+            links,
+        )
+    } else {
+        (text.clone(), None, extract_markdown_links(&text))
+    };
+
+    let payload = serde_json::json!({
+        "url": url,
+        "status_code": status_code,
+        "markdown": markdown,
+        "title": title.clone().unwrap_or_default(),
+        "description": description.unwrap_or_default(),
+        "links": links,
+    });
+    let output = match cfg.format {
+        ScrapeFormat::Markdown => markdown.clone(),
+        ScrapeFormat::Html | ScrapeFormat::RawHtml => text,
+        ScrapeFormat::Json => serde_json::to_string_pretty(&payload)?,
+        ScrapeFormat::Llm => to_llm_text(&markdown, &url),
+    };
+
+    let (follow_crawl_urls, extra, structured, structured_for_embedding) =
+        structured_scrape_projection(
+            document.structured_payload,
+            extractor_name.as_deref(),
+            extractor_version.as_deref(),
         );
-    }
-    scrape_result.extra = Some(extra);
-    if let Some(structured) = doc.structured {
-        let redacted = redact_sensitive_structured_keys(structured);
-        scrape_result.structured_for_embedding = Some(redacted.clone());
-        scrape_result.structured = capped_public_structured_summary(redacted);
-    }
-    scrape_result.extractor_name = Some(doc.extractor_name.to_string());
-    scrape_result.title = doc.title;
-    Ok(scrape_result)
+
+    Ok(ScrapeResult {
+        payload,
+        url,
+        markdown,
+        output,
+        artifact_handle: None,
+        truncated: false,
+        token_estimate: None,
+        next_cursor: None,
+        remaining_tokens_estimate: None,
+        backend: Some(DocumentBackend::LiveScrape),
+        follow_crawl_urls,
+        extra,
+        structured,
+        structured_for_embedding,
+        extractor_name,
+        title,
+    })
+}
+
+fn structured_scrape_projection(
+    structured_payload: Option<serde_json::Value>,
+    extractor_name: Option<&str>,
+    extractor_version: Option<&str>,
+) -> (
+    Vec<String>,
+    Option<serde_json::Value>,
+    Option<serde_json::Value>,
+    Option<serde_json::Value>,
+) {
+    let wrapper = structured_payload.map(redact_sensitive_structured_keys);
+    let follow_crawl_urls = wrapper
+        .as_ref()
+        .and_then(|value| value.get("follow_crawl_urls"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flat_map(|items| items.iter())
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let structured_for_embedding = wrapper.as_ref().and_then(|value| {
+        value.get("structured").cloned().or_else(|| {
+            (!value
+                .get("kind")
+                .is_some_and(|kind| kind == "vertical_extractor"))
+            .then(|| value.clone())
+        })
+    });
+    let structured = structured_for_embedding
+        .clone()
+        .and_then(capped_public_structured_summary);
+    let extra = extractor_name.map(|_| {
+        let mut extra = wrapper
+            .as_ref()
+            .and_then(|value| value.get("extra"))
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let (Some(version), serde_json::Value::Object(map)) = (extractor_version, &mut extra) {
+            map.insert("extractor_version".to_string(), version.into());
+        }
+        extra
+    });
+    (
+        follow_crawl_urls,
+        extra,
+        structured,
+        structured_for_embedding,
+    )
 }
 
 pub fn extract_markdown_links(markdown: &str) -> Vec<serde_json::Value> {

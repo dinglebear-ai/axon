@@ -15,7 +15,7 @@ See the family contract for declared output paths.
 | Path | SHA-256 |
 |---|---|
 | `crates/axon-graph/src/migrations` | `sha256:d48f6524ebda76d77e5e3dbc8a0195eac896edbe1108b2fca40ca9c442a2a5bf` |
-| `crates/axon-jobs/src/migrations` | `sha256:2e13cd0f8f68c72df3851cf0ad4eebb0b654fdcffb636c5a05a7cb0603de505c` |
+| `crates/axon-jobs/src/migrations` | `sha256:c4a5890b29d353667d742c24e26533adf8ebc64932d5240403fbd38800dbd668` |
 | `crates/axon-ledger/src/migrations` | `sha256:0414a82d0bc32cf9f1b877828f9faf6262796af088e86f041be619fc0ed205a8` |
 | `crates/axon-memory/src/migrations` | `sha256:1d08bb6ab6696a4c7e574a3915cd003c270ec427b12ab2e68592aaf686c7958a` |
 | `crates/axon-observe/src/migrations` | `sha256:ae4a86b45a62940c12d472880ab4facf253c284dcc985721d58ae0c8c7f2f723` |
@@ -61,7 +61,7 @@ Run `cargo xtask generated-contracts check`.
 
 ## Parsed Migration Summary
 
-31 tables, 73 indexes, 10 migration files parsed from `crates/axon-ledger/src/migrations`, `crates/axon-jobs/src/migrations`, `crates/axon-observe/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.
+32 tables, 77 indexes, 13 migration files parsed from `crates/axon-ledger/src/migrations`, `crates/axon-jobs/src/migrations`, `crates/axon-observe/src/migrations`, `crates/axon-graph/src/migrations`, and `crates/axon-memory/src/migrations`. See `tables`/`indexes`/`foreign_keys`/`migrations`/`divergences` in the generated JSON artifact for full detail.
 
 ## Unified Job Tables
 

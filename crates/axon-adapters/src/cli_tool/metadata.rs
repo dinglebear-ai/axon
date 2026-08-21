@@ -13,8 +13,8 @@ use super::CliToolSource;
 /// passed in by the caller from `resolved.execution_count`, not free text.
 pub(super) fn cli_tool_source_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    item: AcquiredSourceItem,
     source: &CliToolSource,
     tool_action: &str,
 ) -> SourceDocument {
@@ -31,7 +31,7 @@ pub(super) fn cli_tool_source_document(
     );
     metadata.insert(
         "item_canonical_uri".to_string(),
-        json!(item.manifest_item.canonical_uri),
+        json!(item.manifest_item.canonical_uri.clone()),
     );
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert("visibility".to_string(), json!("internal"));
@@ -46,25 +46,22 @@ pub(super) fn cli_tool_source_document(
         metadata.insert("tool_output_artifact_id".to_string(), json!(artifact_id.0));
     }
     SourceDocument {
-        document_id: cli_tool_document_id(
-            &acquisition.source_id,
-            &item.manifest_item.source_item_key,
-        ),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: cli_tool_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind: item
             .manifest_item
             .content_kind
             .unwrap_or(ContentKind::Structured),
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title: item.manifest_item.display_path.clone(),
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: None,
         structured_payload: None,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     }

@@ -33,6 +33,7 @@ pub(crate) use local::dispatch_local;
 pub(crate) use tool::{dispatch_cli_tool, dispatch_mcp_tool};
 pub(crate) use virtual_sources::{dispatch_memory, dispatch_upload};
 pub(crate) use web::dispatch_web;
+pub(crate) use web_options::web_crawl_options;
 
 /// Placeholder job id for a `SourcePlan` field that
 /// gets overwritten with the real durable job id before any use — every
@@ -44,7 +45,7 @@ fn placeholder_job_id() -> JobId {
     JobId::new(Uuid::nil())
 }
 
-fn family_source_plan(
+pub(crate) fn family_source_plan(
     input: &str,
     route: &axon_api::source::RoutePlan,
     embed: bool,
@@ -419,7 +420,7 @@ async fn dispatch_session_with_roots(
     .context("session source indexing failed")
 }
 
-async fn dispatch_materialized<'a, F, Fut>(
+pub(crate) async fn dispatch_materialized<'a, F, Fut>(
     runtime: &'a TargetLocalSourceRuntime,
     adapter: &'a dyn SourceAdapter,
     plan: SourcePlan,

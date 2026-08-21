@@ -15,7 +15,7 @@ use super::vectorize::VectorizeResult;
 pub(super) async fn unchanged_result(
     ledger: &dyn LedgerStore,
     input: &SourcePipelineInput<'_>,
-    manifest: &SourceManifest,
+    manifest: SourceManifest,
     diff: &SourceManifestDiff,
     previous: Option<&SourceSummary>,
 ) -> anyhow::Result<IndexCounts> {
@@ -54,6 +54,7 @@ pub(super) async fn unchanged_result(
         chunks_prepared: 0,
         vector_points_written: 0,
         removed: 0,
+        published_manifest: Some(manifest),
         graph_candidates: Vec::new(),
         warnings: Vec::new(),
         artifacts: Vec::new(),
@@ -115,40 +116,35 @@ pub(super) fn apply_max_items(manifest: &mut SourceManifest, max_items: Option<u
 pub(super) fn batch_changed_diff(
     diff: &SourceManifestDiff,
     batch_size: usize,
-) -> Vec<SourceManifestDiff> {
+) -> impl Iterator<Item = SourceManifestDiff> + '_ {
     let batch_size = batch_size.max(1);
-    let mut batches = Vec::new();
-    let mut current = empty_diff_like(diff);
-    for item in &diff.added {
-        current.added.push(item.clone());
-        if changed_batch_len(&current) == batch_size {
-            push_changed_batch(&mut batches, &mut current, diff);
-        }
-    }
-    for item in &diff.modified {
-        current.modified.push(item.clone());
-        if changed_batch_len(&current) == batch_size {
-            push_changed_batch(&mut batches, &mut current, diff);
-        }
-    }
-    if changed_batch_len(&current) > 0 {
-        push_changed_batch(&mut batches, &mut current, diff);
-    }
-    batches
-}
+    let mut added = diff.added.iter();
+    let mut modified = diff.modified.iter();
+    let mut added_exhausted = false;
 
-fn changed_batch_len(batch: &SourceManifestDiff) -> usize {
-    batch.added.len() + batch.modified.len()
-}
+    std::iter::from_fn(move || {
+        let mut batch = empty_diff_like(diff);
+        while batch.added.len() + batch.modified.len() < batch_size {
+            if !added_exhausted {
+                if let Some(item) = added.next() {
+                    batch.added.push(item.clone());
+                    continue;
+                }
+                added_exhausted = true;
+            }
+            let Some(item) = modified.next() else {
+                break;
+            };
+            batch.modified.push(item.clone());
+        }
 
-fn push_changed_batch(
-    batches: &mut Vec<SourceManifestDiff>,
-    current: &mut SourceManifestDiff,
-    diff: &SourceManifestDiff,
-) {
-    current.counts.added = current.added.len() as u64;
-    current.counts.modified = current.modified.len() as u64;
-    batches.push(std::mem::replace(current, empty_diff_like(diff)));
+        if batch.added.is_empty() && batch.modified.is_empty() {
+            return None;
+        }
+        batch.counts.added = batch.added.len() as u64;
+        batch.counts.modified = batch.modified.len() as u64;
+        Some(batch)
+    })
 }
 
 fn empty_diff_like(diff: &SourceManifestDiff) -> SourceManifestDiff {
@@ -181,12 +177,19 @@ pub(super) fn manifest_has_changes(diff: &SourceManifestDiff) -> bool {
         || !diff.failed.is_empty()
 }
 
+#[cfg(test)]
 pub(super) fn publication_config_matches(
     manifest: &SourceManifest,
     config_snapshot_id: &ConfigSnapshotId,
 ) -> bool {
-    manifest
-        .metadata
+    publication_config_metadata_matches(&manifest.metadata, config_snapshot_id)
+}
+
+pub(super) fn publication_config_metadata_matches(
+    metadata: &MetadataMap,
+    config_snapshot_id: &ConfigSnapshotId,
+) -> bool {
+    metadata
         .get(super::PUBLICATION_CONFIG_KEY)
         .and_then(serde_json::Value::as_str)
         .is_some_and(|stored| stored == config_snapshot_id.0.as_str())
@@ -350,13 +353,21 @@ pub(super) fn apply_enrichments(
     }
 }
 
-pub(super) fn enrichment_graph_candidates(
-    enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+pub(super) fn take_enrichment_graph_candidates(
+    enrichments: &mut std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
 ) -> std::collections::BTreeMap<SourceItemKey, Vec<GraphCandidate>> {
     enrichments
-        .iter()
-        .filter(|&(_key, enrichment)| !enrichment.graph_candidates.is_empty())
-        .map(|(key, enrichment)| (key.clone(), enrichment.graph_candidates.clone()))
+        .iter_mut()
+        .filter_map(|(key, enrichment)| {
+            if enrichment.graph_candidates.is_empty() {
+                None
+            } else {
+                Some((
+                    key.clone(),
+                    std::mem::take(&mut enrichment.graph_candidates),
+                ))
+            }
+        })
         .collect()
 }
 

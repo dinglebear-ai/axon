@@ -32,6 +32,7 @@ const CANONICAL_TABLES: &[&str] = &[
     "memory_records",
     "memory_reinforcement",
     "memory_reviews",
+    "provider_identity_cache",
     "provider_reservations",
     "source_generations",
     "source_items",

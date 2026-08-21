@@ -100,12 +100,16 @@ impl SourceAdapter for RedditSourceAdapter {
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
         let dump_items = load_dump_items(plan)?;
-        let documents = acquisition
-            .fetched_items
-            .iter()
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let documents = fetched_items
+            .into_iter()
             .map(|item| {
                 let dump_item = dump_item_for(&dump_items, &item.manifest_item)?;
-                Ok(reddit_source_document(plan, &acquisition, item, dump_item))
+                Ok(reddit_source_document(plan, &source_id, item, dump_item))
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(StageExecutionResult {

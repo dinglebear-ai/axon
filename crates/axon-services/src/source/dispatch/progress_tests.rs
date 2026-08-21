@@ -64,7 +64,7 @@ fn assert_monotonic(counts: &[StageCounts], phase: PipelinePhase) {
 
 #[tokio::test]
 async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_chunk_batches() {
-    let source = tempfile::tempdir().unwrap();
+    let source = crate::test_support::visible_tempdir().unwrap();
     write_large_local_fixture(source.path());
     let jobs = Arc::new(FakeJobWatchStore::new());
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
@@ -199,7 +199,7 @@ async fn local_source_exposes_durable_progress_across_multiple_acquisition_and_c
 
 #[tokio::test]
 async fn embed_false_skips_vector_phases_without_stale_fetching_counts() {
-    let source = tempfile::tempdir().unwrap();
+    let source = crate::test_support::visible_tempdir().unwrap();
     std::fs::write(
         source.path().join("doc.md"),
         "# Progress\n\nNo embeddings requested.\n",

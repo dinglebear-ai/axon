@@ -5,7 +5,10 @@
 //! builders remain the contract-tested shape validators).
 
 use axon_api::source::*;
-use serde::Serialize;
+use std::collections::HashMap;
+
+use serde::ser::{SerializeMap, SerializeSeq};
+use serde::{Serialize, Serializer};
 use serde_json::json;
 
 use super::QdrantCollectionSettings;
@@ -13,7 +16,6 @@ use crate::filter::validate_search_filters;
 use crate::filter::{PATH_PREFIX, SEARCH_GENERATION_FIELD};
 use crate::payload::generation_payload_i64;
 use crate::store::Result;
-use crate::validation::validate_upsert_batch;
 
 fn schema_kind(schema: &PayloadFieldSchema) -> &'static str {
     match schema {
@@ -86,36 +88,132 @@ pub fn payload_index_json(index: &PayloadIndexSpec) -> serde_json::Value {
     })
 }
 
-/// REST body for `PUT /collections/{name}/points` — named dense + sparse arms.
-pub fn upsert_points_json(
-    spec: &CollectionSpec,
-    batch: &VectorPointBatch,
-) -> Result<serde_json::Value> {
-    let batch_sparse = validate_upsert_batch(spec, batch, ErrorStage::Upserting)?;
-    let points = batch
-        .points
-        .iter()
-        .map(|point| {
-            let mut vectors = serde_json::Map::new();
-            vectors.insert(spec.dense.name.clone(), json!(point.vector));
-            let sparse = point
-                .sparse_vector
-                .as_ref()
-                .or_else(|| batch_sparse.get(&point.chunk_id.0));
-            if let (Some(sparse_cfg), Some(sparse)) = (spec.sparse.as_ref(), sparse) {
-                vectors.insert(
-                    sparse_cfg.name.clone(),
-                    json!({ "indices": sparse.indices, "values": sparse.values }),
-                );
-            }
-            json!({
-                "id": point.point_id.0,
-                "vector": vectors,
-                "payload": serde_json::Value::Object(point.payload.0.clone().into_iter().collect()),
-            })
-        })
-        .collect::<Vec<_>>();
-    Ok(json!({ "points": points }))
+/// Borrowing REST body for `PUT /collections/{name}/points`. Dense vectors,
+/// sparse vectors, and payloads are serialized directly from the canonical
+/// point batch rather than cloned into an intermediate `serde_json::Value`
+/// tree first. The caller validates the canonical batch once before chunking.
+pub struct UpsertPointsBody<'a> {
+    spec: &'a CollectionSpec,
+    points: &'a [VectorPoint],
+    batch_sparse: &'a HashMap<&'a str, &'a SparseVector>,
+}
+
+impl<'a> UpsertPointsBody<'a> {
+    pub fn new(
+        spec: &'a CollectionSpec,
+        points: &'a [VectorPoint],
+        batch_sparse: &'a HashMap<&'a str, &'a SparseVector>,
+    ) -> Self {
+        Self {
+            spec,
+            points,
+            batch_sparse,
+        }
+    }
+}
+
+impl Serialize for UpsertPointsBody<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(1))?;
+        map.serialize_entry(
+            "points",
+            &UpsertPointSequence {
+                spec: self.spec,
+                points: self.points,
+                batch_sparse: self.batch_sparse,
+            },
+        )?;
+        map.end()
+    }
+}
+
+struct UpsertPointSequence<'a> {
+    spec: &'a CollectionSpec,
+    points: &'a [VectorPoint],
+    batch_sparse: &'a HashMap<&'a str, &'a SparseVector>,
+}
+
+impl Serialize for UpsertPointSequence<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.points.len()))?;
+        for point in self.points {
+            seq.serialize_element(&UpsertPointRef {
+                spec: self.spec,
+                point,
+                batch_sparse: self.batch_sparse,
+            })?;
+        }
+        seq.end()
+    }
+}
+
+struct UpsertPointRef<'a> {
+    spec: &'a CollectionSpec,
+    point: &'a VectorPoint,
+    batch_sparse: &'a HashMap<&'a str, &'a SparseVector>,
+}
+
+impl Serialize for UpsertPointRef<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("id", &self.point.point_id.0)?;
+        map.serialize_entry(
+            "vector",
+            &UpsertVectorRef {
+                spec: self.spec,
+                point: self.point,
+                batch_sparse: self.batch_sparse,
+            },
+        )?;
+        map.serialize_entry("payload", &self.point.payload)?;
+        map.end()
+    }
+}
+
+struct UpsertVectorRef<'a> {
+    spec: &'a CollectionSpec,
+    point: &'a VectorPoint,
+    batch_sparse: &'a HashMap<&'a str, &'a SparseVector>,
+}
+
+impl Serialize for UpsertVectorRef<'_> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let sparse = self.point.sparse_vector.as_ref().or_else(|| {
+            self.batch_sparse
+                .get(self.point.chunk_id.0.as_str())
+                .copied()
+        });
+        let mut map = serializer.serialize_map(Some(1 + usize::from(sparse.is_some())))?;
+        map.serialize_entry(self.spec.dense.name.as_str(), &self.point.vector)?;
+        if let (Some(sparse_cfg), Some(sparse)) = (self.spec.sparse.as_ref(), sparse) {
+            map.serialize_entry(
+                sparse_cfg.name.as_str(),
+                &SparseVectorRef {
+                    indices: &sparse.indices,
+                    values: &sparse.values,
+                },
+            )?;
+        }
+        map.end()
+    }
+}
+
+#[derive(Serialize)]
+struct SparseVectorRef<'a> {
+    indices: &'a [u32],
+    values: &'a [f32],
 }
 
 /// Search-request filter as REST JSON (generation-fenced on

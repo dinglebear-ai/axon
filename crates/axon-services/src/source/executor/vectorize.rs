@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axon_api::source::*;
 use axon_embedding::batch::EmbeddingBatchBuilder;
 use axon_ledger::store::LedgerStore;
@@ -18,6 +20,7 @@ pub(super) struct VectorizeResult {
     pub(super) chunks_prepared: u64,
     pub(super) points_written: u64,
     pub(super) document_statuses: Vec<DocumentStatus>,
+    document_status_positions: HashMap<DocumentId, usize>,
     pub(super) graph_candidates: Vec<GraphCandidate>,
     pub(super) warnings: Vec<SourceWarning>,
 }
@@ -37,7 +40,12 @@ pub(super) async fn prepare_embed_publish(
 ) -> anyhow::Result<VectorizeResult> {
     let mut output = VectorizeResult::default();
     let source_batch_count = documents.len().div_ceil(DOCUMENT_BATCH_SIZE);
-    for (source_index, source_batch) in documents.chunks(DOCUMENT_BATCH_SIZE).enumerate() {
+    let mut documents = documents.into_iter();
+    for source_index in 0..source_batch_count {
+        let source_batch = documents
+            .by_ref()
+            .take(DOCUMENT_BATCH_SIZE)
+            .collect::<Vec<_>>();
         let is_final_source_batch =
             is_final_generation_batch && source_index + 1 == source_batch_count;
         coordinator
@@ -48,22 +56,30 @@ pub(super) async fn prepare_embed_publish(
                 "preparing source documents",
             )
             .await;
-        let prepared = prepare_documents(
-            source_batch,
-            generation,
-            enrichment_graph,
-            runtime.document_prepare_concurrency,
+        let prepared = reserved_call::parse_operation(
+            runtime,
+            ProviderCallContext::for_phase(
+                input.plan.job_id,
+                input.execution.attempt,
+                PipelinePhase::Parsing,
+                input.execution.priority,
+                format!("parse:{}:{source_index}", generation.0),
+            ),
+            move || {
+                prepare_documents(
+                    source_batch,
+                    generation,
+                    enrichment_graph,
+                    runtime.document_prepare_concurrency,
+                )
+            },
         )
         .await?;
         let chunk_count = prepared
             .iter()
             .map(|document| document.chunks.len() as u64)
             .sum();
-        let counts = progress.prepared(
-            source_batch.len() as u64,
-            chunk_count,
-            is_final_source_batch,
-        );
+        let counts = progress.prepared(prepared.len() as u64, chunk_count, is_final_source_batch);
         coordinator
             .checkpoint(
                 PipelinePhase::Preparing,
@@ -135,21 +151,32 @@ fn chunk_batches(
 }
 
 fn split_oversized_document(
-    document: PreparedDocument,
+    mut document: PreparedDocument,
     max_chunks: usize,
 ) -> Vec<PreparedDocument> {
     let max_chunks = max_chunks.max(1);
     if document.chunks.len() <= max_chunks {
         return vec![document];
     }
-    let mut windows = Vec::new();
-    for (index, chunks) in document.chunks.chunks(max_chunks).enumerate() {
-        let mut window = document.clone();
-        window.chunks = chunks.to_vec();
-        if index > 0 {
-            window.graph_candidates.clear();
-            window.warnings.clear();
+
+    let chunks = std::mem::take(&mut document.chunks);
+    let window_count = chunks.len().div_ceil(max_chunks);
+    let mut chunks = chunks.into_iter();
+    let mut continuation = document.clone();
+    continuation.graph_candidates.clear();
+    continuation.warnings.clear();
+    continuation.errors.clear();
+
+    document.chunks = chunks.by_ref().take(max_chunks).collect();
+    let mut windows = Vec::with_capacity(window_count);
+    windows.push(document);
+    loop {
+        let window_chunks = chunks.by_ref().take(max_chunks).collect::<Vec<_>>();
+        if window_chunks.is_empty() {
+            break;
         }
+        let mut window = continuation.clone();
+        window.chunks = window_chunks;
         windows.push(window);
     }
     windows
@@ -163,11 +190,8 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
     output.graph_candidates.extend(result.graph_candidates);
     output.warnings.extend(result.warnings);
     for status in result.document_statuses {
-        if let Some(existing) = output
-            .document_statuses
-            .iter_mut()
-            .find(|existing| existing.document_id == status.document_id)
-        {
+        if let Some(&position) = output.document_status_positions.get(&status.document_id) {
+            let existing = &mut output.document_statuses[position];
             existing.chunk_count = existing.chunk_count.saturating_add(status.chunk_count);
             existing.vector_point_count = existing
                 .vector_point_count
@@ -175,6 +199,10 @@ pub(super) fn merge_vectorize_result(output: &mut VectorizeResult, result: Vecto
             existing.updated_at = status.updated_at;
         } else {
             output.documents_prepared = output.documents_prepared.saturating_add(1);
+            let position = output.document_statuses.len();
+            output
+                .document_status_positions
+                .insert(status.document_id.clone(), position);
             output.document_statuses.push(status);
         }
     }
@@ -194,19 +222,14 @@ async fn vectorize_batch(
     if !input.plan.request.embed {
         return Ok(statuses_only(documents, DocumentLifecycleStatus::Prepared));
     }
-    let embeddings =
+    let mut embeddings =
         embed_prepared_batch(runtime, input, &documents, emitter, coordinator, progress).await?;
     let VectorPointBuild {
         batch: point_batch,
         skipped_redaction,
         redaction_skips_by_source_item,
         points_by_document,
-    } = point_batch(collection, &documents, &embeddings)?;
-    let eligible_chunks = point_batch
-        .points
-        .iter()
-        .map(|point| point.chunk_id.clone())
-        .collect::<std::collections::BTreeSet<_>>();
+    } = point_batch(collection, &documents, &mut embeddings)?;
     coordinator
         .report(
             emitter,
@@ -217,11 +240,10 @@ async fn vectorize_batch(
         .await;
     let write =
         upsert_vector_batch(runtime, input, point_batch, emitter, coordinator, progress).await?;
-    let _ = points_by_document;
     Ok(vectorize_result(
         documents,
         embeddings.warnings,
-        &eligible_chunks,
+        &points_by_document,
         write,
         skipped_redaction,
         &redaction_skips_by_source_item,
@@ -322,25 +344,11 @@ async fn upsert_vector_batch(
 fn vectorize_result(
     documents: Vec<PreparedDocument>,
     embedding_warnings: Vec<SourceWarning>,
-    eligible_chunks: &std::collections::BTreeSet<ChunkId>,
+    points_by_document: &std::collections::BTreeMap<DocumentId, u32>,
     write: VectorStoreWriteResult,
     skipped_redaction: u64,
     redaction_skips_by_source_item: &std::collections::BTreeMap<SourceItemKey, u64>,
 ) -> VectorizeResult {
-    let point_counts = documents
-        .iter()
-        .map(|document| {
-            let count = document
-                .chunks
-                .iter()
-                .filter(|chunk| eligible_chunks.contains(&chunk.chunk_id))
-                .count();
-            (
-                document.document_id.clone(),
-                u32::try_from(count).unwrap_or(u32::MAX),
-            )
-        })
-        .collect::<std::collections::BTreeMap<_, _>>();
     let mut result = statuses_only(documents, DocumentLifecycleStatus::Vectorized);
     result.points_written = write.points_written;
     result.warnings.extend(embedding_warnings);
@@ -349,9 +357,8 @@ fn vectorize_result(
             code: "source.vectorize.redaction_skipped_chunks".to_string(),
             severity: Severity::Warning,
             message: format!(
-                "skipped {} chunk(s) with secret-redaction-forbidden payload values \
-                 (not indexed; reduced vector point count accordingly)",
-                count
+                "skipped {count} chunk(s) with secret-redaction-forbidden payload values \
+                 (not indexed; reduced vector point count accordingly)"
             ),
             source_item_key: Some(source_item_key.clone()),
             retryable: false,
@@ -375,7 +382,10 @@ fn vectorize_result(
         });
     }
     for status in &mut result.document_statuses {
-        status.vector_point_count = point_counts.get(&status.document_id).copied().unwrap_or(0);
+        status.vector_point_count = points_by_document
+            .get(&status.document_id)
+            .copied()
+            .unwrap_or(0);
     }
     result
 }
@@ -386,12 +396,11 @@ fn statuses_only(
 ) -> VectorizeResult {
     let mut result = VectorizeResult::default();
     for document in documents {
+        let chunk_count = document.chunks.len();
         result.documents_prepared += 1;
-        result.chunks_prepared += document.chunks.len() as u64;
-        result
-            .graph_candidates
-            .extend(document.graph_candidates.clone());
-        result.warnings.extend(document.warnings.clone());
+        result.chunks_prepared += chunk_count as u64;
+        result.graph_candidates.extend(document.graph_candidates);
+        result.warnings.extend(document.warnings);
         let status = DocumentStatus {
             document_id: document.document_id,
             source_id: document.source_id,
@@ -399,11 +408,15 @@ fn statuses_only(
             generation: Some(document.generation),
             status: lifecycle,
             updated_at: timestamp(),
-            chunk_count: u32::try_from(document.chunks.len()).unwrap_or(u32::MAX),
+            chunk_count: u32::try_from(chunk_count).unwrap_or(u32::MAX),
             vector_point_count: 0,
             error: None,
             cleanup_status: None,
         };
+        let position = result.document_statuses.len();
+        result
+            .document_status_positions
+            .insert(status.document_id.clone(), position);
         result.document_statuses.push(status);
     }
     result
@@ -424,16 +437,14 @@ fn embedding_batch(
     input: &SourcePipelineInput<'_>,
     documents: &[PreparedDocument],
 ) -> anyhow::Result<EmbeddingBatch> {
-    let batch_id = BatchId::new(Uuid::new_v5(
-        &Uuid::NAMESPACE_URL,
-        documents
-            .iter()
-            .flat_map(|document| document.chunks.iter())
-            .map(|chunk| chunk.chunk_id.0.as_str())
-            .collect::<Vec<_>>()
-            .join(":")
-            .as_bytes(),
-    ));
+    let mut batch_key = String::new();
+    for chunk in documents.iter().flat_map(|document| document.chunks.iter()) {
+        if !batch_key.is_empty() {
+            batch_key.push(':');
+        }
+        batch_key.push_str(&chunk.chunk_id.0);
+    }
+    let batch_id = BatchId::new(Uuid::new_v5(&Uuid::NAMESPACE_URL, batch_key.as_bytes()));
     let mut builder = EmbeddingBatchBuilder::new(
         batch_id,
         input.plan.job_id,
@@ -450,7 +461,10 @@ fn embedding_batch(
                     .clone()
                     .unwrap_or_else(|| chunk.content.clone()),
                 content_kind: chunk.content_kind,
-                metadata: chunk.metadata.clone(),
+                // Vector payload construction still owns the PreparedChunk metadata;
+                // TEI consumes only chunk id/text. Avoid duplicating the payload map
+                // across every embedding input in this 512-chunk hot path.
+                metadata: MetadataMap::new(),
             });
         }
     }

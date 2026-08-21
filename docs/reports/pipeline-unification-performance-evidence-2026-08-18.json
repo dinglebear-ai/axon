@@ -1,0 +1,78 @@
+{
+  "schema": "axon-pipeline-unification-performance-evidence/v1",
+  "date": "2026-08-18",
+  "docs_dedupe": {
+    "historical_baseline": {
+      "state_db": "target/bench-source/state-1786562368-710115-cold-1/jobs.db",
+      "total_items": 370,
+      "markdown_items": 185,
+      "non_markdown_items": 185,
+      "exact_markdown_html_route_pairs": 183,
+      "markdown_only": [
+        "https://code.claude.com/docs/en/settings.md",
+        "https://code.claude.com/docs/en/whats-new/index.md"
+      ],
+      "html_only": [
+        "https://code.claude.com",
+        "https://code.claude.com/docs/en/whats-new"
+      ]
+    },
+    "post_dedupe": {
+      "url_artifact": "target/bench-source/repeat-cold-3-urls.txt",
+      "observed_items": 187,
+      "expected_items": 187,
+      "expected_set_equals_observed_set": true,
+      "semantic_route_loss": 0
+    },
+    "live_2026_08_18": {
+      "llms_txt_markdown_urls": 187,
+      "distinct_markdown_semantic_routes": 187,
+      "pairs_audited": 187,
+      "markdown_http_200": 187,
+      "extensionless_html_http_200": 187,
+      "fetch_errors": 0,
+      "non_200_pairs": 0,
+      "html_counterparts_in_sitemap": 186,
+      "html_counterparts_live_but_not_in_sitemap": 1
+    }
+  },
+  "tei": {
+    "model": "Qwen/Qwen3-Embedding-0.6B",
+    "gpu": "NVIDIA RTX 4070 12GB",
+    "server": {
+      "max_batch_tokens": 196608,
+      "max_batch_requests": 512,
+      "max_concurrent_requests": 512,
+      "max_client_batch_size": 128
+    },
+    "axon_client_profile": {
+      "max_client_batch_size": 96,
+      "max_concurrent_requests": 8,
+      "max_in_flight_inputs": 320
+    },
+    "representative_320_input_validation": {
+      "shape": [96, 96, 96, 32],
+      "waves": 6,
+      "requests": 24,
+      "http_200": 24,
+      "peak_vram_mib": 3086,
+      "container_restarts": 0
+    },
+    "long_chunk_320_input_validation": {
+      "shape": [96, 96, 96, 32],
+      "requests": 4,
+      "http_200": 4,
+      "peak_vram_mib": 11086,
+      "gpu_total_mib": 12282,
+      "container_restarts": 0,
+      "cuda_oom": false
+    },
+    "out_of_envelope_validation": {
+      "shape": [96, 96, 96, 96, 96, 96, 96, 96],
+      "http_200": 5,
+      "http_429": 3,
+      "failure_mode": "TEI admission semaphore: no permits available",
+      "cuda_oom": false
+    }
+  }
+}

@@ -41,6 +41,7 @@ pub(super) fn web_metadata(plan: &SourcePlan, web: &WebUrlParts) -> MetadataMap 
         json!(web.normalized_url.clone()),
     );
     metadata.insert("web_fetch_method".to_string(), json!("manifest"));
+    copy_provider_execution_metadata(&plan.request.metadata, &mut metadata);
     metadata
 }
 
@@ -58,19 +59,20 @@ pub(super) fn manifest_metadata(plan: &SourcePlan) -> MetadataMap {
 
 pub(super) fn web_source_document(
     plan: &SourcePlan,
-    acquisition: &SourceAcquisition,
-    item: &AcquiredSourceItem,
+    source_id: &SourceId,
+    generation: &SourceGenerationId,
+    item: AcquiredSourceItem,
 ) -> SourceDocument {
-    let mut metadata = item.manifest_item.metadata.clone();
-    merge_metadata(&mut metadata, &item.metadata);
+    let mut metadata = item.manifest_item.metadata;
+    for (key, value) in item.metadata.0 {
+        metadata.insert(key, value);
+    }
+    strip_provider_execution_metadata(&mut metadata);
     metadata.insert("source_family".to_string(), json!("web"));
     metadata.insert("source_kind".to_string(), json!("web"));
     metadata.insert("source_adapter".to_string(), json!(plan.route.adapter.name));
     metadata.insert("source_scope".to_string(), json!(plan.route.scope));
-    metadata.insert(
-        "source_id".to_string(),
-        json!(acquisition.source_id.0.clone()),
-    );
+    metadata.insert("source_id".to_string(), json!(source_id.0.clone()));
     metadata.insert(
         "source_canonical_uri".to_string(),
         json!(plan.route.source.canonical_uri.clone()),
@@ -83,10 +85,7 @@ pub(super) fn web_source_document(
         "item_canonical_uri".to_string(),
         json!(item.manifest_item.canonical_uri.clone()),
     );
-    metadata.insert(
-        "source_generation".to_string(),
-        json!(acquisition.generation.0.clone()),
-    );
+    metadata.insert("source_generation".to_string(), json!(generation.0.clone()));
     metadata.insert("committed_generation".to_string(), json!("uncommitted"));
     metadata.insert(
         "normalization_version".to_string(),
@@ -99,19 +98,19 @@ pub(super) fn web_source_document(
         .content_kind
         .unwrap_or(ContentKind::Markdown);
     SourceDocument {
-        document_id: web_document_id(&acquisition.source_id, &item.manifest_item.source_item_key),
-        source_id: acquisition.source_id.clone(),
-        source_item_key: item.manifest_item.source_item_key.clone(),
-        canonical_uri: item.manifest_item.canonical_uri.clone(),
+        document_id: web_document_id(source_id, &item.manifest_item.source_item_key),
+        source_id: source_id.clone(),
+        source_item_key: item.manifest_item.source_item_key,
+        canonical_uri: item.manifest_item.canonical_uri,
         content_kind,
-        content: item.content_ref.clone(),
+        content: item.content_ref,
         metadata,
         title,
         language: None,
-        path: item.manifest_item.display_path.clone(),
+        path: item.manifest_item.display_path,
         mime_type: Some(mime_type_for_content_kind(content_kind).to_string()),
         structured_payload,
-        artifact_id: item.raw_artifact_id.clone(),
+        artifact_id: item.raw_artifact_id,
         chunk_hints: plan.route.chunking_hints.clone(),
         parser_hints: plan.route.parser_hints.clone(),
     }
@@ -158,10 +157,4 @@ fn stable_token(value: &str) -> String {
         let _ = write!(&mut token, "{byte:02x}");
     }
     token
-}
-
-fn merge_metadata(target: &mut MetadataMap, source: &MetadataMap) {
-    for (key, value) in source.iter() {
-        target.insert(key.clone(), value.clone());
-    }
 }

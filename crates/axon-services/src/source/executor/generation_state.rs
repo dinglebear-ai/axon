@@ -1,5 +1,7 @@
 //! Aggregation state for one created source generation.
 
+use std::collections::{BTreeSet, HashSet};
+
 use axon_api::source::*;
 
 use super::progress::PipelineProgress;
@@ -31,11 +33,12 @@ pub(super) struct ProcessedBatch {
 #[derive(Default)]
 pub(super) struct GenerationAccumulator {
     vectorized: vectorize::VectorizeResult,
+    document_ids: HashSet<DocumentId>,
     artifacts: Vec<ArtifactRef>,
     output: SourceOutput,
     archive_items: Vec<AcquiredSourceItem>,
     warnings: Vec<SourceWarning>,
-    reused_item_keys: Vec<SourceItemKey>,
+    reused_item_keys: BTreeSet<SourceItemKey>,
     refreshed_manifest_items: Vec<ManifestItem>,
 }
 
@@ -59,7 +62,30 @@ impl GenerationAccumulator {
         self.refreshed_manifest_items
             .extend(batch.refreshed_manifest_items);
         self.output.merge(batch.clean_output);
-        vectorize::merge_vectorize_result(&mut self.vectorized, batch.vectorized);
+
+        // Per-batch statuses have already been durably written. Retain only
+        // document identities for generation-wide deduplication; publication
+        // promotes the durable rows with one ledger-side update instead of
+        // carrying every full status object until the end of a large crawl.
+        let vectorized = batch.vectorized;
+        for status in &vectorized.document_statuses {
+            if self.document_ids.insert(status.document_id.clone()) {
+                self.vectorized.documents_prepared =
+                    self.vectorized.documents_prepared.saturating_add(1);
+            }
+        }
+        self.vectorized.chunks_prepared = self
+            .vectorized
+            .chunks_prepared
+            .saturating_add(vectorized.chunks_prepared);
+        self.vectorized.points_written = self
+            .vectorized
+            .points_written
+            .saturating_add(vectorized.points_written);
+        self.vectorized
+            .graph_candidates
+            .extend(vectorized.graph_candidates);
+        self.vectorized.warnings.extend(vectorized.warnings);
     }
 
     pub(super) async fn finalize(
@@ -68,7 +94,7 @@ impl GenerationAccumulator {
         input: &SourcePipelineInput<'_>,
         cleanup: &mut ArtifactCleanupGuard,
         manifest: &mut SourceManifest,
-        diff: &SourceManifestDiff,
+        diff: SourceManifestDiff,
     ) -> anyhow::Result<FinalizedGeneration> {
         self.vectorized.warnings.splice(0..0, self.warnings);
         let archive =
@@ -76,7 +102,7 @@ impl GenerationAccumulator {
                 .await?;
         cleanup.track(&archive.artifacts);
         self.output.merge(archive);
-        self.artifacts.extend(self.output.artifacts.clone());
+        self.artifacts.append(&mut self.output.artifacts);
         let diff = reuse::apply_reused_items(diff, &self.reused_item_keys);
         let refreshed = self
             .refreshed_manifest_items

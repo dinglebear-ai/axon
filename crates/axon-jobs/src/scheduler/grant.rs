@@ -121,11 +121,19 @@ impl ProviderScheduler {
                     - min(4, max(0, (unixepoch('now') - unixepoch(updated_at)) / ?)))
                   WHEN 0 THEN 'interactive' WHEN 1 THEN 'high' WHEN 2 THEN 'normal'
                   WHEN 3 THEN 'background' ELSE 'maintenance' END
-             WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'",
+             WHERE capacity_domain = ? AND instance_id = ? AND status = 'queued'
+               AND COALESCE(effective_priority, '') <> CASE max(0,
+                    CASE requested_priority
+                      WHEN 'interactive' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+                      WHEN 'background' THEN 3 ELSE 4 END
+                    - min(4, max(0, (unixepoch('now') - unixepoch(updated_at)) / ?)))
+                  WHEN 0 THEN 'interactive' WHEN 1 THEN 'high' WHEN 2 THEN 'normal'
+                  WHEN 3 THEN 'background' ELSE 'maintenance' END",
         )
         .bind(AGING_QUANTUM_SECS)
         .bind(domain)
         .bind(&self.domain.instance_id)
+        .bind(AGING_QUANTUM_SECS)
         .execute(&mut **connection)
         .await?;
         Ok(())
@@ -187,27 +195,20 @@ impl ProviderScheduler {
         domain: &str,
         request: &ReservationRequest,
     ) -> Result<(), SchedulerError> {
-        let entries: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM provider_reservations WHERE capacity_domain = ?
-             AND instance_id = ? AND status IN ('queued','granted','active')",
+        let (entries, job_entries, requested_units): (i64, i64, i64) = sqlx::query_as(
+            "SELECT
+               (SELECT COUNT(*) FROM provider_reservations
+                WHERE capacity_domain = ?1 AND instance_id = ?2
+                  AND status IN ('queued','granted','active')),
+               (SELECT COUNT(*) FROM provider_reservations
+                WHERE job_id = ?3 AND status IN ('queued','granted','active')),
+               (SELECT COALESCE(SUM(requested_units), 0) FROM provider_reservations
+                WHERE capacity_domain = ?1 AND instance_id = ?2
+                  AND status IN ('queued','granted','active'))",
         )
         .bind(domain)
         .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
-        let job_entries: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM provider_reservations WHERE job_id = ?
-             AND status IN ('queued','granted','active')",
-        )
         .bind(request.job_id.0.to_string())
-        .fetch_one(&mut **connection)
-        .await?;
-        let requested_units: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(requested_units), 0) FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ? AND status IN ('queued','granted','active')",
-        )
-        .bind(domain)
-        .bind(&self.domain.instance_id)
         .fetch_one(&mut **connection)
         .await?;
         if entries >= i64::from(self.config.max_entries)
@@ -226,14 +227,6 @@ impl ProviderScheduler {
         request: &ReservationRequest,
     ) -> Result<String, SchedulerError> {
         let id = format!("sched_{}", Uuid::new_v4());
-        let sequence: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(enqueue_sequence), 0) + 1 FROM provider_reservations
-             WHERE capacity_domain = ? AND instance_id = ?",
-        )
-        .bind(domain)
-        .bind(&self.domain.instance_id)
-        .fetch_one(&mut **connection)
-        .await?;
         let priority = enum_name(request.priority)?;
         let kind = enum_name(self.domain.kind)?;
         sqlx::query(
@@ -242,7 +235,9 @@ impl ProviderScheduler {
               requested_units, granted_units, status, updated_at, capacity_domain,
               instance_id, authority_id, enqueue_sequence, requested_priority,
               effective_priority, attempt, fence)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'queued', datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'queued', datetime('now'), ?, ?, ?,
+               (SELECT COALESCE(MAX(enqueue_sequence), 0) + 1 FROM provider_reservations
+                WHERE capacity_domain = ? AND instance_id = ?), ?, ?, ?, ?)",
         )
         .bind(&id)
         .bind(request.job_id.0.to_string())
@@ -254,7 +249,8 @@ impl ProviderScheduler {
         .bind(domain)
         .bind(&self.domain.instance_id)
         .bind(&self.domain.authority_id)
-        .bind(sequence)
+        .bind(domain)
+        .bind(&self.domain.instance_id)
         .bind(&priority)
         .bind(&priority)
         .bind(i64::from(request.attempt))

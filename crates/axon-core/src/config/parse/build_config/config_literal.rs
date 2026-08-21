@@ -76,6 +76,11 @@ fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {
     cfg.train_best_rank = inputs.dispatched.train_best_rank;
     cfg.train_notes = inputs.dispatched.train_notes.clone();
     cfg.source_scope = inputs.dispatched.source_scope.clone();
+    cfg.source_priority = inputs
+        .dispatched
+        .source_priority
+        .clone()
+        .or_else(|| inputs.toml.workers.jobs_default_priority.clone());
     cfg.scrape_inline = inputs.dispatched.scrape_inline;
     cfg.reset_stores = inputs.dispatched.reset_stores.clone();
     cfg.reset_dry_run = inputs.dispatched.reset_dry_run;
@@ -189,6 +194,18 @@ fn populate_perf_and_credentials(
     cfg.sitemap_only = g.sitemap_only;
     cfg.delay_ms = inputs.toml.scrape.delay_ms.unwrap_or(0);
     cfg.request_timeout_ms = inputs.toml.scrape.request_timeout_ms;
+    cfg.fetch_provider_concurrency = env::var("AXON_FETCH_CONCURRENCY")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .or(inputs.toml.scrape.fetch_concurrency)
+        .unwrap_or(16)
+        .clamp(1, 1024);
+    cfg.render_provider_concurrency = env::var("AXON_RENDER_MAX_CONCURRENT_PAGES")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .or(inputs.toml.chrome.max_concurrent_pages)
+        .unwrap_or(8)
+        .clamp(1, 256);
     cfg.scrape_batch_timeout_secs = env::var("AXON_SCRAPE_BATCH_TIMEOUT_SECS")
         .ok()
         .and_then(|raw| raw.parse::<u64>().ok())
@@ -434,6 +451,9 @@ fn populate_misc(
     cfg.crawl_broadcast_buffer_max = DEFAULT_CRAWL_BROADCAST_BUFFER_MAX; // overwritten by post_init from profile
     cfg.allow_unbounded_broad_crawl = parse_bool_env_opt("AXON_ALLOW_UNBOUNDED_BROAD_CRAWL")
         .or(inputs.toml.scrape.allow_unbounded_broad_crawl)
+        .unwrap_or(false);
+    cfg.allow_tool_execution = parse_bool_env_opt("AXON_ALLOW_TOOL_EXECUTION")
+        .or(inputs.toml.security.allow_tool_execution)
         .unwrap_or(false);
     cfg.url_whitelist = inputs.toml.scrape.url_whitelist.clone().unwrap_or_default();
     cfg.block_assets = g.block_assets;

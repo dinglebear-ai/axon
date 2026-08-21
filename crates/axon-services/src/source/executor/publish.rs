@@ -372,11 +372,3 @@ fn publish_context(
         format!("{operation}:{}", generation.generation.0),
     )
 }
-
-pub(super) fn published_status(status: &DocumentStatus) -> DocumentStatus {
-    DocumentStatus {
-        status: DocumentLifecycleStatus::Published,
-        updated_at: timestamp(),
-        ..status.clone()
-    }
-}

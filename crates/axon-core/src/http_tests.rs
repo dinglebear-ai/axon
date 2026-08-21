@@ -2,7 +2,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::LazyLock;
 
 use crate::http::{
-    cdp_discovery_url, normalize_url, ssrf_blacklist_patterns, validate_resolved_ips, validate_url,
+    LoopbackGuard, build_client, cdp_discovery_url, normalize_url, ssrf_blacklist_patterns,
+    validate_resolved_ips, validate_url,
 };
 
 // --- normalize_url tests ---
@@ -312,29 +313,47 @@ fn ssrf_blacklist_blocks_localhost_with_fragment() {
     );
 }
 
-/// Documents that `validate_url()` performs parse-time checks while
-/// `SsrfBlockingResolver` handles the connect-time TOCTOU window.
-///
-/// Both layers are required: `validate_url()` blocks literal IPs and hostile TLDs
-/// immediately (no DNS roundtrip needed); `SsrfBlockingResolver` catches any
-/// hostname that resolves to a private IP at the moment reqwest dials.
-#[test]
-fn dns_rebinding_toctou_is_mitigated_by_resolver() {
-    // A public hostname passes parse-time validation. In production builds,
-    // SsrfBlockingResolver then validates the resolved IP at connect time.
+/// Proves the same DNS resolver used in production is active in test builds.
+/// The request deliberately skips `validate_url()`; denial must therefore come
+/// from connect-time resolution rather than the parse-time guard.
+#[tokio::test]
+async fn dns_rebinding_toctou_is_blocked_by_real_test_resolver() {
+    let client = build_client(2, None).expect("guarded client should build");
+    let error = client
+        .get("http://localhost:9/connect-time-ssrf")
+        .send()
+        .await
+        .expect_err("connect-time resolver must reject loopback DNS answers");
+    let diagnostic = format!("{error:?}");
     assert!(
-        validate_url("https://attacker-controlled.example.com/").is_ok(),
-        "public hostname should pass parse-time check"
+        diagnostic.contains("SSRF: DNS response"),
+        "expected resolver denial rather than an ordinary connection failure: {diagnostic}"
     );
-    // Direct private IPs are caught at parse time, before any DNS lookup.
-    assert!(
-        validate_url("http://127.0.0.1/").is_err(),
-        "direct loopback must be blocked at parse time"
-    );
-    assert!(
-        validate_url("http://[::1]/").is_err(),
-        "direct loopback IPv6 must be blocked at parse time"
-    );
+}
+
+#[tokio::test]
+async fn dns_resolver_honors_explicit_test_loopback_policy() {
+    let server = httpmock::MockServer::start_async().await;
+    let mock = server
+        .mock_async(|when, then| {
+            when.method(httpmock::Method::GET).path("/resolver-test");
+            then.status(204);
+        })
+        .await;
+    let _guard = LoopbackGuard::allow();
+    let client = build_client(2, None).expect("guarded client should build");
+    let url = server
+        .url("/resolver-test")
+        .replace("127.0.0.1", "localhost");
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .expect("explicit test loopback policy should permit the mock server");
+
+    assert_eq!(response.status(), reqwest::StatusCode::NO_CONTENT);
+    mock.assert_async().await;
 }
 
 #[test]

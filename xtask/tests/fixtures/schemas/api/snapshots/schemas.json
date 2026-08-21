@@ -5427,6 +5427,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -7260,6 +7261,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -8110,6 +8112,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -9248,6 +9251,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -13095,6 +13099,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -15098,6 +15103,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -19568,6 +19574,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -22069,6 +22076,7 @@
         "search",
         "fetch",
         "render",
+        "parser",
         "network_capture",
         "artifact",
         "ledger",
@@ -28553,6 +28561,7 @@
           "search",
           "fetch",
           "render",
+          "parser",
           "network_capture",
           "artifact",
           "ledger",
@@ -28774,7 +28783,7 @@
         "path": "crates/axon-api/src/source/audit.rs"
       },
       {
-        "checksum": "sha256:be64cff2487538e6630fc9cf18a0fe419e94e31185d5551c4f8634270e3da7f2",
+        "checksum": "sha256:d446c35a44749d950566daf91d6626b6260a0e97ea5f263a1f6dbe14acf449a4",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/auth.rs"
       },
@@ -28809,7 +28818,7 @@
         "path": "crates/axon-api/src/source/enums/pipeline_phase.rs"
       },
       {
-        "checksum": "sha256:e66bec247b376a34d0e5260977c0fa837583bac8fa997d80d6f7dfd9c8388feb",
+        "checksum": "sha256:bb9d8b2ee6d755e5f3d392ee21cda60ee0de18ad04c9f78a751bd4354b04b435",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/enums/runtime.rs"
       },
@@ -28834,7 +28843,7 @@
         "path": "crates/axon-api/src/source/job_listing.rs"
       },
       {
-        "checksum": "sha256:2135142a70b1ecf31035f684b38951918c446cb00ce856d9a7eef5e8332401fe",
+        "checksum": "sha256:7b3b4d2aee95731dd1bd73b544e733f6def5edbb8c9cd5a1087adc55f081a2a1",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/job_policy.rs"
       },
@@ -28859,7 +28868,7 @@
         "path": "crates/axon-api/src/source/memory.rs"
       },
       {
-        "checksum": "sha256:85467dc859a815e2f56062c9e233d3dea7c532a4950d22f725f78a7a4079e5e3",
+        "checksum": "sha256:1e3dd5ee5b31b41cc97f5850707f26427c41620996281b5d2b87aba126f03578",
         "kind": "rust_module",
         "path": "crates/axon-api/src/source/provider_io.rs"
       },
@@ -28989,7 +28998,7 @@
         "path": "xtask/src/schemas/registry.rs"
       },
       {
-        "checksum": "sha256:eb080a5f9bee2a1247d7824accc79786f4d8093ff352431a92d00cfc1653ce61",
+        "checksum": "sha256:a3b8a626e1f5a9b0b8c871f789a739554a0e5bd75e2782f79faed44e7738c9de",
         "kind": "rust_module",
         "path": "xtask/src/schemas/registry/canonical_enums.rs"
       },

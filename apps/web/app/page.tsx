@@ -42,6 +42,8 @@ export default function Page() {
     statusMessage,
     statusUpdatedAt,
     activeConfigFile, setActiveConfigFile,
+    envKeys,
+    envSaveBusy,
     activeConfigPath,
     activeConfigMeta,
     activeConfigValue,
@@ -51,6 +53,7 @@ export default function Page() {
     updateActiveConfig,
     revertConfig,
     saveConfig,
+    saveEnvKey,
     paletteOpen, setPaletteOpen,
     commandInput, setCommandInput,
     commandBusy,
@@ -188,9 +191,12 @@ export default function Page() {
           activeDirty={activeDirty}
           configDirty={configDirty}
           envDirty={envDirty}
+          envKeys={envKeys}
+          envSaveBusy={envSaveBusy}
           updateActiveConfig={updateActiveConfig}
           revertConfig={revertConfig}
           saveConfig={saveConfig}
+          saveEnvKey={saveEnvKey}
           message={message}
         />
       )}

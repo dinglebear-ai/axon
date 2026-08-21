@@ -491,3 +491,7 @@ fn domain_name(kind: ProviderKind) -> Result<String, SqlxError> {
 #[cfg(test)]
 #[path = "scheduler_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "scheduler_fairness_tests.rs"]
+mod fairness_tests;

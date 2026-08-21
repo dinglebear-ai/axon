@@ -79,8 +79,9 @@ pub(super) fn build_render_request(
     item: &ManifestItem,
     mode: RenderMode,
     automation_script: Option<ArtifactRef>,
-    metadata: MetadataMap,
+    mut metadata: MetadataMap,
 ) -> RenderRequest {
+    copy_provider_execution_metadata(&item.metadata, &mut metadata);
     RenderRequest {
         uri: item.canonical_uri.clone(),
         mode,

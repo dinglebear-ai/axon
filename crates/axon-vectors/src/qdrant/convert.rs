@@ -412,6 +412,6 @@ fn qdrant_field_type(schema: PayloadFieldSchema) -> FieldType {
 
 mod rest;
 pub use rest::{
-    canonical_uri_filter_json, collection_create_json, eq_filter_json, eq2_filter_json,
-    payload_index_json, search_filter_json, upsert_points_json,
+    UpsertPointsBody, canonical_uri_filter_json, collection_create_json, eq_filter_json,
+    eq2_filter_json, payload_index_json, search_filter_json,
 };

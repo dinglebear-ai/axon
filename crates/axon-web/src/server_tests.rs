@@ -1112,7 +1112,10 @@ async fn v1_sources_denies_local_path_without_axon_local_scope() {
     let (base, shutdown, handle) =
         spawn_full_test_server(AuthPolicy::Mounted { auth_state: None }).await;
     let client = reqwest::Client::new();
-    let local_dir = tempfile::tempdir().expect("tempdir");
+    let local_dir = tempfile::Builder::new()
+        .prefix("axon-web-local-")
+        .tempdir()
+        .expect("visible tempdir");
 
     let response = client
         .post(format!("{base}/v1/sources"))

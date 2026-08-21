@@ -20,19 +20,18 @@
 
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::sync::Arc;
 
+use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::Config;
 use axon_core::error::ServiceError;
 use axon_core::logging::log_info;
-use axon_embedding::provider::EmbeddingProvider;
 use axon_retrieval::{QueryServiceHit, QueryServiceRequest, run_query};
-use axon_vectors::store::VectorStore;
 
+use super::provider_execution::ReadExecution;
 use super::synthesis::assemble::assemble_explain_result;
 use super::synthesis::normalize;
 use super::synthesis::{AskContext, ask_result_from_context, ask_result_from_context_with_deltas};
-use crate::context::{ServiceContext, build_read_stores_from_config};
+use crate::context::ServiceContext;
 use crate::types::AskResult;
 
 mod explain;
@@ -57,6 +56,20 @@ pub async fn ask_via_retrieval<F>(
 where
     F: FnMut(&str) + Send,
 {
+    ask_via_retrieval_with_auth(ctx, cfg, question, on_delta, None).await
+}
+
+/// Auth-aware ask path used by authenticated transports.
+pub async fn ask_via_retrieval_with_auth<F>(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    on_delta: Option<F>,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<AskResult, Box<dyn Error>>
+where
+    F: FnMut(&str) + Send,
+{
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(
             "ask requires both QDRANT_URL and TEI_URL to be configured for the retrieval engine"
@@ -72,8 +85,15 @@ where
     // trace-building logic and its module doc for what narrowed relative to
     // the retired legacy reranker's trace.
     if cfg.ask_explain {
-        let (ask_ctx, hits) =
-            retrieval_ask_context_with_hits(ctx, cfg, question, "ask", false).await?;
+        let (ask_ctx, hits) = retrieval_ask_context_with_hits(
+            ctx,
+            cfg,
+            question,
+            "ask",
+            false,
+            auth_snapshot.clone(),
+        )
+        .await?;
         let trace = explain::build_explain_trace(
             cfg,
             question,
@@ -90,7 +110,7 @@ where
         ));
     }
 
-    let ask_ctx = retrieval_ask_context(ctx, cfg, question, "ask").await?;
+    let ask_ctx = retrieval_ask_context_with_auth(ctx, cfg, question, "ask", auth_snapshot).await?;
 
     let synth = match on_delta {
         Some(cb) => {
@@ -123,7 +143,18 @@ pub(crate) async fn retrieval_ask_context(
     question: &str,
     label: &str,
 ) -> Result<AskContext, Box<dyn Error>> {
-    let (ask_ctx, _hits) = retrieval_ask_context_with_hits(ctx, cfg, question, label, true).await?;
+    retrieval_ask_context_with_auth(ctx, cfg, question, label, None).await
+}
+
+pub(crate) async fn retrieval_ask_context_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    question: &str,
+    label: &str,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<AskContext, Box<dyn Error>> {
+    let (ask_ctx, _hits) =
+        retrieval_ask_context_with_hits(ctx, cfg, question, label, true, auth_snapshot).await?;
     Ok(ask_ctx)
 }
 
@@ -138,6 +169,7 @@ async fn retrieval_ask_context_with_hits(
     question: &str,
     label: &str,
     diversify_documents: bool,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> Result<(AskContext, Vec<QueryServiceHit>), Box<dyn Error>> {
     if cfg.qdrant_url.trim().is_empty() || cfg.tei_url.trim().is_empty() {
         return Err(Box::new(ServiceError::new(format!(
@@ -146,7 +178,23 @@ async fn retrieval_ask_context_with_hits(
     }
 
     let retrieval_started = std::time::Instant::now();
-    let (store, provider, provider_id, model, dimensions) = resolve_stores(ctx, cfg).await;
+    let execution = ReadExecution::begin(
+        ctx,
+        cfg,
+        OperationKind::Query,
+        serde_json::json!({
+            "query": question,
+            "collection": cfg.collection,
+            "label": label,
+        }),
+        auth_snapshot,
+    )
+    .await?;
+    let store = execution.scheduled_vectors();
+    let provider = execution.scheduled_embedding();
+    let provider_id = execution.embedding_provider_id();
+    let model = execution.embedding_model();
+    let dimensions = execution.embedding_dimensions();
 
     // The ask/evaluate path fetches a wider candidate pool than plain `query`
     // before trimming to the context entries synthesis will read.
@@ -161,7 +209,7 @@ async fn retrieval_ask_context_with_hits(
         cfg.collection, fetch_limit, cfg.ask_chunk_limit,
     ));
 
-    let result = run_query(
+    let raw_result = run_query(
         store,
         provider,
         provider_id,
@@ -176,8 +224,9 @@ async fn retrieval_ask_context_with_hits(
             before,
         },
     )
-    .await
-    .map_err(|e| -> Box<dyn Error> {
+    .await;
+    execution.finish(ctx, &raw_result).await;
+    let result = raw_result.map_err(|e| -> Box<dyn Error> {
         Box::new(ServiceError::new(format!(
             "{label} retrieval failed for {}: {e}",
             question.chars().take(80).collect::<String>()
@@ -331,36 +380,6 @@ fn defang_citation_patterns(text: &str) -> String {
     }
     result.push_str(rest);
     result
-}
-
-type ResolvedStores = (
-    Arc<dyn VectorStore>,
-    Arc<dyn EmbeddingProvider>,
-    axon_api::source::ProviderId,
-    String,
-    u32,
-);
-
-/// Resolve the read-plane stores + provider identity, preferring the context's
-/// attached runtime (`serve`/`mcp`/`--wait`); otherwise build from `cfg`.
-async fn resolve_stores(ctx: &ServiceContext, cfg: &Config) -> ResolvedStores {
-    if let Some(target) = ctx.target_local_source_runtime() {
-        return (
-            Arc::clone(&target.vector_store),
-            Arc::clone(&target.embedding_provider),
-            target.embedding_provider_id.clone(),
-            target.embedding_model.clone(),
-            target.embedding_dimensions,
-        );
-    }
-    let stores = build_read_stores_from_config(cfg).await;
-    (
-        stores.vector_store,
-        stores.embedding_provider,
-        stores.embedding_provider_id,
-        stores.embedding_model,
-        stores.embedding_dimensions,
-    )
 }
 
 /// Derive the source identity rendered into synthesis context.

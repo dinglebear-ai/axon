@@ -10,34 +10,29 @@ use tokio::sync::Semaphore;
 const MAX_IN_FLIGHT_BYTES: usize = 64 * 1024 * 1024;
 
 pub(super) async fn prepare_documents(
-    documents: &[SourceDocument],
+    documents: Vec<SourceDocument>,
     generation: &SourceGenerationId,
     enrichment_graph: &BTreeMap<SourceItemKey, Vec<GraphCandidate>>,
     concurrency: usize,
 ) -> anyhow::Result<Vec<PreparedDocument>> {
     let generation = generation.clone();
-    let enrichment_graph = Arc::new(
-        documents
-            .iter()
-            .filter_map(|document| {
-                enrichment_graph
-                    .get(&document.source_item_key)
-                    .cloned()
-                    .map(|candidates| (document.source_item_key.clone(), candidates))
-            })
-            .collect::<BTreeMap<_, _>>(),
-    );
-    bounded_blocking_map_in_order(
-        documents,
-        concurrency,
-        MAX_IN_FLIGHT_BYTES,
-        source_document_bytes,
-        move |document| {
-            let item_key = document.source_item_key.0.clone();
+    let work_items = documents
+        .into_iter()
+        .map(|document| {
             let graph_candidates = enrichment_graph
                 .get(&document.source_item_key)
                 .cloned()
                 .unwrap_or_default();
+            (document, graph_candidates)
+        })
+        .collect::<Vec<_>>();
+    bounded_blocking_map_in_order(
+        work_items,
+        concurrency,
+        MAX_IN_FLIGHT_BYTES,
+        |(document, _)| source_document_bytes(document),
+        move |(document, graph_candidates)| {
+            let item_key = document.source_item_key.0.clone();
             Ok(DocumentPreparer::default()
                 .prepare(PrepareSourceDocumentRequest {
                     document,
@@ -72,14 +67,14 @@ fn source_document_bytes(document: &SourceDocument) -> usize {
 }
 
 async fn bounded_blocking_map_in_order<T, R, W, F>(
-    items: &[T],
+    items: Vec<T>,
     concurrency: usize,
     byte_budget: usize,
     weight: W,
     work: F,
 ) -> anyhow::Result<Vec<R>>
 where
-    T: Clone + Send + Sync + 'static,
+    T: Send + 'static,
     R: Send + 'static,
     W: Fn(&T) -> usize,
     F: Fn(T) -> anyhow::Result<R> + Send + Sync + 'static,
@@ -95,12 +90,11 @@ where
             .acquire_owned()
             .await
             .map_err(|error| anyhow::anyhow!("document preparation gate closed: {error}"))?;
-        let permits = weight(item).max(1).min(byte_budget) as u32;
+        let permits = weight(&item).max(1).min(byte_budget) as u32;
         let byte_permit = Arc::clone(&byte_slots)
             .acquire_many_owned(permits)
             .await
             .map_err(|error| anyhow::anyhow!("document preparation byte gate closed: {error}"))?;
-        let item = item.clone();
         let work = Arc::clone(&work);
         handles.push(tokio::task::spawn_blocking(move || {
             let _task_permit = task_permit;

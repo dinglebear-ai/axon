@@ -1,10 +1,13 @@
 use std::error::Error;
 use std::time::Duration;
 
+use axon_api::source::{AuthSnapshot, OperationKind};
 use axon_core::config::{Config, ConfigOverrides, ScrapeFormat};
 use axon_retrieval::retrieve::{RetrievedDocument, retrieve_document};
 use axon_vectors::qdrant::QdrantVectorStore;
 
+use super::provider_execution::ReadExecution;
+use crate::context::ServiceContext;
 use crate::document::{
     decode_document_cursor_backend, is_stale, paginate_document, read_latest_stored_source,
 };
@@ -29,9 +32,46 @@ struct ResolvedDocument {
     refresh_status: Option<String>,
 }
 
-/// Retrieve stored document chunks for a URL.
+/// Retrieve stored document chunks for a URL. Foreground retrieval stays
+/// synchronous at the transport, but Qdrant capacity is reserved through the
+/// same durable provider scheduler used by source ingestion.
 #[must_use = "retrieve returns a Result that should be handled"]
 pub async fn retrieve(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    url: &str,
+    opts: RetrieveOptions,
+) -> Result<RetrieveResult, Box<dyn Error + Send + Sync>> {
+    retrieve_with_auth(ctx, cfg, url, opts, None).await
+}
+
+/// Auth-aware retrieve path for authenticated transports.
+pub async fn retrieve_with_auth(
+    ctx: &ServiceContext,
+    cfg: &Config,
+    url: &str,
+    opts: RetrieveOptions,
+    auth_snapshot: Option<AuthSnapshot>,
+) -> Result<RetrieveResult, Box<dyn Error + Send + Sync>> {
+    if url.starts_with("local-code://") {
+        return Err("local-code documents are only available through code_search".into());
+    }
+    let execution = ReadExecution::begin(
+        ctx,
+        cfg,
+        OperationKind::Retrieve,
+        serde_json::json!({ "url": url, "collection": cfg.collection }),
+        auth_snapshot,
+    )
+    .await
+    .map_err(|error| -> Box<dyn Error + Send + Sync> { error.to_string().into() })?;
+    let result = retrieve_inner(&execution, cfg, url, opts).await;
+    execution.finish(ctx, &result).await;
+    result
+}
+
+async fn retrieve_inner(
+    execution: &ReadExecution,
     cfg: &Config,
     url: &str,
     opts: RetrieveOptions,
@@ -44,7 +84,7 @@ pub async fn retrieve(
             format!("invalid retrieve cursor for {url}: {e}").into()
         },
     )?;
-    let resolved = resolve_document(cfg, url, opts.max_points, pinned_backend).await?;
+    let resolved = resolve_document(execution, cfg, url, opts.max_points, pinned_backend).await?;
     let page = paginate_document(
         &resolved.content,
         opts.cursor.as_deref(),
@@ -71,6 +111,7 @@ pub async fn retrieve(
 }
 
 async fn resolve_document(
+    execution: &ReadExecution,
     cfg: &Config,
     url: &str,
     max_points: Option<usize>,
@@ -78,7 +119,7 @@ async fn resolve_document(
 ) -> Result<ResolvedDocument, Box<dyn Error + Send + Sync>> {
     if let Some(backend) = pinned_backend {
         return match backend {
-            DocumentBackend::Qdrant => resolve_qdrant_document(cfg, url, max_points)
+            DocumentBackend::Qdrant => resolve_qdrant_document(execution, cfg, url, max_points)
                 .await?
                 .ok_or_else(|| {
                     "retrieve cursor requires qdrant backend but no stored chunks exist"
@@ -97,7 +138,7 @@ async fn resolve_document(
     }
 
     let mut qdrant_error: Option<String> = None;
-    match resolve_qdrant_document(cfg, url, max_points).await {
+    match resolve_qdrant_document(execution, cfg, url, max_points).await {
         Ok(Some(qdrant)) => return Ok(qdrant),
         Ok(None) => {}
         Err(err) => qdrant_error = Some(err.to_string()),
@@ -147,13 +188,19 @@ async fn resolve_document(
 }
 
 async fn resolve_qdrant_document(
+    execution: &ReadExecution,
     cfg: &Config,
     url: &str,
     max_points: Option<usize>,
 ) -> Result<Option<ResolvedDocument>, Box<dyn Error + Send + Sync>> {
     let mut store = QdrantVectorStore::new(cfg.qdrant_url.clone(), RETRIEVE_VECTOR_PROVIDER_ID);
     axon_vectors::qdrant::configure_point_buffer(&mut store, cfg.qdrant_point_buffer);
-    let doc = retrieve_document(&store, &cfg.collection, url, max_points)
+    let collection = cfg.collection.clone();
+    let target = url.to_string();
+    let doc = execution
+        .vector_operation("retrieve-by-url", || async {
+            retrieve_document(&store, &collection, &target, max_points).await
+        })
         .await
         .map_err(|e| -> Box<dyn Error + Send + Sync> {
             format!("qdrant retrieve failed for {url}: {e}").into()

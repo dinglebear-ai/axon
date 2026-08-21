@@ -227,6 +227,13 @@ pub struct Config {
     /// Flag: `--scope <page|site|...>`. `None` uses the adapter's default scope.
     pub source_scope: Option<String>,
 
+    /// Scheduler priority for source jobs. CLI `--priority` overrides `[jobs].default-priority`.
+    pub source_priority: Option<String>,
+
+    /// Operator gate for executable CLI/MCP tool sources.
+    /// Env `AXON_ALLOW_TOOL_EXECUTION` overrides `[security].allow-tool-execution`.
+    pub allow_tool_execution: bool,
+
     /// Request inline cleaned-page output for retained `axon scrape`.
     pub scrape_inline: bool,
 
@@ -274,6 +281,14 @@ pub struct Config {
 
     /// Override concurrency limit for sitemap backfill fetches. TOML: `workers.backfill-concurrency-limit`.
     pub backfill_concurrency_limit: Option<usize>,
+
+    /// Global durable capacity for the injected HTTP fetch provider.
+    /// Env: `AXON_FETCH_CONCURRENCY`. TOML: `providers.fetch.concurrency`.
+    pub fetch_provider_concurrency: usize,
+
+    /// Global durable capacity for the injected render provider.
+    /// Env: `AXON_RENDER_MAX_CONCURRENT_PAGES`. TOML: `providers.render.max-concurrent-pages`.
+    pub render_provider_concurrency: usize,
 
     /// Opt-in Spider adaptive crawl semaphore settings. TOML: `workers.adaptive-concurrency`.
     pub adaptive_concurrency: AdaptiveConcurrencyConfig,

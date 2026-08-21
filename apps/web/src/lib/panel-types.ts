@@ -9,10 +9,13 @@ export type ConfigResponse = {
   restart_required: boolean;
 };
 
+export type EnvConfigKeyState = {
+  key: string;
+  configured: boolean;
+};
+
 export type EnvConfigResponse = {
-  path: string;
-  raw_env: string;
-  restart_required: boolean;
+  keys: EnvConfigKeyState[];
 };
 
 export type SaveConfigResponse = {

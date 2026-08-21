@@ -22,35 +22,37 @@ pub(super) struct ResolvedAcquisition {
 pub(super) async fn overlay_trusted_validators(
     runtime: &TargetLocalSourceRuntime,
     input: &SourcePipelineInput<'_>,
-    diff: &SourceManifestDiff,
+    mut diff: SourceManifestDiff,
 ) -> anyhow::Result<SourceManifestDiff> {
     if input.adapter.reuse_policy() != ReusePolicy::ConditionalRequest {
-        return Ok(diff.clone());
+        return Ok(diff);
     }
     let Some(previous_generation) = diff.previous_generation.clone() else {
-        return Ok(diff.clone());
+        return Ok(diff);
     };
-    let Some(previous_manifest) = runtime
+    let modified_keys = diff
+        .modified
+        .iter()
+        .map(|item| item.source_item_key.clone())
+        .collect::<Vec<_>>();
+    if modified_keys.is_empty() {
+        return Ok(diff);
+    }
+    let previous_items = runtime
         .ledger
-        .get_manifest(diff.source_id.clone(), previous_generation)
+        .get_manifest_items(diff.source_id.clone(), previous_generation, modified_keys)
         .await?
-    else {
-        return Ok(diff.clone());
-    };
-    let previous_items = previous_manifest
-        .items
         .into_iter()
         .map(|item| (item.source_item_key.clone(), item))
         .collect::<BTreeMap<_, _>>();
-    let mut adjusted = diff.clone();
-    for item in &mut adjusted.modified {
+    for item in &mut diff.modified {
         let Some(previous) = previous_items.get(&item.source_item_key) else {
             continue;
         };
         copy_validator(previous, item, ETAG, PRIOR_ETAG);
         copy_validator(previous, item, LAST_MODIFIED, PRIOR_LAST_MODIFIED);
     }
-    Ok(adjusted)
+    Ok(diff)
 }
 
 pub(super) async fn resolve_acquisition(
@@ -166,17 +168,16 @@ pub(super) async fn normalize_acquisition(
 }
 
 pub(super) fn apply_reused_items(
-    diff: &SourceManifestDiff,
-    reused_item_keys: &[SourceItemKey],
+    diff: SourceManifestDiff,
+    reused_item_keys: &BTreeSet<SourceItemKey>,
 ) -> SourceManifestDiff {
     if reused_item_keys.is_empty() {
-        return diff.clone();
+        return diff;
     }
-    let reused = reused_item_keys.iter().cloned().collect::<BTreeSet<_>>();
-    let mut adjusted = diff.clone();
+    let mut adjusted = diff;
     let mut modified = Vec::with_capacity(adjusted.modified.len());
     for item in adjusted.modified.drain(..) {
-        if reused.contains(&item.source_item_key) {
+        if reused_item_keys.contains(&item.source_item_key) {
             adjusted.unchanged.push(item);
         } else {
             modified.push(item);

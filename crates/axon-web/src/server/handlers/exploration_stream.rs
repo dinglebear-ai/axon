@@ -232,6 +232,9 @@ pub(crate) async fn research_stream(
     let (tx, rx) = mpsc::channel::<Result<Event, Infallible>>(SSE_EVENT_BUFFER);
     let disconnected = Arc::new(AtomicBool::new(false));
     let service_context = Arc::clone(&state.service_context);
+    let caller_auth_snapshot = auth
+        .as_ref()
+        .map(|axum::Extension(auth)| super::auth_snapshot_from_context(auth));
     let job_id = JobId::new(uuid::Uuid::new_v4());
     let sequence = Arc::new(SequenceCounter::default());
 
@@ -273,6 +276,7 @@ pub(crate) async fn research_stream(
                 &query,
                 opts,
                 Some(event_tx),
+                caller_auth_snapshot,
             ),
         )
         .await

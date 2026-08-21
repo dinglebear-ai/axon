@@ -22,14 +22,14 @@
 //! `SqliteUnifiedJobStore::create_job` / `find_by_idempotency_key`.
 
 use axon_api::source::{
-    AdapterRef, AuthScope, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap,
-    SourceIntent, SourceKind, SourceRequest, SourceResult, SourceScope,
+    AdapterRef, AuthSnapshot, JobCreateRequest, JobIntent, JobKind, MetadataMap, SourceIntent,
+    SourceKind, SourceRequest, SourceResult, SourceScope,
 };
 use axon_error::{ApiError, ErrorStage};
 use axon_jobs::boundary::JobStore;
 use std::path::PathBuf;
 
-use super::authorize;
+use super::authorize::SourceAccessDecision;
 use super::result_map;
 use super::routing;
 
@@ -59,6 +59,19 @@ pub async fn enqueue_source_with_allowed_roots(
     auth_snapshot: Option<AuthSnapshot>,
     allowed_roots: Option<&[PathBuf]>,
 ) -> anyhow::Result<SourceResult> {
+    enqueue_source_with_access_policy(request, store, auth_snapshot, allowed_roots, false).await
+}
+
+/// Detached server enqueue with the complete operator + caller admission
+/// policy. Executable source adapters require both the operator config switch
+/// and the caller Execute scope before a durable job can be created.
+pub async fn enqueue_source_with_access_policy(
+    request: SourceRequest,
+    store: &dyn JobStore,
+    auth_snapshot: Option<AuthSnapshot>,
+    allowed_roots: Option<&[PathBuf]>,
+    operator_allows_tool_execution: bool,
+) -> anyhow::Result<SourceResult> {
     let input = request.source.trim().to_string();
     if input.is_empty() {
         return Ok(result_map::unsupported_result(
@@ -68,31 +81,22 @@ pub async fn enqueue_source_with_allowed_roots(
         ));
     }
 
-    let routed = match routing::resolve_source_route(&request) {
+    let routed = match routing::resolve_source_route_for_access(
+        &request,
+        auth_snapshot.as_ref(),
+        operator_allows_tool_execution,
+    ) {
         Ok(routed) => routed,
         Err(err) => return Ok(result_map::route_error_result(&input, err)),
     };
-    if let Err(err) = authorize::authorize_route(&routed.route) {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if let Err(err) =
-        authorize::authorize_safety_class(routed.route.safety_class, auth_snapshot.as_ref())
-    {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if let Err(err) =
-        authorize_detached_local_source_policy(&input, routed.kind, auth_snapshot.as_ref())
-    {
-        return Ok(result_map::route_error_result(&input, err));
-    }
-    if let Some(allowed_roots) = allowed_roots
-        && let Err(err) = super::security::authorize_local_source_allowed_roots(
-            &input,
-            routed.kind,
-            auth_snapshot.as_ref(),
-            allowed_roots,
-        )
-    {
+    if let Err(err) = SourceAccessDecision::evaluate(
+        &routed.route,
+        &input,
+        routed.kind,
+        auth_snapshot.as_ref(),
+        axon_api::source::ExecutionAffinity::Scheduler,
+        allowed_roots,
+    ) {
         return Ok(result_map::route_error_result(&input, err));
     }
     let auth_snapshot = auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("runtime"));
@@ -117,21 +121,6 @@ pub async fn enqueue_source_with_allowed_roots(
         canonical_uri,
         descriptor,
     ))
-}
-
-fn authorize_detached_local_source_policy(
-    input: &str,
-    kind: SourceKind,
-    auth_snapshot: Option<&AuthSnapshot>,
-) -> Result<(), ApiError> {
-    if kind != SourceKind::Local {
-        return Ok(());
-    }
-    let has_local_scope = auth_snapshot
-        .map(|snapshot| authorize::snapshot_allows_scope(snapshot, AuthScope::Local))
-        .unwrap_or(false);
-    super::enforce_local_source_policy(input, has_local_scope)
-        .map_err(|err| ApiError::new(err.code, ErrorStage::Authorizing, err.message))
 }
 
 /// Build the `JobKind::Source` create request. `claimed.request_json` on the

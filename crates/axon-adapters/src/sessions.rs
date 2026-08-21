@@ -11,6 +11,7 @@
 //! which agent produced the export it is handing to this adapter.
 
 mod decode;
+mod discovery;
 mod metadata;
 mod project_filter;
 mod selection;
@@ -21,19 +22,19 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use axon_api::source::*;
-use ignore::{DirEntry, WalkBuilder};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::adapter::{Result, SourceAdapter};
 use crate::capability::AdapterCapability;
-use crate::manifest::item_identity;
 
 use self::decode::DecodedSession;
 pub use self::decode::redact_session_text;
+use self::discovery::{
+    collect_capped_session_candidates, collect_session_manifest_items_parallel,
+    hash_session_candidates_parallel, safe_item_path,
+};
 use self::metadata::session_source_document;
-use self::project_filter::matches_project_filter;
 pub use self::selection::{
     SessionProvider, SessionRoots, ValidatedSessionPath, has_supported_session_extension,
     validate_event_path_missing_ok, validate_session_file_path, validate_session_source_path,
@@ -44,6 +45,7 @@ pub use self::target::{SessionTarget, parse_session_target};
 pub const MODULE_NAME: &str = "sessions";
 
 const ADAPTER_NAME: &str = "sessions";
+const SESSION_DISCOVERY_HASH_MAX_THREADS: usize = 8;
 // Manifest freshness for the normalized semantic document projection. Bump
 // when decoding, redaction, or document construction changes so an unchanged
 // raw transcript is re-prepared instead of silently reusing stale vectors.
@@ -142,16 +144,28 @@ impl SourceAdapter for SessionSourceAdapter {
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>> {
         validate_adapter(plan)?;
         let target = session_target(plan)?;
-        let mut documents = Vec::with_capacity(acquisition.fetched_items.len());
-        for item in &acquisition.fetched_items {
-            let text = item_text(item)?;
-            let decoded = decode_item(&target, item, &text)?;
+        let SourceAcquisition {
+            source_id,
+            fetched_items,
+            ..
+        } = acquisition;
+        let mut documents = Vec::with_capacity(fetched_items.len());
+        for item in fetched_items {
+            let AcquiredSourceItem {
+                manifest_item,
+                content_ref,
+                raw_artifact_id,
+                ..
+            } = item;
+            let text = item_text(content_ref)?;
+            let decoded = decode_manifest_item(&target, &manifest_item, &text)?;
             documents.push(session_source_document(
                 plan,
                 &target,
-                &decoded,
-                &acquisition,
-                item,
+                decoded,
+                &source_id,
+                manifest_item,
+                raw_artifact_id,
             ));
         }
         Ok(StageExecutionResult {
@@ -187,45 +201,25 @@ fn discover_sync(plan: &SourcePlan) -> Result<SourceManifest> {
     let root = sessions_root(plan)?;
     let project_filter = project_filter(plan);
 
-    let mut files = collect_files(&root)?;
-    files.sort();
-
     let base_uri = format!("session://{}/{}", target.provider, target.session_id);
-    let mut items = Vec::new();
-    for file in files {
-        if !target_has_supported_session_extension(&target, &file) {
-            continue;
-        }
-        let key = relative_key(&root, &file)?;
-        if !matches_project_filter(project_filter.as_deref(), &root, &file, &key) {
-            continue;
-        }
-        let path = safe_item_path(&root, &key)?;
-        let meta = fs::metadata(&path).map_err(|err| fs_error("stat_failed", &path, err))?;
-        if !meta.is_file() {
-            continue;
-        }
-        let content_hash = content_fingerprint(&path)?;
-        let identity = item_identity(SourceKind::Session, &base_uri, &key)?;
-        let mut item_metadata = MetadataMap::new();
-        item_metadata.insert("session_relative_path".to_string(), json!(key));
-        items.push(ManifestItem {
-            source_id: plan.route.source.source_id.clone(),
-            source_item_key: identity.source_item_key,
-            canonical_uri: identity.canonical_uri,
-            item_kind: ItemKind::Transcript,
-            content_kind: Some(ContentKind::Transcript),
-            display_path: Some(key),
-            parent_key: None,
-            size_bytes: Some(meta.len()),
-            content_hash: Some(content_hash),
-            mtime: modified_at(meta.modified().ok()),
-            version: Some(SESSION_DOCUMENT_VERSION.to_string()),
-            fetch_plan: None,
-            metadata: item_metadata,
-            graph_hints: Vec::new(),
-        });
-    }
+    let max_items = plan
+        .limits
+        .effective
+        .max_items
+        .map(|value| usize::try_from(value).unwrap_or(usize::MAX));
+    let mut items = if let Some(limit) = max_items {
+        let candidates =
+            collect_capped_session_candidates(&target, project_filter.as_deref(), &root, limit)?;
+        hash_session_candidates_parallel(plan, &base_uri, &root, &candidates)?
+    } else {
+        collect_session_manifest_items_parallel(
+            plan,
+            &target,
+            project_filter.as_deref(),
+            &base_uri,
+            &root,
+        )?
+    };
     items.sort_by(|left, right| left.source_item_key.cmp(&right.source_item_key));
 
     Ok(SourceManifest {
@@ -348,116 +342,15 @@ fn validate_adapter(plan: &SourcePlan) -> Result<()> {
     .with_context("adapter", plan.route.adapter.name.clone()))
 }
 
-fn collect_files(root: &Path) -> Result<Vec<PathBuf>> {
-    if root.is_file() {
-        return Ok(vec![root.to_path_buf()]);
-    }
-    let mut builder = WalkBuilder::new(root);
-    builder
-        .follow_links(false)
-        .hidden(false)
-        .git_ignore(false)
-        .git_exclude(false)
-        .parents(false)
-        .filter_entry(should_descend_entry);
-    let mut files = Vec::new();
-    for entry in builder.build() {
-        let entry = entry.map_err(|err| {
-            ApiError::new(
-                "adapter.session.walk_failed",
-                ErrorStage::Discovering,
-                err.to_string(),
-            )
-        })?;
-        if entry
-            .file_type()
-            .is_some_and(|file_type| file_type.is_file())
-        {
-            files.push(entry.into_path());
-        }
-    }
-    Ok(files)
-}
-
-fn should_descend_entry(entry: &DirEntry) -> bool {
-    entry.file_name().to_str() != Some(".git")
-}
-
-/// Supported session export extensions: `.jsonl` for Claude/Codex, `.json` for Gemini.
-fn target_has_supported_session_extension(target: &SessionTarget, path: &Path) -> bool {
-    matches!(
-        (
-            target.provider.as_str(),
-            path.extension().and_then(|ext| ext.to_str())
-        ),
-        ("claude" | "codex", Some("jsonl")) | ("gemini", Some("json"))
-    )
-}
-
-fn relative_key(root: &Path, file: &Path) -> Result<String> {
-    if root.is_file() {
-        let name = root.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
-            ApiError::new(
-                "adapter.session.item_key.invalid",
-                ErrorStage::Normalizing,
-                "session item key must not be empty",
-            )
-        })?;
-        return Ok(name.to_string());
-    }
-    let relative = file.strip_prefix(root).unwrap_or(file);
-    let key = relative
-        .components()
-        .filter_map(|component| component.as_os_str().to_str())
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("/");
-    if key.is_empty() {
-        return Err(ApiError::new(
-            "adapter.session.item_key.invalid",
-            ErrorStage::Normalizing,
-            "session item key must not be empty",
-        ));
-    }
-    Ok(key)
-}
-
-fn safe_item_path(root: &Path, key: &str) -> Result<PathBuf> {
-    if root.is_file() {
-        return Ok(root.to_path_buf());
-    }
-    if Path::new(key).is_absolute() || key.split('/').any(|part| part == "..") {
-        return Err(ApiError::new(
-            "adapter.session.path.escape",
-            ErrorStage::Fetching,
-            "session item key must stay inside the sessions root",
-        )
-        .with_context("key", key.to_string()));
-    }
-    Ok(root.join(key))
-}
-
-fn content_fingerprint(path: &Path) -> Result<String> {
-    let bytes = fs::read(path).map_err(|err| fs_error("read_failed", path, err))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    Ok(hex_prefix(&hasher.finalize(), 16))
-}
-
-/// Decode raw file content into a `DecodedSession` for the given target/manifest item.
-/// Format is selected by file extension: `.jsonl` decodes via the provider-specific
-/// JSONL decoder (Claude vs. Codex have different turn schemas), `.json` decodes via
-/// the Gemini single-document decoder.
-fn decode_item(
+fn decode_manifest_item(
     target: &SessionTarget,
-    item: &AcquiredSourceItem,
+    item: &ManifestItem,
     text: &str,
 ) -> Result<DecodedSession> {
     let key = item
-        .manifest_item
         .display_path
         .clone()
-        .unwrap_or_else(|| item.manifest_item.source_item_key.0.clone());
+        .unwrap_or_else(|| item.source_item_key.0.clone());
     let path = Path::new(&key);
     match (
         target.provider.as_str(),
@@ -482,9 +375,9 @@ fn decode_item(
     }
 }
 
-fn item_text(item: &AcquiredSourceItem) -> Result<String> {
-    match &item.content_ref {
-        ContentRef::InlineText { text } => Ok(text.clone()),
+fn item_text(content: ContentRef) -> Result<String> {
+    match content {
+        ContentRef::InlineText { text } => Ok(text),
         _ => Err(ApiError::new(
             "adapter.session.content_kind.unsupported",
             ErrorStage::Normalizing,

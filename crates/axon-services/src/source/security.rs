@@ -2,7 +2,6 @@ use std::fmt;
 use std::path::{Component, Path, PathBuf};
 
 use axon_api::source::{AuthMode, AuthScope, AuthSnapshot, SourceKind};
-use axon_core::http::validate_url;
 use axon_error::{ApiError, ErrorStage};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,18 +18,6 @@ impl fmt::Display for SourceSecurityError {
 
 impl std::error::Error for SourceSecurityError {}
 
-/// Enforce SSRF policy before HTTP fetch, Chrome render, artifact writes, jobs,
-/// graph writes, or vector writes can be created for network sources.
-pub fn enforce_network_source_policy(urls: &[&str]) -> Result<(), SourceSecurityError> {
-    for url in urls {
-        validate_url(url).map_err(|err| SourceSecurityError {
-            code: "security.ssrf_denied",
-            message: format!("network source denied before side effects: {err}"),
-        })?;
-    }
-    Ok(())
-}
-
 /// Enforce local-source scope and high-risk path policy before filesystem reads.
 pub fn enforce_local_source_policy(
     path: &str,
@@ -42,7 +29,7 @@ pub fn enforce_local_source_policy(
             message: "local source requires axon:local or trusted local context".to_string(),
         });
     }
-    if is_secret_like_local_path(path) {
+    if axon_core::redact::is_sensitive_local_path(path) {
         return Err(SourceSecurityError {
             code: "security.local_secret_denied",
             message: "secret-like local path denied before side effects".to_string(),
@@ -146,17 +133,6 @@ fn local_root_denied() -> SourceSecurityError {
         code: "security.local_root_denied",
         message: "local source is outside configured allowed roots".to_string(),
     }
-}
-
-fn is_secret_like_local_path(path: &str) -> bool {
-    let lower = path.to_ascii_lowercase();
-    lower == ".env"
-        || lower.ends_with("/.env")
-        || lower.contains("/.ssh/")
-        || lower.contains("/.codex/")
-        || lower.contains("/.gemini/")
-        || lower.contains("browser-profile")
-        || lower.contains("cloud")
 }
 
 #[cfg(test)]

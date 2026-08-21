@@ -13,34 +13,47 @@ use std::str::FromStr;
 #[cfg(test)]
 pub(crate) mod snapshot_test_hook {
     use std::sync::{Arc, Mutex, OnceLock};
+
+    use axon_api::source::SourceId;
     use tokio::sync::Notify;
 
     pub(crate) struct Hook {
+        pub source_id: String,
         pub entered: Arc<Notify>,
         pub resume: Arc<Notify>,
     }
 
     static HOOK: OnceLock<Mutex<Option<Hook>>> = OnceLock::new();
 
-    pub(crate) fn install() -> (Arc<Notify>, Arc<Notify>) {
+    pub(crate) fn install(source_id: &SourceId) -> (Arc<Notify>, Arc<Notify>) {
         let entered = Arc::new(Notify::new());
         let resume = Arc::new(Notify::new());
         *HOOK
             .get_or_init(|| Mutex::new(None))
             .lock()
             .expect("hook lock") = Some(Hook {
+            source_id: source_id.0.clone(),
             entered: Arc::clone(&entered),
             resume: Arc::clone(&resume),
         });
         (entered, resume)
     }
 
-    pub(crate) async fn pause_once_after_read() {
-        let hook = HOOK
-            .get_or_init(|| Mutex::new(None))
-            .lock()
-            .expect("hook lock")
-            .take();
+    pub(crate) async fn pause_once_after_read(source_id: &SourceId) {
+        let hook = {
+            let mut guard = HOOK
+                .get_or_init(|| Mutex::new(None))
+                .lock()
+                .expect("hook lock");
+            if guard
+                .as_ref()
+                .is_some_and(|hook| hook.source_id == source_id.0)
+            {
+                guard.take()
+            } else {
+                None
+            }
+        };
         if let Some(hook) = hook {
             hook.entered.notify_one();
             hook.resume.notified().await;
@@ -133,8 +146,12 @@ impl LedgerStore for SqliteLedgerStore {
     }
 
     async fn put_manifest(&self, manifest: SourceManifest) -> Result<()> {
+        self.put_manifest_ref(&manifest).await
+    }
+
+    async fn put_manifest_ref(&self, manifest: &SourceManifest) -> Result<()> {
         retry_ledger_write("ledger put manifest", || {
-            manifest::put_manifest(self, manifest.clone())
+            manifest::put_manifest(self, manifest)
         })
         .await
     }
@@ -147,7 +164,45 @@ impl LedgerStore for SqliteLedgerStore {
         manifest::read_manifest(self, &source_id, &generation).await
     }
 
+    async fn get_manifest_metadata(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+    ) -> Result<Option<MetadataMap>> {
+        manifest::read_manifest_metadata(self, &source_id, &generation).await
+    }
+
+    async fn get_manifest_items(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        item_keys: Vec<SourceItemKey>,
+    ) -> Result<Vec<ManifestItem>> {
+        manifest::read_manifest_items(self, &source_id, &generation, item_keys).await
+    }
+
+    async fn get_manifest_items_with_metadata_key(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        item_keys: Vec<SourceItemKey>,
+        metadata_key: String,
+    ) -> Result<Vec<ManifestItem>> {
+        manifest::read_manifest_items_with_metadata_key(
+            self,
+            &source_id,
+            &generation,
+            item_keys,
+            &metadata_key,
+        )
+        .await
+    }
+
     async fn diff_manifest(&self, manifest: SourceManifest) -> Result<SourceManifestDiff> {
+        self.diff_manifest_ref(&manifest).await
+    }
+
+    async fn diff_manifest_ref(&self, manifest: &SourceManifest) -> Result<SourceManifestDiff> {
         manifest::diff_manifest(self, manifest).await
     }
 
@@ -198,6 +253,23 @@ impl LedgerStore for SqliteLedgerStore {
 
     async fn update_document_statuses(&self, statuses: Vec<DocumentStatus>) -> Result<()> {
         document::update_document_statuses(self, statuses).await
+    }
+
+    async fn publish_document_statuses(
+        &self,
+        source_id: SourceId,
+        generation: SourceGenerationId,
+        updated_at: Timestamp,
+    ) -> Result<u64> {
+        retry_ledger_write("ledger publish document statuses", || {
+            document::publish_document_statuses(
+                self,
+                source_id.clone(),
+                generation.clone(),
+                updated_at.clone(),
+            )
+        })
+        .await
     }
 
     async fn record_cleanup_debt(&self, debt: CleanupDebt) -> Result<()> {

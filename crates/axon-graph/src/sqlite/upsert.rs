@@ -1,20 +1,32 @@
 //! Candidate write path for the SQLite graph store.
 
-use axon_api::source::{GraphCandidate, GraphWriteResult, SourceId};
+use std::collections::HashMap;
+use std::str::FromStr;
+
+use axon_api::source::{
+    GraphCandidate, GraphEdgeCandidate, GraphEvidence, GraphWriteResult, SourceId,
+};
 use axon_core::redact::{
     DefaultRedactor, RedactionContext, Redactor, redact_metadata_checked, stamp_redaction_metadata,
 };
 use axon_core::sqlite::ImmediateTx;
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, Sqlite, SqlitePool};
 
 use super::header::{now_timestamp, stage_header};
 use super::row::{authority_to_str, metadata_to_json, range_to_json, source_ids_to_json};
 use crate::authority::{Authority, resolve_authority};
 use crate::candidate::validate_candidate;
 use crate::error::graph_storage_error;
-use crate::merge::{ResolvedNode, resolve_edge, resolve_node};
+use crate::evidence::EvidenceKind;
+use crate::merge::{
+    ResolvedEdge, ResolvedNode, authority_from_evidence, confidence_from_evidence, edge_id_for,
+    resolve_node,
+};
 
 type StoreResult<T> = Result<T, axon_api::source::ApiError>;
+
+mod baseline;
+use baseline::upsert_source_baseline;
 
 /// Write a batch of validated candidates into the durable graph.
 ///
@@ -26,51 +38,80 @@ pub async fn upsert_candidates(
     pool: &SqlitePool,
     candidates: Vec<GraphCandidate>,
 ) -> StoreResult<GraphWriteResult> {
-    for candidate in &candidates {
-        validate_candidate(candidate)?;
-    }
+    upsert_candidate_iter(pool, candidates).await
+}
 
-    let candidates_seen = candidates.len() as u64;
-    let source_id = candidates
-        .first()
-        .map(|c| c.source_id.clone())
-        .unwrap_or_else(|| SourceId::new("graph"));
-
+pub async fn upsert_candidate_iter<I>(
+    pool: &SqlitePool,
+    candidates: I,
+) -> StoreResult<GraphWriteResult>
+where
+    I: IntoIterator<Item = GraphCandidate>,
+{
     let mut tx = ImmediateTx::begin(pool)
         .await
         .map_err(|e| graph_storage_error(format!("failed to open graph transaction: {e}")))?;
 
+    let mut candidates_seen = 0u64;
+    let mut source_id = None;
     let mut nodes_upserted = 0u64;
     let mut edges_upserted = 0u64;
     let mut evidence_records = 0u64;
 
     for candidate in candidates {
+        validate_candidate(&candidate)?;
+        candidates_seen = candidates_seen.saturating_add(1);
+        if source_id.is_none() {
+            source_id = Some(candidate.source_id.clone());
+        }
+        if is_inferred_source_baseline(&candidate) {
+            let (nodes, edges, evidence) = upsert_source_baseline(&mut tx, &candidate).await?;
+            nodes_upserted = nodes_upserted.saturating_add(nodes);
+            edges_upserted = edges_upserted.saturating_add(edges);
+            evidence_records = evidence_records.saturating_add(evidence);
+            continue;
+        }
+
         let resolved_nodes: Vec<ResolvedNode> = candidate.nodes.iter().map(resolve_node).collect();
+        let nodes_by_stable_key = resolved_nodes
+            .iter()
+            .map(|node| (node.stable_key.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        let evidence_by_id = candidate
+            .evidence
+            .iter()
+            .map(|evidence| (evidence.evidence_id.as_str(), evidence))
+            .collect::<HashMap<_, _>>();
 
         for node in &resolved_nodes {
             upsert_node(&mut tx, node, &candidate.source_id, candidate.confidence).await?;
             nodes_upserted += 1;
         }
+        upsert_aliases(&mut tx, &resolved_nodes).await?;
 
+        let mut pending_evidence = Vec::new();
         for edge in &candidate.edges {
-            let edge_evidence = candidate
-                .evidence
+            let edge_evidence = edge
+                .evidence_ids
                 .iter()
-                .filter(|evidence| edge.evidence_ids.contains(&evidence.evidence_id))
-                .cloned()
+                .filter_map(|evidence_id| evidence_by_id.get(evidence_id.as_str()).copied())
                 .collect::<Vec<_>>();
-            let Some(resolved) =
-                resolve_edge(edge, &resolved_nodes, &edge_evidence, candidate.confidence)
-            else {
+            let Some(resolved) = resolve_edge_indexed(
+                edge,
+                &nodes_by_stable_key,
+                &edge_evidence,
+                candidate.confidence,
+            ) else {
                 continue;
             };
             upsert_edge(&mut tx, &resolved).await?;
             edges_upserted += 1;
-            for ev in &edge_evidence {
-                upsert_evidence(&mut tx, &resolved.edge_id.0, ev).await?;
+            for ev in edge_evidence {
+                pending_evidence.push((resolved.edge_id.0.clone(), ev));
                 evidence_records += 1;
             }
         }
+        upsert_evidence_batch(&mut tx, &pending_evidence).await?;
     }
 
     tx.commit()
@@ -79,12 +120,61 @@ pub async fn upsert_candidates(
 
     Ok(GraphWriteResult {
         header: stage_header(),
-        source_id,
+        source_id: source_id.unwrap_or_else(|| SourceId::new("graph")),
         candidates_seen,
         nodes_upserted,
         edges_upserted,
         evidence_records,
         warnings: Vec::new(),
+    })
+}
+
+fn is_inferred_source_baseline(candidate: &GraphCandidate) -> bool {
+    if candidate.kind != "source_baseline" {
+        return false;
+    }
+    let evidence_by_id = candidate
+        .evidence
+        .iter()
+        .map(|evidence| (evidence.evidence_id.as_str(), evidence))
+        .collect::<HashMap<_, _>>();
+    candidate.edges.iter().all(|edge| {
+        !edge.evidence_ids.is_empty()
+            && edge.evidence_ids.iter().all(|id| {
+                evidence_by_id
+                    .get(id.as_str())
+                    .and_then(|evidence| EvidenceKind::from_str(&evidence.evidence_kind).ok())
+                    .is_some_and(|kind| kind.authority() == Authority::Inferred)
+            })
+    })
+}
+
+fn resolve_edge_indexed(
+    edge: &GraphEdgeCandidate,
+    nodes_by_stable_key: &HashMap<&str, &ResolvedNode>,
+    evidence: &[&GraphEvidence],
+    fallback_confidence: f32,
+) -> Option<ResolvedEdge> {
+    let from = nodes_by_stable_key
+        .get(edge.from_stable_key.as_str())?
+        .node_id
+        .clone();
+    let to = nodes_by_stable_key
+        .get(edge.to_stable_key.as_str())?
+        .node_id
+        .clone();
+    let evidence = evidence
+        .iter()
+        .map(|evidence| (*evidence).clone())
+        .collect::<Vec<_>>();
+    Some(ResolvedEdge {
+        edge_id: edge_id_for(&edge.edge_kind, &from, &to),
+        kind: edge.edge_kind.clone(),
+        from_node_id: from,
+        to_node_id: to,
+        authority: authority_from_evidence(&evidence),
+        confidence: confidence_from_evidence(&evidence, fallback_confidence),
+        properties: edge.properties.clone(),
     })
 }
 
@@ -167,35 +257,56 @@ async fn upsert_node(
     .await
     .map_err(|e| graph_storage_error(format!("failed to upsert node: {e}")))?;
 
-    // Populate alias entries so resolve() can find this node by stable key,
-    // canonical uri, or node id.
-    for (alias_kind, alias_value) in [
-        ("stable_key", node.stable_key.as_str()),
-        ("canonical_uri", node.canonical_uri.as_str()),
-        ("node_id", node.node_id.0.as_str()),
-    ] {
-        sqlx::query(
-            "INSERT INTO graph_aliases (alias_kind, alias_value, node_id)
-             VALUES (?, ?, ?)
-             ON CONFLICT(alias_kind, alias_value) DO UPDATE SET node_id = excluded.node_id",
-        )
-        .bind(alias_kind)
-        .bind(alias_value)
-        .bind(&node.node_id.0)
+    Ok(())
+}
+
+async fn upsert_aliases(
+    tx: &mut sqlx::SqliteConnection,
+    nodes: &[ResolvedNode],
+) -> StoreResult<()> {
+    const ALIAS_BATCH_SIZE: usize = 300;
+    let mut aliases = Vec::<(String, String, String)>::with_capacity(ALIAS_BATCH_SIZE);
+    for node in nodes {
+        for (kind, value) in [
+            ("stable_key", node.stable_key.as_str()),
+            ("canonical_uri", node.canonical_uri.as_str()),
+            ("node_id", node.node_id.0.as_str()),
+        ] {
+            aliases.push((kind.to_string(), value.to_string(), node.node_id.0.clone()));
+            if aliases.len() == ALIAS_BATCH_SIZE {
+                execute_alias_batch(tx, &aliases).await?;
+                aliases.clear();
+            }
+        }
+    }
+    if !aliases.is_empty() {
+        execute_alias_batch(tx, &aliases).await?;
+    }
+    Ok(())
+}
+
+async fn execute_alias_batch(
+    tx: &mut sqlx::SqliteConnection,
+    aliases: &[(String, String, String)],
+) -> StoreResult<()> {
+    let mut query = QueryBuilder::<Sqlite>::new(
+        "INSERT INTO graph_aliases (alias_kind, alias_value, node_id) ",
+    );
+    query.push_values(aliases, |mut row, (kind, value, node_id)| {
+        row.push_bind(kind).push_bind(value).push_bind(node_id);
+    });
+    query.push(" ON CONFLICT(alias_kind, alias_value) DO UPDATE SET node_id = excluded.node_id");
+    query
+        .build()
         .execute(&mut *tx)
         .await
-        .map_err(|e| graph_storage_error(format!("failed to upsert alias: {e}")))?;
-    }
-
+        .map_err(|e| graph_storage_error(format!("failed to batch upsert aliases: {e}")))?;
     Ok(())
 }
 
 /// Upsert one edge by (kind, from, to). On conflict the authority is resolved
 /// under keep-highest-authority; equal authoritative claims record a conflict.
-async fn upsert_edge(
-    tx: &mut sqlx::SqliteConnection,
-    edge: &crate::merge::ResolvedEdge,
-) -> StoreResult<()> {
+async fn upsert_edge(tx: &mut sqlx::SqliteConnection, edge: &ResolvedEdge) -> StoreResult<()> {
     let now = now_timestamp();
     let (redacted_properties, redaction_report) = redact_metadata_checked(
         edge.properties.clone(),
@@ -257,56 +368,94 @@ async fn upsert_edge(
     Ok(())
 }
 
-/// Upsert one evidence record for an edge (idempotent by (edge_id, evidence_id)).
-async fn upsert_evidence(
+struct EvidenceWrite {
+    evidence_id: String,
+    edge_id: String,
+    evidence_kind: String,
+    source_id: String,
+    source_item_key: String,
+    document_id: Option<String>,
+    chunk_id: Option<String>,
+    range_json: Option<String>,
+    quote: Option<String>,
+    confidence: f64,
+    metadata_json: String,
+}
+
+/// Upsert evidence in bounded multi-row statements. Eleven binds per row keep
+/// batches of 80 under SQLite's conservative 999-variable ceiling.
+async fn upsert_evidence_batch(
     tx: &mut sqlx::SqliteConnection,
-    edge_id: &str,
-    ev: &axon_api::source::GraphEvidence,
+    entries: &[(String, &GraphEvidence)],
 ) -> StoreResult<()> {
+    const EVIDENCE_BATCH_SIZE: usize = 80;
     let redactor = DefaultRedactor::new();
     let context = RedactionContext::graph_evidence();
-    let redacted_quote = ev
-        .quote
-        .as_ref()
-        .map(|quote| redactor.redact_text(quote, &context));
-    let mut evidence_metadata = ev.metadata.clone();
-    evidence_metadata.insert("source_id".to_string(), serde_json::json!(ev.source_id.0));
-    evidence_metadata.insert(
-        "source_item_key".to_string(),
-        serde_json::json!(ev.source_item_key.0),
-    );
-    if let Some(document_id) = &ev.document_id {
-        evidence_metadata.insert("document_id".to_string(), serde_json::json!(document_id.0));
+    for entries in entries.chunks(EVIDENCE_BATCH_SIZE) {
+        let mut rows = Vec::with_capacity(entries.len());
+        for (edge_id, ev) in entries {
+            let redacted_quote = ev
+                .quote
+                .as_ref()
+                .map(|quote| redactor.redact_text(quote, &context));
+            let mut evidence_metadata = ev.metadata.clone();
+            evidence_metadata.insert("source_id".to_string(), serde_json::json!(ev.source_id.0));
+            evidence_metadata.insert(
+                "source_item_key".to_string(),
+                serde_json::json!(ev.source_item_key.0),
+            );
+            if let Some(document_id) = &ev.document_id {
+                evidence_metadata
+                    .insert("document_id".to_string(), serde_json::json!(document_id.0));
+            }
+            if let Some(chunk_id) = &ev.chunk_id {
+                evidence_metadata.insert("chunk_id".to_string(), serde_json::json!(chunk_id.0));
+            }
+            let (redacted_metadata, redaction_report) =
+                redact_metadata_checked(evidence_metadata, &context, &redactor)?;
+            let redacted_metadata = stamp_redaction_metadata(redacted_metadata, &redaction_report);
+            rows.push(EvidenceWrite {
+                evidence_id: ev.evidence_id.clone(),
+                edge_id: edge_id.clone(),
+                evidence_kind: ev.evidence_kind.clone(),
+                source_id: ev.source_id.0.clone(),
+                source_item_key: ev.source_item_key.0.clone(),
+                document_id: ev.document_id.as_ref().map(|d| d.0.clone()),
+                chunk_id: ev.chunk_id.as_ref().map(|c| c.0.clone()),
+                range_json: range_to_json(&ev.range)?,
+                quote: redacted_quote,
+                confidence: ev.confidence as f64,
+                metadata_json: metadata_to_json(&redacted_metadata)?,
+            });
+        }
+
+        let mut query = QueryBuilder::<Sqlite>::new(
+            "INSERT INTO graph_evidence (evidence_id, edge_id, evidence_kind, source_id, \
+             source_item_key, document_id, chunk_id, range_json, quote, confidence, metadata_json) ",
+        );
+        query.push_values(&rows, |mut row, value| {
+            row.push_bind(&value.evidence_id)
+                .push_bind(&value.edge_id)
+                .push_bind(&value.evidence_kind)
+                .push_bind(&value.source_id)
+                .push_bind(&value.source_item_key)
+                .push_bind(&value.document_id)
+                .push_bind(&value.chunk_id)
+                .push_bind(&value.range_json)
+                .push_bind(&value.quote)
+                .push_bind(value.confidence)
+                .push_bind(&value.metadata_json);
+        });
+        query.push(
+            " ON CONFLICT(edge_id, evidence_id) DO UPDATE SET \
+             evidence_kind = excluded.evidence_kind, \
+             confidence = excluded.confidence, metadata_json = excluded.metadata_json",
+        );
+        query
+            .build()
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| graph_storage_error(format!("failed to batch upsert evidence: {e}")))?;
     }
-    if let Some(chunk_id) = &ev.chunk_id {
-        evidence_metadata.insert("chunk_id".to_string(), serde_json::json!(chunk_id.0));
-    }
-    let (redacted_metadata, redaction_report) =
-        redact_metadata_checked(evidence_metadata, &context, &redactor)?;
-    let redacted_metadata = stamp_redaction_metadata(redacted_metadata, &redaction_report);
-    sqlx::query(
-        "INSERT INTO graph_evidence (
-            evidence_id, edge_id, evidence_kind, source_id, source_item_key,
-            document_id, chunk_id, range_json, quote, confidence, metadata_json
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(edge_id, evidence_id) DO UPDATE SET
-            evidence_kind = excluded.evidence_kind,
-            confidence    = excluded.confidence,
-            metadata_json = excluded.metadata_json",
-    )
-    .bind(&ev.evidence_id)
-    .bind(edge_id)
-    .bind(&ev.evidence_kind)
-    .bind(&ev.source_id.0)
-    .bind(&ev.source_item_key.0)
-    .bind(ev.document_id.as_ref().map(|d| d.0.clone()))
-    .bind(ev.chunk_id.as_ref().map(|c| c.0.clone()))
-    .bind(range_to_json(&ev.range)?)
-    .bind(&redacted_quote)
-    .bind(ev.confidence as f64)
-    .bind(metadata_to_json(&redacted_metadata)?)
-    .execute(&mut *tx)
-    .await
-    .map_err(|e| graph_storage_error(format!("failed to upsert evidence: {e}")))?;
     Ok(())
 }

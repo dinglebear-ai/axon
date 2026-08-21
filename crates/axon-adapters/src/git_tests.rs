@@ -138,6 +138,29 @@ async fn discover_lists_repo_files_and_excludes_git_dir() {
 }
 
 #[tokio::test]
+async fn discover_applies_max_items_before_hashing_the_full_repo() {
+    let repo = fixture_repo();
+    fs::write(
+        repo.join("z-last.rs"),
+        "pub fn z() {}
+",
+    )
+    .unwrap();
+    let mut plan = git_plan(&repo, SourceScope::Repo, true);
+    plan.limits.effective.max_items = Some(1);
+
+    let manifest = GitSourceAdapter::new().discover(&plan).await.unwrap();
+    let keys = manifest
+        .items
+        .iter()
+        .filter_map(|item| item.display_path.as_deref())
+        .collect::<Vec<_>>();
+
+    assert_eq!(keys, vec!["README.md"]);
+    fs::remove_dir_all(&repo).ok();
+}
+
+#[tokio::test]
 async fn discover_honors_repo_relative_exclude_path_substrings() {
     let repo = fixture_repo();
     fs::create_dir_all(repo.join("docs/private")).unwrap();

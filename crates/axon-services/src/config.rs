@@ -416,6 +416,73 @@ pub fn write_env_text(path: &Path, raw_env: &str) -> io::Result<()> {
     write_private_file_atomic(path, raw_env)
 }
 
+/// Environment keys the browser panel may know about or mutate.
+///
+/// This list is intentionally independent from the full environment registry:
+/// adding a new Axon environment variable must never make it panel-visible by
+/// accident. Secret-bearing keys and authority-expanding local/tool settings
+/// are deliberately absent. The panel only receives each key plus whether it
+/// is currently configured; values never cross the REST boundary.
+pub const PANEL_ENV_ALLOWLIST: &[&str] = &[
+    "QDRANT_URL",
+    "TEI_URL",
+    "AXON_CHROME_REMOTE_URL",
+    "AXON_SEARXNG_URL",
+    "REDDIT_CLIENT_ID",
+    "AXON_LLM_BACKEND",
+    "AXON_PROVIDER",
+    "AXON_HEADLESS_GEMINI_CMD",
+    "AXON_SYNTHESIS_HEADLESS_GEMINI_MODEL",
+    "AXON_HEADLESS_GEMINI_MODEL",
+    "AXON_CHAT_HEADLESS_GEMINI_MODEL",
+    "AXON_OPENAI_BASE_URL",
+    "AXON_CODEX_MODEL",
+    "AXON_SYNTHESIS_CODEX_MODEL",
+    "AXON_CODEX_COMPLETION_CONCURRENCY",
+    "AXON_CODEX_LOAD_USER_CONFIG",
+    "AXON_SYNTHESIS_OPENAI_MODEL",
+    "AXON_CHAT_OPENAI_MODEL",
+    "AXON_CHROME_PROXY",
+];
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct PanelEnvKeyState {
+    pub key: &'static str,
+    pub configured: bool,
+}
+
+/// Return the fixed, compile-time panel environment inventory without exposing
+/// values, defaults, lengths, paths, secret-key names, or dynamically inferred
+/// metadata.
+pub fn panel_env_key_states(path: &Path) -> io::Result<Vec<PanelEnvKeyState>> {
+    let configured = read_env_entries(path)?;
+    Ok(PANEL_ENV_ALLOWLIST
+        .iter()
+        .copied()
+        .map(|key| PanelEnvKeyState {
+            key,
+            configured: configured.contains_key(key),
+        })
+        .collect())
+}
+
+/// Set or clear one explicitly panel-allowlisted, non-secret environment key.
+///
+/// The browser cannot read the prior value. A missing value means clear the
+/// key; a present value replaces it atomically through the canonical env writer.
+pub fn write_panel_env_entry(path: &Path, key: &str, value: Option<&str>) -> io::Result<()> {
+    if !PANEL_ENV_ALLOWLIST.contains(&key) {
+        return Err(io::Error::new(
+            ErrorKind::PermissionDenied,
+            format!("environment key {key:?} is not editable from the panel"),
+        ));
+    }
+    match value {
+        Some(value) => set_env_entry(path, key, value),
+        None => unset_env_entry(path, key).map(|_| ()),
+    }
+}
+
 pub fn write_env_entries(path: &Path, env: &BTreeMap<String, String>) -> io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()

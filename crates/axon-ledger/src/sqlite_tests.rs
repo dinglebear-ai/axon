@@ -18,44 +18,53 @@ async fn public_create_generation_reserves_writer_before_snapshot_read() {
             .await
             .expect("open ledger store"),
     );
-    store.upsert_source(source()).await.expect("seed source");
+    let source_id = SourceId::new("src_snapshot_lock");
+    let mut snapshot_source = source();
+    snapshot_source.source_id = source_id.clone();
+    store
+        .upsert_source(snapshot_source)
+        .await
+        .expect("seed source");
     let writer = axon_core::sqlite::open_pool_unlocked(&path_string)
         .await
         .expect("open independent writer pool");
-    let (entered, resume) = crate::sqlite::snapshot_test_hook::install();
+    let (entered, resume) = crate::sqlite::snapshot_test_hook::install(&source_id);
     let entered_wait = entered.notified();
     let creating_store = Arc::clone(&store);
-    let creating = tokio::spawn(async move {
-        creating_store
-            .create_generation(SourceId::new("src_sqlite"))
-            .await
-    });
+    let creating_source_id = source_id.clone();
+    let creating =
+        tokio::spawn(async move { creating_store.create_generation(creating_source_id).await });
 
     entered_wait.await;
+    let competing_source_id = source_id.clone();
     let competing_writer = tokio::spawn(async move {
-        sqlx::query("UPDATE sources SET updated_at = updated_at WHERE source_id = 'src_sqlite'")
+        sqlx::query("UPDATE sources SET updated_at = updated_at WHERE source_id = ?")
+            .bind(&competing_source_id.0)
             .execute(&writer)
             .await
             .expect("competing writer commits after generation transaction")
     });
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    let writer_was_blocked = !competing_writer.is_finished();
+    // Always release the paused transaction before asserting so a failed
+    // timing assertion cannot poison unrelated tests in this process.
+    resume.notify_one();
     assert!(
-        !competing_writer.is_finished(),
+        writer_was_blocked,
         "BEGIN IMMEDIATE must reserve the writer before reading generation state"
     );
-    resume.notify_one();
 
     let generation = creating
         .await
         .expect("generation task joins")
         .expect("generation creation succeeds");
     assert_eq!(generation.generation.0, "gen_1");
-    let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM source_generations WHERE source_id = 'src_sqlite'",
-    )
-    .fetch_one(store.pool_for_tests())
-    .await
-    .expect("count generations");
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM source_generations WHERE source_id = ?")
+            .bind(&source_id.0)
+            .fetch_one(store.pool_for_tests())
+            .await
+            .expect("count generations");
     assert_eq!(count, 1, "retry must not duplicate the generation");
 
     competing_writer.await.expect("competing writer task joins");

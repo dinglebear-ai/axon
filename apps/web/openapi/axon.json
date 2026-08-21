@@ -11463,6 +11463,7 @@
           "search",
           "fetch",
           "render",
+          "parser",
           "network_capture",
           "artifact",
           "ledger",

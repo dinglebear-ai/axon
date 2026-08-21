@@ -60,7 +60,7 @@ unused_qualifications = "warn"
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 missing_safety_doc = "deny"
-module_inception = "allow"              # src/crawl.rs: acceptable module name
+module_inception = "allow"              # permitted where a domain module intentionally owns a same-named implementation submodule
 mod_module_files = "deny"               # forbid mod.rs — enforce foo.rs sibling to foo/ style
 
 [workspace.lints.rustdoc]

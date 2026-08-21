@@ -72,6 +72,15 @@ where
         }
     };
     input.plan.job_id = job_id;
+    input.plan.request.execution.priority = input.execution.priority;
+    axon_api::source::stamp_provider_execution_metadata(
+        &mut input.plan.request.metadata,
+        axon_api::source::ProviderExecutionMetadata {
+            job_id,
+            attempt: input.execution.attempt,
+            priority: input.execution.priority,
+        },
+    );
     if let Some(foreground) = &input.execution.foreground {
         foreground.job_started(job_id);
     }
@@ -275,7 +284,7 @@ async fn discover_and_diff(
             "diffing source manifest",
         )
         .await;
-    let diff = runtime.ledger.diff_manifest(manifest.clone()).await?;
+    let diff = runtime.ledger.diff_manifest_ref(&manifest).await?;
     coordinator
         .checkpoint(
             PipelinePhase::Diffing,
@@ -299,10 +308,10 @@ async fn run_generation(
     let publication_config_unchanged = match diff.previous_generation.as_ref() {
         Some(generation) => runtime
             .ledger
-            .get_manifest(manifest.source_id.clone(), generation.clone())
+            .get_manifest_metadata(manifest.source_id.clone(), generation.clone())
             .await?
-            .is_some_and(|previous| {
-                publication_config_matches(&previous, &input.plan.config_snapshot_id)
+            .is_some_and(|metadata| {
+                publication_config_metadata_matches(&metadata, &input.plan.config_snapshot_id)
             }),
         None => false,
     };
@@ -310,7 +319,7 @@ async fn run_generation(
         return unchanged_result(
             runtime.ledger.as_ref(),
             input,
-            &manifest,
+            manifest,
             &diff,
             previous.as_ref(),
         )
@@ -319,7 +328,7 @@ async fn run_generation(
     if !publication_config_unchanged {
         force_publication_refresh(&mut diff);
     }
-    diff = reuse::overlay_trusted_validators(runtime, input, &diff).await?;
+    diff = reuse::overlay_trusted_validators(runtime, input, diff).await?;
 
     if input.plan.request.embed {
         ensure_providers_ready(runtime).await?;
@@ -330,7 +339,7 @@ async fn run_generation(
         .await?;
     diff.next_generation = generation.generation.clone();
     manifest.generation = generation.generation.clone();
-    runtime.ledger.put_manifest(manifest.clone()).await?;
+    runtime.ledger.put_manifest_ref(&manifest).await?;
 
     let result = created_generation::run_created_generation(
         runtime,

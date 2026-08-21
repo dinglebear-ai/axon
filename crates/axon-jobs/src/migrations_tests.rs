@@ -103,6 +103,7 @@ async fn fresh_db_migrates_all_namespaces() {
         "leases",
         // jobs tables
         "jobs",
+        "provider_identity_cache",
         // observe / graph / memory
         "axon_observe_events",
         "axon_observe_provider_health",
@@ -199,6 +200,31 @@ async fn canonical_epoch_one_store_applies_missing_tail_migrations() {
     .await
     .expect("read scheduler receipt");
     assert_eq!(scheduler_receipt, 1);
+    let performance_receipt: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations WHERE namespace = 'jobs' AND version = 3 AND name = '0003_provider_scheduler_performance'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read scheduler performance receipt");
+    assert_eq!(performance_receipt, 1);
+    let parser_kind_receipt: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations WHERE namespace = 'jobs' AND version = 4 AND name = '0004_provider_scheduler_parser_kind'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read scheduler parser-kind receipt");
+    assert_eq!(parser_kind_receipt, 1);
+    let hot_index_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN (
+            'provider_reservations_scheduler_instance_state_idx',
+            'provider_reservations_scheduler_instance_sequence_idx',
+            'provider_reservations_scheduler_job_state_idx'
+        )",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read scheduler performance indexes");
+    assert_eq!(hot_index_count, 3);
     let columns: Vec<String> = sqlx::query_scalar(
         "SELECT name FROM pragma_table_info('provider_reservations') ORDER BY cid",
     )
@@ -219,6 +245,39 @@ async fn canonical_epoch_one_store_applies_missing_tail_migrations() {
             "missing upgraded scheduler column {required}"
         );
     }
+}
+
+#[tokio::test]
+async fn parser_capacity_domain_is_accepted_after_migration() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at) VALUES ('parser-source', '{}', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("source");
+    sqlx::query(
+        "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at) \
+         VALUES ('00000000-0000-0000-0000-0000000000aa', 'source', 'queued', 'queued', 'normal', 'parser-source', '', '')",
+    )
+    .execute(&pool)
+    .await
+    .expect("job");
+    sqlx::query(
+        "INSERT INTO provider_reservations (reservation_id, job_id, provider_kind, priority, requested_units, granted_units, status, updated_at, capacity_domain, instance_id, authority_id, requested_priority, effective_priority, attempt, fence) \
+         VALUES ('parser-reservation', '00000000-0000-0000-0000-0000000000aa', 'parser', 'normal', 1, 0, 'queued', datetime('now'), 'parser', 'source-parser', 'test-authority', 'normal', 'normal', 0, 'parser-fence')",
+    )
+    .execute(&pool)
+    .await
+    .expect("parser reservation should satisfy provider_kind check");
+
+    let stored: String = sqlx::query_scalar(
+        "SELECT provider_kind FROM provider_reservations WHERE reservation_id = 'parser-reservation'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("parser reservation row");
+    assert_eq!(stored, "parser");
 }
 
 #[tokio::test]

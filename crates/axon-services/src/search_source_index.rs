@@ -24,6 +24,7 @@ pub async fn enqueue_web_source_auto_index(
     max_depth: u32,
     embed: bool,
     reason: &str,
+    auth_snapshot: Option<AuthSnapshot>,
 ) -> anyhow::Result<JobDescriptor> {
     let store = service_context
         .job_store()
@@ -71,12 +72,9 @@ pub async fn enqueue_web_source_auto_index(
         .metadata
         .insert("headers_policy".to_string(), serde_json::json!("stripped"));
 
-    let result = enqueue_source(
-        request,
-        store.as_ref(),
-        Some(AuthSnapshot::trusted_system("search-auto-index")),
-    )
-    .await?;
+    let auth_snapshot =
+        auth_snapshot.unwrap_or_else(|| AuthSnapshot::trusted_system("search-auto-index-internal"));
+    let result = enqueue_source(request, store.as_ref(), Some(auth_snapshot)).await?;
     let descriptor = result
         .job
         .clone()

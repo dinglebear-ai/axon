@@ -1,6 +1,6 @@
 use super::*;
 use axon_api::source::{
-    AdapterOptions, AdapterRef, SourceId, SourceScope, WatchRequest, WatchSchedule,
+    AdapterOptions, AdapterRef, AuthSnapshot, SourceId, SourceScope, WatchRequest, WatchSchedule,
 };
 use sqlx::Row;
 use tempfile::NamedTempFile;
@@ -27,6 +27,16 @@ fn source_watch_request() -> WatchRequest {
         collection: Some("source-watch-scheduler-test".to_string()),
         enabled: Some(true),
     }
+}
+
+async fn create_source_watch_with_auth(
+    store: &SqliteWatchStore,
+    request: WatchRequest,
+) -> axon_api::source::WatchResult {
+    store
+        .create_with_auth(request, Some(AuthSnapshot::panel("watch-test")))
+        .await
+        .expect("create source watch")
 }
 
 async fn make_source_watch_due(pool: &SqlitePool, watch_id: &str) {
@@ -94,9 +104,7 @@ fn parse_lease_secs_accepts_valid_override() {
 async fn sweep_enqueues_due_source_watch_without_legacy_rows() {
     let (pool, _temp) = scheduler_pool().await;
     let source_store = SqliteWatchStore::new(pool.clone());
-    let created = WatchStore::create(&source_store, source_watch_request())
-        .await
-        .expect("create source watch");
+    let created = create_source_watch_with_auth(&source_store, source_watch_request()).await;
     make_source_watch_due(&pool, &created.watch_id.0).await;
 
     assert!(!table_exists(&pool, "axon_watch_defs").await);
@@ -117,7 +125,7 @@ async fn sweep_enqueues_due_source_watch_without_legacy_rows() {
     assert!(!table_exists(&pool, "axon_watch_runs").await);
 
     let row = sqlx::query(
-        "SELECT job_id, kind, intent, status, source_id, watch_id, request_json, metadata_json, idempotency_key \
+        "SELECT job_id, kind, intent, status, source_id, watch_id, request_json, metadata_json, idempotency_key, auth_snapshot_json \
          FROM jobs",
     )
     .fetch_one(&pool)
@@ -150,6 +158,17 @@ async fn sweep_enqueues_due_source_watch_without_legacy_rows() {
     let metadata_json: serde_json::Value =
         serde_json::from_str(&row.get::<String, _>("metadata_json")).expect("metadata json");
     assert_eq!(metadata_json["source_watch_id"], created.watch_id.0);
+    let child_auth_json: String = row.get("auth_snapshot_json");
+    let watch_auth_json: String =
+        sqlx::query_scalar("SELECT auth_snapshot_json FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&created.watch_id.0)
+            .fetch_one(&pool)
+            .await
+            .expect("watch auth snapshot");
+    assert_eq!(
+        child_auth_json, watch_auth_json,
+        "scheduled child job must clone the watch caller snapshot byte-for-byte"
+    );
 
     let run = sqlx::query("SELECT watch_id, job_id FROM axon_source_watch_runs")
         .fetch_one(&pool)
@@ -179,9 +198,7 @@ async fn sweep_enqueues_due_source_watch_without_legacy_rows() {
 async fn sweep_does_not_enqueue_duplicate_while_source_job_is_live() {
     let (pool, _temp) = scheduler_pool().await;
     let source_store = SqliteWatchStore::new(pool.clone());
-    let created = WatchStore::create(&source_store, source_watch_request())
-        .await
-        .expect("create source watch");
+    let created = create_source_watch_with_auth(&source_store, source_watch_request()).await;
     make_source_watch_due(&pool, &created.watch_id.0).await;
 
     let pool_arc = Arc::new(pool.clone());
@@ -220,7 +237,7 @@ async fn sweep_coalesces_live_refreshes_across_watches_for_same_source() {
             source_id.clone(),
             "https://example.com/docs".to_string(),
             adapter.clone(),
-            None,
+            Some(AuthSnapshot::panel("watch-test")),
         )
         .await
         .unwrap();
@@ -230,7 +247,7 @@ async fn sweep_coalesces_live_refreshes_across_watches_for_same_source() {
             source_id,
             "https://example.com/docs".to_string(),
             adapter,
-            None,
+            Some(AuthSnapshot::panel("watch-test")),
         )
         .await
         .unwrap();
@@ -249,6 +266,35 @@ async fn sweep_coalesces_live_refreshes_across_watches_for_same_source() {
     assert_eq!(fired, 1);
     assert_eq!(count_rows(&pool, "jobs").await, 1);
     assert_eq!(count_rows(&pool, "axon_source_watch_runs").await, 1);
+}
+
+#[tokio::test]
+async fn sweep_refuses_watch_without_persisted_auth_snapshot() {
+    let (pool, _temp) = scheduler_pool().await;
+    let source_store = SqliteWatchStore::new(pool.clone());
+    let created = WatchStore::create(&source_store, source_watch_request())
+        .await
+        .expect("create legacy snapshot-less watch");
+    make_source_watch_due(&pool, &created.watch_id.0).await;
+
+    let fired = sweep_due_watches(
+        &Arc::new(pool.clone()),
+        &Arc::new(Config::default_minimal()),
+        &Arc::new(Notify::new()),
+        60_000,
+    )
+    .await
+    .expect("sweep");
+
+    assert_eq!(fired, 0, "missing caller authority must fail closed");
+    assert_eq!(count_rows(&pool, "jobs").await, 0);
+    let lease: Option<i64> =
+        sqlx::query_scalar("SELECT lease_expires_at FROM axon_source_watches WHERE watch_id = ?")
+            .bind(&created.watch_id.0)
+            .fetch_one(&pool)
+            .await
+            .expect("watch lease state");
+    assert_eq!(lease, None, "failed dispatch must release the watch lease");
 }
 
 #[tokio::test]

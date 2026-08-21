@@ -90,6 +90,10 @@ impl fmt::Debug for Config {
             .field("wait", &self.wait)
             .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)
+            .field("source_scope", &self.source_scope)
+            .field("source_priority", &self.source_priority)
+            .field("allow_tool_execution", &self.allow_tool_execution)
+            .field("scrape_inline", &self.scrape_inline)
             .field("reset_stores", &self.reset_stores)
             .field("reset_dry_run", &self.reset_dry_run)
             .field("performance_profile", &self.performance_profile)
@@ -97,6 +101,14 @@ impl fmt::Debug for Config {
             .field(
                 "backfill_concurrency_limit",
                 &self.backfill_concurrency_limit,
+            )
+            .field(
+                "fetch_provider_concurrency",
+                &self.fetch_provider_concurrency,
+            )
+            .field(
+                "render_provider_concurrency",
+                &self.render_provider_concurrency,
             )
             .field("adaptive_concurrency", &self.adaptive_concurrency)
             .field("sitemap_only", &self.sitemap_only)

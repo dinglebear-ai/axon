@@ -48,7 +48,6 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
             item("https://example.com/docs/m"),
         ],
         2,
-        false,
     );
 
     assert_eq!(items.len(), 2);
@@ -63,7 +62,7 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
 }
 
 #[test]
-fn docs_discovery_prefers_explicit_markdown_over_the_matching_html_route() {
+fn finalization_does_not_guess_that_independently_discovered_markdown_is_an_alternate() {
     let plan = crate::web_tests::web_plan("https://example.com/docs", SourceScope::Docs);
     let item = |url: &str| {
         let web = WebUrlParts::parse(url).unwrap();
@@ -77,19 +76,18 @@ fn docs_discovery_prefers_explicit_markdown_over_the_matching_html_route() {
             item("https://example.com/docs/other"),
         ],
         10,
-        true,
     );
 
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 3);
+    assert!(
+        items
+            .iter()
+            .any(|item| item.canonical_uri.ends_with("/authorization"))
+    );
     assert!(
         items
             .iter()
             .any(|item| item.canonical_uri.ends_with("/authorization.md"))
-    );
-    assert!(
-        !items
-            .iter()
-            .any(|item| item.canonical_uri.ends_with("/authorization"))
     );
 }
 

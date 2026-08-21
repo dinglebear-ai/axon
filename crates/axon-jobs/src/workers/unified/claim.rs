@@ -19,8 +19,15 @@ use crate::unified::retry_job_write;
 pub(crate) async fn claim_next_unified_job(
     pool: &SqlitePool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
+    claim_next_unified_job_with_source_policy(pool, true).await
+}
+
+pub(super) async fn claim_next_unified_job_with_source_policy(
+    pool: &SqlitePool,
+    allow_source: bool,
+) -> Result<Option<UnifiedClaimedJob>, ApiError> {
     retry_job_write("unified worker claim", || {
-        claim_next_unified_job_unchecked(pool, true)
+        claim_next_unified_job_unchecked(pool, allow_source)
     })
     .await
 }
@@ -36,6 +43,16 @@ pub(super) async fn claim_next_unified_job_unchecked(
     pool: &SqlitePool,
     allow_source: bool,
 ) -> Result<Option<UnifiedClaimedJob>, ApiError> {
+    // Most worker polls happen while another job is already running and the
+    // durable queue is empty. Do not take SQLite's single writer lock merely
+    // to prove there is nothing to claim: under a long-running source job that
+    // turns every 5s poll into a 30s busy-timeout and can exhaust the pool. A
+    // read-only probe is race-safe because the write transaction below repeats
+    // the eligibility query before changing any row.
+    if !has_eligible_unified_job(pool, allow_source).await? {
+        return Ok(None);
+    }
+
     let mut tx = ImmediateTx::begin(pool).await.map_err(sql_error)?;
     let now = chrono::Utc::now().to_rfc3339();
     let row = sqlx::query(
@@ -132,4 +149,23 @@ pub(super) async fn claim_next_unified_job_unchecked(
         request_json,
         auth_snapshot,
     }))
+}
+
+async fn has_eligible_unified_job(pool: &SqlitePool, allow_source: bool) -> Result<bool, ApiError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(
+             SELECT 1 FROM jobs
+             WHERE status IN ('queued', 'waiting', 'blocked')
+               AND (cooldown_until IS NULL OR cooldown_until <= ?)
+               AND (kind <> 'source' OR ? = 1)
+             LIMIT 1
+         )",
+    )
+    .bind(now)
+    .bind(allow_source as i64)
+    .fetch_one(pool)
+    .await
+    .map(|exists| exists != 0)
+    .map_err(sql_error)
 }

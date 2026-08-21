@@ -1,6 +1,18 @@
 use super::*;
 
 #[tokio::test]
+async fn default_pool_matches_unified_worker_fanout() {
+    let pool = open_pool_unlocked(":memory:")
+        .await
+        .expect("open in-memory pool");
+    assert_eq!(
+        pool.options().get_max_connections(),
+        DEFAULT_SQLITE_POOL_CONNECTIONS
+    );
+    assert_eq!(DEFAULT_SQLITE_POOL_CONNECTIONS, 8);
+}
+
+#[tokio::test]
 async fn wal_sidecars_survive_the_last_pool_close() {
     let dir = tempfile::tempdir().expect("tempdir");
     let db = dir.path().join("jobs.db");

@@ -65,7 +65,7 @@ Notes on the shape:
   from_api_error`), not a bespoke REST error shape — the error envelope is
   shared across transports.
 - The handler calls into `axon_services::*` (here,
-  `axon_services::source::classify::classify_source_input` for per-source
+  `axon_services::source::routing::resolve_source_route` for per-source
   auth classification, then the shared `axon_services::index_source` — see
   the handler file's full body) — it does not call a domain crate's internal
   `::ops::*` modules directly.

@@ -18,6 +18,7 @@ mod handlers_memory;
 mod handlers_query;
 #[path = "server/handlers_source.rs"]
 mod handlers_source;
+pub use handlers_source::source_result_payload;
 #[path = "server/handlers_system.rs"]
 mod handlers_system;
 #[path = "server/handlers_watch.rs"]
