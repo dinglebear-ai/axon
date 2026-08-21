@@ -4,7 +4,7 @@ use axon_api::source::{
     ArtifactKind, ArtifactRef, ArtifactWriteRequest, ContentRef, MetadataMap, SourceAcquisition,
     SourcePlan, Timestamp,
 };
-use axon_core::redact::redact_secrets;
+use axon_core::redact::redact_operational_secrets;
 use sha2::{Digest, Sha256};
 
 use crate::context::TargetLocalSourceRuntime;
@@ -29,7 +29,7 @@ pub(super) async fn capture_tool_output_artifacts(
         let ContentRef::InlineText { text } = &item.content_ref else {
             continue;
         };
-        let safe_text = redact_secrets(text);
+        let safe_text = redact_operational_secrets(text);
         let redaction_status = if safe_text != *text {
             "redacted".to_string()
         } else {

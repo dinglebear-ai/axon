@@ -28,13 +28,16 @@ fn headless_safety_redacts_and_bounds_stderr() {
 #[test]
 fn headless_safety_redacts_compact_json_secrets() {
     let redacted = redacted_stderr_tail(
-        br#"{"error":"bad auth","api_key":"sk-secret","nested":{"token":"atk_token"}}"#,
+        br#"{"error":"bad auth","api_key":"sk-secret","accessToken":"camel-secret","tokenCount":4096,"nested":{"token":"atk_token"}}"#,
     );
 
     assert!(redacted.contains("bad auth"));
     assert!(redacted.contains("[REDACTED]"));
     assert!(!redacted.contains("sk-secret"));
     assert!(!redacted.contains("atk_token"));
+    assert!(!redacted.contains("camel-secret"));
+    assert!(redacted.contains("tokenCount"));
+    assert!(redacted.contains("4096"));
 }
 
 #[test]

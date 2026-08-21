@@ -69,39 +69,60 @@ fn normalize_query(url: &mut Url) {
 }
 
 fn is_tracking_or_sensitive_query(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    key.starts_with("utm_")
-        || key.starts_with("x-amz-")
-        || key.starts_with("x-goog-")
-        || key.contains("credential")
-        || key.contains("signature")
+    let normalized = axon_core::redact::normalize_field_name(key);
+    if normalized.starts_with("utm_")
         || matches!(
-            key.as_str(),
+            normalized.as_str(),
+            "fbclid" | "gclid" | "mc_cid" | "mc_eid"
+        )
+    {
+        return true;
+    }
+    if matches!(
+        normalized.as_str(),
+        "page_token"
+            | "next_page_token"
+            | "continuation_token"
+            | "pagination_token"
+            | "cursor_token"
+            | "token_count"
+            | "token_estimate"
+            | "tokenizer"
+            | "tokenization"
+            | "token_budget"
+            | "x_amz_algorithm"
+            | "x_amz_date"
+            | "x_amz_expires"
+            | "x_amz_signedheaders"
+            | "x_goog_algorithm"
+            | "x_goog_date"
+            | "x_goog_expires"
+            | "x_goog_signedheaders"
+    ) {
+        return false;
+    }
+    axon_core::redact::is_secret_like(key)
+        || matches!(
+            normalized.as_str(),
             "auth"
                 | "authorization"
                 | "code"
-                | "access_token"
-                | "api_key"
-                | "apikey"
-                | "client_secret"
-                | "fbclid"
-                | "gclid"
-                | "id_token"
                 | "jwt"
                 | "key"
-                | "policy"
-                | "mc_cid"
-                | "mc_eid"
-                | "password"
-                | "refresh_token"
-                | "ref"
-                | "secret"
+                | "access_key"
+                | "awsaccesskeyid"
+                | "awsaccess_key_id"
                 | "session"
                 | "session_id"
                 | "signature"
                 | "sig"
-                | "token"
+                | "x_amz_signature"
+                | "x_amz_credential"
+                | "x_amz_security_token"
+                | "x_goog_signature"
+                | "x_goog_credential"
         )
+        || normalized.ends_with("_signature")
 }
 
 fn clean_path(path: &str) -> String {

@@ -173,6 +173,20 @@ fn resolver_redacts_common_signed_url_query_params() {
 }
 
 #[test]
+fn resolver_preserves_non_secret_security_and_signing_metadata() {
+    let resolved = resolver()
+        .resolve(&SourceRequest::new(
+            "https://example.com/file?tokenCount=4&pageToken=next-42&accessToken=secret&X-Amz-Date=20260819T120000Z&X-Amz-Expires=300&X-Amz-Signature=abc&q=rust",
+        ))
+        .expect("signed URL resolves");
+
+    assert_eq!(
+        resolved.canonical_uri,
+        "https://example.com/file?X-Amz-Date=20260819T120000Z&X-Amz-Expires=300&X-Amz-Signature=REDACTED&accessToken=REDACTED&pageToken=next-42&q=rust&tokenCount=4"
+    );
+}
+
+#[test]
 fn resolver_suppresses_query_secrets_for_git_provider_urls() {
     let resolved = resolver()
         .resolve(&SourceRequest::new(

@@ -58,6 +58,24 @@ fn redacts_only_sensitive_query_value() {
 }
 
 #[test]
+fn preserves_benign_security_query_metadata() {
+    let subject = "https://example.com/items?tokenCount=4&pageToken=next-42&session_count=3&signature_status=valid&q=rust";
+    assert_eq!(redact_status_subject(subject), subject);
+}
+
+#[test]
+fn redacts_camel_case_credential_query_values() {
+    let out = redact_status_subject(
+        "https://example.com/items?accessToken=EXAMPLE-token&clientSecret=EXAMPLE-secret&pageToken=next-42",
+    );
+    assert!(out.contains("accessToken=REDACTED"));
+    assert!(out.contains("clientSecret=REDACTED"));
+    assert!(out.contains("pageToken=next-42"));
+    assert!(!out.contains("EXAMPLE-token"));
+    assert!(!out.contains("EXAMPLE-secret"));
+}
+
+#[test]
 fn preserves_ordinary_url_byte_for_byte() {
     let subject = "https://www.reddit.com/r/rust/";
     assert_eq!(redact_status_subject(subject), subject);

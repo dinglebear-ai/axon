@@ -137,6 +137,18 @@ volumes:
 }
 
 #[test]
+fn docker_env_names_use_shared_secret_semantics() {
+    let result = parse_fixture(
+        "Dockerfile",
+        "ENV DATABASE_URL=https://db.example.test/app\nENV TOKEN_COUNT=4096\nENV ACCESS_TOKEN=\n",
+    );
+
+    assert!(has_fact(&result, "environment_variable", "DATABASE_URL"));
+    assert!(has_fact(&result, "environment_variable", "TOKEN_COUNT"));
+    assert!(has_fact(&result, "secret_reference", "ACCESS_TOKEN"));
+}
+
+#[test]
 fn compose_parser_emits_env_file_secrets_and_dependencies() {
     let result = parse_fixture(
         "docker-compose.yml",

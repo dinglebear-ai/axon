@@ -282,7 +282,9 @@ fn token_shaped_evidence_value_is_redacted_before_delivery() {
     let mut value = candidate(1);
     value.discovery_evidence.insert(
         "note".to_string(),
-        serde_json::json!("request failed Authorization: Bearer abc123; retrying safely"),
+        serde_json::json!(
+            "request failed Authorization: Bearer abcdef0123456789abcdef0123; retrying safely"
+        ),
     );
 
     let result = validate_produced_candidates(job_id(), &generation(), &documents, vec![value]);

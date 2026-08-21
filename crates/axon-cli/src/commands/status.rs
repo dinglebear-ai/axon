@@ -3,7 +3,7 @@ mod watch;
 use crate::commands::job_progress::{extract_progress_summary, source_progress_summary};
 use axon_core::config::Config;
 use axon_core::logging::log_info;
-use axon_core::redact::{is_secret_like, redact_secrets};
+use axon_core::redact::{is_secret_like, normalize_field_name, redact_operational_secrets};
 use axon_core::sqlite::diagnostics as sqlite_diagnostics;
 use axon_core::ui::{muted, primary, status_text as human_status_text, symbol_for_status};
 use axon_jobs::store::RECLAIMED_ERROR_TEXT;
@@ -204,12 +204,50 @@ fn format_subject(job: &ServiceJob) -> String {
 /// Query-parameter keys whose *values* are sensitive in status output. Extends
 /// the shared `is_secret_like` field heuristic with URL-signing / session
 /// identifiers that appear as query params but not as header/field names.
-fn is_sensitive_query_key(lower_key: &str) -> bool {
-    is_secret_like(lower_key)
-        || lower_key == "key"
-        || lower_key == "sig"
-        || lower_key.contains("signature")
-        || lower_key.contains("session")
+fn is_sensitive_query_key(key: &str) -> bool {
+    let normalized = normalize_field_name(key);
+    if normalized.ends_with("_count")
+        || normalized.ends_with("_estimate")
+        || normalized.ends_with("_policy")
+        || normalized.ends_with("_status")
+        || normalized.ends_with("_type")
+        || normalized.ends_with("_enabled")
+        || normalized.ends_with("_identifier")
+        || matches!(
+            normalized.as_str(),
+            "page_token"
+                | "next_page_token"
+                | "continuation_token"
+                | "pagination_token"
+                | "cursor_token"
+                | "tokenizer"
+                | "tokenization"
+                | "token_budget"
+        )
+    {
+        return false;
+    }
+    is_secret_like(key)
+        || matches!(
+            normalized.as_str(),
+            "auth"
+                | "authorization"
+                | "code"
+                | "jwt"
+                | "key"
+                | "access_key"
+                | "awsaccesskeyid"
+                | "session"
+                | "session_id"
+                | "sig"
+                | "signature"
+                | "x_amz_signature"
+                | "x_amz_credential"
+                | "x_amz_security_token"
+                | "x_goog_signature"
+                | "x_goog_credential"
+        )
+        || normalized.ends_with("_signature")
 }
 
 /// URL-aware redaction for a status subject line.
@@ -219,7 +257,7 @@ fn is_sensitive_query_key(lower_key: &str) -> bool {
 /// secret-bearing query parameters, preserving the scheme, host, path, and
 /// non-sensitive params so the source stays legible in `axon status`. Any
 /// non-URL or non-http subject (a `source_type: target` label, a bare job id,
-/// or free text) falls back to the full `redact_secrets` scrubber, which is the
+/// or free text) falls back to the full `redact_operational_secrets` scrubber, which is the
 /// blunt whole-string redactor this URL-aware path deliberately avoids for URLs
 /// (it would wholesale-redact any URL merely *containing* `token=`/`secret=`).
 fn redact_status_subject(subject: &str) -> String {
@@ -230,10 +268,10 @@ fn redact_status_subject(subject: &str) -> String {
         return subject.to_string();
     }
     let Ok(mut url) = url::Url::parse(subject) else {
-        return redact_secrets(subject);
+        return redact_operational_secrets(subject);
     };
     if !matches!(url.scheme(), "http" | "https") {
-        return redact_secrets(subject);
+        return redact_operational_secrets(subject);
     }
 
     let mut changed = false;
@@ -251,7 +289,7 @@ fn redact_status_subject(subject: &str) -> String {
         let mut redacted_pairs: Vec<(String, String)> = Vec::new();
         let mut any_sensitive = false;
         for (key, value) in url.query_pairs() {
-            if is_sensitive_query_key(&key.to_ascii_lowercase()) {
+            if is_sensitive_query_key(&key) {
                 any_sensitive = true;
                 redacted_pairs.push((key.into_owned(), "REDACTED".to_string()));
             } else {
@@ -304,7 +342,7 @@ fn write_status_section(
         // tokens — redact before display. Labels are usually source URLs, so
         // use the URL-aware redactor (userinfo + secret query values only);
         // non-URL labels and the free-text error body still go through the
-        // full `redact_secrets` scrubber the doctor renderer uses.
+        // full `redact_operational_secrets` scrubber the doctor renderer uses.
         let label = truncate_status_text_to(&redact_status_subject(&label_for(job)), label_limit);
         let _ = writeln!(out, "{prefix}{label}");
         let _ = writeln!(out, "    {}", muted(&format!("id {}", job.id)));
@@ -322,7 +360,7 @@ fn write_status_section(
             .as_deref()
             .and_then(|err| job_error_hint(&job.status, err))
         {
-            let err = redact_secrets(&err);
+            let err = redact_operational_secrets(&err);
             let _ = writeln!(out, "    {}", muted(&truncate_status_continuation(&err)));
         }
     }

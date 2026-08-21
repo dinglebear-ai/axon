@@ -26,6 +26,33 @@ fn recursively_redacts_secret_bearing_structured_fields() {
 }
 
 #[test]
+fn redacts_camel_case_secret_fields_but_preserves_benign_security_metadata() {
+    let input =
+        r#"{"accessToken":"must-not-survive","tokenCount":4096,"authorizationStatus":"required"}"#;
+    let (out, changed) = redact_mcp_output(input);
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+
+    assert!(changed);
+    assert_eq!(parsed["accessToken"], "[redacted-secret]");
+    assert_eq!(parsed["tokenCount"], 4096);
+    assert_eq!(parsed["authorizationStatus"], "required");
+}
+
+#[test]
+fn preserves_low_confidence_tutorial_body_syntax() {
+    let input = r#"{"body":"Authorization: Bearer abc123\nTOKEN=abc123\npasswd=hunter2\npostgres://user:password@localhost/app"}"#;
+    let (out, changed) = redact_mcp_output(input);
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        parsed["body"],
+        serde_json::json!(
+            "Authorization: Bearer abc123\nTOKEN=abc123\npasswd=hunter2\npostgres://user:password@localhost/app"
+        )
+    );
+    assert!(!changed);
+}
+
+#[test]
 fn leaves_clean_payload_untouched() {
     let (out, changed) = redact_mcp_output(r#"{"body":"ok"}"#);
     assert_eq!(out, r#"{"body":"ok"}"#);

@@ -47,8 +47,16 @@ fn normalize_remember_redacts_secret_title_and_body() {
     ))
     .expect("normalize");
 
-    assert!(memory.title.contains("[redacted-secret]"));
-    assert!(memory.body.contains("[redacted-secret]"));
+    assert!(
+        memory
+            .title
+            .contains(axon_core::redact::REDACTION_PLACEHOLDER)
+    );
+    assert!(
+        memory
+            .body
+            .contains(axon_core::redact::REDACTION_PLACEHOLDER)
+    );
     assert_eq!(memory.memory_type, "fact");
 }
 

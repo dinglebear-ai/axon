@@ -180,7 +180,7 @@ async fn emit_ask_stream_result(
             send_stream_event(tx, disconnected, &event).await;
         }
         Err(message) => {
-            let message = axon_core::redact::redact_secrets(&message);
+            let message = axon_core::redact::redact_operational_secrets(&message);
             axon_core::logging::log_warn(&format!("ask stream failed: {message}"));
             let error = ApiError::new(
                 "ask.stream_failed",

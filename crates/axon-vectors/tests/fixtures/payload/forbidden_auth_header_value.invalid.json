@@ -19,7 +19,8 @@
     }
   },
   "source_range": {
-    "selector": "#intro"
+    "line_start": 1,
+    "line_end": 2
   },
   "visibility": "public",
   "redaction_status": "clean",
@@ -31,7 +32,7 @@
   "embedding_provider": "tei",
   "embedding_profile": "document",
   "embedded_at": "2026-07-01T12:00:00Z",
-  "web_title": "Authorization: Bearer secret-token",
+  "web_title": "Authorization: Basic fixture-credential",
   "web_domain": "example.com",
   "web_status_code": 200,
   "web_depth": 1,

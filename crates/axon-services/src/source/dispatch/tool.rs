@@ -173,7 +173,7 @@ impl SourceAdapter for AuditedToolAdapter<'_> {
             )
             .await
             .map_err(|error| {
-                let safe_error = axon_core::redact::redact_secrets(&error.to_string());
+                let safe_error = axon_core::redact::redact_operational_secrets(&error.to_string());
                 tracing::error!(job_id = %plan.job_id.0, error = %safe_error, "tool audit persistence failed");
                 axon_api::source::ApiError::new(
                     "tool.audit_persist_failed",
@@ -189,7 +189,7 @@ impl SourceAdapter for AuditedToolAdapter<'_> {
         capture_tool_output_artifacts(self.runtime, plan, &mut acquisition)
             .await
             .map_err(|error| {
-                let safe_error = axon_core::redact::redact_secrets(&error.to_string());
+                let safe_error = axon_core::redact::redact_operational_secrets(&error.to_string());
                 tracing::error!(job_id = %plan.job_id.0, error = %safe_error, "tool artifact persistence failed");
                 axon_api::source::ApiError::new(
                     "tool.artifact_persist_failed",

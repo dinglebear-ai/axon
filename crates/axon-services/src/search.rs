@@ -7,6 +7,7 @@ pub use synthesis::{research, research_with_context};
 use crate::events::{LogLevel, ServiceEvent, emit};
 use crate::types::{ResearchResult, SearchOptions, SearchResult, ServiceTimeRange};
 use axon_core::config::Config;
+use axon_core::redact::{DefaultRedactor, RedactionContext, Redactor};
 use spider_agent::TimeRange;
 use std::collections::hash_map::DefaultHasher;
 use std::error::Error;
@@ -15,7 +16,6 @@ use tokio::sync::mpsc;
 
 pub(crate) type SearchError = Box<dyn Error + Send + Sync>;
 
-const REDACTED_TOKEN: &str = "[redacted-token]";
 /// Maximum (offset + limit) Tavily window. Larger windows are rejected at the
 /// service boundary to surface truncation instead of silently returning
 /// fewer rows than requested.
@@ -69,13 +69,11 @@ pub(super) fn query_log_summary(query: &str, cfg: &Config) -> String {
     let mut hasher = DefaultHasher::new();
     query.hash(&mut hasher);
     let hash = hasher.finish();
+    let safe_query = DefaultRedactor::new().redact_text(query, &RedactionContext::logs());
     let preview = if log_full_queries(cfg) {
-        query.to_string()
+        safe_query
     } else {
-        redact_token_like_substrings(query)
-            .chars()
-            .take(48)
-            .collect::<String>()
+        safe_query.chars().take(48).collect::<String>()
     };
     format!(
         "len={} hash={hash:016x} preview={preview:?}",
@@ -97,76 +95,6 @@ fn log_full_queries(cfg: &Config) -> bool {
                 )
             })
             .unwrap_or(false)
-}
-
-/// Heuristic redactor used in log previews.
-///
-/// Splits on whitespace AND common URL/query-string punctuation (`=`, `&`,
-/// `;`, `?`, `,`) so that `?key=sk-…` is tokenized as `key` + `sk-…` and
-/// the secret-shaped second token gets redacted.
-fn redact_token_like_substrings(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let is_sep = |c: char| {
-        c.is_whitespace() || matches!(c, '=' | '&' | ';' | '?' | ',' | '(' | ')' | '<' | '>')
-    };
-    for piece in input.split_inclusive(is_sep) {
-        let (token, sep) = match piece.chars().last() {
-            Some(c) if is_sep(c) => {
-                let cut = piece.len() - c.len_utf8();
-                (&piece[..cut], &piece[cut..])
-            }
-            _ => (piece, ""),
-        };
-        let trimmed =
-            token.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-');
-        if !trimmed.is_empty() && looks_like_secret_token(trimmed) {
-            out.push_str(&token.replace(trimmed, REDACTED_TOKEN));
-        } else {
-            out.push_str(token);
-        }
-        out.push_str(sep);
-    }
-    out
-}
-
-/// Recognized secret-token prefixes for log redaction. Defense-in-depth:
-/// the 48-char preview cap already bounds exposure, but matching known
-/// shapes blocks the obvious case where a user pastes a token directly.
-fn looks_like_secret_token(token: &str) -> bool {
-    const PREFIXES: &[&str] = &[
-        "sk-",
-        "sk_test_",
-        "sk_live_",
-        "pk_test_",
-        "pk_live_",
-        "ghp_",
-        "github_pat_",
-        "gho_",
-        "ghu_",
-        "ghs_",
-        "ghr_",
-        "atk_",
-        "xox",   // Slack tokens (xoxb-, xoxp-, xoxs-, xoxa-)
-        "AKIA",  // AWS access key IDs
-        "ASIA",  // AWS temporary access key IDs
-        "AIza",  // Google API keys
-        "ya29.", // Google OAuth access tokens
-        "eyJ",   // JWT (base64url-encoded JSON header)
-        "tvly-", // Tavily API keys
-    ];
-    if PREFIXES.iter().any(|p| token.starts_with(p)) {
-        return true;
-    }
-    let lower = token.to_ascii_lowercase();
-    if PREFIXES.iter().any(|p| {
-        let pl = p.to_ascii_lowercase();
-        lower.starts_with(&pl)
-    }) {
-        return true;
-    }
-    token.len() >= 20
-        && token.chars().any(|c| c.is_ascii_alphabetic())
-        && token.chars().any(|c| c.is_ascii_digit())
 }
 
 /// Execute a web search and return raw JSON result items.

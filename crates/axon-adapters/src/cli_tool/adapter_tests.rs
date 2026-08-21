@@ -116,7 +116,8 @@ async fn cli_tool_adapter_api_scope_still_resolves_metadata_only() {
 #[tokio::test]
 async fn cli_tool_adapter_execute_scope_runs_once_and_redacts_output() {
     let adapter = CliToolSourceAdapter::new();
-    let mut plan = cli_tool_plan("tool:/bin/echo sk-super-secret", SourceScope::Api);
+    let fake_key = ["sk-", "abcdef0123456789abcdef0123"].concat();
+    let mut plan = cli_tool_plan(&format!("tool:/bin/echo {fake_key}"), SourceScope::Api);
     plan.request
         .options
         .values
@@ -137,7 +138,7 @@ async fn cli_tool_adapter_execute_scope_runs_once_and_redacts_output() {
     match &acquisition.fetched_items[0].content_ref {
         ContentRef::InlineText { text } => {
             assert!(text.contains("[REDACTED]") || text.contains("[redacted-secret]"));
-            assert!(!text.contains("sk-super-secret"));
+            assert!(!text.contains(&fake_key));
         }
         other => panic!("expected inline text content, got {other:?}"),
     }

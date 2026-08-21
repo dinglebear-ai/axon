@@ -70,26 +70,11 @@ fn parse_assignment(line: &str) -> Option<(&str, &str)> {
 }
 
 fn is_secret_key(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    [
-        "secret",
-        "password",
-        "token",
-        "api_key",
-        "apikey",
-        "private_key",
-        "database_url",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle))
+    axon_core::redact::is_secret_like(key)
 }
 
 fn value_suggests_secret(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.starts_with("sk-")
-        || lower.contains("://") && lower.contains('@') && lower.contains(':')
-        || lower.contains("password=")
-        || lower.contains("token=")
+    axon_core::redact::value_contains_secret(value)
 }
 
 fn local_checkout_key(input: &ParseInput) -> String {

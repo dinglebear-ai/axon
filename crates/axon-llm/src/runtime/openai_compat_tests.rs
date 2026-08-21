@@ -220,6 +220,8 @@ fn openai_compat_json_error_preserves_provider_message_but_redacts_request_echoe
             {"role": "user", "content": "private prompt"}
         ],
         "authorization": "Bearer sk-live-secret",
+        "accessToken": "must-not-survive-camel",
+        "tokenCount": 4096,
         "detail": "upstream mentioned token=abc123 and sk-live-abcdefghijklmnopqrstuvwxyz"
     })
     .to_string();
@@ -232,6 +234,9 @@ fn openai_compat_json_error_preserves_provider_message_but_redacts_request_echoe
     );
     assert!(!sanitized.contains("private prompt"));
     assert!(!sanitized.contains("sk-live-secret"));
+    assert!(!sanitized.contains("must-not-survive-camel"));
+    assert!(sanitized.contains("tokenCount"));
+    assert!(sanitized.contains("4096"));
     assert!(!sanitized.contains("token=abc123"));
     assert!(!sanitized.contains("sk-live-abcdefghijklmnopqrstuvwxyz"));
     assert!(sanitized.contains("[redacted]"));

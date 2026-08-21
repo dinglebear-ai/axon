@@ -160,7 +160,7 @@ fn sanitize_openai_error_body(text: &str) -> String {
         truncate_utf8_boundary(&mut rendered, LIMIT);
         return rendered;
     }
-    let mut rendered = axon_core::redact::redact_secrets(trimmed);
+    let mut rendered = axon_core::redact::redact_operational_secrets(trimmed);
     truncate_utf8_boundary(&mut rendered, LIMIT);
     rendered
 }
@@ -185,7 +185,7 @@ fn sanitize_error_json(value: &serde_json::Value) -> serde_json::Value {
             map.iter()
                 .map(|(key, value)| {
                     let lower = key.to_ascii_lowercase();
-                    if is_sensitive_error_key(&lower) || is_request_echo_key(&lower) {
+                    if is_sensitive_error_key(key) || is_request_echo_key(&lower) {
                         (
                             key.clone(),
                             serde_json::Value::String("[redacted]".to_string()),
@@ -200,16 +200,14 @@ fn sanitize_error_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(sanitize_error_json).collect())
         }
         serde_json::Value::String(value) => {
-            serde_json::Value::String(axon_core::redact::redact_secrets(value))
+            serde_json::Value::String(axon_core::redact::redact_operational_secrets(value))
         }
         value => value.clone(),
     }
 }
 
-fn is_sensitive_error_key(lower_key: &str) -> bool {
-    // Delegate to the shared `is_secret_like` helper (S-L1) — single source of
-    // truth for both embed path validation and error-body redaction.
-    is_secret_like(lower_key)
+fn is_sensitive_error_key(key: &str) -> bool {
+    is_secret_like(key) || axon_core::redact::forbidden_field_name(key)
 }
 
 fn is_request_echo_key(lower_key: &str) -> bool {

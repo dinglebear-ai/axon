@@ -10558,7 +10558,10 @@
         "ghr_",
         "xoxb-",
         "xoxp-",
-        "glpat-"
+        "glpat-",
+        "tvly-",
+        "rk_test_",
+        "rk_live_"
       ],
       "body_text_field_policy": {
         "allowed_without_metadata_rejection": [
@@ -10627,7 +10630,7 @@
         "path": "crates/axon-vectors/src/payload_families.rs"
       },
       {
-        "checksum": "sha256:da4e68a887c6fbc5e021e3178ceca178a23e8b618e068818d551cfc29843eaed",
+        "checksum": "sha256:e5ff4dbf5d477515db4e5dafeba265575900f399905e4e0576103e155ee07088",
         "kind": "rust_module",
         "path": "crates/axon-vectors/src/point.rs"
       },

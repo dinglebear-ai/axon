@@ -459,26 +459,18 @@ fn http_urls_with_local_path_words_do_not_trigger_local_path_redaction() {
 }
 
 #[test]
-fn chunk_text_rejects_secret_like_body_values() {
-    let mut metadata = fixture("web.valid.json");
-    metadata.insert(
-        "chunk_text".to_string(),
-        serde_json::json!("Use Authorization: Bearer secret-token in this request"),
-    );
-
-    let err = VectorPayload::try_from_metadata(metadata).unwrap_err();
-
-    assert_eq!(
-        err,
-        VectorPayloadValidationError::ForbiddenValue {
-            field: "chunk_text".to_string(),
-            detector: "authorization_value".to_string(),
-        }
-    );
-    assert!(
-        err.to_string().contains("authorization_value"),
-        "the safe detector ID must survive validation: {err}"
-    );
+fn chunk_text_preserves_low_confidence_documentation_examples() {
+    for value in [
+        "Use Authorization: Bearer secret-token in this request",
+        "TOKEN=abc123",
+        "passwd=hunter2",
+        "postgres://user:password@localhost/app",
+    ] {
+        let mut metadata = fixture("web.valid.json");
+        metadata.insert("chunk_text".to_string(), serde_json::json!(value));
+        VectorPayload::try_from_metadata(metadata)
+            .unwrap_or_else(|error| panic!("rejected tutorial example {value}: {error}"));
+    }
 }
 
 #[test]
@@ -488,7 +480,11 @@ fn chunk_text_rejects_standalone_bearer_and_passwd_assignment() {
             "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature",
             "bearer_value",
         ),
-        ("passwd=hunter2", "secret_assignment"),
+        ("password=thisisarealpassphrase", "secret_assignment"),
+        (
+            "postgres://admin:s3cr3tpass@db.internal/app",
+            "url_credentials",
+        ),
     ] {
         let mut metadata = fixture("web.valid.json");
         metadata.insert("chunk_text".to_string(), serde_json::json!(value));

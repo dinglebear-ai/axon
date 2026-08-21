@@ -12,14 +12,14 @@
 //!
 //! Redaction is a mandatory hook point: [`LogFieldSet::new`] runs `message`
 //! through the shared secret redactor
-//! ([`axon_core::redact::redact_secrets`]) before it is stored, and
+//! ([`axon_core::redact::redact_operational_secrets`]) before it is stored, and
 //! [`LogFieldSet::redact_message`] re-applies the same hook for callers that
 //! mutate `message` directly after construction.
 
 pub const MODULE_NAME: &str = "log";
 
 use axon_api::source::{JobId, PipelinePhase, ProviderId, SourceId, Timestamp};
-use axon_core::redact::redact_secrets;
+use axon_core::redact::redact_operational_secrets;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -100,7 +100,7 @@ impl LogFieldSet {
             timestamp,
             level,
             target: target.into(),
-            message: redact_secrets(&message.into()),
+            message: redact_operational_secrets(&message.into()),
             job_id: None,
             request_id: None,
             source_id: None,
@@ -144,7 +144,7 @@ impl LogFieldSet {
     /// `message` directly (the field is public for serde round-tripping)
     /// instead of routing the new text through [`LogFieldSet::new`].
     pub fn redact_message(&mut self) {
-        self.message = redact_secrets(&self.message);
+        self.message = redact_operational_secrets(&self.message);
     }
 }
 
