@@ -1,13 +1,13 @@
 ---
 title: "Artifact Candidate Pipeline"
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 # Artifact Candidate Pipeline
 
 Status: active W21 implementation
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 ## Purpose
 
@@ -178,7 +178,7 @@ Official references:
 
 skills.sh/public-catalog discovery uses the normal SourceManifest + SourceManifestDiff + SourceGeneration lifecycle. Stable source item keys and manifest content hashes make unchanged entries reusable. Watches resubmit the same SourceRequest through the existing watch/job scheduler; they do not own a second refresh store.
 
-Only added/modified candidates are submitted by default. Removed observations are reconciled as source-generation evidence for Depot intake policy. Axon does not directly delete authoritative Depot artifacts.
+Only added/modified candidates are submitted by default. Removed observations are reconciled as source-generation evidence for Depot intake policy. Axon does not directly delete authoritative Depot artifacts. Watch persistence and replay include the complete source limits and metadata envelope, so scheduled refreshes retain the same bounded request rather than silently widening it.
 
 ## Depot sink
 
@@ -198,7 +198,7 @@ Depot remains free to reject, merge, normalize, enrich, review, or publish a can
 
 ## Semantic and graph enrichment
 
-Axon may attach semantic similarity, exact/near-duplicate clusters, ecosystem relationships, dependency/source links, and graph evidence inside the shared bounded evidence maps and its own GraphCandidate path. These remain evidence. They do not mutate Depot publication authority and they do not grant permissions.
+Axon may attach semantic similarity, exact/near-duplicate clusters, ecosystem relationships, dependency/source links, and graph evidence inside the shared bounded evidence maps and its own GraphCandidate path. Registry candidates consume semantic-neighbor ids from the existing `SourceEnrichment` stage, then sort, deduplicate, and cap them through the candidate evidence helper. These remain evidence. They do not mutate candidate identity, Depot publication authority, or permissions.
 
 ## Backpressure and seed gates
 
@@ -214,7 +214,7 @@ A full-corpus seed is forbidden until all of these are tested:
 - cancellation and job correlation;
 - no-regression differential tests for existing SourceDocument/RAG output.
 
-The first live proof is a deliberately bounded skills.sh seed. Larger 1k/5k/10k/25k/100k capacity gates are follow-up scale exercises, not this initial proof.
+The first live proof is a deliberately bounded authenticated skills.sh seed against a deployed Axon/Depot sink configuration. That proof remains open until the required live credentials and production-equivalent deployment boundary are available; no secret values belong in this document. Larger 1k/5k/10k/25k/100k capacity gates are follow-up scale exercises, not this initial proof.
 
 ## Upstream ecosystem notes
 

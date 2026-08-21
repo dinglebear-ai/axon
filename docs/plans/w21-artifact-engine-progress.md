@@ -1,13 +1,14 @@
 # W21 Artifact Engine Progress
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 Status: active implementation
 
 ## Lane identity
 
 - Worktree: /home/jmagar/workspace/axon-w21-artifact-engine
 - Branch: codex/w21-artifact-engine-20260819
-- Base: origin/main b319595736b6c1152b764beca4dc5a2690215c64
+- Original base: origin/main b319595736b6c1152b764beca4dc5a2690215c64
+- Current-main integration: `a5f1ab7fa` (includes the #570 mainline integration and the reviewed W21 outbox hardening merge)
 - Draft PR: #569, feat: add artifact candidate crawl and enrichment pipeline
 
 ## Isolation evidence
@@ -198,7 +199,7 @@ C3 checkpoints are pushed to draft PR #569: core structured discovery `95122ed47
 - the skills.sh adapter proves the existing `SourceManifestDiff` boundary fetches and normalizes only `added`/`modified` rows; `unchanged` rows produce no acquisition/candidate input, and `removed` rows remain reconciliation evidence instead of becoming authoritative delete commands;
 - the existing added-path vertical test plus the new modified/unchanged/removal tests cover the changed-only candidate matrix without a second ledger/watch/crawl path;
 - watch execution proves persisted `source`, `options`, `scope`, `embed`, and `collection` are replayed while execution-time `refresh`, `wait`, and `reason` are the tested overrides;
-- `WatchRequest` does not currently persist the full `SourceRequest` limits/metadata envelope, so W21 does not claim exact full-request replay. That remaining contract gap is intentionally left for coordination after #570 settles because `watch.rs` overlaps that lane.
+- At this checkpoint `WatchRequest` did not yet persist the full `SourceRequest` limits/metadata envelope. That gap is now closed by `1ae4ac19e`, described below.
 
 Focused proof:
 
@@ -256,12 +257,31 @@ Focused proof on the final split tree:
 - frozen Depot fixture hashes remain candidate `58afd5392e664ead043a89a45d072c32d4fb7bd2cb119bb50678c09b2775f732` and interchange `6b52ca32894a42720a3f18e7f2919a54a82031f7a89c0da2e026069d27eec88b`;
 - `cargo clippy -p axon-adapters --all-targets -- -D warnings`: passed on the normal kache path.
 
-Remaining C6 coordination gap: `RegistrySourceAdapter::artifact_candidates` currently ignores its `SourceEnrichment` map. That bridge overlaps #570, so W21 deliberately does not modify it yet. The bounded semantic-neighbor evidence hook is ready for those ids once #570 settles.
+### Post-#570 integration checkpoints
+
+Current main was integrated without rewriting W21 history. Merge checkpoint
+`a5f1ab7fa` retains the reviewed outbox hardening on top of the #570 mainline
+integration.
+
+`1ae4ac19e` closes the C4 replay gap end to end:
+
+- watch persistence now stores the complete source limits and metadata fields;
+- store rows, scheduler replay, CLI, MCP, service trait, and web projections carry those fields without inventing a second watch request;
+- migration `0006_watch_request_replay.sql`, its pinned checksum, schema references, and focused store/scheduler/service/transport tests landed together.
+
+`aec2626d6` closes the remaining C6 bridge:
+
+- `RegistrySourceAdapter::artifact_candidates` consumes the existing
+  `SourceEnrichment` map;
+- skills.sh candidate mapping feeds semantic near-neighbor ids through the
+  already bounded, sorted, deduplicated evidence helper;
+- focused adapter tests cover the enrichment feed while preserving candidate
+  identity and evidence-only authority.
 
 ## Next
 
-1. wait for #570 to settle, then coordinate the remaining watch-request limits/metadata persistence, C6 `SourceEnrichment` semantic-neighbor feed, and C5 Depot sink config/context/runtime injection in one integration pass;
-2. once runtime injection is available, run a deliberately bounded authenticated skills.sh → Axon → Depot seed with intake/license/backpressure gates enabled and prove sink receipts plus no public byte mirroring for unknown rights;
+1. run a deliberately bounded authenticated skills.sh → Axon → Depot seed with intake/license/backpressure gates enabled and prove sink receipts plus no public byte mirroring for unknown rights;
+2. obtain the required live skills.sh authentication and deployed Axon/Depot sink configuration before that proof; neither credential material nor a production-equivalent deployed target is present in this worktree, so no live seed or C7 runtime claim has been made;
 3. re-run the exact SQLite memory-compaction test if GitHub repeats the unrelated lock failure; do not pull that runtime/database fix into W21 unless it reproduces as a branch regression;
 4. keep draft PR evidence current and preserve the no-second-pipeline boundary.
 

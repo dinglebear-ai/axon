@@ -82,7 +82,7 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 - [x] added/modified entries generate candidates;
 - [x] removed entries produce reconciliation evidence rather than authoritative deletion;
 - [x] existing watch execution reconstructs the persisted source/options/scope/embed/collection selection and applies only execution-time refresh/wait/reason overrides;
-- [ ] persist/replay the remaining full SourceRequest fields, notably limits/metadata, after #570 settles rather than duplicating or conflicting with its watch/source hardening;
+- [x] persist/replay the remaining full SourceRequest fields, including limits and metadata, through the watch store, scheduler, and transport projections (`1ae4ac19e`);
 - [x] differential refresh test proves changed-only work.
 
 ### C5: Depot sink
@@ -103,7 +103,7 @@ Depot W20 G0 is frozen at `25de725`. Axon pins byte-identical copies of its cano
 ### C6: semantic/graph enrichment hooks
 
 - [x] attach exact/provider duplicate evidence plus a deterministic bounded near-duplicate evidence hook without redefining exact dedupe identity;
-- [ ] feed semantic near-neighbor ids from `SourceEnrichment` after #570 settles; the Registry adapter candidate bridge overlaps that lane;
+- [x] feed bounded semantic near-neighbor ids from `SourceEnrichment` through the Registry adapter candidate bridge (`aec2626d6`);
 - [x] add graph candidates for source/repo/artifact relationships through the existing GraphCandidate metadata bridge;
 - [x] semantic and graph signals remain non-authoritative evidence;
 - [x] no graph/enrichment failure may grant publication or rights.

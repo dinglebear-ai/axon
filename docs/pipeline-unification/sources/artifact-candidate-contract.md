@@ -1,7 +1,7 @@
 # ArtifactCandidate Contract Integration
 
 Status: active W21 integration of Depot W20 frozen G0 contract (`25de725`)
-Last reviewed: 2026-08-19
+Last reviewed: 2026-08-20
 
 ## Ownership
 
@@ -71,7 +71,7 @@ Axon-specific evidence must fit the shared fields instead of growing the payload
 - install/popularity counters: popularitySignals;
 - LICENSE/NOTICE/redistribution observations: licenseEvidence;
 - observed file/path/digest records: observedFiles;
-- semantic/graph/compatibility signals: bounded discovery/manifest evidence plus Axon's independent GraphCandidate path.
+- semantic/graph/compatibility signals: bounded discovery/manifest evidence plus Axon's independent GraphCandidate path; semantic neighbor ids sourced from `SourceEnrichment` remain sorted, deduplicated, capped evidence.
 
 None of these fields is authoritative publication state.
 
