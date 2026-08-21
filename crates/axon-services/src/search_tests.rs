@@ -85,12 +85,12 @@ fn redact_recognizes_aws_and_jwt_shapes() {
     let fake_aws = ["AKIA", "0123456789ABCDEF"].concat();
     let aws = query_log_summary(&format!("{fake_aws} configured"), &cfg);
     assert!(
-        aws.contains(REDACTED_TOKEN),
+        aws.contains(axon_core::redact::REDACTION_PLACEHOLDER),
         "expected AWS redaction: {aws}"
     );
     let jwt = query_log_summary("Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig", &cfg);
     assert!(
-        jwt.contains(REDACTED_TOKEN),
+        jwt.contains(axon_core::redact::REDACTION_PLACEHOLDER),
         "expected JWT redaction: {jwt}"
     );
 }
