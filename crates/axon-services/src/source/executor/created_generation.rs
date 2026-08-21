@@ -9,7 +9,7 @@ use axon_api::source::*;
 
 use super::generation_state::{GenerationAccumulator, GenerationStageProgress, ProcessedBatch};
 use super::helpers::*;
-use super::progress::{AcquisitionBatchProgress, ProgressCoordinator, stage_counts};
+use super::progress::{ProgressCoordinator, stage_counts};
 use super::{
     ACQUIRE_BATCH_SIZE, SOURCE_LEASE_TTL_SECONDS, SourceEventEmitter, SourcePipelineInput,
     artifact_candidates, metadata, publish, reuse, vectorize,
@@ -20,9 +20,11 @@ use crate::source::output;
 use crate::source::progress as source_progress;
 use crate::source::result_map::IndexCounts;
 
+mod batches;
 mod candidate_delivery;
 mod setup;
 
+use batches::process_generation_batches;
 use candidate_delivery::{finish_candidate_delivery, stage_candidate_delivery};
 use setup::ensure_generation_collection;
 
@@ -68,37 +70,21 @@ pub(super) async fn run_created_generation(
         )
         .await;
 
-    let batch_count = usize::try_from(changed_total)
-        .unwrap_or(usize::MAX)
-        .div_ceil(ACQUIRE_BATCH_SIZE);
-    for (batch_index, batch_diff) in batch_changed_diff(&diff, ACQUIRE_BATCH_SIZE).enumerate() {
-        let is_final_batch = batch_index + 1 == batch_count;
-        let batch_items = batch_diff
-            .added
-            .len()
-            .saturating_add(batch_diff.modified.len()) as u64;
-        let reporter = coordinator.acquisition_batch(
-            changed_total,
-            batch_items,
-            stage.acquired_items,
-            stage.acquired_documents,
-        );
-        let batch = process_changed_batch(
-            runtime,
-            input,
-            emitter,
-            &generation.generation,
-            &collection,
-            batch_diff,
-            archive_requested,
-            is_final_batch,
-            &reporter,
-            coordinator,
-            &mut stage,
-        )
-        .await?;
-        accumulated.absorb(&mut artifact_cleanup, batch);
-    }
+    process_generation_batches(
+        runtime,
+        input,
+        emitter,
+        &generation.generation,
+        &collection,
+        &diff,
+        archive_requested,
+        changed_total,
+        coordinator,
+        &mut stage,
+        &mut accumulated,
+        &mut artifact_cleanup,
+    )
+    .await?;
 
     let finalized = accumulated
         .finalize(runtime, input, &mut artifact_cleanup, &mut manifest, diff)
@@ -149,129 +135,6 @@ pub(super) async fn run_created_generation(
     )
     .await?;
     result
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn process_changed_batch(
-    runtime: &TargetLocalSourceRuntime,
-    input: &SourcePipelineInput<'_>,
-    emitter: &SourceEventEmitter,
-    generation: &SourceGenerationId,
-    collection: &CollectionSpec,
-    batch_diff: SourceManifestDiff,
-    archive_requested: bool,
-    is_final_batch: bool,
-    reporter: &AcquisitionBatchProgress<'_>,
-    coordinator: &ProgressCoordinator,
-    stage: &mut GenerationStageProgress,
-) -> anyhow::Result<ProcessedBatch> {
-    let batch_items = batch_diff
-        .added
-        .len()
-        .saturating_add(batch_diff.modified.len()) as u64;
-    let acquisition = input
-        .adapter
-        .acquire_with_progress(&input.plan, &batch_diff, Some(reporter))
-        .await?;
-    let acquired_documents = acquisition.fetched_items.len() as u64;
-    reporter.complete(acquired_documents).await;
-    stage.acquired_items = stage.acquired_items.saturating_add(batch_items);
-    stage.acquired_documents = stage.acquired_documents.saturating_add(acquired_documents);
-    source_progress::acquired(emitter, &acquisition).await;
-
-    let resolved = reuse::resolve_acquisition(runtime, input, &batch_diff, acquisition).await?;
-    let refreshed_manifest_items = resolved.acquisition.manifest.items.clone();
-    let acquisition_artifacts = resolved.acquisition.artifacts.clone();
-    let archive_items = if archive_requested {
-        resolved.acquisition.fetched_items.clone()
-    } else {
-        Vec::new()
-    };
-
-    let mut enrichments = enrich_changed_items(
-        runtime,
-        input,
-        emitter,
-        coordinator,
-        stage,
-        &resolved.acquisition.fetched_items,
-        is_final_batch,
-    )
-    .await?;
-
-    let total = is_final_batch.then_some(stage.acquired_documents);
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Normalizing,
-            stage_counts(
-                total,
-                stage.normalized_documents,
-                total,
-                stage.normalized_documents,
-                None,
-                0,
-            ),
-            "normalizing source documents",
-        )
-        .await;
-    let normalized =
-        reuse::normalize_acquisition(runtime, input, &batch_diff, resolved.acquisition).await?;
-    source_progress::normalized(emitter, generation, &normalized.header).await;
-    let mut warnings = normalized.header.warnings.clone();
-    let mut documents = normalized.data;
-    stage.normalized_documents = stage
-        .normalized_documents
-        .saturating_add(documents.len() as u64);
-    stage.pipeline.add_documents(documents.len() as u64);
-    if is_final_batch {
-        stage.pipeline.finish_documents();
-    }
-    coordinator
-        .checkpoint(
-            PipelinePhase::Normalizing,
-            stage_counts(
-                total,
-                stage.normalized_documents,
-                total,
-                stage.normalized_documents,
-                None,
-                0,
-            ),
-            "normalized source documents",
-        )
-        .await;
-
-    let (candidate_collection, clean_output) =
-        finalize_normalized_batch(runtime, input, generation, &mut documents, &enrichments).await?;
-    warnings.extend(candidate_collection.warnings);
-    let enrichment_graph = take_enrichment_graph_candidates(&mut enrichments);
-    let vectorized = vectorize::prepare_embed_publish(
-        runtime,
-        input,
-        documents,
-        &enrichment_graph,
-        generation,
-        collection.clone(),
-        emitter,
-        coordinator,
-        &mut stage.pipeline,
-        is_final_batch,
-    )
-    .await?;
-
-    let enrichment_artifacts = collect_enrichment_outputs(enrichments, &mut warnings);
-    Ok(ProcessedBatch {
-        vectorized,
-        acquisition_artifacts,
-        enrichment_artifacts,
-        clean_output,
-        archive_items,
-        artifact_candidates: candidate_collection.candidates,
-        warnings,
-        reused_item_keys: resolved.reused_item_keys,
-        refreshed_manifest_items,
-    })
 }
 
 async fn finalize_normalized_batch(

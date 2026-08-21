@@ -261,6 +261,10 @@ impl SourceAdapter for WebSourceAdapter {
         self.acquire_internal(plan, diff, progress).await
     }
 
+    fn supports_acquisition_prefetch(&self) -> bool {
+        true
+    }
+
     fn reuse_policy(&self) -> ReusePolicy {
         ReusePolicy::ConditionalRequest
     }
