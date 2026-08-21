@@ -1,15 +1,15 @@
 # W21 Artifact Engine Progress
 
-Last updated: 2026-08-20
-Status: active implementation
+Last updated: 2026-08-21
+Status: final verification; bounded live C7 seed proof pending
 
 ## Lane identity
 
 - Worktree: /home/jmagar/workspace/axon-w21-artifact-engine
 - Branch: codex/w21-artifact-engine-20260819
 - Original base: origin/main b319595736b6c1152b764beca4dc5a2690215c64
-- Current-main integration: `a5f1ab7fa` (includes the #570 mainline integration and the reviewed W21 outbox hardening merge)
-- Draft PR: #569, feat: add artifact candidate crawl and enrichment pipeline
+- Current main: `origin/main` `ec8ef7fa463de019f285e50fce8d22c9df19b376`, produced by merged PR #570 on 2026-08-21; historical W21 integration checkpoint `a5f1ab7fa` remains part of the branch history.
+- Pull request: #569, `feat: add artifact candidate crawl and enrichment pipeline`, ready for review and mergeable; reviewed implementation head before this progress-only checkpoint: `854ae7c017cb253155c6f4ada0a443a0a45545a8`.
 
 ## Isolation evidence
 
@@ -259,9 +259,7 @@ Focused proof on the final split tree:
 
 ### Post-#570 integration checkpoints
 
-Current main was integrated without rewriting W21 history. Merge checkpoint
-`a5f1ab7fa` retains the reviewed outbox hardening on top of the #570 mainline
-integration.
+PR #570 merged on 2026-08-21 as `ec8ef7fa463de019f285e50fce8d22c9df19b376`. W21 is based on that exact `origin/main`; the reviewed implementation head immediately before this progress-only checkpoint is `854ae7c017cb253155c6f4ada0a443a0a45545a8`. Historical merge checkpoint `a5f1ab7fa` retains the reviewed outbox hardening in the W21 branch history.
 
 `1ae4ac19e` closes the C4 replay gap end to end:
 
@@ -280,10 +278,12 @@ integration.
 
 ## Next
 
+Conductor checkpoint 2026-08-21: #570 is no longer a blocker. PR #569 is ready for review and mergeable; the remaining substantive W21 product evidence is the bounded live C7 seed proof below.
+
 1. run a deliberately bounded authenticated skills.sh → Axon → Depot seed with intake/license/backpressure gates enabled and prove sink receipts plus no public byte mirroring for unknown rights;
 2. obtain the required live skills.sh authentication and deployed Axon/Depot sink configuration before that proof; neither credential material nor a production-equivalent deployed target is present in this worktree, so no live seed or C7 runtime claim has been made;
 3. re-run the exact SQLite memory-compaction test if GitHub repeats the unrelated lock failure; do not pull that runtime/database fix into W21 unless it reproduces as a branch regression;
-4. keep draft PR evidence current and preserve the no-second-pipeline boundary.
+4. keep PR #569 evidence current and preserve the no-second-pipeline boundary.
 
 
 ## Do not do yet
