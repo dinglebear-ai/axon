@@ -397,22 +397,8 @@ pub fn contains_url_embedded_credentials(value: &str) -> bool {
             .name("password")
             .map(|matched| matched.as_str())
             .unwrap_or_default();
-        !is_documented_secret_placeholder(username)
-            && !is_documented_secret_placeholder(password)
-            && !is_conventional_url_credentials_placeholder(username, password)
+        !is_documented_secret_placeholder(username) && !is_documented_secret_placeholder(password)
     })
-}
-
-fn is_conventional_url_credentials_placeholder(username: &str, password: &str) -> bool {
-    let username = username.to_ascii_lowercase();
-    let password = password.to_ascii_lowercase();
-    // Keep this fail-closed allowlist exact. These pairs are conventional
-    // documentation examples; arbitrary low-entropy credentials (including
-    // `user:pass`) must still be classified and rejected.
-    matches!(
-        (username.as_str(), password.as_str()),
-        ("user" | "username", "password") | ("gw", "pw") | ("readonly", "pass")
-    )
 }
 
 /// Whether `value` looks like a bare (unlabeled) `Cookie`/`Set-Cookie`
