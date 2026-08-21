@@ -4,6 +4,8 @@ use httpmock::prelude::*;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpListener;
 use tokio::time::{Duration, timeout};
 
 struct FakePageProvider {
@@ -35,6 +37,34 @@ impl FakePageProvider {
     fn calls(&self) -> Vec<SkillsShPageRequest> {
         self.calls.lock().expect("calls mutex poisoned").clone()
     }
+}
+
+async fn raw_http_server(response: Vec<u8>) -> (Url, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind raw HTTP server");
+    let address = listener.local_addr().expect("raw HTTP address");
+    let task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept request");
+        let mut request = Vec::new();
+        loop {
+            let mut chunk = [0_u8; 1024];
+            let read = socket.read(&mut chunk).await.expect("read request");
+            if read == 0 {
+                break;
+            }
+            request.extend_from_slice(&chunk[..read]);
+            if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                break;
+            }
+        }
+        socket.write_all(&response).await.expect("write response");
+        socket.shutdown().await.expect("close response");
+    });
+    (
+        Url::parse(&format!("http://{address}/api/v1/skills")).expect("raw HTTP URL"),
+        task,
+    )
 }
 
 #[async_trait]
@@ -346,4 +376,97 @@ async fn http_503_is_retryable_provider_failure_without_local_retry() {
         error.details.get("retry_scope").map(String::as_str),
         Some("Provider")
     );
+}
+
+#[tokio::test]
+async fn http_401_and_403_are_non_retryable_and_do_not_expose_the_token() {
+    let _loopback = LoopbackGuard::allow();
+    for status in [401, 403] {
+        let server = MockServer::start();
+        let rejected = server.mock(|when, then| {
+            when.method(GET)
+                .path("/api/v1/skills")
+                .header("authorization", "Bearer listing-secret-token");
+            then.status(status);
+        });
+        let provider = http_provider_for_test(
+            Url::parse(&server.url("/api/v1/skills")).expect("mock URL"),
+            "listing-secret-token",
+        )
+        .expect("mock skills.sh client");
+
+        let error = provider
+            .fetch_page(SkillsShPageRequest {
+                mode: SkillsShMode::Leaderboard,
+                view: super::super::SkillsShView::AllTime,
+                query: None,
+                owner: None,
+                page: 0,
+                limit: 2,
+            })
+            .await
+            .expect_err("authorization failure must stop without retry");
+
+        rejected.assert_calls(1);
+        assert_eq!(error.code.0, "adapter.skills_sh.auth_failed");
+        assert!(!error.retryable);
+        assert!(!format!("{error:?}").contains("listing-secret-token"));
+    }
+}
+
+#[tokio::test]
+async fn oversized_declared_content_length_is_rejected_before_body_read() {
+    let _loopback = LoopbackGuard::allow();
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        MAX_RESPONSE_BYTES + 1
+    )
+    .into_bytes();
+    let (base_url, server) = raw_http_server(response).await;
+    let provider = http_provider_for_test(base_url, "test-token").expect("raw HTTP provider");
+
+    let error = provider
+        .fetch_page(SkillsShPageRequest {
+            mode: SkillsShMode::Leaderboard,
+            view: super::super::SkillsShView::AllTime,
+            query: None,
+            owner: None,
+            page: 0,
+            limit: 2,
+        })
+        .await
+        .expect_err("declared oversize response must be rejected");
+
+    assert_eq!(error.code.0, "adapter.skills_sh.response_too_large");
+    server.await.expect("raw HTTP server task");
+}
+
+#[tokio::test]
+async fn oversized_chunked_body_without_content_length_is_stream_capped() {
+    let _loopback = LoopbackGuard::allow();
+    let body = vec![b'x'; MAX_RESPONSE_BYTES as usize + 1];
+    let mut response = format!(
+        "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n",
+        body.len()
+    )
+    .into_bytes();
+    response.extend_from_slice(&body);
+    response.extend_from_slice(b"\r\n0\r\n\r\n");
+    let (base_url, server) = raw_http_server(response).await;
+    let provider = http_provider_for_test(base_url, "test-token").expect("raw HTTP provider");
+
+    let error = provider
+        .fetch_page(SkillsShPageRequest {
+            mode: SkillsShMode::Leaderboard,
+            view: super::super::SkillsShView::AllTime,
+            query: None,
+            owner: None,
+            page: 0,
+            limit: 2,
+        })
+        .await
+        .expect_err("chunked oversize response must be rejected while streaming");
+
+    assert_eq!(error.code.0, "adapter.skills_sh.response_too_large");
+    server.await.expect("raw HTTP server task");
 }
