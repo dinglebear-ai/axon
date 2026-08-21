@@ -254,7 +254,10 @@ impl ServiceContext {
             ),
         );
         match TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await {
-            Ok(runtime) => Some(Arc::new(runtime)),
+            Ok(runtime) => {
+                crate::source::spawn_artifact_candidate_outbox_drain(&runtime);
+                Some(Arc::new(runtime))
+            }
             Err(err) => {
                 tracing::warn!(
                     error = %err,

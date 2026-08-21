@@ -94,9 +94,15 @@ async fn corrupt_entry_is_quarantined_without_blocking_valid_delivery() {
     .await
     .expect("write corrupt entry");
 
-    let pending = outbox.pending().await.expect("scan continues");
-    assert_eq!(pending.len(), 1);
-    assert_eq!(pending[0].delivery_key, staged.delivery_key);
+    let scan = outbox.scan().await.expect("scan continues");
+    assert_eq!(scan.deliveries.len(), 1);
+    assert_eq!(scan.deliveries[0].delivery_key, staged.delivery_key);
+    assert_eq!(scan.findings.len(), 1);
+    assert_eq!(scan.findings[0].code, "artifact_candidate.outbox.corrupt");
+    assert_eq!(
+        scan.findings[0].file_name,
+        format!("{}.json", "a".repeat(64))
+    );
     let names = std::fs::read_dir(directory.path())
         .expect("read directory")
         .map(|entry| {

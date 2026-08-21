@@ -10,7 +10,7 @@ use super::SourcePipelineInput;
 use super::helpers::timestamp;
 mod outbox;
 
-pub(super) use outbox::spawn_outbox_drain;
+pub(crate) use outbox::spawn_outbox_drain;
 
 /// Hard Axon-side batch ceiling even when a sink advertises a larger limit.
 const MAX_CANDIDATE_SINK_BATCH_SIZE: usize = 64;
@@ -23,6 +23,18 @@ pub(super) struct CandidateCollection {
 struct CandidateDeliveryResult {
     warnings: Vec<SourceWarning>,
     stop_delivery: bool,
+    retryable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum CandidateDeliveryDisposition {
+    Terminal,
+    Retryable,
+}
+
+pub(super) struct CandidateDeliveryOutcome {
+    pub(super) warnings: Vec<SourceWarning>,
+    pub(super) disposition: CandidateDeliveryDisposition,
 }
 
 /// Ask the current source adapter for typed candidates beside this normalized
@@ -171,22 +183,49 @@ pub(super) async fn submit_committed_candidates(
     generation: &SourceGenerationId,
     candidates: Vec<ArtifactCandidate>,
 ) -> Vec<SourceWarning> {
+    submit_committed_candidates_with_outcome(sink, job_id, source_id, generation, candidates)
+        .await
+        .warnings
+}
+
+pub(super) async fn submit_committed_candidates_with_outcome(
+    sink: &dyn ArtifactCandidateSink,
+    job_id: JobId,
+    source_id: SourceId,
+    generation: &SourceGenerationId,
+    candidates: Vec<ArtifactCandidate>,
+) -> CandidateDeliveryOutcome {
     if candidates.is_empty() {
-        return Vec::new();
+        return CandidateDeliveryOutcome {
+            warnings: Vec::new(),
+            disposition: CandidateDeliveryDisposition::Terminal,
+        };
     }
 
     let (mut candidates, mut warnings) = dedupe_generation_candidates(candidates, generation);
     if candidates.is_empty() {
-        return warnings;
+        return CandidateDeliveryOutcome {
+            warnings,
+            disposition: CandidateDeliveryDisposition::Terminal,
+        };
     }
 
     let (capability, batch_size) = match candidate_sink_capability(sink).await {
         Ok(value) => value,
         Err(warning) => {
+            let disposition = if warning.retryable {
+                CandidateDeliveryDisposition::Retryable
+            } else {
+                CandidateDeliveryDisposition::Terminal
+            };
             warnings.push(warning);
-            return warnings;
+            return CandidateDeliveryOutcome {
+                warnings,
+                disposition,
+            };
         }
     };
+    let mut disposition = CandidateDeliveryDisposition::Terminal;
     candidates.sort_by(|left, right| left.id.cmp(&right.id));
     for (chunk_index, chunk) in candidates.chunks(batch_size).enumerate() {
         let delivery = submit_candidate_chunk(
@@ -199,6 +238,9 @@ pub(super) async fn submit_committed_candidates(
         )
         .await;
         warnings.extend(delivery.warnings);
+        if delivery.retryable {
+            disposition = CandidateDeliveryDisposition::Retryable;
+        }
         if delivery.stop_delivery {
             let visited = (chunk_index + 1)
                 .saturating_mul(batch_size)
@@ -216,7 +258,10 @@ pub(super) async fn submit_committed_candidates(
             break;
         }
     }
-    warnings
+    CandidateDeliveryOutcome {
+        warnings,
+        disposition,
+    }
 }
 
 /// Apply the candidate identity invariant once over the fully accumulated
@@ -271,10 +316,11 @@ async fn candidate_sink_capability(
     sink: &dyn ArtifactCandidateSink,
 ) -> Result<(ArtifactCandidateSinkCapability, usize), SourceWarning> {
     let capability = sink.capabilities().await.map_err(|error| {
+        let retryable = error.retryable;
         warning(
             "source.artifact_candidate.sink_capability_failed",
             format!("artifact candidate sink capability probe failed: {error}"),
-            false,
+            retryable,
         )
     })?;
     let batch_size = validate_sink_capability(&capability)?;
@@ -347,10 +393,11 @@ async fn submit_candidate_chunk(
     match sink.submit(batch).await {
         Ok(receipt) => receipt_warnings(sink_name, receipt, candidates.len() as u64),
         Err(error) => CandidateDeliveryResult {
+            retryable: error.retryable,
             warnings: vec![warning(
                 "source.artifact_candidate.sink_failed",
                 format!("artifact candidate sink delivery failed: {error}"),
-                false,
+                error.retryable,
             )],
             stop_delivery: true,
         },
@@ -375,6 +422,7 @@ fn receipt_warnings(
         return CandidateDeliveryResult {
             warnings,
             stop_delivery: true,
+            retryable: false,
         };
     }
     let stop_delivery = matches!(
@@ -418,6 +466,7 @@ fn receipt_warnings(
     CandidateDeliveryResult {
         warnings,
         stop_delivery,
+        retryable: false,
     }
 }
 
