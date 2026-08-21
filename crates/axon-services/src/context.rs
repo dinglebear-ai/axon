@@ -256,6 +256,7 @@ impl ServiceContext {
             ),
         );
         let runtime = TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await?;
+        crate::source::spawn_artifact_candidate_outbox_drain(&runtime);
         Ok(Some(Arc::new(runtime)))
     }
 

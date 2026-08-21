@@ -25,6 +25,17 @@ pub(crate) struct PendingArtifactCandidateDelivery {
     pub(crate) staged_at_unix_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ArtifactCandidateOutboxFinding {
+    pub(crate) code: &'static str,
+    pub(crate) file_name: String,
+}
+
+pub(crate) struct ArtifactCandidateOutboxScan {
+    pub(crate) deliveries: Vec<PendingArtifactCandidateDelivery>,
+    pub(crate) findings: Vec<ArtifactCandidateOutboxFinding>,
+}
+
 #[derive(Debug)]
 pub(crate) struct ArtifactCandidateOutbox {
     root: PathBuf,
@@ -94,10 +105,18 @@ impl ArtifactCandidateOutbox {
         Ok(Some(pending))
     }
 
+    #[cfg(test)]
     pub(crate) async fn pending(&self) -> anyhow::Result<Vec<PendingArtifactCandidateDelivery>> {
+        Ok(self.scan().await?.deliveries)
+    }
+
+    pub(crate) async fn scan(&self) -> anyhow::Result<ArtifactCandidateOutboxScan> {
         let _guard = self.gate.lock().await;
         if !tokio::fs::try_exists(&self.root).await? {
-            return Ok(Vec::new());
+            return Ok(ArtifactCandidateOutboxScan {
+                deliveries: Vec::new(),
+                findings: Vec::new(),
+            });
         }
         let mut entries = tokio::fs::read_dir(&self.root).await?;
         let mut paths = Vec::new();
@@ -117,28 +136,51 @@ impl ArtifactCandidateOutbox {
             paths.truncate(MAX_PENDING_DELIVERIES);
         }
         let mut pending: Vec<PendingArtifactCandidateDelivery> = Vec::new();
+        let mut findings = Vec::new();
         for path in paths {
+            let file_name = path.file_name().map_or_else(
+                || "<unknown>".to_string(),
+                |value| value.to_string_lossy().into_owned(),
+            );
             let Some(file_key) = path.file_stem().and_then(|value| value.to_str()) else {
-                quarantine(&path).await;
+                findings.push(
+                    quarantine(&path, "artifact_candidate.outbox.invalid_name", file_name).await,
+                );
                 continue;
             };
             if !valid_file_key(file_key) {
-                quarantine(&path).await;
+                findings.push(
+                    quarantine(&path, "artifact_candidate.outbox.invalid_name", file_name).await,
+                );
                 continue;
             }
-            let Ok(metadata) = tokio::fs::metadata(&path).await else {
-                continue;
+            let metadata = match tokio::fs::metadata(&path).await {
+                Ok(metadata) => metadata,
+                Err(_) => {
+                    findings.push(finding(
+                        "artifact_candidate.outbox.metadata_failed",
+                        file_name,
+                    ));
+                    continue;
+                }
             };
             if metadata.len() > MAX_OUTBOX_FILE_BYTES {
-                quarantine(&path).await;
+                findings.push(
+                    quarantine(&path, "artifact_candidate.outbox.oversized", file_name).await,
+                );
                 continue;
             }
-            let Ok(bytes) = tokio::fs::read(&path).await else {
-                continue;
+            let bytes = match tokio::fs::read(&path).await {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    findings.push(finding("artifact_candidate.outbox.read_failed", file_name));
+                    continue;
+                }
             };
             let Ok(record) = serde_json::from_slice::<PendingArtifactCandidateDelivery>(&bytes)
             else {
-                quarantine(&path).await;
+                findings
+                    .push(quarantine(&path, "artifact_candidate.outbox.corrupt", file_name).await);
                 continue;
             };
             let recomputed = artifact_candidate_batch_idempotency_key(
@@ -150,13 +192,23 @@ impl ArtifactCandidateOutbox {
             if file_key_for(&record.delivery_key) != Some(file_key)
                 || record.delivery_key != recomputed
             {
-                quarantine(&path).await;
+                findings.push(
+                    quarantine(
+                        &path,
+                        "artifact_candidate.outbox.integrity_failed",
+                        file_name,
+                    )
+                    .await,
+                );
                 continue;
             }
             pending.push(record);
         }
         pending.sort_by(|left, right| left.delivery_key.cmp(&right.delivery_key));
-        Ok(pending)
+        Ok(ArtifactCandidateOutboxScan {
+            deliveries: pending,
+            findings,
+        })
     }
 
     pub(crate) async fn complete(&self, delivery_key: &str) -> anyhow::Result<()> {
@@ -226,9 +278,22 @@ fn now_unix_ms() -> anyhow::Result<u64> {
     )?)
 }
 
-async fn quarantine(path: &PathBuf) {
+fn finding(code: &'static str, file_name: String) -> ArtifactCandidateOutboxFinding {
+    metrics::counter!("axon_artifact_candidate_outbox_findings_total", "code" => code).increment(1);
+    tracing::warn!(code, file_name, "artifact candidate outbox scan finding");
+    ArtifactCandidateOutboxFinding { code, file_name }
+}
+
+async fn quarantine(
+    path: &PathBuf,
+    code: &'static str,
+    file_name: String,
+) -> ArtifactCandidateOutboxFinding {
     let quarantine = path.with_extension(format!("invalid.{}", uuid::Uuid::new_v4()));
-    let _ = tokio::fs::rename(path, quarantine).await;
+    if tokio::fs::rename(path, quarantine).await.is_err() {
+        return finding("artifact_candidate.outbox.quarantine_failed", file_name);
+    }
+    finding(code, file_name)
 }
 
 async fn create_private_directory(path: &PathBuf) -> anyhow::Result<()> {

@@ -546,6 +546,50 @@ struct CommitAwareCandidateSink {
     deliveries: Arc<Mutex<Vec<(ArtifactCandidateBatch, bool)>>>,
 }
 
+#[derive(Clone)]
+struct RetryThenAcceptCandidateSink {
+    attempts: Arc<std::sync::atomic::AtomicUsize>,
+    fail_count: usize,
+}
+
+#[async_trait::async_trait]
+impl ArtifactCandidateSink for RetryThenAcceptCandidateSink {
+    async fn submit(
+        &self,
+        batch: ArtifactCandidateBatch,
+    ) -> std::result::Result<ArtifactCandidateSinkResult, ApiError> {
+        let attempt = self
+            .attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if attempt <= self.fail_count {
+            return Err(ApiError::new(
+                "provider.artifact_candidate.unavailable",
+                axon_error::ErrorStage::Publishing,
+                "synthetic retryable outage",
+            ));
+        }
+        let attempted = batch.candidates.len() as u64;
+        Ok(ArtifactCandidateSinkResult {
+            status: ArtifactCandidateSinkStatus::Accepted,
+            attempted,
+            accepted: attempted,
+            rejected: 0,
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> std::result::Result<ArtifactCandidateSinkCapability, ApiError> {
+        Ok(ArtifactCandidateSinkCapability {
+            name: "retry-then-accept-test".to_string(),
+            version: "1".to_string(),
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
+            max_batch_size: 64,
+            supports_idempotency: true,
+        })
+    }
+}
+
 impl CommitAwareCandidateSink {
     fn new(ledger: Arc<FakeLedgerStore>) -> Self {
         Self {
@@ -670,6 +714,60 @@ async fn artifact_candidates_are_delivered_after_commit_and_not_replayed_when_un
         1,
         "unchanged refresh must not replay ArtifactCandidate delivery"
     );
+}
+
+#[tokio::test]
+async fn durable_candidate_outbox_retries_autonomously_then_deletes_on_acceptance() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let sink = Arc::new(RetryThenAcceptCandidateSink {
+        attempts: Arc::clone(&attempts),
+        fail_count: 2,
+    });
+    let outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
+    );
+    let mut runtime = test_runtime_with_jobs(vectors, ledger, jobs);
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let runtime = runtime.with_artifact_candidate_sink(sink);
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("source generation succeeds while candidate sink retries");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if attempts.load(std::sync::atomic::Ordering::SeqCst) == 3
+                && outbox.pending().await.expect("read outbox").is_empty()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("autonomous retry drain completes");
 }
 
 #[tokio::test]

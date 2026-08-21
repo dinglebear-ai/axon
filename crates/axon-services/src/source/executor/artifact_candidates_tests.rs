@@ -19,6 +19,7 @@ struct RecordingSink {
     mode: SinkMode,
     supports_idempotency: bool,
     invalid_receipt: bool,
+    failure_retryable: bool,
     batches: Arc<Mutex<Vec<ArtifactCandidateBatch>>>,
     capability_calls: Arc<Mutex<u64>>,
 }
@@ -31,6 +32,7 @@ impl RecordingSink {
             mode: SinkMode::Accepted,
             supports_idempotency: true,
             invalid_receipt: false,
+            failure_retryable: false,
             batches: Arc::new(Mutex::new(Vec::new())),
             capability_calls: Arc::new(Mutex::new(0)),
         }
@@ -39,6 +41,14 @@ impl RecordingSink {
     fn failed() -> Self {
         Self {
             mode: SinkMode::Failed,
+            ..Self::accepted(64)
+        }
+    }
+
+    fn retryable_failed() -> Self {
+        Self {
+            mode: SinkMode::Failed,
+            failure_retryable: true,
             ..Self::accepted(64)
         }
     }
@@ -94,11 +104,18 @@ impl ArtifactCandidateSink for RecordingSink {
                 .lock()
                 .expect("batch mutex poisoned")
                 .push(batch);
-            return Err(ApiError::new(
+            let error = ApiError::new(
                 "test.artifact_candidate.sink_failed",
                 ErrorStage::Publishing,
                 "synthetic sink failure",
-            ));
+            );
+            return Err(if self.failure_retryable {
+                error.with_retry_policy(axon_error::RetryPolicy::retryable(
+                    axon_error::RetryScope::Provider,
+                ))
+            } else {
+                error
+            });
         }
         let attempted = batch.candidates.len() as u64;
         let reported_attempted = if self.invalid_receipt {
@@ -572,4 +589,35 @@ async fn empty_candidate_set_does_not_probe_or_submit_sink() {
     assert!(warnings.is_empty());
     assert_eq!(sink.capability_calls(), 0);
     assert!(sink.batches().is_empty());
+}
+
+#[tokio::test]
+async fn rejected_receipt_is_a_typed_terminal_delivery() {
+    let outcome = submit_committed_candidates_with_outcome(
+        &RecordingSink::with_mode(SinkMode::Rejected),
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(0)],
+    )
+    .await;
+
+    assert_eq!(outcome.disposition, CandidateDeliveryDisposition::Terminal);
+}
+
+#[tokio::test]
+async fn retry_policy_controls_delivery_disposition() {
+    let outcome = submit_committed_candidates_with_outcome(
+        &RecordingSink::retryable_failed(),
+        job_id(),
+        source_id(),
+        &generation(),
+        vec![candidate(0)],
+    )
+    .await;
+
+    assert_eq!(outcome.disposition, CandidateDeliveryDisposition::Retryable);
+    assert!(outcome.warnings.iter().any(|warning| {
+        warning.code == "source.artifact_candidate.sink_failed" && warning.retryable
+    }));
 }

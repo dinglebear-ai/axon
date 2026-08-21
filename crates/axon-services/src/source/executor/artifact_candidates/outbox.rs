@@ -1,12 +1,12 @@
 //! Durable outbox draining for committed ArtifactCandidate batches.
 
-use axon_api::source::{PipelinePhase, SourceWarning};
+use axon_api::source::PipelinePhase;
 
-use super::submit_committed_candidates;
+use super::{CandidateDeliveryDisposition, submit_committed_candidates_with_outcome};
 use crate::context::TargetLocalSourceRuntime;
 use crate::source::events::SourceEventEmitter;
 
-pub(in crate::source::executor) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
+pub(crate) fn spawn_outbox_drain(runtime: &TargetLocalSourceRuntime) {
     let Some(outbox) = runtime.artifact_candidate_outbox.clone() else {
         return;
     };
@@ -17,20 +17,32 @@ pub(in crate::source::executor) fn spawn_outbox_drain(runtime: &TargetLocalSourc
     let ledger = runtime.ledger.clone();
     let jobs = runtime.jobs.clone();
     tokio::spawn(async move {
+        let mut retry_attempt = 0_u32;
         loop {
             outbox.start_drain_pass();
             let drain = async {
-                for pending in outbox.pending().await? {
+                let mut retryable_remaining = false;
+                let scan = outbox.scan().await?;
+                for finding in scan.findings {
+                    tracing::warn!(
+                        code = finding.code,
+                        file_name = finding.file_name,
+                        "artifact candidate outbox finding observed by drain"
+                    );
+                }
+                for pending in scan.deliveries {
                     let committed = ledger
                         .committed_generation(pending.source_id.clone())
                         .await?;
                     if committed.as_ref() != Some(&pending.generation) {
                         if delivery_is_stale(pending.staged_at_unix_ms) {
                             outbox.complete(&pending.delivery_key).await?;
+                        } else {
+                            retryable_remaining = true;
                         }
                         continue;
                     }
-                    let warnings = submit_committed_candidates(
+                    let outcome = submit_committed_candidates_with_outcome(
                         sink.as_ref(),
                         pending.job_id,
                         pending.source_id.clone(),
@@ -39,7 +51,7 @@ pub(in crate::source::executor) fn spawn_outbox_drain(runtime: &TargetLocalSourc
                     )
                     .await;
                     let emitter = SourceEventEmitter::new(Some(jobs.clone()), Some(pending.job_id));
-                    for warning in &warnings {
+                    for warning in &outcome.warnings {
                         emitter
                             .warning(
                                 PipelinePhase::Publishing,
@@ -48,21 +60,43 @@ pub(in crate::source::executor) fn spawn_outbox_drain(runtime: &TargetLocalSourc
                             )
                             .await;
                     }
-                    if delivery_is_terminal(&warnings) {
+                    if outcome.disposition == CandidateDeliveryDisposition::Terminal {
                         outbox.complete(&pending.delivery_key).await?;
+                    } else {
+                        retryable_remaining = true;
                     }
                 }
-                Ok::<(), anyhow::Error>(())
+                Ok::<bool, anyhow::Error>(retryable_remaining)
             }
             .await;
-            if let Err(error) = drain {
-                tracing::warn!(error = %error, "artifact candidate outbox drain failed");
+            let retryable_remaining = match drain {
+                Ok(retryable_remaining) => retryable_remaining,
+                Err(error) => {
+                    tracing::warn!(error = %error, "artifact candidate outbox drain failed");
+                    true
+                }
+            };
+            if retryable_remaining {
+                retry_attempt = retry_attempt.saturating_add(1);
+                tokio::time::sleep(retry_delay(retry_attempt)).await;
+                continue;
             }
+            retry_attempt = 0;
             if !outbox.continue_or_finish_drain() {
                 break;
             }
         }
     });
+}
+
+fn retry_delay(attempt: u32) -> std::time::Duration {
+    #[cfg(test)]
+    const BASE_MS: u64 = 10;
+    #[cfg(not(test))]
+    const BASE_MS: u64 = 1_000;
+    const MAX_MS: u64 = 60_000;
+    let exponent = attempt.saturating_sub(1).min(16);
+    std::time::Duration::from_millis(BASE_MS.saturating_mul(1_u64 << exponent).min(MAX_MS))
 }
 
 fn delivery_is_stale(staged_at_unix_ms: u64) -> bool {
@@ -72,28 +106,4 @@ fn delivery_is_stale(staged_at_unix_ms: u64) -> bool {
         .ok()
         .and_then(|duration| u64::try_from(duration.as_millis()).ok());
     now.is_some_and(|now| now.saturating_sub(staged_at_unix_ms) >= STALE_AFTER_MS)
-}
-
-fn delivery_is_terminal(warnings: &[SourceWarning]) -> bool {
-    let terminal = warnings.iter().any(|warning| {
-        matches!(
-            warning.code.as_str(),
-            "source.artifact_candidate.sink_accepted" | "source.artifact_candidate.sink_disabled"
-        )
-    });
-    let failed = warnings.iter().any(|warning| {
-        matches!(
-            warning.code.as_str(),
-            "source.artifact_candidate.sink_capability_failed"
-                | "source.artifact_candidate.sink_contract_unsupported"
-                | "source.artifact_candidate.sink_idempotency_unsupported"
-                | "source.artifact_candidate.sink_zero_batch_limit"
-                | "source.artifact_candidate.sink_failed"
-                | "source.artifact_candidate.sink_receipt_invalid"
-                | "source.artifact_candidate.sink_partial"
-                | "source.artifact_candidate.sink_rejected"
-                | "source.artifact_candidate.sink_delivery_skipped"
-        )
-    });
-    terminal && !failed
 }

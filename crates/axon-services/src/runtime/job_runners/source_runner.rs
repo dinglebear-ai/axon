@@ -83,7 +83,10 @@ async fn build_service_context(cfg: &Arc<Config>) -> Result<ServiceContext, ApiE
         return Ok(ctx);
     };
     match TargetLocalSourceRuntime::from_config(cfg, store, (*pool).clone()).await {
-        Ok(runtime) => ctx = ctx.with_target_local_source_runtime(runtime),
+        Ok(runtime) => {
+            crate::source::spawn_artifact_candidate_outbox_drain(&runtime);
+            ctx = ctx.with_target_local_source_runtime(runtime);
+        }
         Err(error) => {
             tracing::warn!(
                 error = %error,
