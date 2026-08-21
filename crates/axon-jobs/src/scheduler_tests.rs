@@ -29,6 +29,46 @@ async fn invalid_scheduler_capacity_is_rejected() {
 }
 
 #[tokio::test]
+async fn shared_write_gate_preserves_a_pool_slot_during_writer_contention() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    let held = axon_core::sqlite::ImmediateTx::begin(&pool)
+        .await
+        .expect("hold writer lock");
+    let gate = SchedulerWriteGate::default();
+    let mut waiters = Vec::new();
+    for index in 0..7 {
+        let scheduler = ProviderScheduler::new_with_write_gate(
+            pool.clone(),
+            ProviderCapacityDomain {
+                kind: ProviderKind::Fetch,
+                instance_id: format!("fetch-{index}"),
+                authority_id: "authority-a".into(),
+            },
+            SchedulerConfig {
+                capacity: 1,
+                interactive_reserve: 0,
+                max_entries: 10,
+                max_units: 10,
+            },
+            gate.clone(),
+        )
+        .expect("scheduler");
+        waiters.push(tokio::spawn(async move { scheduler.reconcile().await }));
+    }
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    let control_connection = tokio::time::timeout(Duration::from_millis(250), pool.acquire())
+        .await
+        .expect("scheduler contention must not exhaust the SQLite pool")
+        .expect("control connection");
+    drop(control_connection);
+    held.rollback().await;
+    for waiter in waiters {
+        waiter.await.expect("waiter task").expect("reconcile");
+    }
+}
+
+#[tokio::test]
 async fn sqlite_scheduler_grants_and_fences_a_reservation() {
     let pool = open_sqlite_pool(":memory:").await.expect("migrations");
     sqlx::query(

@@ -21,6 +21,7 @@ impl ProviderScheduler {
         &self,
         reservation_id: &str,
     ) -> Result<ReservationGrant, SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let mut connection = self.pool.acquire().await?;
         begin_immediate(&mut connection).await?;
         let domain = domain_name(self.domain.kind)?;

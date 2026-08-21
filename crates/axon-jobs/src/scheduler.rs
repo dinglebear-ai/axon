@@ -13,7 +13,9 @@ use serde::Serialize;
 use sqlx::{Sqlite, pool::PoolConnection};
 use sqlx::{SqlitePool, error::Error as SqlxError};
 use std::future::Future;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -90,7 +92,16 @@ pub struct ProviderScheduler {
     pool: SqlitePool,
     domain: ProviderCapacityDomain,
     config: SchedulerConfig,
+    write_gate: SchedulerWriteGate,
 }
+
+/// Process-local admission gate for scheduler mutations sharing one SQLite DB.
+///
+/// SQLite admits one writer at a time. Without this gate, concurrent provider
+/// calls can park every SQLx connection worker inside SQLite's busy handler,
+/// starving unrelated job heartbeats and control-plane reads of a pool slot.
+#[derive(Debug, Clone, Default)]
+pub struct SchedulerWriteGate(Arc<Mutex<()>>);
 
 #[derive(Debug)]
 pub struct ActiveReservationLease<K> {
@@ -250,6 +261,15 @@ impl ProviderScheduler {
         domain: ProviderCapacityDomain,
         config: SchedulerConfig,
     ) -> Result<Self, SchedulerError> {
+        Self::new_with_write_gate(pool, domain, config, SchedulerWriteGate::default())
+    }
+
+    pub fn new_with_write_gate(
+        pool: SqlitePool,
+        domain: ProviderCapacityDomain,
+        config: SchedulerConfig,
+        write_gate: SchedulerWriteGate,
+    ) -> Result<Self, SchedulerError> {
         if config.capacity == 0
             || config.interactive_reserve > config.capacity
             || config.max_entries == 0
@@ -261,6 +281,7 @@ impl ProviderScheduler {
             pool,
             domain,
             config,
+            write_gate,
         })
     }
 
@@ -278,6 +299,7 @@ impl ProviderScheduler {
         // capacity. Previously these rows survived until an external
         // reconciliation pass and could exhaust the domain indefinitely.
         self.reconcile().await?;
+        let _write_permit = self.write_gate.0.lock().await;
         let mut connection = self.pool.acquire().await?;
         begin_immediate(&mut connection).await?;
         let result = self.reserve_locked(&mut connection, request).await;
@@ -326,6 +348,7 @@ impl ProviderScheduler {
                 return Ok(grant);
             }
             if started.elapsed() >= WAIT_TIMEOUT {
+                let _write_permit = self.write_gate.0.lock().await;
                 let changed = sqlx::query(
                     "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
                      terminal_reason = 'queue_timeout', updated_at = datetime('now')
@@ -352,6 +375,7 @@ impl ProviderScheduler {
         fence: &str,
         reason: &str,
     ) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         sqlx::query(
             "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
              terminal_reason = ?, updated_at = datetime('now')
@@ -368,6 +392,7 @@ impl ProviderScheduler {
     }
 
     pub async fn complete(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'released', granted_units = 0,
              terminal_reason = 'completed', updated_at = datetime('now')
@@ -386,6 +411,7 @@ impl ProviderScheduler {
     }
 
     async fn activate(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'active', renewed_at = datetime('now'),
              updated_at = datetime('now')
@@ -405,6 +431,7 @@ impl ProviderScheduler {
     }
 
     async fn renew(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET renewed_at = datetime('now'),
              expires_at = datetime('now', '+300 seconds'), updated_at = datetime('now')
@@ -423,6 +450,7 @@ impl ProviderScheduler {
     }
 
     async fn fail(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'released', granted_units = 0,
              terminal_reason = 'provider_failed', updated_at = datetime('now')
@@ -441,6 +469,7 @@ impl ProviderScheduler {
     }
 
     async fn cancel(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        let _write_permit = self.write_gate.0.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'canceled', granted_units = 0,
              terminal_reason = 'caller_cancelled', updated_at = datetime('now')
