@@ -22,9 +22,7 @@ pub(super) struct CandidateCollection {
 
 struct CandidateDeliveryResult {
     warnings: Vec<SourceWarning>,
-    stop_delivery: bool,
-    retryable: bool,
-    disabled: bool,
+    disposition: CandidateDeliveryDisposition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,18 +238,13 @@ pub(super) async fn submit_committed_candidates_with_outcome(
         )
         .await;
         warnings.extend(delivery.warnings);
-        if delivery.retryable {
-            disposition = CandidateDeliveryDisposition::Retryable;
-        }
-        if delivery.disabled {
-            disposition = CandidateDeliveryDisposition::Disabled;
-        }
-        if delivery.stop_delivery {
+        if delivery.disposition != CandidateDeliveryDisposition::Terminal {
+            disposition = delivery.disposition;
             let visited = (chunk_index + 1)
                 .saturating_mul(batch_size)
                 .min(candidates.len());
             let skipped = candidates.len().saturating_sub(visited);
-            if skipped > 0 && delivery.retryable {
+            if skipped > 0 && delivery.disposition == CandidateDeliveryDisposition::Retryable {
                 warnings.push(warning(
                     "source.artifact_candidate.sink_delivery_skipped",
                     format!(
@@ -398,14 +391,16 @@ async fn submit_candidate_chunk(
     match sink.submit(batch).await {
         Ok(receipt) => receipt_warnings(sink_name, receipt, candidates.len() as u64),
         Err(error) => CandidateDeliveryResult {
-            retryable: error.retryable,
             warnings: vec![warning(
                 "source.artifact_candidate.sink_failed",
                 format!("artifact candidate sink delivery failed: {error}"),
                 error.retryable,
             )],
-            stop_delivery: error.retryable,
-            disabled: false,
+            disposition: if error.retryable {
+                CandidateDeliveryDisposition::Retryable
+            } else {
+                CandidateDeliveryDisposition::Terminal
+            },
         },
     }
 }
@@ -427,9 +422,7 @@ fn receipt_warnings(
         ));
         return CandidateDeliveryResult {
             warnings,
-            stop_delivery: false,
-            retryable: false,
-            disabled: false,
+            disposition: CandidateDeliveryDisposition::Terminal,
         };
     }
     let disabled = receipt.status == ArtifactCandidateSinkStatus::Disabled;
@@ -469,9 +462,11 @@ fn receipt_warnings(
     }
     CandidateDeliveryResult {
         warnings,
-        stop_delivery: disabled,
-        retryable: false,
-        disabled,
+        disposition: if disabled {
+            CandidateDeliveryDisposition::Disabled
+        } else {
+            CandidateDeliveryDisposition::Terminal
+        },
     }
 }
 

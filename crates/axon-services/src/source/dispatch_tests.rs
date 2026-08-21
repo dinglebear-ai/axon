@@ -552,6 +552,39 @@ struct RetryThenAcceptCandidateSink {
     fail_count: usize,
 }
 
+#[derive(Clone)]
+struct DisabledCandidateSink {
+    attempts: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl ArtifactCandidateSink for DisabledCandidateSink {
+    async fn submit(
+        &self,
+        batch: ArtifactCandidateBatch,
+    ) -> std::result::Result<ArtifactCandidateSinkResult, ApiError> {
+        self.attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(ArtifactCandidateSinkResult {
+            status: ArtifactCandidateSinkStatus::Disabled,
+            attempted: batch.candidates.len() as u64,
+            accepted: 0,
+            rejected: 0,
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> std::result::Result<ArtifactCandidateSinkCapability, ApiError> {
+        Ok(ArtifactCandidateSinkCapability {
+            name: "disabled-test".to_string(),
+            version: "1".to_string(),
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
+            max_batch_size: 64,
+            supports_idempotency: true,
+        })
+    }
+}
+
 #[async_trait::async_trait]
 impl ArtifactCandidateSink for RetryThenAcceptCandidateSink {
     async fn submit(
@@ -782,8 +815,12 @@ async fn disabled_candidate_sink_preserves_durable_outbox_delivery() {
     let outbox = Arc::new(
         crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
     );
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut runtime = test_runtime_with_jobs(vectors, ledger, jobs);
     runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let runtime = runtime.with_artifact_candidate_sink(Arc::new(DisabledCandidateSink {
+        attempts: Arc::clone(&attempts),
+    }));
     let adapter =
         CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
             "SKILL.md",
@@ -804,7 +841,13 @@ async fn disabled_candidate_sink_preserves_durable_outbox_delivery() {
     .await
     .expect("source generation succeeds while candidate sink is disabled");
 
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while attempts.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("disabled sink was attempted");
     assert_eq!(
         outbox.pending().await.expect("read outbox").len(),
         1,
