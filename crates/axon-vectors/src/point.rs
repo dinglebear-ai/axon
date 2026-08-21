@@ -168,10 +168,8 @@ impl VectorPointBatchBuilder {
         Ok(batch)
     }
 
-    /// Compatibility variant that returns a second count field. Redaction
-    /// failures are fail-closed, so successful builds always return zero here;
-    /// a forbidden payload is returned as [`VectorPointBatchBuildError::Payload`]
-    /// before any partial vector batch can escape.
+    /// Compatibility variant that returns the number of chunks omitted because
+    /// their retrievable payload still contained a forbidden secret value.
     pub fn build_with_skipped_count(
         self,
     ) -> Result<(VectorPointBatch, u64), VectorPointBatchBuildError> {
@@ -224,6 +222,7 @@ pub fn build_points_for_document(
     let model = embeddings.model;
     let mut vectors = vectors_by_chunk_id(embeddings.vectors, &chunks, expected_dimensions)?;
     let mut points = Vec::with_capacity(document.chunks.len());
+    let mut skipped_redaction = 0;
     for chunk in &document.chunks {
         let vector = vectors.remove(&chunk.chunk_id).ok_or_else(|| {
             VectorPointBatchBuildError::MissingEmbeddingChunk {
@@ -237,7 +236,7 @@ pub fn build_points_for_document(
             &chunk.chunk_id,
             &document.generation,
         );
-        let payload = build_payload(
+        let payload = match build_payload(
             collection,
             document,
             chunk,
@@ -247,7 +246,17 @@ pub fn build_points_for_document(
             &provider_id,
             &model,
             context,
-        )?;
+        ) {
+            Ok(payload) => payload,
+            Err(VectorPointBatchBuildError::Payload {
+                source: VectorPayloadValidationError::ForbiddenValue { .. },
+                ..
+            }) => {
+                skipped_redaction += 1;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         let sparse = crate::bm42::compute_bm42_sparse(chunk.chunk_id.clone(), &chunk.content);
         let sparse_vector = (!sparse.indices.is_empty()).then_some(sparse);
         points.push(VectorPoint {
@@ -259,7 +268,7 @@ pub fn build_points_for_document(
         });
     }
 
-    Ok((points, 0))
+    Ok((points, skipped_redaction))
 }
 
 fn validate_embedding_provenance(

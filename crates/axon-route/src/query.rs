@@ -61,22 +61,60 @@ fn is_tracking_param(key: &str) -> bool {
 }
 
 fn is_sensitive_param(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    key.contains("token")
-        || key.contains("secret")
-        || key.contains("password")
-        || key.contains("signature")
-        || key.contains("credential")
-        || key == "access_key"
-        || key == "awsaccesskeyid"
-        || key.starts_with("x-amz-")
-        || key == "sig"
-        || key == "jwt"
-        || key == "key"
-        || key == "api_key"
-        || key == "apikey"
-        || key == "auth"
-        || key == "authorization"
+    let key = axon_core::redact::normalize_field_name(key);
+    if key.ends_with("_count")
+        || key.ends_with("_estimate")
+        || key.ends_with("_policy")
+        || key.ends_with("_status")
+        || key.ends_with("_type")
+        || key.ends_with("_enabled")
+        || key.ends_with("_identifier")
+        || matches!(
+            key.as_str(),
+            "tokenizer"
+                | "tokenization"
+                | "token_budget"
+                | "page_token"
+                | "next_page_token"
+                | "continuation_token"
+                | "pagination_token"
+                | "cursor_token"
+        )
+    {
+        return false;
+    }
+    matches!(
+        key.as_str(),
+        "token"
+            | "secret"
+            | "password"
+            | "passwd"
+            | "credential"
+            | "credentials"
+            | "access_token"
+            | "refresh_token"
+            | "id_token"
+            | "private_key"
+            | "secret_key"
+            | "client_secret"
+            | "access_key"
+            | "awsaccesskeyid"
+            | "awsaccess_key_id"
+            | "sig"
+            | "signature"
+            | "jwt"
+            | "key"
+            | "api_key"
+            | "apikey"
+            | "auth"
+            | "authorization"
+    ) || key.ends_with("_token")
+        || key.ends_with("_secret")
+        || key.ends_with("_password")
+        || key.ends_with("_passwd")
+        || key.ends_with("_credential")
+        || key.ends_with("_credentials")
+        || key.ends_with("_signature")
 }
 
 fn warning() -> SourceWarning {

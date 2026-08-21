@@ -140,7 +140,7 @@ fn redact_text_scrubs_secrets_and_local_paths() {
     );
     assert_eq!(
         r.redact_text("see /home/jmagar/secret.rs for details", &c),
-        REDACTION_PLACEHOLDER
+        "see [REDACTED] for details"
     );
     assert_eq!(r.redact_text("just normal prose", &c), "just normal prose");
 
@@ -164,12 +164,48 @@ fn redact_text_preserves_public_authentication_prose() {
 }
 
 #[test]
-fn redact_text_replaces_only_the_secret_span() {
+fn redact_text_preserves_short_authorization_example() {
     let redactor = DefaultRedactor::new();
     let input = "request failed Authorization: Bearer abc123; retrying safely";
+    assert_eq!(redactor.redact_text(input, &ctx()), input);
+}
+
+#[test]
+fn operational_egress_redacts_short_authorization_values() {
+    let redactor = DefaultRedactor::new();
+    let input = "request failed Authorization:Bearer secret-value; retrying";
+    for context in [
+        RedactionContext::logs(),
+        RedactionContext::job_event(),
+        RedactionContext::cli_json(),
+        RedactionContext::transport_response(),
+    ] {
+        let output = redactor.redact_text(input, &context);
+        assert!(
+            !output.contains("secret-value"),
+            "operational auth leaked: {output}"
+        );
+        assert!(output.contains(REDACTION_PLACEHOLDER));
+        assert!(output.contains("retrying"));
+    }
+}
+
+#[test]
+fn operational_egress_redacts_aws_credential_ids_without_hiding_docs() {
+    let redactor = DefaultRedactor::new();
+    let credential_id = "AKIA0123456789ABCDEF";
+    let operational = redactor.redact_text(credential_id, &RedactionContext::logs());
+    assert_eq!(operational, REDACTION_PLACEHOLDER);
+    assert_eq!(redactor.redact_text(credential_id, &ctx()), credential_id);
+}
+
+#[test]
+fn remote_url_paths_that_resemble_local_paths_are_preserved() {
+    let redactor = DefaultRedactor::new();
+    let input = "see https://example.com/home/docs and https://example.com/etc/hosts";
     assert_eq!(
-        redactor.redact_text(input, &ctx()),
-        "request failed Authorization: Bearer [REDACTED]; retrying safely"
+        redactor.redact_text(input, &RedactionContext::job_event()),
+        input
     );
 }
 
@@ -181,25 +217,24 @@ fn redact_text_fails_closed_when_a_second_secret_shape_remains() {
         "password=hunter2 postgres://user:pass@db.internal/data",
         "token=abc123 -----BEGIN PRIVATE KEY-----",
     ] {
-        assert_eq!(
-            redactor.redact_text(input, &context),
-            REDACTION_PLACEHOLDER,
-            "leaked {input}"
+        let redacted = redactor.redact_text(input, &context);
+        assert!(!redacted.contains("hunter2"), "leaked password: {redacted}");
+        assert!(
+            !redacted.contains("user:pass"),
+            "leaked URL credentials: {redacted}"
         );
+        assert!(redacted.contains(REDACTION_PLACEHOLDER));
     }
 }
 
 #[test]
-fn redact_json_replaces_only_the_secret_span() {
+fn redact_json_preserves_short_authorization_example() {
     let input = json!({
         "message": "request failed Authorization: Bearer abc123; retrying safely"
     });
-    let (output, report) = DefaultRedactor::new().redact_json(input, &ctx());
-    assert_eq!(
-        output["message"],
-        "request failed Authorization: Bearer [REDACTED]; retrying safely"
-    );
-    assert_eq!(report.status(), RedactionStatus::Redacted);
+    let (output, report) = DefaultRedactor::new().redact_json(input.clone(), &ctx());
+    assert_eq!(output, input);
+    assert_eq!(report.status(), RedactionStatus::Clean);
 }
 
 #[test]
@@ -207,7 +242,7 @@ fn structured_event_text_scrubs_local_paths_unless_explicitly_allowed() {
     let value = json!({"message": "read /home/jmagar/.ssh/id_ed25519 next"});
     let (redacted, report) =
         DefaultRedactor::new().redact_json(value.clone(), &RedactionContext::job_event());
-    assert_eq!(redacted["message"], REDACTION_PLACEHOLDER);
+    assert_eq!(redacted["message"], "read [REDACTED] next");
     assert_eq!(report.detectors_triggered, ["local_path"]);
 
     let mut allowed = RedactionContext::job_event();
@@ -259,32 +294,14 @@ fn artifact_metadata_secret_fixture_fails_before_write() {
 }
 
 #[test]
-fn opaque_gitlab_token_is_scrubbed_by_context_plus_entropy() {
-    // Gitea/GitLab/OAuth-style opaque tokens have no fixed prefix, so the
-    // structured boundary must classify them by field-name context plus
-    // value entropy.
-    // Field name uses "gitlab" (opaque-token context) rather than "token"/
-    // "secret"/etc. — those field-name fragments already get dropped
-    // non-fatally by the existing key-name detector before this value ever
-    // reaches the entropy classifier, so this fixture exercises the new
-    // context-plus-entropy path specifically.
+fn provider_identifier_is_not_secret_from_entropy_alone() {
     let value = json!({
         "gitlab_identifier": "aK9fQ2mP7zT4xL8vN1cR6bY3wE0sJ5h",
         "web_title": "keep me",
     });
-    let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
-    assert_eq!(out["gitlab_identifier"], json!(REDACTION_PLACEHOLDER));
-    assert_eq!(out["web_title"], json!("keep me"));
-    assert!(
-        report
-            .redacted_fields
-            .contains(&"gitlab_identifier".to_string())
-    );
-    assert!(
-        report
-            .detectors_triggered
-            .contains(&"opaque_token_entropy".to_string())
-    );
+    let (out, report) = DefaultRedactor::new().redact_json(value.clone(), &ctx());
+    assert_eq!(out, value);
+    assert_eq!(report.status(), RedactionStatus::Clean);
 }
 
 #[test]
@@ -306,7 +323,10 @@ fn pem_private_key_and_url_credentials_are_scrubbed_in_free_text_field() {
     });
     let (out, report) = DefaultRedactor::new().redact_json(value, &ctx());
     assert_eq!(out["note"], json!(REDACTION_PLACEHOLDER));
-    assert_eq!(out["other"], json!(REDACTION_PLACEHOLDER));
+    assert_eq!(
+        out["other"],
+        json!("connect via postgres://[REDACTED]@db.internal:5432/mydb")
+    );
     assert_eq!(report.status(), RedactionStatus::Redacted);
 }
 

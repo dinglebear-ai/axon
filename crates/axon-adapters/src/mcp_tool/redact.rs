@@ -13,7 +13,7 @@ pub(super) fn redact_mcp_output(output: &str) -> (String, bool) {
         return (serialized, changed);
     }
 
-    let redacted = axon_core::redact::redact_secrets(output);
+    let redacted = axon_core::redact::redact_retrievable_body_secrets(output);
     let changed = redacted != output;
     (redacted, changed)
 }
@@ -36,7 +36,7 @@ fn redact_json_value(value: &mut serde_json::Value, changed: &mut bool) {
             }
         }
         serde_json::Value::String(text) => {
-            let core_redacted = axon_core::redact::redact_secrets(text);
+            let core_redacted = axon_core::redact::redact_retrievable_body_secrets(text);
             if core_redacted != *text {
                 *text = core_redacted;
                 *changed = true;
@@ -47,7 +47,7 @@ fn redact_json_value(value: &mut serde_json::Value, changed: &mut bool) {
 }
 
 fn key_is_sensitive(key: &str) -> bool {
-    axon_core::redact::is_secret_like(&key.to_ascii_lowercase())
+    axon_core::redact::is_secret_like(key)
 }
 
 #[cfg(test)]

@@ -302,17 +302,8 @@ fn redact_sensitive_structured_keys(value: serde_json::Value) -> serde_json::Val
         serde_json::Value::Object(map) => serde_json::Value::Object(
             map.into_iter()
                 .filter_map(|(key, value)| {
-                    let lowered = key.to_ascii_lowercase();
-                    let sensitive = [
-                        "token",
-                        "secret",
-                        "password",
-                        "authorization",
-                        "cookie",
-                        "api_key",
-                    ]
-                    .iter()
-                    .any(|needle| lowered.contains(needle));
+                    let sensitive = axon_core::redact::is_secret_like(&key)
+                        || axon_core::redact::forbidden_field_name(&key);
                     (!sensitive).then(|| (key, redact_sensitive_structured_keys(value)))
                 })
                 .collect(),

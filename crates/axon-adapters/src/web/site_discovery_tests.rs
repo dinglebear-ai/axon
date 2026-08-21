@@ -62,6 +62,21 @@ fn manifest_limit_applies_to_map_items_after_sort_and_dedup() {
 }
 
 #[test]
+fn web_url_parts_preserve_benign_query_metadata_but_strip_credentials() {
+    let web = WebUrlParts::parse(
+        "https://example.com/docs?q=rust&page=2&pageToken=next-42&tokenCount=4&X-Amz-Date=20260819T120000Z&X-Amz-Expires=300&X-Amz-Signature=secret&accessToken=secret&utm_source=test",
+    )
+    .unwrap();
+    assert_eq!(
+        web.normalized_url,
+        "https://example.com/docs?X-Amz-Date=20260819T120000Z&X-Amz-Expires=300&page=2&pageToken=next-42&q=rust&tokenCount=4"
+    );
+    assert!(!web.normalized_url.contains("X-Amz-Signature"));
+    assert!(!web.normalized_url.contains("accessToken"));
+    assert!(!web.normalized_url.contains("utm_source"));
+}
+
+#[test]
 fn finalization_does_not_guess_that_independently_discovered_markdown_is_an_alternate() {
     let plan = crate::web_tests::web_plan("https://example.com/docs", SourceScope::Docs);
     let item = |url: &str| {

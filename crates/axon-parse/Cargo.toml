@@ -13,6 +13,7 @@ publish = false
 
 [dependencies]
 axon-api = { path = "../axon-api" }
+axon-core = { path = "../axon-core" }
 chrono = { version = "0.4", features = ["clock"] }
 serde_json = "1"
 serde_yaml = "0.9"

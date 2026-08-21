@@ -142,7 +142,7 @@ fn redact_secrets(text: &str) -> String {
         return serde_json::to_string(&redact_secret_json(&value))
             .unwrap_or_else(|_| "[REDACTED]".to_string());
     }
-    axon_core::redact::redact_secrets(text)
+    axon_core::redact::redact_operational_secrets(text)
 }
 
 fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
@@ -165,23 +165,14 @@ fn redact_secret_json(value: &serde_json::Value) -> serde_json::Value {
             serde_json::Value::Array(values.iter().map(redact_secret_json).collect())
         }
         serde_json::Value::String(value) => {
-            serde_json::Value::String(axon_core::redact::redact_secrets(value))
+            serde_json::Value::String(axon_core::redact::redact_operational_secrets(value))
         }
         value => value.clone(),
     }
 }
 
 fn is_sensitive_json_key(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    lower == "api_key"
-        || lower == "apikey"
-        || lower == "token"
-        || lower == "access_token"
-        || lower == "refresh_token"
-        || lower == "authorization"
-        || lower == "secret"
-        || lower == "client_secret"
-        || lower == "password"
+    axon_core::redact::is_secret_like(key) || axon_core::redact::forbidden_field_name(key)
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {

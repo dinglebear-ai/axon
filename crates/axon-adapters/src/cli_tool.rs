@@ -341,13 +341,5 @@ fn tool_token_is_secret_like_path(token: &str) -> bool {
     {
         return false;
     }
-    let lower = trimmed.to_ascii_lowercase();
-    lower == ".env"
-        || lower.ends_with("/.env")
-        || lower.contains("/.ssh/")
-        || lower.contains("/.codex/")
-        || lower.contains("/.gemini/")
-        || lower.contains("browser-profile")
-        || lower.contains("cloud")
-        || axon_core::redact::is_secret_like(&lower)
+    axon_core::redact::is_sensitive_local_path(trimmed)
 }

@@ -278,11 +278,11 @@ fn redact_pre_chunk(
     content: PreparedContentText,
     source_item_key: &SourceItemKey,
 ) -> PreparedContentText {
-    // Span-level scrub: replace each secret-shaped run with the redaction
-    // placeholder while keeping the rest of the document intact. The
-    // dedicated document pass intentionally applies only span replacement;
-    // the final vector boundary rejects any residual classified value.
-    let redacted = axon_core::redact::redact_secrets(&content.text);
+    // Tutorial and reference documentation commonly contains low-confidence
+    // credential syntax (for example `TOKEN=abc123`). The retrievable-body
+    // scrubber redacts only high-confidence spans; the final vector boundary
+    // remains the fail-closed backstop for any residual classified secret.
+    let redacted = axon_core::redact::redact_retrievable_body_secrets(&content.text);
     if redacted == content.text {
         return content;
     }

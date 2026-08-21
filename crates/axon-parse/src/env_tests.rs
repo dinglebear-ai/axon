@@ -91,3 +91,15 @@ fn extracts_env_example_keys_without_secret_values() {
     assert_eq!(facts[1].value["has_default"], false);
     assert!(facts[1].value.get("value").is_none());
 }
+
+#[test]
+fn security_vocabulary_env_names_need_credential_semantics() {
+    let result = parse_fixture(
+        ".env.example",
+        "TOKEN_COUNT=4096\nTOKENIZER=qwen\nDATABASE_URL=https://db.example.test/app\n",
+    );
+
+    assert!(has_fact(&result, "environment_variable", "TOKEN_COUNT"));
+    assert!(has_fact(&result, "environment_variable", "TOKENIZER"));
+    assert!(has_fact(&result, "environment_variable", "DATABASE_URL"));
+}

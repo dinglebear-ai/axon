@@ -64,8 +64,9 @@ async fn cli_tool_exec_records_one_execution_when_explicitly_allowed() {
 
 #[tokio::test]
 async fn cli_tool_exec_redacts_secret_shaped_output() {
+    let fake_key = ["sk-", "abcdef0123456789abcdef0123"].concat();
     let result = resolve_and_acquire(
-        "tool:/bin/echo Authorization: Bearer sk-shhh",
+        &format!("tool:/bin/echo Authorization: Bearer {fake_key}"),
         ToolExecutionMode::Execute,
         true,
         &["/bin/echo"],
@@ -75,7 +76,7 @@ async fn cli_tool_exec_redacts_secret_shaped_output() {
 
     assert_eq!(result.execution_count, 1);
     assert_eq!(result.documents[0].redaction_status, "redacted");
-    assert!(!result.documents[0].content.contains("sk-shhh"));
+    assert!(!result.documents[0].content.contains(&fake_key));
 }
 
 #[tokio::test]
@@ -94,9 +95,10 @@ async fn cli_tool_exec_denies_secret_like_local_paths() {
 
 #[test]
 fn detached_cli_tool_rejects_secret_bearing_arguments_before_persistence() {
-    let error = validate_persistable_cli_invocation(
-        "cli:/bin/echo Authorization:Bearer sk-detached-secret",
-    )
+    let fake_key = ["sk-", "abcdef0123456789abcdef0123"].concat();
+    let error = validate_persistable_cli_invocation(&format!(
+        "cli:/bin/echo Authorization:Bearer {fake_key}"
+    ))
     .unwrap_err();
     assert_eq!(error.code, "tool.secret_argument_denied");
 }

@@ -155,18 +155,7 @@ fn is_dockerfile(path: &str) -> bool {
 }
 
 pub(super) fn is_secret_key(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
-    [
-        "secret",
-        "password",
-        "token",
-        "api_key",
-        "apikey",
-        "private_key",
-        "database_url",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle))
+    axon_core::redact::is_secret_like(key)
 }
 
 pub(super) fn local_checkout_key(input: &ParseInput) -> String {

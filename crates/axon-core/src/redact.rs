@@ -50,6 +50,16 @@ pub fn redact_secrets(text: &str) -> String {
     detectors::redact_secret_spans(text)
 }
 
+#[must_use]
+pub fn redact_retrievable_body_secrets(text: &str) -> String {
+    detectors::redact_retrievable_body_secret_spans(text)
+}
+
+#[must_use]
+pub fn redact_operational_secrets(text: &str) -> String {
+    detectors::redact_operational_secret_spans(text)
+}
+
 /// Shannon entropy of `s` in bits per character. Candidate runs are ASCII
 /// (`[A-Za-z0-9_-]`), so byte-frequency counting is exact.
 fn shannon_entropy_bits(s: &str) -> f64 {
@@ -77,28 +87,67 @@ fn shannon_entropy_bits(s: &str) -> f64 {
 /// ingestion must exclude it by default. This is the shared local-filesystem
 /// policy used by both service admission and adapter selection.
 pub fn is_sensitive_local_name(name: &str) -> bool {
-    if name == ".env.example" {
+    let lower = name.to_ascii_lowercase();
+    if lower == ".env.example" {
         return false;
     }
-    let lower = name.to_ascii_lowercase();
-    lower.starts_with('.')
-        || lower == "id_rsa"
-        || lower == "id_ed25519"
-        || lower == "known_hosts"
-        || lower == "authorized_keys"
-        || lower.starts_with(".env")
+    if matches!(
+        lower.as_str(),
+        ".config"
+            | ".ssh"
+            | ".aws"
+            | ".azure"
+            | ".gcloud"
+            | ".kube"
+            | ".docker"
+            | ".codex"
+            | ".gemini"
+            | ".claude"
+            | ".password-store"
+            | ".netrc"
+            | ".git-credentials"
+            | ".npmrc"
+            | ".pypirc"
+            | "id_rsa"
+            | "id_dsa"
+            | "id_ecdsa"
+            | "id_ed25519"
+            | "auth.json"
+    ) {
+        return true;
+    }
+    if lower.starts_with(".env")
         || lower.ends_with(".pem")
         || lower.ends_with(".key")
         || lower.ends_with(".p12")
         || lower.ends_with(".pfx")
-        || lower.contains("secret")
-        || lower.contains("credential")
-        || lower.contains("password")
-        || lower.contains("passwd")
-        || lower.contains("token")
-        || lower.contains("apikey")
-        || lower.contains("api-key")
-        || lower.contains("api_key")
+    {
+        return true;
+    }
+    let stem = std::path::Path::new(&lower)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(&lower);
+    if (stem.contains('-') || stem.contains('_')) && secret_like_field_name(stem) {
+        return true;
+    }
+    matches!(
+        lower.as_str(),
+        "credentials"
+            | "credentials.json"
+            | "credentials.toml"
+            | "credentials.yaml"
+            | "credentials.yml"
+            | "secrets.json"
+            | "secrets.toml"
+            | "secrets.yaml"
+            | "secrets.yml"
+            | "token.json"
+            | "tokens.json"
+            | "auth.toml"
+            | "auth.yaml"
+            | "auth.yml"
+    )
 }
 
 /// Returns true when any component of a normalized local path is sensitive.
@@ -109,45 +158,21 @@ pub fn is_sensitive_local_path(path: &str) -> bool {
         .any(is_sensitive_local_name)
 }
 
-/// Returns `true` when `lower_name` (already lowercased by caller) looks like
-/// a secret key, credential file, or sensitive header/field name. Single source
-/// of truth for both embed path validation and error-body redaction.
-pub fn is_secret_like(lower_name: &str) -> bool {
-    // Private-key filenames
-    if lower_name == "id_rsa"
-        || lower_name == "id_dsa"
-        || lower_name == "id_ecdsa"
-        || lower_name == "id_ed25519"
+/// Returns `true` when `name` looks like a secret key, credential file, or
+/// sensitive header/field name. Camel-case names are normalized structurally.
+pub fn is_secret_like(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase();
+    if matches!(
+        normalized.as_str(),
+        "id_rsa" | "id_dsa" | "id_ecdsa" | "id_ed25519"
+    ) || normalized.ends_with(".pem")
+        || normalized.ends_with(".key")
+        || normalized.ends_with(".p12")
+        || normalized.ends_with(".pfx")
     {
         return true;
     }
-    // Extensions that commonly hold key material
-    if lower_name.ends_with(".pem") || lower_name.ends_with(".key") {
-        return true;
-    }
-    // Semantic keywords
-    if lower_name.contains("secret")
-        || lower_name.contains("credential")
-        || lower_name.contains("password")
-    {
-        return true;
-    }
-    // Token / API key patterns
-    if lower_name.contains("api_key")
-        || lower_name.contains("api-key")
-        || lower_name.contains("apikey")
-        || lower_name.contains("passwd")
-        || lower_name == "authorization"
-        || lower_name == "proxy-authorization"
-        || lower_name == "access_token"
-        || lower_name == "refresh_token"
-        || lower_name == "id_token"
-        || lower_name.ends_with("_token")
-        || lower_name.contains("token")
-    {
-        return true;
-    }
-    false
+    secret_like_field_name(name)
 }
 
 mod boundary;
@@ -161,7 +186,8 @@ pub use boundary::{
 pub use detectors::{
     BARE_SECRET_TOKEN_PREFIXES, FORBIDDEN_FIELD_FRAGMENTS, FORBIDDEN_VALUE_FRAGMENTS,
     SECRET_LIKE_FIELD_FRAGMENTS, contains_bare_secret_token, forbidden_field_name,
-    raw_dotenv_assignment, secret_like_field_name, secret_value_detector, value_contains_secret,
+    normalize_field_name, raw_dotenv_assignment, retrievable_body_secret_detector,
+    secret_like_field_name, secret_value_detector, value_contains_secret,
     value_is_absolute_local_path,
 };
 

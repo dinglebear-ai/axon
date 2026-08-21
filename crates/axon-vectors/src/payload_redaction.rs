@@ -6,7 +6,7 @@
 //! the local `VectorPayloadValidationError` type and a body-text carve-out
 //! (`chunk_text` gets the strict body check, not the generic one).
 
-use axon_core::redact::secret_value_detector;
+use axon_core::redact::{retrievable_body_secret_detector, secret_value_detector};
 use serde_json::Value;
 
 use crate::payload::VectorPayloadValidationError;
@@ -60,7 +60,7 @@ pub(crate) fn validate_forbidden_value(
 
 fn forbidden_string_reason(path: &str, value: &str) -> Option<&'static str> {
     if BODY_TEXT_FIELDS.contains(&path) {
-        return secret_value_detector(value);
+        return retrievable_body_secret_detector(value);
     }
     let normalized = value.to_ascii_lowercase();
     secret_value_detector(value)

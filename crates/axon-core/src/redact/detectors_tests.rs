@@ -15,10 +15,97 @@ fn secret_like_field_name_matches_tokens() {
 }
 
 #[test]
-fn value_contains_secret_matches_bearer_and_bare_tokens() {
-    assert!(value_contains_secret("Authorization: Bearer abc123"));
+fn value_contains_secret_requires_credential_evidence() {
+    assert!(!value_contains_secret("Authorization: Bearer abc123"));
+    assert!(value_contains_secret(
+        "Authorization: Bearer abcdef0123456789abcdef0123456789"
+    ));
     assert!(value_contains_secret("sk-proj-abcdefghijklmnopqrstuvwx"));
     assert!(!value_contains_secret("just some plain text"));
+}
+
+#[test]
+fn security_vocabulary_fields_are_not_secrets_without_credential_semantics() {
+    for field in [
+        "token_count",
+        "token_estimate",
+        "tokenizer",
+        "password_policy",
+        "secret_scanning_enabled",
+        "credential_type",
+        "cookie_policy",
+        "authorization_status",
+        "oauth_status",
+        "gitlab_identifier",
+        "page_token",
+        "next_page_token",
+        "continuation_token",
+        "cursor_token",
+        "tokenCount",
+        "authorizationStatus",
+        "pageToken",
+    ] {
+        assert!(
+            !secret_like_field_name(field),
+            "benign field was sensitive: {field}"
+        );
+        assert!(
+            !forbidden_field_name(field),
+            "benign field was forbidden: {field}"
+        );
+    }
+}
+
+#[test]
+fn camel_case_credential_fields_are_classified() {
+    for field in [
+        "accessToken",
+        "refreshToken",
+        "clientSecret",
+        "privateKey",
+        "myApiKey",
+    ] {
+        assert!(
+            secret_like_field_name(field),
+            "missed camelCase secret field: {field}"
+        );
+    }
+    for field in ["authorizationHeader", "rawAuthHeader", "cookieHeader"] {
+        assert!(
+            forbidden_field_name(field),
+            "missed camelCase forbidden field: {field}"
+        );
+    }
+}
+
+#[test]
+fn retrievable_body_detector_preserves_tutorial_examples_but_rejects_concrete_secrets() {
+    for example in [
+        "Use Authorization: Bearer secret-token in this request",
+        "TOKEN=abc123",
+        "passwd=hunter2",
+        "postgres://user:password@localhost/app",
+    ] {
+        assert_eq!(
+            retrievable_body_secret_detector(example),
+            None,
+            "tutorial example was treated as a concrete secret: {example}"
+        );
+    }
+
+    let github = format!("ghp_{}", "a".repeat(24));
+    assert_eq!(
+        retrievable_body_secret_detector(&github),
+        Some("bare_secret_token")
+    );
+    assert_eq!(
+        retrievable_body_secret_detector("password=thisisarealpassphrase"),
+        Some("secret_assignment")
+    );
+    assert_eq!(
+        retrievable_body_secret_detector("postgres://admin:s3cr3tpass@db.internal/app"),
+        Some("url_credentials")
+    );
 }
 
 #[test]
@@ -32,6 +119,8 @@ fn every_known_token_family_is_classified_for_payload_guards() {
         "ghp_abcdefghijklmnopqrstuvwxyz123456789",
         "xoxb-abcdefghijklmnopqrstuvwxyz123456789",
         "glpat-abcdefghijklmnopqrstuvwxyz123456789",
+        "tvly-abcdefghijklmnopqrstuvwxyz123456789",
+        concat!("rk_", "live_abcdefghijklmnopqrstuvwxyz123456789"),
     ] {
         assert_eq!(
             secret_value_detector(token),
@@ -77,6 +166,12 @@ fn value_is_absolute_local_path_matches_home_and_windows_paths() {
     assert!(value_is_absolute_local_path("/home/jacob/workspace"));
     assert!(value_is_absolute_local_path(r"C:\Users\jacob"));
     assert!(!value_is_absolute_local_path("https://example.com/home/"));
+    assert!(!value_is_absolute_local_path(
+        "see https://example.com/home/docs and https://example.com/etc/hosts"
+    ));
+    assert!(value_is_absolute_local_path(
+        "failed while reading /home/jacob/workspace"
+    ));
 }
 
 #[test]
@@ -164,15 +259,15 @@ fn contains_url_embedded_credentials_matches_user_and_password() {
 }
 
 #[test]
-fn looks_like_bare_cookie_string_matches_unlabeled_cookie_values() {
+fn looks_like_bare_cookie_string_matches_credential_shaped_cookie_values() {
     assert!(looks_like_bare_cookie_string(
         "sessionid=9f8a7b6c5d4e3f2a1b0c; Path=/; HttpOnly"
     ));
     assert!(looks_like_bare_cookie_string(
         "csrftoken=abcdef0123456789abcdef01234567; SameSite=Lax"
     ));
-    // Non-secret lookalikes: short trivial key=value pairs, and prose with
-    // semicolons that isn't cookie-shaped at all.
+    assert!(!value_contains_secret("Cookie: theme=dark; mode=compact"));
+    assert!(!looks_like_bare_cookie_string("theme=dark; mode=compact"));
     assert!(!looks_like_bare_cookie_string("a=1; b=2"));
     assert!(!looks_like_bare_cookie_string(
         "Alice went to the store; Bob stayed home"
@@ -181,10 +276,12 @@ fn looks_like_bare_cookie_string_matches_unlabeled_cookie_values() {
 }
 
 #[test]
-fn field_is_opaque_token_context_matches_provider_and_generic_fragments() {
+fn opaque_token_entropy_requires_credential_shaped_field() {
     assert!(field_is_opaque_token_context("gitlab_token"));
     assert!(field_is_opaque_token_context("gitea_deploy_token"));
     assert!(field_is_opaque_token_context("oauth_client_secret"));
+    assert!(!field_is_opaque_token_context("gitlab_identifier"));
+    assert!(!field_is_opaque_token_context("oauth_status"));
     assert!(!field_is_opaque_token_context("web_title"));
 }
 

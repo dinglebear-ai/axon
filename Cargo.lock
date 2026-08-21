@@ -795,6 +795,7 @@ name = "axon-parse"
 version = "7.2.22"
 dependencies = [
  "axon-api",
+ "axon-core",
  "axon-graph",
  "chrono",
  "serde_json",
@@ -840,6 +841,7 @@ version = "7.2.22"
 dependencies = [
  "async-trait",
  "axon-api",
+ "axon-core",
  "axon-error",
  "hex",
  "serde_json",

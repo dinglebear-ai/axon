@@ -1,6 +1,6 @@
 use crate::commands::doctor::render::{report_bool, report_text};
 use axon_core::config::Config;
-use axon_core::redact::redact_secrets;
+use axon_core::redact::redact_operational_secrets;
 use axon_core::ui::{muted, primary};
 use axon_services::debug as debug_service;
 use std::error::Error;
@@ -25,7 +25,7 @@ pub async fn run_debug(cfg: &Config) -> Result<(), Box<dyn Error>> {
     let analysis_raw = result.payload["llm_debug"]["analysis"]
         .as_str()
         .unwrap_or("(no debug response)");
-    let analysis = redact_secrets(analysis_raw);
+    let analysis = redact_operational_secrets(analysis_raw);
 
     println!("{}", primary("Debug Snapshot"));
     println!(

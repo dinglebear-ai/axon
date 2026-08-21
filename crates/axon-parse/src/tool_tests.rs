@@ -163,9 +163,23 @@ fn redacts_secret_bearing_external_resource_uris() {
     assert!(has_fact(
         &result,
         "external_resource",
-        "https://[REDACTED]@example.com/path?[REDACTED]"
+        "https://[REDACTED]@example.com/path?token=REDACTED&ok=1"
     ));
     let serialized = serde_json::to_string(&result).expect("serialize parse result");
     assert!(!serialized.contains("ghp_secret"));
     assert!(!serialized.contains("user:secret"));
+}
+
+#[test]
+fn preserves_benign_external_resource_query_parameters() {
+    let result = parse_fixture(
+        "tool-output.jsonl",
+        r#"{"tool":"http","action":"get","resources":[{"uri":"https://example.com/search?q=rust&page=2&pageToken=next-42&tokenCount=4&accessToken=must-not-survive&X-Amz-Date=20260819T120000Z"}]}"#,
+    );
+
+    assert!(has_fact(
+        &result,
+        "external_resource",
+        "https://example.com/search?q=rust&page=2&pageToken=next-42&tokenCount=4&accessToken=REDACTED&X-Amz-Date=20260819T120000Z"
+    ));
 }

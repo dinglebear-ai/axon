@@ -1,11 +1,13 @@
-use axon_api::source::{
-    GraphCandidate, LifecycleStatus, Severity, SourceParseFacts, SourceWarning,
-};
+use axon_api::source::{GraphCandidate, LifecycleStatus, SourceParseFacts, SourceWarning};
 use serde_json::{Value, json};
 
 use crate::facts::{inline_text, source_fact};
 use crate::graph_candidate::candidate_edge;
 use crate::parser::{ParseInput, ParseResult, stage_header};
+
+#[path = "tool/support.rs"]
+mod support;
+use support::{json_kind, mutating_side_effect, redacted_paths, tool_call_key, warning};
 
 pub const MODULE_NAME: &str = "tool";
 pub const MAX_TOOL_JSONL_LINE_BYTES: usize = 256 * 1024;
@@ -310,46 +312,6 @@ pub fn tool_parse_result(input: &ParseInput) -> ParseResult {
     }
 }
 
-fn json_kind(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "bool",
-        Value::Number(_) => "number",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
-fn redacted_paths(value: &Value) -> Vec<String> {
-    let mut paths = Vec::new();
-    collect_redacted_paths(value, "", &mut paths);
-    paths
-}
-
-fn collect_redacted_paths(value: &Value, path: &str, paths: &mut Vec<String>) {
-    match value {
-        Value::String(text) if is_redacted(text) => {
-            paths.push(if path.is_empty() {
-                "/".to_string()
-            } else {
-                path.to_string()
-            });
-        }
-        Value::Array(items) => {
-            for (idx, item) in items.iter().enumerate() {
-                collect_redacted_paths(item, &format!("{path}/{idx}"), paths);
-            }
-        }
-        Value::Object(object) => {
-            for (key, item) in object {
-                collect_redacted_paths(item, &format!("{path}/{}", pointer_escape(key)), paths);
-            }
-        }
-        _ => {}
-    }
-}
-
 fn json_within_caps(value: &Value) -> bool {
     let mut stack = vec![(value, 1usize)];
     let mut entries = 0usize;
@@ -376,18 +338,6 @@ fn json_within_caps(value: &Value) -> bool {
         }
     }
     true
-}
-
-fn is_redacted(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    matches!(
-        normalized.as_str(),
-        "[redacted]" | "<redacted>" | "redacted" | "*** redacted ***"
-    ) || normalized.contains("[redacted]")
-}
-
-fn pointer_escape(key: &str) -> String {
-    key.replace('~', "~0").replace('/', "~1")
 }
 
 #[derive(Debug, Clone)]
@@ -450,16 +400,68 @@ fn external_resources(value: &Value) -> Vec<String> {
 fn redact_resource_uri(uri: &str) -> String {
     let mut redacted = redact_authority_userinfo(uri);
     if let Some(query_start) = redacted.find('?') {
-        let fragment = redacted[query_start..]
+        let fragment_start = redacted[query_start + 1..]
             .find('#')
-            .map(|offset| redacted[query_start + offset..].to_string());
+            .map(|offset| query_start + 1 + offset);
+        let query_end = fragment_start.unwrap_or(redacted.len());
+        let query = redacted[query_start + 1..query_end].to_string();
+        let fragment = fragment_start.map(|start| redacted[start..].to_string());
+        let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+        for (key, value) in url::form_urlencoded::parse(query.as_bytes()) {
+            let safe_value = if resource_query_param_is_sensitive(&key) {
+                "REDACTED".to_string()
+            } else {
+                let scrubbed = axon_core::redact::redact_secrets(&value);
+                if scrubbed == value {
+                    value.into_owned()
+                } else {
+                    "REDACTED".to_string()
+                }
+            };
+            serializer.append_pair(&key, &safe_value);
+        }
+        let safe_query = serializer.finish();
         redacted.truncate(query_start);
-        redacted.push_str("?[REDACTED]");
+        if !safe_query.is_empty() {
+            redacted.push('?');
+            redacted.push_str(&safe_query);
+        }
         if let Some(fragment) = fragment {
             redacted.push_str(&fragment);
         }
     }
-    redact_secret_tokens(&redacted)
+    axon_core::redact::redact_secrets(&redacted)
+}
+
+fn resource_query_param_is_sensitive(key: &str) -> bool {
+    let normalized = axon_core::redact::normalize_field_name(key);
+    if matches!(
+        normalized.as_str(),
+        "page_token"
+            | "next_page_token"
+            | "continuation_token"
+            | "pagination_token"
+            | "cursor_token"
+    ) {
+        return false;
+    }
+    axon_core::redact::is_secret_like(key)
+        || matches!(
+            normalized.as_str(),
+            "sig"
+                | "signature"
+                | "jwt"
+                | "key"
+                | "access_key"
+                | "awsaccesskeyid"
+                | "awsaccess_key_id"
+                | "x_amz_signature"
+                | "x_amz_credential"
+                | "x_amz_security_token"
+                | "x_goog_signature"
+                | "x_goog_credential"
+        )
+        || normalized.ends_with("_signature")
 }
 
 fn redact_authority_userinfo(uri: &str) -> String {
@@ -476,52 +478,6 @@ fn redact_authority_userinfo(uri: &str) -> String {
     };
     let at = authority_start + at_offset;
     format!("{}[REDACTED]{}", &uri[..authority_start], &uri[at..])
-}
-
-fn redact_secret_tokens(text: &str) -> String {
-    text.split_inclusive(|ch: char| ch.is_ascii_whitespace() || matches!(ch, '&' | ';' | ','))
-        .map(|part| {
-            let lower = part.to_ascii_lowercase();
-            if lower.contains("authorization:")
-                || lower.contains("authorization=")
-                || lower.contains("api_key=")
-                || lower.contains("apikey=")
-                || lower.contains("token=")
-                || lower.contains("secret=")
-                || lower.contains("password=")
-                || lower.contains("sk-")
-                || lower.contains("ghp_")
-            {
-                "[REDACTED]".to_string()
-            } else {
-                part.to_string()
-            }
-        })
-        .collect()
-}
-
-fn mutating_side_effect(side_effect_class: &str) -> bool {
-    matches!(
-        side_effect_class,
-        "write" | "mutate" | "delete" | "network_write"
-    )
-}
-
-fn tool_call_key(input: &ParseInput, name: &str, line_no: u32) -> String {
-    format!(
-        "tool_call:{}:{}:{line_no}",
-        input.document.source_item_key.0, name
-    )
-}
-
-fn warning(input: &ParseInput, code: &str, message: String) -> SourceWarning {
-    SourceWarning {
-        code: code.to_string(),
-        severity: Severity::Warning,
-        message,
-        source_item_key: Some(input.document.source_item_key.clone()),
-        retryable: false,
-    }
 }
 
 #[cfg(test)]

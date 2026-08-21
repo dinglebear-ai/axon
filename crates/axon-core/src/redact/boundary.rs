@@ -15,7 +15,9 @@
 //! `axon-web`) can share one boundary instead of re-implementing detection.
 
 use axon_api::source::{MetadataMap, RedactionMetadata, SourceKind, Visibility};
+use regex::Regex;
 use serde_json::Value;
+use std::sync::LazyLock;
 
 pub use axon_api::source::RedactionStatus;
 
@@ -24,7 +26,7 @@ use super::detectors::{
     secret_like_field_name, value_contains_secret, value_is_absolute_local_path,
     value_is_high_entropy_token,
 };
-use super::{REDACTION_PLACEHOLDER, redact_secrets};
+use super::{REDACTION_PLACEHOLDER, redact_operational_secrets, redact_secrets};
 
 /// Redaction contract version stamped alongside `redaction_status` so a
 /// payload records which detector generation classified it.
@@ -260,24 +262,35 @@ impl DefaultRedactor {
     }
 }
 
+fn redact_for_context(text: &str, context: &RedactionContext) -> String {
+    if matches!(
+        context.surface,
+        RedactionSurface::Logs
+            | RedactionSurface::JobEvents
+            | RedactionSurface::CliJson
+            | RedactionSurface::McpResponse
+            | RedactionSurface::RestResponse
+    ) {
+        redact_operational_secrets(text)
+    } else {
+        redact_secrets(text)
+    }
+}
+
 impl Redactor for DefaultRedactor {
     fn redact_text(&self, input: &str, context: &RedactionContext) -> String {
-        // Free-text surface (logs/traces/messages): scrub secret-shaped
-        // values, and also sensitive local paths unless the surface allows
-        // internal paths. This is NOT the payload `chunk_text` path — that
-        // stays untouched in `redact_json` so a body secret still skips the
-        // chunk instead of being laundered into the index.
-        let span_redacted = redact_secrets(input);
-        if span_redacted != input {
-            if requires_full_redaction(&span_redacted, context) {
-                return REDACTION_PLACEHOLDER.to_string();
-            }
-            return span_redacted;
+        // Free-text surfaces preserve useful surrounding context. Operational
+        // egress is intentionally stricter than retrievable/document content:
+        // any concrete Authorization header value is scrubbed before it can
+        // reach logs, job telemetry, CLI, MCP, or REST callers.
+        let mut redacted = redact_for_context(input, context);
+        if !context.allow_internal_paths {
+            redacted = redact_local_path_spans(&redacted);
         }
-        if requires_full_redaction(input, context) {
+        if requires_full_redaction(&redacted, context) {
             REDACTION_PLACEHOLDER.to_string()
         } else {
-            input.to_string()
+            redacted
         }
     }
 
@@ -334,19 +347,22 @@ impl DefaultRedactor {
                 if Self::is_structural_field(path) {
                     return Value::String(text);
                 }
-                let span_redacted = redact_secrets(&text);
-                if span_redacted != text {
+                let mut redacted = redact_for_context(&text, context);
+                if redacted != text {
                     report.record_redacted(path, "secret_value");
-                    if requires_full_redaction(&span_redacted, context) {
-                        return Value::String(REDACTION_PLACEHOLDER.to_string());
-                    }
-                    return Value::String(span_redacted);
                 }
-                if value_contains_secret(&text) {
+                if !context.allow_internal_paths {
+                    let path_redacted = redact_local_path_spans(&redacted);
+                    if path_redacted != redacted {
+                        report.record_redacted(path, "local_path");
+                        redacted = path_redacted;
+                    }
+                }
+                if value_contains_secret(&redacted) {
                     report.record_redacted(path, "secret_value");
                     return Value::String(REDACTION_PLACEHOLDER.to_string());
                 }
-                if !context.allow_internal_paths && value_is_absolute_local_path(&text) {
+                if !context.allow_internal_paths && value_is_absolute_local_path(&redacted) {
                     report.record_redacted(path, "local_path");
                     return Value::String(REDACTION_PLACEHOLDER.to_string());
                 }
@@ -359,7 +375,7 @@ impl DefaultRedactor {
                     report.record_redacted(path, "opaque_token_entropy");
                     return Value::String(REDACTION_PLACEHOLDER.to_string());
                 }
-                Value::String(text)
+                Value::String(redacted)
             }
             Value::Array(items) => Value::Array(
                 items
@@ -402,6 +418,40 @@ impl DefaultRedactor {
             other => other,
         }
     }
+}
+
+fn redact_local_path_spans(text: &str) -> String {
+    static LOCAL_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(
+            r#"(?x)
+              (?:/(?:home|users|tmp|mnt|var|etc|root)/[^\s'";,)\]}]*
+               |~/[^\s'";,)\]}]*
+               |[A-Za-z]:[\/][^\s'";,)\]}]*)
+            "#,
+        )
+        .expect("local path redaction regex is valid")
+    });
+    LOCAL_PATH_RE
+        .replace_all(text, |captures: &regex::Captures| {
+            let matched = captures.get(0).expect("local path capture");
+            if path_span_is_remote_url(text, matched.start()) {
+                matched.as_str().to_string()
+            } else {
+                REDACTION_PLACEHOLDER.to_string()
+            }
+        })
+        .into_owned()
+}
+
+fn path_span_is_remote_url(text: &str, path_start: usize) -> bool {
+    let prefix = &text[..path_start];
+    let token_start = prefix
+        .rfind(|ch: char| {
+            ch.is_whitespace() || matches!(ch, '"' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';')
+        })
+        .map_or(0, |index| index + 1);
+    let token = prefix[token_start..].to_ascii_lowercase();
+    token.starts_with("http://") || token.starts_with("https://")
 }
 
 fn requires_full_redaction(text: &str, context: &RedactionContext) -> bool {

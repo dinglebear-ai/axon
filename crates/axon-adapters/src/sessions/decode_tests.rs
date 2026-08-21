@@ -62,7 +62,7 @@ fn decode_claude_redacts_secret_shaped_tokens() {
     let content = format!(r#"{{"type":"user","message":{{"content":"my key is {fake_secret}"}}}}"#);
     let decoded = decode_claude_jsonl(&content);
     assert!(!decoded.text.contains(&fake_secret));
-    assert!(decoded.text.contains("[redacted-secret]"));
+    assert!(decoded.text.contains("[REDACTED]"));
 }
 
 // --- Codex JSONL ---
@@ -179,9 +179,31 @@ fn redact_leaves_normal_words_untouched() {
 
 #[test]
 fn redact_masks_known_secret_prefixes() {
-    // Secret-shaped tokens assembled at runtime — no literal secret in source.
     let openai = format!("token=sk-{}", "abc123DEF456ghi789JKL");
     let github = format!("ghp_{}", "abcdefghijklmnopqrstuvwxyz012345");
-    assert!(redact_session_text(&openai).contains("[redacted-secret]"));
-    assert!(redact_session_text(&github).contains("[redacted-secret]"));
+    assert!(redact_session_text(&openai).contains("[REDACTED]"));
+    assert!(redact_session_text(&github).contains("[REDACTED]"));
+}
+
+#[test]
+fn redact_preserves_low_confidence_tutorial_credential_syntax() {
+    for value in [
+        "Authorization: Bearer abc123",
+        "TOKEN=abc123",
+        "passwd=hunter2",
+        "postgres://user:password@localhost/app",
+    ] {
+        assert_eq!(redact_session_text(value), value);
+    }
+}
+
+#[test]
+fn redact_preserves_long_non_secret_identifiers() {
+    for value in [
+        "550e8400-e29b-41d4-a716-446655440000",
+        "0123456789abcdef0123456789abcdef01234567",
+        "artifact_1234567890abcdef1234567890abcdef",
+    ] {
+        assert_eq!(redact_session_text(value), value);
+    }
 }
