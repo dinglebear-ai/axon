@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "axon"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -416,7 +416,7 @@ dependencies = [
 
 [[package]]
 name = "axon-adapters"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -457,7 +457,7 @@ dependencies = [
 
 [[package]]
 name = "axon-api"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "axon-error",
  "chrono",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "axon-authz"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "axon-cli"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "anyhow",
  "axon-api",
@@ -523,7 +523,7 @@ dependencies = [
 
 [[package]]
 name = "axon-core"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -568,7 +568,7 @@ dependencies = [
 
 [[package]]
 name = "axon-document"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -582,7 +582,7 @@ dependencies = [
 
 [[package]]
 name = "axon-embedding"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -600,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "axon-error"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "chrono",
  "schemars",
@@ -611,7 +611,7 @@ dependencies = [
 
 [[package]]
 name = "axon-extract"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "axon-core",
  "axon-graph",
@@ -632,7 +632,7 @@ dependencies = [
 
 [[package]]
 name = "axon-graph"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -649,7 +649,7 @@ dependencies = [
 
 [[package]]
 name = "axon-jobs"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -684,7 +684,7 @@ dependencies = [
 
 [[package]]
 name = "axon-ledger"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -699,7 +699,7 @@ dependencies = [
 
 [[package]]
 name = "axon-llm"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "axon-mcp"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "axon-api",
  "axon-authz",
@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "axon-memory"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-adapters",
@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "axon-observe"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "axon-parse"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "axon-api",
  "axon-graph",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "axon-prune"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "axon-retrieval"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "axon-route"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "axon-services"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -907,7 +907,7 @@ dependencies = [
 
 [[package]]
 name = "axon-vectors"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "axon-web"
-version = "7.2.19"
+version = "7.2.20"
 dependencies = [
  "async-trait",
  "axon-api",
