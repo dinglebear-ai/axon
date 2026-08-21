@@ -169,7 +169,11 @@ CLI: `axon search "…"`, `axon map <url>` (bounded sitemap, llms.txt, and root-
 { "action": "source", "source": "https://docs.example.com", "scope": "site", "detached": true }
 ```
 
-MCP `source` fields: `source`, `scope`, `collection`, `detached`, `response_mode`. It is **synchronous by default** — it returns the finished `SourceResult`. Set `detached: true` for a background `JobKind::Source` job; the response then carries `job_id`/`status`/`poll_after_ms`, and you poll with `action: "jobs"`.
+MCP `source` fields include `source`, `scope`, `collection`, `detached`,
+`response_mode`, `limits`, and adapter-specific `options`. It is **synchronous by
+default** — it returns the finished `SourceResult`. Set `detached: true` for a
+background `JobKind::Source` job; the response then carries
+`job_id`/`status`/`poll_after_ms`, and you poll with `action: "jobs"`.
 
 CLI: `axon <source>` (bare source is the same as `axon source <source>`), or the retained one-page projection `axon scrape <url>`.
 
@@ -232,6 +236,43 @@ There is no separate ingest surface — repos, feeds, Reddit, YouTube, local pat
 ```
 
 Adapter credentials (git provider tokens, Reddit app credentials) are still configured through the environment — they're adapter concerns, not request parameters.
+
+### skills.sh catalog discovery
+
+`skills.sh` and `skills.sh:leaderboard` index the bounded all-time leaderboard.
+The CLI currently exposes that default catalog source directly:
+
+```bash
+SKILLS_SH_OIDC_TOKEN="$(vercel oidc issue)" axon skills.sh --wait true
+```
+
+Use MCP when you need catalog controls. The bearer credential is read only from
+`SKILLS_SH_OIDC_TOKEN` (or the `VERCEL_OIDC_TOKEN` compatibility fallback),
+never from request options:
+
+```json
+{ "action": "source", "source": "skills.sh", "scope": "api",
+  "limits": { "max_items": 200 },
+  "options": { "values": { "view": "trending", "page": 0,
+    "per_page": 100, "max_pages": 2, "owner": "vercel-labs",
+    "audit_limit": 10 } } }
+{ "action": "source", "source": "skills.sh:search", "scope": "api",
+  "options": { "values": { "query": "browser automation",
+    "per_page": 50, "audit_limit": 5 } } }
+```
+
+Supported `view` values are `all-time`, `trending`, and `hot`. Pagination and
+item/audit limits are bounded by Axon even when larger values are requested.
+Search requires a query of at least two characters.
+
+This is discovery evidence, not publication authority: Axon normalizes safe
+catalog listings and, after the source generation commits, may emit artifact
+candidates to the configured sink. A candidate points at the canonical install
+repository when that pointer can be validated; otherwise it retains the
+skills.sh page with a warning. It does not copy skill files, resolve licensing,
+or make the candidate publishable by itself. Provider duplicate and audit
+signals remain evidence for downstream intake rather than authoritative safety
+or identity decisions.
 
 CLI: `axon <source>` for any of the above; `axon sessions` remains as the convenience command for local Claude/Codex/Gemini history, and `--exclude-path` filters repo-relative paths on git ingest.
 

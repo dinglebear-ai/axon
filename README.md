@@ -2,7 +2,7 @@
 
 Self-hosted RAG engine in Rust: crawl, scrape, ingest, embed, and query any source, with hybrid retrieval and cited LLM synthesis over MCP, CLI, and REST.
 
-Version: 7.2.20
+Version: 7.2.21
 
 Every source — a web page, a site, a local checkout, a Git repo, a package, a
 Reddit subreddit, a YouTube transcript, or an AI session export — enters
@@ -205,7 +205,12 @@ Precedence: **CLI flags > env vars > `~/.axon/config.toml` > built-in defaults.*
 `.env` keeps endpoint URLs (`QDRANT_URL`, `TEI_URL`, `AXON_CHROME_REMOTE_URL`,
 `AXON_SEARXNG_URL`), secrets (`AXON_HTTP_TOKEN`, `TAVILY_API_KEY`,
 `GITHUB_TOKEN`, `GITLAB_TOKEN`, `GITEA_TOKEN`, Reddit credentials, `HF_TOKEN`,
-OAuth credentials), Docker/runtime bootstrap, and LLM runtime pointers.
+OAuth credentials), Docker/runtime bootstrap, and LLM runtime pointers. Optional
+ArtifactCandidate delivery uses the paired
+`AXON_ARTIFACT_CANDIDATE_DEPOT_URL` and
+`AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN` variables. Leave both absent to disable
+delivery; if either is present, both must be non-empty and valid or worker/server
+startup fails instead of falling back to a disabled sink.
 `config.toml` keeps search/ask tuning, worker and job limits, TEI client
 tuning, Qdrant batch sizing, chunking, and logging. See
 [`config.example.toml`](config.example.toml), [`.env.example`](.env.example),

@@ -218,6 +218,26 @@ pub(crate) const REGISTRY_SCOPES: &[SourceScopeCapability] = &[
         &["dependency"],
         &["provider-unavailable", "version-yanked"],
     ),
+    scope_capability(
+        SourceScope::Api,
+        true,
+        "structured artifact catalog metadata (skills.sh first provider)",
+        true,
+        true,
+        true,
+        true,
+        false,
+        true,
+        false,
+        false,
+        false,
+        "artifact",
+        "skills-sh-source-options/v1",
+        "artifact-catalog-metadata/v1",
+        &["source", "artifact"],
+        &["repository", "license"],
+        &["provider-unavailable", "rate-limited", "metadata-only"],
+    ),
 ];
 
 /// `tool`/`script` scopes describe an installed CLI tool without ever

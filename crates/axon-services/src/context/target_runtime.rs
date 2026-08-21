@@ -17,7 +17,10 @@ use axon_adapters::providers::chrome_render::{
 use axon_adapters::providers::http_fetch::{
     HTTP_FETCH_PROVIDER_ID, HttpFetchConfig, HttpFetchProvider,
 };
-use axon_adapters::{NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter};
+use axon_adapters::{
+    ArtifactCandidateSink, DepotArtifactCandidateSink, NoopArtifactCandidateSink,
+    NoopSourceEnricher, SourceAdapter, web::WebSourceAdapter,
+};
 use axon_api::source::{InstructionSupport, ProviderId};
 use axon_core::boundary::FileArtifactStore;
 use axon_core::config::Config;
@@ -43,6 +46,9 @@ use super::{
     db_limited_ledger::DbLimitedLedgerStore,
     scheduled_web::{ScheduledFetchProvider, ScheduledRenderProvider},
 };
+
+const DEPOT_URL_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_URL";
+const DEPOT_TOKEN_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN";
 
 /// Construct the TEI embedding provider seeded with the resolved embedding
 /// identity, so `EmbeddingResult.model`/`dimensions` (stamped into every vector
@@ -445,6 +451,12 @@ impl TargetLocalSourceRuntime {
         ));
         let artifact_store = FileArtifactStore::new(cfg.output_dir.join("artifacts"));
         let document_cache = crate::source::document_cache::InProcessDocumentCache::new();
+        let artifact_candidate_sink = artifact_candidate_sink_from_env()?;
+        let artifact_candidate_outbox = Arc::new(
+            crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(
+                cfg.output_dir.join("artifact-candidate-outbox"),
+            ),
+        );
 
         Ok(Self {
             jobs,
@@ -468,9 +480,35 @@ impl TargetLocalSourceRuntime {
             web_source_adapter,
             artifact_store: Arc::new(artifact_store),
             document_cache: Arc::new(document_cache),
+            artifact_candidate_sink,
+            artifact_candidate_outbox: Some(artifact_candidate_outbox),
             source_adapters: Arc::new(tokio::sync::OnceCell::new()),
             enricher: Arc::new(NoopSourceEnricher::new()),
         })
+    }
+}
+
+fn artifact_candidate_sink_from_env()
+-> Result<Arc<dyn ArtifactCandidateSink>, Box<dyn std::error::Error + Send + Sync>> {
+    artifact_candidate_sink_from_values(
+        std::env::var(DEPOT_URL_ENV).ok(),
+        std::env::var(DEPOT_TOKEN_ENV).ok(),
+    )
+}
+
+fn artifact_candidate_sink_from_values(
+    depot_url: Option<String>,
+    depot_token: Option<String>,
+) -> Result<Arc<dyn ArtifactCandidateSink>, Box<dyn std::error::Error + Send + Sync>> {
+    match (depot_url, depot_token) {
+        (None, None) => Ok(Arc::new(NoopArtifactCandidateSink)),
+        (Some(url), Some(token)) => Ok(Arc::new(DepotArtifactCandidateSink::new(&url, token)?)),
+        (Some(_), None) => {
+            Err(format!("{DEPOT_TOKEN_ENV} is required when {DEPOT_URL_ENV} is configured").into())
+        }
+        (None, Some(_)) => {
+            Err(format!("{DEPOT_URL_ENV} is required when {DEPOT_TOKEN_ENV} is configured").into())
+        }
     }
 }
 

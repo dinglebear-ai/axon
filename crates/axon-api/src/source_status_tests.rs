@@ -228,6 +228,8 @@ fn watch_and_listing_dtos_are_contract_shaped() {
         schedule: schedule.clone(),
         embed: true,
         options: AdapterOptions::default(),
+        limits: Default::default(),
+        metadata: Default::default(),
         scope: Some(SourceScope::Directory),
         collection: Some("axon".to_string()),
         enabled: Some(true),

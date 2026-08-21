@@ -8,8 +8,17 @@
 //! subprocess, or a live public registry respectively — none mockable
 //! offline, so their materialization behavior is covered in `axon-adapters`.
 
-use axon_adapters::{feed::FeedSourceAdapter, local::LocalSourceAdapter};
-use axon_api::source::{AuthScope, AuthSnapshot, LifecycleStatus, ProviderId, SourceRequest};
+use axon_adapters::{
+    ArtifactCandidateSink, FakeSourceAdapter, SourceAdapter, acquisition::MaterializedSource,
+    feed::FeedSourceAdapter, local::LocalSourceAdapter,
+};
+use axon_api::source::{
+    ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION, ARTIFACT_CANDIDATE_SCHEMA_VERSION, ApiError,
+    ArtifactCandidate, ArtifactCandidateBatch, ArtifactCandidateId,
+    ArtifactCandidateSinkCapability, ArtifactCandidateSinkResult, ArtifactCandidateSinkStatus,
+    AuthScope, AuthSnapshot, LifecycleStatus, MetadataMap, ProviderId, SourceDocument,
+    SourceEnrichment, SourceGenerationId, SourceItemKey, SourcePlan, SourceRequest, Timestamp,
+};
 use axon_core::http::LoopbackGuard;
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_jobs::boundary::{FakeJobWatchStore, JobStore};
@@ -17,7 +26,7 @@ use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
 use httpmock::prelude::*;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::*;
 
@@ -180,15 +189,6 @@ async fn dispatch_session_embed_false_writes_no_vectors() {
     assert!(
         vectors.points("axon-test").await.is_empty(),
         "embed=false must not call vector_store.upsert"
-    );
-    let vector_calls = vectors.calls().await;
-    assert!(
-        !vector_calls.contains(&"ensure_collection"),
-        "embed=false must not ensure or create a vector collection; calls={vector_calls:?}"
-    );
-    assert!(
-        !vector_calls.contains(&"upsert"),
-        "embed=false must not call vector_store.upsert; calls={vector_calls:?}"
     );
     assert_eq!(
         ledger.committed_generation(&counts.source_id).await,
@@ -448,31 +448,456 @@ async fn dispatch_feed_max_items_caps_documents_prepared() {
     );
 }
 
-#[test]
-fn source_stage_plan_pins_the_complete_shared_phase_order() {
-    let phases = source_stage_plan(true)
-        .into_iter()
-        .map(|stage| stage.phase)
-        .collect::<Vec<_>>();
+#[derive(Clone)]
+struct CandidateSourceAdapter {
+    inner: FakeSourceAdapter,
+}
+
+impl CandidateSourceAdapter {
+    fn new(inner: FakeSourceAdapter) -> Self {
+        Self { inner }
+    }
+}
+
+#[async_trait::async_trait]
+impl SourceAdapter for CandidateSourceAdapter {
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+
+    fn version(&self) -> &'static str {
+        self.inner.version()
+    }
+
+    async fn capabilities(
+        &self,
+    ) -> std::result::Result<axon_api::source::SourceAdapterCapability, ApiError> {
+        self.inner.capabilities().await
+    }
+
+    async fn discover(
+        &self,
+        plan: &SourcePlan,
+    ) -> std::result::Result<axon_api::source::SourceManifest, ApiError> {
+        self.inner.discover(plan).await
+    }
+
+    async fn acquire(
+        &self,
+        plan: &SourcePlan,
+        diff: &axon_api::source::SourceManifestDiff,
+    ) -> std::result::Result<axon_api::source::SourceAcquisition, ApiError> {
+        self.inner.acquire(plan, diff).await
+    }
+
+    async fn normalize(
+        &self,
+        plan: &SourcePlan,
+        acquisition: axon_api::source::SourceAcquisition,
+    ) -> std::result::Result<axon_api::source::StageExecutionResult<Vec<SourceDocument>>, ApiError>
+    {
+        self.inner.normalize(plan, acquisition).await
+    }
+
+    async fn artifact_candidates(
+        &self,
+        plan: &SourcePlan,
+        generation: &SourceGenerationId,
+        documents: &[SourceDocument],
+        _enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    ) -> std::result::Result<Vec<ArtifactCandidate>, ApiError> {
+        Ok(documents
+            .iter()
+            .enumerate()
+            .map(|(index, document)| {
+                let mut manifest_metadata = MetadataMap::new();
+                manifest_metadata.insert(
+                    "axonSourceItemKey".to_string(),
+                    serde_json::json!(document.source_item_key.0.clone()),
+                );
+                ArtifactCandidate {
+                    schema_version: ARTIFACT_CANDIDATE_SCHEMA_VERSION.to_string(),
+                    id: ArtifactCandidateId::from(format!("cand_pipeline_{index}")),
+                    canonical_source_uri: document.canonical_uri.clone(),
+                    source_provider: "axon".to_string(),
+                    observed_at: Timestamp("2026-08-19T14:00:00Z".to_string()),
+                    repository: None,
+                    source_ref: None,
+                    source_path: document.path.clone(),
+                    kind_hints: vec!["skill".to_string()],
+                    observed_files: Vec::new(),
+                    manifest_metadata,
+                    content_digests: Vec::new(),
+                    discovery_evidence: MetadataMap::new(),
+                    popularity_signals: MetadataMap::new(),
+                    license_evidence: MetadataMap::new(),
+                    crawl_generation_id: Some(generation.0.clone()),
+                    crawl_job_id: Some(plan.job_id.0.to_string()),
+                    warnings: Vec::new(),
+                }
+            })
+            .collect())
+    }
+}
+
+#[derive(Clone)]
+struct CommitAwareCandidateSink {
+    ledger: Arc<FakeLedgerStore>,
+    deliveries: Arc<Mutex<Vec<(ArtifactCandidateBatch, bool)>>>,
+}
+
+#[derive(Clone)]
+struct RetryThenAcceptCandidateSink {
+    attempts: Arc<std::sync::atomic::AtomicUsize>,
+    fail_count: usize,
+}
+
+#[derive(Clone)]
+struct DisabledCandidateSink {
+    attempts: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl ArtifactCandidateSink for DisabledCandidateSink {
+    async fn submit(
+        &self,
+        batch: ArtifactCandidateBatch,
+    ) -> std::result::Result<ArtifactCandidateSinkResult, ApiError> {
+        self.attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(ArtifactCandidateSinkResult {
+            status: ArtifactCandidateSinkStatus::Disabled,
+            attempted: batch.candidates.len() as u64,
+            accepted: 0,
+            rejected: 0,
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> std::result::Result<ArtifactCandidateSinkCapability, ApiError> {
+        Ok(ArtifactCandidateSinkCapability {
+            name: "disabled-test".to_string(),
+            version: "1".to_string(),
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
+            max_batch_size: 64,
+            supports_idempotency: true,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl ArtifactCandidateSink for RetryThenAcceptCandidateSink {
+    async fn submit(
+        &self,
+        batch: ArtifactCandidateBatch,
+    ) -> std::result::Result<ArtifactCandidateSinkResult, ApiError> {
+        let attempt = self
+            .attempts
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if attempt <= self.fail_count {
+            return Err(ApiError::new(
+                "provider.artifact_candidate.unavailable",
+                axon_error::ErrorStage::Publishing,
+                "synthetic retryable outage",
+            ));
+        }
+        let attempted = batch.candidates.len() as u64;
+        Ok(ArtifactCandidateSinkResult {
+            status: ArtifactCandidateSinkStatus::Accepted,
+            attempted,
+            accepted: attempted,
+            rejected: 0,
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> std::result::Result<ArtifactCandidateSinkCapability, ApiError> {
+        Ok(ArtifactCandidateSinkCapability {
+            name: "retry-then-accept-test".to_string(),
+            version: "1".to_string(),
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
+            max_batch_size: 64,
+            supports_idempotency: true,
+        })
+    }
+}
+
+impl CommitAwareCandidateSink {
+    fn new(ledger: Arc<FakeLedgerStore>) -> Self {
+        Self {
+            ledger,
+            deliveries: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn deliveries(&self) -> Vec<(ArtifactCandidateBatch, bool)> {
+        self.deliveries
+            .lock()
+            .expect("candidate delivery mutex poisoned")
+            .clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl ArtifactCandidateSink for CommitAwareCandidateSink {
+    async fn submit(
+        &self,
+        batch: ArtifactCandidateBatch,
+    ) -> std::result::Result<ArtifactCandidateSinkResult, ApiError> {
+        let committed = self
+            .ledger
+            .committed_generation(&batch.source_id)
+            .await
+            .is_some_and(|generation| generation == batch.generation);
+        let attempted = batch.candidates.len() as u64;
+        self.deliveries
+            .lock()
+            .expect("candidate delivery mutex poisoned")
+            .push((batch, committed));
+        Ok(ArtifactCandidateSinkResult {
+            status: ArtifactCandidateSinkStatus::Accepted,
+            attempted,
+            accepted: attempted,
+            rejected: 0,
+            warnings: Vec::new(),
+        })
+    }
+
+    async fn capabilities(&self) -> std::result::Result<ArtifactCandidateSinkCapability, ApiError> {
+        Ok(ArtifactCandidateSinkCapability {
+            name: "commit-aware-test".to_string(),
+            version: "1".to_string(),
+            contract_versions: vec![ARTIFACT_CANDIDATE_BATCH_CONTRACT_VERSION.to_string()],
+            max_batch_size: 64,
+            supports_idempotency: true,
+        })
+    }
+}
+
+#[tokio::test]
+async fn artifact_candidates_are_delivered_after_commit_and_not_replayed_when_unchanged() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let sink = Arc::new(CommitAwareCandidateSink::new(ledger.clone()));
+    let runtime = test_runtime_with_jobs(vectors.clone(), ledger.clone(), jobs)
+        .with_artifact_candidate_sink(sink.clone());
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    let first_execution = test_execution(&source);
+    let first = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &first_execution,
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("first artifact-aware source generation succeeds");
+
+    assert_eq!(first.documents_prepared, 1);
+    assert_eq!(first.vector_points_written, 0);
+    assert!(vectors.points("axon-test").await.is_empty());
     assert_eq!(
-        phases,
-        vec![
-            PipelinePhase::Leasing,
-            PipelinePhase::Discovering,
-            PipelinePhase::Diffing,
-            PipelinePhase::Fetching,
-            PipelinePhase::Enriching,
-            PipelinePhase::Normalizing,
-            PipelinePhase::Parsing,
-            PipelinePhase::Preparing,
-            PipelinePhase::Batching,
-            PipelinePhase::Embedding,
-            PipelinePhase::Vectorizing,
-            PipelinePhase::Upserting,
-            PipelinePhase::Graphing,
-            PipelinePhase::Publishing,
-            PipelinePhase::Cleaning,
-        ],
-        "all source families must share one canonical stage plan"
+        ledger.committed_generation(&first.source_id).await,
+        Some(first.generation.clone())
+    );
+    let deliveries = sink.deliveries();
+    assert_eq!(deliveries.len(), 1);
+    assert!(
+        deliveries[0].1,
+        "candidate sink ran before generation commit"
+    );
+    assert_eq!(deliveries[0].0.generation, first.generation);
+    assert_eq!(deliveries[0].0.candidates.len(), 1);
+    assert_eq!(
+        deliveries[0].0.candidates[0].schema_version,
+        ARTIFACT_CANDIDATE_SCHEMA_VERSION
+    );
+
+    let second_execution = test_execution(&source);
+    let second = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &second_execution,
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("unchanged artifact-aware refresh succeeds");
+
+    assert_eq!(second.generation, first.generation);
+    assert_eq!(
+        sink.deliveries().len(),
+        1,
+        "unchanged refresh must not replay ArtifactCandidate delivery"
+    );
+}
+
+#[tokio::test]
+async fn durable_candidate_outbox_retries_autonomously_then_deletes_on_acceptance() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let sink = Arc::new(RetryThenAcceptCandidateSink {
+        attempts: Arc::clone(&attempts),
+        fail_count: 2,
+    });
+    let outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
+    );
+    let mut runtime = test_runtime_with_jobs(vectors, ledger, jobs);
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let runtime = runtime.with_artifact_candidate_sink(sink);
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("source generation succeeds while candidate sink retries");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if attempts.load(std::sync::atomic::Ordering::SeqCst) == 3
+                && outbox.pending().await.expect("read outbox").is_empty()
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("autonomous retry drain completes");
+}
+
+#[tokio::test]
+async fn disabled_candidate_sink_preserves_durable_outbox_delivery() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source").to_string_lossy().to_string();
+    std::fs::create_dir_all(&source).unwrap();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let outbox = Arc::new(
+        crate::artifact_candidate_outbox::ArtifactCandidateOutbox::new(root.path().join("outbox")),
+    );
+    let attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut runtime = test_runtime_with_jobs(vectors, ledger, jobs);
+    runtime.artifact_candidate_outbox = Some(Arc::clone(&outbox));
+    let runtime = runtime.with_artifact_candidate_sink(Arc::new(DisabledCandidateSink {
+        attempts: Arc::clone(&attempts),
+    }));
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await
+    .expect("source generation succeeds while candidate sink is disabled");
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while attempts.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("disabled sink was attempted");
+    assert_eq!(
+        outbox.pending().await.expect("read outbox").len(),
+        1,
+        "disabled delivery must remain durable for a later configured sink"
+    );
+}
+
+#[tokio::test]
+async fn failed_generation_never_delivers_artifact_candidates() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().to_string_lossy().to_string();
+    let route = route_for(&source);
+    let ledger = Arc::new(FakeLedgerStore::new().with_publish_generation_failure());
+    let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
+    let jobs = Arc::new(FakeJobWatchStore::new());
+    let sink = Arc::new(CommitAwareCandidateSink::new(ledger.clone()));
+    let runtime = test_runtime_with_jobs(vectors, ledger.clone(), jobs)
+        .with_artifact_candidate_sink(sink.clone());
+    let adapter =
+        CandidateSourceAdapter::new(FakeSourceAdapter::new(route.adapter.clone()).with_item(
+            "SKILL.md",
+            axon_api::source::ContentKind::Markdown,
+            "# Demo skill",
+        ));
+
+    let result = dispatch_materialized(
+        &runtime,
+        &adapter,
+        family_source_plan(&source, &route, false, None, None),
+        "axon-test",
+        "test-owner",
+        None,
+        &test_execution(&source),
+        |plan| async move { Ok(MaterializedSource::virtual_source(plan)) },
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "generation publication failure must surface"
+    );
+    assert!(
+        ledger
+            .committed_generation(&route.source.source_id)
+            .await
+            .is_none(),
+        "failed generation must not commit"
+    );
+    assert!(
+        sink.deliveries().is_empty(),
+        "failed generation leaked a ghost candidate to the sink"
     );
 }

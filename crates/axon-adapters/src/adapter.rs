@@ -84,6 +84,21 @@ pub trait SourceAdapter: Send + Sync {
         acquisition: SourceAcquisition,
     ) -> Result<StageExecutionResult<Vec<SourceDocument>>>;
 
+    /// Produce artifact discovery/enrichment evidence beside normalized source
+    /// documents without creating a second acquisition pipeline. Existing
+    /// adapters default to no candidates; artifact-aware adapters override this
+    /// hook and the shared executor delivers the results through its configured
+    /// ArtifactCandidateSink only after the source generation commits.
+    async fn artifact_candidates(
+        &self,
+        _plan: &SourcePlan,
+        _generation: &SourceGenerationId,
+        _documents: &[SourceDocument],
+        _enrichments: &std::collections::BTreeMap<SourceItemKey, SourceEnrichment>,
+    ) -> Result<Vec<ArtifactCandidate>> {
+        Ok(Vec::new())
+    }
+
     /// Release adapter-owned state retained for this job after the pipeline
     /// reaches a terminal outcome. The shared runner calls this on success
     /// and failure; stateless adapters use the default no-op.

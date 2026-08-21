@@ -62,6 +62,24 @@ with `detached: true`, follow it through the unified job surface:
 Do **not** send `action: "scrape"`, `"crawl"`, `"embed"`, or `"ingest"` — those
 actions were removed and return an `invalid_params` error.
 
+For skill-catalog discovery, use the structured `skills.sh` source rather than
+scraping its web pages. `skills.sh` selects the leaderboard and
+`skills.sh:search` selects search; pass catalog controls under
+`options.values`, for example:
+
+```json
+{ "action": "source", "source": "skills.sh:search", "scope": "api",
+  "limits": { "max_items": 100 },
+  "options": { "values": { "query": "pdf extraction", "per_page": 50,
+    "audit_limit": 5 } } }
+```
+
+This requires `SKILLS_SH_OIDC_TOKEN` or `VERCEL_OIDC_TOKEN` in the Axon server
+environment. Treat the resulting listings, audits, popularity, and duplicate
+flags as discovery evidence only. Artifact candidates are delivered after the
+generation commits; they do not establish license, safety, or publication
+authority and do not contain the canonical skill files.
+
 **Step 4 — Synthesize answer**
 
 Run `ask` with diagnostics to get a cited answer:

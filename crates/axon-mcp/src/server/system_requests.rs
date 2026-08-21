@@ -131,6 +131,8 @@ pub(super) struct WatchMcpRequest {
     pub embed: Option<bool>,
     pub scope: Option<axon_api::source::SourceScope>,
     pub options: Option<axon_api::source::AdapterOptions>,
+    pub limits: Option<axon_api::source::SourceLimits>,
+    pub metadata: Option<MetadataMap>,
     pub reason: Option<String>,
     pub refresh: Option<axon_api::source::SourceRefreshPolicy>,
     pub wait: Option<bool>,

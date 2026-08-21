@@ -14,6 +14,11 @@ async fn scheduler_pool() -> (SqlitePool, NamedTempFile) {
 }
 
 fn source_watch_request() -> WatchRequest {
+    let mut metadata = MetadataMap::new();
+    metadata.insert(
+        "artifact_candidate_mode".to_string(),
+        serde_json::json!("refresh"),
+    );
     WatchRequest {
         source: "https://example.com/docs".to_string(),
         schedule: WatchSchedule {
@@ -23,6 +28,11 @@ fn source_watch_request() -> WatchRequest {
         },
         embed: true,
         options: AdapterOptions::default(),
+        limits: axon_api::source::SourceLimits {
+            max_items: Some(9),
+            ..Default::default()
+        },
+        metadata,
         scope: Some(SourceScope::Docs),
         collection: Some("source-watch-scheduler-test".to_string()),
         enabled: Some(true),
@@ -150,6 +160,11 @@ async fn sweep_enqueues_due_source_watch_without_legacy_rows() {
     );
     assert_eq!(request_json["source_request"]["intent"], "watch");
     assert_eq!(request_json["source_request"]["watch"], "enabled");
+    assert_eq!(request_json["source_request"]["limits"]["max_items"], 9);
+    assert_eq!(
+        request_json["source_request"]["metadata"]["artifact_candidate_mode"],
+        "refresh"
+    );
     assert_eq!(
         request_json["source_request"]["metadata"]["source_watch_id"],
         created.watch_id.0

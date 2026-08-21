@@ -19,6 +19,7 @@ SourceRequest
   -> SourceGeneration
   -> SourceEnrichment
   -> SourceDocument
+       \-> ArtifactCandidate[] (optional evidence sibling, never authority)
   -> SourceParseFacts / GraphCandidate
   -> SourceGraph
   -> DocumentPreparer
@@ -29,6 +30,7 @@ SourceRequest
   -> VectorStore
   -> DocumentStatus
   -> GenerationPublisher
+       \-> ArtifactCandidateSink (optional bounded delivery after commit)
   -> CleanupDebt
 ```
 
@@ -131,6 +133,8 @@ Planned by this contract:
   leases, publish state, and cleanup debt.
 - `SourceGraph` owns nodes, edges, evidence, merge/conflict rules, and graph
   queries.
+- `ArtifactCandidate` is an optional evidence sibling derived from normalized changed documents; it shares source/job/generation correlation and never replaces `SourceDocument` or grants publication rights.
+- `ArtifactCandidateSink` receives only bounded, versioned batches after the source generation commits. Sink failure may degrade evidence delivery but cannot roll back committed RAG state.
 - `DocumentStatus` owns per-document lifecycle state.
 - Every job has one `job_id` that crosses logs, events, ledger rows, graph
   updates, artifacts, vector payloads, and status.
@@ -440,6 +444,7 @@ Transport projections:
 | `GraphStore` | graph nodes/edges/evidence |
 | `MemoryStore` | durable memory lifecycle |
 | `ArtifactStore` | large/raw/binary outputs |
+| `ArtifactCandidateSink` | bounded post-commit delivery of neutral artifact discovery/evidence candidates; never publication authority |
 | `JobStore` | jobs, events, progress, cancellation |
 
 ## Error and Degradation Semantics
@@ -488,6 +493,8 @@ Implementation is incomplete until:
 
 - every transport creates the same `SourceRequest`
 - every adapter emits `SourceDocument`
+- artifact-aware adapters only add `ArtifactCandidate` evidence beside changed documents; candidate delivery never creates a second crawl/job/ledger path
+- candidate sinks receive only committed-generation, bounded, idempotency-capable delivery batches
 - every normal embed path consumes `PreparedDocument`
 - source generations are committed only after publish checks
 - search defaults to committed generation

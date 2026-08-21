@@ -142,6 +142,8 @@ impl SqliteWatchStore {
         let enabled = request.enabled.unwrap_or(true);
         let every_seconds = validate_source_watch_interval(request.schedule.every_seconds)?;
         let options_json = serde_json::to_string(&request.options).map_err(json_err)?;
+        let limits_json = serde_json::to_string(&request.limits).map_err(json_err)?;
+        let metadata_json = serde_json::to_string(&request.metadata).map_err(json_err)?;
         let auth_snapshot_json = auth_snapshot
             .as_ref()
             .map(serde_json::to_string)
@@ -154,9 +156,9 @@ impl SqliteWatchStore {
             sqlx::query(
                 "INSERT INTO axon_source_watches \
              (watch_id, source, source_id, canonical_uri, adapter_name, adapter_version, \
-              scope, embed, options_json, collection, enabled, every_seconds, cron, timezone, \
+              scope, embed, options_json, limits_json, metadata_json, collection, enabled, every_seconds, cron, timezone, \
               next_run_at, last_job_id, last_status, created_at, updated_at, auth_snapshot_json) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&watch_id.0)
             .bind(&request.source)
@@ -167,6 +169,8 @@ impl SqliteWatchStore {
             .bind(scope_to_str(scope))
             .bind(request.embed)
             .bind(&options_json)
+            .bind(&limits_json)
+            .bind(&metadata_json)
             .bind(&request.collection)
             .bind(enabled)
             .bind(every_seconds)

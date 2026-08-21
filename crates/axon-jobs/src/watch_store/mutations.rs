@@ -124,6 +124,20 @@ impl SqliteWatchStore {
             .transpose()
             .map_err(json_err)?
             .unwrap_or_else(|| existing.get("options_json"));
+        let limits_json = request
+            .limits
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(json_err)?
+            .unwrap_or_else(|| existing.get("limits_json"));
+        let metadata_json = request
+            .metadata
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(json_err)?
+            .unwrap_or_else(|| existing.get("metadata_json"));
         let collection = request
             .collection
             .clone()
@@ -138,8 +152,9 @@ impl SqliteWatchStore {
         } else {
             existing.get("next_run_at")
         };
-        sqlx::query("UPDATE axon_source_watches SET enabled=?, every_seconds=?, cron=?, timezone=?, embed=?, options_json=?, collection=?, scope=?, next_run_at=?, updated_at=? WHERE watch_id=?")
+        sqlx::query("UPDATE axon_source_watches SET enabled=?, every_seconds=?, cron=?, timezone=?, embed=?, options_json=?, limits_json=?, metadata_json=?, collection=?, scope=?, next_run_at=?, updated_at=? WHERE watch_id=?")
             .bind(enabled).bind(every_seconds).bind(&cron).bind(&timezone).bind(embed).bind(&options_json)
+            .bind(&limits_json).bind(&metadata_json)
             .bind(&collection).bind(&scope).bind(next_run_at).bind(now).bind(&watch_id.0)
             .execute(&self.pool).await.map_err(sqlite_err)?;
         self.get(watch_id.clone())

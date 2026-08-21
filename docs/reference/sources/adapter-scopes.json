@@ -609,6 +609,39 @@
         "watch_supported": false
       },
       {
+        "allowed_option_keys": [
+          "view",
+          "query",
+          "owner",
+          "page",
+          "per_page",
+          "max_pages",
+          "audit_limit"
+        ],
+        "chunking_hints": [],
+        "credential_requirements": [
+          {
+            "credential_kind": "bearer_token",
+            "reason": "skills.sh structured API requires a short-lived Vercel OIDC bearer token",
+            "required": true
+          }
+        ],
+        "default_scope": "api",
+        "execution_affinity": "worker",
+        "name": "skills_sh",
+        "option_schema_id": "adapter:skills_sh:options:v1",
+        "parser_hints": [],
+        "provider_requirements": [],
+        "refresh_supported": true,
+        "safety_class": "authenticated_network",
+        "source_kind": "registry",
+        "supported_scopes": [
+          "api"
+        ],
+        "version": "1",
+        "watch_supported": false
+      },
+      {
         "allowed_option_keys": [],
         "chunking_hints": [],
         "credential_requirements": [],
@@ -1361,6 +1394,11 @@
             "notes": "version metadata",
             "required": true,
             "scope": "version"
+          },
+          {
+            "notes": "structured artifact catalog metadata (skills.sh first provider)",
+            "required": true,
+            "scope": "api"
           }
         ],
         "shorthand_patterns": [
@@ -1604,12 +1642,12 @@
         "path": "crates/axon-adapters/src/web.rs"
       },
       {
-        "checksum": "sha256:0a65275defcc4bae3306cdc940b344cbb25a0c0f2be2d22162fc63c5f2f40740",
+        "checksum": "sha256:603b785e267da9bbe889d67f0025739c13f0c62b89de89057166a8f21ef24183",
         "kind": "rust_module",
         "path": "crates/axon-route/src/capability.rs"
       },
       {
-        "checksum": "sha256:ce6da64921329f24a4bea1a726c12d4b55420b98be99b3c257212b1d977571cd",
+        "checksum": "sha256:6d78cd541cd082c93d3cf5ae4b3e67d648f8bd9d450468410ea8fbb5671dc9af",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/adapter-scopes.md"
       },

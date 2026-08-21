@@ -307,7 +307,11 @@ fn uri_matches_kind(uri: &str, kind: SourceKind) -> bool {
                 || uri.starts_with("git+https://")
                 || git_provider_url(uri)
         }
-        SourceKind::Registry => uri.starts_with("pkg://") || uri.starts_with("docker://"),
+        SourceKind::Registry => {
+            uri.starts_with("pkg://")
+                || uri.starts_with("docker://")
+                || uri.starts_with("catalog://")
+        }
         SourceKind::Feed => uri.starts_with("feed://"),
         SourceKind::Reddit => uri.starts_with("reddit://"),
         SourceKind::Youtube => uri.starts_with("youtube://"),

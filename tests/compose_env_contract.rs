@@ -586,6 +586,10 @@ fn env_example_only_contains_production_runtime_keys() {
         "HF_TOKEN",
         "TAVILY_API_KEY",
         "AXON_SEARXNG_URL",
+        "AXON_ARTIFACT_CANDIDATE_DEPOT_URL",
+        "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN",
+        "SKILLS_SH_OIDC_TOKEN",
+        "VERCEL_OIDC_TOKEN",
         // AXON_RESEARCH_FULL_CONTENT is a tuning knob
         // (providers.search.research-full-content in config.toml), documented as
         // an env-override comment in .env.example rather than a bare boot key.

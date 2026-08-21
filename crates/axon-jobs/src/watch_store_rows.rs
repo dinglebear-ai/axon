@@ -130,6 +130,8 @@ pub(super) fn row_to_request(row: &SqliteRow) -> Result<WatchRequest> {
     let timezone: Option<String> = row.get("timezone");
     let embed: i64 = row.get("embed");
     let options_json: String = row.get("options_json");
+    let limits_json: String = row.get("limits_json");
+    let metadata_json: String = row.get("metadata_json");
     let collection: Option<String> = row.get("collection");
     let enabled: i64 = row.get("enabled");
     Ok(WatchRequest {
@@ -141,6 +143,8 @@ pub(super) fn row_to_request(row: &SqliteRow) -> Result<WatchRequest> {
         },
         embed: embed != 0,
         options: parse_options(&options_json)?,
+        limits: serde_json::from_str(&limits_json).map_err(json_err)?,
+        metadata: serde_json::from_str(&metadata_json).map_err(json_err)?,
         scope: Some(parse_scope(&row.get::<String, _>("scope"))),
         collection,
         enabled: Some(enabled != 0),

@@ -68,6 +68,28 @@ async fn default_acquire_with_progress_delegates_without_fabricating_snapshots()
 }
 
 #[tokio::test]
+async fn default_artifact_candidate_hook_is_empty_and_does_not_change_adapter_calls() {
+    let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
+    let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(
+        "README.md",
+        ContentKind::Markdown,
+        "# Axon",
+    );
+    let plan = source_plan(route);
+    let generation = SourceGenerationId::from("7");
+    let candidates = adapter
+        .artifact_candidates(&plan, &generation, &[], &std::collections::BTreeMap::new())
+        .await
+        .expect("default candidate hook succeeds");
+
+    assert!(candidates.is_empty());
+    assert!(
+        adapter.calls().is_empty(),
+        "the additive default hook must not introduce provider/acquisition work"
+    );
+}
+
+#[tokio::test]
 async fn fake_source_adapter_acquires_manifest_items_and_documents_without_preparing() {
     let route = route_plan("local", SourceKind::Local, SourceScope::Directory);
     let adapter = FakeSourceAdapter::new(route.adapter.clone()).with_item(

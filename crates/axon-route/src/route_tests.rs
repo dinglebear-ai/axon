@@ -1,4 +1,7 @@
-use axon_api::{AuthorityLevel, SafetyClass, SourceIntent, SourceKind, SourceRequest, SourceScope};
+use axon_api::{
+    AuthorityLevel, CredentialKind, SafetyClass, SourceIntent, SourceKind, SourceRequest,
+    SourceScope,
+};
 
 use crate::{
     AdapterRegistry, AuthorityRecord, InMemoryAuthorityRegistry, SourceResolver, SourceRouter,
@@ -319,6 +322,7 @@ fn target_registry_declares_expected_route_time_adapters() {
         ("pypi", SourceKind::Registry, SourceScope::Package),
         ("reddit", SourceKind::Reddit, SourceScope::Subreddit),
         ("session", SourceKind::Session, SourceScope::Thread),
+        ("skills_sh", SourceKind::Registry, SourceScope::Api),
         ("upload", SourceKind::Upload, SourceScope::File),
         ("web", SourceKind::Web, SourceScope::Site),
         ("youtube", SourceKind::Youtube, SourceScope::Video),
@@ -335,6 +339,62 @@ fn target_registry_declares_expected_route_time_adapters() {
             "{name} supports its default scope"
         );
     }
+}
+
+#[test]
+fn skills_sh_routes_as_structured_registry_api_with_bearer_requirement() {
+    let resolver = resolver_with_authority();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("skills.sh:search");
+    request
+        .options
+        .values
+        .insert("query".to_string(), serde_json::json!("mcp"));
+    request
+        .options
+        .values
+        .insert("audit_limit".to_string(), serde_json::json!(3));
+    let resolved = resolver.resolve(&request).expect("skills.sh resolves");
+    assert_eq!(resolved.source_kind, SourceKind::Registry);
+    assert_eq!(resolved.canonical_uri, "catalog://skills.sh/search");
+
+    let route = router.route(&request, resolved).expect("skills.sh routes");
+    assert_eq!(route.adapter.name, "skills_sh");
+    assert_eq!(route.scope, SourceScope::Api);
+    assert_eq!(route.safety_class, SafetyClass::AuthenticatedNetwork);
+    assert!(route.credential_requirements.iter().any(|requirement| {
+        requirement.required && requirement.credential_kind == CredentialKind::BearerToken
+    }));
+    assert_eq!(
+        route.validated_options.values["query"],
+        serde_json::json!("mcp")
+    );
+    assert_eq!(
+        route.validated_options.values["audit_limit"],
+        serde_json::json!(3)
+    );
+    assert!(!route.validated_options.values.contains_key("mode"));
+}
+
+#[test]
+fn skills_sh_route_rejects_mode_override_that_could_diverge_canonical_identity() {
+    let resolver = resolver_with_authority();
+    let router = SourceRouter::new(AdapterRegistry::target_defaults());
+    let mut request = SourceRequest::new("skills.sh:search");
+    request
+        .options
+        .values
+        .insert("query".to_string(), serde_json::json!("mcp"));
+    request
+        .options
+        .values
+        .insert("mode".to_string(), serde_json::json!("leaderboard"));
+    let resolved = resolver.resolve(&request).expect("skills.sh resolves");
+
+    let error = router
+        .route(&request, resolved)
+        .expect_err("mode override must not diverge from canonical route identity");
+    assert_eq!(error.code.0, "route.options.unsupported");
 }
 
 #[test]

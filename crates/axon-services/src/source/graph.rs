@@ -39,7 +39,7 @@ use std::sync::Arc;
 use axon_api::source::{
     EnrichmentKind, EnrichmentStatus, GraphCandidate, GraphCandidateProducer, GraphEdgeCandidate,
     GraphEvidence, GraphNodeCandidate, GraphWriteSummary, ItemKind, ManifestItem, MetadataMap,
-    SourceId, SourceItemKey, SourceKind, SourceManifest,
+    SourceId, SourceItemKey, SourceKind, SourceManifest, SourceScope,
 };
 use axon_graph::candidate::validate_candidate;
 use axon_ledger::store::LedgerStore;
@@ -279,7 +279,14 @@ fn baseline_candidates<'a>(
         .chain(manifest.items.chunks(BASELINE_GRAPH_BATCH_SIZE))
         .enumerate()
         .map(move |(batch_index, items)| {
-            build_candidate_batch(kind.clone(), counts, canonical_uri, items, batch_index)
+            build_candidate_batch(
+                kind.clone(),
+                manifest.scope,
+                counts,
+                canonical_uri,
+                items,
+                batch_index,
+            )
         })
 }
 
@@ -291,11 +298,19 @@ fn build_candidate(
     canonical_uri: &str,
     manifest: &SourceManifest,
 ) -> GraphCandidate {
-    build_candidate_batch(kind, counts, canonical_uri, &manifest.items, 0)
+    build_candidate_batch(
+        kind,
+        manifest.scope,
+        counts,
+        canonical_uri,
+        &manifest.items,
+        0,
+    )
 }
 
 fn build_candidate_batch(
     kind: SourceKind,
+    scope: SourceScope,
     counts: &IndexCounts,
     canonical_uri: &str,
     items: &[ManifestItem],
@@ -310,7 +325,7 @@ fn build_candidate_batch(
     // `graph query <uri>` can never match a plain URI (seen live on the
     // reset 7.0 stores).
     let container = GraphNodeCandidate {
-        node_kind: container_node_kind(kind).to_string(),
+        node_kind: container_node_kind(kind, scope).to_string(),
         stable_key: container_key.clone(),
         label: canonical_uri.to_string(),
         properties: uri_properties(canonical_uri),
@@ -319,7 +334,7 @@ fn build_candidate_batch(
     let mut nodes = vec![container];
     let mut edges = Vec::new();
     let mut evidence = Vec::new();
-    let edge_kind = containment_edge_kind(kind);
+    let edge_kind = containment_edge_kind(kind, scope);
 
     for item in items {
         let doc_key = document_stable_key(item);
@@ -425,19 +440,20 @@ fn document_stable_key(item: &ManifestItem) -> String {
 
 /// Registry node kind for the source container, chosen per acquisition family.
 /// Every returned name is a closed [`axon_graph::node::GraphNodeKind`] variant.
-fn container_node_kind(kind: SourceKind) -> &'static str {
-    match kind {
-        SourceKind::Web => "web_origin",
-        SourceKind::Git => "repo",
-        SourceKind::Local => "local_checkout",
-        SourceKind::Feed => "feed",
-        SourceKind::Reddit => "reddit_subreddit",
-        SourceKind::Youtube => "youtube_channel",
-        SourceKind::Session => "session",
-        SourceKind::Registry => "package",
-        SourceKind::CliTool | SourceKind::McpTool => "artifact",
-        SourceKind::Memory => "source",
-        SourceKind::Upload => "derived_source",
+fn container_node_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
+    match (kind, scope) {
+        (SourceKind::Registry, SourceScope::Api) => "source",
+        (SourceKind::Web, _) => "web_origin",
+        (SourceKind::Git, _) => "repo",
+        (SourceKind::Local, _) => "local_checkout",
+        (SourceKind::Feed, _) => "feed",
+        (SourceKind::Reddit, _) => "reddit_subreddit",
+        (SourceKind::Youtube, _) => "youtube_channel",
+        (SourceKind::Session, _) => "session",
+        (SourceKind::Registry, _) => "package",
+        (SourceKind::CliTool | SourceKind::McpTool, _) => "artifact",
+        (SourceKind::Memory, _) => "source",
+        (SourceKind::Upload, _) => "derived_source",
     }
 }
 
@@ -461,7 +477,10 @@ fn document_node_kind(item: &ManifestItem) -> &'static str {
 
 /// Registry containment edge kind (container → document) per family. Every
 /// returned name is a closed [`axon_graph::edge::GraphEdgeKind`] variant.
-fn containment_edge_kind(kind: SourceKind) -> &'static str {
+fn containment_edge_kind(kind: SourceKind, scope: SourceScope) -> &'static str {
+    if kind == SourceKind::Registry && scope == SourceScope::Api {
+        return "source_indexed_as";
+    }
     match kind {
         SourceKind::Web => "docs_site_contains_page",
         SourceKind::Git => "commit_contains_file",
