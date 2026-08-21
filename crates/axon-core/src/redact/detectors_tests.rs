@@ -63,6 +63,9 @@ fn url_credential_detection_preserves_documented_placeholders() {
         "https://<username>:<password>@example.com",
         "https://${USER}:${PASSWORD}@example.com",
         "https://{{ username }}:{{ password }}@example.com",
+        "postgresql://user:password@localhost",
+        "postgres://gw:pw@postgres/gateway",
+        "postgresql://readonly:pass@prod.db.com:5432/analytics",
         r#"https://component.com","label":{"@example.com"#,
     ] {
         assert_eq!(secret_value_detector(example), None, "rejected {example}");
