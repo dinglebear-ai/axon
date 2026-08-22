@@ -720,6 +720,20 @@ pub struct Config {
     /// Env: `AXON_EMBED_PREP_CONCURRENCY`. TOML: `providers.embedding.prep-concurrency`. Clamped 1–64.
     pub embed_prep_concurrency: usize,
 
+    /// Maximum characters in a Markdown prose chunk. Intact fenced code
+    /// blocks may exceed this limit rather than being cut.
+    /// Env: `AXON_MARKDOWN_CHUNK_MAX_CHARS`. TOML: `pipeline.chunking.markdown-max-chars`. Clamped 256–16384. Default: 2000.
+    pub chunking_markdown_max_chars: usize,
+
+    /// Minimum compatible Markdown chunk size considered during packing.
+    /// Env: `AXON_MARKDOWN_CHUNK_MIN_CHARS`. TOML: `pipeline.chunking.markdown-min-chars`. Clamped 1–the resolved maximum. Default: 500.
+    pub chunking_markdown_min_chars: usize,
+
+    /// Character overlap between consecutive windows from the same Markdown
+    /// prose span. It never crosses headings, frontmatter, or fenced code.
+    /// Env: `AXON_CHUNK_OVERLAP_CHARS`. TOML: `pipeline.chunking.overlap-chars`. Clamped below the resolved maximum. Default: 200.
+    pub chunking_overlap_chars: usize,
+
     /// Optional per-document chunk cap after exact dedupe; `None` disables the cap.
     /// Env: `AXON_EMBED_MAX_CHUNKS_PER_DOC`. TOML: `providers.embedding.max-chunks-per-doc`.
     pub embed_max_chunks_per_doc: Option<usize>,

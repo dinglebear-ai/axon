@@ -474,6 +474,39 @@ fn migrated_embed_openai_tuning_reads_from_toml_and_env_still_wins() {
 
 #[allow(unsafe_code)]
 #[test]
+fn markdown_chunking_limits_are_resolved_once_into_config() {
+    let _guard = env_guard();
+    let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        f,
+        "[pipeline.chunking]\nmarkdown-max-chars = 900\nmarkdown-min-chars = 300\noverlap-chars = 75\n"
+    )
+    .unwrap();
+
+    with_env_saved(
+        &[
+            "AXON_CONFIG_PATH",
+            "AXON_MARKDOWN_CHUNK_MAX_CHARS",
+            "AXON_MARKDOWN_CHUNK_MIN_CHARS",
+            "AXON_CHUNK_OVERLAP_CHARS",
+        ],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", f.path());
+            env::set_var("AXON_MARKDOWN_CHUNK_MAX_CHARS", "800");
+            env::remove_var("AXON_MARKDOWN_CHUNK_MIN_CHARS");
+            env::remove_var("AXON_CHUNK_OVERLAP_CHARS");
+
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+
+            assert_eq!(cfg.chunking_markdown_max_chars, 800);
+            assert_eq!(cfg.chunking_markdown_min_chars, 300);
+            assert_eq!(cfg.chunking_overlap_chars, 75);
+        },
+    );
+}
+
+#[allow(unsafe_code)]
+#[test]
 fn openai_embed_model_toml_wins_over_vllm_fallback_env() {
     let _guard = env_guard();
     let mut f = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();

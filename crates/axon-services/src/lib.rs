@@ -28,7 +28,6 @@ pub mod context;
 pub mod debug;
 pub mod diff;
 pub mod document;
-mod embedding_cache;
 pub mod endpoints;
 pub mod events;
 pub mod extract;

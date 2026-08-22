@@ -1485,6 +1485,49 @@ async fn control_operations_cancel_retry_recover_cleanup_and_list_artifacts() {
 }
 
 #[tokio::test]
+async fn retry_accepts_historical_compact_stage_errors() {
+    let store = store().await;
+    let job = store.create(create_request()).await.expect("create job");
+    let compact_error = serde_json::json!({
+        "code": "job_runner.source_failed",
+        "severity": "failed",
+        "message": "historical failure",
+        "retryable": false
+    });
+
+    sqlx::query(
+        "UPDATE jobs SET status = 'failed', phase = 'complete', last_error_json = ? \
+         WHERE job_id = ?",
+    )
+    .bind(compact_error.to_string())
+    .bind(job.job_id.0.to_string())
+    .execute(&store.pool)
+    .await
+    .expect("seed historical job error");
+    sqlx::query("UPDATE job_stages SET status = 'failed', error_json = ? WHERE job_id = ?")
+        .bind(compact_error.to_string())
+        .bind(job.job_id.0.to_string())
+        .execute(&store.pool)
+        .await
+        .expect("seed historical stage error");
+
+    let retry = store
+        .retry(
+            job.job_id,
+            JobRetryRequest {
+                mode: JobRetryMode::SameConfig,
+                from_phase: None,
+                idempotency_key: None,
+                overrides: MetadataMap::new(),
+            },
+        )
+        .await
+        .expect("historical job remains retryable");
+
+    assert_eq!(retry.retry_job.status, LifecycleStatus::Queued);
+}
+
+#[tokio::test]
 async fn delete_jobs_deletes_terminal_rows_skips_live_rows_and_reports_missing() {
     let store = store().await;
 

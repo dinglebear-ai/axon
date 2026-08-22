@@ -1,6 +1,7 @@
 use super::super::vector_points::VectorPointBuild;
 use super::*;
 use crate::reserved_call::ProviderCallContext;
+use std::future::Future;
 
 pub(super) struct BuiltVectorBatch {
     documents: Vec<PreparedDocument>,
@@ -9,6 +10,64 @@ pub(super) struct BuiltVectorBatch {
     points_by_document: std::collections::BTreeMap<DocumentId, u32>,
     skipped_redaction: u64,
     redaction_skips_by_source_item: std::collections::BTreeMap<SourceItemKey, u64>,
+}
+
+async fn join_upsert_and_embedding<Write, Embeddings, Upsert, Embed>(
+    upsert: Upsert,
+    embedding: Embed,
+) -> (anyhow::Result<Write>, anyhow::Result<Embeddings>)
+where
+    Upsert: Future<Output = anyhow::Result<Write>>,
+    Embed: Future<Output = anyhow::Result<Embeddings>>,
+{
+    tokio::join!(upsert, embedding)
+}
+
+fn resolve_upsert_completion<Write, Embeddings>(
+    write: anyhow::Result<Write>,
+    embeddings: &anyhow::Result<Embeddings>,
+) -> anyhow::Result<Write> {
+    match write {
+        Ok(write) => Ok(write),
+        Err(primary) => {
+            let Err(secondary) = embeddings else {
+                return Err(primary);
+            };
+            tracing::error!(
+                primary_error = %primary,
+                secondary_error = %secondary,
+                "vector upsert and overlapped embedding both failed"
+            );
+            Err(primary.context(format!(
+                "overlapped next-batch embedding also failed: {secondary:#}"
+            )))
+        }
+    }
+}
+
+async fn resolve_and_checkpoint_overlap(
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    write: anyhow::Result<VectorStoreWriteResult>,
+    embeddings: anyhow::Result<EmbeddingResult>,
+) -> anyhow::Result<(VectorStoreWriteResult, EmbeddingResult)> {
+    let write = resolve_upsert_completion(write, &embeddings)?;
+    coordinator
+        .checkpoint(
+            PipelinePhase::Upserting,
+            progress.upserted(write.points_written),
+            "upserted vector point batch",
+        )
+        .await;
+    let embeddings = embeddings?;
+    coordinator
+        .checkpoint(
+            PipelinePhase::Embedding,
+            progress.embedded(embeddings.vectors.len() as u64),
+            "embedded prepared chunks",
+        )
+        .await;
+    Ok((write, embeddings))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -110,26 +169,12 @@ pub(super) async fn publish_and_build_next(
 
     let upsert = call_upsert(runtime, input, current_points, upsert_counts);
     let embedding = call_embedding(runtime, input, &next_documents, embedding_counts);
-    let (write, embeddings) = tokio::join!(upsert, embedding);
+    let (write, embeddings) = join_upsert_and_embedding(upsert, embedding).await;
 
     // Preserve batch ordering even though provider work overlaps: account for
     // the current publication before exposing the next embedding result.
-    let write = write?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Upserting,
-            progress.upserted(write.points_written),
-            "upserted vector point batch",
-        )
-        .await;
-    let mut embeddings = embeddings?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Embedding,
-            progress.embedded(embeddings.vectors.len() as u64),
-            "embedded prepared chunks",
-        )
-        .await;
+    let (write, mut embeddings) =
+        resolve_and_checkpoint_overlap(coordinator, progress, write, embeddings).await?;
 
     let result = vectorize_result(
         current_documents,
@@ -151,6 +196,10 @@ pub(super) async fn publish_and_build_next(
     .await?;
     Ok((result, next))
 }
+
+#[cfg(test)]
+#[path = "pipeline_tests.rs"]
+mod tests;
 
 pub(super) async fn publish_built_batch(
     runtime: &TargetLocalSourceRuntime,

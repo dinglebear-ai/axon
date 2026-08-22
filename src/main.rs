@@ -3,6 +3,8 @@
 #![recursion_limit = "512"]
 use std::path::PathBuf;
 
+const CLI_MAIN_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+
 fn find_dotenv_from_launch_context() -> Option<PathBuf> {
     let mut roots = Vec::new();
 
@@ -121,6 +123,23 @@ fn load_dotenv() {
 }
 
 fn main() -> std::process::ExitCode {
+    match std::thread::Builder::new()
+        .name("axon-main".to_string())
+        .stack_size(CLI_MAIN_THREAD_STACK_SIZE)
+        .spawn(run_cli)
+    {
+        Ok(thread) => thread.join().unwrap_or_else(|_| {
+            eprintln!("Error: axon main thread panicked");
+            std::process::ExitCode::FAILURE
+        }),
+        Err(error) => {
+            eprintln!("Error: failed to start axon main thread: {error}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_cli() -> std::process::ExitCode {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(8 * 1024 * 1024)

@@ -454,6 +454,11 @@ Required behavior:
 - Include breadcrumb/title path in chunk metadata.
 - Include source URL/path anchors.
 - Preserve frontmatter as structured facts when present.
+- Apply configured character overlap only within one prose span; never overlap
+  or pack across frontmatter, heading paths, fenced code, or incompatible block
+  metadata.
+- Never cut a fenced code block to satisfy the prose maximum. An intact fence
+  may exceed that maximum, while prose before and after it remains bounded.
 
 Chunk metadata:
 

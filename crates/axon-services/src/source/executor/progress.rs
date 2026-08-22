@@ -26,10 +26,21 @@ trait ProgressStatusWriter: Send + Sync {
 
 struct JobStoreProgressWriter(Arc<dyn JobStore>);
 
+#[cfg(test)]
+struct NoopProgressWriter;
+
 #[async_trait]
 impl ProgressStatusWriter for JobStoreProgressWriter {
     async fn update(&self, update: JobStatusUpdate) -> JobResult<()> {
         self.0.update_status(update).await
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl ProgressStatusWriter for NoopProgressWriter {
+    async fn update(&self, _update: JobStatusUpdate) -> JobResult<()> {
+        Ok(())
     }
 }
 
@@ -61,6 +72,28 @@ impl ProgressCoordinator {
             interval: DEFAULT_PROGRESS_INTERVAL,
             foreground: input.execution.foreground.clone(),
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_noop() -> Self {
+        Self::with_writer(
+            Arc::new(NoopProgressWriter),
+            JobId::new(uuid::Uuid::from_u128(1)),
+            SourceId::new("src-overlap-test"),
+            "test",
+            Duration::ZERO,
+        )
+    }
+
+    #[cfg(test)]
+    pub(super) async fn recorded_phase_order(&self) -> Vec<PipelinePhase> {
+        self.state
+            .lock()
+            .await
+            .phase_counts
+            .iter()
+            .map(|(phase, _)| *phase)
+            .collect()
     }
 
     #[cfg(test)]

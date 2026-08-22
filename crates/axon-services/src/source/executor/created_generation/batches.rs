@@ -1,4 +1,5 @@
 use super::*;
+use std::future::Future;
 
 struct ChangedBatch {
     diff: SourceManifestDiff,
@@ -10,6 +11,57 @@ struct AcquiredChangedBatch {
     acquisition: SourceAcquisition,
     items: u64,
     documents: u64,
+}
+
+async fn process_and_acquire_next<P, A, Process, Acquire>(
+    adapter: &dyn axon_adapters::SourceAdapter,
+    process: Process,
+    acquire: Acquire,
+) -> (anyhow::Result<P>, Option<anyhow::Result<A>>)
+where
+    Process: Future<Output = anyhow::Result<P>>,
+    Acquire: Future<Output = anyhow::Result<A>>,
+{
+    if adapter.supports_acquisition_prefetch() {
+        let (processed, acquired) = tokio::join!(process, acquire);
+        (processed, Some(acquired))
+    } else {
+        match process.await {
+            Ok(processed) => (Ok(processed), Some(acquire.await)),
+            Err(error) => (Err(error), None),
+        }
+    }
+}
+
+fn resolve_batch_step<P, A>(
+    processed: anyhow::Result<P>,
+    prefetched: Option<anyhow::Result<A>>,
+    mut absorb: impl FnMut(P),
+) -> anyhow::Result<A> {
+    match (processed, prefetched) {
+        (Ok(processed), Some(prefetched)) => {
+            // Current-batch accounting is durable even when the speculative
+            // next acquisition fails. This preserves the completed work in
+            // the eventual failure summary instead of silently dropping it.
+            absorb(processed);
+            prefetched
+        }
+        (Ok(processed), None) => {
+            absorb(processed);
+            anyhow::bail!("next acquisition was not attempted after successful batch processing")
+        }
+        (Err(primary), Some(Err(secondary))) => {
+            tracing::error!(
+                primary_error = %primary,
+                secondary_error = %secondary,
+                "source batch processing and overlapped acquisition both failed"
+            );
+            Err(primary.context(format!(
+                "overlapped next-batch acquisition also failed: {secondary:#}"
+            )))
+        }
+        (Err(primary), Some(Ok(_)) | None) => Err(primary),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -52,9 +104,7 @@ pub(super) async fn process_generation_batches(
         stage.acquired_items = stage.acquired_items.saturating_add(acquired.items);
         stage.acquired_documents = stage.acquired_documents.saturating_add(acquired.documents);
         let next = batches.next();
-        if input.adapter.supports_acquisition_prefetch()
-            && let Some(next_batch) = next
-        {
+        if let Some(next_batch) = next {
             let next_acquisition = acquire_changed_batch(
                 input,
                 next_batch,
@@ -63,7 +113,8 @@ pub(super) async fn process_generation_batches(
                 stage.acquired_documents,
                 coordinator,
             );
-            let (processed, prefetched) = tokio::join!(
+            let (processed, prefetched) = process_and_acquire_next(
+                input.adapter,
                 process_acquired_batch(
                     runtime,
                     input,
@@ -76,9 +127,11 @@ pub(super) async fn process_generation_batches(
                     stage,
                 ),
                 next_acquisition,
-            );
-            accumulated.absorb(artifact_cleanup, processed?);
-            acquired = prefetched?;
+            )
+            .await;
+            acquired = resolve_batch_step(processed, prefetched, |processed| {
+                accumulated.absorb(artifact_cleanup, processed);
+            })?;
             continue;
         }
 
@@ -95,21 +148,14 @@ pub(super) async fn process_generation_batches(
         )
         .await?;
         accumulated.absorb(artifact_cleanup, processed);
-        let Some(next_batch) = next else {
-            break;
-        };
-        acquired = acquire_changed_batch(
-            input,
-            next_batch,
-            changed_total,
-            stage.acquired_items,
-            stage.acquired_documents,
-            coordinator,
-        )
-        .await?;
+        break;
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "batches_tests.rs"]
+mod tests;
 
 async fn acquire_changed_batch(
     input: &SourcePipelineInput<'_>,

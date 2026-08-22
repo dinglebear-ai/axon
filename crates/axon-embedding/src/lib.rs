@@ -8,6 +8,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod batch;
+pub mod cache;
 pub mod capability;
 pub mod fake;
 pub mod openai_compat;

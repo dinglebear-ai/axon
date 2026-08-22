@@ -811,7 +811,7 @@
         {
           "path": "docs/pipeline-unification/sources/chunking-contract.md",
           "kind": "markdown_contract",
-          "checksum": "sha256:c7c7bb845ca07e821ba9a9e30adaccaf3dff2d9d677180783054b6bb98d7b36c"
+          "checksum": "sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f"
         },
         {
           "path": "docs/pipeline-unification/sources/metadata-payload.md",
@@ -824,7 +824,7 @@
           "checksum": "sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c"
         }
       ],
-      "manifest_checksum": "704a23f2a9e15a2a43ece7ad1205587a8585c04b658e5f41b984dfe160a00826"
+      "manifest_checksum": "ce3a144259be3fa23c997e5e92b5b92722d4bbcb25cb7481e9b39dffe1d223c1"
     }
   ]
 }

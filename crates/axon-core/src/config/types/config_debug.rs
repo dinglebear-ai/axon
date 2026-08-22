@@ -237,6 +237,15 @@ impl fmt::Debug for Config {
             .field("embed_cache_max_entries", &self.embed_cache_max_entries)
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
             .field("embed_prep_concurrency", &self.embed_prep_concurrency)
+            .field(
+                "chunking_markdown_max_chars",
+                &self.chunking_markdown_max_chars,
+            )
+            .field(
+                "chunking_markdown_min_chars",
+                &self.chunking_markdown_min_chars,
+            )
+            .field("chunking_overlap_chars", &self.chunking_overlap_chars)
             .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)
             .field(
                 "embed_max_source_chunks_per_doc",

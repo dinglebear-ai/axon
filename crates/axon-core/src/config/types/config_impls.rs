@@ -196,6 +196,9 @@ impl Default for Config {
                 .map(|n| n.get())
                 .unwrap_or(8)
                 .clamp(2, 16),
+            chunking_markdown_max_chars: 2_000,
+            chunking_markdown_min_chars: 500,
+            chunking_overlap_chars: 200,
             embed_max_chunks_per_doc: None,
             embed_max_source_chunks_per_doc: None,
             embed_dedupe_exact_chunks: true,

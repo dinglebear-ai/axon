@@ -208,6 +208,27 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
         1,
         64,
     );
+    cfg.chunking_markdown_max_chars = resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MAX_CHARS",
+        toml.chunking.markdown_max_chars,
+        2_000,
+        256,
+        16_384,
+    );
+    cfg.chunking_markdown_min_chars = resolve_clamped_usize(
+        "AXON_MARKDOWN_CHUNK_MIN_CHARS",
+        toml.chunking.markdown_min_chars,
+        500.min(cfg.chunking_markdown_max_chars),
+        1,
+        cfg.chunking_markdown_max_chars,
+    );
+    cfg.chunking_overlap_chars = resolve_clamped_usize(
+        "AXON_CHUNK_OVERLAP_CHARS",
+        toml.chunking.overlap_chars,
+        200.min(cfg.chunking_markdown_max_chars.saturating_sub(1)),
+        0,
+        cfg.chunking_markdown_max_chars.saturating_sub(1),
+    );
     cfg.embed_max_chunks_per_doc = resolve_optional_usize(
         "AXON_EMBED_MAX_CHUNKS_PER_DOC",
         toml.embed.max_chunks_per_doc,

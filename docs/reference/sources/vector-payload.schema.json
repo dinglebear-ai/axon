@@ -10645,7 +10645,7 @@
         "path": "docs/pipeline-unification/schemas/vector-payload-schema.md"
       },
       {
-        "checksum": "sha256:c7c7bb845ca07e821ba9a9e30adaccaf3dff2d9d677180783054b6bb98d7b36c",
+        "checksum": "sha256:63c60a97db760d23a91846d0c5ca077363913b0ab778c965c6a73a8bf652826f",
         "kind": "markdown_contract",
         "path": "docs/pipeline-unification/sources/chunking-contract.md"
       },

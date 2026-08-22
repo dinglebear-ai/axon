@@ -71,13 +71,17 @@ pub(super) async fn prepare_embed_publish(
                 input.execution.priority,
                 format!("parse:{}:{source_index}", generation.0),
             ),
-            move || {
-                prepare_documents(
-                    source_batch,
-                    generation,
-                    enrichment_graph,
-                    runtime.document_prepare_concurrency,
-                )
+            {
+                let document_preparer = runtime.document_preparer.clone();
+                move || {
+                    prepare_documents(
+                        source_batch,
+                        generation,
+                        enrichment_graph,
+                        document_preparer,
+                        runtime.document_prepare_concurrency,
+                    )
+                }
             },
         )
         .await?;

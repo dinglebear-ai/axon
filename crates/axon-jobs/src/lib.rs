@@ -5,6 +5,7 @@
 pub mod boundary;
 pub mod config_snapshot;
 pub mod config_snapshot_store;
+pub mod embedding_cache_store;
 pub mod error;
 mod fake_store;
 pub mod limits;

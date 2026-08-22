@@ -8,6 +8,7 @@ use axon_parse::vertical::take_metadata_artifacts;
 
 use crate::chunk::DocumentChunk;
 use crate::chunk_router::{ChunkRouter, decision_for_profile, source_adapter, source_scope};
+use crate::markdown::MarkdownChunkLimits;
 use crate::parse::{DocumentParse, parse_document};
 use crate::prepared::{PrepareSourceDocumentRequest, PrepareSourceDocumentResult};
 use crate::profile::ChunkingProfile;
@@ -22,12 +23,53 @@ pub(crate) use validation::validate_prepared_document;
 pub(crate) use validation::validate_prepared_document_ranges_against_bounds;
 use validation::validate_prepared_document_with_bounds;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentPreparerConfig {
+    pub markdown_max_chars: usize,
+    pub markdown_min_chars: usize,
+    pub markdown_overlap_chars: usize,
+}
+
+impl Default for DocumentPreparerConfig {
+    fn default() -> Self {
+        Self {
+            markdown_max_chars: 2_000,
+            markdown_min_chars: 500,
+            markdown_overlap_chars: 200,
+        }
+    }
+}
+
+impl DocumentPreparerConfig {
+    fn markdown_limits(self) -> MarkdownChunkLimits {
+        MarkdownChunkLimits::new(
+            self.markdown_max_chars,
+            self.markdown_min_chars,
+            self.markdown_overlap_chars,
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct DocumentPreparer {
     router: ChunkRouter,
+    config: DocumentPreparerConfig,
+}
+
+impl Default for DocumentPreparer {
+    fn default() -> Self {
+        Self::new(DocumentPreparerConfig::default())
+    }
 }
 
 impl DocumentPreparer {
+    pub fn new(config: DocumentPreparerConfig) -> Self {
+        Self {
+            router: ChunkRouter,
+            config,
+        }
+    }
+
     pub fn prepare(
         &self,
         mut request: PrepareSourceDocumentRequest,
@@ -112,6 +154,7 @@ impl DocumentPreparer {
             request.document.content_kind,
             &request.parse_facts,
             use_size_or_adapter_fallback,
+            self.config.markdown_limits(),
         );
         let chunks = build.chunks;
         let parsed_code_method = (effective_profile == ChunkingProfile::CodeSymbol

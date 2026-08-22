@@ -5,6 +5,7 @@
 use axon_api::source::{Severity, SourceItemKey, SourceParseFacts, SourceWarning};
 
 use crate::chunk::DocumentChunk;
+use crate::markdown::MarkdownChunkLimits;
 use crate::profile::ChunkingProfile;
 use crate::{code, markdown, metadata, schema, session, text, transcript};
 
@@ -33,6 +34,7 @@ pub(super) fn build_chunks(
     content_kind: axon_api::source::ContentKind,
     parse_facts: &[SourceParseFacts],
     use_fallback: bool,
+    markdown_limits: MarkdownChunkLimits,
 ) -> ChunkBuild {
     let chunks = match profile {
         ChunkingProfile::CodeSymbol if use_fallback => size_fallback_chunks(text, "code_blocks"),
@@ -43,7 +45,9 @@ pub(super) fn build_chunks(
         ChunkingProfile::MarkdownSections if use_fallback => {
             size_fallback_chunks(text, "plain_text_windows")
         }
-        ChunkingProfile::MarkdownSections => markdown::markdown_sections(text),
+        ChunkingProfile::MarkdownSections => {
+            markdown::markdown_sections_with_limits(text, markdown_limits)
+        }
         ChunkingProfile::HtmlArticle => markdown::html_article(text),
         ChunkingProfile::PlainTextWindows => text::plain_text_windows(text),
         ChunkingProfile::TranscriptSegments => transcript::transcript_segments(text),

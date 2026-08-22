@@ -45,7 +45,11 @@ The token limits above remain profile-level routing guidance. Markdown's
 concrete character packing is operator-tunable under `[pipeline.chunking]`
 with `markdown-max-chars`, `markdown-min-chars`, and `overlap-chars`; the
 corresponding environment overrides are documented in the generated config
-reference.
+reference. `overlap-chars` applies only between consecutive windows cut from
+the same prose span. It never crosses frontmatter, heading paths, fenced code,
+or other incompatible Markdown block metadata. A fenced code block remains
+intact even when it alone exceeds `markdown-max-chars`; surrounding prose is
+still bounded by the configured maximum.
 
 ## ChunkRouter decision
 

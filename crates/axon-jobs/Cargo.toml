@@ -14,6 +14,7 @@ publish = false
 [dependencies]
 axon-core = { path = "../axon-core" }
 axon-error = { path = "../axon-error" }
+axon-embedding = { path = "../axon-embedding" }
 axon-llm = { path = "../axon-llm" }
 axon-api = { path = "../axon-api" }
 # Domain-store crates whose migration sets the composed cross-crate runner

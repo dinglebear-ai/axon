@@ -7,7 +7,7 @@ use axon_adapters::providers::http_fetch::HTTP_FETCH_PROVIDER_ID;
 use axon_api::source::{ProviderId, ProviderKind};
 use axon_core::config::Config;
 use axon_jobs::scheduler::{
-    ProviderCapacityDomain, ProviderScheduler, SchedulerConfig, SchedulerWriteGate,
+    ProviderCapacityDomain, ProviderScheduler, SchedulerConfig, SqliteWriteGate,
 };
 use sqlx::SqlitePool;
 
@@ -32,9 +32,9 @@ pub(super) async fn build_runtime_schedulers(
     pool: &SqlitePool,
     embedding_provider_id: &ProviderId,
     vector_provider_id: &ProviderId,
+    write_gate: SqliteWriteGate,
 ) -> Result<RuntimeSchedulers, Box<dyn std::error::Error + Send + Sync>> {
     let authority_id = scheduler_authority_id(&cfg.sqlite_path);
-    let write_gate = SchedulerWriteGate::default();
     let embedding = ProviderScheduler::new_with_write_gate(
         pool.clone(),
         ProviderCapacityDomain {

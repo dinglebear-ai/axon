@@ -1,0 +1,399 @@
+//! Provider-level dense embedding cache policy.
+//!
+//! Persistence stays behind [`EmbeddingVectorCacheStore`]; this crate owns the
+//! cache identity, provider decoration, fail-open behavior, and result ordering.
+
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::sync::Arc;
+use std::time::Duration;
+
+use async_trait::async_trait;
+use axon_api::source::{
+    ApiError, EmbeddingBatch, EmbeddingResult, EmbeddingVector, InstructionSupport,
+    ProviderCapability, ProviderId, ProviderUsage,
+};
+use sha2::{Digest, Sha256};
+
+use crate::provider::EmbeddingProvider;
+
+const CACHE_KEY_VERSION: &str = "embedding-vector-cache-v1";
+// Cache persistence is optional and local. It must never add an unbounded wait
+// to a provider request when SQLite is busy or its pool is saturated.
+const OPTIONAL_CACHE_OPERATION_TIMEOUT: Duration = Duration::from_millis(250);
+
+pub type CacheStoreError = Box<dyn std::error::Error + Send + Sync>;
+
+#[derive(Debug, Clone)]
+pub struct CachedEmbedding {
+    pub cache_key: String,
+    pub provider_id: ProviderId,
+    pub model: String,
+    pub dimensions: u32,
+    pub values: Vec<f32>,
+}
+
+#[derive(Debug, Default)]
+pub struct EmbeddingCacheLookup {
+    pub hits: HashMap<String, CachedEmbedding>,
+    pub corrupt_keys: Vec<String>,
+}
+
+#[async_trait]
+pub trait EmbeddingVectorCacheStore: Send + Sync {
+    async fn get_many(
+        &self,
+        keys: &[String],
+        expected_dimensions: u32,
+    ) -> Result<EmbeddingCacheLookup, CacheStoreError>;
+
+    async fn touch_many(&self, keys: &[String]) -> Result<(), CacheStoreError>;
+
+    async fn put_many(
+        &self,
+        entries: &[CachedEmbedding],
+        max_entries: usize,
+    ) -> Result<(), CacheStoreError>;
+
+    async fn retire_many(&self, keys: &[String]) -> Result<(), CacheStoreError>;
+}
+
+#[derive(Clone)]
+pub struct CachedEmbeddingProvider {
+    inner: Arc<dyn EmbeddingProvider>,
+    store: Arc<dyn EmbeddingVectorCacheStore>,
+    authority: String,
+    response_provider_id: ProviderId,
+    model: String,
+    dimensions: u32,
+    instruction_support: InstructionSupport,
+    max_entries: usize,
+}
+
+impl CachedEmbeddingProvider {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        inner: Arc<dyn EmbeddingProvider>,
+        store: Arc<dyn EmbeddingVectorCacheStore>,
+        authority: impl Into<String>,
+        response_provider_id: ProviderId,
+        model: impl Into<String>,
+        dimensions: u32,
+        instruction_support: InstructionSupport,
+        max_entries: usize,
+    ) -> Self {
+        Self {
+            inner,
+            store,
+            authority: authority.into(),
+            response_provider_id,
+            model: model.into(),
+            dimensions,
+            instruction_support,
+            max_entries: max_entries.max(1),
+        }
+    }
+
+    async fn lookup(&self, keys: &[String]) -> HashMap<String, CachedEmbedding> {
+        let unique_keys = keys
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let mut lookup = match bounded_store_operation(
+            "read",
+            unique_keys.len(),
+            self.store.get_many(&unique_keys, self.dimensions),
+        )
+        .await
+        {
+            Some(Ok(lookup)) => lookup,
+            Some(Err(error)) => {
+                record_store_error("read", unique_keys.len(), &error);
+                return HashMap::new();
+            }
+            None => return HashMap::new(),
+        };
+
+        let invalid_identity = lookup
+            .hits
+            .iter()
+            .filter(|(_, entry)| {
+                entry.provider_id != self.response_provider_id
+                    || entry.model != self.model
+                    || entry.dimensions != self.dimensions
+                    || entry.values.len() != self.dimensions as usize
+                    || entry.values.iter().any(|value| !value.is_finite())
+            })
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        for key in &invalid_identity {
+            lookup.hits.remove(key);
+        }
+        lookup.corrupt_keys.extend(invalid_identity);
+        lookup.corrupt_keys.sort();
+        lookup.corrupt_keys.dedup();
+
+        if !lookup.corrupt_keys.is_empty() {
+            metrics::counter!("axon_embedding_cache_corrupt_rows_total")
+                .increment(lookup.corrupt_keys.len() as u64);
+            if let Some(Err(error)) = bounded_store_operation(
+                "retire",
+                lookup.corrupt_keys.len(),
+                self.store.retire_many(&lookup.corrupt_keys),
+            )
+            .await
+            {
+                record_store_error("retire", lookup.corrupt_keys.len(), &error);
+            }
+        }
+
+        let hit_keys = lookup.hits.keys().cloned().collect::<Vec<_>>();
+        if let Some(Err(error)) =
+            bounded_store_operation("touch", hit_keys.len(), self.store.touch_many(&hit_keys)).await
+        {
+            record_store_error("touch", hit_keys.len(), &error);
+        }
+        lookup.hits
+    }
+
+    async fn fetch_misses(
+        &self,
+        batch: &EmbeddingBatch,
+        keys: &[String],
+        cached: &HashMap<String, CachedEmbedding>,
+    ) -> Result<(Vec<String>, Option<EmbeddingResult>), ApiError> {
+        let mut unique_miss_keys = Vec::new();
+        let mut seen = HashSet::new();
+        let mut miss_items = Vec::new();
+        for (key, item) in keys.iter().zip(&batch.items) {
+            if !cached.contains_key(key) && seen.insert(key.clone()) {
+                unique_miss_keys.push(key.clone());
+                miss_items.push(item.clone());
+            }
+        }
+        let cached_inputs = keys.iter().filter(|key| cached.contains_key(*key)).count();
+        let deduplicated = keys
+            .len()
+            .saturating_sub(cached_inputs.saturating_add(miss_items.len()));
+        metrics::counter!("axon_embedding_cache_deduplicated_inputs_total")
+            .increment(deduplicated as u64);
+
+        if miss_items.is_empty() {
+            return Ok((unique_miss_keys, None));
+        }
+        let mut miss_batch = batch.clone();
+        miss_batch.items = miss_items;
+        let result = self.inner.embed(miss_batch).await?;
+        let entries = unique_miss_keys
+            .iter()
+            .zip(&result.vectors)
+            .filter(|(_, vector)| vector.values.len() == self.dimensions as usize)
+            .map(|(key, vector)| CachedEmbedding {
+                cache_key: key.clone(),
+                provider_id: result.provider_id.clone(),
+                model: result.model.clone(),
+                dimensions: result.dimensions,
+                values: vector.values.clone(),
+            })
+            .collect::<Vec<_>>();
+        if let Some(Err(error)) = bounded_store_operation(
+            "write",
+            entries.len(),
+            self.store.put_many(&entries, self.max_entries),
+        )
+        .await
+        {
+            record_store_error("write", entries.len(), &error);
+        }
+        Ok((unique_miss_keys, Some(result)))
+    }
+}
+
+async fn bounded_store_operation<T, F>(
+    operation: &'static str,
+    key_count: usize,
+    future: F,
+) -> Option<Result<T, CacheStoreError>>
+where
+    F: Future<Output = Result<T, CacheStoreError>>,
+{
+    match tokio::time::timeout(OPTIONAL_CACHE_OPERATION_TIMEOUT, future).await {
+        Ok(result) => Some(result),
+        Err(_) => {
+            metrics::counter!(
+                "axon_embedding_cache_store_timeouts_total",
+                "operation" => operation
+            )
+            .increment(1);
+            metrics::counter!(
+                "axon_embedding_cache_store_timeout_keys_total",
+                "operation" => operation
+            )
+            .increment(key_count as u64);
+            tracing::warn!(
+                operation,
+                key_count,
+                timeout_ms = OPTIONAL_CACHE_OPERATION_TIMEOUT.as_millis(),
+                "optional embedding cache operation timed out"
+            );
+            None
+        }
+    }
+}
+
+fn record_store_error(operation: &'static str, key_count: usize, error: &CacheStoreError) {
+    metrics::counter!("axon_embedding_cache_store_errors_total", "operation" => operation)
+        .increment(1);
+    metrics::counter!(
+        "axon_embedding_cache_store_error_keys_total",
+        "operation" => operation
+    )
+    .increment(key_count as u64);
+    tracing::warn!(
+        operation,
+        key_count,
+        %error,
+        "optional embedding cache operation failed"
+    );
+}
+
+#[async_trait]
+impl EmbeddingProvider for CachedEmbeddingProvider {
+    async fn embed(&self, batch: EmbeddingBatch) -> Result<EmbeddingResult, ApiError> {
+        let keys = batch
+            .items
+            .iter()
+            .map(|item| {
+                cache_key(
+                    &self.authority,
+                    &self.response_provider_id,
+                    &self.model,
+                    self.dimensions,
+                    self.instruction_support,
+                    &batch,
+                    item,
+                )
+            })
+            .collect::<Vec<_>>();
+        let cached = self.lookup(&keys).await;
+        let hit_count = keys.iter().filter(|key| cached.contains_key(*key)).count();
+        metrics::counter!("axon_embedding_cache_hits_total").increment(hit_count as u64);
+        metrics::counter!("axon_embedding_cache_misses_total")
+            .increment((keys.len() - hit_count) as u64);
+
+        let (unique_miss_keys, miss_result) = self.fetch_misses(&batch, &keys, &cached).await?;
+
+        let mut resolved = cached;
+        if let Some(result) = &miss_result {
+            for (key, vector) in unique_miss_keys.iter().zip(&result.vectors) {
+                resolved.insert(
+                    key.clone(),
+                    CachedEmbedding {
+                        cache_key: key.clone(),
+                        provider_id: result.provider_id.clone(),
+                        model: result.model.clone(),
+                        dimensions: result.dimensions,
+                        values: vector.values.clone(),
+                    },
+                );
+            }
+        }
+        let vectors = keys
+            .iter()
+            .zip(&batch.items)
+            .map(|(key, item)| {
+                let values = resolved.get(key).ok_or_else(|| {
+                    ApiError::new(
+                        "embedding.cache.result_missing",
+                        axon_error::ErrorStage::Embedding,
+                        "embedding cache/provider result did not cover every input",
+                    )
+                })?;
+                Ok(EmbeddingVector {
+                    chunk_id: item.chunk_id.clone(),
+                    values: values.values.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+
+        let provider_id = miss_result
+            .as_ref()
+            .map(|result| result.provider_id.clone())
+            .or_else(|| {
+                resolved
+                    .values()
+                    .next()
+                    .map(|entry| entry.provider_id.clone())
+            })
+            .unwrap_or_else(|| self.response_provider_id.clone());
+        let usage = miss_result
+            .as_ref()
+            .map(|result| result.usage.clone())
+            .unwrap_or(ProviderUsage {
+                input_tokens: Some(0),
+                output_tokens: None,
+                requests: 0,
+                duration_ms: 0,
+            });
+        let warnings = miss_result
+            .as_ref()
+            .map(|result| result.warnings.clone())
+            .unwrap_or_default();
+        Ok(EmbeddingResult {
+            batch_id: batch.batch_id,
+            job_id: batch.job_id,
+            provider_id,
+            model: self.model.clone(),
+            dimensions: self.dimensions,
+            vectors,
+            usage,
+            warnings,
+        })
+    }
+
+    async fn capabilities(&self) -> Result<ProviderCapability, ApiError> {
+        self.inner.capabilities().await
+    }
+}
+
+fn cache_key(
+    authority: &str,
+    provider_id: &ProviderId,
+    model: &str,
+    dimensions: u32,
+    instruction_support: InstructionSupport,
+    batch: &EmbeddingBatch,
+    input: &axon_api::source::EmbeddingInput,
+) -> String {
+    let effective_instruction = match batch.instruction.as_deref() {
+        Some(instruction)
+            if !instruction.is_empty() && instruction_support != InstructionSupport::None =>
+        {
+            instruction
+        }
+        _ => "",
+    };
+    let mut hasher = Sha256::new();
+    for part in [
+        CACHE_KEY_VERSION.as_bytes(),
+        authority.as_bytes(),
+        provider_id.0.as_bytes(),
+        model.as_bytes(),
+        &dimensions.to_le_bytes(),
+        effective_instruction.as_bytes(),
+        serde_json::to_string(&input.content_kind)
+            .expect("content kind serializes")
+            .as_bytes(),
+        input.text.as_bytes(),
+    ] {
+        hasher.update((part.len() as u64).to_le_bytes());
+        hasher.update(part);
+    }
+    format!("sha256:{}", hex::encode(hasher.finalize()))
+}
+
+#[cfg(test)]
+#[path = "cache_tests.rs"]
+mod tests;

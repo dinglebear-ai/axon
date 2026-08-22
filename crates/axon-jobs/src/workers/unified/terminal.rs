@@ -272,7 +272,7 @@ async fn mark_terminal_once(
     )
     .bind(status.as_str())
     .bind(now.0.as_str())
-    .bind(source_error_json.as_deref())
+    .bind(api_error_json.as_deref())
     .bind(claimed.job_id.0.to_string())
     .execute(&mut *tx)
     .await
