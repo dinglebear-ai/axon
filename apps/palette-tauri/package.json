@@ -68,5 +68,5 @@
     "vite:dev": "vite --host 127.0.0.1"
   },
   "type": "module",
-  "version": "6.0.0"
+  "version": "6.1.0"
 }
