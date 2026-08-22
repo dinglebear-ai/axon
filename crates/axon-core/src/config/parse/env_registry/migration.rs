@@ -414,6 +414,22 @@ pub(crate) const MIGRATION_ENV_KEY_SPECS: &[EnvKeySpec] = &[
         false,
     ),
     spec(
+        "AXON_EMBED_CACHE_ENABLED",
+        MoveToml,
+        NotRuntime,
+        Some("providers.embedding.cache-enabled"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
+        "AXON_EMBED_CACHE_MAX_ENTRIES",
+        MoveToml,
+        NotRuntime,
+        Some("providers.embedding.cache-max-entries"),
+        WarnEnvOverride,
+        false,
+    ),
+    spec(
         "AXON_EMBED_POOL_MAX_INPUTS",
         MoveToml,
         NotRuntime,

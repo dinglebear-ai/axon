@@ -64,6 +64,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0006_watch_request_replay",
         sql: include_str!("migrations/0006_watch_request_replay.sql"),
     },
+    SqlMigration {
+        version: 7,
+        name: "0007_embedding_vector_cache",
+        sql: include_str!("migrations/0007_embedding_vector_cache.sql"),
+    },
 ];
 
 /// Namespace under which the composed runner tracks jobs migrations.

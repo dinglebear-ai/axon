@@ -189,6 +189,8 @@ impl Default for Config {
             embed_tei_background_max_concurrent_requests: 3,
             embed_tei_maintenance_max_concurrent_requests: 1,
             embed_tei_query_instruction_enabled: true,
+            embed_cache_enabled: false,
+            embed_cache_max_entries: 100_000,
             embed_pool_max_inputs: 512,
             embed_prep_concurrency: std::thread::available_parallelism()
                 .map(|n| n.get())

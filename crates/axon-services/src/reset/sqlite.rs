@@ -100,6 +100,7 @@ fn store_for_table(table: &str) -> Option<&'static str> {
         | "job_heartbeats"
         | "job_artifacts"
         | "provider_reservations"
+        | "embedding_vector_cache"
         | "config_snapshots"
         | "axon_observe_events"
         | "axon_observe_heartbeats"

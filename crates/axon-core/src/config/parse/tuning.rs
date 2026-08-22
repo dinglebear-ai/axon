@@ -181,6 +181,16 @@ pub(super) fn apply_env_toml_tuning(cfg: &mut Config, toml: &TomlConfig) {
     cfg.embed_tei_query_instruction_enabled = env_bool_opt("AXON_TEI_QUERY_INSTRUCTION_ENABLED")
         .or(toml.embed.tei_query_instruction_enabled)
         .unwrap_or(true);
+    cfg.embed_cache_enabled = env_bool_opt("AXON_EMBED_CACHE_ENABLED")
+        .or(toml.embed.cache_enabled)
+        .unwrap_or(false);
+    cfg.embed_cache_max_entries = resolve_clamped_usize(
+        "AXON_EMBED_CACHE_MAX_ENTRIES",
+        toml.embed.cache_max_entries,
+        100_000,
+        1,
+        10_000_000,
+    );
     cfg.embed_pool_max_inputs = resolve_clamped_usize(
         "AXON_EMBED_POOL_MAX_INPUTS",
         toml.embed.pool_max_inputs,

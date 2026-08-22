@@ -293,6 +293,8 @@ pub(super) struct TomlEmbedSection {
     pub tei_background_max_concurrent_requests: Option<usize>,
     pub tei_maintenance_max_concurrent_requests: Option<usize>,
     pub tei_query_instruction_enabled: Option<bool>,
+    pub cache_enabled: Option<bool>,
+    pub cache_max_entries: Option<usize>,
     pub pool_max_inputs: Option<usize>,
     pub prep_concurrency: Option<usize>,
     pub max_chunks_per_doc: Option<usize>,

@@ -216,6 +216,13 @@
 # Apply the query/document instruction prefix when the provider capability
 # supports it. Env: AXON_TEI_QUERY_INSTRUCTION_ENABLED
 # query-instruction-enabled = true
+# Persist dense embedding vectors for warm/repeated ingestion. Disabled by
+# default because synchronous cache writes add latency to genuinely cold runs.
+# Env: AXON_EMBED_CACHE_ENABLED
+# cache-enabled = false
+# Maximum cached vectors retained with deterministic LRU pruning.
+# Env: AXON_EMBED_CACHE_MAX_ENTRIES
+# cache-max-entries = 100000
 # Max chunk inputs pooled into one native TEI embedding wave.
 # Env: AXON_EMBED_POOL_MAX_INPUTS
 # pool-max-inputs = 512

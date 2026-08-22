@@ -46,6 +46,7 @@ use super::{
     db_limited_ledger::DbLimitedLedgerStore,
     scheduled_web::{ScheduledFetchProvider, ScheduledRenderProvider},
 };
+use crate::embedding_cache::CachedEmbeddingProvider;
 
 const DEPOT_URL_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_URL";
 const DEPOT_TOKEN_ENV: &str = "AXON_ARTIFACT_CANDIDATE_DEPOT_TOKEN";
@@ -394,7 +395,21 @@ impl TargetLocalSourceRuntime {
         ));
 
         let identity = resolve_embedding_identity_with_pool(cfg, &pool).await;
-        let embedding_provider = build_tei_provider(cfg, &identity);
+        let raw_embedding_provider: Arc<dyn EmbeddingProvider> =
+            Arc::new(build_tei_provider(cfg, &identity));
+        let embedding_provider: Arc<dyn EmbeddingProvider> = if cfg.embed_cache_enabled {
+            Arc::new(CachedEmbeddingProvider::new(
+                raw_embedding_provider,
+                pool.clone(),
+                cfg.tei_url.as_str(),
+                ProviderId::new(EMBEDDING_PROVIDER_ID),
+                identity.model.clone(),
+                identity.dimensions,
+                cfg.embed_cache_max_entries,
+            ))
+        } else {
+            raw_embedding_provider
+        };
 
         let mut vector_store = QdrantVectorStore::new(cfg.qdrant_url.clone(), VECTOR_PROVIDER_ID);
         axon_vectors::qdrant::configure_point_buffer(&mut vector_store, cfg.qdrant_point_buffer);
@@ -461,7 +476,7 @@ impl TargetLocalSourceRuntime {
         Ok(Self {
             jobs,
             ledger,
-            embedding_provider: Arc::new(embedding_provider),
+            embedding_provider,
             vector_store: Arc::new(vector_store),
             embedding_scheduler: Some(Arc::new(embedding_scheduler)),
             vector_scheduler: Some(Arc::new(vector_scheduler)),

@@ -255,6 +255,11 @@ Routing order:
 5. Size-based fallback.
 6. Plain text fallback.
 
+Size fallback is profile-aware. Large intact Markdown remains on the linear,
+fence-aware heading parser so section packing and configured minimum sizes are
+preserved; fragment-prone Markdown adapters may still select paragraph windows.
+Large code documents may use their cheaper parser fallback.
+
 ## Chunking Profiles
 
 | Profile | Primary Inputs | Method | Boundary Preference | Typical Output |

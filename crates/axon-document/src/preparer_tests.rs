@@ -55,6 +55,33 @@ fn preparer_builds_prepared_document_from_inline_source_dto() {
 }
 
 #[test]
+fn large_intact_markdown_preserves_sections_instead_of_paragraph_fallback() {
+    let paragraphs = (0..2_000)
+        .map(|index| format!("paragraph {index}: {}", "reference text ".repeat(8)))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let text = format!("# Large reference\n\n{paragraphs}\n");
+    assert!(text.len() > crate::chunk_router::LARGE_DOCUMENT_BYTES);
+    let request = request(
+        ContentKind::Markdown,
+        &text,
+        "gen-large-markdown",
+        ChunkingProfile::MarkdownSections,
+    );
+
+    let prepared = DocumentPreparer::default()
+        .prepare(request)
+        .unwrap()
+        .document;
+
+    assert_eq!(prepared.chunking_method, "heading_sections");
+    assert!(
+        prepared.chunks.len() < 500,
+        "bounded structural windows should not degrade into one chunk per paragraph"
+    );
+}
+
+#[test]
 fn recording_preparer_records_requests_and_returns_real_prepared_documents() {
     let mut recorder = RecordingPreparer::new(DocumentPreparer::default());
     let request = request(

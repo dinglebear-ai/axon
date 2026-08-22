@@ -702,6 +702,16 @@ pub struct Config {
     /// Env: `AXON_TEI_QUERY_INSTRUCTION_ENABLED`. TOML: `providers.embedding.query-instruction-enabled`. Default: true.
     pub embed_tei_query_instruction_enabled: bool,
 
+    /// Persist dense embedding vectors in the unified SQLite store for reuse
+    /// across source generations and short-lived processes. Disabled by
+    /// default because synchronous persistence adds cold-ingestion latency.
+    /// Env: `AXON_EMBED_CACHE_ENABLED`. TOML: `providers.embedding.cache-enabled`. Default: false.
+    pub embed_cache_enabled: bool,
+
+    /// Maximum number of dense vectors retained by the embedding cache.
+    /// Env: `AXON_EMBED_CACHE_MAX_ENTRIES`. TOML: `providers.embedding.cache-max-entries`. Clamped 1–10_000_000. Default: 100_000.
+    pub embed_cache_max_entries: usize,
+
     /// Max chunk inputs pooled into one native TEI embed wave.
     /// Env: `AXON_EMBED_POOL_MAX_INPUTS`. TOML: `providers.embedding.pool-max-inputs`. Clamped 64–65536. Default: 512.
     pub embed_pool_max_inputs: usize,

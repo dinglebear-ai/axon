@@ -4,7 +4,7 @@ use axon_api::source::{
 };
 use serde_json::json;
 
-use crate::chunk_router::decision_for_profile;
+use crate::chunk_router::{LARGE_DOCUMENT_BYTES, decision_for_profile};
 use crate::{ChunkRouter, ChunkingProfile, chunk_router::public_profiles};
 
 #[test]
@@ -260,22 +260,23 @@ fn large_document_falls_back_to_second_chain_step_for_wired_profiles() {
     let large = 200_001;
     let small = 199_999;
 
-    for profile in [
-        ChunkingProfile::CodeSymbol,
-        ChunkingProfile::MarkdownSections,
-    ] {
-        let small_decision = decision_for_profile(profile, small, None, None);
-        assert_eq!(
-            small_decision.method, small_decision.fallback_chain[0],
-            "{profile:?} under the size threshold should use its primary method"
-        );
+    let small_decision = decision_for_profile(ChunkingProfile::CodeSymbol, small, None, None);
+    assert_eq!(small_decision.method, small_decision.fallback_chain[0]);
 
-        let large_decision = decision_for_profile(profile, large, None, None);
-        assert_eq!(
-            large_decision.method, large_decision.fallback_chain[1],
-            "{profile:?} over the size threshold should report its wired fallback method"
-        );
-    }
+    let large_decision = decision_for_profile(ChunkingProfile::CodeSymbol, large, None, None);
+    assert_eq!(large_decision.method, large_decision.fallback_chain[1]);
+}
+
+#[test]
+fn large_markdown_document_keeps_linear_structural_chunker() {
+    let decision = decision_for_profile(
+        ChunkingProfile::MarkdownSections,
+        LARGE_DOCUMENT_BYTES + 1,
+        Some("web"),
+        None,
+    );
+
+    assert_eq!(decision.method, decision.fallback_chain[0]);
 }
 
 #[test]

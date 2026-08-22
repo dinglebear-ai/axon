@@ -233,6 +233,8 @@ impl fmt::Debug for Config {
                 "embed_tei_query_instruction_enabled",
                 &self.embed_tei_query_instruction_enabled,
             )
+            .field("embed_cache_enabled", &self.embed_cache_enabled)
+            .field("embed_cache_max_entries", &self.embed_cache_max_entries)
             .field("embed_pool_max_inputs", &self.embed_pool_max_inputs)
             .field("embed_prep_concurrency", &self.embed_prep_concurrency)
             .field("embed_max_chunks_per_doc", &self.embed_max_chunks_per_doc)

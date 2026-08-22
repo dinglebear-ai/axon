@@ -16,6 +16,8 @@ fn config_key_registry_has_all_contract_keys() {
         "sources.embed_by_default",
         "watch.tick_secs",
         "providers.embedding.batch_size",
+        "providers.embedding.cache_enabled",
+        "providers.embedding.cache_max_entries",
         "providers.vector.write_concurrency",
         "providers.llm.completion_concurrency",
         "retrieval.hybrid_candidates",

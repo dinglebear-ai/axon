@@ -20,7 +20,7 @@ See the family contract for declared output paths.
 | `crates/axon-vectors/src/point.rs` | `sha256:e5ff4dbf5d477515db4e5dafeba265575900f399905e4e0576103e155ee07088` |
 | `crates/axon-vectors/src/schema_registry.rs` | `sha256:039aed1c85daf7da804f6f3a79d0482c39e435122f7a24177d703a9b9f63768a` |
 | `docs/pipeline-unification/schemas/vector-payload-schema.md` | `sha256:9c49c3341d58013f62f7cb73114a167916492ab3631930599ecbade8675bc0f8` |
-| `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c05b4d85b293af0200445e89adf99db1db55d3cf2e7d003fa38844efb682d8d8` |
+| `docs/pipeline-unification/sources/chunking-contract.md` | `sha256:c7c7bb845ca07e821ba9a9e30adaccaf3dff2d9d677180783054b6bb98d7b36c` |
 | `docs/pipeline-unification/sources/metadata-payload.md` | `sha256:0949696be514fae1eb4222d023e524e8f280a5ff79ccf2ec727f5a97d8105c33` |
 | `xtask/src/schemas/vector_payload_markdown.rs` | `sha256:12ec3607158e2c567135c27743251b975ad79a9c9a55d52fadc2bed205c1781c` |
 

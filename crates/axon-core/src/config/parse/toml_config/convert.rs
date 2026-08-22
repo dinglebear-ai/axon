@@ -218,6 +218,8 @@ fn apply_providers(flat: &mut TomlConfig, raw: &RawTomlConfig) {
     flat.embed.tei_background_max_concurrent_requests = e.background_max_concurrent_requests;
     flat.embed.tei_maintenance_max_concurrent_requests = e.maintenance_max_concurrent_requests;
     flat.embed.tei_query_instruction_enabled = e.query_instruction_enabled;
+    flat.embed.cache_enabled = e.cache_enabled;
+    flat.embed.cache_max_entries = e.cache_max_entries;
     flat.embed.pool_max_inputs = e.pool_max_inputs;
     flat.embed.prep_concurrency = e.prep_concurrency;
     flat.embed.max_chunks_per_doc = e.max_chunks_per_doc;

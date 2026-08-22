@@ -15,6 +15,7 @@ const CANONICAL_TABLES: &[&str] = &[
     "cleanup_debt",
     "config_snapshots",
     "document_status",
+    "embedding_vector_cache",
     "graph_aliases",
     "graph_conflicts",
     "graph_edges",
