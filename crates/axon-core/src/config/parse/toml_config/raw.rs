@@ -67,6 +67,34 @@ pub(in crate::config) struct RawServerSection {
     pub allow_fallback_web_assets: Option<bool>,
     #[serde(default)]
     pub mcp: RawServerMcpSection,
+    #[serde(default)]
+    pub projection_batch: RawProjectionBatchSection,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub(in crate::config) struct RawProjectionBatchSection {
+    pub max_inputs: Option<usize>,
+    pub max_request_bytes: Option<usize>,
+    pub max_input_bytes: Option<usize>,
+    pub max_query_bytes: Option<usize>,
+    pub max_idempotency_key_bytes: Option<usize>,
+    pub max_aggregate_input_bytes: Option<usize>,
+    pub max_response_bytes: Option<usize>,
+    pub max_pages: Option<u64>,
+    pub max_manifest_items: Option<u64>,
+    pub max_fetched_bytes_per_item: Option<u64>,
+    pub max_decompressed_bytes_per_item: Option<u64>,
+    pub max_prepared_bytes: Option<u64>,
+    pub max_documents: Option<u64>,
+    pub max_chunks: Option<u64>,
+    pub max_vector_points: Option<u64>,
+    pub max_redirects: Option<usize>,
+    pub max_elapsed_secs: Option<u64>,
+    pub max_query_window: Option<usize>,
+    pub global_max_in_flight_requests: Option<usize>,
+    pub caller_max_in_flight_requests: Option<usize>,
+    pub caller_rate_limit_per_minute: Option<u64>,
 }
 
 #[derive(Deserialize, Default)]

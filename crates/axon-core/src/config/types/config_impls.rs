@@ -1,4 +1,4 @@
-use super::config::{AdaptiveConcurrencyConfig, Config};
+use super::config::{AdaptiveConcurrencyConfig, Config, ProjectionBatchConfig};
 use super::enums::{
     CommandKind, EvaluateResponsesMode, McpTransport, PerformanceProfile, RedditSort, RedditTime,
     RenderMode, ScrapeFormat,
@@ -69,6 +69,7 @@ impl Default for Config {
             mcp_embed_max_local_depth: 16,
             mcp_embed_max_local_entries: 10_000,
             batch_concurrency: 16,
+            projection_batch: ProjectionBatchConfig::default(),
             wait: false,
             sqlite_path: crate::paths::axon_data_base_dir().join("jobs.db"),
             yes: false,

@@ -87,6 +87,7 @@ impl fmt::Debug for Config {
                 &self.mcp_embed_max_local_entries,
             )
             .field("batch_concurrency", &self.batch_concurrency)
+            .field("projection_batch", &self.projection_batch)
             .field("wait", &self.wait)
             .field("sqlite_path", &self.sqlite_path)
             .field("yes", &self.yes)

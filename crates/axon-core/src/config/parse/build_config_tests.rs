@@ -706,3 +706,29 @@ fn cron_values_reject_zero_instead_of_becoming_unbounded() {
     .expect_err("zero max-runs must not silently mean unlimited");
     assert!(max_runs_err.contains("--cron-max-runs must be greater than zero"));
 }
+
+#[allow(unsafe_code)]
+#[test]
+fn projection_batch_env_overrides_toml_and_invalid_limits_fail() {
+    let _guard = env_guard();
+    let mut file = TempfileBuilder::new().suffix(".toml").tempfile().unwrap();
+    writeln!(
+        file,
+        "[server.projection-batch]\nmax-inputs = 4\nmax-query-window = 40"
+    )
+    .unwrap();
+    with_env_saved(
+        &["AXON_CONFIG_PATH", "AXON_PROJECTION_BATCH_MAX_INPUTS"],
+        || unsafe {
+            env::set_var("AXON_CONFIG_PATH", file.path());
+            env::set_var("AXON_PROJECTION_BATCH_MAX_INPUTS", "2");
+            let cfg = into_config_via_args(&["extract", "https://example.com"]).unwrap();
+            assert_eq!(cfg.projection_batch.max_inputs, 2);
+            assert_eq!(cfg.projection_batch.max_query_window, 40);
+
+            env::set_var("AXON_PROJECTION_BATCH_MAX_INPUTS", "0");
+            let error = into_config_via_args(&["extract", "https://example.com"]).unwrap_err();
+            assert!(error.contains("projection-batch.max-inputs"));
+        },
+    );
+}

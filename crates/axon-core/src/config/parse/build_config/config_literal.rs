@@ -46,6 +46,7 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     let qdrant_url = resolve_qdrant_url(inputs.global, inputs.toml)?;
     let custom_headers = validate_custom_headers(inputs.global.custom_headers.clone())?;
     let mcp_http_port = env_port("AXON_HTTP_PORT", 8001)?;
+    let projection_batch = resolve_projection_batch(inputs.toml)?;
 
     let mut cfg = Config::default();
     populate_identity_and_crawl(&mut cfg, &inputs);
@@ -54,7 +55,89 @@ pub(super) fn build(inputs: LiteralInputs<'_>) -> Result<Config, String> {
     populate_services_and_ask_basics(&mut cfg, &inputs, tei_url, qdrant_url)?;
     populate_ask_tuning(&mut cfg, inputs.toml);
     populate_misc(&mut cfg, &inputs, custom_headers, mcp_http_port)?;
+    cfg.projection_batch = projection_batch;
     Ok(cfg)
+}
+
+fn resolve_projection_batch(
+    toml: &TomlConfig,
+) -> Result<crate::config::ProjectionBatchConfig, String> {
+    let mut config = crate::config::ProjectionBatchConfig::default();
+    let batch = &toml.projection_batch;
+    macro_rules! resolve {
+        ($field:ident, $env:literal) => {
+            config.$field = parse_projection_env($env)?
+                .or(batch.$field)
+                .unwrap_or(config.$field);
+        };
+    }
+    resolve!(max_inputs, "AXON_PROJECTION_BATCH_MAX_INPUTS");
+    resolve!(max_request_bytes, "AXON_PROJECTION_BATCH_MAX_REQUEST_BYTES");
+    resolve!(max_input_bytes, "AXON_PROJECTION_BATCH_MAX_INPUT_BYTES");
+    resolve!(max_query_bytes, "AXON_PROJECTION_BATCH_MAX_QUERY_BYTES");
+    resolve!(
+        max_idempotency_key_bytes,
+        "AXON_PROJECTION_BATCH_MAX_IDEMPOTENCY_KEY_BYTES"
+    );
+    resolve!(
+        max_aggregate_input_bytes,
+        "AXON_PROJECTION_BATCH_MAX_AGGREGATE_INPUT_BYTES"
+    );
+    resolve!(
+        max_response_bytes,
+        "AXON_PROJECTION_BATCH_MAX_RESPONSE_BYTES"
+    );
+    resolve!(max_pages, "AXON_PROJECTION_BATCH_MAX_PAGES");
+    resolve!(
+        max_manifest_items,
+        "AXON_PROJECTION_BATCH_MAX_MANIFEST_ITEMS"
+    );
+    resolve!(
+        max_fetched_bytes_per_item,
+        "AXON_PROJECTION_BATCH_MAX_FETCHED_BYTES_PER_ITEM"
+    );
+    resolve!(
+        max_decompressed_bytes_per_item,
+        "AXON_PROJECTION_BATCH_MAX_DECOMPRESSED_BYTES_PER_ITEM"
+    );
+    resolve!(
+        max_prepared_bytes,
+        "AXON_PROJECTION_BATCH_MAX_PREPARED_BYTES"
+    );
+    resolve!(max_documents, "AXON_PROJECTION_BATCH_MAX_DOCUMENTS");
+    resolve!(max_chunks, "AXON_PROJECTION_BATCH_MAX_CHUNKS");
+    resolve!(max_vector_points, "AXON_PROJECTION_BATCH_MAX_VECTOR_POINTS");
+    resolve!(max_redirects, "AXON_PROJECTION_BATCH_MAX_REDIRECTS");
+    resolve!(max_elapsed_secs, "AXON_PROJECTION_BATCH_MAX_ELAPSED_SECS");
+    resolve!(max_query_window, "AXON_PROJECTION_BATCH_MAX_QUERY_WINDOW");
+    resolve!(
+        global_max_in_flight_requests,
+        "AXON_PROJECTION_BATCH_GLOBAL_MAX_IN_FLIGHT_REQUESTS"
+    );
+    resolve!(
+        caller_max_in_flight_requests,
+        "AXON_PROJECTION_BATCH_CALLER_MAX_IN_FLIGHT_REQUESTS"
+    );
+    resolve!(
+        caller_rate_limit_per_minute,
+        "AXON_PROJECTION_BATCH_CALLER_RATE_LIMIT_PER_MINUTE"
+    );
+    config.validate()?;
+    Ok(config)
+}
+
+fn parse_projection_env<T>(name: &str) -> Result<Option<T>, String>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    env::var(name)
+        .ok()
+        .map(|raw| {
+            raw.parse::<T>()
+                .map_err(|error| format!("invalid {name}={raw:?}: {error}"))
+        })
+        .transpose()
 }
 
 fn populate_identity_and_crawl(cfg: &mut Config, inputs: &LiteralInputs<'_>) {

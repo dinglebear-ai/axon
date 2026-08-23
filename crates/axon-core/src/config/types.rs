@@ -11,7 +11,7 @@ pub const DEFAULT_CRAWL_BROADCAST_BUFFER_MAX: usize = 2_048;
 pub const DEFAULT_MAX_PAGE_BYTES: u64 = 4 * 1024 * 1024;
 pub const DEFAULT_CRAWL_MEMORY_ABORT_PERCENT: f64 = 85.0;
 
-pub use config::{AdaptiveConcurrencyConfig, Config};
+pub use config::{AdaptiveConcurrencyConfig, Config, ProjectionBatchConfig};
 pub use enums::{
     ColorChoice, CommandKind, EvaluateResponsesMode, McpTransport, MotionChoice,
     PerformanceProfile, RedditSort, RedditTime, RenderMode, ScrapeFormat,

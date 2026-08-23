@@ -39,6 +39,31 @@
 # Env override: AXON_ALLOW_FALLBACK_WEB_ASSETS
 # allow-fallback-web-assets = false
 
+[server.projection-batch]
+# Shared CLI/MCP/REST request and stage ceilings. Environment variables use
+# AXON_PROJECTION_BATCH_<UPPER_SNAKE_KEY>. Callers may only clamp lower.
+# max-inputs = 32
+# max-request-bytes = 1048576
+# max-input-bytes = 16384
+# max-query-bytes = 16384
+# max-idempotency-key-bytes = 256
+# max-aggregate-input-bytes = 262144
+# max-response-bytes = 8388608
+# max-pages = 1000
+# max-manifest-items = 10000
+# max-fetched-bytes-per-item = 16777216
+# max-decompressed-bytes-per-item = 33554432
+# max-prepared-bytes = 67108864
+# max-documents = 10000
+# max-chunks = 100000
+# max-vector-points = 100000
+# max-redirects = 10
+# max-elapsed-secs = 900
+# max-query-window = 1000
+# global-max-in-flight-requests = 64
+# caller-max-in-flight-requests = 8
+# caller-rate-limit-per-minute = 120
+
 [server.mcp]
 # Timeout for MCP task-result waits.
 # Env: AXON_TASK_RESULT_WAIT_TIMEOUT_SECS

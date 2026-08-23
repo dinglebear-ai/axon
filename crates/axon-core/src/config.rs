@@ -12,6 +12,6 @@ pub use secret::Secret;
 pub use types::{
     AdaptiveConcurrencyConfig, CodeSearchWatchConfig, ColorChoice, CommandKind, Config,
     ConfigOverrides, EvaluateResponsesMode, McpTransport, MotionChoice, PerformanceProfile,
-    RedditSort, RedditTime, RenderMode, ScrapeFormat,
+    ProjectionBatchConfig, RedditSort, RedditTime, RenderMode, ScrapeFormat,
 };
 pub use validation::{CollectionNameError, validate_collection_name};

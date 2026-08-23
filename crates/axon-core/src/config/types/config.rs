@@ -12,6 +12,151 @@ pub struct AdaptiveConcurrencyConfig {
     pub max: Option<usize>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectionBatchConfig {
+    pub max_inputs: usize,
+    pub max_request_bytes: usize,
+    pub max_input_bytes: usize,
+    pub max_query_bytes: usize,
+    pub max_idempotency_key_bytes: usize,
+    pub max_aggregate_input_bytes: usize,
+    pub max_response_bytes: usize,
+    pub max_pages: u64,
+    pub max_manifest_items: u64,
+    pub max_fetched_bytes_per_item: u64,
+    pub max_decompressed_bytes_per_item: u64,
+    pub max_prepared_bytes: u64,
+    pub max_documents: u64,
+    pub max_chunks: u64,
+    pub max_vector_points: u64,
+    pub max_redirects: usize,
+    pub max_elapsed_secs: u64,
+    pub max_query_window: usize,
+    pub global_max_in_flight_requests: usize,
+    pub caller_max_in_flight_requests: usize,
+    pub caller_rate_limit_per_minute: u64,
+}
+
+impl ProjectionBatchConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        let fields = [
+            ("server.projection-batch.max-inputs", self.max_inputs as u64),
+            (
+                "server.projection-batch.max-request-bytes",
+                self.max_request_bytes as u64,
+            ),
+            (
+                "server.projection-batch.max-input-bytes",
+                self.max_input_bytes as u64,
+            ),
+            (
+                "server.projection-batch.max-query-bytes",
+                self.max_query_bytes as u64,
+            ),
+            (
+                "server.projection-batch.max-idempotency-key-bytes",
+                self.max_idempotency_key_bytes as u64,
+            ),
+            (
+                "server.projection-batch.max-aggregate-input-bytes",
+                self.max_aggregate_input_bytes as u64,
+            ),
+            (
+                "server.projection-batch.max-response-bytes",
+                self.max_response_bytes as u64,
+            ),
+            ("server.projection-batch.max-pages", self.max_pages),
+            (
+                "server.projection-batch.max-manifest-items",
+                self.max_manifest_items,
+            ),
+            (
+                "server.projection-batch.max-fetched-bytes-per-item",
+                self.max_fetched_bytes_per_item,
+            ),
+            (
+                "server.projection-batch.max-decompressed-bytes-per-item",
+                self.max_decompressed_bytes_per_item,
+            ),
+            (
+                "server.projection-batch.max-prepared-bytes",
+                self.max_prepared_bytes,
+            ),
+            ("server.projection-batch.max-documents", self.max_documents),
+            ("server.projection-batch.max-chunks", self.max_chunks),
+            (
+                "server.projection-batch.max-vector-points",
+                self.max_vector_points,
+            ),
+            (
+                "server.projection-batch.max-redirects",
+                self.max_redirects as u64,
+            ),
+            (
+                "server.projection-batch.max-elapsed-secs",
+                self.max_elapsed_secs,
+            ),
+            (
+                "server.projection-batch.max-query-window",
+                self.max_query_window as u64,
+            ),
+            (
+                "server.projection-batch.global-max-in-flight-requests",
+                self.global_max_in_flight_requests as u64,
+            ),
+            (
+                "server.projection-batch.caller-max-in-flight-requests",
+                self.caller_max_in_flight_requests as u64,
+            ),
+            (
+                "server.projection-batch.caller-rate-limit-per-minute",
+                self.caller_rate_limit_per_minute,
+            ),
+        ];
+        if let Some((field, _)) = fields.into_iter().find(|(_, value)| *value == 0) {
+            return Err(format!("{field} must be greater than zero"));
+        }
+        if self.max_input_bytes > self.max_aggregate_input_bytes {
+            return Err(
+                "server.projection-batch.max-input-bytes must not exceed max-aggregate-input-bytes"
+                    .to_string(),
+            );
+        }
+        if self.caller_max_in_flight_requests > self.global_max_in_flight_requests {
+            return Err("server.projection-batch.caller-max-in-flight-requests must not exceed global-max-in-flight-requests".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for ProjectionBatchConfig {
+    fn default() -> Self {
+        Self {
+            max_inputs: 32,
+            max_request_bytes: 1024 * 1024,
+            max_input_bytes: 16 * 1024,
+            max_query_bytes: 16 * 1024,
+            max_idempotency_key_bytes: 256,
+            max_aggregate_input_bytes: 256 * 1024,
+            max_response_bytes: 8 * 1024 * 1024,
+            max_pages: 1_000,
+            max_manifest_items: 10_000,
+            max_fetched_bytes_per_item: 16 * 1024 * 1024,
+            max_decompressed_bytes_per_item: 32 * 1024 * 1024,
+            max_prepared_bytes: 64 * 1024 * 1024,
+            max_documents: 10_000,
+            max_chunks: 100_000,
+            max_vector_points: 100_000,
+            max_redirects: 10,
+            max_elapsed_secs: 900,
+            max_query_window: 1_000,
+            global_max_in_flight_requests: 64,
+            caller_max_in_flight_requests: 8,
+            caller_rate_limit_per_minute: 120,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Config {
     /// The subcommand being executed (scrape, crawl, ask, etc.).
@@ -209,6 +354,9 @@ pub struct Config {
 
     /// Number of concurrent connections for batch operations (clamped 1–512). Flag: `--batch-concurrency`.
     pub batch_concurrency: usize,
+
+    /// Shared transport-neutral admission and owning-stage ceilings.
+    pub projection_batch: ProjectionBatchConfig,
 
     /// Block until async jobs complete instead of fire-and-forgetting. Flag: `--wait`.
     pub wait: bool,
