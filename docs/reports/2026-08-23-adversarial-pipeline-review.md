@@ -294,6 +294,38 @@ practice.
   char boundaries; all in-scope byte slicing is UTF-8-boundary-safe by
   construction; degenerate limits (0/1, overlap ≥ max) clamp safely.
 
+## Remediation status (updated 2026-08-23, same branch)
+
+Fixes are landing on this PR's branch alongside the report:
+
+- **C1, M7 + scheduler lows** — fixed in `fix(jobs): release leaked
+  reservations and fix queued-waiter liveness`: an `ActiveReservationGuard`
+  releases dropped active leases; renew failure attempts `fail()` first;
+  `reconcile()` terminalizes quarantined-active rows with stale renewals
+  (renewals clear quarantine, preserving live-lease fencing); queued-waiter
+  liveness moved to poll heartbeats on `renewed_at` with a 90 s threshold
+  decoupled from `WAIT_TIMEOUT`, making priority aging reachable. Provider
+  root cause is preserved when the failure release errors; `complete()`
+  fence loss after successful work now returns the value with a warning;
+  the cache state singleton self-heals in `prune()`. Accepted with
+  documenting comments: process-local writer gate, soft `max_entries`.
+- **H2, M4, M5, M6 + document lows** — fixed in `fix(document): bound
+  fence/frontmatter chunks and harden markdown parsing`: fence and
+  frontmatter spans are hard-windowed at `max_chars` (unterminated fences
+  included); `html_article` cursor fixed; frontmatter delimiters strict
+  with CRLF support; the openapi/swagger path heuristic restricted to
+  json/yaml/yml; injected limits flow through the size-fallback path; wide
+  fence language parsing fixed. Accepted: heading suppression after a
+  stray fence remains (treating an unclosed fence as closed at EOF is
+  unsafe); output size is now bounded regardless.
+- **M1 + embedding-cache lows** — fixed in `fix(embedding): gate vector
+  cache on verified identity and harden decorator`: cache decoration
+  requires `identity.verified`; batch validation runs regardless of cache
+  warmth; miss results are verified against `chunk_id` order and fail
+  closed on misalignment; full-hit usage reports unmetered. Accepted with
+  a documenting comment: the bounded ~750 ms worst-case inline stall.
+- **H1, M2, M3 + executor lows** — remediation in progress on this branch.
+
 ## Suggested priority
 
 1. C1 — capacity leak wedges provider domains across restarts.
