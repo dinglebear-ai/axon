@@ -47,6 +47,10 @@ impl ProgressStatusWriter for NoopProgressWriter {
 #[derive(Debug, Default)]
 struct CoordinatorState {
     phase_counts: Vec<(PipelinePhase, StageCounts)>,
+    /// The phase most recently published as a transition (`report`/
+    /// `checkpoint`). Count-only checkpoints reuse it so they never regress
+    /// the externally visible phase.
+    current_phase: Option<PipelinePhase>,
     #[cfg(test)]
     phase_history: Vec<PipelinePhase>,
 }
@@ -152,6 +156,24 @@ impl ProgressCoordinator {
         self.persist(phase, counts, &message).await;
     }
 
+    /// Persist a count-only checkpoint for `phase` without regressing the
+    /// externally published phase: the counts are stored under `phase` (so
+    /// later `phase` snapshots continue from them) while the durable update
+    /// keeps the currently published phase. Used by speculative prefetch
+    /// acquisition, whose Fetching counts would otherwise freeze at the first
+    /// batch (2026-08-23 adversarial pipeline review, low: fetch-count
+    /// freeze).
+    async fn checkpoint_counts(
+        &self,
+        phase: PipelinePhase,
+        counts: StageCounts,
+        message: impl Into<String>,
+    ) {
+        let message = message.into();
+        self.persist_with_phase_floor(phase, counts, &message, true)
+            .await;
+    }
+
     #[cfg(test)]
     pub(super) async fn latest_counts(&self, phase: PipelinePhase) -> Option<StageCounts> {
         self.state
@@ -187,19 +209,39 @@ impl ProgressCoordinator {
         counts: StageCounts,
         message: &str,
     ) -> (StageCounts, bool) {
-        let counts = {
+        self.persist_with_phase_floor(phase, counts, message, false)
+            .await
+    }
+
+    async fn persist_with_phase_floor(
+        &self,
+        phase: PipelinePhase,
+        counts: StageCounts,
+        message: &str,
+        keep_published_phase: bool,
+    ) -> (StageCounts, bool) {
+        let (published_phase, counts) = {
             let mut state = self.state.lock().await;
+            let published_phase = if keep_published_phase {
+                state.current_phase.unwrap_or(phase)
+            } else {
+                state.current_phase = Some(phase);
+                phase
+            };
             #[cfg(test)]
-            if state.phase_history.last() != Some(&phase) {
-                state.phase_history.push(phase);
+            if state.phase_history.last() != Some(&published_phase) {
+                state.phase_history.push(published_phase);
             }
-            normalize_phase_counts(&mut state.phase_counts, phase, counts)
+            (
+                published_phase,
+                normalize_phase_counts(&mut state.phase_counts, phase, counts),
+            )
         };
         let update = JobStatusUpdate {
             job_id: self.job_id,
             source_id: Some(self.source_id.clone()),
             status: LifecycleStatus::Running,
-            phase,
+            phase: published_phase,
             stage_id: None,
             counts: Some(counts.clone()),
             current: Some(ProgressCurrent {
@@ -301,9 +343,6 @@ impl AcquisitionBatchProgress<'_> {
         if !should_write {
             return;
         }
-        if !self.publish_phase {
-            return;
-        }
         let global_items = self
             .items_offset
             .saturating_add(items_done)
@@ -312,23 +351,30 @@ impl AcquisitionBatchProgress<'_> {
             .documents_offset
             .saturating_add(documents_done)
             .min(self.generation_items_total);
-        self.coordinator
-            .checkpoint(
-                PipelinePhase::Fetching,
-                stage_counts(
-                    Some(self.generation_items_total),
-                    global_items,
-                    Some(self.generation_items_total),
-                    global_documents,
-                    None,
-                    0,
-                ),
-                format!(
-                    "acquired {global_items}/{} source items",
-                    self.generation_items_total
-                ),
-            )
-            .await;
+        let counts = stage_counts(
+            Some(self.generation_items_total),
+            global_items,
+            Some(self.generation_items_total),
+            global_documents,
+            None,
+            0,
+        );
+        let message = format!(
+            "acquired {global_items}/{} source items",
+            self.generation_items_total
+        );
+        if self.publish_phase {
+            self.coordinator
+                .checkpoint(PipelinePhase::Fetching, counts, message)
+                .await;
+        } else {
+            // Speculative prefetch acquisition: keep the Fetching counts
+            // advancing without regressing the published phase of the batch
+            // still being processed.
+            self.coordinator
+                .checkpoint_counts(PipelinePhase::Fetching, counts, message)
+                .await;
+        }
     }
 }
 

@@ -147,6 +147,54 @@ async fn malformed_and_regressing_adapter_snapshots_are_clamped_monotonically() 
 }
 
 #[tokio::test]
+async fn speculative_batch_counts_advance_without_regressing_the_published_phase() {
+    let writer = Arc::new(RecordingWriter::default());
+    let coordinator = coordinator(writer.clone());
+    coordinator
+        .checkpoint(
+            PipelinePhase::Fetching,
+            stage_counts(Some(130), 0, Some(130), 0, None, 0),
+            "starting acquisition",
+        )
+        .await;
+    coordinator
+        .acquisition_batch(130, 64, 0, 0, true)
+        .complete(64)
+        .await;
+    // The pipeline processes the first batch while the next batch prefetches
+    // speculatively (publish_phase = false).
+    coordinator
+        .checkpoint(
+            PipelinePhase::Normalizing,
+            stage_counts(None, 10, None, 10, None, 0),
+            "normalizing source documents",
+        )
+        .await;
+    coordinator
+        .acquisition_batch(130, 64, 64, 64, false)
+        .complete(64)
+        .await;
+
+    assert_eq!(
+        coordinator
+            .latest_counts(PipelinePhase::Fetching)
+            .await
+            .expect("fetching counts")
+            .items_done,
+        128,
+        "speculative acquisition must keep the Fetching counts advancing"
+    );
+    let updates = writer.updates.lock().await;
+    let last = updates.last().expect("persisted updates");
+    assert_eq!(
+        last.phase,
+        PipelinePhase::Normalizing,
+        "the count-only checkpoint must not regress the published phase"
+    );
+    assert_eq!(last.counts.as_ref().expect("counts").items_done, 128);
+}
+
+#[tokio::test]
 async fn progress_persistence_failure_is_non_fatal() {
     let writer = Arc::new(RecordingWriter {
         updates: Mutex::new(Vec::new()),

@@ -324,7 +324,21 @@ Fixes are landing on this PR's branch alongside the report:
   warmth; miss results are verified against `chunk_id` order and fail
   closed on misalignment; full-hit usage reports unmetered. Accepted with
   a documenting comment: the bounded ~750 ms worst-case inline stall.
-- **H1, M2, M3 + executor lows** — remediation in progress on this branch.
+- **H1, M2, M3 + executor lows** — fixed in `fix(services): publish
+  removal-only generations and harden executor overlap`: zero changed
+  batches now fall through to finalize/publish (removal-only and
+  failed-only recrawls publish and retire correctly, covered end-to-end);
+  overlapped embedding calls heartbeat the currently-published phase, so
+  durable job phases stay monotonic; job cancellation is cooperative — the
+  executor races the generation against the cancellation token so the
+  existing vector-cleanup/`fail_generation` path runs, with a bounded
+  grace in the runner (stages outside the checkpoint window keep the old
+  hard-drop as an accepted limitation); Fetching counts advance under the
+  published phase for prefetch adapters; a successful upsert's accounting
+  is absorbed before a paired embedding failure propagates; in-batch
+  acquisition/enrichment/clean-output artifacts register with the cleanup
+  guard as they are produced. Accepted: `tokio::join!` failure latency
+  (bounded, leak-free).
 
 ## Suggested priority
 

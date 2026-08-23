@@ -36,6 +36,7 @@ use tokio_util::sync::CancellationToken;
 
 mod source_runner;
 use source_runner::SourceRunner;
+#[cfg(test)]
 pub(crate) use source_runner::run_source_request_with_context;
 
 /// Every `JobKind` the in-process worker runtime executes — the exact set

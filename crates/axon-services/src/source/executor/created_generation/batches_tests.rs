@@ -153,6 +153,20 @@ async fn run_actual_generation_batches(
     GenerationStageProgress,
     ProgressCoordinator,
 ) {
+    run_actual_generation_batches_with_diff(adapter, artifact_store, keep_cleanup_armed, |_| {})
+        .await
+}
+
+async fn run_actual_generation_batches_with_diff(
+    adapter: Arc<ControlledBatchAdapter>,
+    artifact_store: Option<Arc<dyn ArtifactStore>>,
+    keep_cleanup_armed: bool,
+    mutate_diff: impl FnOnce(&mut SourceManifestDiff),
+) -> (
+    anyhow::Result<()>,
+    GenerationStageProgress,
+    ProgressCoordinator,
+) {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ledger = Arc::new(FakeLedgerStore::new());
     let mut runtime = TargetLocalSourceRuntime::new(
@@ -200,12 +214,13 @@ async fn run_actual_generation_batches(
         .await
         .expect("source summary");
     let manifest = adapter.discover(&input.plan).await.expect("manifest");
-    let diff = runtime
+    let mut diff = runtime
         .ledger
         .diff_manifest(manifest)
         .await
         .expect("manifest diff");
-    let changed_total = diff.added.len() as u64;
+    mutate_diff(&mut diff);
+    let changed_total = diff.added.len().saturating_add(diff.modified.len()) as u64;
     let generation = diff.next_generation.clone();
     let emitter = SourceEventEmitter::new(None, Some(input.plan.job_id));
     let coordinator = ProgressCoordinator::test_noop();
@@ -275,6 +290,16 @@ async fn process_generation_batches_prefetches_one_batch_while_processing_the_cu
             .documents_done,
         (ACQUIRE_BATCH_SIZE * 2 + 1) as u64
     );
+    assert_eq!(
+        coordinator
+            .latest_counts(PipelinePhase::Fetching)
+            .await
+            .expect("fetching progress")
+            .items_done,
+        (ACQUIRE_BATCH_SIZE * 2 + 1) as u64,
+        "speculative acquisitions must keep the Fetching counts advancing \
+         past the first batch"
+    );
     let phases = coordinator.recorded_phase_order().await;
     assert_eq!(
         phases
@@ -282,7 +307,85 @@ async fn process_generation_batches_prefetches_one_batch_while_processing_the_cu
             .filter(|phase| **phase == PipelinePhase::Fetching)
             .count(),
         1,
-        "speculative acquisition must update only its private counters"
+        "speculative acquisition must not regress the published phase"
+    );
+}
+
+#[tokio::test]
+async fn removal_only_diff_skips_acquisition_and_completes() {
+    let (acquire_started_tx, mut acquire_started_rx) = mpsc::unbounded_channel();
+    let (normalize_started_tx, _normalize_started_rx) = mpsc::unbounded_channel();
+    let adapter = Arc::new(ControlledBatchAdapter::new(
+        1,
+        acquire_started_tx,
+        normalize_started_tx,
+        None,
+        AdapterFailures::default(),
+    ));
+
+    let (result, stage, _) =
+        run_actual_generation_batches_with_diff(adapter, None, false, |diff| {
+            let removed = std::mem::take(&mut diff.added);
+            diff.counts.added = 0;
+            diff.counts.removed = removed.len() as u64;
+            diff.removed = removed;
+        })
+        .await;
+
+    result.expect(
+        "a removal-only diff has zero changed acquisition batches and must fall \
+         through to finalization instead of failing the generation (H1)",
+    );
+    assert_eq!(stage.acquired_items, 0);
+    assert!(
+        acquire_started_rx.try_recv().is_err(),
+        "removal-only diffs must not acquire anything"
+    );
+}
+
+#[tokio::test]
+async fn failed_only_diff_skips_acquisition_and_completes() {
+    let (acquire_started_tx, mut acquire_started_rx) = mpsc::unbounded_channel();
+    let (normalize_started_tx, _normalize_started_rx) = mpsc::unbounded_channel();
+    let adapter = Arc::new(ControlledBatchAdapter::new(
+        1,
+        acquire_started_tx,
+        normalize_started_tx,
+        None,
+        AdapterFailures::default(),
+    ));
+
+    let (result, stage, _) =
+        run_actual_generation_batches_with_diff(adapter, None, false, |diff| {
+            let failed = std::mem::take(&mut diff.added);
+            diff.counts.added = 0;
+            diff.counts.failed = failed.len() as u64;
+            diff.failed = failed
+                .into_iter()
+                .map(|item| ManifestItemFailure {
+                    item,
+                    error: SourceError {
+                        code: "source.item_failed".to_string(),
+                        severity: Severity::Failed,
+                        message: "synthetic failed manifest item".to_string(),
+                        source_item_key: None,
+                        retryable: true,
+                        provider_id: None,
+                        cause: None,
+                    },
+                })
+                .collect();
+        })
+        .await;
+
+    result.expect(
+        "a failed-only diff has zero changed acquisition batches and must fall \
+         through to finalization instead of failing the generation (H1)",
+    );
+    assert_eq!(stage.acquired_items, 0);
+    assert!(
+        acquire_started_rx.try_recv().is_err(),
+        "failed-only diffs must not acquire anything"
     );
 }
 
