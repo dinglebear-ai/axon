@@ -315,6 +315,9 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     cfg.tei_request_timeout_ms = 250;
     cfg.embed_prep_concurrency = 3;
     cfg.embed_pool_max_inputs = 640;
+    // Cache enabled in config, but the identity below is unverified fallback —
+    // the runtime must fail open to the raw provider with no cache decoration.
+    cfg.embed_cache_enabled = true;
 
     let jobs: Arc<dyn JobStore> = Arc::new(FakeJobWatchStore::new());
     // The ledger binds to this shared pool (no separate ledger.db, no eager I/O).
@@ -344,6 +347,10 @@ async fn from_config_falls_back_to_default_embedding_identity_when_tei_unreachab
     assert_eq!(
         persisted, 0,
         "unverified fallback identity must never poison the durable cache"
+    );
+    assert!(
+        runtime.embedding_cache_store.is_none(),
+        "an unverified embedding identity must not enable the embedding vector cache"
     );
 }
 
@@ -385,6 +392,11 @@ async fn runtime_embedding_cache_respects_enabled_and_disabled_configuration() {
         let runtime = TargetLocalSourceRuntime::from_config(&cfg, jobs, pool.clone())
             .await
             .unwrap();
+        assert_eq!(
+            runtime.embedding_cache_store.is_some(),
+            cache_enabled,
+            "a verified identity must decorate with the cache exactly when enabled"
+        );
         let request = EmbeddingBatch {
             batch_id: BatchId::new(uuid::Uuid::new_v4()),
             job_id: JobId::new(uuid::Uuid::new_v4()),

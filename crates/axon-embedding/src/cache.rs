@@ -15,11 +15,17 @@ use axon_api::source::{
 };
 use sha2::{Digest, Sha256};
 
+use crate::batch::validate_batch;
 use crate::provider::EmbeddingProvider;
 
 const CACHE_KEY_VERSION: &str = "embedding-vector-cache-v1";
 // Cache persistence is optional and local. It must never add an unbounded wait
 // to a provider request when SQLite is busy or its pool is saturated.
+//
+// Accepted tradeoff: fail-open is outcome-open, not latency-open. With SQLite
+// fully saturated, one `embed` call can still stall inline for up to ~3x this
+// bound (~750 ms worst case: one bounded read plus up to two detachment waits)
+// before the provider request proceeds.
 const OPTIONAL_CACHE_OPERATION_TIMEOUT: Duration = Duration::from_millis(250);
 const MAX_OUTSTANDING_CACHE_MUTATIONS: usize = 2;
 
@@ -214,9 +220,31 @@ impl CachedEmbeddingProvider {
         if miss_items.is_empty() {
             return Ok((unique_miss_keys, None));
         }
+        let miss_chunk_ids = miss_items
+            .iter()
+            .map(|item| item.chunk_id.clone())
+            .collect::<Vec<_>>();
         let mut miss_batch = batch.clone();
         miss_batch.items = miss_items;
         let result = self.inner.embed(miss_batch).await?;
+        // Miss keys and returned vectors are zipped by position below (here and
+        // in `embed`); a provider that drops, duplicates, or reorders vectors
+        // would otherwise cache wrong text→vector pairs. Fail the batch closed
+        // instead, caching nothing from a mis-aligned result.
+        let aligned = result.vectors.len() == miss_chunk_ids.len()
+            && result
+                .vectors
+                .iter()
+                .zip(&miss_chunk_ids)
+                .all(|(vector, chunk_id)| &vector.chunk_id == chunk_id);
+        if !aligned {
+            metrics::counter!("axon_embedding_cache_misaligned_results_total").increment(1);
+            return Err(ApiError::new(
+                "embedding.cache.result_misaligned",
+                axon_error::ErrorStage::Embedding,
+                "embedding provider returned vectors that do not align with the requested inputs",
+            ));
+        }
         let entries = unique_miss_keys
             .iter()
             .zip(&result.vectors)
@@ -376,6 +404,10 @@ fn record_store_error(operation: &'static str, key_count: usize, error: &CacheSt
 #[async_trait]
 impl EmbeddingProvider for CachedEmbeddingProvider {
     async fn embed(&self, batch: EmbeddingBatch) -> Result<EmbeddingResult, ApiError> {
+        // The decorator must preserve the inner provider contract regardless of
+        // cache warmth: empty/blank/duplicate batches fail identically whether
+        // the batch would hit or miss.
+        validate_batch(&batch)?;
         let keys = batch
             .items
             .iter()
@@ -445,8 +477,11 @@ impl EmbeddingProvider for CachedEmbeddingProvider {
         let usage = miss_result
             .as_ref()
             .map(|result| result.usage.clone())
+            // A full cache hit is unmetered; report `None` like an unmetered
+            // provider response rather than `Some(0)`, so usage aggregations do
+            // not treat it as a metered zero-token request.
             .unwrap_or(ProviderUsage {
-                input_tokens: Some(0),
+                input_tokens: None,
                 output_tokens: None,
                 requests: 0,
                 duration_ms: 0,
