@@ -8,9 +8,21 @@ pub(crate) const MAX_PLAIN_TEXT_CHUNK_BYTES: usize = 4096;
 pub(crate) const MAX_PLAIN_TEXT_CHUNK_CHARS: usize = 2000;
 
 pub(crate) fn plain_text_windows(text: &str) -> Vec<DocumentChunk> {
+    plain_text_windows_with_limits(text, MAX_PLAIN_TEXT_CHUNK_BYTES, MAX_PLAIN_TEXT_CHUNK_CHARS)
+}
+
+pub(crate) fn plain_text_windows_with_limits(
+    text: &str,
+    max_bytes: usize,
+    max_chars: usize,
+) -> Vec<DocumentChunk> {
+    // A single UTF-8 char is up to 4 bytes; anything smaller than that as a
+    // byte cap could never make progress.
+    let max_bytes = max_bytes.max(4);
+    let max_chars = max_chars.max(1);
     paragraphs(text)
         .into_iter()
-        .flat_map(|(start, end)| bounded_windows(text, start, end))
+        .flat_map(|(start, end)| bounded_windows(text, start, end, max_bytes, max_chars))
         .map(|(start, end)| {
             DocumentChunk::new(text[start..end].to_string(), source_range(text, start, end))
         })
@@ -103,7 +115,13 @@ fn paragraphs(text: &str) -> Vec<(usize, usize)> {
         .collect()
 }
 
-fn bounded_windows(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
+fn bounded_windows(
+    text: &str,
+    start: usize,
+    end: usize,
+    max_bytes: usize,
+    max_chars: usize,
+) -> Vec<(usize, usize)> {
     let mut spans = Vec::new();
     let mut chunk_start = start;
     let mut chars = 0usize;
@@ -111,10 +129,7 @@ fn bounded_windows(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> 
     for (relative, ch) in text[start..end].char_indices() {
         let pos = start + relative;
         let next = pos + ch.len_utf8();
-        if pos > chunk_start
-            && (next - chunk_start > MAX_PLAIN_TEXT_CHUNK_BYTES
-                || chars + 1 > MAX_PLAIN_TEXT_CHUNK_CHARS)
-        {
+        if pos > chunk_start && (next - chunk_start > max_bytes || chars + 1 > max_chars) {
             spans.push((chunk_start, pos));
             chunk_start = pos;
             chars = 0;

@@ -952,3 +952,52 @@ fn tutorial_credential_examples_are_preserved_before_chunking() {
         "low-confidence tutorial syntax must not trigger pre-chunk redaction"
     );
 }
+
+#[test]
+fn markdown_windowed_fallback_honors_injected_limits() {
+    // Fragment-prone adapter forces the plain_text_windows fallback for the
+    // MarkdownSections profile; the fallback must window at the injected
+    // markdown limits, not the hardcoded plain-text caps.
+    let mut doc = source_doc(
+        ContentKind::Markdown,
+        &format!("# Scraped\n{}", "fragment text ".repeat(60)),
+    );
+    doc.metadata.insert(
+        "source_adapter".to_string(),
+        serde_json::json!("web_scrape"),
+    );
+
+    let prepared = DocumentPreparer::new(DocumentPreparerConfig {
+        markdown_max_chars: 96,
+        markdown_min_chars: 1,
+        markdown_overlap_chars: 0,
+    })
+    .prepare(PrepareSourceDocumentRequest {
+        document: doc,
+        generation: SourceGenerationId::from("gen-md-fallback-limits"),
+        profile: Some(ChunkingProfile::MarkdownSections),
+        parse_facts: Vec::new(),
+        graph_candidates: Vec::new(),
+        warnings: Vec::new(),
+        errors: Vec::new(),
+    })
+    .unwrap()
+    .document;
+
+    assert!(prepared.chunks.len() > 1);
+    assert_eq!(
+        prepared.chunks[0].metadata["chunking_fallback"],
+        "size_or_adapter"
+    );
+    assert_eq!(
+        prepared.chunks[0].metadata["actual_chunking_method"],
+        "plain_text_windows"
+    );
+    assert!(
+        prepared
+            .chunks
+            .iter()
+            .all(|chunk| chunk.content.chars().count() <= 96),
+        "fallback windows must honor the injected markdown max_chars"
+    );
+}

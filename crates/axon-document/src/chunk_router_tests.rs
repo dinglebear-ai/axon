@@ -205,6 +205,40 @@ fn router_recognizes_common_manifest_and_config_files() {
     }
 }
 
+#[test]
+fn openapi_named_prose_routes_by_content_kind_not_path_substring() {
+    let guide = source_doc(
+        ContentKind::Markdown,
+        "# OpenAPI Guide\nHow to write specs.",
+    )
+    .with_path("docs/openapi-guide.md");
+    assert_eq!(
+        ChunkRouter.route(&guide).unwrap(),
+        ChunkingProfile::MarkdownSections,
+        "Markdown prose about OpenAPI must not route to the schema parser"
+    );
+
+    let swagger_page = source_doc(ContentKind::Html, "<html>swagger ui</html>")
+        .with_path("vendor/swagger-ui.html");
+    assert_eq!(
+        ChunkRouter.route(&swagger_page).unwrap(),
+        ChunkingProfile::HtmlArticle
+    );
+
+    let spec = source_doc(ContentKind::Yaml, "openapi: 3.1.0").with_path("openapi.yaml");
+    assert_eq!(
+        ChunkRouter.route(&spec).unwrap(),
+        ChunkingProfile::ApiSchema
+    );
+
+    let json_spec =
+        source_doc(ContentKind::Json, "{\"swagger\":\"2.0\"}").with_path("api/swagger.json");
+    assert_eq!(
+        ChunkRouter.route(&json_spec).unwrap(),
+        ChunkingProfile::ApiSchema
+    );
+}
+
 trait SourceDocTestExt {
     fn with_path(self, path: &str) -> Self;
 }

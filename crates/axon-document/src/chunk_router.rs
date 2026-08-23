@@ -416,8 +416,14 @@ fn is_session_turns(doc: &SourceDocument) -> bool {
 
 fn is_api_schema(doc: &SourceDocument) -> bool {
     let path = doc.path.as_deref().unwrap_or(&doc.canonical_uri);
-    path.contains("openapi")
-        || path.contains("swagger")
+    // The `openapi`/`swagger` path-substring heuristic only applies to files
+    // whose extension can plausibly hold a schema document; Markdown and
+    // other prose (e.g. `docs/openapi-guide.md`) must fall through to their
+    // normal content-kind routing.
+    let schema_plausible_extension = [".json", ".yaml", ".yml"]
+        .iter()
+        .any(|extension| path.ends_with(extension));
+    (schema_plausible_extension && (path.contains("openapi") || path.contains("swagger")))
         || path.ends_with(".graphql")
         || path.ends_with(".graphqls")
         || path.ends_with(".proto")

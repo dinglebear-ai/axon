@@ -37,13 +37,15 @@ pub(super) fn build_chunks(
     markdown_limits: MarkdownChunkLimits,
 ) -> ChunkBuild {
     let chunks = match profile {
-        ChunkingProfile::CodeSymbol if use_fallback => size_fallback_chunks(text, "code_blocks"),
+        ChunkingProfile::CodeSymbol if use_fallback => {
+            size_fallback_chunks(text, "code_blocks", None)
+        }
         ChunkingProfile::CodeSymbol => {
             code::code_symbols_with_facts(text, path, language_hint, parse_facts)
         }
         ChunkingProfile::CodeManifest => code::code_manifest(text, path),
         ChunkingProfile::MarkdownSections if use_fallback => {
-            size_fallback_chunks(text, "plain_text_windows")
+            size_fallback_chunks(text, "plain_text_windows", Some(markdown_limits))
         }
         ChunkingProfile::MarkdownSections => {
             markdown::markdown_sections_with_limits(text, markdown_limits)
@@ -84,8 +86,23 @@ pub(super) fn build_chunks(
 /// dispatch decision is inspectable on the resulting chunks, not just in the
 /// document-level `chunking_method` field, and stays within the vector
 /// payload's known-field allowlist.
-fn size_fallback_chunks(text: &str, fallback_method: &'static str) -> Vec<DocumentChunk> {
-    text::plain_text_windows(text)
+/// When the routed profile carries injected limits (Markdown), the fallback
+/// windows honor them instead of the hardcoded plain-text caps; the byte cap
+/// is derived from the char cap at the UTF-8 worst case of 4 bytes per char.
+fn size_fallback_chunks(
+    text: &str,
+    fallback_method: &'static str,
+    limits: Option<MarkdownChunkLimits>,
+) -> Vec<DocumentChunk> {
+    let chunks = match limits {
+        Some(limits) => text::plain_text_windows_with_limits(
+            text,
+            limits.max_chars().saturating_mul(4),
+            limits.max_chars(),
+        ),
+        None => text::plain_text_windows(text),
+    };
+    chunks
         .into_iter()
         .map(|chunk| {
             chunk

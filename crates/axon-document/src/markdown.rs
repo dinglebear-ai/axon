@@ -37,6 +37,10 @@ impl MarkdownChunkLimits {
             overlap_chars: overlap_chars.min(max_chars.saturating_sub(1)),
         }
     }
+
+    pub(crate) fn max_chars(self) -> usize {
+        self.max_chars
+    }
 }
 
 /// One ATX heading line: byte offset of its `#` run, its level (1-6), and
@@ -126,6 +130,10 @@ pub(crate) fn html_article(text: &str) -> Vec<DocumentChunk> {
     while let Some(relative_open) = normalized[cursor..].find('<') {
         let open = cursor + relative_open;
         plain.push_str(&text[cursor..open]);
+        // The pre-`<` text is now consumed; keep the cursor on the `<` so a
+        // trailing unclosed tag is emitted once by the tail push below
+        // instead of duplicating the text pushed above.
+        cursor = open;
         let Some(relative_close) = normalized[open + 1..].find('>') else {
             break;
         };
@@ -190,19 +198,27 @@ fn is_non_content_html_tag(name: &str) -> bool {
 /// Returns whether frontmatter was found and the byte offset where the
 /// document body starts.
 fn extract_frontmatter(text: &str) -> (Option<()>, usize) {
-    let Some(rest) = text.strip_prefix("---\n") else {
+    let open_len = if text.starts_with("---\n") {
+        "---\n".len()
+    } else if text.starts_with("---\r\n") {
+        "---\r\n".len()
+    } else {
         return (None, 0);
     };
-    let Some(close) = rest.find("\n---") else {
-        return (None, 0);
-    };
-    let after_delim = close + "\n---".len();
-    let tail = &rest[after_delim..];
-    let consumed = tail
-        .find('\n')
-        .map(|nl| after_delim + nl + 1)
-        .unwrap_or(rest.len());
-    (Some(()), 4 + consumed)
+    let rest = &text[open_len..];
+    let mut offset = 0usize;
+    for line in rest.split_inclusive('\n') {
+        let line_end = offset + line.len();
+        // The closing delimiter must be a whole line that is exactly `---`
+        // (trailing `\r`/whitespace tolerated); `----` or `--- junk` are
+        // content, not closers. `offset > 0` keeps the opener from also
+        // acting as its own closer on `---\n---`-shaped documents.
+        if offset > 0 && line.trim_end() == "---" {
+            return (Some(()), open_len + line_end);
+        }
+        offset = line_end;
+    }
+    (None, 0)
 }
 
 /// Byte offsets/levels/titles of ATX headings (`#`..`######`) that are not
@@ -248,17 +264,23 @@ fn atx_heading_level(line: &str) -> Option<usize> {
 }
 
 /// First fenced code block's language label within `content`, if any.
+/// Fence-state aware: uses the shared `opens_fence`/`closes_fence` scanner so
+/// wide fences (` ````rust ` → `rust`, not `` `rust ``) parse correctly and a
+/// fence-looking line inside an already-open fence of the other marker is
+/// treated as literal content, not a new opener.
 fn first_fence_language(content: &str) -> Option<String> {
+    let mut open_fence: Option<(char, usize)> = None;
     for line in content.lines() {
-        let trimmed = line.trim_start();
-        if let Some(lang) = trimmed
-            .strip_prefix("```")
-            .or_else(|| trimmed.strip_prefix("~~~"))
-        {
-            let lang = lang.trim();
-            if !lang.is_empty() {
-                return Some(lang.to_string());
+        let stripped = line.trim_end_matches('\r').trim_start();
+        if let Some((marker, width)) = open_fence {
+            if closes_fence(stripped, marker, width) {
+                open_fence = None;
             }
+        } else if let Some((marker, width, language)) = opens_fence(stripped) {
+            if let Some(language) = language {
+                return Some(language);
+            }
+            open_fence = Some((marker, width));
         }
     }
     None
