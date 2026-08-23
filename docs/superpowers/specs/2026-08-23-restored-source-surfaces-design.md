@@ -62,7 +62,10 @@ singular and batch shapes. Mutating source projections use
 optional caller-supplied idempotency key. Read-only `code-search` uses
 `Vec<QueryProjectionInput>` and intentionally has no idempotency field. CLI
 accepts one or more inputs and maps them into the same typed list used by MCP and
-REST. Duplicate source strings remain distinct ordered items unless their
+REST. Restored code search is committed-state retrieval only: it forces
+`ensure_fresh=false` and exposes no cwd-driven refresh control, so read-only
+callers cannot scan a checkout, acquire content, embed, or publish vectors.
+Duplicate source strings remain distinct ordered items unless their
 idempotency keys cause the canonical job layer to reuse work. This prevents the
 transports from independently encoding cardinality, correlation, scope,
 embedding, or filter semantics.
@@ -70,8 +73,9 @@ embedding, or filter semantics.
 Projection returns a canonical batch envelope containing one ordered result per
 input, even when the request contains one input. Per-input success or failure is
 preserved so one failed target does not discard successful siblings. The shared
-batch executor owns ordering, concurrency bounds, detached job creation, and
-aggregate status; transports only render or serialize the returned envelope.
+batch executor owns ordering, canonical job admission/waiting, read-only query
+coalescing, and aggregate status; transports only render or serialize the
+returned envelope.
 
 The reusable API contracts are generic:
 
@@ -90,10 +94,13 @@ BatchResult<T> {
 BatchItem<T> {
   index: usize,
   input: Option<String>,
-  status: LifecycleStatus,
-  result: Option<T>,
-  error: Option<ApiError>
+  outcome: BatchOutcome<T>
 }
+
+BatchOutcome<T> = completed(T)
+  | queued(JobDescriptor)
+  | failed(SanitizedApiError)
+  | canceled
 
 SourceProjectionInput {
   input: String,
@@ -106,7 +113,9 @@ QueryProjectionInput {
 ```
 
 `BatchResult<SourceResult>` and `BatchResult<QueryResult>` are the only batch
-envelopes; the transports must not introduce parallel batch response types.
+envelopes. The tagged outcome makes invalid success/result/error combinations
+unrepresentable while allowing detached items to carry job descriptors. The
+transports must not introduce parallel batch response types.
 `BatchItem.input` is present for synchronous initiating-caller results and
 omitted from detached job-descriptor responses under the disclosure rule below.
 
@@ -119,23 +128,32 @@ ID. Initial cancellation remains per item through the canonical jobs surface;
 the correlation contract leaves room for future grouped cancellation without
 fabricating it in this change.
 
-Correlation survives restart. The owning `axon-jobs` migration adds nullable
-`batch_id` columns to canonical `jobs` and `job_events`, plus an index supporting
-batch-filtered lifecycle lookup. Event constructors copy the job's batch ID;
-observe projections carry the same field through their existing metadata
-contract. The generated database schema and job/event DTO references own and
-verify these additions. No batch table, batch state machine, or batch job kind
-is introduced.
+Correlation survives restart. The owning `axon-jobs` migration adds the narrow
+association `projection_batch_items(batch_id, item_index, job_id, operation,
+reused, principal_id, created_at)`, with unique `(batch_id, item_index)` and
+ordered lookup indexes. It is inserted transactionally for every item,
+including an idempotently reused job. One canonical job may therefore appear in
+multiple initiating batches without rewriting its history. Existing event JSON
+carries initiating batch/item metadata where applicable; no physical
+`job_events.batch_id`, batch state machine, or batch job kind is introduced.
+Batch, job, and event retrieval enforce the same principal ownership as
+admission. Generated database/DTO references own and verify the association.
 
 Idempotency applies only to mutating `scrape`, `crawl`, `embed`, and `ingest`
-items. Keys are scoped by `(operation, authenticated caller identity,
-idempotency_key)`. Repeating an identical normalized request within the
-canonical idempotency-retention window reuses the existing item result or job.
-Reusing a key with a different normalized payload returns `409 Conflict` during
-preflight and executes nothing. Loopback callers use a stable loopback-system
-identity. The job layer, not individual transports, owns key lookup and request
-fingerprinting. `code-search` is read-only and neither accepts nor stores an
-idempotency key.
+items. Keys are scoped by `(operation, authenticated principal,
+idempotency_key)`. The principal is a versioned opaque digest of verified issuer
+and subject, never an email, token, or credential; CLI/loopback uses Axon
+instance identity plus OS uid rather than one host-global identity. Projection
+code derives a bounded opaque storage key while preserving the existing global
+canonical-job idempotency column/index and legacy caller behavior.
+`RequestFingerprintV1` hashes semantic operation, normalized target, effective
+fixed/options/limits, collection, and content filters, excluding batch/index,
+credentials, timestamps, and volatile snapshots. Repeating an identical
+request while its canonical job is retained reuses that result/job. A different
+fingerprint returns `409 Conflict` during atomic admission and executes nothing.
+Foreground and detached source calls both use this admission transaction:
+foreground means admit atomically and wait for the admitted/reused jobs, not
+execute outside the job store. `code-search` accepts no idempotency key.
 
 Existing `SourceRequest`, `SourceResult`, `QueryRequest`, and query-result DTOs
 remain the service boundary and response shape. No new domain service trait,
@@ -148,32 +166,30 @@ under the existing `[server]` configuration section, with generated TOML and
 environment documentation:
 
 - `projection-batch-max-inputs`
-- `projection-batch-max-concurrency`
-- `projection-batch-max-expanded-items`
+- `projection-batch-max-request-bytes`
+- per-input, query, and idempotency-key byte ceilings;
+- operation-specific page, manifest-item, prepared-byte, document, chunk,
+  vector-point, query-window, and response-byte ceilings.
 
-Defaults must be conservative and identical for CLI, MCP, and REST. A caller
-cannot raise server-configured ceilings through request fields. Input count is
-checked before route resolution. The expanded-item budget is shared across the
-batch and consumed by discovered crawl pages, prepared documents, or query
-results as appropriate; reaching it stops scheduling further expansion and
-produces structured per-item limit outcomes rather than unbounded work.
+Defaults are conservative and identical for CLI, MCP, and REST. HTTP bodies are
+bounded before deserialization; decoded input count and aggregate bytes are
+checked before route resolution. A caller may only lower an owning limit:
+`effective = min(caller_limit, fixed_operation_limit, server_ceiling)`. Limits
+never raise scrape's fixed `1` or a caller's smaller value. Each family persists
+and enforces the units it actually creates before scheduling unit `limit + 1`.
+Adapters unable to enforce their declared unit fail preflight instead of
+advertising a fictional generic expanded-item ceiling. Redirect depth, elapsed
+time, fetched/decompressed bytes, and response bytes are bounded separately.
 
-The aggregate expanded-item ceiling is converted during preflight into
-deterministic per-item limits that are persisted in each canonical request/job.
-Each input receives `floor(max_expanded_items / input_count)` units, and the
-first `max_expanded_items % input_count` ordered inputs receive one additional
-unit. A ceiling smaller than the input count is rejected before execution.
-Unused units are not dynamically redistributed. Crawl projections apply the
-allocation to page/item discovery limits; embed/ingest apply it to prepared
-document/item limits; code-search applies it to result limits. This makes the
-aggregate ceiling enforceable after restart without an in-memory batch
-coordinator.
-
-Batch admission does not create a private concurrency lane. Every item still
-passes through existing scheduler claims and provider reservations, including
-provider cooldown and global worker limits. Batch concurrency is an additional
-upper bound, never a replacement for scheduler admission, so a large request
-cannot monopolize TEI, Chrome, Qdrant, or source workers.
+Batch admission creates no private concurrency lane. Every mutating item is a
+canonical scheduled job and passes through existing claims, provider
+reservations, cooldowns, queue caps, and global worker limits. Foreground calls
+initially admit atomically and wait sequentially in stable input order; there is
+no unenforceable per-request concurrency knob. Detached fairness remains owned
+by the canonical scheduler. Global caller/request admission and rate limits
+reject overload with sanitized `429`. Read-only code search acquires existing
+global query/embedding permits and coalesces identical normalized plans within
+one batch while preserving duplicate ordered outputs.
 
 Validation, route resolution, and authorization are a whole-batch preflight.
 Every item is projected, validated, resolved, and authorization-checked before
@@ -184,9 +200,15 @@ successful preflight remain per-item outcomes so successful siblings are not
 discarded.
 
 Preflight is side-effect free. It may parse, normalize, classify, resolve local
-configuration, inspect caller scopes, and consult idempotency metadata. It must
+configuration, inspect caller scopes, and compute idempotency metadata. It must
 not fetch remote content, invoke Chrome, clone repositories, execute tools,
 create artifacts, reserve providers, enqueue jobs, or write ledger/vector state.
+It returns a prepared canonical target plus authorization evidence. Execution
+consumes that identity without permissive rerouting and rechecks use-time
+boundaries fail-closed: every redirect/connect repeats scheme, userinfo,
+DNS/IP/private/link-local/metadata checks; local traversal uses canonical
+allowed-root containment with no-follow or descriptor-based protection against
+`..`, absolute escape, and symlink replacement.
 
 Aggregate transport status is deterministic:
 
@@ -194,6 +216,7 @@ Aggregate transport status is deterministic:
   `4xx`, with no `BatchResult` execution payload;
 - idempotency-key collision with a different normalized payload: request-level
   `409`, with no execution;
+- oversized bodies/results or saturated admission: sanitized `413`/`429`;
 - completed inline batch, including mixed runtime outcomes: `200` with ordered
   `BatchResult` items;
 - successfully accepted detached batch: `202` with an ordered job descriptor
@@ -202,12 +225,17 @@ Aggregate transport status is deterministic:
 - operational failures after execution begins: `200` with failed per-item
   statuses and structured errors.
 
-Detached admission is atomic. After preflight succeeds, one `axon-jobs`
-transaction inserts every item job, its persisted projection limits,
-idempotency metadata, and shared `batch_id`; any insert or constraint failure
-rolls back the entire transaction. A `202` response is emitted only after that
-transaction commits. The transport must never loop over single-job enqueue and
-return a partially admitted batch.
+Admission is atomic for foreground and detached modes. Before one short
+`BEGIN IMMEDIATE`, Axon validates stage plans, serializes bounded canonical JSON,
+computes fingerprints/opaque keys, and allocates IDs. Inside the transaction it
+fetches submitted keys set-wise, validates duplicates/reuse/collisions,
+bulk-inserts new jobs/stages in bind-safe chunks, and inserts every batch-item
+association. Any failure rolls back the transaction; the whole operation uses
+the canonical transient SQLite busy/snapshot retry boundary. Tests cover
+same-key same/different fingerprints, mixed new/reused items, two-pool
+contention, cancellation before commit, populated legacy databases, and retry
+after a committed response is lost. A `202` or foreground wait begins only
+after commit; transports never loop over single-job enqueue.
 
 ## CLI Design
 
@@ -232,22 +260,26 @@ command/service renderer for every ordered query result.
 CLI artifact output is overwrite-safe. A one-input request may use
 `--output FILE`. A request containing multiple inputs rejects `--output` and
 requires either `--output-dir DIR` or an explicit filename template containing
-an item discriminator such as `{index}` or `{input_hash}`. Paths are normalized
-and collision-checked for the whole batch before execution. JSON written to
-stdout remains one batch envelope; progress and diagnostics remain on stderr.
+an item discriminator such as `{index}` or `{input_hash}`. The existing output
+directory must canonicalize beneath the allowed root; substitutions are limited
+to numeric index and opaque digest and cannot contain separators. Writes use
+no-follow/create-new temporary files and atomic rename without clobbering
+existing targets. Traversal, absolute escape, symlink/hardlink swaps,
+case/Unicode collisions, disk-full, and partial-write failures are tested before
+this is considered overwrite-safe. JSON written to stdout remains one batch
+envelope; progress and diagnostics remain on stderr.
 
-Per-item idempotency uses repeatable paired CLI groups:
+Per-item idempotency uses a self-contained repeatable item representation:
 
 ```text
-axon crawl --input URL_A --idempotency-key KEY_A \
-           --input URL_B --idempotency-key KEY_B
+axon crawl --item '{"input":"URL_A","idempotency_key":"KEY_A"}' \
+           --item '{"input":"URL_B","idempotency_key":"KEY_B"}'
 ```
 
-Each `--idempotency-key` binds to the immediately preceding `--input`. Bare
-positional inputs remain supported when keys are unnecessary, but keyed and
-positional forms cannot be mixed in one invocation. A leading key, two keys for
-one input, an unpaired input in keyed mode, or any idempotency option on
-`code-search` is a parse error before configuration or service initialization.
+`--request-file` accepts the same canonical batch JSON for longer requests.
+Bare positional inputs remain supported when keys are unnecessary, but item,
+request-file, and positional forms cannot be mixed. Unknown/duplicate item
+fields or any idempotency field on `code-search` fail before service creation.
 
 Help and completions describe each operation in task language. The removed
 command registries and negative parser tests are updated so these five names
@@ -300,12 +332,10 @@ POST /v1/code-search
 ```
 
 Each endpoint accepts the same narrow one-or-many DTO used by CLI and MCP and
-returns the shared ordered batch envelope. Source endpoints project their body
-and call a shared internal source-handler function extracted from
-`crates/axon-web/src/server/handlers/sources.rs`; they do not issue an internal
-HTTP request or duplicate runtime orchestration. `code-search` similarly calls
-the query handler/service seam for each projected request through the shared
-batch executor.
+returns the shared ordered batch envelope. Every handler calls the public
+`axon-services::projections` facade directly; transport-local helpers only map
+HTTP status and response bodies. Focused handlers neither call one another nor
+issue internal HTTP requests or duplicate runtime orchestration.
 
 Routes are mounted and documented through the existing router, schema registry,
 and OpenAPI generator. `/v1/scrape`, `/v1/crawl`, `/v1/embed`, and `/v1/ingest`
@@ -341,14 +371,22 @@ additive capability; it does not remove the universal source/query contracts.
 
 The shared executor emits structured `accepted`, `started`, and `completed`
 batch events carrying `batch_id`, operation, input count, scheduled count,
-success/failure/canceled counts, duration, and limit exhaustion. Per-item events
-carry `batch_id` and stable input index alongside existing job/source IDs.
+success/failure/canceled counts, duration, and limit exhaustion. Detached
+`accepted` is emitted only after admission commits; rollback cannot create a
+phantom acceptance. Telemetry is best-effort and never changes an otherwise
+successful operation result; dropped emission increments a bounded counter.
+Per-item events carry `batch_id` and stable input index alongside existing
+job/source IDs.
 
 Metrics and ordinary logs never include raw input strings, query text,
 credentials, headers, local paths, or caller idempotency keys. Diagnostics use
 the batch ID, item index, existing opaque source/job IDs, or a boundary-approved
-redacted hash. Existing shared redaction and artifact boundaries remain
-mandatory.
+redacted hash. Persisted auth state contains only opaque principal/scopes and
+the minimum authorization decision—never bearer tokens or secret config.
+Transport errors are sanitized before entering `BatchOutcome::Failed`, and
+retained request/fingerprint data follows canonical database permissions,
+retention, and retrieval authorization. Existing redaction/artifact boundaries
+remain mandatory.
 
 The initiating authenticated caller receives its original raw input string in
 the synchronous `BatchItem.input` response so ordered results remain usable.
@@ -382,15 +420,16 @@ Add focused, modern-layout modules under `crates/axon-api/src/` for:
   fixed fields, accepted caller fields, scope, mutation class, batch support,
   idempotency support, result type, and contract version.
 
-The registry generates these owned artifacts:
+The registry generates descriptive JSON/Markdown metadata and capability/schema
+inputs. Compile-time clap variants, MCP enums, Axum routes, operation IDs, and
+clients remain explicit Rust/generator inputs and must match the registry
+bijectively; the registry is not falsely described as a Rust code generator.
+Owned generated artifacts include:
 
 - `docs/reference/sources/projections.json` — machine-readable operation
   contract;
 - `docs/reference/sources/projections.md` — rendered human reference;
-- CLI command/help registry entries;
-- MCP action/schema/help metadata;
-- REST schema-registry/OpenAPI operation metadata;
-- generated client operation names and request/result type references.
+- CLI/MCP/REST descriptive registry metadata used by parity assertions.
 
 Add canonical fixtures under `tests/fixtures/source-projections/` covering all
 five operations:
@@ -399,16 +438,18 @@ five operations:
 - fixed defaults and forbidden override failures;
 - single and batch projection outputs;
 - source versus query idempotency behavior;
-- batch limits, deterministic budget allocation, and stable ordering;
+- batch limits, operation-specific effective limits, and stable ordering;
 - request-level validation/auth/idempotency errors;
 - inline, detached, mixed-runtime, and disclosure-aware result envelopes.
 
-Cross-surface tests feed equivalent CLI arguments, MCP JSON, and REST JSON into
-their parsers and compare the resulting canonical requests byte-for-byte after
-normalization. Golden result tests compare the same typed `BatchResult<T>`
-serialization for MCP and REST and the equivalent CLI JSON output. A transport
-cannot add a field, default, alias, status rule, or action spelling that is not
-declared by the registry.
+The contract-first slice provides pure semantic adapters and registry-to-
+transport bijection harnesses before handlers exist. Each later transport task
+must plug its parser into that harness before dispatch wiring. Comparisons pin
+semantic canonical fields while excluding legitimate transport/auth/runtime
+context such as cwd and principal snapshots; they are not brittle byte equality
+over incidental context. Fixtures use one minimal and one boundary case per
+operation plus tagged-envelope state fixtures, with focused edge cases added by
+the owning task rather than a combinatorial cross-product.
 
 The contract slice is complete only when its DTO/projection unit tests, registry
 validation, fixtures, generator tests, and `cargo xtask generated-contracts
@@ -434,8 +475,8 @@ complete, then use `cargo xtask generated-contracts check` for drift proof.
 Development follows sidecar-test conventions and proves projection behavior
 before transport wiring.
 
-1. Complete the executable-contract slice and its registry, fixtures, generated
-   JSON/Markdown, cross-surface normalization harness, and drift checks before
+1. Complete the executable-contract slice, semantic fixture harness, tagged
+   outcomes, registry metadata/bijection framework, and drift checks before
    adding restored transport dispatch.
 2. Unit tests for every narrow DTO and projection, including fixed defaults,
    caller controls, non-empty one-or-many inputs, stable ordering, partial
@@ -454,12 +495,12 @@ before transport wiring.
    and accepted detached `202` behavior.
 6. Cross-surface contract tests prove equivalent single and batch CLI/MCP/REST
    requests project to the same ordered canonical requests and batch envelope.
-7. Batch-policy tests prove input ceilings, bounded concurrency, shared expanded
-   work-budget partition/restart persistence, scheduler/provider-reservation
-   fairness, stable input indexes, durable batch/job/event correlation,
-   cancellation metadata, atomic all-or-nothing detached enqueue, source
-   idempotent reuse, `409` collisions, code-search idempotency rejection, and
-   deterministic aggregate status.
+7. Batch-policy tests prove count/body/input/result ceilings, per-family stage
+   limits at the unit-creation boundary, global scheduler/provider admission,
+   stable indexes, durable many-to-many batch/job correlation, atomic job-first
+   foreground/detached admission, reuse/collision/concurrency/restart semantics,
+   code-search idempotency rejection, duplicate-query coalescing, and aggregate
+   status.
 8. Layering tests prove restored CLI, MCP, and REST modules cannot directly
    import adapters, embedding, vectors, ledger internals, job-store
    implementations, or acquisition clients. Only API DTO/projection and service
@@ -467,13 +508,20 @@ before transport wiring.
 9. Preflight tests prove denied or invalid later items cause no earlier enqueue,
    acquisition, artifact, provider reservation, ledger write, or vector write.
 10. CLI output tests cover one-input files, multi-input directory/templates,
-   collision rejection, keyed-input pairing and malformed pairs, positional/keyed
-   mixing rejection, stdout JSON, and stderr-only progress. OpenAPI drift and
+   contained atomic no-clobber writes, self-contained item/request-file parsing,
+   input-form mixing rejection, stdout JSON, and stderr-only progress. OpenAPI drift and
    generated-client tests pin all five operation IDs.
-11. Observability tests prove batch lifecycle/count fields are emitted and raw
+11. Observability tests prove post-commit ordering and sink-failure isolation,
+    principal-authorized retrieval, batch lifecycle/count fields, and that raw
     inputs, queries, paths, headers, and idempotency keys are absent from shared
     telemetry while synchronous initiating-caller results retain ordered inputs.
-12. Targeted formatting, layering, generated-contract, CLI, MCP, web, and API
+12. Failure-mode tests cover URL redirects/DNS changes/IPv6-mapped targets,
+    canonical-root and symlink races, SQLite busy/disk-full/commit ambiguity,
+    task panic/timeout/cancellation, client disconnect/response loss, oversized
+    Unicode inputs/decompression/result output, CLI ENOSPC/rename failure, and
+    observability sink failure. Errors are typed, bounded, sanitized, and logged
+    only by batch/item/opaque IDs.
+13. Targeted formatting, layering, generated-contract, CLI, MCP, web, and API
    tests, widening to the repository pre-PR gate because code, schemas, generated
    artifacts, auth routing, and public contracts all change.
 
