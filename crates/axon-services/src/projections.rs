@@ -4,11 +4,19 @@ use axon_api::source::*;
 use axon_core::config::ProjectionBatchConfig;
 use std::path::PathBuf;
 
+#[path = "projections/events.rs"]
+pub mod events;
+#[path = "projections/execute.rs"]
+pub mod execute;
 #[path = "projections/limits.rs"]
 pub mod limits;
 #[path = "projections/preflight.rs"]
 pub mod preflight;
 
+pub use execute::{
+    enqueue_source_projection_batch, execute_code_search_projection_batch,
+    execute_source_projection_batch,
+};
 pub use preflight::{preflight_code_search_batch, preflight_source_batch};
 
 pub type ProjectionBatchPolicy = ProjectionBatchConfig;
