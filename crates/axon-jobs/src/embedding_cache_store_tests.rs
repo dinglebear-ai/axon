@@ -203,7 +203,54 @@ async fn stale_retirement_cannot_delete_a_recomputed_entry() {
         .await
         .unwrap();
     replacement.values = vec![99.0; 4];
-    store.put_many(&[replacement.clone()], 100).await.unwrap();
+    store
+        .put_many(std::slice::from_ref(&replacement), 100)
+        .await
+        .unwrap();
+    let refreshed_at: i64 =
+        sqlx::query_scalar("SELECT created_at FROM embedding_vector_cache WHERE cache_key = ?")
+            .bind(&replacement.cache_key)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(refreshed_at > expired_at);
+    store.retire_many(&stale.corrupt_entries).await.unwrap();
+
+    let lookup = store
+        .get_many(std::slice::from_ref(&replacement.cache_key), 4)
+        .await
+        .unwrap();
+    assert_eq!(
+        lookup.hits[&replacement.cache_key].values,
+        replacement.values
+    );
+}
+
+#[tokio::test]
+async fn corrupt_row_retirement_cannot_delete_a_recomputed_entry() {
+    let (store, pool, _) = store().await;
+    let replacement = entry(44);
+    let created_at = chrono::Utc::now().timestamp_millis();
+    sqlx::query(
+        "INSERT INTO embedding_vector_cache \
+         (cache_key, provider_id, model, dimensions, vector, created_at, last_used_at) \
+         VALUES (?, 'tei', 'test-model', 4, X'00', ?, ?)",
+    )
+    .bind(&replacement.cache_key)
+    .bind(created_at)
+    .bind(created_at)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stale = store
+        .get_many(std::slice::from_ref(&replacement.cache_key), 4)
+        .await
+        .unwrap();
+    store
+        .put_many(std::slice::from_ref(&replacement), 100)
+        .await
+        .unwrap();
     store.retire_many(&stale.corrupt_entries).await.unwrap();
 
     let lookup = store

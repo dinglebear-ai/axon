@@ -179,11 +179,8 @@ impl CachedEmbeddingProvider {
         if !hit_keys.is_empty() {
             let store = Arc::clone(&self.store);
             if let Ok(slot) = Arc::clone(&self.mutation_slots).try_acquire_owned() {
-                tokio::spawn(async move {
-                    let _slot = slot;
-                    if let Err(error) = store.touch_many(&hit_keys).await {
-                        record_store_error("touch", hit_keys.len(), &error);
-                    }
+                spawn_observed_mutation("touch", hit_keys.len(), slot, async move {
+                    store.touch_many(&hit_keys).await
                 });
             } else {
                 record_mutation_saturated("touch", hit_keys.len());
@@ -244,6 +241,30 @@ impl CachedEmbeddingProvider {
         }
         Ok((unique_miss_keys, Some(result)))
     }
+}
+
+fn spawn_observed_mutation<F>(
+    operation: &'static str,
+    key_count: usize,
+    slot: tokio::sync::OwnedSemaphorePermit,
+    future: F,
+) where
+    F: Future<Output = Result<(), CacheStoreError>> + Send + 'static,
+{
+    let task = tokio::spawn(async move {
+        let _slot = slot;
+        future.await
+    });
+    tokio::spawn(async move {
+        match task.await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => record_store_error(operation, key_count, &error),
+            Err(error) => {
+                let error: CacheStoreError = Box::new(error);
+                record_store_error(operation, key_count, &error);
+            }
+        }
+    });
 }
 
 async fn run_detached_mutation<F>(

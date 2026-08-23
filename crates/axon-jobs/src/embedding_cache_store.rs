@@ -208,7 +208,16 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
                 " ON CONFLICT(cache_key) DO UPDATE SET \
                  provider_id = excluded.provider_id, model = excluded.model, \
                  dimensions = excluded.dimensions, vector = excluded.vector, \
-                 last_used_at = excluded.last_used_at",
+                 created_at = CASE WHEN embedding_vector_cache.created_at < ",
+            );
+            query.push_bind(now.saturating_sub(MAX_CACHE_AGE.as_millis() as i64));
+            query.push(
+                " OR embedding_vector_cache.provider_id != excluded.provider_id \
+                     OR embedding_vector_cache.model != excluded.model \
+                     OR embedding_vector_cache.dimensions != excluded.dimensions \
+                     OR embedding_vector_cache.vector != excluded.vector \
+                     THEN excluded.created_at ELSE embedding_vector_cache.created_at END, \
+                     last_used_at = excluded.last_used_at",
             );
             query.build().execute(&mut *transaction).await?;
         }
