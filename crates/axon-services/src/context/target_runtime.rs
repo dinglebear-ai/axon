@@ -387,6 +387,7 @@ fn build_embedding_composition(
         Arc::new(SqliteEmbeddingVectorCacheStore::new(
             pool.clone(),
             write_gate.clone(),
+            cfg.embed_cache_max_entries,
         ))
     });
     let provider: Arc<dyn EmbeddingProvider> = match &cache_store {

@@ -52,21 +52,9 @@ async fn resolve_and_checkpoint_overlap(
     embeddings: anyhow::Result<EmbeddingResult>,
 ) -> anyhow::Result<(VectorStoreWriteResult, EmbeddingResult)> {
     let write = resolve_upsert_completion(write, &embeddings)?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Upserting,
-            progress.upserted(write.points_written),
-            "upserted vector point batch",
-        )
-        .await;
+    finish_upsert(coordinator, progress, &write).await;
     let embeddings = embeddings?;
-    coordinator
-        .checkpoint(
-            PipelinePhase::Embedding,
-            progress.embedded(embeddings.vectors.len() as u64),
-            "embedded prepared chunks",
-        )
-        .await;
+    finish_embedding(coordinator, progress, &embeddings).await;
     Ok((write, embeddings))
 }
 
@@ -148,24 +136,11 @@ pub(super) async fn publish_and_build_next(
         skipped_redaction: current_skipped_redaction,
         redaction_skips_by_source_item: current_redaction_skips,
     } = current;
-    let upsert_counts = progress.upserting_counts();
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Upserting,
-            upsert_counts.clone(),
-            "upserting vector point batch",
-        )
-        .await;
+    let upsert_counts = begin_upsert(emitter, coordinator, progress).await;
+    // The next batch embeds speculatively while the current batch remains the
+    // externally active Upserting phase. Publish Embedding only after the
+    // current write has been accounted, preserving monotonic phase order.
     let embedding_counts = progress.embedding_counts();
-    coordinator
-        .report(
-            emitter,
-            PipelinePhase::Embedding,
-            embedding_counts.clone(),
-            "embedding prepared chunks",
-        )
-        .await;
 
     let upsert = call_upsert(runtime, input, current_points, upsert_counts);
     let embedding = call_embedding(runtime, input, &next_documents, embedding_counts);
@@ -238,6 +213,17 @@ async fn embed_prepared_batch(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
 ) -> anyhow::Result<EmbeddingResult> {
+    let counts = begin_embedding(emitter, coordinator, progress).await;
+    let result = call_embedding(runtime, input, documents, counts).await?;
+    finish_embedding(coordinator, progress, &result).await;
+    Ok(result)
+}
+
+async fn begin_embedding(
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &PipelineProgress,
+) -> StageCounts {
     let counts = progress.embedding_counts();
     coordinator
         .report(
@@ -247,7 +233,14 @@ async fn embed_prepared_batch(
             "embedding prepared chunks",
         )
         .await;
-    let result = call_embedding(runtime, input, documents, counts).await?;
+    counts
+}
+
+async fn finish_embedding(
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    result: &EmbeddingResult,
+) {
     coordinator
         .checkpoint(
             PipelinePhase::Embedding,
@@ -255,7 +248,6 @@ async fn embed_prepared_batch(
             "embedded prepared chunks",
         )
         .await;
-    Ok(result)
 }
 
 async fn call_embedding(
@@ -290,6 +282,17 @@ async fn upsert_vector_batch(
     coordinator: &ProgressCoordinator,
     progress: &mut PipelineProgress,
 ) -> anyhow::Result<VectorStoreWriteResult> {
+    let counts = begin_upsert(emitter, coordinator, progress).await;
+    let write = call_upsert(runtime, input, batch, counts).await?;
+    finish_upsert(coordinator, progress, &write).await;
+    Ok(write)
+}
+
+async fn begin_upsert(
+    emitter: &SourceEventEmitter,
+    coordinator: &ProgressCoordinator,
+    progress: &PipelineProgress,
+) -> StageCounts {
     let counts = progress.upserting_counts();
     coordinator
         .report(
@@ -299,7 +302,14 @@ async fn upsert_vector_batch(
             "upserting vector point batch",
         )
         .await;
-    let write = call_upsert(runtime, input, batch, counts).await?;
+    counts
+}
+
+async fn finish_upsert(
+    coordinator: &ProgressCoordinator,
+    progress: &mut PipelineProgress,
+    write: &VectorStoreWriteResult,
+) {
     coordinator
         .checkpoint(
             PipelinePhase::Upserting,
@@ -307,7 +317,6 @@ async fn upsert_vector_batch(
             "upserted vector point batch",
         )
         .await;
-    Ok(write)
 }
 
 async fn call_upsert(

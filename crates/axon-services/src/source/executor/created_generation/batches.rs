@@ -98,6 +98,7 @@ pub(super) async fn process_generation_batches(
         stage.acquired_items,
         stage.acquired_documents,
         coordinator,
+        true,
     )
     .await?;
     loop {
@@ -112,6 +113,7 @@ pub(super) async fn process_generation_batches(
                 stage.acquired_items,
                 stage.acquired_documents,
                 coordinator,
+                !input.adapter.supports_acquisition_prefetch(),
             );
             let (processed, prefetched) = process_and_acquire_next(
                 input.adapter,
@@ -129,6 +131,9 @@ pub(super) async fn process_generation_batches(
                 next_acquisition,
             )
             .await;
+            if let Some(Ok(prefetched)) = prefetched.as_ref() {
+                artifact_cleanup.track(&prefetched.acquisition.artifacts);
+            }
             acquired = resolve_batch_step(processed, prefetched, |processed| {
                 accumulated.absorb(artifact_cleanup, processed);
             })?;
@@ -164,14 +169,20 @@ async fn acquire_changed_batch(
     acquired_items: u64,
     acquired_documents: u64,
     coordinator: &ProgressCoordinator,
+    publish_fetching_phase: bool,
 ) -> anyhow::Result<AcquiredChangedBatch> {
     let items = batch
         .diff
         .added
         .len()
         .saturating_add(batch.diff.modified.len()) as u64;
-    let reporter =
-        coordinator.acquisition_batch(changed_total, items, acquired_items, acquired_documents);
+    let reporter = coordinator.acquisition_batch(
+        changed_total,
+        items,
+        acquired_items,
+        acquired_documents,
+        publish_fetching_phase,
+    );
     let acquisition = input
         .adapter
         .acquire_with_progress(&input.plan, &batch.diff, Some(&reporter))

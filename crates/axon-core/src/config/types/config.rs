@@ -704,11 +704,17 @@ pub struct Config {
 
     /// Persist dense embedding vectors in the unified SQLite store for reuse
     /// across source generations and short-lived processes. Disabled by
-    /// default because synchronous persistence adds cold-ingestion latency.
+    /// default because persistence adds cold-ingestion latency. Cache entries
+    /// have a fixed seven-day creation TTL, after which they cannot be reused.
+    /// Source deletion cannot immediately purge a shared content-addressed row;
+    /// periodic fixed-budget maintenance physically reclaims expired rows and
+    /// may require multiple passes after a large backlog.
     /// Env: `AXON_EMBED_CACHE_ENABLED`. TOML: `providers.embedding.cache-enabled`. Default: false.
     pub embed_cache_enabled: bool,
 
-    /// Maximum number of dense vectors retained by the embedding cache.
+    /// Target maximum number of dense vectors retained by amortized LRU
+    /// maintenance. The cache can temporarily exceed this target between
+    /// maintenance sweeps.
     /// Env: `AXON_EMBED_CACHE_MAX_ENTRIES`. TOML: `providers.embedding.cache-max-entries`. Clamped 1–10_000_000. Default: 100_000.
     pub embed_cache_max_entries: usize,
 

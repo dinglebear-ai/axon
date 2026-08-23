@@ -671,6 +671,7 @@ dependencies = [
  "futures",
  "hex",
  "httpmock",
+ "metrics",
  "notify",
  "proptest",
  "serde",

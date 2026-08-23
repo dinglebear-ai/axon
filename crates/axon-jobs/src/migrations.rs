@@ -69,6 +69,11 @@ pub const JOBS_MIGRATIONS: &[SqlMigration] = &[
         name: "0007_embedding_vector_cache",
         sql: include_str!("migrations/0007_embedding_vector_cache.sql"),
     },
+    SqlMigration {
+        version: 8,
+        name: "0008_embedding_vector_cache_expiry",
+        sql: include_str!("migrations/0008_embedding_vector_cache_expiry.sql"),
+    },
 ];
 
 /// Namespace under which the composed runner tracks jobs migrations.

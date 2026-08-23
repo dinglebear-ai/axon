@@ -111,6 +111,11 @@ impl SqliteWriteGate {
     pub async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.0.lock().await
     }
+
+    /// Attempt admission without parking behind another SQLite writer.
+    pub fn try_lock(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
+        self.0.try_lock().ok()
+    }
 }
 
 #[derive(Debug)]

@@ -355,6 +355,15 @@ async fn version_five_watch_store_upgrades_with_replay_defaults_and_reopens_idem
     .await
     .expect("read version-seven receipt");
     assert_eq!(cache_receipt_count, 1);
+    let expiry_receipt_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM axon_applied_migrations \
+         WHERE namespace = 'jobs' AND version = 8 \
+         AND name = '0008_embedding_vector_cache_expiry'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("read version-eight receipt");
+    assert_eq!(expiry_receipt_count, 1);
     assert!(
         sqlx::query(
             "UPDATE axon_source_watches SET limits_json = 'not-json' WHERE watch_id = 'watch-v5'"

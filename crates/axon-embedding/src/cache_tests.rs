@@ -444,6 +444,52 @@ async fn stalled_write_times_out_without_discarding_the_provider_result() {
     assert_eq!(fake.calls().await.len(), 1);
 }
 
+#[tokio::test(start_paused = true)]
+async fn timed_out_mutation_is_detached_instead_of_cancelled() {
+    let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let release = Arc::new(tokio::sync::Notify::new());
+    let completed_in_task = Arc::clone(&completed);
+    let release_in_task = Arc::clone(&release);
+
+    run_detached_mutation(
+        "write",
+        1,
+        Arc::new(tokio::sync::Semaphore::new(1))
+            .try_acquire_owned()
+            .unwrap(),
+        async move {
+            release_in_task.notified().await;
+            completed_in_task.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        },
+    )
+    .await;
+
+    assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
+    release.notify_one();
+    tokio::task::yield_now().await;
+    assert!(completed.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[tokio::test(start_paused = true)]
+async fn detached_mutations_are_bounded_per_provider() {
+    let fake = Arc::new(FakeEmbeddingProvider::new("tei", 4));
+    let cached = provider_with_store(
+        Arc::clone(&fake),
+        Arc::new(BlockingCacheStore {
+            blocked: BlockedOperation::Write,
+            lookup: EmbeddingCacheLookup::default(),
+        }),
+    );
+
+    cached.embed(batch(&["one"])).await.unwrap();
+    assert_eq!(cached.mutation_slots.available_permits(), 1);
+    cached.embed(batch(&["two"])).await.unwrap();
+    assert_eq!(cached.mutation_slots.available_permits(), 0);
+    cached.embed(batch(&["three"])).await.unwrap();
+    assert_eq!(cached.mutation_slots.available_permits(), 0);
+}
+
 #[test]
 fn cache_identity_uses_only_the_effective_instruction() {
     let request = batch(&["same"]);

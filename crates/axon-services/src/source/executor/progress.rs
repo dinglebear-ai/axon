@@ -47,6 +47,8 @@ impl ProgressStatusWriter for NoopProgressWriter {
 #[derive(Debug, Default)]
 struct CoordinatorState {
     phase_counts: Vec<(PipelinePhase, StageCounts)>,
+    #[cfg(test)]
+    phase_history: Vec<PipelinePhase>,
 }
 
 /// Orchestration-owned publisher for complete, monotonic source-job snapshots.
@@ -87,13 +89,7 @@ impl ProgressCoordinator {
 
     #[cfg(test)]
     pub(super) async fn recorded_phase_order(&self) -> Vec<PipelinePhase> {
-        self.state
-            .lock()
-            .await
-            .phase_counts
-            .iter()
-            .map(|(phase, _)| *phase)
-            .collect()
+        self.state.lock().await.phase_history.clone()
     }
 
     #[cfg(test)]
@@ -172,6 +168,7 @@ impl ProgressCoordinator {
         batch_items_total: u64,
         items_offset: u64,
         documents_offset: u64,
+        publish_phase: bool,
     ) -> AcquisitionBatchProgress<'_> {
         AcquisitionBatchProgress {
             coordinator: self,
@@ -179,6 +176,7 @@ impl ProgressCoordinator {
             batch_items_total,
             items_offset,
             documents_offset,
+            publish_phase,
             state: Mutex::new(BatchProgressState::default()),
         }
     }
@@ -191,6 +189,10 @@ impl ProgressCoordinator {
     ) -> (StageCounts, bool) {
         let counts = {
             let mut state = self.state.lock().await;
+            #[cfg(test)]
+            if state.phase_history.last() != Some(&phase) {
+                state.phase_history.push(phase);
+            }
             normalize_phase_counts(&mut state.phase_counts, phase, counts)
         };
         let update = JobStatusUpdate {
@@ -249,6 +251,7 @@ pub(super) struct AcquisitionBatchProgress<'a> {
     batch_items_total: u64,
     items_offset: u64,
     documents_offset: u64,
+    publish_phase: bool,
     state: Mutex<BatchProgressState>,
 }
 
@@ -296,6 +299,9 @@ impl AcquisitionBatchProgress<'_> {
             (state.items_done, state.documents_done, should_write)
         };
         if !should_write {
+            return;
+        }
+        if !self.publish_phase {
             return;
         }
         let global_items = self

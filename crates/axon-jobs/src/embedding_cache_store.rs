@@ -6,6 +6,9 @@ use axon_embedding::cache::{
     CacheStoreError, CachedEmbedding, EmbeddingCacheLookup, EmbeddingVectorCacheStore,
 };
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 use crate::scheduler::SqliteWriteGate;
 
@@ -14,16 +17,40 @@ use crate::scheduler::SqliteWriteGate;
 const KEY_BIND_BUDGET: usize = 900;
 const WRITE_BINDS_PER_ROW: usize = 7;
 const WRITE_ROW_BUDGET: usize = KEY_BIND_BUDGET / WRITE_BINDS_PER_ROW;
+const WRITE_ADMISSION_TIMEOUT: Duration = Duration::from_millis(250);
+// Embeddings contain derived source information. Since cache keys deliberately
+// carry no source provenance (one vector may be shared by many sources), a
+// source-scoped purge cannot be correct. A fixed, non-refreshing creation TTL
+// bounds reuse after every source reference is deleted. Physical removal is
+// lazy: requested expired rows are retired and the amortized writer sweep
+// removes unreferenced expired rows on its next maintenance cadence.
+const MAX_CACHE_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+#[cfg(not(test))]
+const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
+#[cfg(test)]
+const MAINTENANCE_INTERVAL: Duration = Duration::from_millis(20);
+const MAINTENANCE_DELETE_BUDGET: i64 = 512;
 
 #[derive(Clone)]
 pub struct SqliteEmbeddingVectorCacheStore {
+    inner: Arc<CacheStoreInner>,
+}
+
+struct CacheStoreInner {
     pool: SqlitePool,
     write_gate: SqliteWriteGate,
+    max_entries: AtomicUsize,
 }
 
 impl SqliteEmbeddingVectorCacheStore {
-    pub fn new(pool: SqlitePool, write_gate: SqliteWriteGate) -> Self {
-        Self { pool, write_gate }
+    pub fn new(pool: SqlitePool, write_gate: SqliteWriteGate, max_entries: usize) -> Self {
+        let inner = Arc::new(CacheStoreInner {
+            pool,
+            write_gate,
+            max_entries: AtomicUsize::new(max_entries.max(1)),
+        });
+        spawn_maintenance(&inner);
+        Self { inner }
     }
 }
 
@@ -41,11 +68,16 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
             }
             let mut query = QueryBuilder::<Sqlite>::new(
                 "SELECT cache_key, provider_id, model, dimensions, vector \
-                 FROM embedding_vector_cache WHERE cache_key IN (",
+                 , created_at FROM embedding_vector_cache WHERE cache_key IN (",
             );
             push_key_bind_list(&mut query, key_chunk);
-            for row in query.build().fetch_all(&self.pool).await? {
+            for row in query.build().fetch_all(&self.inner.pool).await? {
                 let key: String = row.try_get("cache_key")?;
+                let created_at: i64 = row.try_get("created_at")?;
+                if created_at < cache_cutoff_millis() {
+                    lookup.corrupt_keys.push(key);
+                    continue;
+                }
                 let dimensions: i64 = row.try_get("dimensions")?;
                 let bytes: Vec<u8> = row.try_get("vector")?;
                 let Ok(dimensions) = u32::try_from(dimensions) else {
@@ -79,8 +111,12 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         if keys.is_empty() {
             return Ok(());
         }
-        let _write_permit = self.write_gate.lock().await;
-        let mut transaction = self.pool.begin().await?;
+        let Some(_write_permit) = self.inner.write_gate.try_lock() else {
+            // LRU accuracy is advisory. A warm cache hit must never queue
+            // behind source/job mutations on the shared SQLite writer gate.
+            return Ok(());
+        };
+        let mut transaction = self.inner.pool.begin().await?;
         let now = chrono::Utc::now().timestamp_millis();
         for key_chunk in keys.chunks(KEY_BIND_BUDGET - 1) {
             let mut query =
@@ -102,8 +138,8 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         if entries.is_empty() {
             return Ok(());
         }
-        let _write_permit = self.write_gate.lock().await;
-        let mut transaction = self.pool.begin().await?;
+        let _write_permit = acquire_write_permit(&self.inner.write_gate).await?;
+        let mut transaction = self.inner.pool.begin().await?;
         let now = chrono::Utc::now().timestamp_millis();
         for entry_chunk in entries.chunks(WRITE_ROW_BUDGET) {
             let valid = entry_chunk
@@ -137,7 +173,10 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
             );
             query.build().execute(&mut *transaction).await?;
         }
-        prune(&mut transaction, max_entries).await?;
+        self.inner
+            .max_entries
+            .store(max_entries.max(1), Ordering::Relaxed);
+        prune(&mut transaction, max_entries, now).await?;
         transaction.commit().await?;
         Ok(())
     }
@@ -146,8 +185,8 @@ impl EmbeddingVectorCacheStore for SqliteEmbeddingVectorCacheStore {
         if keys.is_empty() {
             return Ok(());
         }
-        let _write_permit = self.write_gate.lock().await;
-        let mut transaction = self.pool.begin().await?;
+        let _write_permit = acquire_write_permit(&self.inner.write_gate).await?;
+        let mut transaction = self.inner.pool.begin().await?;
         for key_chunk in keys.chunks(KEY_BIND_BUDGET) {
             let mut query = QueryBuilder::<Sqlite>::new(
                 "DELETE FROM embedding_vector_cache WHERE cache_key IN (",
@@ -171,23 +210,111 @@ fn push_key_bind_list<'a>(query: &mut QueryBuilder<'a, Sqlite>, keys: &'a [Strin
 async fn prune(
     transaction: &mut sqlx::Transaction<'_, Sqlite>,
     max_entries: usize,
+    now: i64,
 ) -> Result<(), sqlx::Error> {
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM embedding_vector_cache")
-        .fetch_one(&mut **transaction)
-        .await?;
     let max_entries = i64::try_from(max_entries).unwrap_or(i64::MAX).max(1);
-    let excess = count.saturating_sub(max_entries).max(0);
-    if excess > 0 {
-        sqlx::query(
-            "DELETE FROM embedding_vector_cache WHERE cache_key IN (\
-             SELECT cache_key FROM embedding_vector_cache \
-             ORDER BY last_used_at ASC, cache_key ASC LIMIT ?)",
-        )
-        .bind(excess)
-        .execute(&mut **transaction)
-        .await?;
+    let cutoff = now.saturating_sub(MAX_CACHE_AGE.as_millis() as i64);
+    sqlx::query(
+        "DELETE FROM embedding_vector_cache WHERE cache_key IN (\
+         SELECT cache_key FROM embedding_vector_cache WHERE created_at < ? \
+         ORDER BY created_at ASC, cache_key ASC LIMIT ?)",
+    )
+    .bind(cutoff)
+    .bind(MAINTENANCE_DELETE_BUDGET)
+    .execute(&mut **transaction)
+    .await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&mut **transaction)
+    .await?;
+    let victims = count
+        .saturating_sub(max_entries)
+        .clamp(0, MAINTENANCE_DELETE_BUDGET);
+    if victims == 0 {
+        return Ok(());
     }
+    sqlx::query(
+        "DELETE FROM embedding_vector_cache WHERE cache_key IN (\
+         SELECT cache_key FROM embedding_vector_cache \
+         ORDER BY last_used_at ASC, cache_key ASC LIMIT ?)",
+    )
+    .bind(victims)
+    .execute(&mut **transaction)
+    .await?;
     Ok(())
+}
+
+fn spawn_maintenance(inner: &Arc<CacheStoreInner>) {
+    let weak = Arc::downgrade(inner);
+    tokio::spawn(async move {
+        let start = tokio::time::Instant::now() + MAINTENANCE_INTERVAL;
+        let mut interval = tokio::time::interval_at(start, MAINTENANCE_INTERVAL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let Some(inner) = weak.upgrade() else {
+                break;
+            };
+            run_periodic_maintenance(&inner).await;
+        }
+    });
+}
+
+async fn run_periodic_maintenance(inner: &CacheStoreInner) {
+    let Ok(_permit) = tokio::time::timeout(WRITE_ADMISSION_TIMEOUT, inner.write_gate.lock()).await
+    else {
+        metrics::counter!("axon_embedding_cache_maintenance_skipped_total", "reason" => "writer_busy")
+            .increment(1);
+        return;
+    };
+    let mut transaction = match inner.pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            record_maintenance_failure("begin", &error);
+            return;
+        }
+    };
+    let max_entries = inner.max_entries.load(Ordering::Relaxed);
+    match prune(
+        &mut transaction,
+        max_entries,
+        chrono::Utc::now().timestamp_millis(),
+    )
+    .await
+    {
+        Ok(()) => {
+            if let Err(error) = transaction.commit().await {
+                record_maintenance_failure("commit", &error);
+            }
+        }
+        Err(error) => {
+            record_maintenance_failure("prune", &error);
+            if let Err(rollback_error) = transaction.rollback().await {
+                record_maintenance_failure("rollback", &rollback_error);
+            }
+        }
+    }
+}
+
+fn record_maintenance_failure(stage: &'static str, error: &sqlx::Error) {
+    metrics::counter!("axon_embedding_cache_maintenance_failures_total", "stage" => stage)
+        .increment(1);
+    tracing::warn!(stage, %error, "embedding cache maintenance pass failed");
+}
+
+fn cache_cutoff_millis() -> i64 {
+    chrono::Utc::now()
+        .timestamp_millis()
+        .saturating_sub(MAX_CACHE_AGE.as_millis() as i64)
+}
+
+async fn acquire_write_permit(
+    gate: &SqliteWriteGate,
+) -> Result<tokio::sync::MutexGuard<'_, ()>, CacheStoreError> {
+    tokio::time::timeout(WRITE_ADMISSION_TIMEOUT, gate.lock())
+        .await
+        .map_err(|_| "embedding cache SQLite writer admission timed out".into())
 }
 
 fn encode_vector(values: &[f32]) -> Vec<u8> {

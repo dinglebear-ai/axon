@@ -2,6 +2,7 @@ use super::*;
 use async_trait::async_trait;
 use axon_adapters::boundary::FakeAdapterProviders;
 use axon_adapters::{FakeSourceAdapter, SourceAdapter, web::WebSourceAdapter};
+use axon_core::boundary::{ArtifactStore, FakeCoreBoundaries};
 use axon_embedding::fake::FakeEmbeddingProvider;
 use axon_ledger::store::{FakeLedgerStore, LedgerStore};
 use axon_vectors::store::FakeVectorStore;
@@ -33,6 +34,7 @@ struct ControlledBatchAdapter {
     normalize_started: mpsc::UnboundedSender<usize>,
     first_normalize_release: Mutex<Option<oneshot::Receiver<()>>>,
     failures: AdapterFailures,
+    prefetched_artifact: Option<ArtifactRef>,
 }
 
 impl ControlledBatchAdapter {
@@ -62,7 +64,13 @@ impl ControlledBatchAdapter {
             normalize_started,
             first_normalize_release: Mutex::new(first_normalize_release),
             failures,
+            prefetched_artifact: None,
         }
+    }
+
+    fn with_prefetched_artifact(mut self, artifact: ArtifactRef) -> Self {
+        self.prefetched_artifact = Some(artifact);
+        self
     }
 
     fn error(stage: ErrorStage, message: impl Into<String>) -> ApiError {
@@ -101,7 +109,13 @@ impl SourceAdapter for ControlledBatchAdapter {
                 format!("acquire {call} failed"),
             ));
         }
-        self.inner.acquire(plan, diff).await
+        let mut acquisition = self.inner.acquire(plan, diff).await?;
+        if call == 2
+            && let Some(artifact) = &self.prefetched_artifact
+        {
+            acquisition.artifacts.push(artifact.clone());
+        }
+        Ok(acquisition)
     }
 
     fn supports_acquisition_prefetch(&self) -> bool {
@@ -132,6 +146,8 @@ impl SourceAdapter for ControlledBatchAdapter {
 
 async fn run_actual_generation_batches(
     adapter: Arc<ControlledBatchAdapter>,
+    artifact_store: Option<Arc<dyn ArtifactStore>>,
+    keep_cleanup_armed: bool,
 ) -> (
     anyhow::Result<()>,
     GenerationStageProgress,
@@ -139,7 +155,7 @@ async fn run_actual_generation_batches(
 ) {
     let vectors = Arc::new(FakeVectorStore::new("fake-vector"));
     let ledger = Arc::new(FakeLedgerStore::new());
-    let runtime = TargetLocalSourceRuntime::new(
+    let mut runtime = TargetLocalSourceRuntime::new(
         Arc::new(axon_jobs::boundary::FakeJobWatchStore::new()),
         ledger,
         Arc::new(FakeEmbeddingProvider::new("fake-embedding", 8)),
@@ -148,6 +164,9 @@ async fn run_actual_generation_batches(
         "fake-embedding",
         8,
     );
+    if let Some(artifact_store) = artifact_store {
+        runtime.artifact_store = artifact_store;
+    }
     let route = crate::source::routing::resolve_source_route(&SourceRequest::new(
         "https://example.com/overlap".to_string(),
     ))
@@ -213,7 +232,9 @@ async fn run_actual_generation_batches(
         &mut cleanup,
     )
     .await;
-    cleanup.disarm();
+    if !keep_cleanup_armed {
+        cleanup.disarm();
+    }
     (result, stage, coordinator)
 }
 
@@ -230,7 +251,7 @@ async fn process_generation_batches_prefetches_one_batch_while_processing_the_cu
         AdapterFailures::default(),
     ));
 
-    let run = tokio::spawn(run_actual_generation_batches(adapter));
+    let run = tokio::spawn(run_actual_generation_batches(adapter, None, false));
     assert_eq!(normalize_started_rx.recv().await, Some(1));
     assert_eq!(acquire_started_rx.recv().await, Some(1));
     assert_eq!(acquire_started_rx.try_recv(), Ok(2));
@@ -254,6 +275,15 @@ async fn process_generation_batches_prefetches_one_batch_while_processing_the_cu
             .documents_done,
         (ACQUIRE_BATCH_SIZE * 2 + 1) as u64
     );
+    let phases = coordinator.recorded_phase_order().await;
+    assert_eq!(
+        phases
+            .iter()
+            .filter(|phase| **phase == PipelinePhase::Fetching)
+            .count(),
+        1,
+        "speculative acquisition must update only its private counters"
+    );
 }
 
 #[tokio::test]
@@ -271,7 +301,7 @@ async fn process_generation_batches_accounts_for_completed_work_before_prefetch_
         },
     ));
 
-    let (result, stage, coordinator) = run_actual_generation_batches(adapter).await;
+    let (result, stage, coordinator) = run_actual_generation_batches(adapter, None, false).await;
     let error = result.expect_err("second acquisition fails");
 
     assert!(format!("{error:#}").contains("acquire 2 failed"));
@@ -303,7 +333,7 @@ async fn process_generation_batches_preserves_processing_error_and_prefetch_cont
         },
     ));
 
-    let (result, stage, _) = run_actual_generation_batches(adapter).await;
+    let (result, stage, _) = run_actual_generation_batches(adapter, None, false).await;
     let error = result.expect_err("both overlapped operations fail");
 
     assert!(
@@ -315,6 +345,66 @@ async fn process_generation_batches_preserves_processing_error_and_prefetch_cont
     assert!(format!("{error:#}").contains("acquire 2 failed"));
     assert_eq!(stage.acquired_items, ACQUIRE_BATCH_SIZE as u64);
     assert_eq!(stage.normalized_documents, 0);
+}
+
+#[tokio::test]
+async fn process_failure_cleans_artifacts_from_successful_speculative_acquisition() {
+    let core = Arc::new(FakeCoreBoundaries::new());
+    let handle = core
+        .put(ArtifactWriteRequest {
+            kind: ArtifactKind::RawContent,
+            content_type: "text/plain".to_string(),
+            content: ContentRef::InlineText {
+                text: "prefetched artifact".to_string(),
+            },
+            source_id: Some(SourceId::new("src-overlap-test")),
+            job_id: Some(JobId::new(uuid::Uuid::from_u128(1))),
+            metadata: MetadataMap::new(),
+        })
+        .await
+        .expect("store prefetched artifact");
+    let artifact = ArtifactRef {
+        artifact_id: handle.artifact_id.clone(),
+        artifact_kind: handle.artifact_kind,
+        uri: handle.uri.clone().expect("artifact uri"),
+        size_bytes: None,
+        content_hash: None,
+        created_at: Timestamp::from(chrono::Utc::now()),
+    };
+    let (acquire_started_tx, _acquire_started_rx) = mpsc::unbounded_channel();
+    let (normalize_started_tx, _normalize_started_rx) = mpsc::unbounded_channel();
+    let adapter = Arc::new(
+        ControlledBatchAdapter::new(
+            ACQUIRE_BATCH_SIZE + 1,
+            acquire_started_tx,
+            normalize_started_tx,
+            None,
+            AdapterFailures {
+                acquire_call: None,
+                normalize_call: Some(1),
+            },
+        )
+        .with_prefetched_artifact(artifact),
+    );
+
+    let (result, _, _) =
+        run_actual_generation_batches(adapter, Some(core.clone() as Arc<dyn ArtifactStore>), true)
+            .await;
+    assert!(result.is_err(), "current-batch processing must fail");
+
+    let deleted = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        loop {
+            if core.get(handle.clone()).await.is_err() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await;
+    assert!(
+        deleted.is_ok(),
+        "successful speculative acquisition artifacts must be cleaned"
+    );
 }
 
 #[tokio::test]

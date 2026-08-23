@@ -416,7 +416,8 @@ async fn publish_and_build_next_preserves_upsert_error_and_embedding_context() {
     assert!(format!("{error:#}").contains("embedding failed"));
     assert_eq!(
         coordinator.recorded_phase_order().await,
-        vec![PipelinePhase::Upserting, PipelinePhase::Embedding]
+        vec![PipelinePhase::Upserting],
+        "speculative embedding must not replace the active upsert phase"
     );
     assert_eq!(
         coordinator
