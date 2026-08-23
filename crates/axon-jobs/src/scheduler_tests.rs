@@ -300,7 +300,7 @@ async fn reconcile_cancels_expired_grants_and_quarantines_uncertain_calls() {
             granted_units, status, updated_at, capacity_domain, instance_id,
             authority_id, fence
          ) VALUES (?, '00000000-0000-0000-0000-00000000000a', 'embedding', 'normal',
-            1, 0, 'queued', datetime('now', '-31 seconds'), 'embedding', 'tei', 'a',
+            1, 0, 'queued', datetime('now', '-91 seconds'), 'embedding', 'tei', 'a',
             'queued-fence')",
     )
     .bind(queued_id)
@@ -621,4 +621,266 @@ async fn reserved_call_renews_long_running_active_lease() {
             .await
             .expect("reservation row");
     assert_eq!(row, ("released".into(), 0));
+}
+
+async fn seed_jobs(pool: &SqlitePool, source_id: &str, suffixes: &[u128]) {
+    sqlx::query(
+        "INSERT INTO sources (source_id, summary_json, created_at, updated_at)
+         VALUES (?, '{}', '', '')",
+    )
+    .bind(source_id)
+    .execute(pool)
+    .await
+    .expect("source");
+    for suffix in suffixes {
+        sqlx::query(
+            "INSERT INTO jobs (job_id, kind, status, phase, priority, source_id, created_at, updated_at)
+             VALUES (?, 'source', 'queued', 'queued', 'normal', ?, '', '')",
+        )
+        .bind(Uuid::from_u128(*suffix).to_string())
+        .bind(source_id)
+        .execute(pool)
+        .await
+        .expect("job");
+    }
+}
+
+fn test_scheduler(pool: &SqlitePool, instance_id: &str) -> ProviderScheduler {
+    ProviderScheduler::new(
+        pool.clone(),
+        ProviderCapacityDomain {
+            kind: ProviderKind::Embedding,
+            instance_id: instance_id.into(),
+            authority_id: "a".into(),
+        },
+        SchedulerConfig {
+            capacity: 1,
+            interactive_reserve: 0,
+            max_entries: 8,
+            max_units: 8,
+        },
+    )
+    .expect("scheduler")
+}
+
+fn request(suffix: u128, fence: &str, priority: JobPriority) -> ReservationRequest {
+    ReservationRequest {
+        job_id: JobId::new(Uuid::from_u128(suffix)),
+        stage_id: None,
+        attempt: 1,
+        fence: fence.into(),
+        priority,
+        units: 1,
+    }
+}
+
+async fn wait_for_status(pool: &SqlitePool, fence: &str, status: &str) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM provider_reservations WHERE fence = ? AND status = ?",
+            )
+            .bind(fence)
+            .bind(status)
+            .fetch_one(pool)
+            .await
+            .expect("status count");
+            if count == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("fence {fence} never reached status {status}"));
+}
+
+#[tokio::test]
+async fn dropping_active_reserved_call_releases_capacity() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "drop-active-source", &[41, 42]).await;
+    let scheduler = test_scheduler(&pool, "tei-drop-active");
+    let task_scheduler = scheduler.clone();
+    let task = tokio::spawn(async move {
+        call_reserved::<(), _, &'static str, _, _>(
+            &task_scheduler,
+            request(41, "dropped-active-fence", JobPriority::Normal),
+            |_lease| async move {
+                tokio::time::sleep(Duration::from_secs(300)).await;
+                Ok("never")
+            },
+        )
+        .await
+    });
+    wait_for_status(&pool, "dropped-active-fence", "active").await;
+    task.abort();
+    let _ = task.await;
+    wait_for_status(&pool, "dropped-active-fence", "released").await;
+    let reason: String = sqlx::query_scalar(
+        "SELECT terminal_reason FROM provider_reservations WHERE fence = 'dropped-active-fence'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("terminal reason");
+    assert_eq!(reason, "call_dropped");
+    let next = scheduler
+        .reserve(request(42, "next-after-drop", JobPriority::Normal))
+        .await
+        .expect("subsequent reserve");
+    assert!(
+        next.granted,
+        "dropped call must free capacity for the next reserve"
+    );
+}
+
+#[tokio::test]
+async fn renew_failure_releases_capacity_without_wedging_domain() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "renew-fail-source", &[51, 52]).await;
+    let scheduler = test_scheduler(&pool, "tei-renew-fail");
+    let task_scheduler = scheduler.clone();
+    let task = tokio::spawn(async move {
+        call_reserved::<(), _, &'static str, _, _>(
+            &task_scheduler,
+            request(51, "renew-fail-fence", JobPriority::Normal),
+            |_lease| async move {
+                tokio::time::sleep(Duration::from_secs(300)).await;
+                Ok("never")
+            },
+        )
+        .await
+    });
+    wait_for_status(&pool, "renew-fail-fence", "active").await;
+    // Revoke the fence out from under the running call; the next renewal tick
+    // must fail, drop the operation, and leave no active row behind.
+    let reservation_id: String = sqlx::query_scalar(
+        "SELECT reservation_id FROM provider_reservations WHERE fence = 'renew-fail-fence'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("reservation id");
+    scheduler
+        .cancel(&reservation_id, "renew-fail-fence")
+        .await
+        .expect("external cancel");
+    let error = task
+        .await
+        .expect("task join")
+        .expect_err("renew failure propagates");
+    assert!(matches!(
+        error,
+        ReservedCallError::Scheduler(SchedulerError::StaleFence)
+    ));
+    let active: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM provider_reservations WHERE status IN ('granted','active')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("active count");
+    assert_eq!(active, 0);
+    let next = scheduler
+        .reserve(request(52, "next-after-renew-fail", JobPriority::Normal))
+        .await
+        .expect("subsequent reserve");
+    assert!(next.granted, "renew failure must not wedge the domain");
+}
+
+#[tokio::test]
+async fn reconcile_terminalizes_stale_quarantined_active_rows() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "stale-active-source", &[61, 62]).await;
+    let scheduler = test_scheduler(&pool, "tei-stale-active");
+    // A restart leaves an orphaned active row whose holder is gone: same
+    // authority (stable per DB path), renewals long stopped.
+    sqlx::query(
+        "INSERT INTO provider_reservations (
+            reservation_id, job_id, provider_kind, priority, requested_units,
+            granted_units, status, updated_at, capacity_domain, instance_id,
+            authority_id, renewed_at, expires_at, fence
+         ) VALUES ('stale-active-reservation', ?, 'embedding', 'normal',
+            1, 1, 'active', datetime('now', '-200 seconds'), 'embedding',
+            'tei-stale-active', 'a', datetime('now', '-200 seconds'),
+            datetime('now', '-100 seconds'), 'stale-active-fence')",
+    )
+    .bind(Uuid::from_u128(61).to_string())
+    .execute(&pool)
+    .await
+    .expect("stale active reservation");
+    let reconciliation = scheduler.reconcile().await.expect("reconcile");
+    assert_eq!(reconciliation.quarantined_active, 1);
+    assert_eq!(reconciliation.released_quarantined, 1);
+    let row: (String, i64, String) = sqlx::query_as(
+        "SELECT status, granted_units, terminal_reason FROM provider_reservations
+         WHERE reservation_id = 'stale-active-reservation'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("terminalized row");
+    assert_eq!(row, ("expired".into(), 0, "quarantine_expired".into()));
+    let next = scheduler
+        .reserve(request(62, "after-stale-recovery", JobPriority::Normal))
+        .await
+        .expect("subsequent reserve");
+    assert!(next.granted, "recovered capacity must be grantable again");
+}
+
+#[tokio::test]
+async fn live_polling_waiter_is_not_expired_and_ages_up() {
+    let pool = open_sqlite_pool(":memory:").await.expect("migrations");
+    seed_jobs(&pool, "aging-waiter-source", &[71, 72, 73]).await;
+    let scheduler = test_scheduler(&pool, "tei-aging");
+    let held = scheduler
+        .reserve(request(71, "aging-holder-fence", JobPriority::Normal))
+        .await
+        .expect("holder grant");
+    assert!(held.granted);
+    let waiter = scheduler
+        .reserve(request(72, "aging-waiter-fence", JobPriority::Normal))
+        .await
+        .expect("waiter enqueue");
+    assert!(!waiter.granted);
+    // Simulate a waiter that has been queued (and polling) past WAIT_TIMEOUT:
+    // insertion age 40s, last poll long ago.
+    sqlx::query(
+        "UPDATE provider_reservations
+         SET updated_at = datetime('now', '-40 seconds'),
+             renewed_at = datetime('now', '-40 seconds')
+         WHERE reservation_id = ?",
+    )
+    .bind(&waiter.reservation_id)
+    .execute(&pool)
+    .await
+    .expect("age waiter row");
+    // One grant poll refreshes the liveness heartbeat without touching the
+    // aging clock.
+    let polled = scheduler
+        .try_grant_existing(&waiter.reservation_id)
+        .await
+        .expect("poll");
+    assert!(!polled.granted);
+    // A third party's reserve() runs abandonment expiry and priority aging.
+    let third = scheduler
+        .reserve(request(73, "aging-third-fence", JobPriority::Normal))
+        .await
+        .expect("third-party reserve");
+    assert!(!third.granted);
+    let (status, effective_priority): (String, String) = sqlx::query_as(
+        "SELECT status, effective_priority FROM provider_reservations WHERE reservation_id = ?",
+    )
+    .bind(&waiter.reservation_id)
+    .fetch_one(&pool)
+    .await
+    .expect("waiter row");
+    assert_eq!(
+        status, "queued",
+        "a live polling waiter must not be expired"
+    );
+    assert_eq!(
+        effective_priority, "high",
+        "a 40s-old normal-priority waiter must age up one level"
+    );
+    scheduler
+        .complete(&held.reservation_id, "aging-holder-fence")
+        .await
+        .expect("release holder");
 }

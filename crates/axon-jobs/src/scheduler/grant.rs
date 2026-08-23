@@ -26,6 +26,18 @@ impl ProviderScheduler {
         begin_immediate(&mut connection).await?;
         let domain = domain_name(self.domain.kind)?;
         let result = async {
+            // Record queued-waiter liveness on every poll. `updated_at` is the
+            // priority-aging clock, so the poll heartbeat lives in
+            // `renewed_at` (unused while queued); abandonment expiry keys off
+            // this heartbeat instead of insertion age.
+            sqlx::query(
+                "UPDATE provider_reservations SET renewed_at = datetime('now')
+                 WHERE reservation_id = ? AND authority_id = ? AND status = 'queued'",
+            )
+            .bind(reservation_id)
+            .bind(&self.domain.authority_id)
+            .execute(&mut *connection)
+            .await?;
             self.grant_head_locked(&mut connection, &domain).await?;
             self.reservation_grant_locked(&mut connection, reservation_id)
                 .await
@@ -176,15 +188,21 @@ impl ProviderScheduler {
         connection: &mut PoolConnection<Sqlite>,
         domain: &str,
     ) -> Result<u64, SchedulerError> {
+        // Abandonment means "no grant poll recently" (see
+        // `QUEUED_LIVENESS_TIMEOUT_SECS`), never "queued for a while": a live
+        // waiter refreshes `renewed_at` on every poll while `updated_at`
+        // stays at insert time so priority aging keeps progressing.
         Ok(sqlx::query(
             "UPDATE provider_reservations SET status = 'expired', granted_units = 0,
              terminal_reason = 'abandoned_waiter', updated_at = datetime('now')
              WHERE capacity_domain = ? AND instance_id = ? AND authority_id = ?
-               AND status = 'queued' AND updated_at <= datetime('now', '-30 seconds')",
+               AND status = 'queued'
+               AND unixepoch(COALESCE(renewed_at, updated_at)) <= unixepoch('now') - ?",
         )
         .bind(domain)
         .bind(&self.domain.instance_id)
         .bind(&self.domain.authority_id)
+        .bind(QUEUED_LIVENESS_TIMEOUT_SECS)
         .execute(&mut **connection)
         .await?
         .rows_affected())

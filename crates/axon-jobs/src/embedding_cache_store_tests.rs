@@ -559,3 +559,30 @@ async fn missing_cache_schema_surfaces_a_store_error() {
 
     assert!(store.get_many(&[entry(1).cache_key], 4).await.is_err());
 }
+
+#[tokio::test]
+async fn missing_state_singleton_self_heals_instead_of_failing_writes() {
+    let (store, pool, _) = store().await;
+    store
+        .put_many(&(0..5).map(entry).collect::<Vec<_>>(), 100)
+        .await
+        .expect("seed write");
+    // Simulate external drift: the O(1) cardinality row disappears. Triggers
+    // fire only on cache-table changes, so nothing would ever restore it.
+    sqlx::query("DELETE FROM embedding_vector_cache_state")
+        .execute(&pool)
+        .await
+        .expect("drop state singleton");
+
+    store
+        .put_many(&(5..8).map(entry).collect::<Vec<_>>(), 100)
+        .await
+        .expect("write after drift must self-heal, not error");
+    let count: i64 = sqlx::query_scalar(
+        "SELECT entry_count FROM embedding_vector_cache_state WHERE singleton = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("recomputed singleton");
+    assert_eq!(count, 8);
+}

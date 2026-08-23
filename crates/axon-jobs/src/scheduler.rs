@@ -22,6 +22,19 @@ const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 const POLL_MIN: Duration = Duration::from_millis(20);
 const POLL_MAX: Duration = Duration::from_millis(250);
 const AGING_QUANTUM_SECS: i64 = 30;
+/// A queued waiter proves liveness by touching `renewed_at` on every grant
+/// poll, so abandonment means "no poll recently", not "queued for a while".
+/// Deliberately larger than the slowest poll cadence (`POLL_MAX` plus
+/// writer-gate stalls) and decoupled from `WAIT_TIMEOUT` so third parties
+/// never expire a live waiter and priority aging (`AGING_QUANTUM_SECS`,
+/// measured from the untouched `updated_at`) can actually progress.
+const QUEUED_LIVENESS_TIMEOUT_SECS: i64 = 90;
+/// Quarantined-active leases whose fence has not renewed for this long are
+/// terminalized by `reconcile`, releasing their granted units. Renewal clears
+/// quarantine, so a live lease that is still renewing can never reach this;
+/// the margin over the 60-second quarantine staleness threshold is the grace
+/// period for a stalled-but-recovering holder.
+const QUARANTINE_RELEASE_SECS: i64 = 120;
 #[cfg(not(test))]
 const RENEW_INTERVAL: Duration = Duration::from_secs(20);
 #[cfg(test)]
@@ -100,6 +113,12 @@ pub struct ProviderScheduler {
 /// SQLite admits one writer at a time. Without this gate, concurrent provider
 /// calls can park every SQLx connection worker inside SQLite's busy handler,
 /// starving unrelated job heartbeats and control-plane reads of a pool slot.
+///
+/// The gate is intentionally process-local even though the DB is shared with
+/// short-lived CLI processes: cross-process writers are serialized by SQLite's
+/// own write lock, so the accepted bound is that a gate holder may stall up to
+/// the busy timeout behind an external writer while in-process writers queue
+/// behind the gate.
 #[derive(Debug, Clone, Default)]
 pub struct SqliteWriteGate(Arc<Mutex<()>>);
 
@@ -160,6 +179,51 @@ impl Drop for WaitingReservationGuard {
             handle.spawn(async move {
                 let _ = scheduler
                     .cancel_waiting(&reservation_id, &fence, "waiter_dropped")
+                    .await;
+            });
+        }
+    }
+}
+
+/// Best-effort release for the active lease phase, mirroring what
+/// `WaitingReservationGuard` does for the queued phase: if the `call_reserved`
+/// future is dropped after `activate()` (caller-side timeout/`select!`), the
+/// guard spawns a release so the granted units return to the domain instead of
+/// waiting for reconcile to quarantine and terminalize the orphaned row.
+struct ActiveReservationGuard {
+    scheduler: ProviderScheduler,
+    reservation_id: String,
+    fence: String,
+    armed: bool,
+}
+
+impl ActiveReservationGuard {
+    fn new(scheduler: ProviderScheduler, reservation_id: String, fence: String) -> Self {
+        Self {
+            scheduler,
+            reservation_id,
+            fence,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for ActiveReservationGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let scheduler = self.scheduler.clone();
+        let reservation_id = self.reservation_id.clone();
+        let fence = self.fence.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = scheduler
+                    .release(&reservation_id, &fence, "call_dropped")
                     .await;
             });
         }
@@ -245,6 +309,11 @@ where
     scheduler
         .activate(&lease.reservation_id, &lease.fence)
         .await?;
+    let mut release_guard = ActiveReservationGuard::new(
+        scheduler.clone(),
+        lease.reservation_id.clone(),
+        lease.fence.clone(),
+    );
     let operation = operation(lease.clone());
     tokio::pin!(operation);
     let mut renewal = tokio::time::interval(RENEW_INTERVAL);
@@ -256,17 +325,54 @@ where
                 break match result {
                     Ok(value) => value,
                     Err(error) => {
-                        lease.fail().await?;
+                        // Release capacity, but never let a failing release
+                        // mask the provider root cause; the drop guard retries
+                        // a release the fence still owns.
+                        match lease.clone().fail().await {
+                            Ok(()) | Err(SchedulerError::StaleFence) => release_guard.disarm(),
+                            Err(release_error) => tracing::warn!(
+                                reservation_id = %lease.reservation_id,
+                                error = %release_error,
+                                "reservation release failed after provider error",
+                            ),
+                        }
                         return Err(ReservedCallError::Provider(error));
                     }
                 };
             }
             _ = renewal.tick() => {
-                lease.renew().await?;
+                if let Err(renew_error) = lease.renew().await {
+                    // The pinned operation is dropped when we return, so a
+                    // transient renew failure must not leave the row active
+                    // and holding units until reconcile notices.
+                    match lease.clone().fail().await {
+                        Ok(()) | Err(SchedulerError::StaleFence) => release_guard.disarm(),
+                        Err(release_error) => tracing::warn!(
+                            reservation_id = %lease.reservation_id,
+                            error = %release_error,
+                            "reservation release failed after renew error",
+                        ),
+                    }
+                    return Err(renew_error.into());
+                }
             }
         }
     };
-    lease.complete().await?;
+    match lease.complete().await {
+        Ok(()) => release_guard.disarm(),
+        // The provider work succeeded and is already paid for; losing the
+        // fence at completion means a third party (job cancel, reconcile
+        // terminalization) already terminalized the reservation and released
+        // its units, so returning the value cannot oversubscribe the domain.
+        // The job observes cancellation through job-level control flow.
+        Err(SchedulerError::StaleFence) => {
+            release_guard.disarm();
+            tracing::warn!(
+                "reservation fence lost at completion; returning finished provider result",
+            );
+        }
+        Err(error) => return Err(error.into()),
+    }
     Ok(value)
 }
 
@@ -447,8 +553,11 @@ impl ProviderScheduler {
 
     async fn renew(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
+        // A successful renewal proves the holder is alive, so it also clears
+        // quarantine: reconcile only terminalizes quarantined rows whose
+        // renewals have stopped, keeping live leases immune to capacity loss.
         let changed = sqlx::query(
-            "UPDATE provider_reservations SET renewed_at = datetime('now'),
+            "UPDATE provider_reservations SET renewed_at = datetime('now'), quarantined = 0,
              expires_at = datetime('now', '+300 seconds'), updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status = 'active'",
         )
@@ -465,12 +574,22 @@ impl ProviderScheduler {
     }
 
     async fn fail(&self, reservation_id: &str, fence: &str) -> Result<(), SchedulerError> {
+        self.release(reservation_id, fence, "provider_failed").await
+    }
+
+    async fn release(
+        &self,
+        reservation_id: &str,
+        fence: &str,
+        reason: &str,
+    ) -> Result<(), SchedulerError> {
         let _write_permit = self.write_gate.lock().await;
         let changed = sqlx::query(
             "UPDATE provider_reservations SET status = 'released', granted_units = 0,
-             terminal_reason = 'provider_failed', updated_at = datetime('now')
+             terminal_reason = ?, updated_at = datetime('now')
              WHERE reservation_id = ? AND fence = ? AND authority_id = ? AND status IN ('granted','active')",
         )
+        .bind(reason)
         .bind(reservation_id)
         .bind(fence)
         .bind(&self.domain.authority_id)
